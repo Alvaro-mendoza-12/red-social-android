@@ -27,10 +27,9 @@ import androidx.media3.effect.Brightness
 import androidx.media3.effect.Contrast
 import androidx.media3.effect.HslAdjustment
 import androidx.media3.effect.OverlayEffect
-import androidx.media3.effect.OverlaySettings
+import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.RgbFilter
-import androidx.media3.effect.SpeedChangeEffect
 import androidx.media3.effect.TimestampWrapper
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.transformer.AudioEncoderSettings
@@ -41,7 +40,6 @@ import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
-import androidx.media3.transformer.TransformationRequest
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
 import conectate.com.util.VideoDeviceTier
@@ -54,6 +52,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -623,6 +622,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun exportVideo(context: Context, onSuccess: (Uri) -> Unit, onError: (String) -> Unit) {
+        if (_isExporting.value) return
         val timeline = _timeline.value
         if (timeline.tracks.none { it.type == TrackType.VIDEO && it.clips.any { clip -> clip.uri != null } }) {
             onError("No hay clips de video para exportar")
@@ -634,13 +634,13 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         }
         val profile = getOrInitProfile(context)
 
+        if (!_isExporting.compareAndSet(false, true)) return
         viewModelScope.launch(Dispatchers.IO) {
-            _isExporting.value = true
             _exportProgress.value = 0f
             _exportStage.value = EditorExportStage.PREPARING
             try {
                 val primary = resolveExportConfig(profile, _selectedExportQuality.value)
-                val fallback = ExportConfig("safe", 720, minOf(profile.autoExportBitrate, 2_400_000), 96_000)
+                val fallback = ExportConfig("safe", 720, minOf(profile.autoExportBitrate, 1_800_000), 96_000)
                 val attempts = if (primary == fallback) listOf(primary) else listOf(primary, fallback)
                 var successUri: Uri? = null
                 var lastError: Throwable? = null
@@ -657,6 +657,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                         successUri = withTimeout(EXPORT_TIMEOUT_MS) {
                             remuxLosslessTrim(context, clip)
                         }
+                    } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                        lastError = error
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Throwable) {
@@ -676,6 +678,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                                 runExportAttempt(context, timeline, profile, config)
                             }
                             break
+                        } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                            lastError = error
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: Throwable) {
@@ -703,7 +707,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    private fun remuxLosslessTrim(context: Context, clip: EditorClip): Uri {
+    private suspend fun remuxLosslessTrim(context: Context, clip: EditorClip): Uri {
         val sourceUri = clip.uri ?: throw IllegalArgumentException("El clip no tiene archivo")
         val outputFile = createEditorExportFile(context, "trim")
         val extractor = MediaExtractor()
@@ -760,6 +764,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             var writtenSamples = 0
 
             while (true) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 val sampleTimeUs = extractor.sampleTime
                 if (sampleTimeUs < 0L || sampleTimeUs > endUs) break
                 if (sampleTimeUs < startUs) {
@@ -835,12 +840,15 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 ?.toFloatOrNull()
                 ?: 30f
             if (!fps.isFinite() || fps <= 0f) return false
+            val fileSizeBytes = context.contentResolver.openFileDescriptor(sourceUri, "r")
+                ?.use { descriptor -> descriptor.statSize }
+                ?: return false
             evaluateVideoPreparation(
                 durationMs = clip.durationMs,
                 width = width,
                 height = height,
                 fps = fps,
-                fileSizeBytes = 1L
+                fileSizeBytes = fileSizeBytes
             ).reason == VideoPreparationReason.READY
         } catch (_: Throwable) {
             false
@@ -908,28 +916,21 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 if (abs(clip.originalAudioVolume - 1f) > 0.01f) {
                     audioProcessors += VolumeAudioProcessor(clip.originalAudioVolume)
                 }
-                if (abs(clip.speed - 1f) > 0.01f) {
-                    val speedProvider = object : SpeedProvider {
+                val speedProvider = if (abs(clip.speed - 1f) > 0.01f) {
+                    object : SpeedProvider {
                         override fun getSpeed(timeUs: Long): Float = clip.speed.coerceIn(0.5f, 4f)
                         override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
                     }
-                    runCatching {
-                        val linked = Effects.createExperimentalSpeedChangingEffect(speedProvider)
-                        audioProcessors += linked.first
-                        videoEffects += linked.second
-                    }.onFailure {
-                        videoEffects += SpeedChangeEffect(clip.speed.coerceIn(0.5f, 4f))
-                    }
-                }
+                } else null
 
-                EditedMediaItem.Builder(mediaItem)
+                val editedItemBuilder = EditedMediaItem.Builder(mediaItem)
                     .setFrameRate(30)
                     .setEffects(Effects(audioProcessors, videoEffects))
-                    .build()
+                speedProvider?.let(editedItemBuilder::setSpeed)
+                editedItemBuilder.build()
             }
             if (items.isNotEmpty()) {
-                @Suppress("DEPRECATION")
-                sequences += EditedMediaItemSequence(items)
+                sequences += EditedMediaItemSequence.withAudioAndVideoFrom(items)
             }
         }
         val musicClips = timeline.tracks
@@ -959,15 +960,14 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 .setRemoveVideo(true)
                 .setEffects(Effects(audioEffects, emptyList()))
                 .build()
-            sequences += EditedMediaItemSequence.Builder(editedMusic)
+            sequences += EditedMediaItemSequence.withAudioFrom(listOf(editedMusic))
+                .buildUpon()
                 .setIsLooping(clip.durationMs > playableDuration)
                 .build()
         }
         if (sequences.isEmpty()) throw IllegalStateException("No hay secuencias válidas")
 
-        val composition = Composition.Builder(sequences)
-            .experimentalSetForceAudioTrack(musicClips.isNotEmpty())
-            .build()
+        val composition = Composition.Builder(sequences).build()
         val videoSettings = VideoEncoderSettings.Builder()
             .setBitrate(config.videoBitrate)
             .setBitrateMode(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
@@ -981,11 +981,6 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             .setRequestedVideoEncoderSettings(videoSettings)
             .setRequestedAudioEncoderSettings(audioSettings)
             .build()
-        val request = TransformationRequest.Builder()
-            .setVideoMimeType(MimeTypes.VIDEO_H264)
-            .setAudioMimeType(MimeTypes.AUDIO_AAC)
-            .build()
-
         val done = CompletableDeferred<Unit>()
         var failure: Throwable? = null
         // Media3 Transformer is tied to the Looper where it is created. The
@@ -996,7 +991,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         val transformer = withContext(Dispatchers.Main.immediate) {
             Transformer.Builder(context)
                 .setEncoderFactory(encoderFactory)
-                .setTransformationRequest(request)
+                .setVideoMimeType(MimeTypes.VIDEO_H264)
+                .setAudioMimeType(MimeTypes.AUDIO_AAC)
                 .addListener(object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, result: ExportResult) {
                         done.complete(Unit)
@@ -1053,7 +1049,31 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             runCatching { outputFile.delete() }
             throw IllegalStateException("Archivo inválido")
         }
+        try {
+            validateExportedTracks(outputFile, requireAudio = musicClips.isNotEmpty())
+        } catch (error: Throwable) {
+            runCatching { outputFile.delete() }
+            throw error
+        }
         return Uri.fromFile(outputFile)
+    }
+
+    private fun validateExportedTracks(file: File, requireAudio: Boolean) {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.absolutePath)
+            var hasVideo = false
+            var hasAudio = false
+            for (trackIndex in 0 until extractor.trackCount) {
+                val mime = extractor.getTrackFormat(trackIndex).getString(MediaFormat.KEY_MIME).orEmpty()
+                if (mime.startsWith("video/")) hasVideo = true
+                if (mime.startsWith("audio/")) hasAudio = true
+            }
+            check(hasVideo) { "La exportación perdió la pista de video" }
+            if (requireAudio) check(hasAudio) { "La exportación perdió la pista de audio seleccionada" }
+        } finally {
+            runCatching { extractor.release() }
+        }
     }
 
     private fun userFacingExportError(error: Throwable?): String {
@@ -1098,7 +1118,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 }
                 val xPos = ((overlay.x / 500f) - 1f).coerceIn(-1f, 1f)
                 val yPos = (1f - (overlay.y / 500f)).coerceIn(-1f, 1f)
-                val settings = OverlaySettings.Builder().setBackgroundFrameAnchor(xPos, yPos).build()
+                val settings = StaticOverlaySettings.Builder().setBackgroundFrameAnchor(xPos, yPos).build()
                 val bitmapOverlay = BitmapOverlay.createStaticBitmapOverlay(bitmap, settings)
                 val visibleStartMs = (maxOf(overlay.startMs, clip.startMs) - clip.startMs)
                     .coerceAtLeast(0L)
@@ -1159,11 +1179,11 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     private fun resolveExportConfig(profile: VideoPerformanceProfile, quality: ExportQuality): ExportConfig {
         return when (quality) {
             ExportQuality.AUTO -> ExportConfig("auto", profile.autoExportHeight, profile.autoExportBitrate, 128_000)
-            ExportQuality.PERFORMANCE -> ExportConfig("performance", 720, 2_600_000, 96_000)
-            ExportQuality.BALANCED -> ExportConfig("balanced", 1080, 4_600_000, 128_000)
+            ExportQuality.PERFORMANCE -> ExportConfig("performance", 720, 1_800_000, 96_000)
+            ExportQuality.BALANCED -> ExportConfig("balanced", 1080, 2_800_000, 128_000)
             ExportQuality.HIGH -> {
                 val h = if (profile.tier == VideoDeviceTier.LOW) 720 else 1080
-                val b = if (profile.tier == VideoDeviceTier.LOW) 3_200_000 else 8_000_000
+                val b = if (profile.tier == VideoDeviceTier.LOW) 2_200_000 else 3_600_000
                 ExportConfig("high", h, b, 160_000)
             }
         }
@@ -1231,27 +1251,31 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     }
 
     fun addMusicTrack(context: Context, musicUri: Uri) {
-        val tracks = _timeline.value.tracks.toMutableList()
-        var audioTrackIndex = tracks.indexOfFirst { it.type == TrackType.AUDIO }
-        if (audioTrackIndex == -1) {
-            tracks.add(EditorTrack(type = TrackType.AUDIO))
-            audioTrackIndex = tracks.size - 1
+        viewModelScope.launch {
+            val sourceDuration = withContext(Dispatchers.IO) {
+                resolveDurationMs(context.applicationContext, musicUri)
+            }
+            val tracks = _timeline.value.tracks.toMutableList()
+            var audioTrackIndex = tracks.indexOfFirst { it.type == TrackType.AUDIO }
+            if (audioTrackIndex == -1) {
+                tracks.add(EditorTrack(type = TrackType.AUDIO))
+                audioTrackIndex = tracks.size - 1
+            }
+            val duration = tracks.find { it.type == TrackType.VIDEO }
+                ?.clips
+                ?.maxOfOrNull { it.endMs }
+                ?: 30_000L
+            val musicClip = EditorClip(
+                id = System.currentTimeMillis(),
+                type = ClipType.AUDIO,
+                uri = musicUri,
+                startMs = 0,
+                durationMs = duration,
+                sourceDurationMs = sourceDuration,
+            )
+            tracks[audioTrackIndex] = tracks[audioTrackIndex].copy(clips = listOf(musicClip))
+            _timeline.value = _timeline.value.copy(tracks = tracks)
         }
-        val duration = tracks.find { it.type == TrackType.VIDEO }
-            ?.clips
-            ?.maxOfOrNull { it.endMs }
-            ?: 30_000L
-        val sourceDuration = resolveDurationMs(context, musicUri)
-        val musicClip = EditorClip(
-            id = System.currentTimeMillis(),
-            type = ClipType.AUDIO,
-            uri = musicUri,
-            startMs = 0,
-            durationMs = duration,
-            sourceDurationMs = sourceDuration
-        )
-        tracks[audioTrackIndex] = tracks[audioTrackIndex].copy(clips = listOf(musicClip))
-        _timeline.value = _timeline.value.copy(tracks = tracks)
     }
 
     fun setOriginalAudioVolume(clipId: Long, volume: Float) {

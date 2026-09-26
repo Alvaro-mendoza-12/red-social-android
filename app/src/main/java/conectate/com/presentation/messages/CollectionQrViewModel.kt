@@ -52,7 +52,7 @@ internal object CollectionQrParser {
         when (scheme) {
             "https", "http" -> {
                 require(uri.host?.lowercase() in allowedWebHosts) {
-                    "Este QR no pertenece a Conéctate."
+                    "Este QR no pertenece a Novvin."
                 }
                 require(pathSegments.size >= 2) {
                     "El enlace del QR está incompleto."
@@ -67,7 +67,7 @@ internal object CollectionQrParser {
                 }
                 roomId = pathSegments[0]
             }
-            else -> error("Este QR no es un enlace compatible de Conéctate.")
+            else -> error("Este QR no es un enlace compatible de Novvin.")
         }
 
         val cleanRoomId = runCatching { UUID.fromString(roomId).toString() }

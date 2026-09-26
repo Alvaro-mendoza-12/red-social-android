@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.sync.SyncManager
 import conectate.com.util.NetworkConnectivityObserver
+import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -13,7 +14,7 @@ import kotlinx.coroutines.flow.stateIn
 @HiltViewModel
 class ConnectivityViewModel @Inject constructor(
     networkObserver: NetworkConnectivityObserver,
-    private val syncManager: SyncManager
+    private val syncManager: Lazy<SyncManager>
 ) : ViewModel() {
 
     val isConnected: StateFlow<Boolean> = networkObserver.isConnected.stateIn(
@@ -22,7 +23,13 @@ class ConnectivityViewModel @Inject constructor(
         initialValue = networkObserver.isNetworkAvailable()
     )
 
+    val isCellular: StateFlow<Boolean> = networkObserver.isCellular.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = networkObserver.isCellularNetwork()
+    )
+
     fun retrySync(reason: String = "ui_retry") {
-        syncManager.triggerSync(reason)
+        syncManager.get().triggerSync(reason)
     }
 }

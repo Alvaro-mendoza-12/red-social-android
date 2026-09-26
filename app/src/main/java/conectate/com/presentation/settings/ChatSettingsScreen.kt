@@ -16,16 +16,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.KeyboardReturn
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wallpaper
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -124,7 +123,7 @@ fun ChatSettingsScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -160,7 +159,7 @@ fun ChatSettingsScreen(
             SettingsPanel {
                 SectionTitle("Comportamiento del chat")
                 SettingSwitchRow(
-                    icon = Icons.Default.VolumeUp,
+                    icon = Icons.AutoMirrored.Filled.VolumeUp,
                     title = "Sonidos de chat",
                     subtitle = "Tonos de mensajes y celebraciones de regalos en directos.",
                     checked = chatSoundsEnabled,
@@ -184,7 +183,7 @@ fun ChatSettingsScreen(
                 )
                 SettingDivider()
                 SettingSwitchRow(
-                    icon = Icons.Default.KeyboardReturn,
+                    icon = Icons.AutoMirrored.Filled.KeyboardReturn,
                     title = "Enter para enviar",
                     subtitle = "La tecla Enter enviará el mensaje cuando uses teclado.",
                     checked = isEnterToSendEnabled,
@@ -220,6 +219,10 @@ fun ChatSettingsScreen(
             }
 
             SettingsPanel {
+                ChatOfflineStorageSection()
+            }
+
+            SettingsPanel {
                 SectionTitle("Color del chat")
                 ChoiceRow(
                     options = listOf(
@@ -229,7 +232,8 @@ fun ChatSettingsScreen(
                         ChatChoice("graphite", "Grafito")
                     ),
                     selected = chatAccent,
-                    onSelected = viewModel::setChatAccent
+                    onSelected = viewModel::setChatAccent,
+                    defaultKey = "conectate_red",
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 SectionTitle("Fondo de conversación")
@@ -241,7 +245,8 @@ fun ChatSettingsScreen(
                         ChatChoice("minimal", "Limpio")
                     ),
                     selected = chatBackground,
-                    onSelected = viewModel::setChatBackground
+                    onSelected = viewModel::setChatBackground,
+                    defaultKey = "deep_black",
                 )
             }
         }
@@ -258,7 +263,7 @@ private fun SettingsPanel(content: @Composable ColumnScope.() -> Unit) {
         shadowElevation = 0.dp
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             content = content
         )
@@ -288,7 +293,9 @@ private fun SettingSwitchRow(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = Color(0xFFE53935)
+                // This screen follows the app theme. The selected chat accent is
+                // intentionally applied only inside an actual conversation.
+                tint = MaterialTheme.colorScheme.primary
             )
         },
         headlineContent = {
@@ -310,7 +317,7 @@ private fun SettingSwitchRow(
 
 @Composable
 private fun SettingDivider() {
-    Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
 }
 
 private data class ChatChoice(
@@ -323,7 +330,8 @@ private data class ChatChoice(
 private fun ChoiceRow(
     options: List<ChatChoice>,
     selected: String,
-    onSelected: (String) -> Unit
+    onSelected: (String) -> Unit,
+    defaultKey: String,
 ) {
     Row(
         modifier = Modifier
@@ -339,9 +347,10 @@ private fun ChoiceRow(
                 label = { Text(option.label) }
             )
         }
-        AssistChip(
-            onClick = { onSelected(options.first().key) },
-            label = { Text("Restablecer") }
+        FilterChip(
+            selected = false,
+            onClick = { onSelected(defaultKey) },
+            label = { Text("Restablecer") },
         )
         Spacer(modifier = Modifier.width(4.dp))
     }

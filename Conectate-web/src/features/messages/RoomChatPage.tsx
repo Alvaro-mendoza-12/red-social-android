@@ -906,6 +906,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     event.preventDefault()
     const text = draft.trim()
     if ((!text && pendingAttachments.length === 0) || sending || uploading) return
+    const submittedDraft = draft
+    const sendingTextOnly = !editingMessageId && pendingAttachments.length === 0
+    if (sendingTextOnly) setDraft('')
     setSending(true)
     try {
       if (editingMessageId) {
@@ -928,16 +931,16 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             : entry))
         }
         setEditingMessageId(null)
-        setDraft('')
+        setDraft((current) => current === submittedDraft ? '' : current)
       } else if (pendingAttachments.length > 0) {
         await sendPendingAttachments(text)
-        setDraft('')
+        setDraft((current) => current === submittedDraft ? '' : current)
       } else {
         await sendMessage(text, '', 'text', replyToId)
-        setDraft('')
         setReplyToId(null)
       }
     } catch (caught) {
+      if (sendingTextOnly) setDraft((current) => current || submittedDraft)
       setError(friendlyError(caught, 'No se pudo enviar mensaje'))
     } finally {
       setSending(false)

@@ -28,7 +28,8 @@ class CreatePostViewModel @Inject constructor(
         mediaUris: List<Uri>,
         visibility: String = "public",
         remixAllowed: Boolean = false,
-        remixAudience: String = "public"
+        remixAudience: String = "public",
+        isSensitive: Boolean = false
     ) {
         viewModelScope.launch {
             _isCreating.value = true
@@ -38,7 +39,8 @@ class CreatePostViewModel @Inject constructor(
                     mediaUris = mediaUris,
                     visibility = visibility,
                     remixAllowed = remixAllowed,
-                    remixAudience = remixAudience
+                    remixAudience = remixAudience,
+                    isSensitive = isSensitive
                 )
                 if (result.isSuccess) {
                     _uploadSuccess.emit(Unit)

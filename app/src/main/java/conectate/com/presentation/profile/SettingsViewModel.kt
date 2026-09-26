@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.User
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.ServerTwoFactorSetup
+import conectate.com.data.localfallback.ServerTwoFactorStatus
 import conectate.com.data.repository.AuthRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.repository.WebLoginManagedSession
@@ -15,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import java.time.Instant
 import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.local.prefs.AppFontOption
 import conectate.com.data.local.prefs.AppThemeOption
@@ -35,7 +38,8 @@ class SettingsViewModel @Inject constructor(
     private val messageRepository: conectate.com.data.repository.MessageRepository,
     private val themePreferences: conectate.com.data.local.prefs.ThemePreferences,
     private val webLoginPairingRepository: WebLoginPairingRepository,
-    private val localFallbackApiClient: LocalFallbackApiClient
+    private val localFallbackApiClient: LocalFallbackApiClient,
+    private val settingsBackupManager: conectate.com.data.local.prefs.SettingsBackupManager,
 ) : ViewModel() {
     private companion object {
         val ALLOWED_ADMIN_EMAILS = setOf(
@@ -71,6 +75,16 @@ class SettingsViewModel @Inject constructor(
         themePreferences.setProfileAvatarVideosMuted(enabled)
     }
 
+    fun exportSettingsBackup(uri: Uri, accountEmail: String? = null): Result<Unit> =
+        settingsBackupManager.exportTo(uri, accountEmail)
+
+    fun importSettingsBackup(uri: Uri): Result<Unit> = settingsBackupManager.importFrom(uri)
+
+    fun scheduleAndroidBackup(accountEmail: String? = null): Result<Instant> =
+        settingsBackupManager.scheduleAndroidBackup(accountEmail)
+
+    fun lastAndroidBackupRequest(): Instant? = settingsBackupManager.lastAndroidBackupRequest()
+
     private val _settingsState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
     val settingsState: StateFlow<SettingsUiState> = _settingsState.asStateFlow()
     private val _additionalLoginEmails = MutableStateFlow<List<String>>(emptyList())
@@ -105,11 +119,33 @@ class SettingsViewModel @Inject constructor(
     val deleteAccountMessage: StateFlow<String?> = _deleteAccountMessage.asStateFlow()
     private val _accountDeleted = MutableStateFlow(false)
     val accountDeleted: StateFlow<Boolean> = _accountDeleted.asStateFlow()
+    private val _serverTwoFactorStatus = MutableStateFlow<ServerTwoFactorStatus?>(null)
+    val serverTwoFactorStatus: StateFlow<ServerTwoFactorStatus?> = _serverTwoFactorStatus.asStateFlow()
+    private val _serverTwoFactorSetup = MutableStateFlow<ServerTwoFactorSetup?>(null)
+    val serverTwoFactorSetup: StateFlow<ServerTwoFactorSetup?> = _serverTwoFactorSetup.asStateFlow()
+    private val _serverRecoveryCodes = MutableStateFlow<List<String>>(emptyList())
+    val serverRecoveryCodes: StateFlow<List<String>> = _serverRecoveryCodes.asStateFlow()
+    private val _twoFactorBusy = MutableStateFlow(false)
+    val twoFactorBusy: StateFlow<Boolean> = _twoFactorBusy.asStateFlow()
+    private val _twoFactorMessage = MutableStateFlow<String?>(null)
+    val twoFactorMessage: StateFlow<String?> = _twoFactorMessage.asStateFlow()
+    private val _twoFactorDisabled = MutableStateFlow(false)
+    val twoFactorDisabled: StateFlow<Boolean> = _twoFactorDisabled.asStateFlow()
+    private val _passwordRecoveryRemaining = MutableStateFlow<Int?>(null)
+    val passwordRecoveryRemaining: StateFlow<Int?> = _passwordRecoveryRemaining.asStateFlow()
+    private val _passwordRecoveryCodes = MutableStateFlow<List<String>>(emptyList())
+    val passwordRecoveryCodes: StateFlow<List<String>> = _passwordRecoveryCodes.asStateFlow()
+    private val _passwordRecoveryBusy = MutableStateFlow(false)
+    val passwordRecoveryBusy: StateFlow<Boolean> = _passwordRecoveryBusy.asStateFlow()
+    private val _passwordRecoveryMessage = MutableStateFlow<String?>(null)
+    val passwordRecoveryMessage: StateFlow<String?> = _passwordRecoveryMessage.asStateFlow()
     
     private var currentUser: User? = null
 
     init {
         loadUserSettings()
+        loadServerTwoFactorStatus()
+        loadPasswordRecoveryCodeStatus()
         loadAdditionalLoginEmails()
         loadWebSessions()
         resolveAdminIds()
@@ -668,6 +704,123 @@ class SettingsViewModel @Inject constructor(
             )
             if (result.isSuccess) {
                 val updatedUser = user.copy(favorites_public = isPublic)
+                currentUser = updatedUser
+                _settingsState.value = SettingsUiState.Success(updatedUser)
+            }
+            onResult(result.isSuccess)
+        }
+    }
+
+    fun loadServerTwoFactorStatus() {
+        if (!localFallbackApiClient.isConfigured) return
+        viewModelScope.launch {
+            authRepository.serverTwoFactorStatus().fold(
+                onSuccess = {
+                    _serverTwoFactorStatus.value = it
+                    if (!it.enabled && authRepository.isTwoFactorAuthEnabled()) {
+                        _twoFactorMessage.value =
+                            "La verificación antigua guardada solo en este teléfono no protege los accesos nuevos. Activa aquí la verificación del servidor."
+                    }
+                },
+                onFailure = { _twoFactorMessage.value = it.toUserFacingMessage() }
+            )
+        }
+    }
+
+    fun setupServerTwoFactor(password: String) {
+        if (_twoFactorBusy.value) return
+        viewModelScope.launch {
+            _twoFactorBusy.value = true
+            _twoFactorMessage.value = null
+            authRepository.setupServerTwoFactor(password).fold(
+                onSuccess = { _serverTwoFactorSetup.value = it },
+                onFailure = { _twoFactorMessage.value = it.toUserFacingMessage() }
+            )
+            _twoFactorBusy.value = false
+        }
+    }
+
+    fun enableServerTwoFactor(password: String, code: String) {
+        if (_twoFactorBusy.value) return
+        viewModelScope.launch {
+            _twoFactorBusy.value = true
+            _twoFactorMessage.value = null
+            authRepository.enableServerTwoFactor(password, code).fold(
+                onSuccess = { codes ->
+                    _serverRecoveryCodes.value = codes
+                    _serverTwoFactorSetup.value = null
+                    _serverTwoFactorStatus.value = ServerTwoFactorStatus(true, codes.size)
+                    _twoFactorMessage.value = "Verificación activada. Guarda los códigos de respaldo ahora; se muestran una sola vez."
+                },
+                onFailure = { _twoFactorMessage.value = it.toUserFacingMessage() }
+            )
+            _twoFactorBusy.value = false
+        }
+    }
+
+    fun disableServerTwoFactor(password: String, code: String) {
+        if (_twoFactorBusy.value) return
+        viewModelScope.launch {
+            _twoFactorBusy.value = true
+            _twoFactorMessage.value = null
+            authRepository.disableServerTwoFactor(password, code).fold(
+                onSuccess = {
+                    _serverTwoFactorStatus.value = ServerTwoFactorStatus(false)
+                    _serverRecoveryCodes.value = emptyList()
+                    _twoFactorDisabled.value = true
+                },
+                onFailure = { _twoFactorMessage.value = it.toUserFacingMessage() }
+            )
+            _twoFactorBusy.value = false
+        }
+    }
+
+    fun clearDisplayedRecoveryCodes() {
+        _serverRecoveryCodes.value = emptyList()
+    }
+
+    fun loadPasswordRecoveryCodeStatus() {
+        if (!localFallbackApiClient.isConfigured) return
+        viewModelScope.launch {
+            authRepository.passwordRecoveryCodeStatus().fold(
+                onSuccess = { _passwordRecoveryRemaining.value = it.recoveryCodesRemaining },
+                onFailure = { _passwordRecoveryMessage.value = it.toUserFacingMessage() }
+            )
+        }
+    }
+
+    fun rotatePasswordRecoveryCodes(password: String, secondFactorCode: String?) {
+        if (_passwordRecoveryBusy.value) return
+        viewModelScope.launch {
+            _passwordRecoveryBusy.value = true
+            _passwordRecoveryMessage.value = null
+            authRepository.rotatePasswordRecoveryCodes(password, secondFactorCode).fold(
+                onSuccess = { codes ->
+                    _passwordRecoveryCodes.value = codes
+                    _passwordRecoveryRemaining.value = codes.size
+                    _passwordRecoveryMessage.value =
+                        "Guarda los códigos fuera de este teléfono. Los anteriores ya no funcionan."
+                },
+                onFailure = { _passwordRecoveryMessage.value = it.toUserFacingMessage() }
+            )
+            _passwordRecoveryBusy.value = false
+        }
+    }
+
+    fun clearDisplayedPasswordRecoveryCodes() {
+        _passwordRecoveryCodes.value = emptyList()
+    }
+
+    fun updateProfileViewHistory(enabled: Boolean, onResult: (Boolean) -> Unit = {}) {
+        val user = currentUser ?: return onResult(false)
+        viewModelScope.launch {
+            val result = userRepository.updateProfile(
+                user.id,
+                UpdateProfileRequest(profile_view_history_enabled = enabled)
+            )
+            if (result.isSuccess) {
+                if (!enabled) userRepository.clearProfileViewHistory()
+                val updatedUser = user.copy(profile_view_history_enabled = enabled)
                 currentUser = updatedUser
                 _settingsState.value = SettingsUiState.Success(updatedUser)
             }

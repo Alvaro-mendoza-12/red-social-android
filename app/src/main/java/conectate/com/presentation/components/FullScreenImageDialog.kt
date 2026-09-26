@@ -2,6 +2,7 @@ package conectate.com.presentation.components
 
 import android.util.Log
 import android.view.WindowManager
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -44,8 +46,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,7 +73,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -79,9 +82,11 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import conectate.com.core.media.MediaImageRequestFactory
+import conectate.com.core.media.ProfileIdentityImageStore
 import conectate.com.util.UbuntuMedia
 import conectate.com.util.VideoCache
 import conectate.com.util.VideoPerformanceProfiles
+import kotlinx.coroutines.launch
 import kotlin.math.min
 import kotlin.math.abs
 
@@ -215,6 +220,16 @@ internal fun isGalleryMediaType(type: String): Boolean {
         isVideoMediaType(normalized)
 }
 
+internal fun shouldShowBlockingImageProgress(
+    isOriginalLoading: Boolean,
+    isPreviewReady: Boolean
+): Boolean = isOriginalLoading && !isPreviewReady
+
+internal fun shouldShowBlockingImageError(
+    hasOriginalError: Boolean,
+    isPreviewReady: Boolean
+): Boolean = hasOriginalError && !isPreviewReady
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FullScreenImageDialog(
@@ -227,7 +242,10 @@ fun FullScreenImageDialog(
     bottomOverlay: (@Composable (page: Int) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
-    val reliableBottomPadding = rememberReliableBottomSafePadding()
+    // El contenido informativo debe terminar por encima del indicador de gestos,
+    // no simplemente en el borde del inset. El margen adicional es visual y el
+    // resto procede del inset real del dispositivo.
+    val reliableBottomPadding = rememberReliableBottomSafePadding(contentClearance = 12.dp)
     val items = remember(imageUrl, mediaItems) {
         if (mediaItems.isNotEmpty()) {
             mediaItems
@@ -310,10 +328,8 @@ fun FullScreenImageDialog(
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
                     val item = items[page]
-                    val requiresResolution = resolver != null && (
-                        !item.url.startsWith("http", ignoreCase = true) ||
-                            item.url.contains("/storage/v1/object/sign/", ignoreCase = true)
-                        )
+                    val requiresResolution = shouldResolveMediaViewerSource(item.url, resolver != null)
+                    var resolutionAttempt by remember(item.id, item.url) { mutableIntStateOf(0) }
                     var resolvedUrl by remember(item.id, item.url, requiresResolution) {
                         mutableStateOf(item.url.takeUnless { requiresResolution })
                     }
@@ -321,14 +337,10 @@ fun FullScreenImageDialog(
                         mutableStateOf(requiresResolution)
                     }
 
-                    LaunchedEffect(item.id, item.url, requiresResolution) {
+                    LaunchedEffect(item.id, item.url, requiresResolution, resolutionAttempt) {
                         if (requiresResolution) {
                             isResolving = true
-                            resolvedUrl = runCatching { resolver?.invoke(item.url) }
-                                .onFailure { Log.w("FullScreenImageDialog", "Media URL resolution failed", it) }
-                                .getOrNull()
-                                ?.takeIf(String::isNotBlank)
-                                ?: item.url
+                            resolvedUrl = resolveMediaViewerSource(item.url, resolver)
                             isResolving = false
                         } else {
                             resolvedUrl = item.url
@@ -339,6 +351,14 @@ fun FullScreenImageDialog(
                     if (isResolving) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = Color.White)
+                        }
+                    } else if (resolvedUrl.isNullOrBlank()) {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("No se pudo abrir este archivo", color = Color.White)
+                            Button(onClick = { resolutionAttempt++ }) { Text("Reintentar") }
                         }
                     } else {
                         resolvedUrl?.takeIf(String::isNotBlank)?.let { playableUrl ->
@@ -351,7 +371,7 @@ fun FullScreenImageDialog(
                 }
 
                 if (bottomOverlay != null) {
-                    Box(
+                    Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             // El diálogo usa edge-to-edge; sin reservar ambos lados el
@@ -364,12 +384,16 @@ fun FullScreenImageDialog(
                             )
                             .fillMaxWidth()
                             .clipToBounds()
-                            // El bloque debe quedar inmediatamente encima de la barra
-                            // del sistema. Antes se trasladaba hacia arriba y además
-                            // reservaba el mismo inset, duplicando la separación.
-                            .padding(bottom = reliableBottomPadding)
                     ) {
                         bottomOverlay(pagerState.currentPage)
+                        // Un espaciador explícito conserva la reserva incluso en
+                        // fabricantes cuyos Dialog edge-to-edge ignoran el padding
+                        // inferior durante la medición del contenido.
+                        Spacer(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(reliableBottomPadding)
+                        )
                     }
                 } else if (items.size > 1) {
                     Text(
@@ -447,24 +471,42 @@ private fun MediaViewerItem(
 }
 
 @Composable
-internal fun ZoomableImageViewer(item: MediaItem) {
+internal fun ZoomableImageViewer(
+    item: MediaItem,
+    allowDurableProfileFallback: Boolean = false
+) {
     val context = LocalContext.current
-    val imageRequest = remember(context, item.url) {
+    val coroutineScope = rememberCoroutineScope()
+    var requestRevision by remember(item.id, item.url) { mutableIntStateOf(0) }
+    val imageRequest = remember(context, item.url, requestRevision) {
         MediaImageRequestFactory.fullScreen(context, item.url)
     }
     val previewRequest = remember(context, item.url) {
         MediaImageRequestFactory.preview(context, item.url)
     }
+    val identityAccountId = LocalProfileIdentityAccount.current
+    val identityGeneration = remember(item.url, identityAccountId) { ProfileIdentityImageStore.generation(identityAccountId) }
+    var durableProfileImage by remember(context, item.url, allowDurableProfileFallback, identityAccountId) {
+        mutableStateOf<java.io.File?>(null)
+    }
+    LaunchedEffect(context, item.url, allowDurableProfileFallback, identityAccountId) {
+        if (allowDurableProfileFallback) durableProfileImage = ProfileIdentityImageStore.find(context, item.url, identityAccountId, identityGeneration)
+    }
     var transform by remember(item.id, item.url) { mutableStateOf(MediaTransform()) }
     var viewportSize by remember(item.id, item.url) { mutableStateOf(IntSize.Zero) }
 
     var intrinsicSize by remember(item.id, item.url) { mutableStateOf(MediaDimensions(0f, 0f)) }
-    var isImageLoading by remember(item.id, item.url) { mutableStateOf(true) }
+    var isImageLoading by remember(item.id, item.url, durableProfileImage) {
+        mutableStateOf(durableProfileImage == null)
+    }
     var hasImageError by remember(item.id, item.url) { mutableStateOf(false) }
+    var isPreviewReady by remember(item.id, item.url, durableProfileImage) {
+        mutableStateOf(durableProfileImage != null)
+    }
     val density = LocalDensity.current
     val viewportDimensions = MediaDimensions(viewportSize.width.toFloat(), viewportSize.height.toFloat())
     val fittedDimensions = fitMediaInViewport(viewportDimensions, intrinsicSize)
-    val canZoom = fittedDimensions.isUsable && !isImageLoading && !hasImageError
+    val canZoom = fittedDimensions.isUsable && (isPreviewReady || durableProfileImage != null)
 
     LaunchedEffect(viewportSize, fittedDimensions) {
         if (transform.scale <= MIN_MEDIA_ZOOM + 0.01f || !canZoom) {
@@ -537,6 +579,35 @@ internal fun ZoomableImageViewer(item: MediaItem) {
             Modifier.fillMaxSize()
         }
 
+        // This file survives Coil eviction and process restarts. Keep it below
+        // the normal requests so the last known profile image remains visible
+        // while a higher-resolution copy is being resolved offline.
+        durableProfileImage?.let { cachedFile ->
+            AsyncImage(
+                model = cachedFile,
+                contentDescription = "Imagen de perfil guardada",
+                modifier = imageSizeModifier
+                    .graphicsLayer(
+                        scaleX = transform.scale,
+                        scaleY = transform.scale,
+                        translationX = transform.translation.x,
+                        translationY = transform.translation.y
+                    ),
+                contentScale = ContentScale.Fit,
+                onSuccess = { state ->
+                    val drawable = state.result.drawable
+                    if (!intrinsicSize.isUsable &&
+                        drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0
+                    ) {
+                        intrinsicSize = MediaDimensions(
+                            drawable.intrinsicWidth.toFloat(),
+                            drawable.intrinsicHeight.toFloat()
+                        )
+                    }
+                }
+            )
+        }
+
         // Keep the already downloaded preview visible while the original is
         // decoded. This also works when Coil evicted it from memory but still
         // has it on disk, avoiding the black flash from a memory-only placeholder.
@@ -550,7 +621,16 @@ internal fun ZoomableImageViewer(item: MediaItem) {
                     translationX = transform.translation.x,
                     translationY = transform.translation.y
                 ),
-            contentScale = ContentScale.Fit
+            contentScale = ContentScale.Fit,
+            onLoading = {
+                isPreviewReady = durableProfileImage != null
+            },
+            onSuccess = {
+                isPreviewReady = true
+            },
+            onError = {
+                isPreviewReady = durableProfileImage != null
+            }
         )
 
         AsyncImage(
@@ -582,6 +662,15 @@ internal fun ZoomableImageViewer(item: MediaItem) {
                 }
                 isImageLoading = false
                 hasImageError = false
+                if (allowDurableProfileFallback) {
+                    runCatching { drawable.toBitmap() }
+                        .getOrNull()
+                        ?.let { bitmap ->
+                            coroutineScope.launch {
+                                ProfileIdentityImageStore.save(context, item.url, bitmap, identityAccountId, identityGeneration)
+                            }
+                        }
+                }
             },
             onError = {
                 isImageLoading = false
@@ -589,9 +678,9 @@ internal fun ZoomableImageViewer(item: MediaItem) {
             }
         )
 
-        if (isImageLoading) {
+        if (shouldShowBlockingImageProgress(isImageLoading, isPreviewReady)) {
             CircularProgressIndicator(color = Color.White)
-        } else if (hasImageError) {
+        } else if (shouldShowBlockingImageError(hasImageError, isPreviewReady)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
                     imageVector = Icons.Default.Warning,
@@ -605,6 +694,31 @@ internal fun ZoomableImageViewer(item: MediaItem) {
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 12.dp)
                 )
+                Button(
+                    onClick = {
+                        hasImageError = false
+                        isImageLoading = true
+                        requestRevision += 1
+                    },
+                    modifier = Modifier.padding(top = 14.dp)
+                ) {
+                    Text("Reintentar")
+                }
+            }
+        } else if (hasImageError && isPreviewReady) {
+            Button(
+                onClick = {
+                    hasImageError = false
+                    isImageLoading = true
+                    requestRevision += 1
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Black.copy(alpha = 0.68f),
+                    contentColor = Color.White
+                ),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp)
+            ) {
+                Text("Cargar calidad original")
             }
         }
     }
@@ -620,8 +734,13 @@ private fun VideoViewerItem(
     var errorMessage by remember(item.id, item.url) { mutableStateOf<String?>(null) }
     var isVideoReady by remember(item.id, item.url) { mutableStateOf(false) }
     var isBuffering by remember(item.id, item.url) { mutableStateOf(true) }
+    var requestRevision by remember(item.id, item.url) { mutableIntStateOf(0) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var foreground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
+    }
 
-    val exoPlayer = remember(item.url) {
+    val exoPlayer = remember(item.url, requestRevision) {
         val performanceProfile = VideoPerformanceProfiles.detect(context)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -639,19 +758,6 @@ private fun VideoViewerItem(
             )
             .build()
             .apply {
-                val path = item.url.substringBefore("?")
-                val hasKnownVideoExtension = listOf(".mp4", ".mkv", ".webm", ".3gp", ".m3u8")
-                    .any { path.endsWith(it, ignoreCase = true) }
-                val mediaItem = UbuntuMedia.mediaItem(item.url)
-                    .buildUpon()
-                    .apply {
-                        if (!hasKnownVideoExtension) setMimeType(MimeTypes.VIDEO_MP4)
-                    }
-                    .build()
-                setMediaItem(mediaItem)
-                prepare()
-                playWhenReady = isActive
-
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         when (playbackState) {
@@ -669,19 +775,34 @@ private fun VideoViewerItem(
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e(
                             "FullScreenImageDialog",
-                            "Video playback failed: ${error.errorCodeName}",
-                            error
+                            "Video playback failed: ${error.errorCodeName}"
                         )
                         errorMessage = "No se pudo reproducir este video."
                         isBuffering = false
                     }
                 })
+                // Let Media3 sniff .media/content sources; they may contain MP4, WebM or other supported containers.
+                setMediaItem(UbuntuMedia.mediaItem(item.url))
+                prepare()
+                playWhenReady = isActive && foreground
             }
     }
 
-    LaunchedEffect(isActive, exoPlayer) {
-        exoPlayer.playWhenReady = isActive
-        if (isActive) exoPlayer.play() else exoPlayer.pause()
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_START -> foreground = true
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> foreground = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(isActive, foreground, exoPlayer) {
+        exoPlayer.playWhenReady = isActive && foreground
+        if (isActive && foreground) exoPlayer.play() else exoPlayer.pause()
     }
 
     DisposableEffect(exoPlayer) {
@@ -731,8 +852,10 @@ private fun VideoViewerItem(
                     onClick = {
                         errorMessage = null
                         isBuffering = true
-                        exoPlayer.prepare()
-                        if (isActive) exoPlayer.play()
+                        isVideoReady = false
+                        exoPlayer.stop()
+                        VideoCache.removeResource(context, item.url)
+                        requestRevision++
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB3261E)),
                     modifier = Modifier.padding(top = 16.dp)

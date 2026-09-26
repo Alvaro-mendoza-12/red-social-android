@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +48,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -63,7 +64,6 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-private const val MAX_GIFT_QUEUE_SIZE = 3
 private const val STATIC_FALLBACK_MS = 300L
 private val GiftPink = Color(0xFFFF4F87)
 private val GiftPurple = Color(0xFF8F67FF)
@@ -73,49 +73,31 @@ private val GiftMint = Color(0xFF65F5B5)
 private val GiftPalette = listOf(GiftPink, GiftPurple, GiftCyan, GiftGold, GiftMint)
 
 /**
- * Mantiene como máximo un regalo protagonista y dos en espera. Los IDs vistos
- * no vuelven a reproducirse cuando Realtime recompone la misma lista.
+ * Reproduce una celebración a la vez y conserva la ráfaga en una cola acotada.
+ * El historial del directo no caduca al terminar una animación.
  */
-internal class GiftEventQueue(private val capacity: Int = MAX_GIFT_QUEUE_SIZE) {
-    private val queued = ArrayDeque<LiveGiftEvent>()
-    private val seen = LinkedHashSet<String>()
-
-    fun offerAll(events: List<LiveGiftEvent>) {
-        events.forEach { event ->
-            if (event.transactionId.isBlank() || event.transactionId in seen) return@forEach
-            if (queued.size < capacity) {
-                seen.add(event.transactionId)
-                queued.addLast(event)
-            }
-        }
-        while (seen.size > 100) seen.remove(seen.first())
-    }
-
-    fun peek(): LiveGiftEvent? = queued.firstOrNull()
-
-    fun complete(transactionId: String) {
-        if (queued.firstOrNull()?.transactionId == transactionId) queued.removeFirst()
-    }
-
-    fun size(): Int = queued.size
-
-    fun clear() {
-        queued.clear()
-    }
-}
-
 @Composable
-fun GiftCelebrationOverlay(events: List<LiveGiftEvent>, modifier: Modifier = Modifier) {
+fun GiftCelebrationOverlay(
+    events: List<LiveGiftEvent>,
+    modifier: Modifier = Modifier,
+    sessionKey: String? = null,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val queue = remember { GiftEventQueue() }
-    var protagonist by remember { mutableStateOf<LiveGiftEvent?>(null) }
+    val queue = remember(sessionKey) { GiftEventQueue() }
+    val celebrationStartMs = remember(sessionKey) { System.currentTimeMillis() - 10_000L }
+    val latestEvents by rememberUpdatedState(events)
+    var protagonist by remember(sessionKey) { mutableStateOf<LiveGiftEvent?>(null) }
+    var foreground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
 
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, queue) {
         val observer = LifecycleEventObserver { _, event ->
+            foreground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
             if (event == Lifecycle.Event.ON_STOP || event == Lifecycle.Event.ON_DESTROY) {
                 GiftSoundEngine.stopAll()
-                queue.clear()
+                queue.discardAll(latestEvents)
                 protagonist = null
             }
         }
@@ -127,12 +109,20 @@ fun GiftCelebrationOverlay(events: List<LiveGiftEvent>, modifier: Modifier = Mod
         }
     }
 
-    LaunchedEffect(events.map { it.transactionId }) {
-        queue.offerAll(events)
+    LaunchedEffect(events.map { it.transactionId }, foreground, queue) {
+        if (!foreground) {
+            queue.discardAll(events)
+            protagonist = null
+            return@LaunchedEffect
+        }
+        queue.offerAll(events.filter {
+            (sessionKey == null || it.liveStreamId == sessionKey) && it.createdAtMs >= celebrationStartMs
+        })
         if (protagonist == null) protagonist = queue.peek()
     }
 
-    LaunchedEffect(protagonist?.transactionId) {
+    LaunchedEffect(protagonist?.transactionId, foreground, queue) {
+        if (!foreground) return@LaunchedEffect
         val event = protagonist ?: return@LaunchedEffect
         val profile = giftMotionProfile(event.gift.visualKey())
         // LiveGiftEvent sólo se crea tras el commit/ack del servidor. La vista
@@ -147,7 +137,9 @@ fun GiftCelebrationOverlay(events: List<LiveGiftEvent>, modifier: Modifier = Mod
         queue.complete(event.transactionId)
         // Si una ráfaga superó la cola visible, toma el siguiente confirmado
         // al liberar espacio sin reproducir IDs ya celebrados.
-        queue.offerAll(events)
+        queue.offerAll(latestEvents.filter {
+            (sessionKey == null || it.liveStreamId == sessionKey) && it.createdAtMs >= celebrationStartMs
+        })
         protagonist = queue.peek()
     }
 
@@ -168,8 +160,8 @@ fun GiftAnimationStage(
     senderLabel: String,
     runKey: Any,
     preview: Boolean,
+    modifier: Modifier = Modifier,
     showCaption: Boolean = true,
-    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val animationsEnabled = remember(runKey) { giftAnimationsEnabled(context) }

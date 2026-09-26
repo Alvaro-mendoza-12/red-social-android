@@ -35,7 +35,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.NavBackStackEntry
 import coil.compose.rememberAsyncImagePainter
 import conectate.com.R
 import conectate.com.presentation.components.ImageCropPreset
@@ -52,6 +52,7 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun RegisterScreen(
     navController: NavController,
+    registerBackStackEntry: NavBackStackEntry,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     var name by rememberSaveable { mutableStateOf("") }
@@ -79,10 +80,6 @@ fun RegisterScreen(
         runCatching { LocalDate.parse(birthDate) }.getOrNull()
     }
     val birthDateIsValid = parsedBirthDate?.let { !it.isAfter(LocalDate.now()) } == true
-    val currentBackStackEntry by navController.currentBackStackEntryAsState()
-    val registerBackStackEntry = remember(currentBackStackEntry) {
-        navController.getBackStackEntry(Screen.Register.route)
-    }
     val privacyAcceptedFromDocument by registerBackStackEntry.savedStateHandle
         .getStateFlow("registration_privacy_accepted", false)
         .collectAsState()
@@ -91,12 +88,6 @@ fun RegisterScreen(
         if (privacyAcceptedFromDocument) acceptedPrivacyPolicy = true
     }
 
-    LaunchedEffect(authError) {
-        if (authError.isNotBlank()) {
-            AppFeedbackBus.showError(authError)
-        }
-    }
-    
     // Lista de países (principales de América Latina)
     val countries = listOf(
         "Argentina", "Bolivia", "Brasil", "Chile", "Colombia", 
@@ -171,42 +162,54 @@ fun RegisterScreen(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
                         MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.primaryContainer,
                     )
                 )
             )
     ) {
         val responsiveHorizontalPadding =
-            if (maxWidth > 600.dp) ((maxWidth - 560.dp) / 2).coerceAtLeast(24.dp) else 24.dp
+            if (maxWidth > 600.dp) ((maxWidth - 560.dp) / 2).coerceAtLeast(20.dp) else 20.dp
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(scrollState)
                 .padding(horizontal = responsiveHorizontalPadding, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.Start
         ) {
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        // Title
-        Text(
-            text = "Crear Cuenta",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text(
-            text = "Completa tus datos para comenzar",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+        AuthBrandHeader(
+            title = "Crea tu espacio",
+            subtitle = "Una cuenta para conversar, compartir momentos y descubrir lo que te gusta.",
+            compact = true,
+            onBack = { navController.popBackStack() },
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(22.dp))
+        Text(
+            text = "Tu perfil",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(modifier = Modifier.height(14.dp))
+
+        if (authError.isNotBlank()) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(authError, modifier = Modifier.padding(16.dp))
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
         
         // Profile Image Picker
         Box(
@@ -214,7 +217,7 @@ fun RegisterScreen(
         ) {
             Box(
                 modifier = Modifier
-                    .size(120.dp)
+                    .size(88.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer)
                     .clickable { imagePickerLauncher.launch("image/*") },
@@ -228,26 +231,18 @@ fun RegisterScreen(
                         contentScale = ContentScale.Crop
                     )
                 } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Agregar foto",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "Agregar foto de perfil",
+                        modifier = Modifier.size(34.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 }
             }
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .size(38.dp)
+                    .size(32.dp)
                     .clickable { imagePickerLauncher.launch("image/*") },
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primary,
@@ -256,14 +251,14 @@ fun RegisterScreen(
                 Icon(
                     Icons.Default.Crop,
                     contentDescription = "Elegir y recortar foto",
-                    modifier = Modifier.padding(8.dp),
+                    modifier = Modifier.padding(6.dp),
                     tint = MaterialTheme.colorScheme.onPrimary,
                 )
             }
         }
         Text(
             text = if (profileImageUri == null) {
-                "Opcional · podrás mover y recortar antes de guardar"
+                "Agregar foto (opcional) · podrás mover y recortar antes de guardar"
             } else {
                 "Vista previa lista · toca para cambiar o recortar"
             },
@@ -281,13 +276,21 @@ fun RegisterScreen(
             onValueChange = { name = it },
             label = { Text(stringResource(R.string.name)) },
             modifier = Modifier.fillMaxWidth(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
             singleLine = true,
             leadingIcon = {
                 Icon(imageVector = Icons.Default.Person, contentDescription = null)
             }
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "Acceso a tu cuenta",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(modifier = Modifier.height(14.dp))
         
         // Email Field
         OutlinedTextField(
@@ -299,6 +302,7 @@ fun RegisterScreen(
             label = { Text(stringResource(R.string.email)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             modifier = Modifier.fillMaxWidth(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
             singleLine = true,
             isError = !emailIsValid,
             leadingIcon = {
@@ -322,6 +326,7 @@ fun RegisterScreen(
             visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.fillMaxWidth(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
             singleLine = true,
             leadingIcon = {
                 Icon(imageVector = Icons.Default.Lock, contentDescription = null)
@@ -350,6 +355,7 @@ fun RegisterScreen(
             visualTransformation = if (confirmPasswordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.fillMaxWidth(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
             singleLine = true,
             leadingIcon = {
                 Icon(imageVector = Icons.Default.Lock, contentDescription = null)
@@ -372,7 +378,14 @@ fun RegisterScreen(
             }
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "Sobre ti",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(modifier = Modifier.height(14.dp))
         
         // Country Dropdown
         ExposedDropdownMenuBox(
@@ -389,7 +402,8 @@ fun RegisterScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .menuAnchor(),
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                 leadingIcon = {
                     Icon(imageVector = Icons.Default.LocationOn, contentDescription = null)
                 }
@@ -433,7 +447,8 @@ fun RegisterScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .menuAnchor(),
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
             )
             ExposedDropdownMenu(
                 expanded = showGenderDropdown,
@@ -483,6 +498,7 @@ fun RegisterScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { showBirthDatePicker = true },
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
         )
         
         Spacer(modifier = Modifier.height(32.dp))
@@ -540,7 +556,8 @@ fun RegisterScreen(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp),
+                .height(56.dp),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
             enabled = authState !is AuthState.Loading
         ) {
             if (authState is AuthState.Loading) {

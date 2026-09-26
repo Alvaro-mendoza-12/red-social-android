@@ -34,7 +34,7 @@ fun CreatorBadge(modifier: Modifier = Modifier) {
     ) {
         Text(
             text = "Creador",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onPrimary,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)

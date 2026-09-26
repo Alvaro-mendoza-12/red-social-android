@@ -3,6 +3,8 @@ package conectate.com.data.repository
 import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentHighlight
 import conectate.com.data.model.MomentHighlightItemPreview
+import conectate.com.data.model.isActiveAt
+import conectate.com.data.repository.moment.toHighlightItemPreview
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import io.ktor.client.request.get
@@ -53,7 +55,35 @@ class MomentHighlightRepository @Inject constructor(
     @Serializable
     private data class CreateHighlightItemRequest(
         @SerialName("highlight_id") val highlightId: String,
-        @SerialName("moment_id") val momentId: String
+        @SerialName("moment_id") val momentId: String,
+        @SerialName("media_url") val mediaUrl: String,
+        @SerialName("media_type") val mediaType: String,
+        @SerialName("thumbnail_url") val thumbnailUrl: String?,
+        val caption: String?,
+        @SerialName("overlay_text") val overlayText: String?,
+        @SerialName("overlay_color") val overlayColor: String,
+        @SerialName("overlay_font") val overlayFont: String,
+        @SerialName("overlay_scale") val overlayScale: Float,
+        @SerialName("overlay_x") val overlayX: Float,
+        @SerialName("overlay_y") val overlayY: Float,
+        @SerialName("music_url") val musicUrl: String?,
+        @SerialName("music_audio_url") val musicAudioUrl: String?,
+        @SerialName("music_id") val musicId: String?,
+        @SerialName("music_title") val musicTitle: String?,
+        @SerialName("music_artist") val musicArtist: String?,
+        @SerialName("music_source") val musicSource: String?,
+        @SerialName("music_source_url") val musicSourceUrl: String?,
+        @SerialName("music_license") val musicLicense: String?,
+        @SerialName("music_license_url") val musicLicenseUrl: String?,
+        @SerialName("music_start_ms") val musicStartMs: Long,
+        @SerialName("music_duration_ms") val musicDurationMs: Long,
+        @SerialName("music_end_ms") val musicEndMs: Long?,
+        @SerialName("music_volume") val musicVolume: Float,
+        @SerialName("original_audio_volume") val originalAudioVolume: Float,
+        @SerialName("music_fade_in_ms") val musicFadeInMs: Long,
+        @SerialName("music_fade_out_ms") val musicFadeOutMs: Long,
+        @SerialName("duck_original_audio") val duckOriginalAudio: Boolean,
+        @SerialName("music_embedded") val musicEmbedded: Boolean,
     )
 
     suspend fun getHighlightsForUser(userId: String): Result<List<MomentHighlight>> = withContext(Dispatchers.IO) {
@@ -73,8 +103,10 @@ class MomentHighlightRepository @Inject constructor(
             val highlights = decodeObjects(response.bodyAsText()).map { it.toHighlight(itemCount = 0) }
             if (highlights.isEmpty()) return@runCatching emptyList()
 
-            val counts = fetchItemCounts(token, highlights.map { it.id })
-            highlights.map { it.copy(itemCount = counts[it.id] ?: 0) }
+            val counts = fetchActiveItemCounts(token, highlights.map { it.id })
+            highlights
+                .map { it.copy(itemCount = counts[it.id] ?: 0) }
+                .filter { it.itemCount > 0 }
         }
     }
 
@@ -84,10 +116,7 @@ class MomentHighlightRepository @Inject constructor(
             val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/moment_highlight_items") {
                 authHeaders(token)
                 parameter("highlight_id", "eq.$highlightId")
-                parameter(
-                    "select",
-                    "id,highlight_id,moment_id,sort_order,created_at,moment:moments(id,media_url,media_type,thumbnail_url,caption,created_at)"
-                )
+                parameter("select", "id,highlight_id,moment_id,sort_order,created_at")
                 parameter("order", "sort_order.asc,created_at.asc")
             }
 
@@ -95,7 +124,34 @@ class MomentHighlightRepository @Inject constructor(
                 throw IllegalStateException("No se pudieron cargar momentos destacados: ${response.status}")
             }
 
-            decodeObjects(response.bodyAsText()).mapNotNull { it.toHighlightItemPreview() }
+            val itemRows = decodeObjects(response.bodyAsText())
+            val momentIds = itemRows
+                .mapNotNull { it.string("moment_id") }
+                .distinct()
+            if (momentIds.isEmpty()) return@runCatching emptyList()
+
+            // Resolve every Moment explicitly. The compatibility endpoint does not
+            // expand nested relations, and expired/deleted Moments must not survive
+            // as orphaned highlights on the profile.
+            val momentResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/moments") {
+                authHeaders(token)
+                parameter("id", momentIds.joinToString(prefix = "in.(", postfix = ")"))
+                parameter("select", "id,user_id,media_url,media_type,thumbnail_url,caption,overlay_text,overlay_color,overlay_font,overlay_scale,overlay_x,overlay_y,music_url,music_audio_url,music_id,music_title,music_artist,music_source,music_source_url,music_license,music_license_url,music_start_ms,music_duration_ms,music_end_ms,music_volume,original_audio_volume,music_fade_in_ms,music_fade_out_ms,duck_original_audio,music_embedded,display_duration_ms,expires_at,created_at")
+            }
+            if (!momentResponse.status.isSuccess()) {
+                throw IllegalStateException("No se pudieron cargar los momentos del destacado: ${momentResponse.status}")
+            }
+            val momentsById = decodeObjects(momentResponse.bodyAsText())
+                .associateBy { it.string("id").orEmpty().lowercase() }
+
+            itemRows.mapNotNull { row ->
+                val momentId = row.string("moment_id") ?: return@mapNotNull null
+                val original = momentsById[momentId.lowercase()] ?: return@mapNotNull null
+                row.toHighlightItemPreview(original)
+            }
+                .filter { it.isActiveAt() }
+                .distinctBy { it.id.ifBlank { "${it.highlightId}:${it.momentId}" } }
+                .sortedBy { it.sortOrder }
         }
     }
 
@@ -118,7 +174,40 @@ class MomentHighlightRepository @Inject constructor(
             val itemResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/moment_highlight_items") {
                 authHeaders(token)
                 contentType(ContentType.Application.Json)
-                setBody(CreateHighlightItemRequest(highlight.id, moment.id))
+                setBody(
+                    CreateHighlightItemRequest(
+                        highlightId = highlight.id,
+                        momentId = moment.id,
+                        mediaUrl = moment.mediaUrl,
+                        mediaType = moment.mediaType,
+                        thumbnailUrl = moment.thumbnailUrl,
+                        caption = moment.caption,
+                        overlayText = moment.overlayText,
+                        overlayColor = moment.overlayColor,
+                        overlayFont = moment.overlayFont,
+                        overlayScale = moment.overlayScale,
+                        overlayX = moment.overlayX,
+                        overlayY = moment.overlayY,
+                        musicUrl = moment.musicUrl,
+                        musicAudioUrl = moment.musicAudioUrl,
+                        musicId = moment.musicId,
+                        musicTitle = moment.musicTitle,
+                        musicArtist = moment.musicArtist,
+                        musicSource = moment.musicSource,
+                        musicSourceUrl = moment.musicSourceUrl,
+                        musicLicense = moment.musicLicense,
+                        musicLicenseUrl = moment.musicLicenseUrl,
+                        musicStartMs = moment.musicStartMs,
+                        musicDurationMs = moment.musicDurationMs,
+                        musicEndMs = moment.musicEndMs,
+                        musicVolume = moment.musicVolume,
+                        originalAudioVolume = moment.originalAudioVolume,
+                        musicFadeInMs = moment.musicFadeInMs,
+                        musicFadeOutMs = moment.musicFadeOutMs,
+                        duckOriginalAudio = moment.duckOriginalAudio,
+                        musicEmbedded = moment.musicEmbedded,
+                    )
+                )
             }
 
             if (!itemResponse.status.isSuccess() && itemResponse.status != HttpStatusCode.Conflict) {
@@ -133,16 +222,44 @@ class MomentHighlightRepository @Inject constructor(
         }
     }
 
-    private suspend fun fetchItemCounts(token: String, highlightIds: List<String>): Map<String, Int> {
+    private suspend fun fetchActiveItemCounts(token: String, highlightIds: List<String>): Map<String, Int> {
         val filter = highlightIds.joinToString(prefix = "in.(", postfix = ")")
         val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/moment_highlight_items") {
             authHeaders(token)
             parameter("highlight_id", filter)
-            parameter("select", "highlight_id")
+            parameter("select", "highlight_id,moment_id")
         }
         if (!response.status.isSuccess()) return emptyMap()
-        return decodeObjects(response.bodyAsText())
-            .mapNotNull { it.string("highlight_id") }
+        val itemRows = decodeObjects(response.bodyAsText())
+        val momentIds = itemRows.mapNotNull { it.string("moment_id") }.distinct()
+        if (momentIds.isEmpty()) return emptyMap()
+
+        val momentsResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/moments") {
+            authHeaders(token)
+            parameter("id", momentIds.joinToString(prefix = "in.(", postfix = ")"))
+            parameter("select", "id,expires_at")
+        }
+        if (!momentsResponse.status.isSuccess()) return emptyMap()
+        val activeMomentIds = decodeObjects(momentsResponse.bodyAsText())
+            .mapNotNull { moment ->
+                val id = moment.string("id") ?: return@mapNotNull null
+                val probe = MomentHighlightItemPreview(
+                    id = id,
+                    highlightId = "",
+                    momentId = id,
+                    mediaUrl = "active-check",
+                    mediaType = "image",
+                    expiresAt = moment.string("expires_at"),
+                )
+                id.lowercase().takeIf { probe.isActiveAt() }
+            }
+            .toSet()
+
+        return itemRows
+            .mapNotNull { row ->
+                val momentId = row.string("moment_id")?.lowercase() ?: return@mapNotNull null
+                row.string("highlight_id")?.takeIf { momentId in activeMomentIds }
+            }
             .groupingBy { it }
             .eachCount()
     }
@@ -192,6 +309,17 @@ class MomentHighlightRepository @Inject constructor(
         }
     }
 
+    private suspend fun fetchHighlightCover(token: String, highlightId: String): String? {
+        val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/moment_highlights") {
+            authHeaders(token)
+            parameter("id", "eq.$highlightId")
+            parameter("select", "cover_media_url")
+            parameter("limit", "1")
+        }
+        if (!response.status.isSuccess()) return null
+        return decodeObjects(response.bodyAsText()).firstOrNull()?.string("cover_media_url")
+    }
+
     private fun io.ktor.client.request.HttpRequestBuilder.authHeaders(token: String) {
         header("apikey", supabaseConfig.supabaseAnonKey)
         header("Authorization", "Bearer $token")
@@ -216,21 +344,31 @@ class MomentHighlightRepository @Inject constructor(
         )
     }
 
-    private fun JsonObject.toHighlightItemPreview(): MomentHighlightItemPreview? {
-        val moment = childObject("moment") ?: return null
-        val mediaUrl = moment.string("media_url").orEmpty()
-        if (mediaUrl.isBlank()) return null
+
+    private fun JsonObject.toCoverFallbackPreview(coverUrl: String): MomentHighlightItemPreview {
+        val itemId = string("id").orEmpty()
+        val highlightId = string("highlight_id").orEmpty()
+        val momentId = string("moment_id").orEmpty()
         return MomentHighlightItemPreview(
-            id = string("id").orEmpty(),
-            highlightId = string("highlight_id").orEmpty(),
-            momentId = string("moment_id").orEmpty(),
-            mediaUrl = mediaUrl,
-            mediaType = moment.string("media_type") ?: "image",
-            thumbnailUrl = moment.string("thumbnail_url"),
-            caption = moment.string("caption"),
+            id = itemId,
+            highlightId = highlightId,
+            momentId = momentId,
+            mediaUrl = coverUrl,
+            mediaType = inferMediaType(coverUrl),
+            thumbnailUrl = coverUrl,
+            caption = null,
             sortOrder = int("sort_order"),
-            createdAt = string("created_at") ?: moment.string("created_at")
+            createdAt = string("created_at")
         )
+    }
+
+    private fun inferMediaType(url: String): String {
+        val clean = url.substringBefore('?').lowercase()
+        return if (clean.endsWith(".mp4") || clean.endsWith(".webm") || clean.endsWith(".mov")) {
+            "video"
+        } else {
+            "image"
+        }
     }
 
     private fun JsonObject.childObject(key: String): JsonObject? {
@@ -249,6 +387,15 @@ class MomentHighlightRepository @Inject constructor(
     }
 
     private fun JsonObject.int(key: String): Int = this[key]?.jsonPrimitive?.intOrNull ?: 0
+
+    private fun JsonObject.float(key: String, default: Float): Float =
+        this[key]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: default
+
+    private fun JsonObject.long(key: String, default: Long): Long =
+        this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: default
+
+    private fun JsonObject.longOrNull(key: String): Long? =
+        this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
 
     private fun JsonObject.bool(key: String, default: Boolean): Boolean {
         return this[key]?.jsonPrimitive?.booleanOrNull ?: default

@@ -20,8 +20,33 @@ class IncomingCallActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val invite = intent.toInviteOrNull() ?: return
-        val pendingResult = goAsync()
         val appContext = context.applicationContext
+
+        // Compatibility path for notifications created by an older app build.
+        // Launch first; resolving the Hilt graph/repository before opening the
+        // activity made cold-start answers visibly slow.
+        if (intent.action == ACTION_ACCEPT) {
+            appContext.startActivity(
+                Intent(appContext, IncomingCallActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    putExtra("call_id", invite.callId)
+                    putExtra("caller_user_id", invite.callerUserId)
+                    putExtra("caller_name", invite.callerName)
+                    putExtra("caller_avatar_url", invite.callerAvatarUrl ?: "")
+                    putExtra("call_title", invite.title)
+                    putExtra("call_context_type", invite.contextType)
+                    putExtra("call_context_id", invite.contextId ?: "")
+                    putExtra("call_is_video", invite.isVideo)
+                    intent.getByteArrayExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES)?.let {
+                        putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
+                    }
+                    putExtra(IncomingCallActivity.EXTRA_AUTO_ACCEPT, true)
+                }
+            )
+            return
+        }
+
+        val pendingResult = goAsync()
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -35,30 +60,8 @@ class IncomingCallActionReceiver : BroadcastReceiver() {
                 notificationManager?.cancel(invite.callId.hashCode())
                 IncomingCallForegroundService.stop(appContext)
 
-                when (intent.action) {
-                    ACTION_ACCEPT -> {
-                        appContext.startActivity(
-                            Intent(appContext, IncomingCallActivity::class.java).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                                putExtra("call_id", invite.callId)
-                                putExtra("caller_user_id", invite.callerUserId)
-                                putExtra("caller_name", invite.callerName)
-                                putExtra("caller_avatar_url", invite.callerAvatarUrl ?: "")
-                                putExtra("call_title", invite.title)
-                                putExtra("call_context_type", invite.contextType)
-                                putExtra("call_context_id", invite.contextId ?: "")
-                                putExtra("call_is_video", invite.isVideo)
-                                intent.getByteArrayExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES)?.let {
-                                    putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
-                                }
-                                putExtra(IncomingCallActivity.EXTRA_AUTO_ACCEPT, true)
-                            }
-                        )
-                    }
-
-                    ACTION_DECLINE -> {
-                        callRepository.declineIncomingCall(invite)
-                    }
+                if (intent.action == ACTION_DECLINE) {
+                    callRepository.declineIncomingCall(invite)
                 }
             } finally {
                 pendingResult.finish()

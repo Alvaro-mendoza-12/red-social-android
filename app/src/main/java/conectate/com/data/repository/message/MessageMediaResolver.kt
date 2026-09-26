@@ -12,8 +12,10 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -54,36 +56,54 @@ internal class MessageMediaResolver(
      */
     suspend fun getPlayableUrl(
         path: String,
-        allowOfflineMediaCache: Boolean = true
+        allowOfflineMediaCache: Boolean = true,
+        isPrefetch: Boolean = false
     ): Result<String> {
         val trimmed = path.trim()
         if (trimmed.isBlank()) {
             return Result.failure(Exception("Ruta multimedia invalida"))
         }
+        val accountScope = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
+        suspend fun finish(result: Result<String>): Result<String> {
+            if (authService.getCurrentUserId()?.trim()?.lowercase().orEmpty() != accountScope) {
+                return Result.failure(Exception("La cuenta activa cambió"))
+            }
+            if (allowOfflineMediaCache && result.isSuccess) {
+                withContext(Dispatchers.IO) {
+                    if (authService.getCurrentUserId()?.trim()?.lowercase().orEmpty() == accountScope) {
+                        cacheResolvedMedia(trimmed, result.getOrThrow(), isPrefetch, accountScope)
+                    }
+                }
+            }
+            return if (authService.getCurrentUserId()?.trim()?.lowercase().orEmpty() == accountScope) {
+                result
+            } else {
+                Result.failure(Exception("La cuenta activa cambió"))
+            }
+        }
         if (allowOfflineMediaCache) {
-            offlineMediaCache?.resolveCachedUri(trimmed)?.let { cachedUri ->
-                return Result.success(cachedUri)
+            offlineMediaCache?.resolveCachedUri(trimmed, retain = !isPrefetch)?.let { cachedUri ->
+                return finish(Result.success(cachedUri))
             }
         }
         if (trimmed.contains("/storage/v1/object/public/")) {
             val playableUrl = UbuntuStorageUrl.rewrite(trimmed) ?: trimmed
-            if (allowOfflineMediaCache) {
-                offlineMediaCache?.cacheOpenedMedia(trimmed, playableUrl)
-            }
-            return Result.success(playableUrl)
+            return finish(Result.success(playableUrl))
         }
 
         val location = resolveStorageLocation(trimmed)
             ?: return Result.failure(Exception("Ruta multimedia invalida"))
-        val accountScope = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
         val cacheKey = "$accountScope:${location.bucket}:${location.objectPath}"
 
         val now = SystemClock.elapsedRealtime()
         var ownsResolution = false
+        var cachedUrl: String? = null
         val pending = playableUrlCacheMutex.withLock {
-            playableUrlCache[cacheKey]
+            prunePlayableUrlCache(now)
+            cachedUrl = playableUrlCache[cacheKey]
                 ?.takeIf { it.expiresAtElapsedMs > now }
-                ?.let { return Result.success(it.value) }
+                ?.value
+            if (cachedUrl != null) return@withLock null
 
             playableUrlInFlight[cacheKey] ?: CompletableDeferred<Result<String>>().also {
                 playableUrlInFlight[cacheKey] = it
@@ -91,11 +111,13 @@ internal class MessageMediaResolver(
             }
         }
 
-        if (!ownsResolution) return pending.await()
+        cachedUrl?.let { return finish(Result.success(it)) }
+        checkNotNull(pending)
+        if (!ownsResolution) return finish(pending.await())
 
-        val result = runCatching {
+        val result: Result<String> = try {
             val signed = storageService.createSignedUrl(location.bucket, location.objectPath)
-            if (signed.isSuccess) {
+            val resolved = if (signed.isSuccess) {
                 val signedUrl = signed.getOrThrow()
                 UbuntuStorageUrl.rewrite(signedUrl) ?: signedUrl
             } else {
@@ -111,22 +133,52 @@ internal class MessageMediaResolver(
                     ).orEmpty()
                 }
             }
+            Result.success(resolved)
+        } catch (cancellation: CancellationException) {
+            withContext(NonCancellable) {
+                playableUrlCacheMutex.withLock {
+                    playableUrlInFlight.remove(cacheKey)
+                }
+                pending.cancel(cancellation)
+            }
+            throw cancellation
+        } catch (error: Throwable) {
+            Result.failure(error)
         }
 
-        playableUrlCacheMutex.withLock {
-            if (result.isSuccess && result.getOrThrow().isNotBlank()) {
-                playableUrlCache[cacheKey] = CachedPlayableUrl(
-                    result.getOrThrow(),
-                    SystemClock.elapsedRealtime() + playableUrlTtlMs
-                )
+        withContext(NonCancellable) {
+            playableUrlCacheMutex.withLock {
+                if (result.isSuccess && result.getOrThrow().isNotBlank()) {
+                    prunePlayableUrlCache(SystemClock.elapsedRealtime(), reserveEntry = true)
+                    playableUrlCache[cacheKey] = CachedPlayableUrl(
+                        result.getOrThrow(),
+                        SystemClock.elapsedRealtime() + playableUrlTtlMs
+                    )
+                }
+                playableUrlInFlight.remove(cacheKey)
             }
-            playableUrlInFlight.remove(cacheKey)
+            pending.complete(result)
         }
-        if (allowOfflineMediaCache && result.isSuccess) {
-            offlineMediaCache?.cacheOpenedMedia(trimmed, result.getOrThrow())
+        return finish(result)
+    }
+
+    private fun cacheResolvedMedia(source: String, resolvedUrl: String, isPrefetch: Boolean, accountId: String) {
+        if (isPrefetch) {
+            offlineMediaCache?.cacheOpenedMedia(source, resolvedUrl, expectedAccountId = accountId)
+        } else {
+            offlineMediaCache?.cacheExplicitlyOpenedMedia(source, resolvedUrl, expectedAccountId = accountId)
         }
-        pending.complete(result)
-        return result
+    }
+
+    private fun prunePlayableUrlCache(nowElapsedMs: Long, reserveEntry: Boolean = false) {
+        playableUrlCache.entries.removeAll { (_, cached) -> cached.expiresAtElapsedMs <= nowElapsedMs }
+        val targetSize = if (reserveEntry) MAX_PLAYABLE_URL_CACHE_SIZE - 1 else MAX_PLAYABLE_URL_CACHE_SIZE
+        val excess = playableUrlCache.size - targetSize
+        if (excess <= 0) return
+        playableUrlCache.entries
+            .sortedBy { it.value.expiresAtElapsedMs }
+            .take(excess)
+            .forEach { playableUrlCache.remove(it.key) }
     }
 
     fun getShareableUrl(path: String): Result<String> {
@@ -335,6 +387,10 @@ internal class MessageMediaResolver(
         }
 
         return null
+    }
+
+    private companion object {
+        const val MAX_PLAYABLE_URL_CACHE_SIZE = 512
     }
 }
 

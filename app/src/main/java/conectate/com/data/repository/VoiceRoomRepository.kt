@@ -41,16 +41,14 @@ import javax.inject.Singleton
 import io.socket.client.IO
 import io.socket.client.Manager
 import io.socket.client.Socket
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import org.json.JSONArray
 import org.webrtc.VideoTrack
 import conectate.com.data.signaling.SignalingConfig
 import conectate.com.data.signaling.attachBearerToken
+import conectate.com.data.signaling.attachSignalingAffinity
 import conectate.com.util.AppPerformanceProfiles
+import conectate.com.presentation.voicerooms.CinemaSourcePolicy
 
 enum class VoiceConnectionState(val label: String) {
     IDLE("Sin sala"),
@@ -63,7 +61,7 @@ enum class VoiceConnectionState(val label: String) {
 
 @Singleton
 class VoiceRoomRepository @Inject constructor(
-    @ApplicationContext val context: Context,
+    @param:ApplicationContext val context: Context,
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val localFallbackApiClient: LocalFallbackApiClient,
@@ -95,6 +93,8 @@ class VoiceRoomRepository @Inject constructor(
         private const val SUBSCRIPTION_RESTART_GRACE_MS = 1_000L
         private const val AUDIO_RECOVERY_ATTEMPTS = 4
         private const val AUDIO_RECOVERY_DELAY_MS = 275L
+        private const val MAX_PENDING_CINEMA_RESOLUTIONS = 8
+        private const val CINEMA_RESOLUTION_TIMEOUT_MS = 15_000L
     }
 
     private data class PendingSocketRoomEvent(
@@ -105,8 +105,6 @@ class VoiceRoomRepository @Inject constructor(
 
     private val scope = newSafeScope("VoiceRoomRepository", Dispatchers.IO)
     private var json = Json { ignoreUnknownKeys = true }
-    private val httpClient = OkHttpClient()
-    private val jsonMediaType = "application/json charset=utf-8".toMediaTypeOrNull()
     private val performanceProfile by lazy(LazyThreadSafetyMode.NONE) {
         AppPerformanceProfiles.detect(context)
     }
@@ -133,6 +131,7 @@ class VoiceRoomRepository @Inject constructor(
     fun getCurrentRoomId(): String? = activeRoomId
     fun getCurrentUserId(): String? = authService.getCurrentUserId()
     private val _currentRoomId = MutableStateFlow<String?>(null)
+    private var activeRoomPassword: String? = null
     private var activeRoomId: String?
         get() = _currentRoomId.value
         set(value) {
@@ -929,85 +928,42 @@ class VoiceRoomRepository @Inject constructor(
 
 
     suspend fun resolveUniversalLink(url: String): CinemaResolvedItem = withContext(Dispatchers.IO) {
+        val validation = CinemaSourcePolicy.validateManualUrl(url)
+        if (!validation.isValid) {
+            return@withContext CinemaResolvedItem("", "", validation.error ?: "Enlace no válido.")
+        }
+        val activeRoomId = getCurrentRoomId()?.trim().orEmpty()
+        if (activeRoomId.isBlank()) {
+            return@withContext CinemaResolvedItem("", "", "Debes estar dentro de la sala para resolver un enlace.")
+        }
+        val activeSocket = socket
+        if (activeSocket?.connected() != true) {
+            return@withContext CinemaResolvedItem("", "", "La sala no está conectada al servidor.")
+        }
+        if (pendingResolutions.size >= MAX_PENDING_CINEMA_RESOLUTIONS) {
+            return@withContext CinemaResolvedItem("", "", "Hay demasiados enlaces pendientes. Inténtalo nuevamente.")
+        }
         val requestId = UUID.randomUUID().toString()
-        var deferred = CompletableDeferred<CinemaResolvedItem>()
+        val deferred = CompletableDeferred<CinemaResolvedItem>()
         pendingResolutions[requestId] = deferred
         
         try {
-            socket?.emit("resolve-link", org.json.JSONObject().apply {
-                put("url", url)
+            activeSocket.emit("resolve-link", org.json.JSONObject().apply {
+                put("url", validation.normalizedUrl)
                 put("requestId", requestId)
+                put("roomId", activeRoomId)
             })
-            // Timeout safety (15s)
-            withTimeoutOrNull(15000) {
+            withTimeoutOrNull(CINEMA_RESOLUTION_TIMEOUT_MS) {
                 deferred.await()
             } ?: CinemaResolvedItem("", "", "Timeout: El servidor no respondió a tiempo.")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             CinemaResolvedItem("", "", "Error de conexión: ${e.message}")
         } finally {
             pendingResolutions.remove(requestId)
         }
     }
-
-    suspend fun resolveCinemaItem(item: conectate.com.presentation.voicerooms.ContentItem): CinemaResolvedItem =
-        withContext(Dispatchers.IO) {
-            val accessToken = authService.getAccessTokenAwait()?.trim().orEmpty()
-            if (accessToken.isBlank()) {
-                return@withContext CinemaResolvedItem(
-                    url = "",
-                    title = item.title,
-                    error = "No hay una sesión autenticada para resolver contenido premium."
-                )
-            }
-
-            var payload = JSONObject().apply {
-                put("title", item.title)
-                put("provider", item.provider)
-                put("providerId", item.providerId)
-            }
-
-            var request = Request.Builder()
-                .url(SignalingConfig.CINEMA_RESOLVE_URL)
-                .addHeader("Authorization", "Bearer $accessToken")
-                .post(payload.toString().toRequestBody(jsonMediaType))
-                .build()
-
-            try {
-                httpClient.newCall(request).execute().use { response ->
-                    val body = response.body?.string().orEmpty()
-                    var json = JSONObject(body.ifBlank { "{}" })
-                    val resolvedUrl = json.optString("stream_url").trim()
-                    val resolvedTitle = json.optString("title").ifBlank { item.title }
-                    var error = json.optString("error").ifBlank {
-                        if (response.isSuccessful && resolvedUrl.isNotBlank()) {
-                            ""
-                        } else {
-                            "El servidor no pudo resolver este contenido premium."
-                        }
-                    }
-
-                    if (!response.isSuccessful || resolvedUrl.isBlank()) {
-                        return@withContext CinemaResolvedItem(
-                            url = "",
-                            title = resolvedTitle,
-                            error = error
-                        )
-                    }
-
-                    CinemaResolvedItem(
-                        url = resolvedUrl,
-                        title = resolvedTitle
-                    )
-                }
-            } catch (e: Exception) {
-                CinemaResolvedItem(
-                    url = "",
-                    title = item.title,
-                    error = "Error de conexión con el resolver premium: ${e.message}"
-                )
-            }
-        }
-
 
     // v7.2-MVP: Relaxed Sync Pulse (5 seconds for stability/efficiency)
     private val SYNC_PULSE_INTERVAL = 5000L
@@ -1219,7 +1175,8 @@ class VoiceRoomRepository @Inject constructor(
                     isPublic = isPublic,
                     maxParticipants = DEFAULT_ROOM_CAPACITY,
                     agoraChannelName = "room_$roomId",
-                    roomMode = roomMode
+                    roomMode = roomMode,
+                    password = password
                 ).getOrThrow().let(::normalizeRoomForUi)
                 if (shouldShowRoomInLobby(createdRoom, userId.trim().lowercase())) {
                     _activeRooms.update { current ->
@@ -1292,7 +1249,8 @@ class VoiceRoomRepository @Inject constructor(
         displayName: String,
         avatarUrl: String? = null,
         signalingRoomId: String? = null,
-        startMuted: Boolean = false
+        startMuted: Boolean = false,
+        roomPassword: String? = null
     ) = withContext(Dispatchers.IO) {
         android.util.Log.w("VoiceRoomRepository", "📍 joinRoom START: roomId=$roomId, userId=$userId")
         pendingConnectMetricName = "voice_room_join"
@@ -1341,7 +1299,8 @@ class VoiceRoomRepository @Inject constructor(
                         userName = displayName,
                         userAvatarUrl = avatarUrl,
                         socketId = socket?.id() ?: userId,
-                        isMuted = startMuted
+                        isMuted = startMuted,
+                        password = activeRoomPassword
                     )
                 }
             }
@@ -1369,7 +1328,8 @@ class VoiceRoomRepository @Inject constructor(
              kotlinx.coroutines.delay(200)
         }
         
-        activeRoomId = signalRoom 
+        activeRoomId = signalRoom
+        activeRoomPassword = roomPassword?.takeIf { it.isNotBlank() }
         
         // Sync currentRoom object for UI tracking
         scope.launch {
@@ -1451,7 +1411,8 @@ class VoiceRoomRepository @Inject constructor(
                         userName = displayName,
                         userAvatarUrl = avatarUrl,
                         socketId = socket?.id() ?: userId,
-                        isMuted = startMuted
+                        isMuted = startMuted,
+                        password = activeRoomPassword
                     ).onSuccess { participants ->
                         if (participants.isNotEmpty()) {
                             _currentRoom.value?.let { current -> applyVoiceRoomState(current, participants) }
@@ -1503,7 +1464,6 @@ class VoiceRoomRepository @Inject constructor(
                 throwable = e,
                 attributes = currentMetricAttributes(roomId = roomId)
             )
-            e.printStackTrace()
         }
     }
 
@@ -1524,6 +1484,7 @@ class VoiceRoomRepository @Inject constructor(
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
                 timeout = 10000
                 transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
+                attachSignalingAffinity("voice", roomId)
                 attachBearerToken(authService.getAccessToken())
             }
             val endpointBaseUrl = conectate.com.data.localfallback.RuntimeBackendEndpoint.baseUrl
@@ -1558,6 +1519,7 @@ class VoiceRoomRepository @Inject constructor(
                     put("userId", userId.trim())
                     put("name", name)
                     put("avatarUrl", avatarUrl ?: "")
+                    activeRoomPassword?.let { put("password", it) }
                 })
                 android.util.Log.i("VoiceRoomRepository", "📤 join-room EMITTED for room=$roomId sid=$sid")
 
@@ -1591,7 +1553,8 @@ class VoiceRoomRepository @Inject constructor(
                                 userName = name,
                                 userAvatarUrl = avatarUrl,
                                 socketId = sid.ifBlank { userId },
-                                isMuted = false
+                                isMuted = false,
+                                password = activeRoomPassword
                             ).onSuccess { participants ->
                                 if (participants.isNotEmpty()) {
                                     _currentRoom.value?.let { current -> applyVoiceRoomState(current, participants) }
@@ -1623,6 +1586,15 @@ class VoiceRoomRepository @Inject constructor(
                     emitCaptionConsent(roomId, userId, enabled = true)
                 }
                 restoreActiveSession("room_joined")
+            }
+
+            createdSocket.on("room-join-error") { args ->
+                if (socket !== createdSocket) return@on
+                val data = extractJsonPayload(args)
+                val message = data?.optString("error")?.trim().orEmpty()
+                    .ifBlank { "El servidor rechazó el acceso a esta sala de voz." }
+                updateConnectionState(VoiceConnectionState.ERROR, message)
+                createdSocket.disconnect()
             }
 
             createdSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
@@ -2026,15 +1998,20 @@ class VoiceRoomRepository @Inject constructor(
                 var data = extractJsonPayload(args) ?: return@on
                 val reqId = data.optString("requestId").trim()
                 if (reqId.isBlank()) return@on
-                var deferred = pendingResolutions.remove(reqId)
+                val deferred = pendingResolutions.remove(reqId)
                 if (deferred != null) {
                     if (data.has("error")) {
                          deferred.complete(CinemaResolvedItem("", "", data.getString("error")))
                     } else {
-                         deferred.complete(CinemaResolvedItem(
-                             url = data.getString("stream_url"),
-                             title = data.optString("title", "Video")
-                         ))
+                         val resolvedUrl = data.optString("stream_url").trim()
+                         if (CinemaSourcePolicy.isResolvedPlaybackUrl(resolvedUrl)) {
+                             deferred.complete(CinemaResolvedItem(
+                                 url = resolvedUrl,
+                                 title = data.optString("title", "Video")
+                             ))
+                         } else {
+                             deferred.complete(CinemaResolvedItem("", "", "El servidor devolvió un enlace no permitido."))
+                         }
                     }
                 }
             }
@@ -2212,7 +2189,15 @@ class VoiceRoomRepository @Inject constructor(
         webRTCManager = WebRTCManager(
             context = context,
             signalingEvents = events,
-            accessTokenProvider = { authService.getAccessToken() }
+            accessTokenProvider = { authService.getAccessToken() },
+            failureReporter = { metric, throwable ->
+                appMetrics.recordFailure(
+                    metric = metric,
+                    throwable = throwable.takeIf { metric == "webrtc_init" },
+                    attributes = currentMetricAttributes() +
+                        ("errorType" to throwable::class.java.simpleName)
+                )
+            }
         )
         // INITIAL IDENTITY SET
         webRTCManager?.setCurrentUser(userId, "")
@@ -2440,6 +2425,7 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             activeRoomId = null
+            activeRoomPassword = null
             
             runCatching { refreshRooms() }.onFailure {
                 android.util.Log.w("VoiceRoomRepository", "Could not refresh lobby after leaving room", it)
@@ -2522,7 +2508,10 @@ class VoiceRoomRepository @Inject constructor(
                     put("userId", userId)
                     put("isSpeaking", isSpeaking)
                 })
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                android.util.Log.w("VoiceRoomRepository", "Could not publish speaking status", e)
+            }
         }
     }
 

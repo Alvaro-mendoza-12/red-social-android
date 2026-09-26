@@ -10,9 +10,12 @@ import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.repository.GroupRepository
 import conectate.com.data.repository.CommunityRepository
+import conectate.com.data.repository.message.InboxSyncPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -72,6 +75,7 @@ class MessagingViewModel @Inject constructor(
 
     fun onTabSelected(index: Int) {
         _selectedTabIndex.value = index
+        if (isScreenActive) startRefresh(forceInbox = false, includeCollections = false)
     }
 
     fun selectFolder(folderId: String?) {
@@ -107,16 +111,21 @@ class MessagingViewModel @Inject constructor(
     val conversationsState: StateFlow<ConversationsUiState> = combine(
         conversationFilterInput,
         chatFolders,
-        _hiddenChatIds
-    ) { input, folders, hiddenChatIds ->
+        _hiddenChatIds,
+        messageRepository.inboxSyncState,
+    ) { input, folders, hiddenChatIds, syncState ->
         val list = input.list
         val query = input.query
         val selectedFolderId = input.selectedFolderId
         val selectedListFilter = input.selectedListFilter
         if (list.isEmpty()) {
-            // We can't distinguish between "Loading from DB" and "Empty DB" easily here,
-            // but since Room emits [] immediately if empty, this is correct for "Empty".
-            ConversationsUiState.Success(emptyList())
+            when {
+                !syncState.hasCompletedInitialSync || syncState.isRefreshing ->
+                    ConversationsUiState.Loading
+                !syncState.lastError.isNullOrBlank() ->
+                    ConversationsUiState.Error(syncState.lastError)
+                else -> ConversationsUiState.Success(emptyList())
+            }
         } else {
             val distinctList = normalizedVisibleConversations(list, hiddenChatIds)
 
@@ -146,7 +155,9 @@ class MessagingViewModel @Inject constructor(
         }
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        // Reset stale account content once observation stops. A same-account return
+        // keeps its list during the grace period, while a later return starts loading.
+        started = SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0),
         initialValue = ConversationsUiState.Loading
     )
 
@@ -167,19 +178,24 @@ class MessagingViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val currentUserId: String? get() = authService.getCurrentUserId()
+    private var refreshJob: Job? = null
+    private var periodicRefreshJob: Job? = null
+    private var isScreenActive = false
 
-    init {
-        // Trigger background sync
-        viewModelScope.launch {
-            messageRepository.getUserChats()
-            advancedMessagingRepository.refreshFolders()
-            groupRepository.syncGroups()
-            communityRepository.syncCommunities()
+    fun onScreenVisibilityChanged(visible: Boolean) {
+        if (isScreenActive == visible) return
+        isScreenActive = visible
+        if (!visible) {
+            periodicRefreshJob?.cancel()
+            refreshJob?.cancel()
+            refreshJob = null
+            return
         }
-        viewModelScope.launch {
-            while (true) {
-                delay(12_000)
-                refreshNow()
+        startRefresh(forceInbox = false, includeCollections = true)
+        periodicRefreshJob = viewModelScope.launch {
+            while (isActive) {
+                delay(InboxSyncPolicy.PeriodicRefreshMillis)
+                startRefresh(forceInbox = false, includeCollections = false)
             }
         }
     }
@@ -193,11 +209,21 @@ class MessagingViewModel @Inject constructor(
     }
     
     fun refreshNow() {
-        viewModelScope.launch { 
-            messageRepository.getUserChats()
+        startRefresh(forceInbox = true, includeCollections = false)
+    }
+
+    private fun startRefresh(forceInbox: Boolean, includeCollections: Boolean) {
+        if (!isScreenActive) return
+        if (refreshJob?.isActive == true) return
+        refreshJob = viewModelScope.launch {
+            messageRepository.getUserChats(force = forceInbox)
             advancedMessagingRepository.refreshFolders()
-            groupRepository.syncGroups()
-            communityRepository.syncCommunities()
+            if (includeCollections || _selectedTabIndex.value == 1) {
+                groupRepository.syncGroups()
+            }
+            if (includeCollections || _selectedTabIndex.value == 2) {
+                communityRepository.syncCommunities()
+            }
         }
     }
 

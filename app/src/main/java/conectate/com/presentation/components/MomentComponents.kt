@@ -41,6 +41,7 @@ fun MomentsRow(
 ) {
     // Separate current user's moments
     val myMoments = moments.filter { it.userId == currentUser?.id }
+    val primaryMyMoment = primaryOwnerMoment(myMoments)
     val otherMoments = moments.filter { it.userId != currentUser?.id }
 
     // Group others by user and sort: Unseen children first
@@ -67,8 +68,11 @@ fun MomentsRow(
             item {
                 MyMomentItemV2(
                     userAvatarUrl = currentUser?.avatar_url,
+                    userAvatarMediaType = currentUser?.avatar_media_type,
                     activeMoments = myMoments,
-                    onClick = onAddMomentClick
+                    onClick = {
+                        primaryMyMoment?.let(onMomentClick) ?: onAddMomentClick()
+                    }
                 )
             }
 
@@ -78,7 +82,8 @@ fun MomentsRow(
                 Box(modifier = Modifier.width(100.dp)) {
                     StoryCardV2(
                          isAddButton = false,
-                         mediaUrl = moment.thumbnailUrl ?: moment.mediaUrl,
+                         mediaUrl = moment.cardPreviewUrl(),
+                         mediaType = moment.mediaType,
                          userAvatarUrl = moment.userAvatarUrl,
                          username = moment.userDisplayName ?: moment.username ?: "Usuario",
                          isViewed = !hasUnseen,
@@ -103,6 +108,7 @@ fun MomentGrid(
 ) {
     // Separate current user's moments
     val myMoments = moments.filter { it.userId == currentUser?.id }
+    val primaryMyMoment = primaryOwnerMoment(myMoments)
     val otherMoments = moments.filter { it.userId != currentUser?.id }
 
     // Group others by user and partition into unseen/seen
@@ -138,11 +144,15 @@ fun MomentGrid(
         item {
             StoryCardV2(
                 isAddButton = true,
-                mediaUrl = myMoments.firstOrNull()?.thumbnailUrl ?: myMoments.firstOrNull()?.mediaUrl,
+                mediaUrl = primaryMyMoment?.cardPreviewUrl(),
+                mediaType = primaryMyMoment?.mediaType,
                 userAvatarUrl = currentUser?.avatar_url,
+                userAvatarMediaType = currentUser?.avatar_media_type,
                 username = "Tú",
                 momentCount = myMoments.size,
-                onClick = onAddMomentClick
+                onClick = {
+                    primaryMyMoment?.let(onMomentClick) ?: onAddMomentClick()
+                }
             )
         }
 
@@ -154,7 +164,8 @@ fun MomentGrid(
             val (moment, _) = unseenUsers[index]
             StoryCardV2(
                 isAddButton = false,
-                mediaUrl = moment.thumbnailUrl ?: moment.mediaUrl,
+                mediaUrl = moment.cardPreviewUrl(),
+                mediaType = moment.mediaType,
                 userAvatarUrl = moment.userAvatarUrl,
                 username = moment.userDisplayName ?: moment.username ?: "Usuario",
                 isViewed = false,
@@ -182,7 +193,8 @@ fun MomentGrid(
                 val (moment, _) = seenUsers[index]
                 StoryCardV2(
                     isAddButton = false,
-                    mediaUrl = moment.thumbnailUrl ?: moment.mediaUrl,
+                    mediaUrl = moment.cardPreviewUrl(),
+                    mediaType = moment.mediaType,
                     userAvatarUrl = moment.userAvatarUrl,
                     username = moment.userDisplayName ?: moment.username ?: "Usuario",
                     isViewed = true,
@@ -207,6 +219,7 @@ fun MomentGrid(
 @Composable
 fun MyMomentItemV2(
     userAvatarUrl: String?,
+    userAvatarMediaType: String? = null,
     activeMoments: List<Moment>,
     onClick: () -> Unit
 ) {
@@ -229,10 +242,20 @@ fun MyMomentItemV2(
                         .border(2.dp, Brush.sweepGradient(listOf(Color(0xFFFF5722), Color(0xFFFFC107))), CircleShape)
                         .padding(3.dp)
                 ) {
-                    CircularProfileImage(imageUrl = userAvatarUrl, size = 58.dp, showBorder = false)
+                    CircularProfileImage(
+                        imageUrl = userAvatarUrl,
+                        mediaType = userAvatarMediaType,
+                        size = 58.dp,
+                        showBorder = false,
+                    )
                 }
             } else {
-                CircularProfileImage(imageUrl = userAvatarUrl, size = 64.dp, showBorder = false)
+                CircularProfileImage(
+                    imageUrl = userAvatarUrl,
+                    mediaType = userAvatarMediaType,
+                    size = 64.dp,
+                    showBorder = false,
+                )
             }
             
             // Add or Blocked Button
@@ -273,7 +296,9 @@ fun MyMomentItemV2(
 fun StoryCardV2(
     isAddButton: Boolean,
     mediaUrl: String?,
+    mediaType: String? = null,
     userAvatarUrl: String?,
+    userAvatarMediaType: String? = null,
     username: String,
     isViewed: Boolean = false,
     momentCount: Int = 1,
@@ -290,7 +315,19 @@ fun StoryCardV2(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Background Thumbnail
-            if (mediaUrl != null) {
+            val mediaIsVideo = mediaUrl?.let { url ->
+                val type = mediaType?.trim()?.lowercase().orEmpty()
+                val cleanUrl = url.substringBefore('?').lowercase()
+                type == "video" || type.startsWith("video/") ||
+                    cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".m4v") || cleanUrl.endsWith(".mov")
+            } == true
+            if (mediaUrl != null && mediaIsVideo) {
+                LoopingVideoPreview(
+                    url = mediaUrl,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+            } else if (mediaUrl != null) {
                 AsyncImage(
                     model = mediaUrl,
                     contentDescription = null,
@@ -336,7 +373,12 @@ fun StoryCardV2(
                     shape = CircleShape,
                     color = Color.Transparent
                 ) {
-                    CircularProfileImage(imageUrl = userAvatarUrl, size = 36.dp, showBorder = false)
+                    CircularProfileImage(
+                        imageUrl = userAvatarUrl,
+                        mediaType = userAvatarMediaType,
+                        size = 36.dp,
+                        showBorder = false,
+                    )
                 }
 
                 // Username at bottom
@@ -379,3 +421,13 @@ fun StoryCardV2(
         }
     }
 }
+
+/** Video cards must receive the video itself; sending their JPEG thumbnail to ExoPlayer leaves a white card. */
+internal fun Moment.cardPreviewUrl(): String {
+    val normalizedType = mediaType.trim().lowercase()
+    return if (normalizedType == "video" || normalizedType.startsWith("video/")) mediaUrl else thumbnailUrl ?: mediaUrl
+}
+
+/** The owner card opens the newest active Moment; creation stays on the explicit add control. */
+internal fun primaryOwnerMoment(moments: List<Moment>): Moment? =
+    moments.maxByOrNull { it.createdAt.orEmpty() }

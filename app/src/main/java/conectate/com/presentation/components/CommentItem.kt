@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -18,9 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import conectate.com.data.model.Comment
 
@@ -72,16 +74,28 @@ fun CommentItem(
                         modifier = Modifier.clickable { onProfileClick() }
                     )
                     
-                    val annotatedContent = remember(comment.content) {
+                    val mentionClickListener = remember(onProfileClick) {
+                        LinkInteractionListener { onProfileClick() }
+                    }
+                    val annotatedContent = remember(comment.content, mentionClickListener) {
                         buildAnnotatedString {
                             val words = comment.content.split(" ")
                             words.forEachIndexed { index, word ->
                                 if (word.startsWith("@") && word.length > 1) {
-                                    pushStringAnnotation(tag = "MENTION", annotation = word)
-                                    withStyle(style = SpanStyle(color = Color(0xFF2196F3), fontWeight = FontWeight.Bold)) {
+                                    withLink(
+                                        LinkAnnotation.Clickable(
+                                            tag = word,
+                                            styles = TextLinkStyles(
+                                                style = SpanStyle(
+                                                    color = Color(0xFF2196F3),
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            ),
+                                            linkInteractionListener = mentionClickListener
+                                        )
+                                    ) {
                                         append(word)
                                     }
-                                    pop()
                                 } else {
                                     append(word)
                                 }
@@ -91,15 +105,9 @@ fun CommentItem(
                     }
 
                     if (comment.mediaType != "sticker" && (comment.audioUrl.isNullOrEmpty() || comment.content != "[Audio]")) {
-                        ClickableText(
+                        Text(
                             text = annotatedContent,
-                            style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-                            onClick = { offset ->
-                                annotatedContent.getStringAnnotations(tag = "MENTION", start = offset, end = offset)
-                                    .firstOrNull()?.let {
-                                        onProfileClick()
-                                    }
-                            }
+                            style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface)
                         )
                     }
                     

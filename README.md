@@ -1,6 +1,6 @@
 # 🔴 Conéctate - Red Social Móvil
 
-Fecha de ultima revision documental: 2026-07-04.
+Fecha de última revisión documental: 2026-08-25.
 
 > Documentación oficial actual: [docs/oficial/README.md](docs/oficial/README.md).
 > Si algún documento antiguo contradice esa carpeta, usa `docs/oficial/` como fuente de verdad y valida el estado real con los comandos del runbook.
@@ -38,7 +38,7 @@ Novvin está en beta pública. Las pruebas y comentarios honestos de usuarios re
 ### Prerequisites
 
 1. **Android Studio** (Hedgehog o superior recomendado)
-2. **JDK 17**
+2. **JDK 17–21** para ejecutar Gradle (el bytecode Java/Kotlin sigue dirigido a 17). JDK 22 o superior falla de forma explícita para evitar builds incompatibles.
 3. **VM/servidor Ubuntu** con Docker y Docker Compose para backend principal.
 
 ### Paso 1: Clonar el Proyecto
@@ -91,8 +91,10 @@ El proyecto incluye pipeline en `.github/workflows/android-ci.yml` con:
 
 - `quality-gate`: ejecuta `:app:qualityGateDebug` (`testDebugUnitTest` + `lintDebug`)
 - `quality-gate`: corre auditoría SQL de seguridad sobre `sql/release-manifest.txt` y publica reportes
-- `release-smoke`: valida `:app:assembleRelease` en cada push
-- `release-smoke`: valida budgets de performance de APK/DEX/native (`tools/performance_budget_check.py`)
+- `release-smoke`: genera una clave efímera, valida `assembleRelease`/`bundleRelease` y comprueba criptográficamente la firma en cada push
+- `release-smoke`: rechaza AAB sin alineación ZIP de 16 KiB o con bibliotecas ELF de 64 bits incompatibles
+- `release-smoke`: calcula con `bundletool` la descarga máxima real por dispositivo y valida budgets de AAB/DEX/native comprimidos
+- `android-production-release.yml`: workflow manual protegido que exige la clave original de Play, fija la huella del certificado y publica un candidato verificable
 - Workflow adicional `.github/workflows/android-instrumented-smoke.yml`:
   - smoke test instrumentado en emulador (`connectedDebugAndroidTest`)
   - ejecución manual (`workflow_dispatch`) y semanal (lunes)
@@ -122,8 +124,10 @@ python tools/security_sql_audit.py --root . --report build/reports/security/sql_
 ### Performance budgets release (local)
 
 ```bash
-./gradlew :app:assembleRelease
-python tools/performance_budget_check.py --apk app/build/outputs/apk/release/app-release.apk --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json
+./gradlew :app:bundleRelease
+python tools/verify_android_release.py app/build/outputs/bundle/release/app-release.aab --expected-cert-sha256 "$NOVVIN_UPLOAD_CERT_SHA256"
+python tools/verify_android_page_size.py app/build/outputs/bundle/release/app-release.aab
+python tools/performance_budget_check.py --artifacts app/build/outputs/bundle/release/app-release.aab --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json
 ```
 
 Documentación adicional:
@@ -191,14 +195,14 @@ El storage de produccion se sirve desde `conectate-fallback-storage` y las rutas
 
 ## 🛠️ Tecnologías Utilizadas
 
-- **Kotlin** 1.9.20
-- **Jetpack Compose** BOM 2023.10.01
+- **Kotlin** 2.2.10 / **KSP** 2.2.10-2.0.2
+- **Jetpack Compose** BOM 2026.06.00
 - **Ubuntu backend** (Node/Express, Postgres, storage local, realtime gateway, nginx edge)
 - **Supabase legacy** solo para migracion temporal
-- **Hilt** 2.51
+- **Hilt** 2.57.2
 - **Navigation Compose** 2.7.5
 - **Coil** 2.5.0 (carga de imágenes)
-- **Media3 / ExoPlayer** 1.5.1 (reproducción de video)
+- **Media3 / ExoPlayer** 1.11.0 (reproducción, caché y exportación multimedia)
 - **WebRTC Native** 137.7151.05
 - **Socket.io Client** 2.1.0
 
@@ -222,7 +226,7 @@ Puntos importantes sobre el estado real:
 - A nivel Android, la base ya quedó bastante más consistente para seguir con nuevas funcionalidades sin cargar otra vez tanta duplicación entre `mensajes`, `grupos` y `comunidades`.
 - La referencia técnica viva para esa base está en `docs/ANDROID_CODEBASE_BASELINE_2026.md`.
 - La guía de orden del repositorio y clasificación de carpetas está en `docs/REPO_STRUCTURE_GUIDE_2026.md`.
-- El chequeo local más completo ahora se puede correr con `./gradlew qualityGateFull`.
+- En Windows, el gate local de debug, herramientas y seguridad se ejecuta con `.\tools\quality_gate.ps1 -DebugOnly`; el release completo requiere la configuración de firma original descrita en `docs/oficial/08-pruebas-release-handoff.md`.
 
 Validación local cerrada el `2026-04-26`:
 
@@ -233,7 +237,9 @@ Validación local cerrada el `2026-04-26`:
 - `:app:qualityGateDebug`
 - `:app:assembleRelease`
 - `:app:bundleRelease`
-- `python tools/performance_budget_check.py --artifacts app/build/outputs/apk/release app/build/outputs/bundle/release/app-release.aab`
+- `python tools/verify_android_release.py app/build/outputs/bundle/release/app-release.aab`
+- `python tools/verify_android_page_size.py app/build/outputs/bundle/release/app-release.aab`
+- `python tools/performance_budget_check.py --artifacts app/build/outputs/bundle/release/app-release.aab`
 
 ### Base técnica ya consolidada
 

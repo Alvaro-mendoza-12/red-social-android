@@ -19,10 +19,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsOff
@@ -33,12 +33,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import conectate.com.data.model.Message
-import conectate.com.data.model.ScheduledMessageJob
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.background
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -57,6 +59,7 @@ import androidx.compose.material3.AlertDialog
 import java.util.Locale
 import java.time.LocalDateTime
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import conectate.com.presentation.components.FullScreenImageDialog
@@ -64,12 +67,14 @@ import conectate.com.presentation.components.MediaItem
 import conectate.com.presentation.messages.VoiceState
 import conectate.com.util.TimeUtils
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import conectate.com.util.ChatContactPayload
 import conectate.com.presentation.messages.stickers.StickerButton
 import conectate.com.presentation.messages.stickers.StickerPanel
+import androidx.compose.material.icons.automirrored.filled.Forward
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.compose.foundation.ExperimentalFoundationApi
@@ -81,6 +86,20 @@ fun ChatScreen(
     focusMessageId: String? = null
 ) {
     val chatState by viewModel.chatState.collectAsState()
+    val workspaceViewModel: ChatWorkspaceViewModel = hiltViewModel()
+    val markersViewModel: ConversationMarkersViewModel = hiltViewModel()
+    val markerFeedback by markersViewModel.feedback.collectAsState()
+    val workspaceState by workspaceViewModel.state.collectAsStateWithLifecycle()
+    var showWorkspace by rememberSaveable { mutableStateOf(false) }
+    var workspaceKind by rememberSaveable { mutableStateOf(ChatWorkspaceKind.TASK) }
+    var workspaceSource by remember { mutableStateOf<Message?>(null) }
+    val workspaceChat = (chatState as? ChatUiState.Success)?.chat
+    LaunchedEffect(workspaceChat?.id) {
+        workspaceChat?.let {
+            workspaceViewModel.bind(it)
+            markersViewModel.bind("chat", it.id)
+        }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(lifecycleOwner) {
@@ -129,8 +148,12 @@ fun ChatScreen(
     var selectedForwardUsers by remember { mutableStateOf<Set<String>>(emptySet()) }
     
     val currentUserId = viewModel.getCurrentUserId() ?: ""
+    LaunchedEffect(currentUserId) { markersViewModel.refresh() }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(markerFeedback) {
+        markerFeedback?.let { snackbarHostState.showSnackbar(it); markersViewModel.clearFeedback() }
+    }
     
     var showStorageDisabledDialog by remember { mutableStateOf(false) }
     
@@ -154,11 +177,14 @@ fun ChatScreen(
     // Audio Playback State
     // Audio Playback State
     val currentPlayingAudioId by viewModel.currentPlayingAudioId.collectAsState()
+    val isAudioPlaying by viewModel.isAudioPlaying.collectAsState()
     val audioProgress by viewModel.audioProgress.collectAsState()
     val audioDurationLabel by viewModel.audioDurationLabel.collectAsState()
+    val audioPlaybackSpeed by viewModel.audioPlaybackSpeed.collectAsState()
     
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
+    val downloadChatMedia = rememberChatMediaDownload(viewModel::getCurrentUserId) { viewModel.getPlayableUrl(it) }
     val universalForwardCoordinator = LocalUniversalForwardCoordinator.current
 
     fun sendCurrentLocation() {
@@ -181,7 +207,8 @@ fun ChatScreen(
     val showClearChatDialog by viewModel.showClearChatDialog.collectAsState()
     val advancedMessage by viewModel.advancedMessage.collectAsState()
     val chatSummary by viewModel.chatSummary.collectAsState()
-    val scheduledMessages by viewModel.scheduledMessages.collectAsState()
+    val scheduledMessagesState by viewModel.scheduledMessagesState.collectAsState()
+    val scheduledMessages = scheduledMessagesState.jobs
     val autoTranslateEnabled by viewModel.autoTranslateEnabled.collectAsState()
     val autoTranslateTargetLang by viewModel.autoTranslateTargetLang.collectAsState()
     val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsState()
@@ -228,10 +255,12 @@ fun ChatScreen(
         }
     }
 
-    val documentPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
-        pendingDocumentUri = uri
+    var showDocumentPicker by remember { mutableStateOf(false) }
+    if (showDocumentPicker) {
+        conectate.com.presentation.documents.DocumentPickerSheet(
+            onDismiss = { showDocumentPicker = false },
+            onPicked = { uri -> showDocumentPicker = false; pendingDocumentUri = uri },
+        )
     }
 
     val gifPickerLauncher = rememberLauncherForActivityResult(
@@ -328,12 +357,20 @@ fun ChatScreen(
     val visibleMessageIds by remember(messages, listState) {
         derivedStateOf {
             listState.layoutInfo.visibleItemsInfo
-                .mapNotNull { item -> messages.getOrNull(item.index)?.id }
+                .filter { it.size > 0 }
+                .flatMap { item ->
+                    val index = messages.indexOfFirst { it.id == item.key }
+                    if (index < 0) emptyList() else {
+                        conectate.com.presentation.components.mediaGridClusterAt(messages, index)
+                            ?.map { it.id }.orEmpty()
+                    }
+                }
                 .toSet()
         }
     }
     var focusResolved by remember(focusMessageId) { mutableStateOf(focusMessageId.isNullOrBlank()) }
     val messageIdentity = remember(messages) { messages.map { it.id } }
+    var previousLastMessageId by remember { mutableStateOf<String?>(null) }
     val showJumpToLatest by remember(messages, listState) {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
@@ -346,7 +383,7 @@ fun ChatScreen(
         viewModel.onVisibleMessageIdsChanged(visibleMessageIds)
     }
     
-    // Auto-scroll to newest message (Bottom)
+    // Incoming messages must not interrupt someone reading older history.
     LaunchedEffect(messageIdentity, focusMessageId) {
         if (messages.isEmpty()) return@LaunchedEffect
 
@@ -357,17 +394,23 @@ fun ChatScreen(
             if (targetIndex >= 0) {
                 listState.scrollToItem(targetIndex)
                 focusResolved = true
+                previousLastMessageId = messages.last().id
                 return@LaunchedEffect
             }
 
         }
 
-        listState.scrollToItem(messages.size - 1)
+        val latest = messages.last()
+        val wasNearBottom = previousLastMessageId in visibleMessageIds
+        if (shouldScrollChatToLatest(previousLastMessageId, latest, wasNearBottom, currentUserId)) {
+            listState.scrollToItem(messages.lastIndex)
+        }
+        previousLastMessageId = latest.id
     }
 
     val imeBottom = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
     LaunchedEffect(imeBottom) {
-        if (imeBottom > 0 && messages.isNotEmpty()) {
+        if (imeBottom > 0 && messages.isNotEmpty() && !showJumpToLatest) {
             listState.scrollToItem(messages.lastIndex)
         }
     }
@@ -376,6 +419,38 @@ fun ChatScreen(
     val replyToMessage by viewModel.replyToMessage.collectAsState()
 
     val editingMessage by viewModel.editingMessage.collectAsState()
+
+    if (showWorkspace && chatState is ChatUiState.Success) {
+        ChatWorkspaceSheet(
+            state = workspaceState,
+            initialKind = workspaceKind,
+            initialSource = workspaceSource,
+            composerText = messageText,
+            onDismiss = { showWorkspace = false; workspaceSource = null },
+            onSave = workspaceViewModel::add,
+            onToggleTask = workspaceViewModel::toggleTask,
+            onRemove = workspaceViewModel::remove,
+            onLoadDraft = { text ->
+                viewModel.cancelEdit()
+                viewModel.cancelReply()
+                viewModel.updateMessageText(text)
+                showWorkspace = false
+                workspaceSource = null
+            },
+            onOpenSource = { sourceId ->
+                val index = messages.indexOfFirst { it.id == sourceId }
+                if (index >= 0) {
+                    showWorkspace = false
+                    workspaceSource = null
+                    scope.launch { listState.animateScrollToItem(index) }
+                } else {
+                    scope.launch { snackbarHostState.showSnackbar("El mensaje de origen no está disponible en el historial cargado.") }
+                }
+            },
+            onRetry = workspaceViewModel::load,
+            onSchedule = workspaceViewModel::scheduleTask,
+        )
+    }
 
     LaunchedEffect(autoTranslateTargetLang) {
         translateTargetDraft = autoTranslateTargetLang
@@ -394,7 +469,26 @@ fun ChatScreen(
 
     if (selectedMessage != null) {
         ModalBottomSheet(onDismissRequest = { viewModel.dismissMessageActions() }) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(16.dp)
+                .heightIn(max = 560.dp)
+                .then(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()))) {
+                MessageMarkerActions(selectedMessage, markersViewModel, viewModel::dismissMessageActions)
+                selectedMessage?.takeIf { canSaveMessageInWorkspace(it, currentUserId) }?.let { source ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            workspaceKind = ChatWorkspaceKind.TASK
+                            workspaceSource = source
+                            showWorkspace = true
+                            viewModel.dismissMessageActions()
+                        }, modifier = Modifier.weight(1f)) { Text("Crear pendiente") }
+                        TextButton(onClick = {
+                            workspaceKind = ChatWorkspaceKind.CONTEXT
+                            workspaceSource = source
+                            showWorkspace = true
+                            viewModel.dismissMessageActions()
+                        }, modifier = Modifier.weight(1f)) { Text("Guardar contexto") }
+                    }
+                }
                 
                 // Own message?
                 if (selectedMessage?.sender_id == currentUserId) {
@@ -539,7 +633,7 @@ fun ChatScreen(
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                         Spacer(modifier = Modifier.width(16.dp))
                         Text("Reenviar")
                     }
@@ -555,7 +649,7 @@ fun ChatScreen(
                     .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Reply, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                    Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                     Spacer(modifier = Modifier.width(16.dp))
                     Text("Responder")
                 }
@@ -927,7 +1021,7 @@ fun ChatScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.Default.ArrowBack, "Volver")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
                         }
                     },
                     actions = {
@@ -946,6 +1040,16 @@ fun ChatScreen(
                             Icon(Icons.Default.MoreVert, "Opciones")
                         }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Mi espacio: pendientes, contexto y borradores") },
+                                    leadingIcon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        workspaceSource = null
+                                        workspaceKind = ChatWorkspaceKind.TASK
+                                        showWorkspace = true
+                                    }
+                                )
                                 if (chat?.is_group != true) {
                                     DropdownMenuItem(
                                         text = { Text("Apodo") },
@@ -1049,6 +1153,13 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            ConversationMarkersBar(markersViewModel) { messageId ->
+                val index = messages.indexOfFirst { it.id.equals(messageId, ignoreCase = true) }
+                scope.launch {
+                    if (index >= 0) listState.animateScrollToItem(index)
+                    else snackbarHostState.showSnackbar("El mensaje no está en el historial cargado.")
+                }
+            }
             // Chat Content
             Box(modifier = Modifier.weight(1f)) {
                 ChatBackgroundLayer(
@@ -1170,9 +1281,13 @@ fun ChatScreen(
                                     onSenderClick = { userId ->
                                         navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
                                     },
-                                    isPlaying = currentPlayingAudioId == message.id,
+                                    isAudioActive = currentPlayingAudioId == message.id,
+                                    isPlaying = currentPlayingAudioId == message.id && isAudioPlaying,
                                     progress = if (currentPlayingAudioId == message.id) audioProgress else 0f,
                                     duration = if (currentPlayingAudioId == message.id) audioDurationLabel else message.content,
+                                    playbackSpeed = audioPlaybackSpeed,
+                                    onSeekAudio = { _, fraction -> viewModel.seekAudio(fraction) },
+                                    onChangeAudioSpeed = { viewModel.cycleAudioPlaybackSpeed() },
                                      senderName = null,
                                     senderEmail = if (message.sender_id != currentUserId) {
                                         state.otherUser?.email 
@@ -1232,8 +1347,26 @@ fun ChatScreen(
                     }
                     }
                     is ChatUiState.Error -> {
-                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(state.message, color = MaterialTheme.colorScheme.error)
+                         Box(
+                             modifier = Modifier.fillMaxSize(),
+                             contentAlignment = Alignment.Center,
+                         ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.padding(24.dp),
+                            ) {
+                                Text(
+                                    state.message,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center,
+                                )
+                                FilledTonalButton(onClick = viewModel::retryInitializeChat) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Reintentar")
+                                }
+                            }
                         }
                     }
                     else -> {
@@ -1426,7 +1559,12 @@ fun ChatScreen(
                                     VoiceState.RECORDING -> {
                                          val minutes = recordingDuration / 1000 / 60
                                          val seconds = (recordingDuration / 1000) % 60
-                                         val timeString = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+                                         val timeString = String.format(
+                                             androidx.compose.ui.platform.LocalLocale.current.platformLocale,
+                                             "%02d:%02d",
+                                             minutes,
+                                             seconds,
+                                         )
                                          Row(verticalAlignment = Alignment.CenterVertically) {
                                              Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                                              Spacer(modifier = Modifier.width(4.dp))
@@ -1489,7 +1627,7 @@ fun ChatScreen(
                                         modifier = Modifier.size(40.dp),
                                         elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                                     ) {
-                                        Icon(Icons.Default.Send, "Enviar", modifier = Modifier.size(20.dp))
+                                        Icon(Icons.AutoMirrored.Filled.Send, "Enviar", modifier = Modifier.size(20.dp))
                                     }
                                 }
                                 VoiceState.PAUSED -> {
@@ -1508,7 +1646,7 @@ fun ChatScreen(
                                         modifier = Modifier.size(40.dp),
                                         elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                                     ) {
-                                        Icon(Icons.Default.Send, "Enviar", modifier = Modifier.size(20.dp))
+                                        Icon(Icons.AutoMirrored.Filled.Send, "Enviar", modifier = Modifier.size(20.dp))
                                     }
                                 }
                                 else -> {}
@@ -1627,7 +1765,7 @@ fun ChatScreen(
                              Icon(
                                 imageVector = if (isTextEmpty) {
                                     if (voiceState != VoiceState.IDLE) Icons.Default.Stop else Icons.Default.Mic
-                                } else Icons.Default.Send,
+                                } else Icons.AutoMirrored.Filled.Send,
                                 contentDescription = if (isTextEmpty) "Grabar" else "Enviar"
                              )
                          }
@@ -1710,12 +1848,12 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            documentPickerLauncher.launch("*/*")
+                            showDocumentPicker = true
                         }
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.AutoMirrored.Filled.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(16.dp))
                     Text("Documento", style = MaterialTheme.typography.bodyLarge)
                 }
@@ -1953,9 +2091,13 @@ fun ChatScreen(
 
     if (showScheduledMessagesDialog) {
         ScheduledMessagesDialog(
-            jobs = scheduledMessages,
+            state = scheduledMessagesState,
+            onRetry = viewModel::refreshScheduledMessages,
             onCancel = { viewModel.cancelScheduledMessage(it) },
-            onDismiss = { showScheduledMessagesDialog = false }
+            onDismiss = {
+                showScheduledMessagesDialog = false
+                viewModel.stopRefreshingScheduledMessages()
+            }
         )
     }
 
@@ -2069,30 +2211,7 @@ fun ChatScreen(
                 )
             },
             secureContent = isViewingOnceMedia,
-            onDownload = if (isViewingOnceMedia) null else { item ->
-                scope.launch {
-                    val resolvedUrl = viewModel.getPlayableUrl(item.url) ?: item.url
-                    if (resolvedUrl.startsWith("http")) {
-                        val request = android.app.DownloadManager.Request(Uri.parse(resolvedUrl))
-                            .setTitle("Descargando archivo")
-                            .setDescription("Descargando ${item.type}...")
-                            .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            .setAllowedOverMetered(true)
-                            .setAllowedOverRoaming(true)
-                        
-                        // Guess filename
-                        val filename = "Novvin_${System.currentTimeMillis()}.${if (item.type == "video") "mp4" else "jpg"}"
-                        request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, filename)
-                        
-                        val downloadManager = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
-                        downloadManager.enqueue(request)
-                        
-                        android.widget.Toast.makeText(context, "Descarga iniciada", android.widget.Toast.LENGTH_SHORT).show()
-                    } else {
-                        android.widget.Toast.makeText(context, "Error: Enlace de descarga no válido", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                }
-            },
+            onDownload = if (isViewingOnceMedia) null else downloadChatMedia,
             onDismiss = {
                 fullScreenMediaItems = emptyList()
                 isViewingOnceMedia = false
@@ -2108,6 +2227,7 @@ fun ChatScreen(
             maxClipDurationMs = null,
             allowFullTrack = true,
             defaultToFullTrack = true,
+            enableOpenCatalog = false,
             onBrowseFiles = { audioPickerLauncher.launch("audio/*") },
             onDismiss = {
                 showAudioPickerDialog = false
@@ -2125,8 +2245,8 @@ fun ChatScreen(
         conectate.com.presentation.components.DocumentSharePreviewDialog(
             uri = documentUri,
             onDismiss = { pendingDocumentUri = null },
-            onConfirm = {
-                viewModel.sendDocumentMessage(documentUri)
+            onConfirmDocument = { selectedDocument ->
+                viewModel.sendDocumentMessage(selectedDocument)
                 pendingDocumentUri = null
             },
         )
@@ -2222,95 +2342,6 @@ fun ChatScreen(
     }
 }
 
-@Composable
-private fun ScheduledMessagesDialog(
-    jobs: List<ScheduledMessageJob>,
-    onCancel: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Mensajes programados") },
-        text = {
-            if (jobs.isEmpty()) {
-                Text("No hay mensajes programados en este chat.")
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 360.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(jobs, key = { it.id }) { job ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = formatScheduledJobTitle(job),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = formatScheduledJobTime(job.scheduled_for),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (job.content.isNotBlank()) {
-                                Text(
-                                    text = job.content.take(180),
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                TextButton(onClick = { onCancel(job.id) }) {
-                                    Text("Cancelar", color = MaterialTheme.colorScheme.error)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cerrar")
-            }
-        }
-    )
-}
-
-private fun formatScheduledJobTitle(job: ScheduledMessageJob): String {
-    val type = when (job.content_type.trim().lowercase(Locale.getDefault())) {
-        "image" -> "Imagen"
-        "video" -> "Video"
-        "audio" -> "Audio"
-        else -> "Texto"
-    }
-    val status = when (job.status.trim().lowercase(Locale.getDefault())) {
-        "failed" -> "fallido"
-        "pending" -> "pendiente"
-        else -> job.status.trim().ifBlank { "pendiente" }
-    }
-    return "$type $status"
-}
-
-private fun formatScheduledJobTime(value: String): String {
-    if (value.isBlank()) return "Sin fecha"
-    return try {
-        val instant = java.time.Instant.parse(value.trim())
-        val formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
-        "Para ${instant.atZone(java.time.ZoneId.systemDefault()).format(formatter)}"
-    } catch (e: Exception) {
-        "Para ${value.take(16).replace("T", " ")}"
-    }
-}
 
 private fun formatMessageInfoDate(value: String?): String {
     if (value.isNullOrBlank()) return "Pendiente"

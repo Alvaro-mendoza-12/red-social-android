@@ -3,6 +3,7 @@ package conectate.com.presentation.messages
 import android.media.MediaPlayer
 import android.net.Uri
 import conectate.com.util.AudioRecorder
+import conectate.com.core.observability.AppMetrics
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +21,8 @@ enum class VoiceState {
 
 @Singleton
 class VoiceMessageManager @Inject constructor(
-    private val audioRecorder: AudioRecorder
+    private val audioRecorder: AudioRecorder,
+    private val appMetrics: AppMetrics
 ) {
     private val _state = MutableStateFlow(VoiceState.IDLE)
     val state: StateFlow<VoiceState> = _state.asStateFlow()
@@ -48,10 +50,6 @@ class VoiceMessageManager @Inject constructor(
     private var isFinalizing = false
     @Volatile
     private var isPreviewPrepared = false
-
-    fun setScope(coroutineScope: CoroutineScope) {
-        // Obsolete but kept for compatibility - now using internal managerScope
-    }
 
     // --- Recording Control ---
 
@@ -194,7 +192,10 @@ class VoiceMessageManager @Inject constructor(
                  prepareAsync()
              }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("VoiceMessageManager", "Could not prepare voice-note preview", e)
+            appMetrics.recordFailure("voice_note_preview_prepare", e)
+            isPreviewPrepared = false
+            _isDraftPlaying.value = false
         }
     }
 

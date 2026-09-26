@@ -10,7 +10,6 @@ object SignalingConfig {
             .ifBlank { BuildConfig.SIGNALING_URL.trim() }
             .trimEnd('/')
     val TURN_CREDENTIALS_URL: String get() = "$BASE_URL/turn-credentials"
-    val CINEMA_RESOLVE_URL: String get() = "$BASE_URL/resolve-cinema"
 
     // Default namespace (Voice Rooms)
     val VOICE_URL: String get() = BASE_URL

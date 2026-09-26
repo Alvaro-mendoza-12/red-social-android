@@ -1,10 +1,9 @@
 package conectate.com.presentation.components
 
-import android.os.Build
 import android.content.SharedPreferences
 import android.view.TextureView
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -15,7 +14,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,9 +21,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -35,30 +35,29 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import coil.decode.GifDecoder
-import coil.decode.ImageDecoderDecoder
-import coil.request.CachePolicy
-import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.remember
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import conectate.com.core.media.MediaImageRequestFactory
+import conectate.com.core.media.ProfileIdentityImageStore
 import conectate.com.data.localfallback.UbuntuStorageUrl
-import conectate.com.util.AppDeviceTier
-import conectate.com.util.AppPerformanceProfiles
 import java.text.Normalizer
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @Composable
 fun CircularProfileImage(
     imageUrl: String?,
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
-    showBorder: Boolean = true,
+    showBorder: Boolean = false,
     borderColor: Color = MaterialTheme.colorScheme.primary,
     borderWidth: Dp = 2.dp,
     isVerified: Boolean = false,
@@ -68,8 +67,9 @@ fun CircularProfileImage(
     fallbackName: String? = null
 ) {
     val context = LocalContext.current
+    val identityAccountId = LocalProfileIdentityAccount.current
+    val coroutineScope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
-    val performanceProfile = remember(context) { AppPerformanceProfiles.detect(context) }
     val lifecycleStarted = remember(lifecycleOwner) {
         mutableStateOf(
             lifecycleOwner.lifecycle.currentState.isAtLeast(
@@ -115,26 +115,28 @@ fun CircularProfileImage(
             cleanUrl.endsWith(".mov")
     }
     val effectiveMuted = muted || globalAnimatedAvatarsMuted.value || !allowSound
-    val shouldAnimateVideoAvatar =
-        isVideoAvatar &&
-            performanceProfile.tier != AppDeviceTier.LOW &&
-            lifecycleStarted.value
+    // El avatar de video forma parte de la identidad del perfil: debe animarse en
+    // cualquier dispositivo mientras la pantalla esté visible. LazyColumn/LazyRow
+    // ya eliminan los elementos fuera de pantalla y DisposableEffect libera el
+    // reproductor al salir, por lo que no necesitamos degradarlo a una miniatura
+    // estática en equipos que el detector clasifica como gama baja.
+    val shouldAnimateVideoAvatar = isVideoAvatar && lifecycleStarted.value
     val fallbackInitial = remember(fallbackName) {
         avatarFallbackInitial(fallbackName)
     }
-    val cacheKey = remember(imageUrl) { UbuntuStorageUrl.stableCacheKey(imageUrl) }
-    val request = remember(resolvedImageUrl, cacheKey) {
-        resolvedImageUrl?.let {
-            ImageRequest.Builder(context)
-                .data(it)
-                .memoryCacheKey(cacheKey)
-                .diskCacheKey(cacheKey)
-                .placeholderMemoryCacheKey(cacheKey)
-                .crossfade(false)
-                .memoryCachePolicy(CachePolicy.ENABLED)
-                .diskCachePolicy(CachePolicy.ENABLED)
-                .build()
-        }
+    val avatarDisplayUrl = remember(resolvedImageUrl, isVideoAvatar) {
+        if (isVideoAvatar) resolvedImageUrl else MediaImageRequestFactory.avatarUrl(resolvedImageUrl)
+    }
+    val cacheKey = remember(avatarDisplayUrl) { UbuntuStorageUrl.stableCacheKey(avatarDisplayUrl) }
+    val request = remember(avatarDisplayUrl, isVideoAvatar) {
+        if (isVideoAvatar) null else MediaImageRequestFactory.avatar(context, resolvedImageUrl)
+    }
+    val cachedIdentityImage = remember(resolvedImageUrl, identityAccountId) {
+        mutableStateOf<java.io.File?>(null)
+    }
+    val identityGeneration = remember(resolvedImageUrl, identityAccountId) { ProfileIdentityImageStore.generation(identityAccountId) }
+    LaunchedEffect(resolvedImageUrl, identityAccountId) {
+        cachedIdentityImage.value = ProfileIdentityImageStore.find(context, resolvedImageUrl, identityAccountId, identityGeneration)
     }
     Box(modifier = modifier.size(size)) {
         Box(
@@ -158,7 +160,7 @@ fun CircularProfileImage(
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
-            val hasSuccessfulImage = remember(cacheKey) { mutableStateOf(false) }
+            val hasSuccessfulImage = remember(cacheKey, identityAccountId) { mutableStateOf(false) }
             if (resolvedImageUrl.isNullOrEmpty()) {
                 AvatarFallback(
                     initial = fallbackInitial,
@@ -167,19 +169,40 @@ fun CircularProfileImage(
             } else if (shouldAnimateVideoAvatar) {
                 val exoPlayerState = remember(resolvedImageUrl) { mutableStateOf<ExoPlayer?>(null) }
                 val playerReleased = remember(resolvedImageUrl) { AtomicBoolean(false) }
+                val firstFrameRendered = remember(resolvedImageUrl) { mutableStateOf(false) }
+                val textureViewRef = remember(resolvedImageUrl) { mutableStateOf<TextureView?>(null) }
+                VideoAvatarPosterFallback(
+                    posterFile = cachedIdentityImage.value,
+                    fallbackInitial = fallbackInitial,
+                    size = size,
+                )
                 DisposableEffect(resolvedImageUrl) {
                     playerReleased.set(false)
-                    val player = ExoPlayer.Builder(context).build().apply {
+                    firstFrameRendered.value = false
+                    val player = ExoPlayer.Builder(context)
+                        .setMediaSourceFactory(
+                            androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                                conectate.com.util.VideoCache.getCacheDataSourceFactory(context),
+                            ),
+                        )
+                        .build().apply {
                         repeatMode = Player.REPEAT_MODE_ONE
                         volume = 0f
                         playWhenReady = true
-                        setMediaItem(MediaItem.fromUri(resolvedImageUrl!!))
+                        setMediaItem(MediaItem.fromUri(resolvedImageUrl))
                         prepare()
                     }
+                    val listener = object : Player.Listener {
+                        override fun onRenderedFirstFrame() {
+                            firstFrameRendered.value = true
+                        }
+                    }
+                    player.addListener(listener)
                     exoPlayerState.value = player
                     onDispose {
                         playerReleased.set(true)
                         exoPlayerState.value = null
+                        player.removeListener(listener)
                         player.stop()
                         player.release()
                     }
@@ -192,7 +215,6 @@ fun CircularProfileImage(
                             exoPlayer.playWhenReady = true
                         }
                     }
-                    val textureViewRef = remember(resolvedImageUrl) { mutableStateOf<TextureView?>(null) }
                     AndroidView(
                         factory = { viewContext ->
                             TextureView(viewContext).apply {
@@ -202,13 +224,14 @@ fun CircularProfileImage(
                             }
                         },
                         update = { textureView ->
-                            if (!playerReleased.get()) {
+                            if (!playerReleased.get() && textureViewRef.value !== textureView) {
                                 textureViewRef.value = textureView
                                 exoPlayer.setVideoTextureView(textureView)
                             }
                         },
                         modifier = Modifier
                             .fillMaxSize()
+                            .alpha(if (firstFrameRendered.value) 1f else 0f)
                             .graphicsLayer {
                                 shape = CircleShape
                                 clip = true
@@ -216,16 +239,48 @@ fun CircularProfileImage(
                             .clip(CircleShape)
                     )
                 }
+                LaunchedEffect(firstFrameRendered.value, resolvedImageUrl, identityAccountId) {
+                    if (!firstFrameRendered.value || resolvedImageUrl.isNullOrBlank()) {
+                        return@LaunchedEffect
+                    }
+                    // The callback can happen before TextureView has published the
+                    // frame. A short UI-only delay avoids reading an empty bitmap.
+                    delay(80L)
+                    val bitmap = textureViewRef.value?.bitmap ?: return@LaunchedEffect
+                    try {
+                        ProfileIdentityImageStore.save(context, resolvedImageUrl, bitmap, identityAccountId, identityGeneration)
+                            ?.let { cachedIdentityImage.value = it }
+                    } finally {
+                        bitmap.recycle()
+                    }
+                }
+            } else if (isVideoAvatar) {
+                VideoAvatarPosterFallback(
+                    posterFile = cachedIdentityImage.value,
+                    fallbackInitial = fallbackInitial,
+                    size = size,
+                )
             } else {
                 if (!hasSuccessfulImage.value) {
-                    AvatarFallback(initial = fallbackInitial, size = size)
+                    VideoAvatarPosterFallback(
+                        posterFile = cachedIdentityImage.value,
+                        fallbackInitial = fallbackInitial,
+                        size = size,
+                    )
                 }
                 AsyncImage(
                     model = request,
                     contentDescription = "Profile Image",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    onSuccess = { hasSuccessfulImage.value = true },
+                    onSuccess = { state ->
+                        hasSuccessfulImage.value = true
+                        val bitmap = state.result.drawable.toBitmap()
+                        coroutineScope.launch {
+                            ProfileIdentityImageStore.save(context, resolvedImageUrl, bitmap, identityAccountId, identityGeneration)
+                                ?.let { cachedIdentityImage.value = it }
+                        }
+                    },
                     onError = { hasSuccessfulImage.value = false }
                 )
             }
@@ -248,6 +303,23 @@ fun CircularProfileImage(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun VideoAvatarPosterFallback(
+    posterFile: java.io.File?,
+    fallbackInitial: String,
+    size: Dp,
+) {
+    AvatarFallback(initial = fallbackInitial, size = size)
+    if (posterFile != null) {
+        AsyncImage(
+            model = posterFile,
+            contentDescription = "Foto guardada del perfil",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
     }
 }
 

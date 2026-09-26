@@ -145,6 +145,7 @@ function normalizeCursorPayload(payload) {
       position,
       profileRevision,
       issuedAt,
+      sessionSeed: normalizeId(payload.sessionSeed, 80),
       providerState: normalizeCursorState(payload.providerState),
     }
   } catch {
@@ -344,6 +345,7 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
       const rawCursor = String(req.query?.cursor || '').trim()
       const timestamp = Number(now())
       const decodedCursor = rawCursor ? decodeOpaqueCursor(rawCursor, cursorSecret, timestamp) : null
+      const rankingTimestamp = decodedCursor?.issuedAt || timestamp
 
       if (decodedCursor) {
         if (decodedCursor.ownerId !== owner.userId
@@ -363,6 +365,11 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
 
       const configuration = await loadAlgorithmConfiguration(pool, profile)
       const profileMode = recommendationProfileMode(profile)
+      const requestedRefreshId = normalizeId(req.query?.refreshId ?? req.query?.refresh_id, 80) || crypto.randomUUID()
+      const sessionSeed = decodedCursor?.sessionSeed || crypto.createHash('sha256')
+        .update(`${owner.userId}:${surface}:${profile.id}:${requestedRefreshId}`, 'utf8')
+        .digest('hex')
+        .slice(0, 32)
       const loaded = validateCandidateBatch(await loadCandidates({
         owner,
         surface,
@@ -374,7 +381,7 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
         },
         limit: pageSize,
         maxCandidates: MAX_RANKED_CANDIDATES,
-        now: timestamp,
+        now: rankingTimestamp,
       }))
       if (decodedCursor && decodedCursor.snapshotId !== loaded.snapshotId) {
         return fail(res, 409, 'RECOMMENDATION_CURSOR_STALE')
@@ -393,7 +400,8 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
           : {},
         surface,
         limit: MAX_RANKED_CANDIDATES,
-        now: timestamp,
+        now: rankingTimestamp,
+        sessionSeed,
       })
       const position = decodedCursor?.position || 0
       const selected = ranking.ranked.slice(position, position + pageSize)
@@ -408,7 +416,8 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
           surface,
           snapshotId: loaded.snapshotId,
           position: nextPosition,
-          issuedAt: timestamp,
+          issuedAt: rankingTimestamp,
+          sessionSeed,
           providerState: loaded.providerState,
         }, cursorSecret)
         : null

@@ -3,6 +3,7 @@ package conectate.com.data.local.prefs
 import android.content.Context
 import android.content.SharedPreferences
 import conectate.com.data.webrtc.LiveCameraFilter
+import conectate.com.data.model.LiveCreatorLayoutStyle
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.Module
 import dagger.Provides
@@ -26,6 +27,7 @@ class LivePreferences @Inject constructor(
 ) {
     private companion object {
         private const val KEY_CAMERA_FILTER = "camera_filter"
+        private const val KEY_CREATOR_LAYOUT = "creator_layout"
     }
 
     val cameraFilter: LiveCameraFilter
@@ -33,6 +35,13 @@ class LivePreferences @Inject constructor(
 
     fun setCameraFilter(filter: LiveCameraFilter) {
         storage.putString(KEY_CAMERA_FILTER, filter.wireValue)
+    }
+
+    val creatorLayoutStyle: LiveCreatorLayoutStyle
+        get() = LiveCreatorLayoutStyle.fromWireValue(storage.getString(KEY_CREATOR_LAYOUT))
+
+    fun setCreatorLayoutStyle(style: LiveCreatorLayoutStyle) {
+        storage.putString(KEY_CREATOR_LAYOUT, style.wireValue)
     }
 }
 

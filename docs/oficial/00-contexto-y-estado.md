@@ -1,6 +1,11 @@
 # 00 — Contexto y estado actual
 
-Conéctate es una red social móvil en producción. El objetivo del proyecto es operar sin depender de Supabase como backend principal, usando un backend propio en Ubuntu Server sobre una mini PC. La aplicación está orientada a usuarios reales, no solo pruebas internas, por lo que cualquier cambio debe tratarse como producción.
+Conéctate es una red social móvil orientada a producción y con una versión histórica
+distribuida. El backend propio en Ubuntu Server sobre una mini PC sigue en transición
+operativa: la auditoría vigente no certifica que la rama actual esté desplegada ni que
+el acceso público tenga todavía un origen estable. La aplicación está orientada a
+usuarios reales, no solo pruebas internas, por lo que cualquier cambio debe tratarse
+como producción.
 
 ## Historia resumida
 
@@ -18,7 +23,10 @@ El proyecto pasó por varias etapas:
    - El backend propio se migró a Ubuntu Server.
    - La mini PC se volvió el servidor principal de Conéctate.
    - Se usa Docker Compose para levantar PostgreSQL, API, signaling, realtime, nginx edge y TURN local opcional.
-   - Debido a CGNAT, el acceso público HTTP depende de túnel Cloudflare y discovery por DuckDNS TXT.
+   - Debido a CGNAT, el acceso público HTTP debe entrar por un Cloudflare Tunnel
+     nombrado y un hostname HTTPS estable. El descubrimiento firmado por DuckDNS
+     queda como compatibilidad de transición y recuperación, no como ruta
+     primaria de producción.
 
 ## Estado actual verificado por el repositorio
 
@@ -27,11 +35,13 @@ Estos puntos se observan directamente en el código/configuración local:
 - Android:
   - Proyecto Kotlin + Jetpack Compose.
   - `applicationId`: `conectate.com`.
-  - `compileSdk`: 35.
+  - `compileSdk`: 36.
   - `minSdk`: 24.
-  - `targetSdk`: 35.
-  - `versionCode`: 41.
-  - `versionName`: 3.0.1.
+  - `targetSdk`: 36.
+  - Android Gradle Plugin: 8.13.2.
+  - Gradle wrapper: 8.13.
+  - `versionCode`: 68.
+  - `versionName`: 3.3.6.
   - Backend principal configurado por `FALLBACK_API_URL` y `BACKEND_DISCOVERY_HOST`.
 
 - Backend:
@@ -68,19 +78,28 @@ El estado saludable debe mostrar:
 
 - `docker=active`
 - `stack=active`
-- `cloudflare=active`
+- `cloudflare=active` mediante el servicio de sistema `novvin-cloudflared.service`
 - contenedores `api`, `db`, `edge`, `realtime-gateway`, `signaling` en `healthy`
 - `READY LOCAL` con `ok:true`
 - `READY PUBLIC` con `ok:true`
 
-## Punto crítico actual: CGNAT y URL pública dinámica
+## Punto crítico de transición: CGNAT y origen público
 
 El router está detrás de CGNAT. Por eso:
 
 - No se puede depender de abrir puertos normales del router.
-- Cloudflare Quick Tunnel puede cambiar de URL.
-- La app no debe quedarse pegada a una URL `trycloudflare.com` antigua.
-- La app debe resolver la URL activa mediante `BACKEND_DISCOVERY_HOST`, normalmente `conectate-alvaro.duckdns.org`.
+- La arquitectura objetivo usa un hostname HTTPS estable, por ejemplo
+  `https://api.novvin.example`, conectado a un Cloudflare Tunnel nombrado.
+- Un Quick Tunnel no es una base admisible para producción: su URL puede cambiar
+  y no ofrece las garantías operativas requeridas.
+- La app no debe aceptar ni conservar una URL `trycloudflare.com` como origen
+  final. `BACKEND_DISCOVERY_HOST` sólo se consulta durante la transición o una
+  recuperación controlada, y siempre debe verificar firma, vigencia y `/ready`.
+
+> Estado observado el 2026-08-26: el servidor aún tenía túneles rápidos
+> manuales. La migración al túnel nombrado está preparada en el repositorio pero
+> no se debe declarar aplicada hasta instalarla y validarla en Ubuntu. Ver el
+> [runbook de túnel nombrado](../NAMED_CLOUDFLARE_TUNNEL_RUNBOOK_2026.md).
 
 Si un usuario reporta:
 

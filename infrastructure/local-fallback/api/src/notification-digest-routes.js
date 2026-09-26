@@ -1,5 +1,7 @@
 const { publishRealtimeEvent } = require('./realtime-publish')
 const { sendPushForNotification } = require('./push-notifications')
+const { stableKey } = require('./request-security')
+const { safeErrorLogDetails } = require('./request-observability')
 
 const DIGEST_CATEGORIES = Object.freeze([
   'mentions',
@@ -436,8 +438,8 @@ async function deliverDigestForPreference(pool, row, now = new Date()) {
       }).catch(() => {})
       await sendPushForNotification(client, notification, extraData).catch((error) => {
         console.error('[notification-digest] push failed', {
-          userId,
-          message: String(error?.message || error).slice(0, 200),
+          userRef: stableKey(userId),
+          ...safeErrorLogDetails(error),
         })
       })
     }

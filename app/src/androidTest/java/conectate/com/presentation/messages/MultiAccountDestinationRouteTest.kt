@@ -26,7 +26,6 @@ class MultiAccountDestinationRouteTest {
         assertEquals(
             Screen.Chat.createRoute(
                 userId = "user-9",
-                chatId = "chat-42",
                 focusMessageId = "message-3"
             ),
             route

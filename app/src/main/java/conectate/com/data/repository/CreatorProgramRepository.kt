@@ -245,17 +245,42 @@ class CreatorProgramRepository @Inject constructor(
         var reserved = BigDecimal.ZERO
         var paid = BigDecimal.ZERO
         var refunded = BigDecimal.ZERO
+        var pendingCoins = 0
+        var availableCoins = 0
+        var heldCoins = 0
+        var paidCoins = 0
+        var refundedCoins = 0
         val activity = decodeObjects(response.bodyAsText()).mapNotNull { row ->
             val id = row.string("id").orEmpty()
             if (id.isBlank()) return@mapNotNull null
             val amount = row.bigDecimalAny("net_amount_credits", "net_amount", "amount_credits")
-            when (row.string("status")?.lowercase()) {
-                "pending" -> pending += amount
-                "available" -> available += amount
-                "held", "in_hold", "under_review" -> held += amount
-                "reserved" -> reserved += amount
-                "paid" -> paid += amount
-                "refunded", "reversed" -> refunded += amount
+            val status = row.string("status")?.lowercase().orEmpty()
+            val coins = row.intAny("withdrawable_amount_diamonds", "amount_diamonds").coerceAtLeast(0)
+            when (status) {
+                "pending" -> {
+                    pending += amount
+                    pendingCoins += coins
+                }
+                "available" -> {
+                    available += amount
+                    availableCoins += coins
+                }
+                "held", "in_hold", "under_review" -> {
+                    held += amount
+                    heldCoins += coins
+                }
+                "reserved" -> {
+                    reserved += amount
+                    heldCoins += coins
+                }
+                "paid" -> {
+                    paid += amount
+                    paidCoins += coins
+                }
+                "refunded", "reversed" -> {
+                    refunded += amount
+                    refundedCoins += coins
+                }
             }
             CreatorEarningActivity(
                 id = id,
@@ -266,7 +291,7 @@ class CreatorProgramRepository @Inject constructor(
                 taxWithheldCredits = row.bigDecimalAny("tax_withheld_credits", "tax_withheld"),
                 creatorShareCredits = row.bigDecimalAny("creator_share_credits", "creator_share"),
                 netCredits = amount,
-                amountCoins = row.int("amount_diamonds"),
+                amountCoins = coins,
                 createdAt = row.string("created_at"),
                 availableAt = row.string("available_at"),
                 paidAt = row.string("paid_at")
@@ -280,7 +305,12 @@ class CreatorProgramRepository @Inject constructor(
                 reservedCredits = reserved,
                 paidCredits = paid,
                 refundedCredits = refunded,
-                totalCredits = pending + available + held + reserved + paid - refunded
+                totalCredits = pending + available + held + reserved + paid - refunded,
+                pendingCoins = pendingCoins,
+                availableCoins = availableCoins,
+                heldCoins = heldCoins,
+                paidCoins = paidCoins,
+                totalCoins = (pendingCoins + availableCoins + heldCoins + paidCoins - refundedCoins).coerceAtLeast(0),
             ),
             activity = activity,
             nextPayoutAt = activity.asSequence()
@@ -336,6 +366,11 @@ class CreatorProgramRepository @Inject constructor(
     }
 
     private fun JsonObject.int(key: String): Int = this[key]?.jsonPrimitive?.intOrNull ?: 0
+
+    private fun JsonObject.intAny(vararg keys: String): Int {
+        val key = keys.firstOrNull { containsKey(it) } ?: return 0
+        return int(key)
+    }
 
     private fun JsonObject.bigDecimal(key: String): BigDecimal {
         return this[key]?.jsonPrimitive?.contentOrNull?.toBigDecimalOrNull() ?: BigDecimal.ZERO

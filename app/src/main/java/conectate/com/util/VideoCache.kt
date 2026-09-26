@@ -10,10 +10,12 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 object VideoCache {
@@ -44,19 +46,33 @@ object VideoCache {
     }
 
     fun getCacheDataSourceFactory(context: Context): DataSource.Factory {
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setDefaultRequestProperties(UbuntuStorageUrl.publicRequestHeaders)
+        // ChatMediaOfflineCache and pending uploads return file:/ or content:/ URIs.
+        // An HTTP-only upstream fails as soon as the playback cache misses those local bytes.
+        val upstreamDataSourceFactory = MediaPlaybackDataSources.streamingFactory(context)
 
-        var cache = getOrCreateCache(context)
+        val cache = getOrCreateCache(context)
         return if (cache != null) {
             CacheDataSource.Factory()
                 .setCache(cache)
-                .setUpstreamDataSourceFactory(httpDataSourceFactory)
+                .setUpstreamDataSourceFactory(upstreamDataSourceFactory)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         } else {
-            DefaultDataSource.Factory(context, httpDataSourceFactory)
+            upstreamDataSourceFactory
         }
+    }
+
+    /**
+     * Drops the bytes for one media object after ExoPlayer reports a source
+     * failure. A cancelled Range request can otherwise leave a partial span
+     * under the stable storage key and every retry reuses the same bad prefix.
+     */
+    @Synchronized
+    fun removeResource(context: Context, url: String?) {
+        val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return
+        val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return
+        val cache = getOrCreateCache(context.applicationContext) ?: return
+        runCatching { cache.removeResource(cacheKey) }
+            .onFailure { Log.w("VideoCache", "Unable to evict failed media resource", it) }
     }
 
     /**
@@ -64,18 +80,42 @@ object VideoCache {
      * reproductor usa la misma cache key, así que al tocarlo no vuelve a
      * comenzar la descarga desde cero ni consume el archivo completo.
      */
-    fun preloadStart(context: Context, url: String, byteCount: Long = 2L * 1024L * 1024L) {
-        val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return
-        val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return
+    suspend fun preloadStart(
+        context: Context,
+        url: String,
+        byteCount: Long = 2L * 1024L * 1024L,
+        timeoutMs: Long = 2_000L,
+    ) = coroutineScope {
+        val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return@coroutineScope
+        val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return@coroutineScope
         val dataSource = getCacheDataSourceFactory(context.applicationContext)
-            .createDataSource() as? CacheDataSource ?: return
+            .createDataSource() as? CacheDataSource ?: return@coroutineScope
         val dataSpec = DataSpec.Builder()
             .setUri(resolvedUrl)
             .setPosition(0)
             .setLength(byteCount)
             .setKey(cacheKey)
             .build()
-        CacheWriter(dataSource, dataSpec, null, null).cache()
+        val writer = CacheWriter(dataSource, dataSpec, null, null)
+        val task = async(Dispatchers.IO) { writer.cache() }
+        var completedWithinBudget = false
+        try {
+            // Prefetch is strictly best-effort. On a slow mobile network it
+            // must yield instead of competing indefinitely with the visible
+            // video's Range request.
+            completedWithinBudget = withTimeoutOrNull(timeoutMs) {
+                task.await()
+                true
+            } == true
+        } finally {
+            // CacheWriter is blocking. Cancelling only the coroutine can leave
+            // an old prefetch consuming the same mobile connection as the
+            // visible player after a fast swipe or recycled chat row.
+            if (!completedWithinBudget) {
+                writer.cancel()
+                task.cancel()
+            }
+        }
     }
 
     fun release() {
@@ -84,7 +124,7 @@ object VideoCache {
             simpleCache = null
             databaseProvider = null
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("VideoCache", "Video cache release failed", e)
         }
     }
 }

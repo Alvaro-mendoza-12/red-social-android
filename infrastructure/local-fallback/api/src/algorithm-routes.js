@@ -490,13 +490,30 @@ async function ensureAlgorithmTables(pool) {
       slug TEXT NOT NULL DEFAULT 'for-you',
       mode TEXT NOT NULL DEFAULT 'manual'
         CHECK (mode IN ('manual', 'assisted', 'automatic')),
-      is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       is_default BOOLEAN NOT NULL DEFAULT FALSE,
       revision BIGINT NOT NULL DEFAULT 1 CHECK (revision > 0),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (user_id, slug)
     )
+  `)
+  await pool.query(`
+    ALTER TABLE fallback_user_algorithm_profiles
+    ALTER COLUMN is_enabled SET DEFAULT TRUE
+  `)
+  // Profiles created by older releases started disabled even though manual
+  // mode consumes no inferred behaviour. Enable only untouched defaults;
+  // revision > 1 remains authoritative so an explicit opt-out is preserved.
+  await pool.query(`
+    UPDATE fallback_user_algorithm_profiles
+       SET is_enabled = TRUE,
+           updated_at = NOW()
+     WHERE is_default = TRUE
+       AND slug = 'for-you'
+       AND mode = 'manual'
+       AND revision = 1
+       AND is_enabled = FALSE
   `)
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_user_algorithm_default_profile
@@ -613,6 +630,10 @@ async function ensureAlgorithmTables(pool) {
     CREATE INDEX IF NOT EXISTS idx_fallback_algorithm_content_topics_lookup
     ON fallback_algorithm_content_topics(topic_key, subtopic_key, confidence DESC)
   `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_algorithm_classification_candidate
+    ON fallback_algorithm_content_classifications(content_kind, lower(content_id), safety_state)
+  `)
 }
 
 async function ensureProfileDefaults(pool, profileId) {
@@ -649,7 +670,7 @@ async function ensureProfileDefaults(pool, profileId) {
 async function ensureDefaultProfile(pool, userId) {
   const { rows } = await pool.query(
     `INSERT INTO fallback_user_algorithm_profiles(user_id, name, slug, mode, is_enabled, is_default)
-     VALUES ($1, 'Para mí', 'for-you', 'manual', FALSE, TRUE)
+     VALUES ($1, 'Para mí', 'for-you', 'manual', TRUE, TRUE)
      ON CONFLICT (user_id) WHERE is_default
      DO UPDATE SET updated_at = fallback_user_algorithm_profiles.updated_at
      RETURNING id::text, name, slug, mode, is_enabled, is_default, revision, created_at, updated_at`,

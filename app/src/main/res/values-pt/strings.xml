@@ -41,4 +41,7 @@
     <string name="widget_action_videos">Vídeos</string>
     <string name="widget_action_moment">Momento</string>
     <string name="widget_action_chat">Chat</string>
+    <string name="two_factor_local_reset_title">Segurança da conta</string>
+    <string name="two_factor_local_reset_message">O armazenamento criptografado deste dispositivo foi redefinido. Se sua conta usa verificação em duas etapas, entre com seu autenticador ou um código de recuperação. A proteção do servidor continua ativa.</string>
+    <string name="two_factor_local_reset_ok">Entendi</string>
 </resources>

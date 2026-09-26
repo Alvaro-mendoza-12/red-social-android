@@ -54,6 +54,30 @@ class PendingMessageSyncPolicyTest {
 
         assertEquals("server", acknowledged.content)
         assertEquals(server.media_url, acknowledged.media_url)
-        assertEquals("sent", acknowledged.status)
+        assertEquals("delivered", acknowledged.status)
+    }
+
+    @Test
+    fun `read acknowledgement remains read even when status field is stale`() {
+        val queued = Message(
+            id = "message-3",
+            chat_id = "chat-3",
+            sender_id = "sender-3",
+            content = "local",
+            status = "sending"
+        )
+        val server = queued.copy(
+            status = "sent",
+            delivered_at = "2026-09-10T12:00:00Z",
+            read_at = "2026-09-10T12:01:00Z"
+        )
+
+        val acknowledged = PendingMessageSyncPolicy.acknowledgedMessage(
+            serverMessage = server,
+            queuedMessage = queued,
+            chatId = "chat-3"
+        )
+
+        assertEquals("read", acknowledged.status)
     }
 }

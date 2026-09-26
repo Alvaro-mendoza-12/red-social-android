@@ -146,7 +146,7 @@ class AdminPanelViewModel @Inject constructor(
                     loadSuspendedProfiles(token)
                     loadModerationAppeals(token)
                     loadReports(token)
-                    loadSystemHealth()
+                    loadSystemHealth(token)
                 } else {
                     _adminAccess.value = AdminAccessInfo()
                     _isAdmin.value = false
@@ -183,7 +183,7 @@ class AdminPanelViewModel @Inject constructor(
                     .onSuccess { token ->
                         loadStats(token)
                         refreshCycle += 1
-                        if (refreshCycle % 3 == 0) loadSystemHealth()
+                        if (refreshCycle % 3 == 0) loadSystemHealth(token)
                     }
                     .onFailure { Log.w(TAG, "No se pudo actualizar el resumen administrativo", it) }
             }
@@ -360,8 +360,8 @@ class AdminPanelViewModel @Inject constructor(
             }
     }
 
-    private suspend fun loadSystemHealth() {
-        localFallbackApiClient.loadSystemHealth()
+    private suspend fun loadSystemHealth(token: String) {
+        localFallbackApiClient.loadSystemHealth(token)
             .onSuccess { _systemHealth.value = it }
             .onFailure {
                 Log.w(TAG, "No se pudo cargar el estado de servicios", it)

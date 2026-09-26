@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -14,11 +14,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -31,7 +33,6 @@ import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.messages.ConversationsScreen
 import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.profile.ProfileScreen
-import conectate.com.presentation.videos.VideosScreen
 import conectate.com.presentation.video.VideoFeedScreen
 import conectate.com.presentation.gaming.PlayMatchColors
 
@@ -40,7 +41,7 @@ sealed class BottomNavItem(
     val title: String,
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
-    object Messages : BottomNavItem(Screen.Messages.route, "Mensajes", Icons.Default.Message)
+    object Messages : BottomNavItem(Screen.Messages.route, "Mensajes", Icons.AutoMirrored.Filled.Message)
     object Videos : BottomNavItem(Screen.Videos.route, "Videos", Icons.Default.VideoLibrary)
     object Social : BottomNavItem(Screen.Social.route, "Social", Icons.Default.Public)
     object Games : BottomNavItem(Screen.Games.route, "Juegos", Icons.Default.SportsEsports)
@@ -66,32 +67,35 @@ fun HomeScreen(
     sharedUri: String? = null
 ) {
     val navController = rememberNavController()
-    val currentUserAvatarUrl by homeViewModel.currentUserAvatarUrl.collectAsState()
+    val currentUserAvatarUrl by homeViewModel.currentUserAvatarUrl.collectAsStateWithLifecycle()
+    // A tap on Videos is an explicit request for a new recommendation session.
+    // Keep this ephemeral so recreating the shell after leaving the app also
+    // starts cleanly instead of restoring the previous feed order.
+    var videoFeedRefreshToken by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(Unit) {
-        homeViewModel.refreshShellUserData()
-    }
-
-    val items = novvinBottomNavItems()
+    val items = remember { novvinBottomNavItems() }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val isVideoFeed = currentDestination?.hierarchy?.any { it.route == Screen.Videos.route } == true
     val isPlayMatch = currentDestination?.hierarchy?.any { destination ->
         destination.route == Screen.Games.route || destination.route?.startsWith("games_") == true
     } == true
-    val unreadBadge by homeViewModel.totalUnreadConversations.collectAsState()
+    val unreadBadge by homeViewModel.totalUnreadConversations.collectAsStateWithLifecycle()
 
     Scaffold(
+        modifier = Modifier.testTag("main-home"),
         bottomBar = {
             NavigationBar(
                 containerColor = if (isPlayMatch) PlayMatchColors.Surface else MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp,
+                // Tonal elevation mixed the red accent with the dark surface and produced brown.
+                tonalElevation = 0.dp,
                 // Material3 conserva el inset inferior del sistema. No se fija un máximo:
                 // en navegación de tres botones la barra puede crecer sin recortar controles.
                 modifier = Modifier.heightIn(min = 64.dp),
             ) {
                 items.forEach { item ->
                     NavigationBarItem(
+                        modifier = Modifier.testTag("main-tab-${item.route}"),
                         icon = { 
                             BadgedBox(
                                 badge = {
@@ -147,6 +151,9 @@ fun HomeScreen(
                             unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                         ),
                         onClick = {
+                            if (item is BottomNavItem.Videos) {
+                                videoFeedRefreshToken += 1L
+                            }
                             navController.navigate(item.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
@@ -207,10 +214,11 @@ fun HomeScreen(
             }
             
             composable(Screen.Videos.route) {
-                // VideosScreen(navController = navController) // Old Grid
                 conectate.com.presentation.video.VideoFeedScreen(
                     navController = navController,
-                    onNavigateToUpload = {
+                    feedRefreshToken = videoFeedRefreshToken,
+                    onNavigateToUpload = { sound ->
+                        conectate.com.presentation.video.savePendingVideoSound(mainNavController, sound)
                         mainNavController.navigate(Screen.VideoUpload.route)
                     },
                     onNavigateToSearch = {
@@ -282,12 +290,17 @@ fun HomeScreen(
                 )
             }
 
+            composable(Screen.OfflineVideos.route) {
+                conectate.com.presentation.videos.OfflineVideosScreen(navController = navController)
+            }
+
             composable(Screen.Games.route) {
                 conectate.com.presentation.gaming.GamesHomeScreen(
                     onOpenProfile = { navController.navigate(Screen.GamingProfile.route) { launchSingleTop = true } },
                     onOpenAddGame = { navController.navigate(Screen.AddGame.route) { launchSingleTop = true } },
                     onOpenPlayer = { playerId -> navController.navigate(Screen.PlayerDetail.createRoute(playerId)) },
                     onMatchFound = { sessionId -> navController.navigate(Screen.MatchFound.createRoute(sessionId)) { launchSingleTop = true } },
+                    onOpenChat = { userId -> mainNavController.navigate(Screen.Chat.createRoute(userId)) },
                 )
             }
 
@@ -343,7 +356,10 @@ fun HomeScreen(
                 conectate.com.presentation.video.VideoFeedScreen(
                     navController = navController,
                     initialVideoId = backStackEntry.arguments?.getString("videoId"),
-                    onNavigateToUpload = { mainNavController.navigate(Screen.VideoUpload.route) },
+                    onNavigateToUpload = { sound ->
+                        conectate.com.presentation.video.savePendingVideoSound(mainNavController, sound)
+                        mainNavController.navigate(Screen.VideoUpload.route)
+                    },
                     onNavigateToSearch = { mainNavController.navigate(Screen.SearchUsers.route) },
                     onNavigateToProfile = { userId ->
                         mainNavController.navigate(Screen.UserProfile.createRoute(userId))
@@ -375,7 +391,10 @@ fun HomeScreen(
                 conectate.com.presentation.video.VideoFeedScreen(
                     navController = navController,
                     initialVideoId = backStackEntry.arguments?.getString("videoId"),
-                    onNavigateToUpload = { mainNavController.navigate(Screen.VideoUpload.route) },
+                    onNavigateToUpload = { sound ->
+                        conectate.com.presentation.video.savePendingVideoSound(mainNavController, sound)
+                        mainNavController.navigate(Screen.VideoUpload.route)
+                    },
                     onNavigateToSearch = { mainNavController.navigate(Screen.SearchUsers.route) },
                     onNavigateToProfile = { userId ->
                         mainNavController.navigate(Screen.UserProfile.createRoute(userId))
@@ -407,10 +426,6 @@ fun HomeScreen(
 
             composable(Screen.ChatSettings.route) {
                 conectate.com.presentation.settings.ChatSettingsScreen(navController = navController)
-            }
-
-            composable(Screen.OfflineVideos.route) {
-                conectate.com.presentation.videos.OfflineVideosScreen(navController = navController)
             }
 
             composable(Screen.CustomizeApp.route) {
@@ -525,6 +540,25 @@ fun HomeScreen(
                 )
             }
 
+            composable(
+                route = Screen.MomentHighlightViewer.route,
+                arguments = listOf(
+                    androidx.navigation.navArgument("highlightId") {
+                        type = androidx.navigation.NavType.StringType
+                    },
+                    androidx.navigation.navArgument("title") {
+                        type = androidx.navigation.NavType.StringType
+                        defaultValue = "Momentos destacados"
+                    }
+                )
+            ) { backStackEntry ->
+                conectate.com.presentation.social.MomentHighlightViewerScreen(
+                    navController = navController,
+                    highlightId = backStackEntry.arguments?.getString("highlightId").orEmpty(),
+                    title = backStackEntry.arguments?.getString("title").orEmpty()
+                )
+            }
+
             // ✅ FIX: Add Notifications route to HomeScreen NavHost (was missing, causing freeze)
             composable(Screen.Notifications.route) {
                 conectate.com.presentation.profile.NotificationScreen(navController = navController)
@@ -532,6 +566,10 @@ fun HomeScreen(
 
             composable(Screen.NotificationSettings.route) {
                 conectate.com.presentation.profile.NotificationSettingsScreen(navController = navController)
+            }
+
+            composable(Screen.ContentSafety.route) {
+                conectate.com.presentation.settings.ContentSafetyScreen(navController = navController)
             }
 
             // ✅ FIX: Add Ranking route to HomeScreen NavHost

@@ -2,6 +2,15 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { publishRealtimeEvent } = require('./realtime-publish')
+const { stableKey } = require('./request-security')
+const { safeErrorLogDetails } = require('./request-observability')
+const {
+  ADMIN_ACCESS_RANK,
+  ADMIN_CAPABILITY,
+  adminAccessContract,
+  hasAdminCapability,
+  normalizeAdminAccessLevel,
+} = require('./admin-capabilities')
 
 const DEFAULT_STORAGE_ROOT = path.resolve(
   process.env.STORAGE_ROOT || path.join(process.cwd(), 'storage-data'),
@@ -30,6 +39,8 @@ const HARD_DELETE_LOCK_TABLES = [
   'fallback_friends',
   'fallback_live_comments',
   'fallback_live_streams',
+  'fallback_message_pin_events',
+  'fallback_message_pins',
   'fallback_messages',
   'fallback_moderation_appeals',
   'fallback_moderation_decisions',
@@ -48,6 +59,8 @@ const HARD_DELETE_LOCK_TABLES = [
   'fallback_profile_moderation',
   'fallback_profile_overrides',
   'fallback_proximity_presence',
+  'fallback_random_bottle_availability',
+  'fallback_random_chat_bottles',
   'fallback_random_chat_messages',
   'fallback_random_chat_queue',
   'fallback_random_chat_sessions',
@@ -55,6 +68,7 @@ const HARD_DELETE_LOCK_TABLES = [
   'fallback_room_messages',
   'fallback_scheduled_message_jobs',
   'fallback_saved_collections',
+  'fallback_saved_messages',
   'fallback_saved_posts',
   'fallback_shares',
   'fallback_storage_objects',
@@ -63,7 +77,11 @@ const HARD_DELETE_LOCK_TABLES = [
   'fallback_video_comment_reactions',
   'fallback_video_comment_reports',
   'fallback_video_comments',
+  'fallback_video_collection_items',
+  'fallback_video_collections',
   'fallback_video_favorites',
+  'fallback_video_playback_history',
+  'fallback_video_watch_later',
   'fallback_video_likes',
   'fallback_video_metrics',
   'fallback_video_reports',
@@ -84,6 +102,7 @@ const IMPORT_IDENTITY_FIELDS = [
   'blocker_id',
   'created_by',
   'creator_id',
+  'current_recipient_id',
   'follower_id',
   'following_id',
   'forwarded_from_user_id',
@@ -107,6 +126,7 @@ const IMPORT_IDENTITY_FIELDS = [
   'voter_id',
 ]
 const IMPORT_IDENTITY_ARRAY_FIELDS = [
+  'attempted_recipient_ids',
   'excluded_ids',
   'member_ids',
   'participant_ids',
@@ -221,15 +241,8 @@ const MODERATION_RULE_CATALOG = Object.freeze([
 const ADMIN_BADGES_BY_ID = new Map(ADMIN_BADGE_CATALOG.map((badge) => [badge.id, badge]))
 const PROFILE_FRAME_IDS = new Set(PROFILE_FRAME_CATALOG.map((frame) => frame.id))
 const MODERATION_RULES_BY_ID = new Map(MODERATION_RULE_CATALOG.map((rule) => [rule.id, rule]))
-const ADMIN_ACCESS_RANK = Object.freeze({ none: 0, view: 1, write: 2, full: 3 })
-
 function normalizeId(value) {
   return String(value || '').trim().toLowerCase()
-}
-
-function normalizeAdminAccessLevel(value, fallback = 'none') {
-  const level = normalizeId(value)
-  return Object.prototype.hasOwnProperty.call(ADMIN_ACCESS_RANK, level) ? level : fallback
 }
 
 function normalizeBadgeIds(value, catalog = ADMIN_BADGE_CATALOG) {
@@ -569,6 +582,10 @@ async function ensureAdminModerationTables(pool) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_profile_moderation_active
+     ON fallback_profile_moderation(lower(user_id), is_suspended, suspended_until)`,
+  )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_moderation_decisions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -697,6 +714,10 @@ async function isAppAdmin(pool, identity) {
   return access.level !== 'none'
 }
 
+async function appAdminHasCapability(pool, identity, capability) {
+  return hasAdminCapability(await appAdminAccess(pool, identity), capability)
+}
+
 async function appAdminAccess(pool, identity) {
   const identityValues = Array.from(new Set([
     identity?.localUserId,
@@ -780,9 +801,13 @@ async function lockHardDeleteTables(client) {
 
 function storagePathForRow(row, storageRoot) {
   const root = path.resolve(storageRoot)
-  const fallbackPath = path.join(root, String(row?.bucket_id || ''), String(row?.name || ''))
-  const filePath = path.resolve(String(row?.local_path || '').trim() || fallbackPath)
-  if (filePath === root || !filePath.startsWith(`${root}${path.sep}`)) {
+  const expectedPath = path.resolve(root, String(row?.bucket_id || ''), String(row?.name || ''))
+  const filePath = path.resolve(String(row?.local_path || '').trim() || expectedPath)
+  if (
+    expectedPath === root ||
+    !expectedPath.startsWith(`${root}${path.sep}`) ||
+    filePath !== expectedPath
+  ) {
     throw hardDeleteError('HARD_DELETE_STORAGE_PATH_OUTSIDE_ROOT', 500)
   }
   return filePath
@@ -965,9 +990,25 @@ async function deleteCounted(client, counts, label, statement, params) {
 async function purgeFallbackUserData(client, localUserId, identityValues, relations) {
   const r = relations
   const counts = {}
+  const markerRoomIds = [...r.chatIds, ...r.roomIds]
   const steps = [
     ['saved_posts', `DELETE FROM fallback_saved_posts WHERE lower(user_id) = ANY($1::text[]) OR lower(post_id) = ANY($2::text[])`, [identityValues, r.postIds]],
     ['saved_collections', `DELETE FROM fallback_saved_collections WHERE lower(user_id) = ANY($1::text[])`, [identityValues]],
+    ['saved_messages', `DELETE FROM fallback_saved_messages WHERE lower(user_id) = ANY($1::text[])
+      OR lower(room_id) = ANY($2::text[]) OR lower(message_id) IN
+      (SELECT lower(id::text) FROM fallback_messages WHERE lower(sender_id) = ANY($1::text[])
+       UNION SELECT lower(id::text) FROM fallback_room_messages WHERE lower(sender_id) = ANY($1::text[]))`,
+    [identityValues, markerRoomIds]],
+    ['message_pins', `DELETE FROM fallback_message_pins WHERE lower(pinned_by) = ANY($1::text[])
+      OR lower(room_id) = ANY($2::text[]) OR lower(message_id) IN
+      (SELECT lower(id::text) FROM fallback_messages WHERE lower(sender_id) = ANY($1::text[])
+       UNION SELECT lower(id::text) FROM fallback_room_messages WHERE lower(sender_id) = ANY($1::text[]))`,
+    [identityValues, markerRoomIds]],
+    ['message_pin_events', `DELETE FROM fallback_message_pin_events WHERE lower(actor_id) = ANY($1::text[])
+      OR lower(room_id) = ANY($2::text[]) OR lower(message_id) IN
+      (SELECT lower(id::text) FROM fallback_messages WHERE lower(sender_id) = ANY($1::text[])
+       UNION SELECT lower(id::text) FROM fallback_room_messages WHERE lower(sender_id) = ANY($1::text[]))`,
+    [identityValues, markerRoomIds]],
     ['post_comment_reactions', `DELETE FROM fallback_post_comment_reactions WHERE lower(user_id) = ANY($1::text[]) OR lower(comment_id) = ANY($2::text[])`, [identityValues, r.postCommentIds]],
     ['post_comments', `DELETE FROM fallback_post_comments WHERE lower(user_id) = ANY($1::text[]) OR lower(post_id) = ANY($2::text[])`, [identityValues, r.postIds]],
     ['post_reactions', `DELETE FROM fallback_post_reactions WHERE lower(user_id) = ANY($1::text[]) OR lower(post_id) = ANY($2::text[])`, [identityValues, r.postIds]],
@@ -979,7 +1020,11 @@ async function purgeFallbackUserData(client, localUserId, identityValues, relati
     ['video_comments', `DELETE FROM fallback_video_comments WHERE lower(user_id) = ANY($1::text[]) OR lower(video_id) = ANY($2::text[])`, [identityValues, r.videoIds]],
     ['video_likes', `DELETE FROM fallback_video_likes WHERE lower(user_id) = ANY($1::text[]) OR lower(video_id) = ANY($2::text[])`, [identityValues, r.videoIds]],
     ['video_favorites', `DELETE FROM fallback_video_favorites WHERE lower(user_id) = ANY($1::text[]) OR lower(video_id) = ANY($2::text[])`, [identityValues, r.videoIds]],
+    ['video_collection_items', `DELETE FROM fallback_video_collection_items WHERE lower(video_id) = ANY($1::text[])`, [r.videoIds]],
+    ['video_collections', `DELETE FROM fallback_video_collections WHERE lower(user_id) = ANY($1::text[])`, [identityValues]],
     ['video_views', `DELETE FROM fallback_video_views WHERE lower(user_id) = ANY($1::text[]) OR lower(video_id) = ANY($2::text[])`, [identityValues, r.videoIds]],
+    ['video_playback_history', `DELETE FROM fallback_video_playback_history WHERE lower(user_id) = ANY($1::text[]) OR lower(video_id) = ANY($2::text[])`, [identityValues, r.videoIds]],
+    ['video_watch_later', `DELETE FROM fallback_video_watch_later WHERE lower(user_id) = ANY($1::text[]) OR lower(video_id) = ANY($2::text[])`, [identityValues, r.videoIds]],
     ['video_reports', `DELETE FROM fallback_video_reports WHERE lower(COALESCE(reporter_id, '')) = ANY($1::text[]) OR lower(COALESCE(video_owner_id, '')) = ANY($1::text[]) OR lower(COALESCE(video_id, '')) = ANY($2::text[])`, [identityValues, r.videoIds]],
     ['video_metrics', `DELETE FROM fallback_video_metrics WHERE lower(video_id) = ANY($1::text[])`, [r.videoIds]],
     ['videos', `DELETE FROM fallback_videos WHERE lower(id::text) = ANY($1::text[]) OR lower(user_id) = ANY($2::text[])`, [r.videoIds, identityValues]],
@@ -991,6 +1036,8 @@ async function purgeFallbackUserData(client, localUserId, identityValues, relati
     ['challenges_master', `DELETE FROM fallback_challenges_master WHERE lower(id::text) = ANY($1::text[]) OR lower(COALESCE(creator_id, '')) = ANY($2::text[])`, [r.challengeIds, identityValues]],
     ['live_comments', `DELETE FROM fallback_live_comments WHERE lower(user_id) = ANY($1::text[]) OR lower(live_id::text) = ANY($2::text[])`, [identityValues, r.liveIds]],
     ['live_streams', `DELETE FROM fallback_live_streams WHERE lower(id::text) = ANY($1::text[]) OR lower(host_user_id) = ANY($2::text[])`, [r.liveIds, identityValues]],
+    ['random_bottle_availability', `DELETE FROM fallback_random_bottle_availability WHERE lower(user_id) = ANY($1::text[])`, [identityValues]],
+    ['random_chat_bottles', `DELETE FROM fallback_random_chat_bottles WHERE lower(sender_id) = ANY($1::text[]) OR lower(COALESCE(current_recipient_id, '')) = ANY($1::text[]) OR lower(COALESCE(session_id::text, '')) = ANY($2::text[])`, [identityValues, r.randomSessionIds]],
     ['random_chat_messages', `DELETE FROM fallback_random_chat_messages WHERE lower(sender_id) = ANY($1::text[]) OR lower(session_id::text) = ANY($2::text[])`, [identityValues, r.randomSessionIds]],
     ['random_chat_sessions', `DELETE FROM fallback_random_chat_sessions WHERE lower(id::text) = ANY($1::text[]) OR lower(user_a) = ANY($2::text[]) OR lower(user_b) = ANY($2::text[])`, [r.randomSessionIds, identityValues]],
     ['random_chat_queue', `DELETE FROM fallback_random_chat_queue WHERE lower(user_id) = ANY($1::text[])`, [identityValues]],
@@ -1121,8 +1168,8 @@ async function executeAdminHardDelete(options) {
   try {
     await client.query('BEGIN')
     transactionStarted = true
-    if (!(await isAppAdmin(client, options.actorIdentity))) {
-      throw hardDeleteError('ADMIN_REQUIRED', 403)
+    if (!(await appAdminHasCapability(client, options.actorIdentity, ADMIN_CAPABILITY.USERS_DELETE))) {
+      throw hardDeleteError('ADMIN_OWNER_REQUIRED', 403)
     }
     const targetResult = await client.query(
        `SELECT u.id::text,
@@ -1314,9 +1361,9 @@ async function executeAdminHardDelete(options) {
     const restoreFailures = await restoreStagedStorage(storageState, storageFs)
     if (restoreFailures.length > 0 || error.rollbackError) {
       console.error('[admin-hard-delete] rollback was incomplete', {
-        code: error.code || error.message,
         restoreFailures: restoreFailures.length,
         rollbackFailed: Boolean(error.rollbackError),
+        ...safeErrorLogDetails(error),
       })
       throw hardDeleteError('HARD_DELETE_ROLLBACK_INCOMPLETE', 500, {
         cause: error,
@@ -1332,9 +1379,9 @@ async function executeAdminHardDelete(options) {
     await finalizeStagedStorage(storageState, storageFs)
   } catch (error) {
     console.error('[admin-hard-delete] database committed but quarantined storage purge failed', {
-      deletionId,
+      deletionRef: stableKey(deletionId),
       stagedObjects: storageState.entries.length,
-      error: error.message,
+      ...safeErrorLogDetails(error),
     })
     throw hardDeleteError('HARD_DELETE_COMMITTED_STORAGE_PURGE_FAILED', 500, {
       cause: error,
@@ -1358,8 +1405,26 @@ function registerAdminModerationRoutes(app, {
   userIdentity,
   deleteExternalAuthUser,
   invalidateProfileCache = () => {},
+  signStorageObjectReference = (_req, value) => value,
 }) {
-  async function adminGuard(req, res, { minimum = 'write', ownerOnly = false } = {}) {
+  function signEvidenceUrls(req, values) {
+    return (Array.isArray(values) ? values : [])
+      .map((value) => signStorageObjectReference(req, value))
+      .filter(Boolean)
+  }
+
+  function signReportEvidence(req, row) {
+    if (!row) return row
+    return {
+      ...row,
+      evidence_url: signStorageObjectReference(req, row.evidence_url),
+    }
+  }
+  async function adminGuard(req, res, {
+    capability = null,
+    minimum,
+    ownerOnly = false,
+  } = {}) {
     const user = await getCurrentUser(pool, req)
     if (!user) {
       res.status(404).json({ error: 'USER_NOT_FOUND' })
@@ -1371,12 +1436,15 @@ function registerAdminModerationRoutes(app, {
       res.status(403).json({ error: 'ADMIN_REQUIRED' })
       return null
     }
-    if (ownerOnly && !access.isOwner) {
+    const requiredCapability = ownerOnly
+      ? ADMIN_CAPABILITY.ACCESS_MANAGE
+      : capability || (minimum === 'view' ? ADMIN_CAPABILITY.READ : ADMIN_CAPABILITY.MODERATION_MANAGE)
+    if (ownerOnly && !hasAdminCapability(access, requiredCapability)) {
       res.status(403).json({ error: 'ADMIN_OWNER_REQUIRED' })
       return null
     }
-    if ((ADMIN_ACCESS_RANK[access.level] || 0) < (ADMIN_ACCESS_RANK[minimum] || 0)) {
-      res.status(403).json({ error: 'ADMIN_WRITE_REQUIRED' })
+    if (!ownerOnly && !hasAdminCapability(access, requiredCapability)) {
+      res.status(403).json({ error: 'ADMIN_CAPABILITY_REQUIRED', capability: requiredCapability })
       return null
     }
     return { user, identity, access }
@@ -1497,13 +1565,7 @@ function registerAdminModerationRoutes(app, {
     try {
       const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
-      res.json({
-        isAdmin: true,
-        accessLevel: context.access.level,
-        isOwner: context.access.isOwner,
-        canWrite: ADMIN_ACCESS_RANK[context.access.level] >= ADMIN_ACCESS_RANK.write,
-        canDeleteUsers: context.access.isOwner,
-      })
+      res.json(adminAccessContract(context.access))
     } catch (error) {
       next(error)
     }
@@ -2085,7 +2147,12 @@ function registerAdminModerationRoutes(app, {
          LIMIT 300`,
         params,
       )
-      res.json({ items: rows })
+      res.json({
+        items: rows.map((row) => ({
+          ...row,
+          evidence_urls: signEvidenceUrls(req, row.evidence_urls),
+        })),
+      })
     } catch (error) {
       next(error)
     }
@@ -2202,7 +2269,7 @@ function registerAdminModerationRoutes(app, {
       const { rows } = await pool.query(
         `SELECT * FROM fallback_reports ORDER BY created_at DESC LIMIT 200`
       )
-      res.json({ items: rows })
+      res.json({ items: rows.map((row) => signReportEvidence(req, row)) })
     } catch (error) {
       next(error)
     }
@@ -2386,6 +2453,8 @@ module.exports = {
   ADMIN_BADGE_CATALOG,
   MODERATION_RULE_CATALOG,
   PROFILE_FRAME_CATALOG,
+  appAdminAccess,
+  appAdminHasCapability,
   ensureAdminModerationTables,
   executeAdminHardDelete,
   hardDeleteConfirmation,

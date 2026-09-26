@@ -34,9 +34,14 @@ data class ProfileThemeColors(
 
 private val palettes = listOf(
     ThemePalette(
+        AppThemeOption.NEUTRO,
+        Color(0xFF202124), Color(0xFF5F6368), Color(0xFF74777C), Color(0xFFFFFFFF), Color(0xFFF7F7F8),
+        Color(0xFFF2F2F4), Color(0xFFB9BBC1), Color(0xFF94969C), Color(0xFF0B0B0D), Color(0xFF151519)
+    ),
+    ThemePalette(
         AppThemeOption.CONECTATE,
         Color(0xFFB3261E), Color(0xFF006A6A), Color(0xFF7A5900), Color(0xFFFFFBFF), Color(0xFFFFF8F7),
-        Color(0xFFFFB4AB), Color(0xFF4DDAD3), Color(0xFFF2C14E), Color(0xFF181211), Color(0xFF211918)
+        Color(0xFFFFB4AB), Color(0xFF4DDAD3), Color(0xFFF2C14E), Color(0xFF0B0B0D), Color(0xFF151519)
     ),
     ThemePalette(
         AppThemeOption.OCEANO,
@@ -163,16 +168,48 @@ private fun paletteFor(option: AppThemeOption): ThemePalette =
 private fun foregroundFor(background: Color): Color =
     if (background.luminance() > 0.179f) Color.Black else Color.White
 
+private fun darkSurfaceFrom(accent: Color, intensity: Float): Color = Color(
+    red = (accent.red * intensity).coerceIn(0f, 1f),
+    green = (accent.green * intensity).coerceIn(0f, 1f),
+    blue = (accent.blue * intensity).coerceIn(0f, 1f),
+    alpha = 1f
+)
+
 private fun themedColorScheme(palette: ThemePalette, dark: Boolean): ColorScheme {
     val primary = if (dark) palette.darkPrimary else palette.lightPrimary
     val secondary = if (dark) palette.darkSecondary else palette.lightSecondary
     val tertiary = if (dark) palette.darkTertiary else palette.lightTertiary
-    val background = if (dark) palette.darkBackground else palette.lightBackground
-    val surface = if (dark) palette.darkSurface else palette.lightSurface
-    val primaryContainer = lerp(primary, background, if (dark) 0.62f else 0.78f)
-    val secondaryContainer = lerp(secondary, background, if (dark) 0.64f else 0.82f)
-    val tertiaryContainer = lerp(tertiary, background, if (dark) 0.64f else 0.82f)
-    val surfaceVariant = lerp(secondary, surface, if (dark) 0.82f else 0.91f)
+    val usesDefaultDarkCanvas = palette.option == AppThemeOption.NEUTRO
+    val background = when {
+        !dark -> palette.lightBackground
+        usesDefaultDarkCanvas -> palette.darkBackground
+        // A custom color is a complete canvas, not an overlay on top of dark mode.
+        // Using the theme's opaque base hue prevents the previous black/red canvas
+        // from bleeding through and producing muddy brown combinations.
+        else -> palette.lightPrimary
+    }
+    val surface = when {
+        !dark -> palette.lightSurface
+        usesDefaultDarkCanvas -> palette.darkSurface
+        else -> darkSurfaceFrom(palette.lightPrimary, intensity = 0.78f)
+    }
+    val customDarkTheme = dark && !usesDefaultDarkCanvas
+    val primaryContainer = when {
+        customDarkTheme -> darkSurfaceFrom(palette.lightPrimary, intensity = 0.62f)
+        // Do not blend legacy red with the dark canvas: that interpolation was the
+        // remaining brown color visible in selected tabs and cards.
+        dark -> primary
+        else -> lerp(primary, background, 0.78f)
+    }
+    val secondaryContainer = if (customDarkTheme) surface else
+        lerp(secondary, background, if (dark) 0.64f else 0.82f)
+    val tertiaryContainer = if (customDarkTheme) surface else
+        lerp(tertiary, background, if (dark) 0.64f else 0.82f)
+    val surfaceVariant = if (customDarkTheme) {
+        darkSurfaceFrom(palette.lightPrimary, intensity = 0.90f)
+    } else {
+        lerp(secondary, surface, if (dark) 0.82f else 0.91f)
+    }
     val outline = lerp(foregroundFor(background), background, if (dark) 0.48f else 0.56f)
     val error = if (dark) Color(0xFFFFB4AB) else Color(0xFFBA1A1A)
     val errorContainer = if (dark) Color(0xFF93000A) else Color(0xFFFFDAD6)
@@ -194,6 +231,9 @@ private fun themedColorScheme(palette: ThemePalette, dark: Boolean): ColorScheme
             background = background,
             onBackground = foregroundFor(background),
             surface = surface,
+            // Do not let Material 3 mix the active accent into elevated surfaces.
+            // Each Novvin theme owns its complete opaque canvas.
+            surfaceTint = Color.Transparent,
             onSurface = foregroundFor(surface),
             surfaceVariant = surfaceVariant,
             onSurfaceVariant = foregroundFor(surfaceVariant),
@@ -225,6 +265,7 @@ private fun themedColorScheme(palette: ThemePalette, dark: Boolean): ColorScheme
             background = background,
             onBackground = foregroundFor(background),
             surface = surface,
+            surfaceTint = Color.Transparent,
             onSurface = foregroundFor(surface),
             surfaceVariant = surfaceVariant,
             onSurfaceVariant = foregroundFor(surfaceVariant),
@@ -249,7 +290,16 @@ fun appColorScheme(option: AppThemeOption, dark: Boolean): ColorScheme =
 fun appThemePreviewColors(option: AppThemeOption, dark: Boolean): List<Color> {
     val palette = paletteFor(option)
     return if (dark) {
-        listOf(palette.darkPrimary, palette.darkSecondary, palette.darkTertiary)
+        if (option == AppThemeOption.NEUTRO) {
+            listOf(palette.darkPrimary, palette.darkSecondary, palette.darkTertiary)
+        } else {
+            // Preview the same opaque canvas that will actually replace dark mode.
+            listOf(
+                palette.lightPrimary,
+                darkSurfaceFrom(palette.lightPrimary, intensity = 0.78f),
+                palette.darkPrimary,
+            )
+        }
     } else {
         listOf(palette.lightPrimary, palette.lightSecondary, palette.lightTertiary)
     }

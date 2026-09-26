@@ -12,8 +12,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -48,9 +48,14 @@ import conectate.com.presentation.navigation.Screen
 import conectate.com.data.repository.AuthRepository
 import conectate.com.data.model.Video
 import conectate.com.data.model.VideoComment
+import conectate.com.data.model.videoChapterTimeLabel
+import conectate.com.data.model.parseVideoChapterTime
+import conectate.com.data.model.validVideoClipRange
+import conectate.com.data.model.videoClipLink
 import conectate.com.data.repository.VideoRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.repository.ShareRepository
+import conectate.com.data.local.prefs.AppSettingsPreferences
 import conectate.com.data.supabase.AuthService
 import conectate.com.presentation.common.ConnectivityViewModel
 import conectate.com.presentation.common.AppFeedbackBus
@@ -58,6 +63,11 @@ import conectate.com.presentation.common.toUserFacingMessage
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.OfflineNoticeBar
 import conectate.com.presentation.video.RealPlaybackViewTracker
+import conectate.com.presentation.video.VideoPlaybackRecoveryDecision
+import conectate.com.presentation.video.VideoPlaybackRecoveryRunner
+import conectate.com.presentation.video.VideoHistoryViewModel
+import conectate.com.presentation.video.decideVideoPlaybackRecovery
+import conectate.com.data.localfallback.RuntimeBackendEndpoint
 import conectate.com.util.AudioRecorder
 import conectate.com.util.UbuntuMedia
 import conectate.com.util.VideoCache
@@ -70,11 +80,13 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import android.media.MediaPlayer
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
+import androidx.compose.material.icons.automirrored.filled.Comment
 
 sealed class VideoPlayerUiState {
     object Loading : VideoPlayerUiState()
@@ -93,12 +105,11 @@ class VideoPlayerViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val userRepository: UserRepository,
     private val voiceMessageManager: conectate.com.presentation.messages.VoiceMessageManager,
-    private val shareRepository: ShareRepository
+    private val shareRepository: ShareRepository,
+    appSettingsPreferences: AppSettingsPreferences,
 ) : ViewModel() {
 
-    init {
-        voiceMessageManager.setScope(viewModelScope)
-    }
+    val videoAutoplayOnMobile = appSettingsPreferences.videoAutoplayOnMobile
 
     private val videoId: String = checkNotNull(savedStateHandle["videoId"])
 
@@ -163,7 +174,11 @@ class VideoPlayerViewModel @Inject constructor(
                 val videoResult = videoRepository.getVideoById(videoId)
                 videoResult.fold(
                     onSuccess = { video ->
+                        if (!isCurrentPlaybackAccount()) return@fold
                         _isLiked.value = video.likedByMe
+                        // Comments are optional for playback. Publish the
+                        // media immediately before their independent lookup.
+                        _uiState.value = VideoPlayerUiState.Success(video, emptyList(), video.likedByMe)
                         // Counts are handled by observeStats() to ensure single source of truth (Room + Realtime)
                         // _likeCount.value = video.likeCount
                         // _commentCount.value = video.commentCount
@@ -174,17 +189,35 @@ class VideoPlayerViewModel @Inject constructor(
                         observeComments()
                     },
                     onFailure = { error ->
+                        if (!isCurrentPlaybackAccount()) return@fold
                         _uiState.value = VideoPlayerUiState.Error(
                             error.toUserFacingMessage("Este video ya no está disponible.")
                         )
                     }
                 )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
-                _uiState.value = VideoPlayerUiState.Error(
-                    e.toUserFacingMessage("Este video ya no está disponible.")
-                )
+                if (isCurrentPlaybackAccount() && _uiState.value !is VideoPlayerUiState.Success) {
+                    _uiState.value = VideoPlayerUiState.Error(
+                        e.toUserFacingMessage("Este video ya no está disponible.")
+                    )
+                }
             }
         }
+    }
+
+    fun isCurrentPlaybackAccount(): Boolean = currentUserId == authRepository.getCurrentUserId()
+
+    suspend fun refreshPlaybackVideo(): Video? {
+        if (!isCurrentPlaybackAccount()) return null
+        return videoRepository.getVideo(videoId).getOrNull()?.takeIf { isCurrentPlaybackAccount() }
+    }
+
+    fun updatePlaybackUrl(videoUrl: String) {
+        if (!isCurrentPlaybackAccount()) return
+        val state = _uiState.value as? VideoPlayerUiState.Success ?: return
+        _uiState.value = state.copy(video = state.video.copy(videoUrl = videoUrl))
     }
 
     private fun observeStats() {
@@ -293,6 +326,7 @@ class VideoPlayerViewModel @Inject constructor(
             }
             .getOrNull()
             ?: emptyList()
+        if (!isCurrentPlaybackAccount()) return
         val currentState = _uiState.value
         val nextComments = loaded
         if (currentState is VideoPlayerUiState.Success) {
@@ -607,11 +641,15 @@ class VideoPlayerViewModel @Inject constructor(
         }
     }
 
-    fun updateVideo(title: String, description: String, isPublic: Boolean, onSuccess: () -> Unit) {
+    fun updateVideo(title: String, description: String, isPublic: Boolean,
+                    allowClipSharing: Boolean, onSuccess: () -> Unit) {
         viewModelScope.launch {
-            videoRepository.updateVideo(videoId, title, description, isPublic).onSuccess {
+            videoRepository.updateVideo(videoId, title, description, isPublic,
+                allowClipSharing).onSuccess {
                  onSuccess()
                  loadVideo() // Reload to reflect changes
+            }.onFailure { error ->
+                AppFeedbackBus.show(error.toUserFacingMessage("No se pudo guardar el video."))
             }
         }
     }
@@ -678,9 +716,12 @@ class VideoPlayerViewModel @Inject constructor(
 fun VideoPlayerScreen(
     navController: NavController,
     focusCommentId: String? = null,
+    initialPositionMs: Long = 0L,
+    initialClipEndMs: Long = 0L,
     viewModel: VideoPlayerViewModel = hiltViewModel(),
     connectivityViewModel: ConnectivityViewModel = hiltViewModel()
 ) {
+    val historyViewModel: VideoHistoryViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsState()
     val commentText by viewModel.commentText.collectAsState()
     val replyingTo by viewModel.replyingTo.collectAsState()
@@ -704,12 +745,17 @@ fun VideoPlayerScreen(
     val commentCount by viewModel.commentCount.collectAsState()
     val shareCount by viewModel.shareCount.collectAsState()
     val isConnected by connectivityViewModel.isConnected.collectAsState()
+    val isCellular by connectivityViewModel.isCellular.collectAsState()
+    val videoAutoplayOnMobile by viewModel.videoAutoplayOnMobile.collectAsState()
+    val cellularAutoplayBlocked = isCellular && !videoAutoplayOnMobile
     
     var showInternalShareDialog by remember { mutableStateOf(false) }
     var showReportDialog by remember { mutableStateOf(false) }
     var showStickerPanel by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     var focusResolved by remember(focusCommentId) { mutableStateOf(focusCommentId.isNullOrBlank()) }
+    var commentOrder by remember { mutableStateOf(VideoCommentOrder.RECENT) }
+    var commentAuthorFilter by remember { mutableStateOf(VideoCommentAuthorFilter.ALL) }
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -718,8 +764,33 @@ fun VideoPlayerScreen(
             lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
         )
     }
-    var playbackRequested by remember { mutableStateOf(true) }
+    var playbackRequested by remember { mutableStateOf(!cellularAutoplayBlocked) }
     val currentVideo = (uiState as? VideoPlayerUiState.Success)?.video
+    var mediaDurationMs by remember(currentVideo?.id) { mutableLongStateOf(0L) }
+    val linkedClip = currentVideo?.takeIf { it.isPublic && it.allowClipSharing }
+        ?.let { validVideoClipRange(initialPositionMs, initialClipEndMs,
+            mediaDurationMs.takeIf { duration -> duration > 0L } ?:
+                (it.duration.takeIf { seconds -> seconds in 1L..86_400L } ?: 0L) * 1_000L) }
+    val latestLinkedClip = rememberUpdatedState(linkedClip)
+    var rejectedClipLink by remember(currentVideo?.id) { mutableStateOf(false) }
+    var initialClipApplied by remember(currentVideo?.id) { mutableStateOf(false) }
+    var showClipComposer by remember(currentVideo?.id) { mutableStateOf(false) }
+    var clipStartText by remember(currentVideo?.id) { mutableStateOf("") }
+    var clipEndText by remember(currentVideo?.id) { mutableStateOf("") }
+
+    LaunchedEffect(currentVideo?.id, cellularAutoplayBlocked) {
+        if (cellularAutoplayBlocked) playbackRequested = false
+    }
+    var automaticPlaybackAttempts by remember(currentVideo?.id) { mutableIntStateOf(0) }
+    var playbackError by remember(currentVideo?.id) { mutableStateOf(false) }
+    var playbackReloadSequence by remember(currentVideo?.id) { mutableIntStateOf(0) }
+    var lastLoadedMediaKey by remember(currentVideo?.id) { mutableStateOf<String?>(null) }
+    val playbackScope = rememberCoroutineScope()
+    val recoveryRunner = remember(playbackScope) { VideoPlaybackRecoveryRunner(playbackScope) }
+    val latestVideo = rememberUpdatedState(currentVideo)
+    DisposableEffect(recoveryRunner, currentVideo?.id) {
+        onDispose { recoveryRunner.cancel() }
+    }
     val playbackGateOpen = lifecycleResumed &&
         !showInternalShareDialog &&
         !showReportDialog &&
@@ -752,19 +823,70 @@ fun VideoPlayerScreen(
                 )
             )
             .build().apply {
+            setSeekParameters(androidx.media3.exoplayer.SeekParameters.EXACT)
             playWhenReady = false
         }
     }
 
-    LaunchedEffect(currentVideo?.id, currentVideo?.videoUrl) {
-        val video = currentVideo ?: return@LaunchedEffect
-        if (exoPlayer.mediaItemCount == 0) {
-            exoPlayer.setMediaItem(UbuntuMedia.mediaItem(video.videoUrl))
-            exoPlayer.prepare()
+    fun recoverPlayback(delayMs: Long, refreshEndpoint: Boolean, evictCache: Boolean = false) {
+        val videoId = latestVideo.value?.id ?: return
+        val failedUrl = exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
+        playbackError = false
+        recoveryRunner.schedule(
+            delayMs = delayMs,
+            isCurrent = {
+                latestVideo.value?.id == videoId && viewModel.isCurrentPlaybackAccount() &&
+                    exoPlayer.currentMediaItem?.mediaId == videoId
+            },
+            resolve = {
+                if (evictCache) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        VideoCache.removeResource(context.applicationContext, failedUrl)
+                    }
+                }
+                if (refreshEndpoint) RuntimeBackendEndpoint.refreshAfterEndpointFailure(failedUrl)
+                val refreshed = if (refreshEndpoint) viewModel.refreshPlaybackVideo() else null
+                refreshed ?: latestVideo.value
+            },
+            apply = { video ->
+                viewModel.updatePlaybackUrl(video.videoUrl)
+                playbackReloadSequence += 1
+            },
+            onFailure = { playbackError = true },
+        )
+    }
+
+    LaunchedEffect(currentVideo?.id, mediaDurationMs, linkedClip) {
+        if (!initialClipApplied && linkedClip != null && mediaDurationMs > 0L) {
+            initialClipApplied = true
+            exoPlayer.seekTo(linkedClip.startMs)
+        }
+        if (!rejectedClipLink && currentVideo != null && initialClipEndMs > 0L &&
+            mediaDurationMs > 0L && linkedClip == null) {
+            rejectedClipLink = true
+            exoPlayer.seekTo(0L)
+            AppFeedbackBus.show("Este fragmento ya no está permitido o quedó fuera del video.")
         }
     }
 
-    DisposableEffect(exoPlayer) {
+    LaunchedEffect(currentVideo?.id, currentVideo?.videoUrl, playbackReloadSequence) {
+        val video = currentVideo ?: return@LaunchedEffect
+        val resolvedUrl = UbuntuMedia.resolveUrl(video.videoUrl) ?: video.videoUrl
+        val mediaKey = "${video.id}|$resolvedUrl|$playbackReloadSequence"
+        if (mediaKey == lastLoadedMediaKey) return@LaunchedEffect
+
+        val resumePositionMs = exoPlayer.currentMediaItem
+            ?.takeIf { it.mediaId == video.id }
+            ?.let { exoPlayer.currentPosition.coerceAtLeast(0L) }
+            ?: (if (initialClipEndMs > 0L && linkedClip == null) 0L
+                else initialPositionMs.coerceAtLeast(0L))
+        exoPlayer.setMediaItem(UbuntuMedia.mediaItem(video.videoUrl, mediaId = video.id), resumePositionMs)
+        exoPlayer.prepare()
+        if (playbackGateOpen && playbackRequested) exoPlayer.play()
+        lastLoadedMediaKey = mediaKey
+    }
+
+    DisposableEffect(exoPlayer, currentVideo?.id) {
         val listener = object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 if (playbackGateOpenRef.get()) {
@@ -779,8 +901,32 @@ fun VideoPlayerScreen(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY && exoPlayer.duration > 0L) {
+                    mediaDurationMs = exoPlayer.duration
+                }
                 if (playbackState == Player.STATE_ENDED) {
                     playbackRequested = false
+                }
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                if (latestVideo.value == null) return
+                val httpStatus = generateSequence<Throwable>(error) { it.cause }.take(16)
+                    .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
+                    .firstOrNull()?.responseCode
+                when (
+                    val decision = decideVideoPlaybackRecovery(
+                        errorCode = error.errorCode,
+                        httpStatusCode = httpStatus,
+                        previousAttempts = automaticPlaybackAttempts,
+                    )
+                ) {
+                    is VideoPlaybackRecoveryDecision.Retry -> {
+                        automaticPlaybackAttempts = decision.attempt
+                        recoverPlayback(decision.delayMs, decision.refreshEndpoint, decision.evictCache)
+                    }
+
+                    VideoPlaybackRecoveryDecision.ShowError -> playbackError = true
                 }
             }
         }
@@ -789,7 +935,7 @@ fun VideoPlayerScreen(
     }
 
     DisposableEffect(lifecycleOwner, exoPlayer) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, _ ->
             lifecycleResumed = lifecycleOwner.lifecycle.currentState
                 .isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
             if (!lifecycleResumed) {
@@ -818,15 +964,29 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(currentVideo?.id, exoPlayer) {
         if (currentVideo == null) return@LaunchedEffect
+        var lastHistorySampleAtMs = 0L
         try {
             while (kotlinx.coroutines.currentCoroutineContext().isActive) {
                 viewModel.onVideoPlaybackSample(
                     isActuallyPlaying = exoPlayer.isPlaying,
                     elapsedRealtimeMs = android.os.SystemClock.elapsedRealtime()
                 )
+                val sampleAtMs = android.os.SystemClock.elapsedRealtime()
+                if (latestLinkedClip.value != null &&
+                    exoPlayer.currentPosition >= latestLinkedClip.value!!.endMs) {
+                    playbackRequested = false
+                    exoPlayer.pause()
+                }
+                if (exoPlayer.isPlaying && sampleAtMs - lastHistorySampleAtMs >= 5_000L) {
+                    historyViewModel.recordProgress(
+                        currentVideo.id, exoPlayer.currentPosition, exoPlayer.duration)
+                    lastHistorySampleAtMs = sampleAtMs
+                }
                 delay(250L)
             }
         } finally {
+            historyViewModel.recordProgress(
+                currentVideo.id, exoPlayer.currentPosition, exoPlayer.duration)
             viewModel.onVideoPlaybackSample(
                 isActuallyPlaying = false,
                 elapsedRealtimeMs = android.os.SystemClock.elapsedRealtime()
@@ -849,7 +1009,7 @@ fun VideoPlayerScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
-                            imageVector = Icons.Filled.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Volver"
                         )
                     }
@@ -872,7 +1032,7 @@ fun VideoPlayerScreen(
                             onDismissRequest = { expanded = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Editar publicación") },
+                                text = { Text("Editar video") },
                                 onClick = {
                                     expanded = false
                                     showEditDialog = true
@@ -882,7 +1042,7 @@ fun VideoPlayerScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Eliminar publicación", color = MaterialTheme.colorScheme.error) },
+                                text = { Text("Eliminar video", color = MaterialTheme.colorScheme.error) },
                                 onClick = {
                                     expanded = false
                                     showDeleteDialog = true
@@ -923,11 +1083,11 @@ fun VideoPlayerScreen(
                                 initialTitle = currentState.video.title,
                                 initialDescription = currentState.video.description,
                                 initialPublic = currentState.video.isPublic,
+                                initialAllowClipSharing = currentState.video.allowClipSharing,
                                 onDismiss = { showEditDialog = false },
-                                onConfirm = { title, desc, isPublic ->
-                                    showEditDialog = false
-                                    viewModel.updateVideo(title, desc, isPublic) {
-                                        // Success
+                                onConfirm = { title, desc, isPublic, allowClipSharing ->
+                                    viewModel.updateVideo(title, desc, isPublic, allowClipSharing) {
+                                        showEditDialog = false
                                     }
                                 }
                              )
@@ -1024,28 +1184,31 @@ fun VideoPlayerScreen(
                         AppFeedbackBus.show("Ese comentario fue eliminado o ya no está disponible.")
                     }
                 }
-                val topLevelComments = remember(state.comments) {
-                    state.comments.filter { it.parentId.isRootVideoCommentParent() }
-                }
-                val repliesByParent = remember(state.comments) {
-                    state.comments
-                        .filter { !it.parentId.isRootVideoCommentParent() }
-                        .groupBy { it.parentId }
+                val visibleThreads = remember(state.comments, commentOrder, commentAuthorFilter, viewModel.currentUserId, state.video.userId) {
+                    visibleVideoCommentThreads(
+                        state.comments, commentOrder, commentAuthorFilter,
+                        viewModel.currentUserId, state.video.userId,
+                    )
                 }
                 val focusParentId = remember(focusCommentId, state.comments) {
                     if (focusCommentId.isNullOrBlank()) {
                         null
                     } else {
-                        val direct = state.comments.firstOrNull { it.id.equals(focusCommentId, ignoreCase = true) }
-                        direct?.parentId ?: direct?.id
+                        visibleVideoCommentThreads(
+                            state.comments, VideoCommentOrder.RECENT, VideoCommentAuthorFilter.ALL,
+                            viewModel.currentUserId, state.video.userId,
+                        ).firstOrNull { thread ->
+                            thread.root.id.equals(focusCommentId, ignoreCase = true) ||
+                                thread.replies.any { it.id.equals(focusCommentId, ignoreCase = true) }
+                        }?.root?.id
                     }
                 }
 
-                LaunchedEffect(focusCommentId, topLevelComments, focusParentId) {
+                LaunchedEffect(focusCommentId, visibleThreads, focusParentId) {
                     if (focusResolved || focusCommentId.isNullOrBlank() || focusParentId.isNullOrBlank()) {
                         return@LaunchedEffect
                     }
-                    val parentIndex = topLevelComments.indexOfFirst { it.id.equals(focusParentId, ignoreCase = true) }
+                    val parentIndex = visibleThreads.indexOfFirst { it.root.id.equals(focusParentId, ignoreCase = true) }
                     if (parentIndex >= 0) {
                         // 0 player, 1 info, 2 header, 3+ comments
                         listState.scrollToItem(parentIndex + 3)
@@ -1064,18 +1227,32 @@ fun VideoPlayerScreen(
                         ) {
                             // 1. Video Player Item
                             item {
-                                AndroidView(
-                                    factory = { ctx ->
-                                        PlayerView(ctx).apply {
-                                            player = exoPlayer
-                                            useController = true
-                                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                        }
-                                    },
+                                Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .aspectRatio(16f / 9f)
-                                )
+                                        .aspectRatio(16f / 9f),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    AndroidView(
+                                        factory = { ctx ->
+                                            PlayerView(ctx).apply {
+                                                player = exoPlayer
+                                                useController = true
+                                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    if (playbackError) {
+                                        Button(onClick = {
+                                            automaticPlaybackAttempts = 0
+                                            playbackRequested = true
+                                            recoverPlayback(0, refreshEndpoint = true)
+                                        }) {
+                                            Text("Reintentar reproducción")
+                                        }
+                                    }
+                                }
                             }
 
                             // 2. Video Info Item
@@ -1127,7 +1304,7 @@ fun VideoPlayerScreen(
                                         Spacer(modifier = Modifier.width(8.dp))
 
                                         Icon(
-                                            imageVector = Icons.Default.Comment,
+                                            imageVector = Icons.AutoMirrored.Filled.Comment,
                                             contentDescription = "Comments",
                                             tint = MaterialTheme.colorScheme.onBackground
                                         )
@@ -1189,28 +1366,141 @@ fun VideoPlayerScreen(
                                     }
                                     
                                     Spacer(modifier = Modifier.height(16.dp))
-                                    Divider()
+                                    HorizontalDivider()
+                                }
+                            }
+
+                            if (linkedClip != null) {
+                                item {
+                                    Text("Fragmento compartido: ${videoChapterTimeLabel(linkedClip.startMs)}–${videoChapterTimeLabel(linkedClip.endMs)}",
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                                    TextButton(onClick = {
+                                        exoPlayer.seekTo(linkedClip.startMs)
+                                        playbackRequested = true
+                                    }) { Text("Reproducir fragmento de nuevo") }
+                                }
+                            }
+
+                            if (state.video.isPublic && state.video.allowClipSharing) {
+                                item {
+                                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(onClick = {
+                                            val durationMs = mediaDurationMs
+                                            val startMs = exoPlayer.currentPosition.coerceIn(
+                                                0L, (durationMs - 5_000L).coerceAtLeast(0L))
+                                            clipStartText = videoChapterTimeLabel(startMs)
+                                            clipEndText = videoChapterTimeLabel(
+                                                (startMs + 10_000L).coerceAtMost(durationMs))
+                                            showClipComposer = !showClipComposer
+                                        }, enabled = mediaDurationMs >= 5_000L,
+                                            modifier = Modifier.fillMaxWidth()) {
+                                            Text("Compartir fragmento")
+                                        }
+                                        if (showClipComposer) {
+                                            Text("El enlace abre el video original. Elige entre 5 y 60 segundos.",
+                                                style = MaterialTheme.typography.bodySmall)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                OutlinedTextField(value = clipStartText,
+                                                    onValueChange = { clipStartText = it.take(8) },
+                                                    label = { Text("Inicio m:ss") },
+                                                    singleLine = true, modifier = Modifier.weight(1f))
+                                                OutlinedTextField(value = clipEndText,
+                                                    onValueChange = { clipEndText = it.take(8) },
+                                                    label = { Text("Fin m:ss") },
+                                                    singleLine = true, modifier = Modifier.weight(1f))
+                                            }
+                                            val range = validVideoClipRange(
+                                                parseVideoChapterTime(clipStartText) ?: -1L,
+                                                parseVideoChapterTime(clipEndText) ?: -1L,
+                                                mediaDurationMs)
+                                            Button(onClick = {
+                                                val selected = range ?: return@Button
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                    type = "text/plain"
+                                                    putExtra(android.content.Intent.EXTRA_TEXT,
+                                                        "${state.video.title}\n${videoClipLink(state.video.id, selected)}" +
+                                                            "\nconectate://video/${state.video.id}?resumeMs=${selected.startMs}&endMs=${selected.endMs}")
+                                                }
+                                                context.startActivity(android.content.Intent.createChooser(intent,
+                                                    "Compartir fragmento"))
+                                            }, enabled = range != null, modifier = Modifier.fillMaxWidth()) {
+                                                Text("Compartir enlace")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (state.video.chapters.isNotEmpty()) {
+                                item {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text("Capítulos", style = MaterialTheme.typography.titleMedium)
+                                        state.video.chapters.forEach { chapter ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                TextButton(
+                                                    onClick = {
+                                                        exoPlayer.seekTo(chapter.startMs)
+                                                        playbackRequested = true
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                ) {
+                                                    Text("${videoChapterTimeLabel(chapter.startMs)}  ${chapter.title}",
+                                                        maxLines = 2)
+                                                }
+                                                IconButton(onClick = {
+                                                    val link = "https://conectate.com/video/${state.video.id}?resumeMs=${chapter.startMs}"
+                                                    val appLink = "conectate://video/${state.video.id}?resumeMs=${chapter.startMs}"
+                                                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                        type = "text/plain"
+                                                        putExtra(android.content.Intent.EXTRA_TEXT,
+                                                            "${state.video.title} · ${chapter.title}\n$link\n$appLink")
+                                                    }
+                                                    context.startActivity(android.content.Intent.createChooser(intent,
+                                                        "Compartir capítulo"))
+                                                }) {
+                                                    Icon(Icons.Default.Share, contentDescription = "Compartir capítulo ${chapter.title}")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
                             // 3. Comments Header
                             item {
-                                Text(
-                                    text = "Comentarios",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(16.dp)
-                                )
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = "Comentarios",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    VideoCommentFilterControls(
+                                        order = commentOrder,
+                                        authorFilter = commentAuthorFilter,
+                                        onOrderChange = { commentOrder = it },
+                                        onAuthorFilterChange = { commentAuthorFilter = it },
+                                    )
+                                    if (state.comments.isNotEmpty() && visibleThreads.isEmpty()) {
+                                        Text("No hay comentarios con este filtro")
+                                    }
+                                }
                             }
 
                             // 4. Comments List
-                            itemsIndexed(topLevelComments, key = { _, item -> item.id }) { _, comment ->
+                            itemsIndexed(visibleThreads, key = { _, item -> item.root.id }) { _, thread ->
                                 CommentThreadItem(
-                                    comment = comment,
-                                    replies = repliesByParent[comment.id] ?: emptyList(),
+                                    comment = thread.root,
+                                    replies = thread.replies,
                                     onPlayAudio = { viewModel.playAudio(it) },
-                                    isPlaying = currentPlayingCommentId == comment.id,
-                                    progress = if (currentPlayingCommentId == comment.id) audioProgress else 0f,
+                                    isPlaying = currentPlayingCommentId == thread.root.id,
+                                    progress = if (currentPlayingCommentId == thread.root.id) audioProgress else 0f,
                                     currentPlayingCommentId = currentPlayingCommentId,
                                     audioProgress = audioProgress,
                                     currentUserId = viewModel.currentUserId,
@@ -1224,10 +1514,10 @@ fun VideoPlayerScreen(
                                     onEditComment = { target, content -> viewModel.editComment(target, content) },
                                     onReportComment = { target -> viewModel.reportComment(target) },
                                     initiallyExpanded = focusParentId != null &&
-                                        focusParentId.equals(comment.id, ignoreCase = true) &&
-                                        !focusCommentId.equals(comment.id, ignoreCase = true)
+                                        focusParentId.equals(thread.root.id, ignoreCase = true) &&
+                                        !focusCommentId.equals(thread.root.id, ignoreCase = true)
                                 )
-                                Divider()
+                                HorizontalDivider()
                             }
                         }
 
@@ -1256,7 +1546,12 @@ fun VideoPlayerScreen(
                                             conectate.com.presentation.messages.VoiceState.RECORDING -> {
                                                 val minutes = recordingDuration / 1000 / 60
                                                 val seconds = (recordingDuration / 1000) % 60
-                                                val timeString = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+                                                val timeString = String.format(
+                                                    androidx.compose.ui.platform.LocalLocale.current.platformLocale,
+                                                    "%02d:%02d",
+                                                    minutes,
+                                                    seconds,
+                                                )
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                                                     Spacer(modifier = Modifier.width(4.dp))
@@ -1314,7 +1609,7 @@ fun VideoPlayerScreen(
                                             IconButton(
                                                 onClick = { viewModel.stopRecording(true) }
                                             ) {
-                                                Icon(Icons.Default.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
+                                                Icon(Icons.AutoMirrored.Filled.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
                                             }
                                         }
                                         conectate.com.presentation.messages.VoiceState.PAUSED -> {
@@ -1334,7 +1629,7 @@ fun VideoPlayerScreen(
                                             IconButton(
                                                 onClick = { viewModel.sendCurrentRecording() }
                                             ) {
-                                                Icon(Icons.Default.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
+                                                Icon(Icons.AutoMirrored.Filled.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
                                             }
                                         }
                                         else -> {}
@@ -1446,7 +1741,7 @@ fun VideoPlayerScreen(
                                                 )
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Filled.Send,
+                                                    imageVector = Icons.AutoMirrored.Filled.Send,
                                                     contentDescription = "Enviar"
                                                 )
                                             }
@@ -1507,12 +1802,14 @@ fun EditVideoDialog(
     initialTitle: String,
     initialDescription: String,
     initialPublic: Boolean,
+    initialAllowClipSharing: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, Boolean) -> Unit
+    onConfirm: (String, String, Boolean, Boolean) -> Unit
 ) {
     var title by remember { mutableStateOf(initialTitle) }
     var description by remember { mutableStateOf(initialDescription) }
     var isPublic by remember { mutableStateOf(initialPublic) }
+    var allowClipSharing by remember { mutableStateOf(initialAllowClipSharing) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1542,11 +1839,16 @@ fun EditVideoDialog(
                     )
                     Text("Público")
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = allowClipSharing,
+                        onCheckedChange = { allowClipSharing = it })
+                    Text("Permitir enlaces a fragmentos")
+                }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(title, description, isPublic) },
+                onClick = { onConfirm(title, description, isPublic, allowClipSharing) },
                 enabled = title.isNotBlank()
             ) {
                 Text("Guardar")

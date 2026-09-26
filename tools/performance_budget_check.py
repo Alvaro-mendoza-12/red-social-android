@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """Release artifact performance budget checker.
 
-Checks APK/AAB size, aggregate DEX size, and aggregate native .so size against
-configured byte budgets. Supports individual artifact files or directories that
-contain multiple split APKs. Generates markdown + JSON reports and fails on
-budget violations.
+Checks upload artifact size and compressed payload budgets. For AAB files it
+uses the repository-pinned bundletool to calculate the maximum compressed
+download delivered to an actual device configuration, which is the metric used
+by Google Play. Generates markdown + JSON reports and fails on violations.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import json
+import subprocess
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +27,7 @@ class ArtifactMetrics:
     size_bytes: int
     dex_bytes: int
     native_so_bytes: int
+    device_download_bytes: int | None
 
 
 @dataclass(frozen=True)
@@ -46,7 +50,13 @@ def format_mib(value: int) -> str:
 
 def load_budgets(path: Path) -> dict[str, int]:
     data = json.loads(path.read_text(encoding="utf-8"))
-    required = ("max_apk_bytes", "max_bundle_bytes", "max_total_dex_bytes", "max_native_so_bytes")
+    required = (
+        "max_apk_bytes",
+        "max_bundle_bytes",
+        "max_device_download_bytes",
+        "max_total_dex_bytes",
+        "max_native_so_bytes",
+    )
     missing = [key for key in required if key not in data]
     if missing:
         raise ValueError(f"Missing budget keys in {path}: {', '.join(missing)}")
@@ -80,7 +90,69 @@ def discover_artifacts(entries: list[str]) -> list[Path]:
     return discovered
 
 
-def collect_archive_metrics(artifact_path: Path) -> ArtifactMetrics:
+def parse_bundletool_size_csv(output: str) -> int:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    header_index = next(
+        (index for index, line in enumerate(lines) if line.startswith("SDK,") and line.endswith("MIN,MAX")),
+        None,
+    )
+    if header_index is None:
+        raise ValueError("bundletool get-size output did not contain a CSV header")
+
+    rows = list(csv.DictReader(lines[header_index:]))
+    if not rows:
+        raise ValueError("bundletool get-size output did not contain device configurations")
+    try:
+        return max(int(row["MAX"]) for row in rows)
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("bundletool get-size output contained an invalid MAX value") from error
+
+
+def measure_aab_device_download(artifact_path: Path, bundletool_jar: Path) -> int:
+    if not bundletool_jar.exists():
+        raise FileNotFoundError(f"bundletool not found: {bundletool_jar}")
+
+    with tempfile.TemporaryDirectory(prefix="novvin-bundletool-") as temporary_directory:
+        apk_set = Path(temporary_directory) / "artifact.apks"
+        build = subprocess.run(
+            [
+                "java",
+                "-jar",
+                str(bundletool_jar),
+                "build-apks",
+                f"--bundle={artifact_path}",
+                f"--output={apk_set}",
+                "--overwrite",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if build.returncode != 0:
+            details = (build.stderr or build.stdout).strip()
+            raise RuntimeError(f"bundletool build-apks failed: {details}")
+
+        size = subprocess.run(
+            [
+                "java",
+                "-jar",
+                str(bundletool_jar),
+                "get-size",
+                "total",
+                f"--apks={apk_set}",
+                "--dimensions=ABI,SCREEN_DENSITY,LANGUAGE,SDK",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if size.returncode != 0:
+            details = (size.stderr or size.stdout).strip()
+            raise RuntimeError(f"bundletool get-size failed: {details}")
+        return parse_bundletool_size_csv(size.stdout)
+
+
+def collect_archive_metrics(artifact_path: Path, bundletool_jar: Path) -> ArtifactMetrics:
     size_bytes = artifact_path.stat().st_size
     dex_total = 0
     native_by_group: dict[str, int] = {}
@@ -89,17 +161,25 @@ def collect_archive_metrics(artifact_path: Path) -> ArtifactMetrics:
         for entry in archive.infolist():
             name = entry.filename
             if name.endswith(".dex"):
-                dex_total += entry.file_size
+                dex_total += entry.compress_size
             elif "/lib/" in f"/{name}" and name.endswith(".so"):
                 group = resolve_native_group(name)
-                native_by_group[group] = native_by_group.get(group, 0) + entry.file_size
+                native_by_group[group] = native_by_group.get(group, 0) + entry.compress_size
+
+    artifact_type = artifact_path.suffix.lower().lstrip(".")
+    device_download_bytes = (
+        measure_aab_device_download(artifact_path, bundletool_jar)
+        if artifact_type == "aab"
+        else size_bytes
+    )
 
     return ArtifactMetrics(
         artifact=artifact_path.as_posix(),
-        artifact_type=artifact_path.suffix.lower().lstrip("."),
+        artifact_type=artifact_type,
         size_bytes=size_bytes,
         dex_bytes=dex_total,
         native_so_bytes=max(native_by_group.values(), default=0),
+        device_download_bytes=device_download_bytes,
     )
 
 
@@ -129,12 +209,23 @@ def evaluate_metrics(
                 budget=budgets[size_budget_key],
             )
         )
+        if artifact.artifact_type == "aab" and artifact.device_download_bytes is not None:
+            results.append(
+                MetricResult(
+                    artifact=artifact.artifact,
+                    artifact_type=artifact.artifact_type,
+                    key="max_device_download_bytes",
+                    label="Maximum compressed device download (bundletool)",
+                    measured=artifact.device_download_bytes,
+                    budget=budgets["max_device_download_bytes"],
+                )
+            )
         results.append(
             MetricResult(
                 artifact=artifact.artifact,
                 artifact_type=artifact.artifact_type,
                 key="max_total_dex_bytes",
-                label="Total DEX size",
+                label="Compressed DEX payload",
                 measured=artifact.dex_bytes,
                 budget=budgets["max_total_dex_bytes"],
             )
@@ -144,7 +235,7 @@ def evaluate_metrics(
                 artifact=artifact.artifact,
                 artifact_type=artifact.artifact_type,
                 key="max_native_so_bytes",
-                label="Largest native .so ABI slice",
+                label="Largest compressed native .so ABI slice",
                 measured=artifact.native_so_bytes,
                 budget=budgets["max_native_so_bytes"],
             )
@@ -204,6 +295,7 @@ def main() -> int:
         help="Backwards-compatible single APK path. Prefer --artifacts.",
     )
     parser.add_argument("--budgets", default="tools/perf_budgets.json")
+    parser.add_argument("--bundletool", default="tools/bundletool/bundletool-all.jar")
     parser.add_argument("--report", default="build/reports/perf/performance_budget_report.md")
     parser.add_argument("--json", default="build/reports/perf/performance_budget_report.json")
     args = parser.parse_args()
@@ -218,6 +310,7 @@ def main() -> int:
         ]
 
     budgets_path = Path(args.budgets)
+    bundletool_jar = Path(args.bundletool).resolve()
     report_md = Path(args.report)
     report_json = Path(args.json)
 
@@ -231,7 +324,13 @@ def main() -> int:
         return 1
 
     budgets = load_budgets(budgets_path)
-    results = evaluate_metrics([collect_archive_metrics(path) for path in artifacts], budgets)
+    try:
+        metrics = [collect_archive_metrics(path, bundletool_jar) for path in artifacts]
+    except (FileNotFoundError, RuntimeError, ValueError, zipfile.BadZipFile) as error:
+        print(f"Unable to measure release artifacts: {error}")
+        return 1
+
+    results = evaluate_metrics(metrics, budgets)
     write_reports(results, report_md, report_json)
 
     violations = [result for result in results if not result.ok]

@@ -1,239 +1,110 @@
-const ytdl = require('ytdl-core');
-const axios = require('axios');
-const queryString = require('query-string');
+const net = require('net');
 
-// Optional: Real-Debrid support (token MUST come from environment, never hardcoded)
-const RD_TOKEN = (process.env.RD_TOKEN || '').trim();
-const hasRdToken = RD_TOKEN.length > 0;
+const MAX_URL_LENGTH = 4096;
+const SUPPORTED_MEDIA_SUFFIXES = ['.mp4', '.m4v', '.webm', '.m3u8', '.mpd'];
+const configuredMediaHosts = new Set(
+    (process.env.CINEMA_ALLOWED_MEDIA_HOSTS || '')
+        .split(',')
+        .map(value => normalizeHostname(value))
+        .filter(Boolean)
+);
 
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+function normalizeHostname(value) {
+    return (value || '').toString().trim().toLowerCase().replace(/\.$/, '').replace(/^\[|\]$/g, '');
 }
 
-function cleanCinemaTitle(title) {
-    return title
-        .toString()
-        .replace(/[^a-zA-Z0-9 ]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/ /g, '+');
+function isTrustedHostname(hostname, expectedDomain) {
+    const normalized = normalizeHostname(hostname);
+    const expected = normalizeHostname(expectedDomain);
+    return Boolean(normalized && expected) && (normalized === expected || normalized.endsWith(`.${expected}`));
 }
 
-function isCinemaTvProvider(provider) {
-    return ['tmdb_tv', 'drama', 'tv', 'series'].includes((provider || '').toString().trim().toLowerCase());
+function isBlockedDirectHostname(hostname) {
+    const normalized = normalizeHostname(hostname);
+    if (!normalized || net.isIP(normalized)) return true;
+    return normalized === 'localhost' ||
+        normalized.endsWith('.localhost') ||
+        normalized.endsWith('.local') ||
+        normalized.endsWith('.internal') ||
+        normalized.endsWith('.lan') ||
+        normalized.endsWith('.home');
+}
+
+function isConfiguredMediaHost(hostname) {
+    for (const allowed of configuredMediaHosts) {
+        if (isTrustedHostname(hostname, allowed)) return true;
+    }
+    return false;
+}
+
+function isSupportedDirectMediaPath(pathname) {
+    const normalized = (pathname || '').toString().toLowerCase();
+    return SUPPORTED_MEDIA_SUFFIXES.some(suffix => normalized.endsWith(suffix));
+}
+
+function validateExternalCinemaUrl(rawUrl) {
+    const value = (rawUrl || '').toString().trim();
+    if (!value || value.length > MAX_URL_LENGTH) {
+        return { ok: false, error: 'Invalid or oversized URL' };
+    }
+
+    let parsed;
+    try {
+        parsed = new URL(value);
+    } catch {
+        return { ok: false, error: 'Invalid URL' };
+    }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+        return { ok: false, error: 'Only credential-free HTTPS links are allowed' };
+    }
+    if (isBlockedDirectHostname(parsed.hostname)) {
+        return { ok: false, error: 'Local, private, and IP-address links are not allowed' };
+    }
+
+    const archiveDownload = isTrustedHostname(parsed.hostname, 'archive.org') &&
+        parsed.pathname.startsWith('/download/');
+    const driveFile = isTrustedHostname(parsed.hostname, 'drive.google.com') &&
+        /^\/file\/d\/[a-zA-Z0-9_-]+(?:\/|$)/.test(parsed.pathname);
+    const directMedia = isSupportedDirectMediaPath(parsed.pathname);
+    if (!archiveDownload && !driveFile && !directMedia && !isConfiguredMediaHost(parsed.hostname)) {
+        return {
+            ok: false,
+            error: 'Only direct media, approved hosts, Google Drive files, or Archive.org downloads are allowed'
+        };
+    }
+
+    return {
+        ok: true,
+        kind: driveFile ? 'drive' : (archiveDownload ? 'archive' : 'direct'),
+        value: parsed.toString(),
+        parsed
+    };
 }
 
 async function resolveLink(url) {
-    try {
-        console.log(`[RESOLVER] Processing URL: ${url}`);
+    const validated = validateExternalCinemaUrl(url);
+    if (!validated.ok) return { error: validated.error };
 
-        // 1. YouTube
-        if (ytdl.validateURL(url)) {
-            console.log("[RESOLVER] Detected YouTube");
-            const info = await ytdl.getInfo(url);
-            // Choose best format: HLS if available, else MP4
-            // const format = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: 'audioandvideo' });
-            // Better strategy for ExoPlayer: Use the HLS manifest if present
-            const hlsFormat = info.formats.find(f => f.mimeType && f.mimeType.includes("x-mpegURL"));
-            const mp4Format = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: 'audioandvideo' });
-
-            const targetUrl = hlsFormat ? hlsFormat.url : mp4Format.url;
-
-            return {
-                stream_url: targetUrl,
-                title: info.videoDetails.title,
-                duration: parseInt(info.videoDetails.lengthSeconds) * 1000,
-                type: 'youtube'
-            };
-        }
-
-        // 2. Real-Debrid / Magnet
-        if (url.startsWith("magnet:")) {
-            console.log("[RESOLVER] Detected Magnet");
-            if (!hasRdToken) {
-                return { error: "RD_TOKEN not configured on server" };
-            }
-            return await processMagnet(url);
-        }
-
-        if (url.includes("real-debrid.com") && !url.includes("download")) {
-            // Could be a restricted link
-            console.log("[RESOLVER] Detected RD Link");
-            if (!hasRdToken) {
-                return { error: "RD_TOKEN not configured on server" };
-            }
-            return await processRestrictedLink(url);
-        }
-
-        // 3. Google Drive
-        if (url.includes("drive.google.com")) {
-            console.log("[RESOLVER] Detected Google Drive");
-            // Transform view link to download link if possible
-            // https://drive.google.com/file/d/VIDEO_ID/view?usp=sharing
-            // -> https://drive.google.com/uc?export=download&id=VIDEO_ID
-            const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-            if (idMatch && idMatch[1]) {
-                const id = idMatch[1];
-                const downloadUrl = `https://drive.google.com/uc?export=download&id=${id}`;
-                return {
-                    stream_url: downloadUrl,
-                    title: "Google Drive Video",
-                    type: 'drive'
-                };
-            }
-        }
-
-        // 4. Default / Direct
-        console.log("[RESOLVER] Treating as Direct/Generic");
+    if (validated.kind === 'drive') {
+        const idMatch = validated.parsed.pathname.match(/^\/file\/d\/([a-zA-Z0-9_-]+)(?:\/|$)/);
+        if (!idMatch?.[1]) return { error: 'Invalid Google Drive file URL' };
         return {
-            stream_url: url,
-            title: "Video Externo",
-            type: 'direct'
+            stream_url: `https://drive.google.com/uc?export=download&id=${encodeURIComponent(idMatch[1])}`,
+            title: 'Video de Google Drive',
+            type: 'drive'
         };
-
-    } catch (e) {
-        console.error("Link Resolution Error:", e);
-        return { error: e.message };
     }
+
+    return {
+        stream_url: validated.value,
+        title: validated.kind === 'archive' ? 'Contenido de dominio público' : 'Video externo',
+        type: validated.kind
+    };
 }
 
-async function processMagnet(magnetLink, titleHint = "RD Video") {
-    try {
-        console.log("Adding Magnet to RD...");
-        const addResp = await axios.post("https://api.real-debrid.com/rest/1.0/torrents/addMagnet",
-            queryString.stringify({ magnet: magnetLink }),
-            { headers: { Authorization: `Bearer ${RD_TOKEN}` } }
-        );
-        const rdId = addResp.data.id;
-
-        console.log(`Magnet added. ID: ${rdId}. Selecting all files...`);
-
-        // Select Files
-        await axios.post(`https://api.real-debrid.com/rest/1.0/torrents/selectFiles/${rdId}`,
-            queryString.stringify({ files: "all" }),
-            { headers: { Authorization: `Bearer ${RD_TOKEN}` } }
-        );
-
-        // Poll
-        let attempts = 0;
-        while (attempts < 15) {
-            await new Promise(r => setTimeout(r, 1000));
-            attempts++;
-
-            const infoResp = await axios.get(`https://api.real-debrid.com/rest/1.0/torrents/info/${rdId}`,
-                { headers: { Authorization: `Bearer ${RD_TOKEN}` } }
-            );
-            const status = infoResp.data.status;
-            console.log(`Polling RD ${attempts}/15 - Status: ${status}`);
-
-            if (status === 'downloaded' || status === 'cached') {
-                const links = infoResp.data.links;
-                if (links && links.length > 0) {
-                    const link = links[0];
-                    return await processRestrictedLink(link, infoResp.data.filename || titleHint);
-                }
-            } else if (status === 'magnet_error' || status === 'error' || status === 'dead') {
-                throw new Error(`Magnet Error: ${status}`);
-            }
-        }
-    } catch (e) {
-        console.error("RD Error:", e);
-        throw e;
-    }
-    throw new Error("Timeout resolving Magnet");
-}
-
-async function resolveCinemaItem(item = {}) {
-    try {
-        if (!hasRdToken) {
-            return { error: "RD_TOKEN not configured on server" };
-        }
-
-        const title = (item.title || '').toString().trim();
-        const provider = (item.provider || '').toString().trim().toLowerCase();
-        const imdbId = (item.imdbId || '').toString().trim();
-        if (!title) {
-            return { error: "Missing content title" };
-        }
-
-        const isTv = isCinemaTvProvider(provider);
-        const torrentioPaths = [];
-
-        if (imdbId.startsWith('tt')) {
-            torrentioPaths.push(isTv ? `series/${imdbId}:1:1` : `movie/${imdbId}`);
-        }
-
-        const cleanedTitle = cleanCinemaTitle(title);
-        if (cleanedTitle) {
-            torrentioPaths.push(isTv ? `series/${cleanedTitle}:1:1` : `movie/${cleanedTitle}`);
-        }
-
-        for (const path of [...new Set(torrentioPaths)]) {
-            try {
-                const torrentioUrl = `https://torrentio.strem.fun/stream/${path}.json`;
-                const response = await axios.get(torrentioUrl, { timeout: 10000 });
-                const streams = Array.isArray(response.data?.streams) ? response.data.streams : [];
-                if (streams.length === 0) {
-                    continue;
-                }
-
-                const sortedStreams = streams
-                    .filter(stream => stream?.infoHash)
-                    .sort((a, b) => scoreTorrentioLanguage(a) - scoreTorrentioLanguage(b));
-
-                for (const stream of sortedStreams.slice(0, 3)) {
-                    const infoHash = stream.infoHash.toString().trim();
-                    if (!infoHash) continue;
-
-                    try {
-                        const resolved = await processMagnet(`magnet:?xt=urn:btih:${infoHash}`, title);
-                        if (resolved?.stream_url) {
-                            return {
-                                ...resolved,
-                                title
-                            };
-                        }
-                    } catch (error) {
-                        console.warn(`[RESOLVER] Torrentio stream failed for "${title}":`, error.message || error);
-                    }
-
-                    await sleep(150);
-                }
-            } catch (error) {
-                console.warn(`[RESOLVER] Torrentio lookup failed for "${title}":`, error.message || error);
-            }
-        }
-
-        return { error: "No premium stream found for this title" };
-    } catch (error) {
-        console.error("[RESOLVER] Cinema item resolution error:", error);
-        return { error: error.message || "Cinema resolution failed" };
-    }
-}
-
-function scoreTorrentioLanguage(stream) {
-    const title = (stream?.title || '').toString().toLowerCase();
-    if (title.includes('latino') || title.includes('español') || title.includes('castellano')) return 0;
-    if (title.includes('multi') || title.includes('spanish') || title.includes('subs') || title.includes('vose')) return 1;
-    return 2;
-}
-
-async function processRestrictedLink(link, titleHint = "RD Video") {
-    try {
-        console.log(`Unrestricting link: ${link}`);
-        const unrestrictResp = await axios.post("https://api.real-debrid.com/rest/1.0/unrestrict/link",
-            queryString.stringify({ link: link }),
-            { headers: { Authorization: `Bearer ${RD_TOKEN}` } }
-        );
-        return {
-            stream_url: unrestrictResp.data.download,
-            title: titleHint,
-            type: 'real-debrid'
-        };
-    } catch (e) {
-        console.error("Unrestrict Error:", e);
-        throw e;
-    }
-}
-
-module.exports = { resolveLink, resolveCinemaItem };
+module.exports = {
+    isBlockedDirectHostname,
+    isTrustedHostname,
+    resolveLink,
+    validateExternalCinemaUrl
+};

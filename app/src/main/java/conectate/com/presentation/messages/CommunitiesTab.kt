@@ -10,7 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -76,7 +76,7 @@ fun CommunitiesTab(
                 val exploreCommunities = combinedCommunities.filter { !it.community.is_deleted }
                 val visibleCommunities = if (selectedSection == 0) myCommunities else exploreCommunities
 
-                TabRow(
+                SecondaryTabRow(
                     selectedTabIndex = selectedSection,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -133,7 +133,7 @@ fun CommunitiesTab(
                                     onNavigateToCommunityChat(communityWithLastMessage.community.id)
                                 }
                             )
-                            Divider()
+                            HorizontalDivider()
                         }
                     }
                 }

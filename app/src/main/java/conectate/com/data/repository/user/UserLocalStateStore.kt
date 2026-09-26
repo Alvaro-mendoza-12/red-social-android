@@ -23,6 +23,8 @@ internal class UserLocalStateStore(
         context.getSharedPreferences(USER_CACHE_PREFS, Context.MODE_PRIVATE)
     }
 
+    private val cacheJson = Json { ignoreUnknownKeys = true }
+
     fun normalizeUserId(userId: String): String = userId.trim().lowercase()
 
     fun getLocalPrivacyAccepted(userId: String): Boolean {
@@ -142,7 +144,7 @@ internal class UserLocalStateStore(
 
     fun saveProfile(user: User) {
         try {
-            var json = Json.encodeToString(User.serializer(), user)
+            var json = cacheJson.encodeToString(User.serializer(), user)
             profilePrefs.edit().putString(USER_CACHE_KEY, json).apply()
         } catch (e: Exception) {
             android.util.Log.e("UserLocalStateStore", "Failed to cache profile", e)
@@ -153,7 +155,7 @@ internal class UserLocalStateStore(
         return try {
             var json = profilePrefs.getString(USER_CACHE_KEY, null)
             if (json != null) {
-                Json { ignoreUnknownKeys = true }.decodeFromString(User.serializer(), json)
+                cacheJson.decodeFromString(User.serializer(), json)
             } else {
                 null
             }

@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Groups
@@ -286,7 +286,7 @@ private val ShareDestinationType.sectionTitle: String
 
 private val ShareDestinationType.sectionIcon
     get() = when (this) {
-        ShareDestinationType.CHAT -> Icons.Default.Chat
+        ShareDestinationType.CHAT -> Icons.AutoMirrored.Filled.Chat
         ShareDestinationType.GROUP -> Icons.Default.Groups
         ShareDestinationType.COMMUNITY -> Icons.Default.Forum
     }

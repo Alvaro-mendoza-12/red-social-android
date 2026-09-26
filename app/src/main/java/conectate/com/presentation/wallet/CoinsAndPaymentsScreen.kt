@@ -18,11 +18,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
@@ -31,7 +31,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -69,6 +69,7 @@ fun CoinsAndPaymentsScreen(
     viewModel: WalletViewModel = hiltViewModel()
 ) {
     val balance by viewModel.coinBalance.collectAsStateWithLifecycle()
+    val debt by viewModel.coinDebt.collectAsStateWithLifecycle()
     val capabilities by viewModel.billingCapabilities.collectAsStateWithLifecycle()
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
     val transactionsHasMore by viewModel.transactionsHasMore.collectAsStateWithLifecycle()
@@ -126,7 +127,7 @@ fun CoinsAndPaymentsScreen(
                 title = { Text("Monedas y pagos") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 }
             )
@@ -143,6 +144,7 @@ fun CoinsAndPaymentsScreen(
             item {
                 WalletBalanceCard(
                     balance = balance,
+                    debt = debt,
                     lastUpdatedAt = lastUpdatedAt,
                     rechargeEnabled = capabilities.enabled && playProducts.isNotEmpty() && !verifying,
                     onRecharge = { showRecharge = true }
@@ -263,7 +265,7 @@ fun CoinsAndPaymentsScreen(
                 items(transactions, key = { it.id }) { transaction ->
                     Card(onClick = { selectedReceipt = transaction }, shape = RoundedCornerShape(16.dp)) {
                         ListItem(
-                            leadingContent = { Icon(Icons.Default.ReceiptLong, contentDescription = null) },
+                            leadingContent = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) },
                             headlineContent = {
                                 Text(
                                     transaction.description ?: transaction.type.toReadableTransactionType(),
@@ -319,7 +321,7 @@ fun CoinsAndPaymentsScreen(
                         onClick = { exportWalletHistory(context, transactions) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.ReceiptLong, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null)
                         Spacer(Modifier.size(8.dp))
                         Text("Exportar historial")
                     }
@@ -327,7 +329,7 @@ fun CoinsAndPaymentsScreen(
             }
 
             item {
-                Divider()
+                HorizontalDivider()
             }
 
             item {
@@ -335,7 +337,7 @@ fun CoinsAndPaymentsScreen(
                     onClick = { uriHandler.openUri("https://play.google.com/store/account/paymentmethods") },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.OpenInNew, contentDescription = null)
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
                     Text("Administrar métodos en Google Play")
                 }
@@ -346,7 +348,7 @@ fun CoinsAndPaymentsScreen(
                     onClick = { uriHandler.openUri("https://support.google.com/googleplay/answer/2479637") },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.HelpOutline, contentDescription = null)
+                    Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
                     Text("Ayuda con una compra o reembolso")
                 }
@@ -357,7 +359,7 @@ fun CoinsAndPaymentsScreen(
                     onClick = { mainNavController.navigate(Screen.Novvin.route) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.HelpOutline, contentDescription = null)
+                    Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
                     Text("Contactar soporte Novvin")
                 }
@@ -406,7 +408,7 @@ fun CoinsAndPaymentsScreen(
     selectedReceipt?.let { transaction ->
         AlertDialog(
             onDismissRequest = { selectedReceipt = null },
-            icon = { Icon(Icons.Default.ReceiptLong, contentDescription = null) },
+            icon = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) },
             title = { Text("Detalle del movimiento") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -438,6 +440,7 @@ fun CoinsAndPaymentsScreen(
 @Composable
 private fun WalletBalanceCard(
     balance: Int,
+    debt: Int,
     lastUpdatedAt: String?,
     rechargeEnabled: Boolean,
     onRecharge: () -> Unit
@@ -461,6 +464,14 @@ private fun WalletBalanceCard(
                         fontWeight = FontWeight.Black
                     )
                     Text("monedas · no retirables", style = MaterialTheme.typography.bodySmall)
+                    if (debt > 0) {
+                        Text(
+                            "Saldo neto: -${formatCoins(debt)} monedas por reembolso",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                     lastUpdatedAt?.let {
                         Text(
                             "Actualizado ${it.replace('T', ' ').take(16)} UTC",
@@ -475,7 +486,11 @@ private fun WalletBalanceCard(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Recargar") }
             Text(
-                "Las monedas sirven para funciones y regalos dentro de Novvin. No representan dinero ni ganancias retirables.",
+                if (debt > 0) {
+                    "Las próximas recargas compensarán primero la deuda del reembolso. Mientras exista deuda no se pueden enviar regalos."
+                } else {
+                    "Las monedas sirven para funciones y regalos dentro de Novvin. No representan dinero ni ganancias retirables."
+                },
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -551,7 +566,7 @@ private fun SpendingProtectionCard(
                 TextButton(onClick = onOpen) { Text("Ver límites") }
             }
             Text("Hoy: ${formatCoins(spentToday)} de ${formatCoins(safeLimit)} monedas")
-            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
             Text(
                 if (weeklyLimit > 0) {
                     "Últimos 7 días: ${formatCoins(spentWeek)} de ${formatCoins(weeklyLimit)} monedas"

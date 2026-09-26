@@ -1,5 +1,7 @@
 const DEFAULT_URL = 'http://realtime-gateway:3002'
 const { canonicalizeStorageUrls } = require('./storage-url-canonicalization')
+const { stableKey } = require('./request-security')
+const { safeErrorLogDetails } = require('./request-observability')
 
 async function publishRealtimeEvent(channel, payload) {
   const base = String(process.env.REALTIME_INTERNAL_URL || DEFAULT_URL).replace(/\/+$/, '')
@@ -7,9 +9,14 @@ async function publishRealtimeEvent(channel, payload) {
   if (!cleanChannel) return false
 
   try {
+    const internalSecret = String(process.env.REALTIME_INTERNAL_SECRET || '').trim()
     const response = await fetch(`${base}/internal/publish`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5_000),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(internalSecret ? { Authorization: `Bearer ${internalSecret}` } : {}),
+      },
       body: JSON.stringify({
         channel: cleanChannel,
         payload: canonicalizeStorageUrls(payload || {}, process.env.PUBLIC_BASE_URL),
@@ -17,7 +24,10 @@ async function publishRealtimeEvent(channel, payload) {
     })
     return response.ok
   } catch (error) {
-    console.warn('[realtime-publish]', cleanChannel, error?.message || error)
+    console.warn('[realtime-publish]', {
+      channelRef: stableKey(cleanChannel),
+      ...safeErrorLogDetails(error),
+    })
     return false
   }
 }
@@ -33,7 +43,7 @@ async function publishChatMessageEvent({ chatId, message, recipientIds = [], act
     message: message || {},
   }
 
-  const recipients = Array.isArray(recipientIds) ? recipientIds : []
+  const recipients = Array.isArray(recipientIds) ? [...new Set(recipientIds)] : []
   await Promise.all([
     publishRealtimeEvent(`chat:${normalizedChatId}`, envelope),
     ...recipients

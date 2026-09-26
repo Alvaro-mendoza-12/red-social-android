@@ -31,7 +31,7 @@ function createMutex() {
   }
 }
 
-function createPool({ balance = 100, liveActive = true, failOnTable = null, coinSource = 'PURCHASED' } = {}) {
+function createPool({ balance = 100, debt = 0, liveActive = true, giftsEnabled = true, failOnTable = null, coinSource = 'PURCHASED' } = {}) {
   const compat = new Map()
   const users = [
     {
@@ -64,6 +64,7 @@ function createPool({ balance = 100, liveActive = true, failOnTable = null, coin
     total_comments: 0,
     total_reactions: 0,
     is_active: liveActive,
+    gifts_enabled: giftsEnabled,
     started_at: new Date().toISOString(),
     ended_at: liveActive ? null : new Date().toISOString(),
     created_at: new Date().toISOString(),
@@ -78,7 +79,14 @@ function createPool({ balance = 100, liveActive = true, failOnTable = null, coin
   }
   compat.set(`wallets:${senderId}`, {
     table_name: 'wallets', row_id: senderId,
-    row: { id: senderId, user_id: senderId, balance_diamonds: balance, balance_credits: 0, total_spent: 0 },
+    row: {
+      id: senderId,
+      user_id: senderId,
+      balance_diamonds: balance,
+      balance_debt_diamonds: debt,
+      balance_credits: 0,
+      total_spent: 0,
+    },
     created_at: now, updated_at: now,
   })
   if (balance > 0) {
@@ -324,6 +332,14 @@ async function run() {
   assert.equal(balance(insufficientPool), 4)
   assert.equal(rows(insufficientPool, 'gift_transactions').length, 0)
 
+  const debtPool = createPool({ balance: 100, debt: 45, coinSource: 'PROMOTIONAL' })
+  await expectCode(
+    () => _test.sendVirtualGiftRpc(debtPool, { sub: senderId }, request()),
+    'WALLET_DEBT_OUTSTANDING',
+  )
+  assert.equal(balance(debtPool), 100)
+  assert.equal(rows(debtPool, 'gift_transactions').length, 0)
+
   await expectCode(
     () => _test.sendVirtualGiftRpc(createPool(), { sub: senderId }, request({ p_gift_id: '7a100099-0000-4000-8000-000000000099' })),
     'GIFT_NOT_FOUND',
@@ -332,6 +348,13 @@ async function run() {
     () => _test.sendVirtualGiftRpc(createPool({ liveActive: false }), { sub: senderId }, request()),
     'LIVE_NOT_ACTIVE',
   )
+  const disabledGiftPool = createPool({ giftsEnabled: false })
+  await expectCode(
+    () => _test.sendVirtualGiftRpc(disabledGiftPool, { sub: senderId }, request()),
+    'LIVE_GIFTS_DISABLED',
+  )
+  assert.equal(balance(disabledGiftPool), 100)
+  assert.equal(rows(disabledGiftPool, 'gift_transactions').length, 0)
   await expectCode(
     () => _test.sendVirtualGiftRpc(createPool(), { sub: senderId }, request({ p_receiver_id: senderId })),
     'SELF_GIFT_NOT_ALLOWED',

@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -46,7 +46,7 @@ fun FullScreenImageScreen(
                 title = {},
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Atrás", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atrás", tint = Color.White)
                     }
                 },
                 actions = {
@@ -96,7 +96,8 @@ fun FullScreenImageScreen(
                     id = imageUrl,
                     url = imageUrl,
                     type = "image"
-                )
+                ),
+                allowDurableProfileFallback = true
             )
         }
     }
@@ -147,7 +148,7 @@ suspend fun saveImageToGallery(context: android.content.Context, imageUrl: Strin
                  withContext(Dispatchers.Main) { onResult(false) }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("FullScreenImage", "Could not save image", e)
             withContext(Dispatchers.Main) { onResult(false) }
         }
     }

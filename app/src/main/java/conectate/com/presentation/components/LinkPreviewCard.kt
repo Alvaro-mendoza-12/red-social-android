@@ -22,6 +22,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import conectate.com.data.model.LinkPreview
 import conectate.com.data.model.getTypeColor
+import androidx.compose.material.icons.automirrored.filled.Article
 
 @Composable
 fun LinkPreviewCard(
@@ -159,7 +160,7 @@ fun LinkPreviewCardCompact(
                         imageVector = when (preview.type) {
                             "video" -> Icons.Default.PlayArrow
                             "music" -> Icons.Default.MusicNote
-                            "article" -> Icons.Default.Article
+                            "article" -> Icons.AutoMirrored.Filled.Article
                             "social" -> Icons.Default.Share
                             "code" -> Icons.Default.Code
                             else -> Icons.Default.Link

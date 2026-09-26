@@ -67,6 +67,7 @@ import conectate.com.presentation.messages.LocalUniversalForwardCoordinator
 import conectate.com.presentation.messages.UniversalForwardCoordinator
 import conectate.com.presentation.messages.UniversalShareHost
 import conectate.com.util.IncomingSharePayload
+import dagger.Lazy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -78,13 +79,17 @@ fun MainActivityContent(
     incomingShare: IncomingSharePayload?,
     onIncomingShareConsumed: () -> Unit,
     authRepository: AuthRepository,
-    notificationRepository: NotificationRepository,
-    voiceRoomRepository: VoiceRoomRepository,
-    callRepository: CallRepository,
-    liveRepository: LiveRepository,
+    notificationRepositoryProvider: Lazy<NotificationRepository>,
+    voiceRoomRepositoryProvider: Lazy<VoiceRoomRepository>,
+    callRepositoryProvider: Lazy<CallRepository>,
+    liveRepositoryProvider: Lazy<LiveRepository>,
     activityScope: CoroutineScope
 ) {
-    val connectivityViewModel: ConnectivityViewModel = hiltViewModel()
+    LaunchedEffect(Unit) {
+        if (conectate.com.BuildConfig.DEBUG) {
+            android.util.Log.d("StartupTiming", "MainActivityContent first composition completed")
+        }
+    }
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -94,10 +99,15 @@ fun MainActivityContent(
 
         LaunchedEffect(currentIntent) {
             currentIntent?.let { incomingIntent ->
+                if (!IntentRouter.hasPendingNavigationIntent(incomingIntent)) {
+                    onIntentConsumed()
+                    return@let
+                }
                 IntentRouter.handleIntentNavigation(
                     incomingIntent = incomingIntent,
                     navController = navController,
                     authRepository = authRepository,
+                    notificationRepository = notificationRepositoryProvider.get(),
                     activityScope = activityScope,
                     clearIntent = onIntentConsumed
                 )
@@ -106,7 +116,17 @@ fun MainActivityContent(
 
         val isInitializing by authRepository.isInitializing.collectAsStateWithLifecycle()
         val session by authRepository.getAuthStateFlow().collectAsStateWithLifecycle(initialValue = null)
-        val isLoggedIn = (session?.user?.id?.isNotBlank() == true) || authRepository.isUserLoggedIn
+        // Drive the first route from the asynchronously restored session StateFlow. Calling
+        // AuthService.isLoggedIn() here reads encrypted preferences synchronously during Compose.
+        val isLoggedIn = session?.user?.id?.isNotBlank() == true
+        if (isLoggedIn) StartupPrompts()
+        val notificationRepository = if (isLoggedIn) notificationRepositoryProvider.get() else null
+        val voiceRoomRepository = if (isLoggedIn) voiceRoomRepositoryProvider.get() else null
+        val callRepository = if (isLoggedIn) callRepositoryProvider.get() else null
+        val liveRepository = if (isLoggedIn) liveRepositoryProvider.get() else null
+        // Connectivity and sync are only needed by authenticated routes. Constructing their
+        // dependency graph on the welcome screen adds work before the first usable frame.
+        val connectivityViewModel = if (isLoggedIn) hiltViewModel<ConnectivityViewModel>() else null
         val accountSwitchState by authRepository.accountSwitchUiState.collectAsStateWithLifecycle()
         var accountSwitchSnapshot by remember { mutableStateOf<AccountSwitchUiState?>(null) }
         var showAccountSwitchOverlay by remember { mutableStateOf(false) }
@@ -114,12 +134,13 @@ fun MainActivityContent(
         var showAccountDeletedDialog by remember { mutableStateOf(false) }
         var forcedSuspensionUntil by remember { mutableStateOf<String?>(null) }
         var forcedSuspensionReason by remember { mutableStateOf<String?>(null) }
-        val isConnected by connectivityViewModel.isConnected.collectAsStateWithLifecycle()
-        val voiceSession by voiceRoomRepository.sessionState.collectAsStateWithLifecycle()
-        val currentCall by callRepository.activeCall.collectAsStateWithLifecycle()
-        val currentLiveSession by liveRepository.activeSession.collectAsStateWithLifecycle()
+        val isConnected = connectivityViewModel?.isConnected
+            ?.collectAsStateWithLifecycle()?.value ?: true
+        val voiceSession = voiceRoomRepository?.sessionState?.collectAsStateWithLifecycle()?.value
+        val currentCall = callRepository?.activeCall?.collectAsStateWithLifecycle()?.value
+        val currentLiveSession = liveRepository?.activeSession?.collectAsStateWithLifecycle()?.value
         val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
-        val currentRoom = voiceSession.room ?: voiceSession.roomId?.let { activeRoomId ->
+        val currentRoom = voiceSession?.room ?: voiceSession?.roomId?.let { activeRoomId ->
             VoiceRoom(
                 id = activeRoomId,
                 name = voiceSession.roomName,
@@ -128,7 +149,7 @@ fun MainActivityContent(
             )
         }
         val showVoiceSessionBar = isLoggedIn &&
-            voiceSession.hasActiveSession &&
+            voiceSession?.hasActiveSession == true &&
             currentRoute?.startsWith("room_detail") != true
         val showCallSessionBar = isLoggedIn && currentCall != null && currentRoute?.startsWith("call/") != true
         val showLiveBubble = isLoggedIn &&
@@ -161,9 +182,9 @@ fun MainActivityContent(
             }
         }
 
-        SessionSideEffects(
+        if (notificationRepository != null) SessionSideEffects(
             isLoggedIn = isLoggedIn,
-            activeUserId = session?.user?.id ?: authRepository.getCurrentUserId(),
+            activeUserId = session?.user?.id,
             authRepository = authRepository,
             notificationRepository = notificationRepository,
             onSuspensionDetected = { suspensionEndDate, reason ->
@@ -184,9 +205,9 @@ fun MainActivityContent(
                 isLoggedIn &&
                 currentRoute?.startsWith("room_detail") != true &&
                 currentRoom == null &&
-                voiceSession.hasActiveSession
+                voiceSession?.hasActiveSession == true
             ) {
-                voiceRoomRepository.refreshRooms()
+                voiceRoomRepository?.refreshRooms()
             }
         }
 
@@ -204,7 +225,7 @@ fun MainActivityContent(
                         },
                         onHangup = {
                             activityScope.launch {
-                                callRepository.hangup()
+                                callRepository?.hangup()
                             }
                         }
                     )
@@ -213,19 +234,19 @@ fun MainActivityContent(
                     currentRoom?.let { room ->
                     ActiveVoiceSessionBar(
                         room = room,
-                        isMuted = voiceSession.isMuted,
-                        connectionLabel = voiceSession.connectionState.label,
+                        isMuted = voiceSession?.isMuted == true,
+                        connectionLabel = voiceSession?.connectionState?.label.orEmpty(),
                         onReturnToRoom = { roomId ->
                             navController.navigate(Screen.RoomDetail.createRoute(roomId)) {
                                 launchSingleTop = true
                             }
                         },
                         onToggleMute = {
-                            voiceRoomRepository.toggleMute(!voiceSession.isMuted)
+                            voiceRoomRepository?.toggleMute(voiceSession?.isMuted != true)
                         },
                         onHangup = {
                             activityScope.launch {
-                                voiceRoomRepository.leaveRoom(room.id)
+                                voiceRoomRepository?.leaveRoom(room.id)
                             }
                         }
                     )
@@ -249,7 +270,10 @@ fun MainActivityContent(
                     .padding(adjustedPadding)
             ) {
                 CompositionLocalProvider(
-                    LocalUniversalForwardCoordinator provides universalForwardCoordinator
+                    LocalUniversalForwardCoordinator provides universalForwardCoordinator,
+                    conectate.com.presentation.components.LocalProfileIdentityAccount provides
+                        if (accountSwitchState.isSwitching || !isLoggedIn) ""
+                        else authRepository.getCurrentUserId().orEmpty(),
                 ) {
                     AppNavGraph(
                         navController = navController,
@@ -271,7 +295,7 @@ fun MainActivityContent(
                             title = "No tienes conexión a internet",
                             subtitle = "Esta parte de la app necesita red. Puedes continuar en Mensajes mientras vuelve la conexión.",
                             actionLabel = "Intentar de nuevo",
-                            onRetry = { connectivityViewModel.retrySync("global_offline_retry") },
+                            onRetry = { connectivityViewModel?.retrySync("global_offline_retry") },
                             secondaryActionLabel = "Continuar en Mensajes",
                             onSecondaryAction = {
                                 navController.navigate(Screen.Home.createRoute(startTab = Screen.Messages.route)) {
@@ -286,14 +310,14 @@ fun MainActivityContent(
                     }
                 }
 
-                InvitationOverlayHost(
+                if (voiceRoomRepository != null) InvitationOverlayHost(
                     isLoggedIn = isLoggedIn,
                     navController = navController,
                     authRepository = authRepository,
                     voiceRoomRepository = voiceRoomRepository
                 )
 
-                CallInvitationOverlayHost(
+                if (callRepository != null) CallInvitationOverlayHost(
                     isLoggedIn = isLoggedIn,
                     navController = navController,
                     authRepository = authRepository,
@@ -312,7 +336,7 @@ fun MainActivityContent(
                                 navController.navigate(route) { launchSingleTop = true }
                             },
                             onClose = {
-                                activityScope.launch { liveRepository.endLive() }
+                                activityScope.launch { liveRepository?.endLive() }
                             },
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -416,20 +440,3 @@ private fun AccountSwitchOverlay(state: AccountSwitchUiState) {
         }
     }
 }
-
-private fun isOfflineAccessibleRoute(route: String?): Boolean {
-    if (route.isNullOrBlank()) return true
-    return route.startsWith("home") ||
-        route.startsWith("chat/") ||
-        route.startsWith("group_chat/") ||
-        route.startsWith("community_chat/") ||
-        route.startsWith("offline_videos") ||
-        route.startsWith("fullscreen_video/")
-}
-
-
-
-
-
-
-

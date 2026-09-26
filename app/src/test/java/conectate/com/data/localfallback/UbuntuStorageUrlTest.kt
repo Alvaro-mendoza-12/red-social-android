@@ -51,4 +51,25 @@ class UbuntuStorageUrlTest {
             UbuntuStorageUrl.stableCacheKey(first)
         )
     }
+
+    @Test
+    fun `original storage url removes image transformations but preserves authorization`() {
+        val transformed = "https://example/storage/v1/object/sign/avatars/u/avatar.jpg?token=secret&width=96&quality=52&format=webp&v=7#profile"
+
+        assertEquals(
+            "https://example/storage/v1/object/sign/avatars/u/avatar.jpg?token=secret&v=7#profile",
+            UbuntuStorageUrl.originalObjectUrl(transformed)
+        )
+    }
+
+    @Test
+    fun `thumbnail replaces an existing low resolution transformation`() {
+        val transformed = "https://external.example/storage/v1/object/public/avatars/u/avatar.jpg?width=96&quality=50&format=webp"
+        val thumbnail = UbuntuStorageUrl.thumbnail(transformed, width = 1080, quality = 78)
+
+        assertEquals(1, thumbnail.orEmpty().split("width=").size - 1)
+        assertEquals(1, thumbnail.orEmpty().split("quality=").size - 1)
+        assertEquals(1, thumbnail.orEmpty().split("format=").size - 1)
+        org.junit.Assert.assertTrue(thumbnail.orEmpty().contains("width=1080"))
+    }
 }

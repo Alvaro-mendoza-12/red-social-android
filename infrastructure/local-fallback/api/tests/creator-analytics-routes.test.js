@@ -345,7 +345,15 @@ async function testOwnedContentCatalogUsesAuthenticatedAliasesOnly() {
           rows: [{
             content_id: VIDEO_ID,
             title: 'Video propio',
+            description: 'Descripción del video',
+            thumbnail_url: 'https://cdn.example/video.webp',
+            video_url: 'https://cdn.example/video.mp4',
             duration_seconds: 42,
+            views: 18,
+            like_count: 4,
+            comment_count: 2,
+            share_count: 1,
+            tags: ['gameplay'],
             is_public: true,
             created_at: '2026-08-08T10:00:00.000Z',
           }],
@@ -357,6 +365,13 @@ async function testOwnedContentCatalogUsesAuthenticatedAliasesOnly() {
             content_id: LIVE_ID,
             title: 'Directo propio',
             source: 'audio',
+            hashtags: ['gaming', 'minecraft'],
+            thumbnail_url: 'https://cdn.example/live.webp',
+            replay_url: 'https://cdn.example/live.mp4',
+            replay_duration_ms: 30000,
+            viewer_count: 12,
+            total_reactions: 7,
+            total_comments: 3,
             is_active: false,
             ended_at: '2026-08-08T09:30:00.000Z',
             started_at: '2026-08-08T09:00:00.000Z',
@@ -375,7 +390,13 @@ async function testOwnedContentCatalogUsesAuthenticatedAliasesOnly() {
   assert.equal(report.items.length, 2)
   assert.deepEqual(report.items.map((item) => item.contentType), ['video', 'live'])
   assert.equal(report.items[0].status, 'published')
+  assert.equal(report.items[0].description, 'Descripción del video')
+  assert.equal(report.items[0].thumbnailUrl, 'https://cdn.example/video.webp')
+  assert.equal(report.items[0].viewCount, 18)
   assert.equal(report.items[1].status, 'ended')
+  assert.equal(report.items[1].description, 'audio · #gaming #minecraft')
+  assert.deepEqual(report.items[1].tags, ['gaming', 'minecraft'])
+  assert.equal(report.items[1].durationSeconds, 30)
   assert.doesNotMatch(JSON.stringify(report), /creator-local|creator-public/)
 }
 

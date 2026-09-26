@@ -13,6 +13,9 @@ COMMAND_TIMEOUT_SECONDS="${COMMAND_TIMEOUT_SECONDS:-120}"
 MODULE_TIMEOUT_SECONDS="${MODULE_TIMEOUT_SECONDS:-600}"
 TEST_PASSWORD="${TEST_PASSWORD:-Conectate123!}"
 TEST_PASSWORD_NEXT="${TEST_PASSWORD_NEXT:-Conectate123!!}"
+EXPECTED_COMMIT="${EXPECTED_COMMIT:-}"
+EXPECTED_RELEASE="${EXPECTED_RELEASE:-}"
+EXPECTED_SOURCE_DIGEST="${EXPECTED_SOURCE_DIGEST:-}"
 
 PASS_COUNT=0
 WARN_COUNT=0
@@ -180,6 +183,30 @@ curl_status() {
     -H 'ngrok-skip-browser-warning: 1' "$url" || true
 }
 
+is_stable_https_origin() {
+  local value="${1,,}"
+  case "$value" in
+    https://*.trycloudflare.com|https://*.trycloudflare.com/*|https://*.ngrok-free.app|https://*.ngrok-free.app/*|https://*.ngrok.io|https://*.ngrok.io/*|http://*|https://localhost*|https://127.0.0.1*)
+      return 1
+      ;;
+    https://*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+production_requirement() {
+  local message="$1"
+  if [ "$STRICT_PRODUCTION" = "true" ]; then
+    status_line FAIL "STRICT_PRODUCTION: $message"
+  else
+    status_line WARN "$message"
+  fi
+}
+
 : >"$REPORT_PATH"
 line "# Conectate Ubuntu Production Readiness"
 line ""
@@ -235,8 +262,24 @@ fi
 
 require_env_ready POSTGRES_PASSWORD
 require_env_ready JWT_SECRET
+require_env_ready TOTP_ENCRYPTION_KEY
 require_env_ready ADMIN_SYNC_TOKEN
 require_env_ready PUBLIC_BASE_URL
+
+configured_public_base_url="${PUBLIC_BASE_URL:-$(env_value PUBLIC_BASE_URL)}"
+configured_public_base_url="${configured_public_base_url%/}"
+if is_stable_https_origin "$configured_public_base_url"; then
+  status_line PASS "PUBLIC_BASE_URL usa HTTPS estable"
+else
+  production_requirement "PUBLIC_BASE_URL debe ser HTTPS estable; no se admiten Quick Tunnel, ngrok, HTTP, localhost ni IP local"
+fi
+
+ephemeral_origin_enabled="$(env_value ALLOW_EPHEMERAL_PUBLIC_ORIGIN)"
+if [ "${ephemeral_origin_enabled,,}" = "true" ]; then
+  production_requirement "ALLOW_EPHEMERAL_PUBLIC_ORIGIN=true no es admisible fuera de una prueba controlada"
+else
+  status_line PASS "ALLOW_EPHEMERAL_PUBLIC_ORIGIN no esta activo"
+fi
 
 legacy_enabled="$(env_value LEGACY_SUPABASE_IMPORT_ENABLED)"
 if [ "${legacy_enabled:-false}" = "true" ]; then
@@ -252,7 +295,7 @@ else
 fi
 
 if [ "$STRICT_PRODUCTION" = "true" ]; then
-  for key in POSTGRES_PASSWORD JWT_SECRET ADMIN_SYNC_TOKEN PUBLIC_BASE_URL; do
+  for key in POSTGRES_PASSWORD JWT_SECRET TOTP_ENCRYPTION_KEY ADMIN_SYNC_TOKEN PUBLIC_BASE_URL; do
     value="$(env_value "$key")"
     if [ -z "$value" ] || [[ "$value" == change-this-* ]]; then
       status_line FAIL "STRICT_PRODUCTION: $key debe tener valor real"
@@ -260,16 +303,88 @@ if [ "$STRICT_PRODUCTION" = "true" ]; then
   done
 fi
 
+section "Identidad del release"
+release_marker="$ROOT_DIR/.conectate-release"
+release_name=""
+release_commit=""
+release_source_digest=""
+release_deployed_at=""
+if [ -s "$release_marker" ]; then
+  release_name="$(sed -n 's/^release=//p' "$release_marker" | tail -n 1)"
+  release_commit="$(sed -n 's/^commit=//p' "$release_marker" | tail -n 1)"
+  release_source_digest="$(sed -n 's/^source_digest=//p' "$release_marker" | tail -n 1)"
+  release_deployed_at="$(sed -n 's/^deployed_at_utc=//p' "$release_marker" | tail -n 1)"
+  if [[ "$release_name" =~ ^[A-Za-z0-9._:-]{8,128}$ && "$release_commit" =~ ^[0-9a-fA-F]{7,64}$ && "$release_source_digest" =~ ^[0-9a-fA-F]{64}$ && "$release_deployed_at" =~ ^[0-9T:.+-]+Z?$ ]]; then
+    status_line PASS "marcador de release valido: $release_name ($release_commit)"
+  else
+    status_line FAIL "marcador de release invalido o incompleto (se requiere source_digest SHA-256)"
+  fi
+else
+  production_requirement "falta .conectate-release; no se puede demostrar que el stack tenga una identidad de release"
+fi
+
+if [ -n "$EXPECTED_COMMIT" ]; then
+  if [ "$release_commit" = "$EXPECTED_COMMIT" ]; then
+    status_line PASS "el commit del release coincide con EXPECTED_COMMIT"
+  else
+    status_line FAIL "el commit del release ($release_commit) no coincide con EXPECTED_COMMIT"
+  fi
+fi
+if [ -n "$EXPECTED_RELEASE" ]; then
+  if [ "$release_name" = "$EXPECTED_RELEASE" ]; then
+    status_line PASS "el nombre del release coincide con EXPECTED_RELEASE"
+  else
+    status_line FAIL "el nombre del release ($release_name) no coincide con EXPECTED_RELEASE"
+  fi
+fi
+if [ -n "$EXPECTED_SOURCE_DIGEST" ]; then
+  if [ "$release_source_digest" = "$EXPECTED_SOURCE_DIGEST" ]; then
+    status_line PASS "la huella del artefacto coincide con EXPECTED_SOURCE_DIGEST"
+  else
+    status_line FAIL "la huella del artefacto ($release_source_digest) no coincide con EXPECTED_SOURCE_DIGEST"
+  fi
+fi
+
 section "Docker, puertos y logs"
 run_capture "docker compose ps" docker compose ps
 run_capture "puertos TCP locales" bash -lc "ss -ltnp 2>/dev/null | grep -E ':(3001|3002|3003|3080|5433)\\b' || true"
 run_capture "logs api edge signaling realtime-gateway" docker compose logs --tail=120 api edge signaling realtime-gateway
+
+if docker compose ps -q signaling-redis 2>/dev/null | grep -q .; then
+  if docker compose exec -T signaling-redis sh -ec 'REDISCLI_AUTH="$(cat /run/secrets/signaling_redis_password)" redis-cli ping | grep -qx PONG'; then
+    status_line PASS "signaling-redis responde PONG con secreto dedicado"
+  else
+    status_line FAIL "signaling-redis no responde autenticado; signaling no debe operar en memoria"
+  fi
+else
+  status_line FAIL "falta el contenedor signaling-redis requerido para estado distribuido de Live"
+fi
+
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet novvin-cloudflared.service; then
+  status_line PASS "novvin-cloudflared.service esta activo"
+else
+  production_requirement "novvin-cloudflared.service no esta activo; instala el Cloudflare Tunnel nombrado antes de publicar"
+fi
 
 ready_payload="$(curl -fsS --max-time 10 http://127.0.0.1:${FALLBACK_EDGE_PORT:-3080}/ready 2>/dev/null || true)"
 if printf '%s' "$ready_payload" | grep -q '"configured":true'; then
   status_line PASS "Firebase Admin inicializado: pushNotifications.configured=true"
 else
   status_line FAIL "Firebase Admin no esta listo en /ready"
+fi
+if [ -n "$release_commit" ]; then
+  if printf '%s' "$ready_payload" | grep -Fq "\"commit\":\"$release_commit\""; then
+    status_line PASS "el commit de /ready coincide con el marcador de release"
+  else
+    status_line FAIL "el commit de /ready no coincide con el marcador de release"
+  fi
+fi
+if [ -n "$release_source_digest" ]; then
+  if printf '%s' "$ready_payload" | grep -Fq "\"sourceDigest\":\"$release_source_digest\""; then
+    status_line PASS "la huella de /ready coincide con el marcador de release"
+  else
+    status_line FAIL "la huella de /ready no coincide con el marcador de release"
+  fi
 fi
 
 section "Postgres y storage local"
@@ -324,6 +439,15 @@ for path in /health /ready /realtime/health /turn-credentials; do
     line '```'
   fi
 done
+
+if is_stable_https_origin "$configured_public_base_url"; then
+  public_ready_code="$(curl_status "${configured_public_base_url}/ready")"
+  if [ "$public_ready_code" = "200" ]; then
+    status_line PASS "origen HTTPS publico responde /ready"
+  else
+    production_requirement "origen HTTPS publico no responde /ready (HTTP ${public_ready_code:-000})"
+  fi
+fi
 
 section "Validacion funcional por modulo"
 set +e

@@ -14,13 +14,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +40,7 @@ import conectate.com.data.model.ChatWithLastMessage
 fun PrivateChatsTab(
     onNavigateToSearch: () -> Unit,
     onNavigateToCallHistory: () -> Unit,
+    onOpenSavedMessages: () -> Unit = {},
     viewModel: MessagingViewModel = hiltViewModel(),
     onNavigateToChat: (String) -> Unit
 ) {
@@ -68,74 +71,32 @@ fun PrivateChatsTab(
             .background(colorScheme.background)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-        // Search and call history have independent, non-overlapping targets.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.updateSearchQuery(it) },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(54.dp),
-                placeholder = {
-                    Text(
-                        "Buscar conversaciones",
-                        color = colorScheme.onSurfaceVariant,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 14.sp
-                    )
-                },
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 14.sp
-                ),
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Buscar",
-                        tint = colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(25.dp)
-                    )
-                },
-                singleLine = true,
-                shape = CircleShape,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = colorScheme.onBackground,
-                    unfocusedTextColor = colorScheme.onBackground,
-                    cursorColor = colorScheme.primary,
-                    focusedBorderColor = colorScheme.outline,
-                    unfocusedBorderColor = colorScheme.outlineVariant,
-                    focusedContainerColor = colorScheme.surface,
-                    unfocusedContainerColor = colorScheme.surface,
-                )
+            InboxSearchField(
+                query = searchQuery,
+                onQueryChange = viewModel::updateSearchQuery,
+                modifier = Modifier.weight(1f),
             )
-            FilledTonalIconButton(
-                onClick = onNavigateToCallHistory,
-                modifier = Modifier.size(54.dp),
-                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = inboxRed,
-                    contentColor = colorScheme.onPrimary
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Call,
-                    contentDescription = "Abrir historial de llamadas",
-                    modifier = Modifier.size(25.dp)
-                )
-            }
+            InboxSearchActions(
+                onNavigateToCallHistory,
+                onOpenSavedMessages,
+                inboxRed,
+                colorScheme.onPrimary,
+            )
         }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(start = 14.dp, end = 14.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             InboxFilterPill(
                 selected = selectedFolderId == null && selectedListFilter == ChatListFilter.ALL,
@@ -271,7 +232,7 @@ fun PrivateChatsTab(
                                     showReportDialog = true
                                 }
                             )
-                            Divider(color = colorScheme.outlineVariant)
+                            HorizontalDivider(color = colorScheme.outlineVariant)
                         }
                     }
 
@@ -295,7 +256,22 @@ fun PrivateChatsTab(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = state.message, color = inboxRed)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(24.dp),
+                    ) {
+                        Text(
+                            text = state.message,
+                            color = colorScheme.error,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        FilledTonalButton(onClick = viewModel::refreshNow) {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Reintentar")
+                        }
+                    }
                 }
             }
         }
@@ -459,13 +435,82 @@ fun PrivateChatsTab(
 }
 
 @Composable
+internal fun InboxSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = modifier.heightIn(min = 56.dp).testTag("inbox_conversation_search"),
+        placeholder = {
+            Text(
+                "Buscar conversaciones",
+                color = colors.onSurfaceVariant,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 13.sp),
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = "Buscar",
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(21.dp),
+            )
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(14.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = colors.onBackground,
+            unfocusedTextColor = colors.onBackground,
+            cursorColor = colors.primary,
+            focusedBorderColor = colors.outline,
+            unfocusedBorderColor = colors.outlineVariant,
+            focusedContainerColor = colors.surface,
+            unfocusedContainerColor = colors.surface,
+        ),
+    )
+}
+
+@Composable
+private fun InboxSearchActions(
+    onNavigateToCallHistory: () -> Unit,
+    onOpenSavedMessages: () -> Unit,
+    accent: Color,
+    onAccent: Color,
+) {
+    FilledTonalIconButton(
+        onClick = onNavigateToCallHistory,
+        modifier = Modifier.size(46.dp),
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = accent,
+            contentColor = onAccent,
+        ),
+    ) {
+        Icon(
+            imageVector = Icons.Default.Call,
+            contentDescription = "Abrir historial de llamadas",
+            modifier = Modifier.size(21.dp),
+        )
+    }
+    IconButton(onClick = onOpenSavedMessages, modifier = Modifier.size(46.dp)) {
+        Icon(Icons.Default.Bookmark, contentDescription = "Abrir mensajes guardados")
+    }
+}
+
+@Composable
 private fun InboxFilterPill(
     selected: Boolean = false,
     onClick: () -> Unit,
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     outlined: Boolean = false,
-    height: Dp = 36.dp,
+    height: Dp = 32.dp,
 ) {
     val colorSchemePill = MaterialTheme.colorScheme
     val pillAccent = colorSchemePill.primary
@@ -479,28 +524,27 @@ private fun InboxFilterPill(
         onClick = onClick,
         color = background,
         contentColor = if (selected) colorSchemePill.onPrimary else colorSchemePill.onSurfaceVariant,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(9.dp),
         border = if (outlined || !selected) androidx.compose.foundation.BorderStroke(1.dp, borderColor) else null,
         modifier = Modifier.height(height)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 13.dp),
+            modifier = Modifier.padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             if (icon != null) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = if (selected) colorSchemePill.onPrimary else pillAccent,
-                    modifier = Modifier.size(19.dp)
+                    modifier = Modifier.size(17.dp)
                 )
             }
             Text(
                 text = label,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
                 maxLines = 1,
             )
         }

@@ -39,7 +39,7 @@ class ChallengeRepository @Inject constructor(
     private val storageService: StorageService,
     private val notificationRepository: NotificationRepository,
     private val localFallbackApiClient: LocalFallbackApiClient,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
 
 

@@ -25,7 +25,14 @@ healthy() {
 
 if ! healthy; then
   echo "WARN: stack degradado; intentando recuperacion controlada"
-  flock --wait 240 "$COMPOSE_LOCK" docker compose up -d --remove-orphans
+  (
+    flock --wait 240 9 || exit 1
+    docker compose up -d --remove-orphans
+    # Compose can recreate API/realtime/signaling with new container IPs.
+    # Nginx resolves those names at worker start, so recovery is incomplete
+    # until edge is reloaded while the same lock is still held.
+    docker compose restart edge
+  ) 9>"$COMPOSE_LOCK"
   for _ in $(seq 1 12); do
     sleep 5
     healthy && break

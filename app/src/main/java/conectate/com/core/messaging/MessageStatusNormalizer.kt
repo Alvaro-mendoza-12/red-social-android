@@ -31,6 +31,21 @@ object MessageStatusNormalizer {
         }
     }
 
+    /** Status for a successful send, preserving a stronger remote receipt. */
+    fun acknowledgedAfterSend(
+        status: String?,
+        deliveredAt: String?,
+        readAt: String?
+    ): String {
+        return when {
+            !readAt.isNullOrBlank() || normalize(status) == Constants.MESSAGE_STATUS_READ ->
+                Constants.MESSAGE_STATUS_READ
+            !deliveredAt.isNullOrBlank() || normalize(status) == Constants.MESSAGE_STATUS_DELIVERED ->
+                Constants.MESSAGE_STATUS_DELIVERED
+            else -> Constants.MESSAGE_STATUS_SENT
+        }
+    }
+
     fun isUnread(status: String?, readAt: String?): Boolean {
         if (!readAt.isNullOrBlank()) return false
         return when (normalize(status)) {

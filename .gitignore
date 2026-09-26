@@ -12,11 +12,13 @@ keystore.properties.*
 *.key
 *.env
 *.env.*
+!**/.env.example
 
 # Android/IntelliJ
 /.idea/
 *.iml
 .gradle/
+.kotlin/
 .gradle-user/
 .gradle-user-home/
 .android-user-home/
@@ -36,6 +38,8 @@ app/local.properties
 
 # Generated
 **/build/
+**/__pycache__/
+*.pyc
 **/captures/
 **/outputs/
 /assets/novvin-promo/*.avi
@@ -48,6 +52,10 @@ compile*.txt
 *.tmp
 *.temp
 *.broken
+.codex-tmp/
+.playwright-cli/
+/artifacts/qa/
+/audit/*-emulator-*.png
 hs_err_pid*.log
 replay_pid*.log
 

@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     bio TEXT,
     avatar_url TEXT,
     cover_url TEXT,
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     country TEXT,
     city TEXT,
     followers_count INTEGER DEFAULT 0,
@@ -53,20 +55,20 @@ CREATE POLICY "Users can insert own profile" ON public.profiles
 -- ========================================
 CREATE TABLE IF NOT EXISTS public.videos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    userId UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    userName TEXT DEFAULT '',
-    userProfileImage TEXT DEFAULT '',
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    user_name TEXT DEFAULT '',
+    user_profile_image TEXT DEFAULT '',
     title TEXT DEFAULT '',
     description TEXT DEFAULT '',
-    videoUrl TEXT NOT NULL,
-    thumbnailUrl TEXT DEFAULT '',
+    video_url TEXT NOT NULL,
+    thumbnail_url TEXT DEFAULT '',
     duration BIGINT DEFAULT 0,
     views INTEGER DEFAULT 0,
-    likeCount INTEGER DEFAULT 0,
-    commentCount INTEGER DEFAULT 0,
+    like_count INTEGER DEFAULT 0,
+    comment_count INTEGER DEFAULT 0,
     country TEXT DEFAULT '',
     city TEXT DEFAULT '',
-    isPublic BOOLEAN DEFAULT TRUE,
+    is_public BOOLEAN DEFAULT TRUE,
     tags TEXT[] DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -78,22 +80,22 @@ ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
 -- Policy: Public videos are viewable by everyone
 DROP POLICY IF EXISTS "Public videos are viewable by everyone" ON public.videos;
 CREATE POLICY "Public videos are viewable by everyone" ON public.videos
-    FOR SELECT USING (isPublic = true OR userId = auth.uid());
+    FOR SELECT USING (is_public = true OR user_id = auth.uid());
 
 -- Policy: Users can insert their own videos
 DROP POLICY IF EXISTS "Users can insert own videos" ON public.videos;
 CREATE POLICY "Users can insert own videos" ON public.videos
-    FOR INSERT WITH CHECK (auth.uid() = userId);
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Policy: Users can update their own videos
 DROP POLICY IF EXISTS "Users can update own videos" ON public.videos;
 CREATE POLICY "Users can update own videos" ON public.videos
-    FOR UPDATE USING (auth.uid() = userId);
+    FOR UPDATE USING (auth.uid() = user_id);
 
 -- Policy: Users can delete their own videos
 DROP POLICY IF EXISTS "Users can delete own videos" ON public.videos;
 CREATE POLICY "Users can delete own videos" ON public.videos
-    FOR DELETE USING (auth.uid() = userId);
+    FOR DELETE USING (auth.uid() = user_id);
 
 -- ========================================
 -- 3. VIDEO_LIKES TABLE
@@ -129,8 +131,8 @@ CREATE POLICY "Users can delete own likes" ON public.video_likes
 -- ========================================
 CREATE TABLE IF NOT EXISTS public.video_comments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    videoId UUID NOT NULL REFERENCES public.videos(id) ON DELETE CASCADE,
-    userId UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    video_id UUID NOT NULL REFERENCES public.videos(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -147,7 +149,7 @@ CREATE POLICY "Comments are viewable by everyone" ON public.video_comments
 -- Policy: Users can insert their own comments
 DROP POLICY IF EXISTS "Users can insert own comments" ON public.video_comments;
 CREATE POLICY "Users can insert own comments" ON public.video_comments
-    FOR INSERT WITH CHECK (auth.uid() = userId);
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- ========================================
 -- 5. CHATS TABLE
@@ -387,7 +389,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 CREATE INDEX IF NOT EXISTS idx_profiles_numeric_id ON public.profiles(numeric_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
 CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
-CREATE INDEX IF NOT EXISTS idx_videos_userId ON public.videos(userId);
+CREATE INDEX IF NOT EXISTS idx_videos_user_id ON public.videos(user_id);
 CREATE INDEX IF NOT EXISTS idx_videos_created_at ON public.videos(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON public.messages(chat_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON public.messages(created_at);

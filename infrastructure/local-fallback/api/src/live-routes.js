@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken')
 const { publishRealtimeEvent } = require('./realtime-publish')
 const { drawGuessEnabled } = require('./live-draw-guess-routes')
 const { netWithdrawableGiftAmount } = require('./economic-provenance')
+const { constantTimeSecretEqual } = require('./request-security')
+const { safeErrorLogDetails } = require('./request-observability')
 const {
   muteLiveKitParticipantAudio,
   removeLiveKitParticipant,
@@ -17,7 +19,8 @@ const {
 
 const LIVE_GUESTS_BATTLES_FLAG = 'LIVE_GUESTS_BATTLES_ENABLED'
 const LIVE_SFU_FLAG = 'LIVE_SFU_ENABLED'
-const DEFAULT_MAX_LIVE_GUESTS = 4
+// Current Android multi-guest layout is one host plus three guests.
+const DEFAULT_MAX_LIVE_GUESTS = 3
 const INVITATION_TTL_MINUTES = 5
 
 function envFlag(name) {
@@ -56,7 +59,7 @@ function roleGrant(role) {
   }
 }
 
-function issueLiveSfuToken({ liveId, userId, displayName, role, configuration, now = Math.floor(Date.now() / 1000) }) {
+function issueLiveSfuToken({ liveId, roomName, userId, displayName, role, configuration, now = Math.floor(Date.now() / 1000) }) {
   const expiresAt = now + 10 * 60
   const token = jwt.sign(
     {
@@ -68,7 +71,7 @@ function issueLiveSfuToken({ liveId, userId, displayName, role, configuration, n
       exp: expiresAt,
       video: {
         ...roleGrant(role),
-        room: liveRoomName(liveId),
+        room: cleanText(roomName, 240) || liveRoomName(liveId),
       },
       metadata: JSON.stringify({ liveId: normalizeId(liveId), role }),
     },
@@ -167,6 +170,12 @@ async function ensureLiveTables(pool) {
       title TEXT NOT NULL DEFAULT '',
       source TEXT NOT NULL DEFAULT 'camera' CHECK (source IN ('camera', 'screen', 'audio')),
       hashtags JSONB NOT NULL DEFAULT '[]'::jsonb,
+      cover_url TEXT,
+      game_name TEXT,
+      category TEXT,
+      visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'followers', 'private')),
+      gifts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      battles_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       viewer_count INT NOT NULL DEFAULT 0,
       peak_viewer_count INT NOT NULL DEFAULT 0,
       total_comments INT NOT NULL DEFAULT 0,
@@ -197,6 +206,12 @@ async function ensureLiveTables(pool) {
     ALTER TABLE fallback_live_streams
     ADD COLUMN IF NOT EXISTS blocked_words JSONB NOT NULL DEFAULT '[]'::jsonb
   `)
+  await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS cover_url TEXT`)
+  await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS game_name TEXT`)
+  await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS category TEXT`)
+  await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public'`)
+  await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS gifts_enabled BOOLEAN NOT NULL DEFAULT TRUE`)
+  await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS battles_enabled BOOLEAN NOT NULL DEFAULT TRUE`)
   await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS replay_url TEXT`)
   await pool.query(`ALTER TABLE fallback_live_streams ADD COLUMN IF NOT EXISTS replay_thumbnail_url TEXT`)
   await pool.query(`
@@ -376,10 +391,36 @@ async function ensureLiveTables(pool) {
       CHECK (winner_user_id IS NULL OR lower(winner_user_id) IN (lower(left_user_id), lower(right_user_id)))
     )
   `)
+  await pool.query(`ALTER TABLE fallback_live_battles ADD COLUMN IF NOT EXISTS opponent_live_id UUID REFERENCES fallback_live_streams(id) ON DELETE CASCADE`)
+  await pool.query(`ALTER TABLE fallback_live_battles ADD COLUMN IF NOT EXISTS room_name TEXT`)
+  await pool.query(`ALTER TABLE fallback_live_battles ADD COLUMN IF NOT EXISTS requested_by_user_id TEXT`)
+  await pool.query(`ALTER TABLE fallback_live_battles ADD COLUMN IF NOT EXISTS invitation_expires_at TIMESTAMPTZ`)
+  await pool.query(`ALTER TABLE fallback_live_battles ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ`)
+  await pool.query(`ALTER TABLE fallback_live_battles DROP CONSTRAINT IF EXISTS fallback_live_battles_status_check`)
+  await pool.query(`
+    ALTER TABLE fallback_live_battles
+    ADD CONSTRAINT fallback_live_battles_status_check
+    CHECK (status IN ('invited', 'active', 'rejected', 'ended', 'canceled', 'expired'))
+  `).catch(async (error) => {
+    // PostgreSQL raises duplicate_object when another migration already installed
+    // the identical named constraint. Every other error is still actionable.
+    if (error?.code !== '42710') throw error
+  })
+  await pool.query(`
+    UPDATE fallback_live_battles
+    SET room_name = COALESCE(room_name, 'novvin-battle-' || id::text)
+    WHERE room_name IS NULL OR room_name = ''
+  `)
+  await pool.query(`DROP INDEX IF EXISTS idx_fallback_live_active_battle`)
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_live_active_battle
     ON fallback_live_battles(live_id)
-    WHERE status = 'active'
+    WHERE status IN ('invited', 'active')
+  `)
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_live_active_battle_opponent
+    ON fallback_live_battles(opponent_live_id)
+    WHERE opponent_live_id IS NOT NULL AND status IN ('invited', 'active')
   `)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_live_battle_events (
@@ -426,9 +467,27 @@ function ownsStream(stream, identity) {
   return identity.ids.has(normalizeId(stream?.host_user_id))
 }
 
+async function canViewStream(pool, stream, identity) {
+  if (!stream) return false
+  if (ownsStream(stream, identity)) return true
+  const visibility = normalizeId(stream.visibility || 'public')
+  if (visibility === 'public') return true
+  if (visibility !== 'followers') return false
+  const query =
+    'SELECT 1 FROM fallback_follows ' +
+    'WHERE lower(follower_id) = ANY($1::text[]) ' +
+    'AND lower(following_id) = lower($2) LIMIT 1'
+  const { rowCount } = await pool.query(
+    query,
+    [identity.values, String(stream.host_user_id || '')],
+  )
+  return rowCount > 0
+}
+
 async function streamById(pool, liveId, { forUpdate = false } = {}) {
   const { rows } = await pool.query(
     `SELECT id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+            cover_url, game_name, category, visibility, gifts_enabled, battles_enabled,
             viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
             allow_guest_requests,
             blocked_words, replay_url, replay_thumbnail_url,
@@ -438,6 +497,22 @@ async function streamById(pool, liveId, { forUpdate = false } = {}) {
      FROM fallback_live_streams
      WHERE id = $1::uuid
      LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
+    [liveId],
+  )
+  return rows[0] || null
+}
+
+async function activeCrossLiveBattle(pool, liveId) {
+  const { rows } = await pool.query(
+    `SELECT id::text, live_id::text, opponent_live_id::text, left_user_id, right_user_id,
+            status, room_name, requested_by_user_id, invitation_expires_at, responded_at,
+            score_version, left_score, right_score, winner_user_id,
+            started_at, ended_at, created_at, updated_at
+     FROM fallback_live_battles
+     WHERE status = 'active'
+       AND (live_id = $1::uuid OR opponent_live_id = $1::uuid)
+     ORDER BY started_at DESC
+     LIMIT 1`,
     [liveId],
   )
   return rows[0] || null
@@ -510,7 +585,7 @@ function requireLiveCollaborationFeature(res) {
 function requireInternalLiveEvent(req, res) {
   const expected = String(process.env.LIVE_INTERNAL_EVENTS_TOKEN || '').trim()
   const supplied = String(req.headers['x-live-internal-token'] || '').trim()
-  if (!expected || !supplied || supplied !== expected) {
+  if (!constantTimeSecretEqual(supplied, expected)) {
     res.status(404).json({ error: 'NOT_FOUND' })
     return false
   }
@@ -672,6 +747,9 @@ async function moderationState(pool, stream, identity) {
 }
 
 function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdentity }) {
+  require('./live-gift-events').registerLiveGiftRoutes(app, {
+    pool, authRequired, getCurrentUser, userIdentity, validUuid, streamById, canViewStream, ownsStream,
+  })
   app.get('/v1/data/live/capabilities', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -723,8 +801,15 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
           return res.status(409).json({ error: 'LIVE_GUEST_LIMIT_REACHED' })
         }
       }
+      // While two independent LIVE rooms are in an accepted battle, both hosts
+      // and both audiences receive a token for the same short-lived battle room.
+      // This is what makes the opponent a real remote publisher instead of a
+      // duplicated guest or a black placeholder.
+      const activeBattle = await activeCrossLiveBattle(pool, liveId)
+      const resolvedRoomName = activeBattle?.room_name || liveRoomName(liveId)
       const participant = issueLiveSfuToken({
         liveId,
+        roomName: resolvedRoomName,
         userId: identity.displayUserId,
         displayName: identity.displayName,
         role: requestedRole,
@@ -747,11 +832,12 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       res.setHeader('Cache-Control', 'no-store')
       res.json({
         wsUrl: configuration.url,
-        roomName: liveRoomName(liveId),
+        roomName: resolvedRoomName,
         token: participant.token,
         expiresAt: participant.expiresAt,
         role: requestedRole,
         maxGuests: configuration.maxGuests,
+        battleId: activeBattle?.id || null,
       })
     } catch (error) {
       next(error)
@@ -1122,6 +1208,43 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
     }
   })
 
+  app.get('/v1/data/live/:liveId/battles/candidates', authRequired, async (req, res, next) => {
+    try {
+      if (!requireLiveCollaborationFeature(res)) return
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      const identity = userIdentity(user)
+      if (!stream || !ownsStream(stream, identity)) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+      await pool.query(
+        `UPDATE fallback_live_battles SET status='expired', ended_at=NOW(), updated_at=NOW()
+         WHERE status='invited' AND invitation_expires_at <= NOW()`,
+      )
+      const { rows } = await pool.query(
+        `SELECT s.id::text AS live_id, s.host_user_id AS user_id, s.host_name AS name,
+                s.host_avatar_url AS avatar_url, s.title, s.viewer_count,
+                s.category, s.started_at
+         FROM fallback_live_streams s
+         WHERE s.is_active = TRUE AND s.battles_enabled = TRUE AND s.id <> $1::uuid
+           AND lower(s.host_user_id) <> ALL($2::text[])
+           AND NOT EXISTS (
+             SELECT 1 FROM fallback_live_battles b
+             WHERE b.status IN ('invited', 'active')
+               AND (b.live_id = s.id OR b.opponent_live_id = s.id)
+           )
+         ORDER BY s.viewer_count DESC, s.started_at DESC NULLS LAST
+         LIMIT 100`,
+        [liveId, identity.values],
+      )
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({ items: rows })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.post('/v1/data/live/:liveId/battles', authRequired, async (req, res, next) => {
     try {
       if (!requireLiveCollaborationFeature(res)) return
@@ -1133,18 +1256,65 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
       const identity = userIdentity(user)
       if (!ownsStream(stream, identity)) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+      await pool.query(
+        `UPDATE fallback_live_battles SET status='expired', ended_at=NOW(), updated_at=NOW()
+         WHERE status='invited' AND invitation_expires_at <= NOW()`,
+      )
       const opponentUserId = cleanText(req.body?.opponentUserId || req.body?.opponent_user_id, 160).toLowerCase()
       if (!opponentUserId || identity.ids.has(opponentUserId)) {
         return res.status(400).json({ error: 'LIVE_BATTLE_OPPONENT_INVALID' })
       }
+      const requestedOpponentLiveId = validUuid(req.body?.opponentLiveId || req.body?.opponent_live_id)
+      const { rows: opponentRows } = await pool.query(
+        `SELECT id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+                cover_url, game_name, category, visibility, gifts_enabled, battles_enabled,
+                viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
+                allow_guest_requests, blocked_words, replay_url, replay_thumbnail_url,
+                replay_duration_ms::float8 AS replay_duration_ms, replay_published,
+                replay_updated_at, is_active, started_at, ended_at, created_at, updated_at
+         FROM fallback_live_streams
+         WHERE is_active = TRUE AND battles_enabled = TRUE AND id <> $1::uuid
+           AND lower(host_user_id) = lower($2)
+           AND ($3::uuid IS NULL OR id = $3::uuid)
+         ORDER BY started_at DESC NULLS LAST
+         LIMIT 1`,
+        [liveId, opponentUserId, requestedOpponentLiveId],
+      )
+      const opponentStream = opponentRows[0]
+      if (opponentStream) {
+        const battleId = crypto.randomUUID()
+        const roomName = `novvin-battle-${battleId}`
+        const { rows } = await pool.query(
+          `INSERT INTO fallback_live_battles(
+             id, live_id, opponent_live_id, left_user_id, right_user_id, status,
+             room_name, requested_by_user_id, invitation_expires_at
+           )
+           VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'invited', $6, $4, NOW() + INTERVAL '2 minutes')
+           RETURNING id::text, live_id::text, opponent_live_id::text, left_user_id, right_user_id,
+                     status, room_name, requested_by_user_id, invitation_expires_at, responded_at,
+                     score_version, left_score, right_score, winner_user_id,
+                     started_at, ended_at, created_at, updated_at`,
+          [battleId, liveId, opponentStream.id, identity.displayUserId, opponentStream.host_user_id, roomName],
+        )
+        const battle = rows[0]
+        await Promise.all([
+          publishLiveCollaborationEvent(liveId, { type: 'battle_invited', battle }),
+          publishLiveCollaborationEvent(opponentStream.id, { type: 'battle_invitation_received', battle }),
+        ])
+        return res.status(202).json({ battle })
+      }
+
+      // Backward-compatible guest battle. This remains available inside one
+      // LIVE, but is deliberately separate from host-vs-host cross-LIVE mode.
       const invitation = await invitationForUser(pool, liveId, opponentUserId)
       if (!invitation || invitation.status !== 'accepted') {
         return res.status(409).json({ error: 'LIVE_BATTLE_GUEST_NOT_ACCEPTED' })
       }
       const { rows } = await pool.query(
-        `INSERT INTO fallback_live_battles(live_id, left_user_id, right_user_id, status)
-         VALUES ($1::uuid, $2, $3, 'active')
-         RETURNING id::text, live_id::text, left_user_id, right_user_id, status,
+        `INSERT INTO fallback_live_battles(live_id, left_user_id, right_user_id, status, room_name, requested_by_user_id)
+         VALUES ($1::uuid, $2, $3, 'active', 'novvin-live-' || $1::text, $2)
+         RETURNING id::text, live_id::text, opponent_live_id::text, left_user_id, right_user_id, status,
+                   room_name, requested_by_user_id, invitation_expires_at, responded_at,
                    score_version, left_score, right_score, winner_user_id,
                    started_at, ended_at, created_at, updated_at`,
         [liveId, identity.displayUserId, opponentUserId],
@@ -1168,12 +1338,15 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const stream = await streamById(pool, liveId)
       if (!stream || !stream.is_active) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
       const { rows } = await pool.query(
-        `SELECT id::text, live_id::text, left_user_id, right_user_id, status,
+        `SELECT id::text, live_id::text, opponent_live_id::text, left_user_id, right_user_id, status,
+                room_name, requested_by_user_id, invitation_expires_at, responded_at,
                 score_version, left_score, right_score, winner_user_id,
                 started_at, ended_at, created_at, updated_at
          FROM fallback_live_battles
-         WHERE live_id = $1::uuid AND status = 'active'
-         ORDER BY started_at DESC
+         WHERE (live_id = $1::uuid OR opponent_live_id = $1::uuid)
+           AND status IN ('invited', 'active')
+           AND (status <> 'invited' OR invitation_expires_at > NOW())
+         ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, created_at DESC
          LIMIT 1`,
         [liveId],
       )
@@ -1181,6 +1354,67 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       res.json({ battle: rows[0] || null })
     } catch (error) {
       next(error)
+    }
+  })
+
+  app.post('/v1/data/live/:liveId/battles/:battleId/respond', authRequired, async (req, res, next) => {
+    let client
+    try {
+      if (!requireLiveCollaborationFeature(res)) return
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      const battleId = validUuid(req.params.battleId)
+      if (!liveId || !battleId) return res.status(400).json({ error: 'LIVE_BATTLE_ID_INVALID' })
+      const stream = await streamById(pool, liveId)
+      const identity = userIdentity(user)
+      if (!stream || !ownsStream(stream, identity)) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
+      const accepted = req.body?.accepted === true
+      client = await pool.connect()
+      await client.query('BEGIN')
+      const { rows: locked } = await client.query(
+        `SELECT id::text, live_id::text, opponent_live_id::text, left_user_id, right_user_id,
+                status, room_name, invitation_expires_at
+         FROM fallback_live_battles
+         WHERE id = $1::uuid FOR UPDATE`,
+        [battleId],
+      )
+      const current = locked[0]
+      if (!current || current.opponent_live_id !== liveId || current.status !== 'invited') {
+        await client.query('ROLLBACK')
+        return res.status(404).json({ error: 'LIVE_BATTLE_INVITATION_NOT_FOUND' })
+      }
+      if (new Date(current.invitation_expires_at || 0).getTime() <= Date.now()) {
+        await client.query(`UPDATE fallback_live_battles SET status='expired', ended_at=NOW(), updated_at=NOW() WHERE id=$1::uuid`, [battleId])
+        await client.query('COMMIT')
+        return res.status(410).json({ error: 'LIVE_BATTLE_INVITATION_EXPIRED' })
+      }
+      const nextStatus = accepted ? 'active' : 'rejected'
+      const { rows } = await client.query(
+        `UPDATE fallback_live_battles
+         SET status=$2, responded_at=NOW(),
+             started_at=CASE WHEN $2='active' THEN NOW() ELSE started_at END,
+             ended_at=CASE WHEN $2='rejected' THEN NOW() ELSE NULL END,
+             updated_at=NOW()
+         WHERE id=$1::uuid
+         RETURNING id::text, live_id::text, opponent_live_id::text, left_user_id, right_user_id,
+                   status, room_name, requested_by_user_id, invitation_expires_at, responded_at,
+                   score_version, left_score, right_score, winner_user_id,
+                   started_at, ended_at, created_at, updated_at`,
+        [battleId, nextStatus],
+      )
+      await client.query('COMMIT')
+      const battle = rows[0]
+      await Promise.all([
+        publishLiveCollaborationEvent(battle.live_id, { type: accepted ? 'battle_started' : 'battle_rejected', battle }),
+        publishLiveCollaborationEvent(battle.opponent_live_id, { type: accepted ? 'battle_started' : 'battle_rejected', battle }),
+      ])
+      res.json({ battle })
+    } catch (error) {
+      if (client) await client.query('ROLLBACK').catch(() => {})
+      next(error)
+    } finally {
+      client?.release()
     }
   })
 
@@ -1194,11 +1428,12 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!liveId || !battleId) return res.status(400).json({ error: 'LIVE_BATTLE_ID_INVALID' })
       const identity = userIdentity(user)
       const { rows } = await pool.query(
-        `SELECT id::text, live_id::text, left_user_id, right_user_id, status,
+        `SELECT id::text, live_id::text, opponent_live_id::text, left_user_id, right_user_id, status,
+                room_name, requested_by_user_id, invitation_expires_at, responded_at,
                 score_version, left_score, right_score, winner_user_id,
                 started_at, ended_at, created_at, updated_at
          FROM fallback_live_battles
-         WHERE id = $1::uuid AND live_id = $2::uuid
+          WHERE id = $1::uuid AND (live_id = $2::uuid OR opponent_live_id = $2::uuid)
            AND (lower(left_user_id) = ANY($3::text[]) OR lower(right_user_id) = ANY($3::text[]))
          LIMIT 1`,
         [battleId, liveId, identity.values],
@@ -1222,22 +1457,28 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const identity = userIdentity(user)
       const { rows } = await pool.query(
         `UPDATE fallback_live_battles
-         SET status = 'ended',
+          SET status = 'ended',
              winner_user_id = CASE
                WHEN left_score > right_score THEN left_user_id
                WHEN right_score > left_score THEN right_user_id
                ELSE NULL
              END,
              ended_at = NOW(), updated_at = NOW()
-         WHERE id = $1::uuid AND live_id = $2::uuid AND status = 'active'
-           AND (lower(left_user_id) = ANY($3::text[]) OR lower(right_user_id) = ANY($3::text[]))
-         RETURNING id::text, live_id::text, left_user_id, right_user_id, status,
-                   score_version, left_score, right_score, winner_user_id,
+          WHERE id = $1::uuid AND (live_id = $2::uuid OR opponent_live_id = $2::uuid) AND status = 'active'
+            AND (lower(left_user_id) = ANY($3::text[]) OR lower(right_user_id) = ANY($3::text[]))
+          RETURNING id::text, live_id::text, opponent_live_id::text, left_user_id, right_user_id, status,
+                    room_name, requested_by_user_id, invitation_expires_at, responded_at,
+                    score_version, left_score, right_score, winner_user_id,
                    started_at, ended_at, created_at, updated_at`,
         [battleId, liveId, identity.values],
       )
       if (!rows[0]) return res.status(404).json({ error: 'LIVE_BATTLE_NOT_ACTIVE' })
-      await publishLiveCollaborationEvent(liveId, { type: 'battle_ended', battle: rows[0] })
+      await Promise.all([
+        publishLiveCollaborationEvent(rows[0].live_id, { type: 'battle_ended', battle: rows[0] }),
+        rows[0].opponent_live_id
+          ? publishLiveCollaborationEvent(rows[0].opponent_live_id, { type: 'battle_ended', battle: rows[0] })
+          : Promise.resolve(),
+      ])
       res.json({ battle: rows[0] })
     } catch (error) {
       next(error)
@@ -1261,7 +1502,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       client = await pool.connect()
       await client.query('BEGIN')
       const battleResult = await client.query(
-        `SELECT id::text, live_id::text, left_user_id, right_user_id, status
+        `SELECT id::text, live_id::text, opponent_live_id::text, left_user_id, right_user_id, status
          FROM fallback_live_battles WHERE id = $1::uuid FOR UPDATE`,
         [battleId],
       )
@@ -1294,17 +1535,23 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         `UPDATE fallback_live_battles
          SET ${side} = ${side} + $2, score_version = score_version + 1, updated_at = NOW()
          WHERE id = $1::uuid
-         RETURNING id::text, live_id::text, left_user_id, right_user_id, status,
-                   score_version, left_score, right_score, winner_user_id,
+          RETURNING id::text, live_id::text, opponent_live_id::text, left_user_id, right_user_id, status,
+                    room_name, requested_by_user_id, invitation_expires_at, responded_at,
+                    score_version, left_score, right_score, winner_user_id,
                    started_at, ended_at, created_at, updated_at`,
         [battleId, points],
       )
       await client.query('COMMIT')
-      await publishLiveCollaborationEvent(battle.live_id, {
-        type: 'battle_score_updated',
-        battle: updated.rows[0],
-        eventId,
-      })
+      await Promise.all([
+        publishLiveCollaborationEvent(battle.live_id, {
+          type: 'battle_score_updated', battle: updated.rows[0], eventId,
+        }),
+        battle.opponent_live_id
+          ? publishLiveCollaborationEvent(battle.opponent_live_id, {
+            type: 'battle_score_updated', battle: updated.rows[0], eventId,
+          })
+          : Promise.resolve(),
+      ])
       res.status(201).json({ battle: updated.rows[0], eventId })
     } catch (error) {
       if (client) await client.query('ROLLBACK').catch(() => {})
@@ -1314,22 +1561,90 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
     }
   })
 
+  // Signaling uses this idempotent service-to-service endpoint when the host
+  // lease expires after a process crash. A browser/mobile bearer is purposely
+  // not retained in Redis just to close an orphaned live stream.
+  app.post('/v1/internal/live/:liveId/terminate', async (req, res, next) => {
+    try {
+      if (!requireInternalLiveEvent(req, res)) return
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const reason = cleanText(req.body?.reason, 120) || 'signaling-host-lease-expired'
+      const totalReactions = intBetween(
+        req.body?.totalReactions ?? req.body?.total_reactions,
+        0,
+        100_000_000,
+        0,
+      )
+      const { rows } = await pool.query(
+        `WITH target AS (
+           SELECT id, is_active AS was_active
+           FROM fallback_live_streams
+           WHERE id = $1::uuid
+           FOR UPDATE
+         )
+         UPDATE fallback_live_streams AS stream
+         SET is_active = FALSE,
+             viewer_count = 0,
+             total_reactions = GREATEST(stream.total_reactions, $2),
+             ended_at = COALESCE(stream.ended_at, NOW()),
+             updated_at = NOW()
+         FROM target
+         WHERE stream.id = target.id
+         RETURNING stream.id::text, stream.host_user_id, stream.is_active, stream.viewer_count,
+                   stream.total_reactions, stream.started_at, stream.ended_at, stream.updated_at,
+                   target.was_active`,
+        [liveId, totalReactions],
+      )
+      const stream = rows[0]
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const transitioned = stream.was_active === true
+      if (transitioned) {
+        await publishLiveCollaborationEvent(liveId, {
+          type: 'live_ended',
+          reason,
+          endedAt: stream.ended_at,
+        })
+      }
+      const { was_active: _wasActive, ...publicStream } = stream
+      res.setHeader('Cache-Control', 'no-store')
+      res.json({ ok: true, transitioned, stream: publicStream })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.get('/v1/data/live', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
       const limit = intBetween(req.query.limit, 1, 100, 60)
       const { rows } = await pool.query(
         `SELECT id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+                cover_url, game_name, category, visibility, gifts_enabled, battles_enabled,
                 viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
                 allow_guest_requests,
                 is_active,
                 started_at, ended_at, created_at, updated_at
          FROM fallback_live_streams
          WHERE is_active = TRUE
+           AND (
+             visibility = 'public'
+             OR lower(host_user_id) = ANY($1::text[])
+             OR (
+               visibility = 'followers'
+               AND EXISTS (
+                 SELECT 1
+                 FROM fallback_follows
+                 WHERE lower(follower_id) = ANY($1::text[])
+                   AND lower(following_id) = lower(fallback_live_streams.host_user_id)
+               )
+             )
+           )
          ORDER BY viewer_count DESC, started_at DESC NULLS LAST, created_at DESC
-         LIMIT $1`,
-        [limit],
+         LIMIT $2`,
+        [identity.values, limit],
       )
       res.setHeader('Cache-Control', 'private, no-store')
       res.json({ items: rows })
@@ -1347,6 +1662,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const limit = intBetween(req.query.limit, 1, 100, 40)
       const { rows } = await pool.query(
         `SELECT id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+                cover_url, game_name, category, visibility, gifts_enabled, battles_enabled,
                 viewer_count, peak_viewer_count, total_comments, total_reactions, is_active,
                 started_at, ended_at, created_at, updated_at, replay_url, replay_thumbnail_url,
                 replay_duration_ms::float8 AS replay_duration_ms,
@@ -1355,7 +1671,24 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
          WHERE is_active = FALSE
            AND (
              ($1::boolean AND lower(host_user_id) = ANY($2::text[])) OR
-             (NOT $1::boolean AND replay_published = TRUE AND replay_url IS NOT NULL)
+             (
+               NOT $1::boolean
+               AND replay_published = TRUE
+               AND replay_url IS NOT NULL
+               AND (
+                 visibility = 'public'
+                 OR lower(host_user_id) = ANY($2::text[])
+                 OR (
+                   visibility = 'followers'
+                   AND EXISTS (
+                     SELECT 1
+                     FROM fallback_follows
+                     WHERE lower(follower_id) = ANY($2::text[])
+                       AND lower(following_id) = lower(fallback_live_streams.host_user_id)
+                   )
+                 )
+               )
+             )
            )
          ORDER BY COALESCE(replay_updated_at, ended_at, created_at) DESC
          LIMIT $3`,
@@ -1380,7 +1713,11 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
       const stream = await streamById(pool, liveId)
       if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
-      if (!stream.is_active && !ownsStream(stream, userIdentity(user))) {
+      const identity = userIdentity(user)
+      if (
+        (!stream.is_active && !ownsStream(stream, identity)) ||
+        !(await canViewStream(pool, stream, identity))
+      ) {
         return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
       }
       res.setHeader('Cache-Control', 'private, no-store')
@@ -1398,11 +1735,19 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
       const stream = await streamById(pool, liveId)
       if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const identity = userIdentity(user)
+      if ((!stream.is_active && !ownsStream(stream, identity)) || !(await canViewStream(pool, stream, identity))) {
+        return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      }
       const { rows } = await pool.query(
         `SELECT row FROM fallback_compat_rows
          WHERE table_name = 'gift_transactions'
+           AND row->>'live_stream_id' = $1
+           AND row->>'status' = 'committed'
+           AND row->>'is_public' = 'true'
          ORDER BY updated_at DESC
          LIMIT 10000`,
+        [liveId],
       )
       const items = liveSupporterRanking(rows.map((entry) => entry?.row || {}), liveId)
       if (items.length > 0) {
@@ -1443,6 +1788,13 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const title = cleanText(req.body?.title, 80) || `${profile.name} en vivo`
       const source = sourceOf(req.body?.source)
       const hashtags = cleanHashtags(req.body?.hashtags)
+      const coverUrl = cleanText(req.body?.coverUrl ?? req.body?.cover_url, 2_000) || null
+      const gameName = cleanText(req.body?.gameName ?? req.body?.game_name, 80) || null
+      const category = cleanText(req.body?.category, 40) || null
+      const rawVisibility = normalizeId(req.body?.visibility)
+      const visibility = ['public', 'followers', 'private'].includes(rawVisibility) ? rawVisibility : 'public'
+      const giftsEnabled = req.body?.giftsEnabled ?? req.body?.gifts_enabled ?? true
+      const battlesEnabled = req.body?.battlesEnabled ?? req.body?.battles_enabled ?? true
       const liveId = validUuid(req.body?.id) || crypto.randomUUID()
 
       await pool.query(
@@ -1458,15 +1810,31 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const { rows } = await pool.query(
         `INSERT INTO fallback_live_streams(
             id, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+            cover_url, game_name, category, visibility, gifts_enabled, battles_enabled,
             viewer_count, is_active, created_at, updated_at
          )
-         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, 0, FALSE, NOW(), NOW())
+         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, 0, FALSE, NOW(), NOW())
          RETURNING id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+                   cover_url, game_name, category, visibility, gifts_enabled, battles_enabled,
                    viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
                    allow_guest_requests,
                    is_active,
                    started_at, ended_at, created_at, updated_at`,
-        [liveId, identity.displayUserId, profile.name, profile.avatarUrl, title, source, JSON.stringify(hashtags)],
+        [
+          liveId,
+          identity.displayUserId,
+          profile.name,
+          profile.avatarUrl,
+          title,
+          source,
+          JSON.stringify(hashtags),
+          coverUrl,
+          gameName,
+          category,
+          visibility,
+          Boolean(giftsEnabled),
+          Boolean(battlesEnabled),
+        ],
       )
       res.status(201).json({ stream: rows[0] })
     } catch (error) {
@@ -1544,6 +1912,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
              updated_at = NOW()
          WHERE id = $1::uuid
          RETURNING id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+                   cover_url, game_name, category, visibility, gifts_enabled, battles_enabled,
                    viewer_count, peak_viewer_count, total_comments, total_reactions, chat_paused,
                    allow_guest_requests,
                    is_active,
@@ -1565,9 +1934,9 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       res.json({ stream })
       if (transitionedToLive && liveFollowerNotificationsEnabled()) {
         void processPendingLiveFollowerNotifications(pool).catch((error) => {
-          console.error('[live-followers] notification dispatch failed', {
-            code: String(error?.code || error?.message || 'UNKNOWN').slice(0, 80),
-          })
+          console.error('[live-followers] notification dispatch failed', safeErrorLogDetails(error, {
+            fallbackCode: 'UNKNOWN',
+          }))
         })
       }
     } catch (error) {
@@ -1631,6 +2000,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
              updated_at = NOW()
          WHERE id = $1::uuid
          RETURNING id::text, host_user_id, host_name, host_avatar_url, title, source, hashtags,
+                   cover_url, game_name, category, visibility, gifts_enabled, battles_enabled,
                    viewer_count, peak_viewer_count, total_comments, total_reactions, is_active,
                    started_at, ended_at, created_at, updated_at, replay_url, replay_thumbnail_url,
                    replay_duration_ms::float8 AS replay_duration_ms,
@@ -1961,7 +2331,11 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
       const stream = await streamById(pool, liveId)
       if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
-      if (!stream.is_active && !ownsStream(stream, userIdentity(user))) {
+      const identity = userIdentity(user)
+      if (
+        (!stream.is_active && !ownsStream(stream, identity)) ||
+        !(await canViewStream(pool, stream, identity))
+      ) {
         return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
       }
       const limit = intBetween(req.query.limit, 1, 200, 80)
@@ -1991,6 +2365,9 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const stream = await streamById(pool, liveId)
       if (!stream?.is_active) return res.status(409).json({ error: 'LIVE_NOT_ACTIVE' })
       const identity = userIdentity(user)
+      if (!(await canViewStream(pool, stream, identity))) {
+        return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      }
       const membership = await moderationMembership(pool, stream, identity)
       if (!membership.isHost && await isLiveBanned(pool, liveId, identity)) {
         return res.status(403).json({ error: 'LIVE_BANNED' })

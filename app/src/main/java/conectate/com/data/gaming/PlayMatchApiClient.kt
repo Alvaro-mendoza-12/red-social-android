@@ -64,7 +64,7 @@ class PlayMatchApiClient @Inject constructor(
     suspend fun savePreferences(token: String, body: SavePlayMatchPreferencesRequest) = execute(token) { base ->
         supabaseConfig.httpClient.put("$base/v1/data/playmatch/preferences") { playMatchHeaders(token); contentType(ContentType.Application.Json); setBody(body) }
     }.decode<SavePlayMatchPreferencesResponse>()
-    suspend fun players(token: String, query: String, gameId: String?, platform: String?, region: String?, cursor: String?) = execute(token) { base ->
+    suspend fun players(token: String, query: String, gameId: String?, platform: String?, region: String?, cursor: String?, availableNow: Boolean = false) = execute(token) { base ->
         supabaseConfig.httpClient.get("$base/v1/data/playmatch/players") {
             playMatchHeaders(token)
             if (query.isNotBlank()) parameter("q", query)
@@ -72,6 +72,7 @@ class PlayMatchApiClient @Inject constructor(
             platform?.takeIf(String::isNotBlank)?.let { parameter("platform", it) }
             region?.takeIf(String::isNotBlank)?.let { parameter("region", it) }
             cursor?.takeIf(String::isNotBlank)?.let { parameter("cursor", it) }
+            if (availableNow) parameter("availableNow", true)
             parameter("limit", 20)
         }
     }.decode<PlayMatchPlayersResponse>()

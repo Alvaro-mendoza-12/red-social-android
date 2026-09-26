@@ -5,16 +5,22 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "check": "node --check index.js && node --check resolver.js && node --check payload-policy.js && node --check distributed-adapter.js && node --check distributed-scope.js && node --check distributed-live-state.js",
+    "test": "node --test tests/*.test.js",
+    "test:redis": "node --test tests/distributed-live-state.redis.integration.test.js"
   },
   "dependencies": {
-    "axios": "^1.18.1",
+    "@socket.io/redis-streams-adapter": "0.3.1",
     "dotenv": "^16.3.1",
-    "query-string": "^9.3.1",
+    "redis": "6.2.1",
     "socket.io": "^4.8.3",
-    "ytdl-core": "^4.11.5"
+    "socket.io-parser": "4.2.7"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.9"
   }
 }

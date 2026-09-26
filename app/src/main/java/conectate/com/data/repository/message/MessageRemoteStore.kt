@@ -43,7 +43,7 @@ class MessageRemoteStore @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val storageService: StorageService,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     private val json = Json {
         ignoreUnknownKeys = true

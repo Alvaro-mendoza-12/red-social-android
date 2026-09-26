@@ -1,4 +1,4 @@
-import { fallbackApiJson, readFallbackSession } from './auth/fallbackAuth'
+import { ensureFallbackAccessToken, fallbackApiJson } from './auth/fallbackAuth'
 import { callUbuntuRpc } from './fallbackRpc'
 import { isUbuntuPrimary } from './ubuntuBackend'
 import { supabase } from './supabase'
@@ -193,7 +193,7 @@ async function uploadUbuntuStorageObject(bucket: string, path: string, file: Fil
   try {
     const fallbackApiUrl = getRuntimeBackendUrl()
     if (!fallbackApiUrl) throw new Error('El servidor Ubuntu no esta configurado.')
-    const token = readFallbackSession()?.accessToken?.trim()
+    const token = await ensureFallbackAccessToken()
     if (!token) throw new Error('No hay una sesion Ubuntu activa para subir archivos.')
     const objectPath = encodePathSegments(path)
     if (!objectPath) throw new Error('Ruta de archivo invalida.')
@@ -209,6 +209,7 @@ async function uploadUbuntuStorageObject(bucket: string, path: string, file: Fil
         method: options?.upsert ? 'PUT' : 'POST',
         headers,
         body: file,
+        credentials: 'include',
       },
     )
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>

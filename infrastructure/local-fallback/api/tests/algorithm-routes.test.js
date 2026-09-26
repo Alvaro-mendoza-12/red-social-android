@@ -250,6 +250,12 @@ function testDefaultProfileSwitchInvalidatesThePreviousProfileVersion() {
     source,
     /SET is_default = FALSE, revision = revision \+ 1, updated_at = NOW\(\)/,
   )
+  assert.match(source, /is_enabled BOOLEAN NOT NULL DEFAULT TRUE/)
+  assert.match(source, /ALTER COLUMN is_enabled SET DEFAULT TRUE/)
+  assert.match(
+    source,
+    /WHERE is_default = TRUE[\s\S]*slug = 'for-you'[\s\S]*mode = 'manual'[\s\S]*revision = 1[\s\S]*is_enabled = FALSE/,
+  )
 }
 
 function testMigrationContract() {

@@ -7,11 +7,16 @@ import { isSupabaseConfigured, supabase } from '../../core/supabase'
 import { textOf, type GenericRow } from '../../core/utils'
 import {
   clearFallbackSession,
+  fallbackSessionNeedsRefresh,
   fallbackSessionToUser,
+  hasFallbackSessionHint,
   isFallbackAuthConfigured,
   onFallbackAuthChanged,
   readFallbackSession,
+  restoreFallbackSession,
+  signOutFallbackSession,
   type FallbackSession,
+  upgradeFallbackWebSession,
 } from './fallbackAuth'
 import { bootstrapSessionProfile } from './sessionBootstrap'
 
@@ -36,7 +41,13 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const initialFallbackSession = readFallbackSession()
-  const [loading, setLoading] = useState(isSupabaseConfigured && !initialFallbackSession)
+  const initialFallbackHint = hasFallbackSessionHint()
+  const initialFallbackBootstrapComplete = Boolean(initialFallbackSession) || !initialFallbackHint
+  const [startupFallbackSession] = useState(initialFallbackSession)
+  const [fallbackBootstrapComplete, setFallbackBootstrapComplete] = useState(initialFallbackBootstrapComplete)
+  const [loading, setLoading] = useState(
+    !initialFallbackBootstrapComplete || (isSupabaseConfigured && !initialFallbackSession),
+  )
   const [session, setSession] = useState<Session | null>(null)
   const [fallbackSession, setFallbackSession] = useState<FallbackSession | null>(initialFallbackSession)
   const [user, setUser] = useState<User | null>(() => fallbackSessionToUser(initialFallbackSession))
@@ -44,6 +55,33 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [suspensionLoading, setSuspensionLoading] = useState(false)
 
   useEffect(() => {
+    if (fallbackBootstrapComplete) {
+      if (startupFallbackSession) {
+        void upgradeFallbackWebSession().catch((error) => {
+          console.warn('AuthProvider legacy web session upgrade failed', error)
+        })
+      }
+      return
+    }
+
+    let cancelled = false
+    void restoreFallbackSession()
+      .catch((error) => {
+        console.warn('AuthProvider secure web session restore failed', error)
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setFallbackBootstrapComplete(true)
+          if (!isSupabaseConfigured) setLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [fallbackBootstrapComplete, startupFallbackSession])
+
+  useEffect(() => {
+    if (!fallbackBootstrapComplete) return
     if (!supabase) return
     const client = supabase as NonNullable<typeof supabase>
 
@@ -90,11 +128,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [])
+  }, [fallbackBootstrapComplete])
 
   useEffect(() => {
     return onFallbackAuthChanged(() => {
       const storedFallbackSession = readFallbackSession()
+      if (!storedFallbackSession && hasFallbackSessionHint()) {
+        void restoreFallbackSession().catch((error) => {
+          console.warn('AuthProvider cross-tab web session restore failed', error)
+        })
+        return
+      }
       setFallbackSession(storedFallbackSession)
       if (storedFallbackSession) {
         setSession(null)
@@ -107,6 +151,26 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (!session) setUser(null)
     })
   }, [session])
+
+  useEffect(() => {
+    if (!fallbackSession) return
+
+    const refreshIfNeeded = () => {
+      if (!fallbackSessionNeedsRefresh()) return
+      void restoreFallbackSession().catch((error) => {
+        console.warn('AuthProvider secure web session refresh failed', error)
+      })
+    }
+    const interval = window.setInterval(refreshIfNeeded, 60_000)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshIfNeeded()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [fallbackSession])
 
   useEffect(() => {
     if (!supabase || !user || fallbackSession) {
@@ -190,6 +254,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       suspension,
       suspensionLoading,
       signOut: async () => {
+        if (fallbackSession) await signOutFallbackSession()
         clearFallbackSession()
         setFallbackSession(null)
         setSession(null)

@@ -39,4 +39,14 @@ class LocalFallbackProfilePatchTest {
         assertFalse(payload.containsKey("linkedGames"))
         assertTrue(payload.size == 3)
     }
+
+    @Test
+    fun `changing the public handle does not overwrite the display name or profile media`() {
+        val payload = LocalFallbackUpdateProfileRequest(username = "Adolfo_01").toSparseJson()
+
+        assertEquals(setOf("username"), payload.keys)
+        assertEquals(JsonPrimitive("Adolfo_01"), payload["username"])
+        assertFalse(payload.containsKey("displayName"))
+        assertFalse(payload.containsKey("avatarUrl"))
+    }
 }

@@ -14,12 +14,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Instant
 
 data class CreatorAnalyticsUiState(
     val isLoading: Boolean = true,
     val isReportLoading: Boolean = false,
     val items: List<CreatorAnalyticsContent> = emptyList(),
     val selected: CreatorAnalyticsContent? = null,
+    val period: CreatorAnalyticsPeriod = CreatorAnalyticsPeriod.THIRTY_DAYS,
     val videoReport: VideoAnalyticsReport? = null,
     val liveReport: LiveAnalyticsReport? = null,
     val error: String? = null,
@@ -43,7 +45,7 @@ class CreatorAnalyticsViewModel @Inject constructor(
         catalogJob?.cancel()
         reportJob?.cancel()
         catalogJob = viewModelScope.launch {
-            _state.value = CreatorAnalyticsUiState(isLoading = true)
+            _state.value = CreatorAnalyticsUiState(isLoading = true, period = _state.value.period)
             repository.loadContent().fold(
                 onSuccess = { catalog ->
                     val supported = catalog.items.filter { it.isVideo || it.isLive }
@@ -76,14 +78,18 @@ class CreatorAnalyticsViewModel @Inject constructor(
         }
         reportJob = viewModelScope.launch {
             val expectedId = content.contentId
+            val expectedPeriod = _state.value.period
+            val range = expectedPeriod.rangeEndingAt(Instant.now())
             val result = if (content.isVideo) {
-                repository.loadVideo(expectedId).map { Report.Video(it) }
+                repository.loadVideo(expectedId, range).map { Report.Video(it) }
             } else {
-                repository.loadLive(expectedId).map { Report.Live(it) }
+                repository.loadLive(expectedId, range).map { Report.Live(it) }
             }
             result.fold(
                 onSuccess = { report ->
-                    if (_state.value.selected?.contentId != expectedId) return@fold
+                    if (_state.value.selected?.contentId != expectedId ||
+                        _state.value.selected?.contentType != content.contentType ||
+                        _state.value.period != expectedPeriod) return@fold
                     _state.update {
                         when (report) {
                             is Report.Video -> it.copy(
@@ -100,7 +106,9 @@ class CreatorAnalyticsViewModel @Inject constructor(
                     }
                 },
                 onFailure = { error ->
-                    if (_state.value.selected?.contentId != expectedId) return@fold
+                    if (_state.value.selected?.contentId != expectedId ||
+                        _state.value.selected?.contentType != content.contentType ||
+                        _state.value.period != expectedPeriod) return@fold
                     _state.update {
                         it.copy(
                             isReportLoading = false,
@@ -110,6 +118,13 @@ class CreatorAnalyticsViewModel @Inject constructor(
                 },
             )
         }
+    }
+
+    fun setPeriod(period: CreatorAnalyticsPeriod) {
+        if (_state.value.period == period) return
+        val selected = _state.value.selected
+        _state.update { it.copy(period = period) }
+        if (selected != null) select(selected)
     }
 
     private sealed interface Report {

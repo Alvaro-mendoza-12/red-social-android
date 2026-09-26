@@ -41,4 +41,7 @@
     <string name="widget_action_videos">影片</string>
     <string name="widget_action_moment">動態</string>
     <string name="widget_action_chat">聊天</string>
+    <string name="two_factor_local_reset_title">帳戶安全</string>
+    <string name="two_factor_local_reset_message">此裝置的加密儲存空間已重設。如果帳戶啟用了兩步驗證，請使用驗證器或備用代碼登入。伺服器端的保護仍然有效。</string>
+    <string name="two_factor_local_reset_ok">知道了</string>
 </resources>

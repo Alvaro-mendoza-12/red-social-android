@@ -6,7 +6,8 @@ const {
   publishChallengeLiveEvent,
   publishRealtimeEvent,
 } = require('./realtime-publish')
-const { isAppAdmin, recordModerationEvent } = require('./admin-moderation-routes')
+const { appAdminHasCapability, isAppAdmin, recordModerationEvent } = require('./admin-moderation-routes')
+const { ADMIN_CAPABILITY } = require('./admin-capabilities')
 const { accountSuspendedPayload, findActiveSuspension } = require('./account-status')
 const { invalidateImportedDataCache } = require('./data-routes')
 const { sendPushForNotification } = require('./push-notifications')
@@ -17,7 +18,13 @@ const {
   scheduleMessageJob,
 } = require('./scheduled-message-jobs')
 const { liveGiftLimitsConfiguration } = require('./gift-safety-config')
+const { googlePlayRtdnConfiguration } = require('./google-play-rtdn')
 const { applyGiftToActiveBattle } = require('./live-battle-scoring')
+const { stableKey } = require('./request-security')
+const { safeErrorLogDetails } = require('./request-observability')
+const { USERNAME_PATTERN, cleanUsername, usernameOwnedByAnother } = require('./username-policy')
+const { introPolicyError } = require('./direct-message-request-policy')
+const { catalogAllowsStickerMedia, stickerPackReadable, stickerRowDeleted } = require('./sticker-media-policy')
 const {
   deleteTrustedContentClassification,
   ingestTrustedContentClassification,
@@ -183,6 +190,7 @@ const SUPPORTED_TABLES = new Set([
   'post_reactions',
   'posts',
   'profile_login_emails',
+  'profile_views',
   'profiles',
   'reports',
   'scheduled_message_jobs',
@@ -249,6 +257,7 @@ const PRIVATE_OWNER_FIELDS = new Map([
   ['moment_highlights', ['user_id', 'owner_id']],
   ['nicknames', ['user_id']],
   ['profile_login_emails', ['user_id', 'profile_id']],
+  ['profile_views', ['profile_id']],
   ['scheduled_message_jobs', ['user_id', 'sender_id']],
   ['user_sticker_favorites', ['user_id']],
   ['user_subscriptions', ['user_id']],
@@ -267,6 +276,7 @@ const AUTHORED_TABLE_FIELDS = new Map([
   ['moment_views', 'user_id'],
   ['moments', 'user_id'],
   ['notifications', 'actor_id'],
+  ['profile_views', 'viewer_id'],
   ['post_comments', 'user_id'],
   ['post_likes', 'user_id'],
   ['post_reactions', 'user_id'],
@@ -301,6 +311,7 @@ const COMPOSITE_ROW_ID_FIELDS = new Map([
   ['nicknames', [['user_id', 'target_user_id']]],
   ['post_likes', [['post_id', 'user_id']]],
   ['post_reactions', [['post_id', 'user_id']]],
+  ['profile_views', [['profile_id', 'viewer_id']]],
   ['sticker_pack_items', [['pack_id', 'sticker_id']]],
   ['user_sticker_favorites', [['user_id', 'sticker_id'], ['user_id', 'item_id']]],
   ['video_likes', [['video_id', 'user_id']]],
@@ -707,6 +718,11 @@ async function readSpecificRows(pool, tableName, auth) {
       const { rows } = await pool.query(`
         SELECT id::text, user_id, media_url, media_type, thumbnail_url, caption, visibility,
                visibility_type, allow_replies, duration_hours, duration_type, excluded_ids,
+               audience_ids, display_duration_ms,
+               overlay_text, overlay_color, overlay_font, overlay_scale, overlay_x, overlay_y,
+               music_url, music_audio_url, music_id, music_title, music_artist, music_source,
+               music_source_url, music_license, music_license_url, music_start_ms,
+               music_duration_ms, music_end_ms, music_volume, original_audio_volume,
                expires_at, created_at, updated_at
         FROM fallback_moments
         ORDER BY created_at DESC
@@ -832,6 +848,7 @@ async function readSpecificRows(pool, tableName, auth) {
         SELECT id::text, user_id, user_name, user_profile_image, title, description,
                video_url, cover_url, thumbnail_url, duration_seconds AS duration,
                duration_seconds, trim_start_seconds, trim_end_seconds,
+               sound_id, sound_source_video_id, sound_title, sound_artist, sound_url,
                views, like_count, comment_count, share_count, is_public, tags,
                created_at, updated_at
         FROM fallback_videos
@@ -1012,7 +1029,7 @@ async function canAccessPoll(pool, identity, pollId) {
 }
 
 async function canManagePoll(pool, identity, pollId) {
-  if (await isAppAdmin(pool, identity)) return true
+  if (await appAdminHasCapability(pool, identity, ADMIN_CAPABILITY.CONTENT_MANAGE)) return true
   const poll = await findCompatEntity(pool, 'message_polls', pollId)
   return Boolean(poll && identityOwnsRow(identity, poll, ['creator_id', 'user_id', 'owner_id']))
 }
@@ -1021,20 +1038,20 @@ async function accessibleStickerPackIds(pool, identity) {
   const packs = await importedAndCompatRows(pool, 'sticker_packs')
   return new Set(
     packs
-      .filter((pack) => pack.is_public === true || identityOwnsRow(identity, pack, ['owner_id', 'user_id', 'creator_id']))
+      .filter((pack) => stickerPackReadable(pack, identity?.ids))
       .map((pack) => normalizeIdentityValue(pack.id))
       .filter(Boolean),
   )
 }
 
 async function canManageStickerPack(pool, identity, packId) {
-  if (await isAppAdmin(pool, identity)) return true
+  if (await appAdminHasCapability(pool, identity, ADMIN_CAPABILITY.CONTENT_MANAGE)) return true
   const pack = await findCompatEntity(pool, 'sticker_packs', packId)
   return Boolean(pack && identityOwnsRow(identity, pack, ['owner_id', 'user_id', 'creator_id']))
 }
 
 async function canManageHighlight(pool, identity, highlightId) {
-  if (await isAppAdmin(pool, identity)) return true
+  if (await appAdminHasCapability(pool, identity, ADMIN_CAPABILITY.CONTENT_MANAGE)) return true
   const highlight = await findCompatEntity(pool, 'moment_highlights', highlightId)
   return Boolean(highlight && identityOwnsRow(identity, highlight, ['user_id', 'owner_id']))
 }
@@ -1062,6 +1079,9 @@ function rowScopeId(row, fields) {
 
 function sanitizeProfileRow(row, identity) {
   const result = { ...row }
+  if (result.profile_view_history_enabled == null && result.profileViewHistoryEnabled == null) {
+    result.profile_view_history_enabled = true
+  }
   const isSelf = identityOwnsRow(identity, row, ['id', 'local_id', 'supabase_user_id', 'user_id'])
   if (!isSelf) {
     delete result.email
@@ -1140,7 +1160,7 @@ async function filterRowsForRead(pool, tableName, rows, auth) {
   }
   if (tableName === 'sticker_pack_items') {
     const packIds = await accessibleStickerPackIds(pool, identity)
-    return rows.filter((row) => packIds.has(normalizeIdentityValue(row.pack_id)))
+    return rows.filter((row) => !stickerRowDeleted(row) && packIds.has(normalizeIdentityValue(row.pack_id)))
   }
 
   if (['messages', 'chats', 'chat_participants'].includes(tableName)) {
@@ -1355,7 +1375,7 @@ async function canAccessCollection(pool, kind, identity, roomId) {
 async function canManageCollection(pool, kind, identity, roomId) {
   const cleanRoomId = normalizeIdentityValue(roomId)
   if (!cleanRoomId || !identity?.values?.length) return false
-  if (await isAppAdmin(pool, identity)) return true
+  if (await appAdminHasCapability(pool, identity, ADMIN_CAPABILITY.CONTENT_MANAGE)) return true
   const { rows } = await pool.query(
     `SELECT (
        EXISTS (
@@ -1392,7 +1412,9 @@ async function canManageCollection(pool, kind, identity, roomId) {
 
 async function requireAdminWrite(pool, identity, tableName) {
   if (!ADMIN_WRITE_TABLES.has(tableName)) return
-  if (!(await isAppAdmin(pool, identity))) throw httpError('ADMIN_REQUIRED')
+  if (!(await appAdminHasCapability(pool, identity, ADMIN_CAPABILITY.CONTENT_MANAGE))) {
+    throw httpError('ADMIN_REQUIRED')
+  }
 }
 
 async function prepareInsertRow(pool, tableName, identity, source) {
@@ -1631,6 +1653,27 @@ async function prepareInsertRow(pool, tableName, identity, source) {
     }
   }
 
+  if (tableName === 'profile_views') {
+    const secured = forceActorField(row, 'viewer_id', identity)
+    const targetId = normalizeIdentityValue(secured.profile_id)
+    if (!targetId || identityOwnsValue(identity, targetId)) {
+      throw httpError('PROFILE_VIEW_TARGET_INVALID', 400)
+    }
+    const profiles = await readTableRows(pool, 'profiles', {}, identity)
+    const target = profiles.find((profile) =>
+      normalizeIdentityValue(rowId(profile, 'profiles')) === targetId,
+    )
+    const viewer = profiles.find((profile) => identityOwnsRow(identity, profile, [
+      'id', 'user_id', 'supabase_user_id', 'local_id',
+    ]))
+    const enabled = (profile) => profile?.profile_view_history_enabled === true ||
+      String(profile?.profile_view_history_enabled || '').toLowerCase() === 'true'
+    if (!enabled(target) || !enabled(viewer)) {
+      throw httpError('PROFILE_VIEW_HISTORY_DISABLED', 403)
+    }
+    return secured
+  }
+
   const actorField = AUTHORED_TABLE_FIELDS.get(tableName)
   if (actorField) return forceActorField(row, actorField, identity)
 
@@ -1679,7 +1722,9 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
     const stickerId = row.sticker_id || row.id
     return canUseStickerMedia(pool, identity, stickerId, mediaUrl)
   }
-  if (ADMIN_WRITE_TABLES.has(tableName)) return isAppAdmin(pool, identity)
+  if (ADMIN_WRITE_TABLES.has(tableName)) {
+    return appAdminHasCapability(pool, identity, ADMIN_CAPABILITY.CONTENT_MANAGE)
+  }
   if (tableName === 'profiles' || tableName === 'users') {
     return identityOwnsRow(identity, row, ['id', 'local_id', 'supabase_user_id', 'user_id'])
   }
@@ -1775,6 +1820,12 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
     if (patch.currency != null && !/^[A-Za-z]{3}$/.test(String(patch.currency).trim())) return false
     return isSafePayoutProviderReference(patch.external_account_id)
   }
+  if (tableName === 'profile_views') {
+    if (action === 'delete') {
+      return identityOwnsRow(identity, row, ['profile_id', 'viewer_id'])
+    }
+    return identityOwnsRow(identity, row, ['viewer_id'])
+  }
   const actorField = AUTHORED_TABLE_FIELDS.get(tableName)
   if (actorField) return identityOwnsRow(identity, row, [actorField])
   const privateFields = PRIVATE_OWNER_FIELDS.get(tableName)
@@ -1783,6 +1834,31 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
 }
 
 async function upsertProfile(pool, auth, row) {
+  const identity = await getAuthIdentity(pool, auth)
+  if (!identity) throw httpError('AUTH_REQUIRED', 401)
+  if (Object.prototype.hasOwnProperty.call(row, 'username') && row.username != null) {
+    const username = cleanUsername(row.username)
+    if (!USERNAME_PATTERN.test(username)) throw httpError('USERNAME_INVALID', 400)
+    if (await usernameOwnedByAnother(pool, username, identity.values)) {
+      throw httpError('USERNAME_TAKEN', 409)
+    }
+    row = { ...row, username }
+    try {
+      await pool.query(
+        `INSERT INTO fallback_profile_overrides(user_id, profile, updated_at)
+         VALUES ($1::uuid, jsonb_build_object('username', $2::text), NOW())
+         ON CONFLICT (user_id) DO UPDATE SET
+           profile = fallback_profile_overrides.profile || EXCLUDED.profile,
+           updated_at = NOW()`,
+        [identity.localUserId, username],
+      )
+    } catch (error) {
+      if (error?.code === '23505' && error?.constraint === 'idx_fallback_profile_username_unique') {
+        throw httpError('USERNAME_TAKEN', 409)
+      }
+      throw error
+    }
+  }
   const id = row.id || auth?.sub
   const displayName = row.display_name || row.username || row.full_name || row.name || row.email
   const avatarUrl = row.avatar_url || row.avatarUrl
@@ -1806,21 +1882,25 @@ async function upsertProfile(pool, auth, row) {
 async function insertVideoRow(pool, auth, row) {
   const userId = row.user_id || row.userId || auth?.sub || ''
   const videoUrl = row.video_url || row.videoUrl || ''
+  const videoId = row.id || crypto.randomUUID()
+  const artist = row.sound_artist || row.soundArtist || row.user_name || row.username || row.userName || 'Novvin'
   const { rows } = await pool.query(
     `INSERT INTO fallback_videos(
         id, user_id, user_name, user_profile_image, title, description,
-        video_url, cover_url, thumbnail_url, duration_seconds, is_public, tags
+        video_url, cover_url, thumbnail_url, duration_seconds, is_public, tags,
+        sound_id, sound_source_video_id, sound_title, sound_artist, sound_url
      )
      VALUES (
-        COALESCE(NULLIF($1, '')::uuid, gen_random_uuid()),
-        $2, $3, $4, $5, $6, $7, $8, $8, COALESCE($9, 0), COALESCE($10, TRUE), COALESCE($11::jsonb, '[]'::jsonb)
+        $1::uuid, $2, $3, $4, $5, $6, $7, $8, $8, COALESCE($9, 0), COALESCE($10, TRUE),
+        COALESCE($11::jsonb, '[]'::jsonb), $12, $13, $14, $15, $16
      )
      RETURNING id::text, user_id, user_name, user_profile_image, title, description,
                video_url, cover_url, thumbnail_url, duration_seconds AS duration,
+               sound_id, sound_source_video_id, sound_title, sound_artist, sound_url,
                duration_seconds, views, like_count, comment_count, share_count,
                is_public, tags, created_at, updated_at`,
     [
-      row.id || null,
+      videoId,
       userId,
       row.user_name || row.username || row.userName || 'Usuario',
       row.user_profile_image || row.userProfileImage || null,
@@ -1831,6 +1911,11 @@ async function insertVideoRow(pool, auth, row) {
       Number(row.duration || row.duration_seconds || 0) || 0,
       row.is_public ?? row.isPublic ?? true,
       JSON.stringify(Array.isArray(row.tags) ? row.tags : []),
+      row.sound_id || row.soundId || videoId,
+      row.sound_source_video_id || row.soundSourceVideoId || videoId,
+      row.sound_title || row.soundTitle || `Sonido original — ${artist}`,
+      artist,
+      row.sound_url || row.soundUrl || videoUrl,
     ],
   )
   return rows[0]
@@ -1839,12 +1924,15 @@ async function insertVideoRow(pool, auth, row) {
 async function insertFriendRow(pool, auth, row) {
   const senderId = row.sender_id || row.senderId || auth?.sub || ''
   const receiverId = row.receiver_id || row.receiverId || ''
+  if (!receiverId || normalizeIdentityValue(senderId) === normalizeIdentityValue(receiverId)) {
+    throw httpError('FRIEND_REQUEST_TARGET_INVALID', 400)
+  }
   const { rows } = await pool.query(
     `INSERT INTO fallback_friends(sender_id, receiver_id, status)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (sender_id, receiver_id) DO UPDATE SET status = EXCLUDED.status
+     VALUES ($1, $2, 'pending')
+     ON CONFLICT (sender_id, receiver_id) DO UPDATE SET status = fallback_friends.status
      RETURNING id::text, sender_id, receiver_id, status, created_at`,
-    [senderId, receiverId, row.status || 'pending'],
+    [senderId, receiverId],
   )
   return rows[0]
 }
@@ -1857,6 +1945,36 @@ async function handleInsert(pool, tableName, auth, body) {
     const base = await prepareInsertRow(pool, tableName, identity, entry)
     if (tableName === 'profiles' || tableName === 'users') {
       rows.push(await upsertProfile(pool, auth, base))
+    } else if (tableName === 'chats' && base.is_group !== true) {
+      const participants = Array.from(new Set(
+        (Array.isArray(base.participants) ? base.participants : [])
+          .map(normalizeIdentityValue).filter(Boolean),
+      )).sort()
+      if (participants.length !== 2) throw httpError('DIRECT_CHAT_REQUIRES_TWO_PARTICIPANTS', 400)
+      const participantKey = participants.join(':')
+      const chatId = validUuidOrNull(base.id) || crypto.randomUUID()
+      const inserted = await pool.query(
+        `INSERT INTO fallback_chats(id, participants, participant_key, is_group)
+         VALUES ($1::uuid, $2::text[], $3, FALSE)
+         ON CONFLICT (participant_key) DO UPDATE SET participants = fallback_chats.participants
+         RETURNING id::text, participants, is_group, group_name, created_at, updated_at`,
+        [chatId, participants, participantKey],
+      )
+      rows.push(await storeCompatRow(pool, 'chats', { ...base, ...inserted.rows[0] }))
+    } else if (tableName === 'messages') {
+      rows.push(await insertDirectRpcMessage(pool, auth, {
+        chat_id: base.chat_id,
+        message_id: base.id || crypto.randomUUID(),
+        content: base.content,
+        content_type: base.content_type,
+        media_url: base.media_url,
+        media_size: base.media_size,
+        reply_to_id: base.reply_to_id,
+        poll_id: base.poll_id,
+        is_forwarded: base.is_forwarded,
+        forwarded_from_message_id: base.forwarded_from_message_id,
+        forwarded_from_user_id: base.forwarded_from_user_id,
+      }))
     } else if (tableName === 'videos') {
       const storedVideo = await insertVideoRow(pool, auth, base)
       await ingestTrustedContentClassification(pool, 'video', storedVideo)
@@ -1910,6 +2028,21 @@ async function handlePatch(pool, tableName, auth, query, body) {
     const next = { ...current, ...patch, updated_at: nowIso() }
     if (tableName === 'profiles' || tableName === 'users') {
       rows.push(await upsertProfile(pool, auth, next))
+    } else if (tableName === 'friends') {
+      const status = normalizeIdentityValue(patch.status)
+      if (!identityOwnsValue(identity, current.receiver_id) ||
+          !['accepted', 'rejected'].includes(status) ||
+          !patchOnlyContains(patch, new Set(['status', 'updated_at']))) {
+        throw httpError('FRIEND_REQUEST_RESPONSE_FORBIDDEN', 403)
+      }
+      const result = await pool.query(
+        `INSERT INTO fallback_friends(sender_id, receiver_id, status)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (sender_id, receiver_id) DO UPDATE SET status = EXCLUDED.status
+         RETURNING id::text, sender_id, receiver_id, status, created_at`,
+        [current.sender_id, current.receiver_id, status],
+      )
+      rows.push(result.rows[0])
     } else if (tableName === 'groups' || tableName === 'communities') {
       await pool.query(`
         UPDATE fallback_collection_rooms
@@ -2049,7 +2182,7 @@ async function loadChallengeSubmissionsVoted(pool, auth, activeChallengeId) {
 
 async function requireAdmin(pool, auth) {
   const identity = await getAuthIdentity(pool, auth)
-  if (!identity || !(await isAppAdmin(pool, identity))) return null
+  if (!identity || !(await appAdminHasCapability(pool, identity, ADMIN_CAPABILITY.MODERATION_MANAGE))) return null
   return identity
 }
 
@@ -2093,7 +2226,10 @@ async function publishDirectCompatMessage(pool, identity, chatId, message) {
     })
     return true
   } catch (error) {
-    console.error(`[realtime] Direct message ${message?.id || ''} could not be published: ${error?.message || error}`)
+    console.error('[realtime] direct message could not be published', {
+      messageRef: stableKey(message?.id),
+      ...safeErrorLogDetails(error),
+    })
     return false
   }
 }
@@ -2114,7 +2250,11 @@ async function publishCollectionCompatMessage(pool, identity, kind, roomId, mess
     })
     return true
   } catch (error) {
-    console.error(`[realtime] ${kind} message ${message?.id || ''} could not be published: ${error?.message || error}`)
+    console.error('[realtime] collection message could not be published', {
+      kind: String(kind || '').slice(0, 32),
+      messageRef: stableKey(message?.id),
+      ...safeErrorLogDetails(error),
+    })
     return false
   }
 }
@@ -2150,7 +2290,9 @@ async function insertDirectRpcMessage(pool, auth, body, { publishEvent = true } 
     }
   }
 
-  const { rows } = await pool.query(
+  let rows
+  try {
+    ({ rows } = await pool.query(
     `INSERT INTO fallback_messages(
        id, chat_id, sender_id, content, content_type, media_url, media_size,
        reply_to_id, poll_id, is_forwarded, forwarded_from_message_id, forwarded_from_user_id
@@ -2175,7 +2317,12 @@ async function insertDirectRpcMessage(pool, auth, body, { publishEvent = true } 
       forwardedFromMessageId,
       forwardedFromUserId,
     ],
-  )
+    ))
+  } catch (error) {
+    const policyError = introPolicyError(error)
+    if (policyError) throw httpError(policyError, 409)
+    throw error
+  }
 
   let message = rows[0]
   if (!message) {
@@ -2983,17 +3130,18 @@ async function canUseReportEvidence(pool, identity, rawUrl) {
   return Boolean(rows[0])
 }
 
+async function canReuseCatalogStickerMedia(pool, identity, mediaUrl, stickerId = null) {
+  const [items, packs] = await Promise.all([
+    importedAndCompatRows(pool, 'sticker_pack_items'),
+    importedAndCompatRows(pool, 'sticker_packs'),
+  ])
+  return catalogAllowsStickerMedia({ items, packs, viewerIds: identity?.ids, mediaUrl, stickerId })
+}
+
 async function canUseStickerMedia(pool, identity, stickerId, mediaUrl) {
   const cleanUrl = String(mediaUrl || '').trim()
   if (!cleanUrl) return false
-  const existingItems = await importedAndCompatRows(pool, 'sticker_pack_items')
-  const sourceItem = existingItems.find((item) =>
-    normalizeIdentityValue(item.sticker_id || item.id) === normalizeIdentityValue(stickerId) &&
-    String(item.media_url || '').trim() === cleanUrl,
-  )
-  if (sourceItem && (await accessibleStickerPackIds(pool, identity)).has(normalizeIdentityValue(sourceItem.pack_id))) {
-    return true
-  }
+  if (await canReuseCatalogStickerMedia(pool, identity, cleanUrl, stickerId)) return true
 
   const location = publicStorageLocation(cleanUrl)
   if (!location) return false
@@ -3103,7 +3251,7 @@ async function searchStickersRpc(pool, auth, body) {
       .filter(Boolean),
   )
   return items
-    .filter((item) => accessiblePacks.has(normalizeIdentityValue(item.pack_id)))
+    .filter((item) => !stickerRowDeleted(item) && accessiblePacks.has(normalizeIdentityValue(item.pack_id)))
     .map((item) => {
       const id = String(item.sticker_id || item.id || '').trim()
       const title = String(item.title || item.label || item.name || 'Sticker').trim()
@@ -3376,19 +3524,30 @@ async function billingCapabilitiesRpc(pool, auth) {
     provider: 'google_play',
     products: Object.entries(config.packages).map(([product_id, coins]) => ({ product_id, coins })),
     gift_limits: liveGiftLimitsConfiguration(),
+    rtdn: {
+      enabled: googlePlayRtdnConfiguration().enabled,
+      ready: googlePlayRtdnConfiguration().ready,
+    },
   }
 }
 
 function googlePlayRefundReconciliationConfiguration() {
-  const enabled = /^(1|true|yes|on)$/i.test(
-    String(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_ENABLED || '').trim(),
-  )
+  const configuredValue = String(
+    process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_ENABLED || '',
+  ).trim()
+  // Refund clawback is a required part of a production Billing integration,
+  // not an optional background extra. It is on by default whenever Google
+  // Play itself is configured; an operator can still explicitly disable it
+  // for an isolated maintenance window.
+  const enabled = configuredValue
+    ? /^(1|true|yes|on)$/i.test(configuredValue)
+    : true
   const intervalMinutes = Math.max(5, Math.min(
-    Math.trunc(Number(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_INTERVAL_MINUTES || 15) || 15),
+    Math.trunc(Number(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_INTERVAL_MINUTES || 5) || 5),
     24 * 60,
   ))
   const lookbackHours = Math.max(1, Math.min(
-    Math.trunc(Number(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_LOOKBACK_HOURS || 72) || 72),
+    Math.trunc(Number(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_LOOKBACK_HOURS || 720) || 720),
     30 * 24,
   ))
   return { enabled, intervalMinutes, lookbackHours }
@@ -3397,11 +3556,14 @@ function googlePlayRefundReconciliationConfiguration() {
 async function reverseGiftAllocationsForPurchase(client, purchaseLot, purchase, reversedAt) {
   const allocations = (await readCompatRows(client, 'gift_coin_allocations'))
     .filter((row) => normalizeIdentityValue(row.lot_id) === normalizeIdentityValue(purchaseLot.id))
-  if (allocations.length === 0) return { reversed_gifts: 0, reversed_earnings_diamonds: 0 }
+  if (allocations.length === 0) {
+    return { reversed_gifts: 0, reversed_earnings_diamonds: 0, affected_creator_ids: [] }
+  }
   const gifts = await importedAndCompatRows(client, 'gift_transactions')
   const earnings = await importedAndCompatRows(client, 'creator_earnings')
   let reversedGifts = 0
   let reversedEarnings = 0
+  const affectedCreatorIds = new Set()
   for (const allocation of allocations) {
     const allocated = nonNegativeInteger(allocation.amount_diamonds)
     const alreadyReversed = nonNegativeInteger(allocation.reversed_amount_diamonds)
@@ -3417,6 +3579,8 @@ async function reverseGiftAllocationsForPurchase(client, purchaseLot, purchase, 
       normalizeIdentityValue(row.id) === normalizeIdentityValue(gift.earning_id),
     )
     if (!earning) throw new Error('GIFT_ALLOCATION_EARNING_MISSING')
+    const creatorId = normalizeIdentityValue(earning.creator_id || gift.receiver_id)
+    if (creatorId) affectedCreatorIds.add(creatorId)
 
     await storeCompatRow(client, 'gift_coin_allocations', {
       ...allocation,
@@ -3454,6 +3618,7 @@ async function reverseGiftAllocationsForPurchase(client, purchaseLot, purchase, 
   return {
     reversed_gifts: reversedGifts,
     reversed_earnings_diamonds: reversedEarnings,
+    affected_creator_ids: Array.from(affectedCreatorIds),
   }
 }
 
@@ -3607,8 +3772,58 @@ async function processGooglePlayVoidedPurchase(pool, voidedPurchase) {
         ? new Date(Number(voidedPurchase.voidedTimeMillis)).toISOString()
         : reversedAt,
     })
+    await storeCompatRow(client, 'notifications', {
+      id: crypto.randomUUID(),
+      recipient_id: userId,
+      type: 'google_play_refund_adjustment',
+      target_id: String(purchase.id),
+      target_type: 'billing_purchase',
+      title: 'Saldo ajustado por reembolso',
+      body: debtCreated > 0
+        ? `Se retiraron ${removedCoins} monedas y quedó un saldo pendiente de ${debtCreated}.`
+        : `Se retiraron ${removedCoins} monedas de la compra reembolsada.`,
+      is_read: false,
+      created_at: reversedAt,
+      data: {
+        purchase_id: purchase.id,
+        coins_removed: removedCoins,
+        debt_created: debtCreated,
+      },
+    })
+    for (const creatorId of reversedGiftState.affected_creator_ids) {
+      await storeCompatRow(client, 'notifications', {
+        id: crypto.randomUUID(),
+        recipient_id: creatorId,
+        type: 'creator_earning_reversed',
+        target_id: String(purchase.id),
+        target_type: 'billing_purchase',
+        title: 'Ganancia ajustada por reembolso',
+        body: `Se revirtieron ${reversedGiftState.reversed_earnings_diamonds} monedas de regalos asociados a una compra reembolsada.`,
+        is_read: false,
+        created_at: reversedAt,
+        data: {
+          purchase_id: purchase.id,
+          reversed_earnings_diamonds: reversedGiftState.reversed_earnings_diamonds,
+        },
+      })
+    }
     await client.query('COMMIT')
     inTransaction = false
+    void publishRealtimeEvent(`user:${userId}`, {
+      event: 'wallet_adjusted',
+      reason: 'google_play_voided_purchase',
+      balanceDiamonds: newBalance,
+      balanceDebtDiamonds: newDebt,
+      removedCoins,
+      debtCreated,
+    }).catch(() => {})
+    for (const creatorId of reversedGiftState.affected_creator_ids) {
+      void publishRealtimeEvent(`user:${creatorId}`, {
+        event: 'creator_earning_adjusted',
+        reason: 'google_play_voided_purchase',
+        reversedEarningsDiamonds: reversedGiftState.reversed_earnings_diamonds,
+      }).catch(() => {})
+    }
     return {
       status: 'refunded',
       reversed: true,
@@ -3616,6 +3831,7 @@ async function processGooglePlayVoidedPurchase(pool, voidedPurchase) {
       removed_coins: removedCoins,
       debt_created: debtCreated,
       balance_diamonds: newBalance,
+      balance_debt_diamonds: newDebt,
       reversed_gifts: reversedGiftState.reversed_gifts,
       reversed_earnings_diamonds: reversedGiftState.reversed_earnings_diamonds,
     }
@@ -3634,8 +3850,14 @@ async function reconcileGooglePlayVoidedPurchases(pool, options = {}) {
     return { enabled: false, fetched: 0, reversed: 0, unmatched: 0 }
   }
   const endTime = Math.min(Number(options.endTime || Date.now()), Date.now())
+  // The Voided Purchases API rejects a timestamp that has crossed its exact
+  // 30-day boundary by even a few milliseconds while the request is in
+  // flight. Keep a full-day safety margin so the production poll never turns
+  // a valid reconciliation cycle into INVALID_ARGUMENT.
+  const googlePlayMaximumWindowStart = endTime - (29 * 24 * 60 * 60 * 1000)
   const startTime = Math.max(
     endTime - reconciliation.lookbackHours * 60 * 60 * 1000,
+    googlePlayMaximumWindowStart,
     Number(options.startTime || 0),
   )
   const accessToken = await googlePlayAccessToken(config.serviceAccount)
@@ -3702,9 +3924,11 @@ async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
         await storeCompatRow(pool, 'billing_purchases', { ...existingPurchase, consumed: true, consumed_at: nowIso() })
         consumePending = false
       } catch (error) {
+        const consumeFailure = safeErrorLogDetails(error, { production: true })
         await storeCompatRow(pool, 'billing_purchases', {
           ...existingPurchase,
-          consume_error: String(error?.message || error).slice(0, 500),
+          consume_error: consumeFailure.code,
+          consume_error_ref: consumeFailure.messageRef,
         })
       }
     }
@@ -3806,6 +4030,176 @@ async function verifyGooglePlayPurchaseRpc(pool, auth, body) {
   return { status: 'credited', credited: true, coins, balance_diamonds: balance, consume_pending: consumePending, idempotent_replay: false }
 }
 
+async function findGooglePlayPurchaserByObfuscatedAccountId(pool, obfuscatedAccountId) {
+  const expectedHash = String(obfuscatedAccountId || '').trim().toLowerCase()
+  if (!/^[a-f0-9]{64}$/.test(expectedHash)) return null
+  const { rows } = await pool.query(
+    `SELECT id::text AS local_user_id,
+            NULLIF(supabase_user_id::text, '') AS public_user_id
+     FROM fallback_users`,
+  )
+  for (const row of rows) {
+    const candidates = [row.local_user_id, row.public_user_id]
+      .map(normalizeIdentityValue)
+      .filter(Boolean)
+    if (candidates.some((candidate) =>
+      crypto.createHash('sha256').update(candidate).digest('hex') === expectedHash,
+    )) {
+      return {
+        localUserId: normalizeIdentityValue(row.local_user_id),
+        publicUserId: normalizeIdentityValue(row.public_user_id) || null,
+      }
+    }
+  }
+  return null
+}
+
+async function processGooglePlayOneTimeProductNotification(pool, event) {
+  if (event.notificationType === 2) {
+    return { status: 'pending_purchase_canceled', credited: false }
+  }
+  if (event.notificationType !== 1) {
+    return { status: 'unsupported_one_time_notification', credited: false }
+  }
+  const config = googlePlayConfiguration()
+  if (!config.enabled) throw httpError('GOOGLE_PLAY_BILLING_DISABLED', 503)
+  if (!config.packages[event.productId]) throw httpError('GOOGLE_PLAY_PRODUCT_MISMATCH', 409)
+  const accessToken = await googlePlayAccessToken(config.serviceAccount)
+  const purchase = await googlePlayProductPurchase(
+    config,
+    event.productId,
+    event.purchaseToken,
+    accessToken,
+  )
+  const account = await findGooglePlayPurchaserByObfuscatedAccountId(
+    pool,
+    purchase.obfuscatedExternalAccountId,
+  )
+  if (!account?.localUserId) throw httpError('GOOGLE_PLAY_RTDN_ACCOUNT_NOT_FOUND', 503)
+  const result = await verifyGooglePlayPurchaseRpc(pool, { sub: account.localUserId }, {
+    p_product_id: event.productId,
+    p_purchase_token: event.purchaseToken,
+  })
+  return {
+    status: result.status,
+    credited: result.credited === true,
+    coins: nonNegativeInteger(result.coins),
+    consume_pending: result.consume_pending === true,
+  }
+}
+
+async function submitGooglePlayRefundReview(config, orderId, request) {
+  const accessToken = await googlePlayAccessToken(config.serviceAccount)
+  const packageName = encodeURIComponent(config.packageName)
+  const encodedOrderId = encodeURIComponent(orderId)
+  const response = await fetch(
+    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${packageName}/orders/${encodedOrderId}:reviewrefund`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    },
+  )
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw httpError(payload?.error?.message || 'GOOGLE_PLAY_REFUND_REVIEW_FAILED', 502)
+  }
+}
+
+async function processGooglePlayPendingRefundReview(pool, event, rtdnConfig) {
+  const pendingRefundToken = String(event.payload?.pendingRefundToken || '').trim()
+  const orderId = String(event.payload?.orderId || '').trim()
+  if (!pendingRefundToken || pendingRefundToken.length > 4096 || !orderId || orderId.length > 512) {
+    throw httpError('GOOGLE_PLAY_REFUND_REVIEW_INVALID', 400)
+  }
+  const config = googlePlayConfiguration()
+  if (!config.enabled) throw httpError('GOOGLE_PLAY_BILLING_DISABLED', 503)
+  const purchases = await importedAndCompatRows(pool, 'billing_purchases')
+  const purchase = purchases.find((row) => String(row.order_id || '').trim() === orderId)
+  let percentage = 0
+  let usageEvents = []
+  if (purchase) {
+    const lots = await importedAndCompatRows(pool, 'wallet_coin_lots')
+    const lot = lots.map(normalizeCoinLot).filter(Boolean).find((candidate) =>
+      candidate.source_type === COIN_SOURCE_TYPES.PURCHASED &&
+      [purchase.id, purchase.purchase_token_hash].some((reference) =>
+        reference && String(candidate.source_reference || '') === String(reference),
+      ),
+    )
+    if (lot) {
+      const original = Math.max(1, nonNegativeInteger(lot.original_amount_diamonds))
+      const spent = Math.min(original, nonNegativeInteger(lot.spent_amount_diamonds))
+      percentage = Math.max(0, Math.min(100_000, Math.round((spent / original) * 100_000)))
+      const allocations = (await importedAndCompatRows(pool, 'gift_coin_allocations'))
+        .filter((row) => normalizeIdentityValue(row.lot_id) === normalizeIdentityValue(lot.id))
+        .slice(0, 1000)
+      const obfuscatedAccountId = String(event.payload?.obfuscatedAccountId || '').trim()
+      usageEvents = allocations.map((allocation) => compactRow({
+        obfuscatedAccountId: obfuscatedAccountId || undefined,
+        consumptionTime: allocation.created_at || purchase.purchased_at || undefined,
+        consumptionItemDescription: `Regalo virtual Novvin confirmado (${nonNegativeInteger(allocation.amount_diamonds)} monedas)`,
+      }))
+    }
+  }
+  const preference = rtdnConfig.pendingRefundPreference || 'NEUTRAL'
+  await submitGooglePlayRefundReview(config, orderId, {
+    pendingRefundToken,
+    sampleContentProvided: false,
+    refundPreference: preference,
+    consumptionPercentageMilliunits: percentage,
+    consumptionUsageEvents: usageEvents,
+  })
+  await storeCompatRow(pool, 'billing_pending_refund_reviews', {
+    id: `review:${crypto.createHash('sha256').update(orderId).digest('hex')}`,
+    order_id_hash: crypto.createHash('sha256').update(orderId).digest('hex'),
+    purchase_id: purchase?.id || null,
+    refund_reason: Number.isFinite(Number(event.payload?.refundReason))
+      ? Math.trunc(Number(event.payload.refundReason))
+      : null,
+    refund_preference: preference,
+    consumption_percentage_milliunits: percentage,
+    usage_event_count: usageEvents.length,
+    status: 'submitted',
+    submitted_at: nowIso(),
+  })
+  return {
+    status: 'refund_review_submitted',
+    purchase_matched: Boolean(purchase),
+    refund_preference: preference,
+    consumption_percentage_milliunits: percentage,
+    usage_event_count: usageEvents.length,
+  }
+}
+
+async function processGooglePlayRtdnNotification(pool, event, rtdnConfig) {
+  if (event.kind === 'test') return { status: 'test_notification_processed' }
+  if (event.kind === 'subscription') {
+    return { status: 'subscription_ignored', reason: 'subscriptions_not_sold' }
+  }
+  if (event.kind === 'one_time_product') {
+    return processGooglePlayOneTimeProductNotification(pool, event)
+  }
+  if (event.kind === 'voided_purchase') {
+    const productType = Math.trunc(Number(event.payload?.productType || 0))
+    if (productType !== 2) return { status: 'subscription_void_ignored' }
+    return processGooglePlayVoidedPurchase(pool, {
+      purchaseToken: event.purchaseToken,
+      orderId: event.orderId,
+      voidedTimeMillis: event.eventTimeMillis,
+      voidedReason: event.payload?.refundType,
+      voidedSource: 'rtdn',
+    })
+  }
+  if (event.kind === 'pending_refund_review') {
+    return processGooglePlayPendingRefundReview(pool, event, rtdnConfig)
+  }
+  return { status: 'unsupported_notification' }
+}
+
 async function sendVirtualGiftRpc(pool, auth, body) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
@@ -3873,6 +4267,10 @@ async function sendVirtualGiftRpc(pool, auth, body) {
     if (!(rawActive === true || rawActive === 1 || String(rawActive).toLowerCase() === 'true')) {
       throw httpError('LIVE_NOT_ACTIVE', 409)
     }
+    const giftsEnabled = live.gifts_enabled ?? live.giftsEnabled
+    if (giftsEnabled === false || giftsEnabled === 0 || String(giftsEnabled).toLowerCase() === 'false') {
+      throw httpError('LIVE_GIFTS_DISABLED', 409)
+    }
   }
 
   const client = await pool.connect()
@@ -3924,6 +4322,10 @@ async function sendVirtualGiftRpc(pool, auth, body) {
     if (spentLastDay + costDiamonds > giftLimits.max_coins_per_day) {
       throw httpError('GIFT_DAILY_LIMIT_EXCEEDED', 409)
     }
+    // Refunded purchased coins may already have been transferred to creators.
+    // Even if another source later adds promotional/admin coins, do not let the
+    // account spend again until a verified purchase has repaid the clawback.
+    if (wallet.balance_debt_diamonds > 0) throw httpError('WALLET_DEBT_OUTSTANDING', 409)
     if (wallet.balance_diamonds < costDiamonds) throw httpError('INSUFFICIENT_BALANCE', 409)
     const attributableLots = await ensureAttributableCoinLots(client, identity, wallet)
     let allocationPlan
@@ -4196,7 +4598,7 @@ async function deleteCommentRpc(pool, auth, body, kind) {
   }
   const canDelete = identityOwnsRow(identity, comment, ['user_id', 'profile_id', 'author_id', 'owner_id']) ||
     identityOwnsValue(identity, contentOwnerId) ||
-    await isAppAdmin(pool, identity)
+    await appAdminHasCapability(pool, identity, ADMIN_CAPABILITY.CONTENT_MANAGE)
   if (!canDelete) throw httpError('COMMENT_DELETE_DENIED')
 
   if (imported) {
@@ -4404,10 +4806,10 @@ function dispatchAdminNotification(pool, notification) {
     notification,
     extraData,
   }).catch((error) => {
-    console.warn(`[admin] realtime notification failed: ${error.message}`)
+    console.warn('[admin] realtime notification failed', safeErrorLogDetails(error))
   })
   void sendPushForNotification(pool, notification, extraData).catch((error) => {
-    console.warn(`[admin] push notification failed: ${error.message}`)
+    console.warn('[admin] push notification failed', safeErrorLogDetails(error))
   })
 }
 
@@ -4747,7 +5149,7 @@ async function adminDeleteReportedVideoRpc(pool, auth, body) {
 
   const cleanup = await removeStorageObjectFiles(result.mediaRows)
   if (cleanup.failures.length > 0) {
-    console.warn('[admin] deleted video has storage cleanup failures', cleanup.failures)
+    console.warn('[admin] deleted video has storage cleanup failures', { count: cleanup.failures.length })
   }
   dispatchAdminNotification(pool, result.notification)
   void publishRealtimeEvent('admin:live', {
@@ -5016,6 +5418,18 @@ async function deleteOwnAccountRpc(pool, auth) {
     if (randomSessionIds.length > 0) {
       await client.query(`DELETE FROM fallback_random_chat_sessions WHERE lower(id::text) = ANY($1::text[])`, [randomSessionIds])
     }
+    const markerRoomIds = [...chatIds, ...roomIds]
+    for (const statement of [
+      `DELETE FROM fallback_saved_messages WHERE lower(user_id) = ANY($1::text[]) OR lower(room_id) = ANY($2::text[])
+        OR lower(message_id) IN (SELECT lower(id::text) FROM fallback_messages WHERE lower(sender_id) = ANY($1::text[])
+          UNION SELECT lower(id::text) FROM fallback_room_messages WHERE lower(sender_id) = ANY($1::text[]))`,
+      `DELETE FROM fallback_message_pins WHERE lower(pinned_by) = ANY($1::text[]) OR lower(room_id) = ANY($2::text[])
+        OR lower(message_id) IN (SELECT lower(id::text) FROM fallback_messages WHERE lower(sender_id) = ANY($1::text[])
+          UNION SELECT lower(id::text) FROM fallback_room_messages WHERE lower(sender_id) = ANY($1::text[]))`,
+      `DELETE FROM fallback_message_pin_events WHERE lower(actor_id) = ANY($1::text[]) OR lower(room_id) = ANY($2::text[])
+        OR lower(message_id) IN (SELECT lower(id::text) FROM fallback_messages WHERE lower(sender_id) = ANY($1::text[])
+          UNION SELECT lower(id::text) FROM fallback_room_messages WHERE lower(sender_id) = ANY($1::text[]))`,
+    ]) await client.query(statement, [identityValues, markerRoomIds])
     if (chatIds.length > 0) {
       await client.query(`DELETE FROM fallback_messages WHERE lower(chat_id) = ANY($1::text[])`, [chatIds])
       await client.query(`DELETE FROM fallback_chat_hidden WHERE lower(chat_id::text) = ANY($1::text[])`, [chatIds])
@@ -5057,7 +5471,10 @@ async function deleteOwnAccountRpc(pool, auth) {
       `DELETE FROM fallback_video_comments WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_video_likes WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_video_favorites WHERE lower(user_id) = ANY($1::text[])`,
+      `DELETE FROM fallback_video_collections WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_video_views WHERE lower(user_id) = ANY($1::text[])`,
+      `DELETE FROM fallback_video_playback_history WHERE lower(user_id) = ANY($1::text[])`,
+      `DELETE FROM fallback_video_watch_later WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_video_comment_reports WHERE lower(reporter_id) = ANY($1::text[])`,
       `DELETE FROM fallback_challenge_votes WHERE lower(voter_id) = ANY($1::text[])`,
       `DELETE FROM fallback_challenge_submissions WHERE lower(user_id) = ANY($1::text[])`,
@@ -5065,6 +5482,8 @@ async function deleteOwnAccountRpc(pool, auth) {
       `DELETE FROM fallback_moment_views WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_live_comments WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_proximity_presence WHERE lower(user_id) = ANY($1::text[])`,
+      `DELETE FROM fallback_random_bottle_availability WHERE lower(user_id) = ANY($1::text[])`,
+      `DELETE FROM fallback_random_chat_bottles WHERE lower(sender_id) = ANY($1::text[]) OR lower(COALESCE(current_recipient_id, '')) = ANY($1::text[])`,
       `DELETE FROM fallback_random_chat_queue WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_random_chat_messages WHERE lower(sender_id) = ANY($1::text[])`,
       `DELETE FROM fallback_chat_participants WHERE lower(user_id) = ANY($1::text[])`,
@@ -5103,7 +5522,7 @@ async function deleteOwnAccountRpc(pool, auth) {
         } catch (error) {
           await client.query('ROLLBACK TO SAVEPOINT delete_restored_auth_user')
           await client.query('RELEASE SAVEPOINT delete_restored_auth_user')
-          console.warn(`[account-delete] restored auth cleanup deferred: ${error.message}`)
+          console.warn('[account-delete] restored auth cleanup deferred', safeErrorLogDetails(error))
         }
       }
     }
@@ -5120,7 +5539,7 @@ async function deleteOwnAccountRpc(pool, auth) {
   invalidateImportedDataCache()
   const cleanup = await removeStorageObjectFiles(result.storageRows)
   if (cleanup.failures.length > 0) {
-    console.warn('[account-delete] storage cleanup failures', cleanup.failures)
+    console.warn('[account-delete] storage cleanup failures', { count: cleanup.failures.length })
   }
   void publishRealtimeEvent(`user:${identity.preferredUserId}`, {
     event: 'account_deleted',
@@ -5571,9 +5990,11 @@ function registerPostgrestCompatRoutes(app, { pool, authOptional }) {
 }
 
 module.exports = {
+  canReuseCatalogStickerMedia,
   _test: {
     DEFAULT_VIRTUAL_GIFTS,
     SERVER_MUTATION_ONLY_TABLES,
+    sanitizeProfileRow,
     authorizeMutation,
     canUseReportEvidence,
     liveGiftTransactionsEnabled,
@@ -5587,11 +6008,17 @@ module.exports = {
     googlePlayConfiguration,
     googlePlayServiceAccountRaw,
     verifyGooglePlayPurchaseRpc,
+    findGooglePlayPurchaserByObfuscatedAccountId,
+    processGooglePlayOneTimeProductNotification,
+    processGooglePlayPendingRefundReview,
+    processGooglePlayRtdnNotification,
     googlePlayRefundReconciliationConfiguration,
     processGooglePlayVoidedPurchase,
     reconcileGooglePlayVoidedPurchases,
   },
   ensurePostgrestCompatTables,
+  googlePlayConfiguration,
+  processGooglePlayRtdnNotification,
   reconcileGooglePlayVoidedPurchases,
   registerPostgrestCompatRoutes,
 }

@@ -38,6 +38,7 @@ import coil.compose.SubcomposeAsyncImage
 import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Message
+import conectate.com.presentation.theme.currentChatAccentColors
 
 internal data class MessageMediaViewerSelection(
     val items: List<MediaItem>,
@@ -140,8 +141,9 @@ fun MediaGridMessageBubble(
 
     val displayMessages = messages.take(4)
     val overlayCount = mediaGridOverlayCount(messages.size)
+    val chatAccentColors = currentChatAccentColors()
     val bubbleColor = if (isFromCurrentUser) {
-        MaterialTheme.colorScheme.primary
+        chatAccentColors.sentBackground
     } else {
         MaterialTheme.colorScheme.surfaceVariant
     }

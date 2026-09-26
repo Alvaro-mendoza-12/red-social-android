@@ -9,8 +9,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.*
 import androidx.compose.foundation.shape.CircleShape
@@ -100,13 +100,13 @@ fun PostDetailScreen(
                 title = { Text("Publicación", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
         },
@@ -162,7 +162,12 @@ fun PostDetailScreen(
                                     conectate.com.presentation.messages.VoiceState.RECORDING -> {
                                         val minutes = recordingDuration / 1000 / 60
                                         val seconds = (recordingDuration / 1000) % 60
-                                        val timeString = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+                                        val timeString = String.format(
+                                            androidx.compose.ui.platform.LocalLocale.current.platformLocale,
+                                            "%02d:%02d",
+                                            minutes,
+                                            seconds,
+                                        )
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
@@ -216,7 +221,7 @@ fun PostDetailScreen(
                                         Icon(Icons.Default.Pause, "Pausar", tint = MaterialTheme.colorScheme.primary)
                                     }
                                     IconButton(onClick = { viewModel.stopRecording(true) }) {
-                                        Icon(Icons.Default.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
+                                        Icon(Icons.AutoMirrored.Filled.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
                                     }
                                 }
                                 conectate.com.presentation.messages.VoiceState.PAUSED -> {
@@ -232,7 +237,7 @@ fun PostDetailScreen(
                                         Icon(Icons.Default.Mic, "Reanudar", tint = MaterialTheme.colorScheme.primary)
                                     }
                                     IconButton(onClick = { viewModel.sendCurrentRecording() }) {
-                                        Icon(Icons.Default.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
+                                        Icon(Icons.AutoMirrored.Filled.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
                                     }
                                 }
                                 else -> {}
@@ -335,7 +340,7 @@ fun PostDetailScreen(
                                         enabled = commentText.isNotBlank()
                                     ) {
                                         Icon(
-                                            Icons.Default.Send,
+                                            Icons.AutoMirrored.Filled.Send,
                                             contentDescription = "Enviar",
                                             tint = if (commentText.isNotBlank()) MaterialTheme.colorScheme.primary else Color.Gray
                                         )
@@ -487,7 +492,7 @@ fun PostDetailScreen(
                                                     }
                                                 }
                                             }
-                                            Divider(
+                                            HorizontalDivider(
                                                 modifier = Modifier.padding(vertical = 8.dp),
                                                 color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.18f)
                                             )

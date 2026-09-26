@@ -352,7 +352,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 "like", "like_post", "like_video", "follow", "friend_request", "friend_request_accepted",
                 "comment", "comment_post", "reply_post", "comment_video", "reply_video",
                 "mention", "mention_post", "mention_video", "share", "share_post", "share_video", "admin_warning_video",
-                "challenge_invite", "voice_invite", "voice_access_request", "birthday"
+                "challenge_invite", "voice_invite", "voice_access_request", "birthday", "new_moment"
             )
 
             if (type in socialTypes) {
@@ -383,6 +383,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     senderId = senderId ?: "",
                     senderAvatar = data["sender_avatar"],
                     commentId = commentId,
+                    notificationId = data["notification_id"],
+                    expiresAt = data["expires_at"],
                     notificationAccountTarget = effectiveAccountTarget,
                     accountLabel = targetAccountLabel
                 )
@@ -556,6 +558,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         senderId: String,
         senderAvatar: String?,
         commentId: String?,
+        notificationId: String?,
+        expiresAt: String?,
         notificationAccountTarget: NotificationAccountTarget?,
         accountLabel: String?
     ) {
@@ -563,6 +567,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         var intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("type", type)
+            notificationId?.takeIf { it.isNotBlank() }?.let { putExtra("notification_id", it) }
             commentId?.let { putExtra("comment_id", it) }
             when (type) {
                 "follow", "friend_request", "friend_request_accepted", "voice_access_request" -> putExtra("follower_id", senderId.ifBlank { targetId })
@@ -570,6 +575,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 "like_video", "comment_video", "reply_video", "mention_video", "share_video", "admin_warning_video" -> putExtra("video_id", targetId)
                 "voice_invite" -> putExtra("room_id", targetId)
                 "challenge_invite" -> putExtra("challenge_id", targetId)
+                "new_moment" -> putExtra("moment_id", targetId)
             }
             if (type == "mention" && !videoId.isNullOrBlank()) {
                 putExtra("video_id", videoId)
@@ -583,7 +589,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             accountLabel
         ).also { conectate.com.util.TrustedNavigationIntents.markTrusted(this, it) }
 
-        var pendingIntent = PendingIntent.getActivity(this, System.currentTimeMillis().toInt(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val stableId = notificationId?.takeIf { it.isNotBlank() }
+            ?.let { ("social:$it").hashCode() } ?: System.currentTimeMillis().toInt()
+        var pendingIntent = PendingIntent.getActivity(this, stableId, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         var avatarBitmap = getAvatarBitmap(senderAvatar)
 
         var notificationBuilder = NotificationCompat.Builder(this, channelId)
@@ -600,6 +608,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
 
+        if (type == "new_moment") {
+            val remaining = runCatching {
+                expiresAt?.let { java.time.Instant.parse(it).toEpochMilli() - System.currentTimeMillis() }
+            }.getOrNull()
+            if (remaining != null && remaining <= 0) return
+            if (remaining != null) notificationBuilder.setTimeoutAfter(remaining)
+        }
+
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "Interacciones Sociales", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -609,7 +625,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             }
             notificationManager.createNotificationChannel(channel)
         }
-        notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
+        notificationManager.notify(stableId, notificationBuilder.build())
     }
 
     @OptIn(ExperimentalFoundationApi::class)

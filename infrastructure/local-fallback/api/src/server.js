@@ -13,29 +13,69 @@ const {
 } = require('./data-routes')
 const {
   ensurePostgrestCompatTables,
+  googlePlayConfiguration,
+  processGooglePlayRtdnNotification,
   reconcileGooglePlayVoidedPurchases,
   registerPostgrestCompatRoutes,
 } = require('./postgrest-compat-routes')
-const { ensureLocalStorageTables, registerStorageRoutes } = require('./storage-routes')
+const {
+  ensureGooglePlayRtdnTables,
+  registerGooglePlayRtdnRoutes,
+} = require('./google-play-rtdn')
+const {
+  ensureLocalStorageTables,
+  cleanupExpiredResumableUploads,
+  registerStorageRoutes,
+  signStoredObjectReference,
+} = require('./storage-routes')
 const { registerAiRoutes } = require('./ai-routes')
 const { pushNotificationsStatus } = require('./push-notifications')
 const { accountSuspendedPayload, findActiveSuspension } = require('./account-status')
+const { appAdminHasCapability } = require('./admin-moderation-routes')
+const { ADMIN_CAPABILITY } = require('./admin-capabilities')
 const { canonicalStorageResponseMiddleware } = require('./storage-url-canonicalization')
 const { collectSystemHealth, loadReleaseMetadata } = require('./system-health')
 const {
   boundedInteger,
-  createRateLimitMiddleware,
+  constantTimeSecretEqual,
   isTrustedProxyAddress,
+  parseCorsOrigins,
   requestIpAddress,
   stableKey,
 } = require('./request-security')
+const {
+  createDistributedRateLimitMiddleware,
+  pruneExpiredRateLimitWindows,
+} = require('./distributed-rate-limit')
 const {
   ensureScheduledMessageTables,
   processDueScheduledMessageJobs,
 } = require('./scheduled-message-jobs')
 const { processDueNotificationDigests } = require('./notification-digest-routes')
+const { createRequestObservabilityMiddleware, safeErrorLogDetails } = require('./request-observability')
+const { createPasswordResetMailer } = require('./password-reset-mailer')
+const {
+  hashPasswordRecoveryCode,
+  issuePasswordRecoveryCodes,
+} = require('./password-recovery-codes')
+const { authenticateClientSession, isPublicAuthError } = require('./client-auth-session')
+const {
+  isTrustedWebSessionRequest,
+  readWebSessionCookie,
+  serializeWebSessionCookie,
+} = require('./web-session-security')
+const { withSchemaInitializationLock } = require('./schema-initializer')
 const { processPendingLiveFollowerNotifications } = require('./live-follower-notifications')
 const { startLiveDrawGuessReconciler } = require('./live-draw-guess-routes')
+const {
+  createRecoveryCodes,
+  decryptSecret,
+  encryptSecret,
+  generateSecret,
+  matchingStep,
+  provisioningUri,
+  recoveryHash,
+} = require('./two-factor')
 const {
   processApprovedCreatorPayouts,
   reconcileCreatorPayouts,
@@ -43,8 +83,11 @@ const {
 
 const serviceName = 'conectate-local-fallback'
 const version = '0.1.0'
+const isProduction = String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production'
 const port = Number(process.env.PORT || 3001)
 const jwtSecret = String(process.env.JWT_SECRET || '')
+// Keep this stable across JWT rotations once factors have been enrolled.
+const twoFactorEncryptionSecret = String(process.env.TOTP_ENCRYPTION_KEY || jwtSecret)
 const jwtExpiresIn = process.env.JWT_EXPIRES_IN || '7d'
 const jwtPreviousSecrets = String(process.env.JWT_PREVIOUS_SECRETS || '')
   .split(',')
@@ -56,8 +99,18 @@ const authRefreshTokenTtlDays = boundedInteger(
   7,
   365,
 )
+const webSessionTtlDays = boundedInteger(
+  process.env.WEB_SESSION_TTL_DAYS,
+  30,
+  1,
+  90,
+)
+const webJwtExpiresIn = /^\d+[smhd]$/i.test(String(process.env.WEB_JWT_EXPIRES_IN || '').trim())
+  ? String(process.env.WEB_JWT_EXPIRES_IN).trim()
+  : '15m'
 const databaseUrl = process.env.DATABASE_URL
-const corsOrigin = process.env.CORS_ORIGIN || '*'
+const corsOrigin = String(process.env.CORS_ORIGIN || '*').trim()
+const corsOrigins = parseCorsOrigins(corsOrigin, { production: isProduction })
 const legacySupabaseImportEnabled = /^(1|true|yes|on)$/i.test(
   String(process.env.LEGACY_SUPABASE_IMPORT_ENABLED || '').trim(),
 )
@@ -78,7 +131,15 @@ const externalAuthDeleteKey = String(
   process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
 ).trim()
 const adminSyncToken = String(process.env.ADMIN_SYNC_TOKEN || '').trim()
-const passwordResetDelivery = String(process.env.PASSWORD_RESET_DELIVERY || 'console').trim().toLowerCase()
+const passwordResetDelivery = String(
+  process.env.PASSWORD_RESET_DELIVERY || (isProduction ? 'disabled' : 'console'),
+).trim().toLowerCase()
+if (!['disabled', 'smtp', 'console', 'response'].includes(passwordResetDelivery)) {
+  throw new Error('PASSWORD_RESET_DELIVERY must be disabled, smtp, console or response')
+}
+const passwordResetMailer = passwordResetDelivery === 'smtp'
+  ? createPasswordResetMailer(process.env)
+  : null
 const storageRoot = process.env.STORAGE_ROOT || require('path').join(process.cwd(), 'storage-data')
 const realtimeInternalUrl = String(process.env.REALTIME_INTERNAL_URL || '').trim()
 const signalingInternalUrl = String(process.env.SIGNALING_INTERNAL_URL || '').trim()
@@ -96,11 +157,19 @@ if (jwtSecret.length < 32) {
   throw new Error('JWT_SECRET must be at least 32 characters')
 }
 
+if (isProduction && ['console', 'response'].includes(passwordResetDelivery)) {
+  throw new Error('PASSWORD_RESET_DELIVERY cannot expose reset tokens in production')
+}
+
 const pool = new Pool({
   connectionString: databaseUrl,
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
+  // Keep conservative defaults for a single mini-PC, but allow production to
+  // tune concurrency without changing code. Bounds protect PostgreSQL from an
+  // accidental value that would exhaust all available connections.
+  max: boundedInteger(process.env.DATABASE_POOL_MAX, 10, 4, 100),
+  min: boundedInteger(process.env.DATABASE_POOL_MIN, 0, 0, 20),
+  idleTimeoutMillis: boundedInteger(process.env.DATABASE_POOL_IDLE_TIMEOUT_MS, 30_000, 5_000, 300_000),
+  connectionTimeoutMillis: boundedInteger(process.env.DATABASE_POOL_CONNECTION_TIMEOUT_MS, 10_000, 1_000, 60_000),
   // Last-resort protection for production: an abandoned transaction must not
   // retain row locks until every API connection is exhausted.
   options: '-c statement_timeout=30000 -c lock_timeout=10000 -c idle_in_transaction_session_timeout=15000',
@@ -108,9 +177,12 @@ const pool = new Pool({
 
 function logDatabasePoolError(error) {
   console.error('[api] database pool connection lost', {
-    code: String(error?.code || 'UNKNOWN'),
     severity: String(error?.severity || 'ERROR'),
-    message: String(error?.message || 'Database connection error').slice(0, 240),
+    ...safeErrorLogDetails(error, {
+      production: isProduction,
+      fallbackCode: 'UNKNOWN',
+      fallbackMessage: 'Database connection error',
+    }),
   })
 }
 
@@ -124,7 +196,15 @@ const app = express()
 app.disable('x-powered-by')
 app.set('trust proxy', (address) => isTrustedProxyAddress(address))
 app.use(helmet())
-app.use(cors({ origin: corsOrigin === '*' ? true : corsOrigin }))
+app.use(cors({
+  origin: corsOrigins === '*' ? true : corsOrigins,
+  credentials: true,
+  exposedHeaders: [
+    'x-request-id', 'server-timing', 'x-response-time', 'location',
+    'tus-resumable', 'tus-version', 'tus-extension', 'tus-max-size',
+    'upload-length', 'upload-offset', 'upload-expires', 'upload-object-path', 'upload-state',
+  ],
+}))
 app.use(express.json({ limit: '1mb' }))
 app.use((req, res, next) => {
   const supplied = String(req.headers['x-request-id'] || '').trim()
@@ -135,6 +215,9 @@ app.use((req, res, next) => {
   res.set('x-request-id', requestId)
   next()
 })
+app.use(createRequestObservabilityMiddleware({
+  slowRequestMs: boundedInteger(process.env.SLOW_REQUEST_LOG_MS, 1_500, 100, 60_000),
+}))
 app.use(canonicalStorageResponseMiddleware)
 
 const authIpKey = (req) => `ip:${requestIpAddress(req)}`
@@ -143,28 +226,63 @@ const authCredentialKey = (req) => {
   return `${authIpKey(req)}:credential:${stableKey(email || 'missing')}`
 }
 
-app.use('/v1/auth/register', createRateLimitMiddleware({
+app.use('/v1/auth/register', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:register',
   limit: boundedInteger(process.env.AUTH_REGISTER_RATE_LIMIT_PER_HOUR, 10, 2, 100),
   windowMs: 60 * 60_000,
   code: 'AUTH_REGISTER_RATE_LIMITED',
   key: authIpKey,
   methods: ['POST'],
 }))
-app.use('/v1/auth/login', createRateLimitMiddleware({
+app.use('/v1/auth/login', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:login',
   limit: boundedInteger(process.env.AUTH_LOGIN_RATE_LIMIT_PER_15_MINUTES, 20, 5, 200),
   windowMs: 15 * 60_000,
   code: 'AUTH_LOGIN_RATE_LIMITED',
   key: authCredentialKey,
   methods: ['POST'],
 }))
-app.use('/v1/auth/refresh', createRateLimitMiddleware({
+app.use('/v1/auth/refresh', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:refresh',
   limit: boundedInteger(process.env.AUTH_REFRESH_RATE_LIMIT_PER_15_MINUTES, 60, 10, 300),
   windowMs: 15 * 60_000,
   code: 'AUTH_REFRESH_RATE_LIMITED',
   key: authIpKey,
   methods: ['POST'],
 }))
-app.use('/v1/auth/password-reset/request', createRateLimitMiddleware({
+app.use('/v1/auth/logout', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:logout',
+  limit: boundedInteger(process.env.AUTH_LOGOUT_RATE_LIMIT_PER_15_MINUTES, 60, 10, 300),
+  windowMs: 15 * 60_000,
+  code: 'AUTH_LOGOUT_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['POST'],
+}))
+app.use('/v1/auth/2fa', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:2fa',
+  limit: boundedInteger(process.env.AUTH_2FA_RATE_LIMIT_PER_15_MINUTES, 20, 5, 100),
+  windowMs: 15 * 60_000,
+  code: 'AUTH_2FA_RATE_LIMITED',
+  key: authCredentialKey,
+  methods: ['POST'],
+}))
+app.use('/v1/auth/web-session', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:web-session',
+  limit: boundedInteger(process.env.WEB_SESSION_RATE_LIMIT_PER_15_MINUTES, 120, 20, 600),
+  windowMs: 15 * 60_000,
+  code: 'WEB_SESSION_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['POST', 'DELETE'],
+}))
+app.use('/v1/auth/password-reset/request', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:password-reset-request',
   limit: boundedInteger(process.env.AUTH_PASSWORD_RESET_RATE_LIMIT_PER_15_MINUTES, 5, 2, 50),
   windowMs: 15 * 60_000,
   code: 'AUTH_PASSWORD_RESET_RATE_LIMITED',
@@ -173,9 +291,13 @@ app.use('/v1/auth/password-reset/request', createRateLimitMiddleware({
 }))
 app.use([
   '/v1/auth/password-reset/confirm',
+  '/v1/auth/password-recovery-codes/confirm',
+  '/v1/auth/password-recovery-codes/rotate',
   '/v1/auth/complete-migrated-password-reset',
   '/v1/auth/activate-local-password',
-], createRateLimitMiddleware({
+], createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:sensitive-action',
   limit: boundedInteger(process.env.AUTH_SENSITIVE_RATE_LIMIT_PER_15_MINUTES, 12, 3, 100),
   windowMs: 15 * 60_000,
   code: 'AUTH_SENSITIVE_ACTION_RATE_LIMITED',
@@ -185,7 +307,9 @@ app.use([
 app.use([
   '/v1/auth/web-login-pairing',
   '/functions/v1/web-login-pairing',
-], createRateLimitMiddleware({
+], createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:web-login-pairing',
   limit: boundedInteger(process.env.AUTH_PAIRING_RATE_LIMIT_PER_MINUTE, 90, 10, 300),
   windowMs: 60_000,
   code: 'AUTH_PAIRING_RATE_LIMITED',
@@ -195,12 +319,15 @@ app.use([
 app.use([
   '/v1/storage/upload',
   '/storage/v1/object',
-], createRateLimitMiddleware({
+  '/storage/v1/upload/resumable',
+], createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'storage:upload',
   limit: boundedInteger(process.env.STORAGE_UPLOAD_RATE_LIMIT_PER_10_MINUTES, 120, 10, 1000),
   windowMs: 10 * 60_000,
   code: 'STORAGE_UPLOAD_RATE_LIMITED',
   key: authIpKey,
-  methods: ['POST', 'PUT'],
+  methods: ['POST', 'PUT', 'PATCH', 'DELETE'],
 }))
 
 const userSelectColumns = `
@@ -383,7 +510,7 @@ function adminRequired(req, res, next) {
   }
 
   const provided = String(req.headers['x-admin-token'] || '').trim()
-  if (!provided || provided !== adminSyncToken) {
+  if (!constantTimeSecretEqual(provided, adminSyncToken)) {
     return res.status(401).json({ error: 'ADMIN_TOKEN_REQUIRED' })
   }
 
@@ -414,7 +541,7 @@ function signUserToken(user, options = {}) {
     jwtSecret,
     {
       subject: user.id,
-      expiresIn: jwtExpiresIn,
+      expiresIn: options.expiresIn || jwtExpiresIn,
       issuer: serviceName,
       audience: 'conectate-clients',
     },
@@ -553,6 +680,229 @@ async function revokeUserAuthSessions(userId, executor = pool) {
   )
 }
 
+async function revokeUserWebSessions(userId, executor = pool) {
+  await executor.query(
+    `UPDATE fallback_web_sessions
+     SET revoked_at = COALESCE(revoked_at, NOW()),
+         updated_at = NOW()
+     WHERE user_id = $1
+       AND revoked_at IS NULL`,
+    [userId],
+  )
+}
+
+async function revokeAllUserSessions(userId, executor = pool) {
+  await revokeUserAuthSessions(userId, executor)
+  await revokeUserWebSessions(userId, executor)
+  await executor.query(
+    `UPDATE fallback_web_login_pairings
+     SET status = 'rejected', updated_at = NOW()
+     WHERE approved_by_user_id = $1 AND status = 'approved'`,
+    [userId],
+  )
+}
+
+function requestedAuthClient(req) {
+  return cleanText(req.body?.client || '', 40).toLowerCase()
+}
+
+function isWebClientRequest(req) {
+  return requestedAuthClient(req) === 'web'
+}
+
+function requireTrustedWebSessionRequest(req, res) {
+  if (isTrustedWebSessionRequest(req, { allowedOrigins: corsOrigins, production: isProduction })) {
+    return true
+  }
+  res.status(403).json({ error: 'UNTRUSTED_WEB_SESSION_REQUEST' })
+  return false
+}
+
+function setWebSessionCookie(res, refreshToken) {
+  res.append('Set-Cookie', serializeWebSessionCookie(refreshToken, {
+    production: isProduction,
+    maxAgeSeconds: webSessionTtlDays * 24 * 60 * 60,
+  }))
+}
+
+function clearWebSessionCookie(res) {
+  res.append('Set-Cookie', serializeWebSessionCookie('', {
+    production: isProduction,
+    maxAgeSeconds: 0,
+  }))
+}
+
+async function issueWebSession(user, req, res, options = {}) {
+  const refreshToken = createAuthRefreshToken()
+  const refreshTokenHash = hashAuthRefreshToken(refreshToken)
+  const requestedSessionId = isUuidText(options.sessionId) ? String(options.sessionId) : ''
+  let row
+
+  if (requestedSessionId) {
+    const updated = await pool.query(
+      `UPDATE fallback_web_sessions
+       SET refresh_token_hash = $3,
+           expires_at = NOW() + ($4::text || ' days')::interval,
+           last_seen_at = NOW(),
+           ip_address = COALESCE($5, ip_address),
+           user_agent = COALESCE($6, user_agent),
+           updated_at = NOW()
+       WHERE id = $1
+         AND user_id = $2
+         AND revoked_at IS NULL
+       RETURNING *`,
+      [
+        requestedSessionId,
+        user.id,
+        refreshTokenHash,
+        webSessionTtlDays,
+        requestIpAddress(req),
+        requestUserAgent(req),
+      ],
+    )
+    row = updated.rows[0]
+  }
+
+  if (!row) {
+    const inserted = await pool.query(
+      `INSERT INTO fallback_web_sessions(
+          user_id,
+          pairing_id,
+          device_label,
+          ip_address,
+          user_agent,
+          refresh_token_hash,
+          expires_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, NOW() + ($7::text || ' days')::interval)
+       RETURNING *`,
+      [
+        user.id,
+        isUuidText(options.pairingId) ? options.pairingId : null,
+        cleanText(options.deviceLabel || req.body?.deviceLabel || 'Novvin Web', 120),
+        requestIpAddress(req),
+        requestUserAgent(req),
+        refreshTokenHash,
+        webSessionTtlDays,
+      ],
+    )
+    row = inserted.rows[0]
+  }
+
+  setWebSessionCookie(res, refreshToken)
+  return {
+    user,
+    accessToken: signUserToken(user, {
+      sessionId: row.id,
+      client: 'web',
+      expiresIn: webJwtExpiresIn,
+    }),
+    tokenType: 'Bearer',
+    expiresIn: webJwtExpiresIn,
+    webSession: serializeWebSession(row),
+  }
+}
+
+async function hasEnabledSecondFactor(userId, executor = pool) {
+  const { rows } = await executor.query(
+    `SELECT 1 FROM fallback_totp_factors
+     WHERE user_id = $1 AND enabled_at IS NOT NULL
+     LIMIT 1`,
+    [userId],
+  )
+  return Boolean(rows[0])
+}
+
+async function verifySecondFactor(userId, totpCode, backupCode) {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const { rows } = await client.query(
+      `SELECT secret_ciphertext, enabled_at, last_used_step, failed_attempts, locked_until
+       FROM fallback_totp_factors WHERE user_id = $1 FOR UPDATE`,
+      [userId],
+    )
+    const factor = rows[0]
+    if (!factor?.enabled_at) {
+      await client.query('COMMIT')
+      return { required: false, verified: true }
+    }
+    if (!totpCode && !backupCode) {
+      await client.query('COMMIT')
+      return { required: true, verified: false, error: 'TWO_FACTOR_REQUIRED' }
+    }
+    if (factor.locked_until && new Date(factor.locked_until).getTime() > Date.now()) {
+      await client.query('COMMIT')
+      return { required: true, verified: false, error: 'TWO_FACTOR_LOCKED' }
+    }
+    const lastStep = Number(factor.last_used_step ?? -1)
+    let acceptedStep = null
+    let recoveryUsed = false
+    if (totpCode) {
+      acceptedStep = matchingStep(
+        decryptSecret(factor.secret_ciphertext, twoFactorEncryptionSecret),
+        totpCode, Date.now(), lastStep,
+      )
+    } else if (backupCode) {
+      const hash = recoveryHash(backupCode, twoFactorEncryptionSecret)
+      if (hash) {
+        const used = await client.query(
+          `UPDATE fallback_totp_recovery_codes SET used_at = NOW()
+           WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL
+           RETURNING code_hash`,
+          [userId, hash],
+        )
+        recoveryUsed = Boolean(used.rows[0])
+      }
+    }
+    if (acceptedStep === null && !recoveryUsed) {
+      await client.query(
+        `UPDATE fallback_totp_factors
+         SET failed_attempts = CASE WHEN locked_until IS NOT NULL AND locked_until <= NOW()
+               THEN 1 ELSE failed_attempts + 1 END,
+             locked_until = CASE WHEN locked_until IS NOT NULL AND locked_until <= NOW()
+               THEN NULL WHEN failed_attempts + 1 >= 5
+               THEN NOW() + INTERVAL '15 minutes' ELSE NULL END,
+             updated_at = NOW()
+         WHERE user_id = $1`,
+        [userId],
+      )
+      await client.query('COMMIT')
+      return { required: true, verified: false, error: 'TWO_FACTOR_INVALID' }
+    }
+    await client.query(
+      `UPDATE fallback_totp_factors
+       SET last_used_step = CASE WHEN $2::bigint IS NULL THEN last_used_step ELSE $2 END,
+           failed_attempts = 0, locked_until = NULL, updated_at = NOW()
+       WHERE user_id = $1`,
+      [userId, acceptedStep],
+    )
+    await client.query('COMMIT')
+    return { required: true, verified: true, recoveryUsed }
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {})
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+async function issueSessionForRequest(user, req, res, options = {}) {
+  if (!options.twoFactorVerified && !req.auth?.sid && await hasEnabledSecondFactor(user.id)) {
+    const error = new Error('TWO_FACTOR_REQUIRED')
+    error.status = 401
+    error.code = 'TWO_FACTOR_REQUIRED'
+    error.expose = true
+    throw error
+  }
+  const webClient = options.webClient !== undefined
+    ? Boolean(options.webClient)
+    : isWebClientRequest(req) || req.auth?.client === 'web'
+  return webClient
+    ? issueWebSession(user, req, res, options)
+    : issueUserSession(user, req, options)
+}
+
 function shouldExposePasswordResetToken() {
   return passwordResetDelivery === 'response'
 }
@@ -564,6 +914,11 @@ async function deliverPasswordResetToken(user, token) {
 
   if (passwordResetDelivery === 'response') {
     return { delivery: 'response', resetToken: token }
+  }
+
+  if (passwordResetMailer) {
+    await passwordResetMailer.deliver(user.email, token, passwordResetTokenTtlMinutes)
+    return { delivery: 'email' }
   }
 
   console.warn(
@@ -578,7 +933,8 @@ function requestUserAgent(req) {
 
 async function touchWebSessionForAuth(auth, req) {
   const sessionId = String(auth?.sid || '').trim()
-  if (!sessionId) return true
+  // Legacy JWTs without a session cannot be revoked after password reset.
+  if (!sessionId) return false
   if (!isUuidText(sessionId) || !isUuidText(auth?.sub)) return false
 
   if (String(auth?.client || '').trim().toLowerCase() !== 'web') {
@@ -607,6 +963,7 @@ async function touchWebSessionForAuth(auth, req) {
      WHERE id = $1
        AND user_id = $2
        AND revoked_at IS NULL
+       AND (expires_at IS NULL OR expires_at > NOW())
      RETURNING id`,
     [sessionId, auth.sub, requestIpAddress(req), requestUserAgent(req)],
   )
@@ -614,29 +971,35 @@ async function touchWebSessionForAuth(auth, req) {
   return Boolean(rows[0])
 }
 
-async function authRequired(req, res, next) {
+function bearerTokenFromRequest(req) {
   const authorization = String(req.headers.authorization || '')
-  const token = authorization.replace(/^Bearer\s+/i, '').trim()
+  return authorization.replace(/^Bearer\s+/i, '').trim()
+}
 
-  if (!token) {
-    return res.status(401).json({ error: 'AUTH_REQUIRED' })
-  }
-
-  try {
-    req.auth = jwt.verify(token, jwtSecret, {
+async function authenticateClientRequest(req) {
+  return authenticateClientSession({
+    token: bearerTokenFromRequest(req),
+    verifyToken: (token) => jwt.verify(token, jwtSecret, {
       issuer: serviceName,
       audience: 'conectate-clients',
-    })
-    const { rows: activeUsers } = await pool.query(
-      `SELECT 1
-       FROM fallback_users
-       WHERE id = $1::uuid
-       LIMIT 1`,
-      [req.auth.sub],
-    )
-    if (!activeUsers[0]) {
-      return res.status(401).json({ error: 'ACCOUNT_DELETED' })
-    }
+    }),
+    userExists: async (userId) => {
+      const { rows } = await pool.query(
+        `SELECT 1
+         FROM fallback_users
+         WHERE id = $1::uuid
+         LIMIT 1`,
+        [userId],
+      )
+      return Boolean(rows[0])
+    },
+    touchSession: (auth) => touchWebSessionForAuth(auth, req),
+  })
+}
+
+async function authRequired(req, res, next) {
+  try {
+    req.auth = await authenticateClientRequest(req)
     const suspension = await findActiveSuspension(pool, req.auth.sub)
     if (suspension) {
       return res.status(403).json({
@@ -645,20 +1008,36 @@ async function authRequired(req, res, next) {
         appealTokenExpiresIn: '14d',
       })
     }
-    const activeSession = await touchWebSessionForAuth(req.auth, req)
-    if (!activeSession) {
-      return res.status(401).json({ error: 'WEB_SESSION_REVOKED' })
-    }
     return next()
   } catch (error) {
-    if (error?.name && String(error.name).includes('JsonWebToken')) {
-      return res.status(401).json({ error: 'INVALID_TOKEN' })
-    }
-    if (error?.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'INVALID_TOKEN' })
+    if (isPublicAuthError(error)) {
+      return res.status(error.status).json({ error: error.code })
     }
     return next(error)
   }
+}
+
+async function authenticatedUserHasAdminCapability(req, capability) {
+  const { rows } = await pool.query(
+    `SELECT id::text, supabase_user_id::text
+     FROM fallback_users
+     WHERE id = $1::uuid
+     LIMIT 1`,
+    [req.auth.sub],
+  )
+  const user = rows[0]
+  if (!user) return false
+  const ids = new Set(
+    [user.id, user.supabase_user_id]
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  )
+  return appAdminHasCapability(pool, {
+    localUserId: String(user.id || '').toLowerCase(),
+    preferredUserId: String(user.supabase_user_id || user.id || '').toLowerCase(),
+    ids,
+    values: [...ids],
+  }, capability)
 }
 
 async function appealAuthRequired(req, res, next) {
@@ -698,44 +1077,27 @@ function serializeWebSession(row) {
     userAgent: row.user_agent || null,
     createdAt: row.created_at || null,
     lastSeenAt: row.last_seen_at || null,
+    expiresAt: row.expires_at || null,
     revokedAt: row.revoked_at || null,
   }
 }
 
-async function createWebSessionForPairing(user, pairing, req) {
-  const { rows } = await pool.query(
-    `INSERT INTO fallback_web_sessions(user_id, pairing_id, device_label, ip_address, user_agent)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING *`,
-    [
-      user.id,
-      pairing.id,
-      cleanText(pairing.device_label || 'Conectate Web', 120),
-      requestIpAddress(req),
-      requestUserAgent(req),
-    ],
-  )
-  return rows[0]
-}
-
-function authOptional(req, _res, next) {
-  const authorization = String(req.headers.authorization || '')
-  const token = authorization.replace(/^Bearer\s+/i, '').trim()
+async function authOptional(req, res, next) {
+  const token = bearerTokenFromRequest(req)
 
   if (!token) {
     return next()
   }
 
   try {
-    req.auth = jwt.verify(token, jwtSecret, {
-      issuer: serviceName,
-      audience: 'conectate-clients',
-    })
-  } catch {
-    // Compatibility routes still need to answer legacy read/RPC calls gracefully.
+    req.auth = await authenticateClientRequest(req)
+    return next()
+  } catch (error) {
+    if (isPublicAuthError(error)) {
+      return res.status(error.status).json({ error: error.code })
+    }
+    return next(error)
   }
-
-  return next()
 }
 
 function authPayloadFromRequest(req) {
@@ -787,7 +1149,7 @@ async function recordAudit(eventName, userId, metadata = {}, executor = pool) {
       [eventName, userId || null, metadata],
     )
   } catch (error) {
-    console.warn('[audit] failed', error.message)
+    console.warn('[audit] failed', safeErrorLogDetails(error, { production: isProduction }))
   }
 }
 
@@ -808,7 +1170,7 @@ async function hasRestoredAuthUsersTable() {
     authUsersTableAvailable = rows[0]?.available === true
     return authUsersTableAvailable
   }).catch((error) => {
-    console.warn('[auth] could not inspect restored auth schema', error.message)
+    console.warn('[auth] could not inspect restored auth schema', safeErrorLogDetails(error, { production: isProduction }))
     return false
   }).finally(() => {
     authUsersTableProbe = null
@@ -837,7 +1199,7 @@ async function hydrateUserRow(row) {
     }
   } catch (error) {
     if (!isMissingAuthUsersTable(error)) {
-      console.warn('[auth] could not read restored auth.users metadata', error.message)
+      console.warn('[auth] could not read restored auth.users metadata', safeErrorLogDetails(error, { production: isProduction }))
     }
     return { ...row, account_created_at: row.created_at }
   }
@@ -859,7 +1221,7 @@ async function getRestoredAuthUserForFallback(row) {
     return rows[0] || null
   } catch (error) {
     if (!isMissingAuthUsersTable(error)) {
-      console.warn('[auth] could not read restored auth.users password', error.message)
+      console.warn('[auth] could not read restored auth.users password', safeErrorLogDetails(error, { production: isProduction }))
     }
     return null
   }
@@ -873,16 +1235,51 @@ async function verifyRestoredSupabasePassword(row, password) {
   try {
     return await bcrypt.compare(password, hash)
   } catch (error) {
-    console.warn('[auth] restored password hash could not be checked', error.message)
+    console.warn('[auth] restored password hash could not be checked', safeErrorLogDetails(error, { production: isProduction }))
     return false
   }
 }
 
-async function ensureAuthMetadataColumns() {
-  await pool.query(
+async function ensureAuthMetadataColumns(executor = pool) {
+  await executor.query(
     'ALTER TABLE fallback_users ADD COLUMN IF NOT EXISTS password_changed_by_user_at TIMESTAMPTZ',
   )
-  await pool.query(`
+  await executor.query(`
+    CREATE TABLE IF NOT EXISTS fallback_totp_factors (
+      user_id UUID PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
+      secret_ciphertext TEXT,
+      pending_ciphertext TEXT,
+      enabled_at TIMESTAMPTZ,
+      last_used_step BIGINT NOT NULL DEFAULT -1,
+      failed_attempts INTEGER NOT NULL DEFAULT 0,
+      locked_until TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await executor.query(`
+    CREATE TABLE IF NOT EXISTS fallback_totp_recovery_codes (
+      user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      code_hash TEXT NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, code_hash)
+    )
+  `)
+  await executor.query(`CREATE INDEX IF NOT EXISTS idx_fallback_totp_recovery_unused
+    ON fallback_totp_recovery_codes(user_id) WHERE used_at IS NULL`)
+  await executor.query(`
+    CREATE TABLE IF NOT EXISTS fallback_password_recovery_codes (
+      user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
+      code_hash TEXT NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, code_hash)
+    )
+  `)
+  await executor.query(`CREATE INDEX IF NOT EXISTS idx_fallback_password_recovery_unused
+    ON fallback_password_recovery_codes(user_id) WHERE used_at IS NULL`)
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS fallback_profile_login_emails (
       user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
       email TEXT NOT NULL,
@@ -890,11 +1287,11 @@ async function ensureAuthMetadataColumns() {
       PRIMARY KEY (user_id, email)
     )
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_profile_login_emails_unique
     ON fallback_profile_login_emails(lower(email))
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS fallback_password_reset_tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
@@ -904,16 +1301,16 @@ async function ensureAuthMetadataColumns() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_password_reset_tokens_user
     ON fallback_password_reset_tokens(user_id, created_at DESC)
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_password_reset_tokens_active
     ON fallback_password_reset_tokens(expires_at)
     WHERE consumed_at IS NULL
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS fallback_auth_sessions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
@@ -928,16 +1325,16 @@ async function ensureAuthMetadataColumns() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_auth_sessions_user_active
     ON fallback_auth_sessions(user_id, expires_at DESC)
     WHERE revoked_at IS NULL
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_auth_sessions_expiry
     ON fallback_auth_sessions(expires_at)
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS fallback_web_login_pairings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       nonce TEXT NOT NULL,
@@ -954,15 +1351,15 @@ async function ensureAuthMetadataColumns() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_web_login_pairings_status
     ON fallback_web_login_pairings(status, expires_at)
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_web_login_pairings_created
     ON fallback_web_login_pairings(created_at DESC)
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS fallback_web_sessions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
@@ -970,20 +1367,54 @@ async function ensureAuthMetadataColumns() {
       device_label TEXT,
       ip_address TEXT,
       user_agent TEXT,
+      refresh_token_hash TEXT,
+      expires_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       revoked_at TIMESTAMPTZ,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
-  await pool.query(`
+  await executor.query(`
+    ALTER TABLE fallback_web_sessions
+    ADD COLUMN IF NOT EXISTS refresh_token_hash TEXT
+  `)
+  await executor.query(`
+    ALTER TABLE fallback_web_sessions
+    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ
+  `)
+  await executor.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_web_sessions_user_active
     ON fallback_web_sessions(user_id, last_seen_at DESC)
     WHERE revoked_at IS NULL
   `)
-  await pool.query(`
+  await executor.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_web_sessions_pairing
     ON fallback_web_sessions(pairing_id)
+  `)
+  await executor.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_web_sessions_refresh_token
+    ON fallback_web_sessions(refresh_token_hash)
+    WHERE refresh_token_hash IS NOT NULL
+  `)
+  await executor.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_web_sessions_expiry
+    ON fallback_web_sessions(expires_at)
+    WHERE revoked_at IS NULL AND expires_at IS NOT NULL
+  `)
+  await executor.query(`
+    CREATE TABLE IF NOT EXISTS fallback_rate_limit_windows (
+      scope TEXT NOT NULL,
+      key_hash CHAR(64) NOT NULL,
+      window_started_at TIMESTAMPTZ NOT NULL,
+      request_count BIGINT NOT NULL DEFAULT 0 CHECK (request_count >= 0),
+      expires_at TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (scope, key_hash)
+    )
+  `)
+  await executor.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_rate_limit_windows_expiry
+    ON fallback_rate_limit_windows(expires_at)
   `)
 }
 
@@ -1213,6 +1644,17 @@ app.get('/ready', async (_req, res, next) => {
         'community_member_profiles_v1',
         'community_events_v1',
         'voice_room_stage_v1',
+        'anonymous_bottles_v1',
+        'community_music_v1',
+        'moment_music_v1',
+        'moment_music_aac_lc_v1',
+        'image_moments_exact_6s_v1',
+        'video_sound_identity_v1',
+        'video_feed_session_v1',
+        'video_feed_live_v1',
+        'message_markers_v1',
+        'video_watch_later_v1',
+        'video_collections_v1',
       ],
       databaseTime: rows[0].now,
       pushNotifications: pushNotificationsStatus(),
@@ -1222,8 +1664,14 @@ app.get('/ready', async (_req, res, next) => {
   }
 })
 
-app.get('/v1/system/health', async (_req, res, next) => {
+app.get('/v1/system/health', authRequired, async (req, res, next) => {
   try {
+    if (!(await authenticatedUserHasAdminCapability(req, ADMIN_CAPABILITY.SYSTEM_READ))) {
+      return res.status(403).json({
+        error: 'ADMIN_CAPABILITY_REQUIRED',
+        capability: ADMIN_CAPABILITY.SYSTEM_READ,
+      })
+    }
     res.json(await collectSystemHealth({
       pool,
       storageRoot,
@@ -1237,7 +1685,14 @@ app.get('/v1/system/health', async (_req, res, next) => {
   }
 })
 
-app.get('/v1/upstream/supabase', async (_req, res) => {
+app.get('/v1/upstream/supabase', authRequired, async (req, res, next) => {
+  try {
+    if (!(await authenticatedUserHasAdminCapability(req, ADMIN_CAPABILITY.SYSTEM_READ))) {
+      return res.status(403).json({
+        error: 'ADMIN_CAPABILITY_REQUIRED',
+        capability: ADMIN_CAPABILITY.SYSTEM_READ,
+      })
+    }
   if (!legacySupabaseImportEnabled) {
     return res.json({
       configured: false,
@@ -1286,6 +1741,9 @@ app.get('/v1/upstream/supabase', async (_req, res) => {
     })
   } finally {
     clearTimeout(timeout)
+  }
+  } catch (error) {
+    next(error)
   }
 })
 
@@ -1419,6 +1877,7 @@ app.post('/v1/admin/users/set-local-password', adminRequired, async (req, res, n
 
 app.post('/v1/auth/register', async (req, res, next) => {
   try {
+    if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const email = normalizeEmail(req.body?.email)
     const password = String(req.body?.password || '')
     const displayName = cleanText(req.body?.displayName || email.split('@')[0], 80)
@@ -1468,7 +1927,7 @@ app.post('/v1/auth/register', async (req, res, next) => {
 
     await recordAudit('auth_register', user.id, { email })
 
-    const session = await issueUserSession(user, req)
+    const session = await issueSessionForRequest(user, req, res)
     return res.status(201).json({ ...session, supabaseSync })
   } catch (error) {
     if (error.code === '23505') {
@@ -1480,6 +1939,7 @@ app.post('/v1/auth/register', async (req, res, next) => {
 
 app.post('/v1/auth/login', async (req, res, next) => {
   try {
+    if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const email = normalizeEmail(req.body?.email)
     const password = String(req.body?.password || '')
 
@@ -1549,6 +2009,17 @@ app.post('/v1/auth/login', async (req, res, next) => {
       })
     }
 
+    const secondFactor = await verifySecondFactor(
+      row.id, req.body?.totpCode, req.body?.backupCode,
+    )
+    if (!secondFactor.verified) {
+      await recordAudit('auth_second_factor_rejected', row.id, {
+        reason: secondFactor.error,
+      })
+      return res.status(secondFactor.error === 'TWO_FACTOR_LOCKED' ? 429 : 401)
+        .json({ error: secondFactor.error, requiresTwoFactor: true })
+    }
+
     const updated = await pool.query(
       `UPDATE fallback_users
        SET last_login_at = NOW()
@@ -1559,7 +2030,9 @@ app.post('/v1/auth/login', async (req, res, next) => {
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_login', user.id, { email })
 
-    return res.json(await issueUserSession(user, req))
+    return res.json(await issueSessionForRequest(user, req, res, {
+      twoFactorVerified: secondFactor.required,
+    }))
   } catch (error) {
     return next(error)
   }
@@ -1567,7 +2040,6 @@ app.post('/v1/auth/login', async (req, res, next) => {
 
 app.post('/v1/auth/refresh', async (req, res, next) => {
   const refreshToken = String(req.body?.refreshToken || '').trim()
-  const accessToken = String(req.body?.accessToken || '').trim()
   if (refreshToken.length < 32 || refreshToken.length > 4096) {
     return res.status(401).json({ error: 'INVALID_REFRESH_TOKEN' })
   }
@@ -1592,82 +2064,8 @@ app.post('/v1/auth/refresh', async (req, res, next) => {
       [tokenHash],
     )
 
-    let row = activeSession.rows[0]
-    let consumedSessionId = row?.auth_session_id || null
-    let recoveryMode = consumedSessionId ? 'active_refresh' : null
-
-    // One-time migration path for APKs that stored the old access JWT as
-    // their refresh credential. It only accepts a currently valid token
-    // signed by this server; an email alone can never restore a session.
-    if (!row) {
-      let legacyPayload
-      try {
-        legacyPayload = verifyLegacyUserToken(refreshToken)
-      } catch {
-        legacyPayload = null
-      }
-      if (
-        legacyPayload?.provider === 'local-fallback' &&
-        isUuidText(legacyPayload?.sub) &&
-        legacyPayload?.client !== 'web' &&
-        !legacyPayload?.sid
-      ) {
-        const legacyUser = await client.query(
-          `SELECT ${userSelectColumns}
-           FROM fallback_users
-           WHERE id = $1
-           LIMIT 1
-           FOR UPDATE`,
-          [legacyPayload.sub],
-        )
-        row = legacyUser.rows[0]
-        recoveryMode = row ? 'legacy_access_token' : null
-      }
-    }
-
-    // Recovery for an APK that lost the response from the former rotating
-    // refresh flow. The signed access token must still be valid, its own
-    // session must be revoked, and a newer active replacement must exist.
-    // A normal logout has no active replacement and therefore cannot use this.
-    if (!row && accessToken) {
-      let accessPayload
-      try {
-        accessPayload = verifyLegacyUserToken(accessToken)
-      } catch {
-        accessPayload = null
-      }
-      if (
-        accessPayload?.provider === 'local-fallback' &&
-        isUuidText(accessPayload?.sub) &&
-        isUuidText(accessPayload?.sid) &&
-        accessPayload?.client !== 'web'
-      ) {
-        const recoverableUser = await client.query(
-          `SELECT ${userSelectColumns}
-           FROM fallback_users
-           WHERE fallback_users.id = $1
-             AND EXISTS (
-               SELECT 1
-               FROM fallback_auth_sessions lost_session
-               WHERE lost_session.id = $2
-                 AND lost_session.user_id = fallback_users.id
-                 AND lost_session.revoked_at IS NOT NULL
-             )
-             AND EXISTS (
-               SELECT 1
-               FROM fallback_auth_sessions replacement_session
-               WHERE replacement_session.user_id = fallback_users.id
-                 AND replacement_session.revoked_at IS NULL
-                 AND replacement_session.expires_at > NOW()
-             )
-           LIMIT 1
-           FOR UPDATE`,
-          [accessPayload.sub, accessPayload.sid],
-        )
-        row = recoverableUser.rows[0]
-        recoveryMode = row ? 'lost_rotation_response' : null
-      }
-    }
+    const row = activeSession.rows[0]
+    const consumedSessionId = row?.auth_session_id || null
 
     if (!row) {
       await client.query('ROLLBACK')
@@ -1689,39 +2087,30 @@ app.post('/v1/auth/refresh', async (req, res, next) => {
     }
 
     const user = sanitizeUser(await hydrateUserRow(row))
-    let session
-    if (consumedSessionId) {
-      // Keep the opaque mobile refresh credential reusable until its explicit
-      // expiry/revocation. Rotating it on every request made a valid account
-      // unusable when the response was lost after the old token was revoked
-      // (app closed, radio change or timeout).
-      await client.query(
-        `UPDATE fallback_auth_sessions
-         SET last_used_at = NOW(),
-             updated_at = NOW()
-         WHERE id = $1`,
-        [consumedSessionId],
-      )
-      session = {
-        user,
-        accessToken: signUserToken(user, {
-          sessionId: consumedSessionId,
-          client: 'android',
-        }),
-        refreshToken,
-        tokenType: 'Bearer',
-        expiresIn: jwtExpiresIn,
-      }
-    } else {
-      // Legacy APKs and safely recovered lost rotation responses both need a
-      // new opaque refresh session.
-      session = await issueUserSession(user, req, { executor: client, client: 'android' })
+    // Keep the opaque mobile refresh credential reusable until its explicit
+    // expiry/revocation. An access JWT alone must never mint a new session.
+    await client.query(
+      `UPDATE fallback_auth_sessions
+       SET last_used_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1`,
+      [consumedSessionId],
+    )
+    const session = {
+      user,
+      accessToken: signUserToken(user, {
+        sessionId: consumedSessionId,
+        client: 'android',
+      }),
+      refreshToken,
+      tokenType: 'Bearer',
+      expiresIn: jwtExpiresIn,
     }
     // Keep the audit insert on the same transaction connection. Using `pool`
     // here waits for a user-row lock held by this transaction, leaving the
     // transaction idle forever and eventually exhausting the whole pool.
     await recordAudit('auth_refresh', user.id, {
-      recoveryMode,
+      recoveryMode: 'active_refresh',
     }, client)
     await client.query('COMMIT')
     return res.json(session)
@@ -1730,6 +2119,205 @@ app.post('/v1/auth/refresh', async (req, res, next) => {
     return next(error)
   } finally {
     client.release()
+  }
+})
+
+// The opaque mobile refresh credential identifies exactly one device session.
+// Logout stays usable even after its short-lived access JWT has expired.
+app.post('/v1/auth/logout', async (req, res, next) => {
+  const refreshToken = String(req.body?.refreshToken || '').trim()
+  if (refreshToken.length < 32 || refreshToken.length > 4096) {
+    return res.status(401).json({ error: 'INVALID_REFRESH_TOKEN' })
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE fallback_auth_sessions
+       SET revoked_at = NOW(), updated_at = NOW()
+       WHERE refresh_token_hash = $1
+         AND revoked_at IS NULL
+       RETURNING id, user_id`,
+      [hashAuthRefreshToken(refreshToken)],
+    )
+    if (rows[0]) {
+      await recordAudit('auth_logout', rows[0].user_id, { sessionId: rows[0].id })
+    }
+    return res.json({ ok: true, revoked: Boolean(rows[0]) })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+async function passwordMatchesUser(userId, password) {
+  if (!password) return false
+  const { rows } = await pool.query(
+    `SELECT password_hash FROM fallback_users WHERE id = $1 AND password_enabled = TRUE`,
+    [userId],
+  )
+  return Boolean(rows[0]?.password_hash && await bcrypt.compare(password, rows[0].password_hash))
+}
+
+app.get('/v1/auth/password-recovery-codes/status', authRequired, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT count(*)::int AS remaining FROM fallback_password_recovery_codes
+       WHERE user_id = $1 AND used_at IS NULL`,
+      [req.auth.sub],
+    )
+    res.set('Cache-Control', 'no-store')
+    return res.json({ recoveryCodesRemaining: rows[0]?.remaining || 0 })
+  } catch (error) { return next(error) }
+})
+
+app.post('/v1/auth/password-recovery-codes/rotate', authRequired, async (req, res, next) => {
+  let client
+  try {
+    if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
+    if (!(await passwordMatchesUser(req.auth.sub, String(req.body?.password || '')))) {
+      return res.status(401).json({ error: 'INVALID_PASSWORD' })
+    }
+    const factor = await verifySecondFactor(req.auth.sub, req.body?.totpCode, req.body?.backupCode)
+    if (!factor.verified) {
+      return res.status(401).json({ error: factor.error || 'TWO_FACTOR_REQUIRED' })
+    }
+
+    const codes = issuePasswordRecoveryCodes()
+    client = await pool.connect()
+    await client.query('BEGIN')
+    await client.query('DELETE FROM fallback_password_recovery_codes WHERE user_id = $1', [req.auth.sub])
+    for (const code of codes) {
+      await client.query(
+        `INSERT INTO fallback_password_recovery_codes(user_id, code_hash) VALUES ($1, $2)`,
+        [req.auth.sub, hashPasswordRecoveryCode(code, twoFactorEncryptionSecret)],
+      )
+    }
+    await client.query('COMMIT')
+    client.release()
+    client = null
+    await recordAudit('auth_password_recovery_codes_rotated', req.auth.sub).catch((error) => {
+      console.error('[auth] password recovery rotation audit failed', error)
+    })
+    res.set('Cache-Control', 'no-store')
+    return res.json({ ok: true, recoveryCodes: codes })
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
+    return next(error)
+  } finally {
+    client?.release()
+  }
+})
+
+app.get('/v1/auth/2fa/status', authRequired, async (req, res, next) => {
+  try {
+    const enabled = await hasEnabledSecondFactor(req.auth.sub)
+    const { rows } = await pool.query(
+      `SELECT count(*)::int AS remaining FROM fallback_totp_recovery_codes
+       WHERE user_id = $1 AND used_at IS NULL`,
+      [req.auth.sub],
+    )
+    return res.json({ enabled, recoveryCodesRemaining: enabled ? rows[0].remaining : 0 })
+  } catch (error) { return next(error) }
+})
+
+app.post('/v1/auth/2fa/setup', authRequired, async (req, res, next) => {
+  try {
+    if (!(await passwordMatchesUser(req.auth.sub, String(req.body?.password || '')))) {
+      return res.status(401).json({ error: 'INVALID_PASSWORD' })
+    }
+    const secret = generateSecret()
+    const { rows } = await pool.query(
+      `INSERT INTO fallback_totp_factors(user_id, pending_ciphertext)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id) DO UPDATE
+         SET pending_ciphertext = EXCLUDED.pending_ciphertext, updated_at = NOW()
+       WHERE fallback_totp_factors.enabled_at IS NULL
+       RETURNING user_id`,
+      [req.auth.sub, encryptSecret(secret, twoFactorEncryptionSecret)],
+    )
+    if (!rows[0]) return res.status(409).json({ error: 'TWO_FACTOR_ALREADY_ENABLED' })
+    const { rows: users } = await pool.query('SELECT email FROM fallback_users WHERE id = $1', [req.auth.sub])
+    await recordAudit('auth_second_factor_setup', req.auth.sub)
+    return res.json({ secret, provisioningUri: provisioningUri(secret, users[0]?.email || '') })
+  } catch (error) { return next(error) }
+})
+
+app.post('/v1/auth/2fa/enable', authRequired, async (req, res, next) => {
+  let client
+  try {
+    if (!(await passwordMatchesUser(req.auth.sub, String(req.body?.password || '')))) {
+      return res.status(401).json({ error: 'INVALID_PASSWORD' })
+    }
+    client = await pool.connect()
+    await client.query('BEGIN')
+    const { rows } = await client.query(
+      `SELECT pending_ciphertext, enabled_at FROM fallback_totp_factors
+       WHERE user_id = $1 FOR UPDATE`, [req.auth.sub],
+    )
+    if (!rows[0]?.pending_ciphertext || rows[0].enabled_at) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({ error: 'TWO_FACTOR_SETUP_REQUIRED' })
+    }
+    const secret = decryptSecret(rows[0].pending_ciphertext, twoFactorEncryptionSecret)
+    const matched = matchingStep(secret, req.body?.totpCode)
+    if (matched === null) {
+      await client.query('ROLLBACK')
+      return res.status(401).json({ error: 'TWO_FACTOR_INVALID' })
+    }
+    const codes = createRecoveryCodes()
+    await client.query(
+      `UPDATE fallback_totp_factors
+       SET secret_ciphertext = pending_ciphertext, pending_ciphertext = NULL,
+           enabled_at = NOW(), last_used_step = $2, failed_attempts = 0,
+           locked_until = NULL, updated_at = NOW()
+       WHERE user_id = $1`, [req.auth.sub, matched],
+    )
+    for (const code of codes) {
+      await client.query(
+        `INSERT INTO fallback_totp_recovery_codes(user_id, code_hash) VALUES ($1, $2)`,
+        [req.auth.sub, recoveryHash(code, twoFactorEncryptionSecret)],
+      )
+    }
+    await revokeAllUserSessions(req.auth.sub, client)
+    await client.query('COMMIT')
+    const { rows: users } = await pool.query(
+      `SELECT ${userSelectColumns} FROM fallback_users WHERE id = $1`, [req.auth.sub],
+    )
+    const user = sanitizeUser(await hydrateUserRow(users[0]))
+    await recordAudit('auth_second_factor_enabled', req.auth.sub)
+    const session = await issueSessionForRequest(user, req, res, { twoFactorVerified: true })
+    return res.json({ ok: true, recoveryCodes: codes, ...session })
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
+    return next(error)
+  } finally {
+    client?.release()
+  }
+})
+
+app.post('/v1/auth/2fa/disable', authRequired, async (req, res, next) => {
+  let client
+  try {
+    if (!(await passwordMatchesUser(req.auth.sub, String(req.body?.password || '')))) {
+      return res.status(401).json({ error: 'INVALID_PASSWORD' })
+    }
+    const factor = await verifySecondFactor(
+      req.auth.sub, req.body?.totpCode, req.body?.backupCode,
+    )
+    if (!factor.required || !factor.verified) {
+      return res.status(401).json({ error: factor.error || 'TWO_FACTOR_REQUIRED' })
+    }
+    client = await pool.connect()
+    await client.query('BEGIN')
+    await client.query('DELETE FROM fallback_totp_recovery_codes WHERE user_id = $1', [req.auth.sub])
+    await client.query('DELETE FROM fallback_totp_factors WHERE user_id = $1', [req.auth.sub])
+    await revokeAllUserSessions(req.auth.sub, client)
+    await client.query('COMMIT')
+    await recordAudit('auth_second_factor_disabled', req.auth.sub)
+    return res.json({ ok: true, signInRequired: true })
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
+    return next(error)
+  } finally {
+    client?.release()
   }
 })
 
@@ -1787,8 +2375,8 @@ app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_change_password', user.id, { email: user.email })
-    await revokeUserAuthSessions(user.id)
-    return res.json({ ok: true, ...(await issueUserSession(user, req)) })
+    await revokeAllUserSessions(user.id)
+    return res.json({ ok: true, ...(await issueSessionForRequest(user, req, res)) })
   } catch (error) {
     return next(error)
   }
@@ -1799,7 +2387,7 @@ app.post('/v1/auth/password-reset/request', async (req, res, next) => {
     const email = normalizeEmail(req.body?.email)
     const baseResponse = {
       ok: true,
-      delivery: passwordResetDelivery === 'response' ? 'response' : passwordResetDelivery,
+      delivery: passwordResetDelivery === 'smtp' ? 'email' : passwordResetDelivery,
       expiresInMinutes: passwordResetTokenTtlMinutes,
     }
 
@@ -1834,7 +2422,15 @@ app.post('/v1/auth/password-reset/request', async (req, res, next) => {
       [row.id, tokenHash, passwordResetTokenTtlMinutes],
     )
 
-    const delivery = await deliverPasswordResetToken(sanitizeUser(await hydrateUserRow(row)), token)
+    let delivery
+    try {
+      delivery = await deliverPasswordResetToken(sanitizeUser(await hydrateUserRow(row)), token)
+    } catch (error) {
+      // Keep the same public response for an unknown account and a mail outage.
+      // The token remains unusable without the email and the next request revokes it.
+      console.error('[auth] password reset delivery failed', error?.code || error?.name || 'unknown')
+      return res.json(baseResponse)
+    }
     await recordAudit('auth_password_reset_requested', row.id, {
       email,
       delivery: delivery.delivery,
@@ -1852,6 +2448,7 @@ app.post('/v1/auth/password-reset/request', async (req, res, next) => {
 
 app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
   try {
+    if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const resetToken = String(req.body?.resetToken || req.body?.token || '').trim()
     const newPassword = String(req.body?.newPassword || req.body?.password || '')
 
@@ -1909,15 +2506,98 @@ app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_password_reset_completed', user.id, { email: user.email })
-    await revokeUserAuthSessions(user.id)
-    return res.json({ ok: true, ...(await issueUserSession(user, req)) })
+    await revokeAllUserSessions(user.id)
+    if (await hasEnabledSecondFactor(user.id)) {
+      return res.json({ ok: true, requiresTwoFactor: true })
+    }
+    return res.json({ ok: true, ...(await issueSessionForRequest(user, req, res)) })
   } catch (error) {
     return next(error)
   }
 })
 
+app.post('/v1/auth/password-recovery-codes/confirm', async (req, res, next) => {
+  let client
+  try {
+    if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
+    const email = normalizeEmail(req.body?.email)
+    const codeHash = hashPasswordRecoveryCode(req.body?.recoveryCode, twoFactorEncryptionSecret)
+    const newPassword = String(req.body?.newPassword || '')
+    if (!isValidEmail(email) || !codeHash || newPassword.length < 8) {
+      return res.status(400).json({ error: 'RECOVERY_CODE_AND_PASSWORD_REQUIRED' })
+    }
+
+    client = await pool.connect()
+    await client.query('BEGIN')
+    const { rows } = await client.query(
+      `SELECT u.id, u.email
+       FROM fallback_password_recovery_codes code
+       JOIN fallback_users u ON u.id = code.user_id
+       WHERE u.email = $1 AND code.code_hash = $2 AND code.used_at IS NULL
+       FOR UPDATE OF code, u`,
+      [email, codeHash],
+    )
+    const account = rows[0]
+    if (!account) {
+      await client.query('ROLLBACK')
+      client.release()
+      client = null
+      return res.status(401).json({ error: 'INVALID_RECOVERY_CODE' })
+    }
+
+    const factor = await verifySecondFactor(account.id, req.body?.totpCode, req.body?.backupCode)
+    if (!factor.verified) {
+      await client.query('ROLLBACK')
+      client.release()
+      client = null
+      return res.status(401).json({ error: factor.error || 'TWO_FACTOR_REQUIRED' })
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12)
+    await client.query(
+      `UPDATE fallback_password_recovery_codes SET used_at = NOW()
+       WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL`,
+      [account.id, codeHash],
+    )
+    const updated = await client.query(
+      `UPDATE fallback_users
+       SET password_hash = $2, password_enabled = TRUE,
+           local_password_set_at = NOW(), password_changed_by_user_at = NOW(),
+           sync_status = CASE WHEN supabase_user_id IS NULL THEN 'local_only' ELSE 'synced' END,
+           sync_source = CASE WHEN supabase_user_id IS NULL THEN 'local' ELSE 'both' END,
+           sync_error = NULL, last_login_at = NOW()
+       WHERE id = $1 RETURNING ${userSelectColumns}`,
+      [account.id, passwordHash],
+    )
+    await client.query(
+      `UPDATE fallback_password_reset_tokens SET consumed_at = NOW()
+       WHERE user_id = $1 AND consumed_at IS NULL`,
+      [account.id],
+    )
+    await revokeAllUserSessions(account.id, client)
+    await client.query('COMMIT')
+    client.release()
+    client = null
+
+    const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
+    await recordAudit('auth_password_recovered_with_saved_code', user.id).catch((error) => {
+      console.error('[auth] password recovery audit failed', error)
+    })
+    res.set('Cache-Control', 'no-store')
+    return res.json({ ok: true, ...(await issueSessionForRequest(user, req, res, {
+      twoFactorVerified: factor.required,
+    })) })
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
+    return next(error)
+  } finally {
+    client?.release()
+  }
+})
+
 app.post('/v1/auth/complete-migrated-password-reset', async (req, res, next) => {
   try {
+    if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const migrationToken = String(req.body?.migrationToken || '').trim()
     const newPassword = String(req.body?.newPassword || '')
 
@@ -1968,8 +2648,11 @@ app.post('/v1/auth/complete-migrated-password-reset', async (req, res, next) => 
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_complete_migrated_password_reset', user.id, { email: user.email })
-    await revokeUserAuthSessions(user.id)
-    return res.json({ ok: true, ...(await issueUserSession(user, req)) })
+    await revokeAllUserSessions(user.id)
+    if (await hasEnabledSecondFactor(user.id)) {
+      return res.json({ ok: true, requiresTwoFactor: true })
+    }
+    return res.json({ ok: true, ...(await issueSessionForRequest(user, req, res)) })
   } catch (error) {
     return next(error)
   }
@@ -1990,6 +2673,129 @@ app.get('/v1/auth/me', authRequired, async (req, res, next) => {
     }
 
     return res.json({ user: sanitizeUser(await hydrateUserRow(rows[0])) })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.post('/v1/auth/web-session/refresh', async (req, res, next) => {
+  if (!requireTrustedWebSessionRequest(req, res)) return
+  const refreshToken = readWebSessionCookie(req, { production: isProduction })
+  if (refreshToken.length < 32 || refreshToken.length > 4096) {
+    clearWebSessionCookie(res)
+    return res.status(401).json({ error: 'WEB_SESSION_REQUIRED' })
+  }
+
+  try {
+    const qualifiedUserColumns = userSelectColumns
+      .split(',')
+      .map((column) => `fallback_users.${column.trim()}`)
+      .join(', ')
+    const { rows } = await pool.query(
+      `UPDATE fallback_web_sessions web_session
+       SET last_seen_at = NOW(),
+           ip_address = COALESCE($2, web_session.ip_address),
+           user_agent = COALESCE($3, web_session.user_agent),
+           updated_at = NOW()
+       FROM fallback_users
+       WHERE web_session.refresh_token_hash = $1
+         AND web_session.user_id = fallback_users.id
+         AND web_session.revoked_at IS NULL
+         AND web_session.expires_at > NOW()
+       RETURNING
+         web_session.id AS web_session_id,
+         web_session.device_label,
+         web_session.ip_address,
+         web_session.user_agent,
+         web_session.created_at,
+         web_session.last_seen_at,
+         web_session.revoked_at,
+         ${qualifiedUserColumns}`,
+      [hashAuthRefreshToken(refreshToken), requestIpAddress(req), requestUserAgent(req)],
+    )
+    const row = rows[0]
+    if (!row) {
+      clearWebSessionCookie(res)
+      return res.status(401).json({ error: 'WEB_SESSION_INVALID' })
+    }
+
+    const suspension = await findActiveSuspension(pool, row.id)
+    if (suspension) {
+      await pool.query(
+        `UPDATE fallback_web_sessions
+         SET revoked_at = COALESCE(revoked_at, NOW()), updated_at = NOW()
+         WHERE id = $1`,
+        [row.web_session_id],
+      )
+      clearWebSessionCookie(res)
+      return res.status(403).json(accountSuspendedPayload(suspension))
+    }
+
+    const user = sanitizeUser(await hydrateUserRow(row))
+    return res.json({
+      user,
+      accessToken: signUserToken(user, {
+        sessionId: row.web_session_id,
+        client: 'web',
+        expiresIn: webJwtExpiresIn,
+      }),
+      tokenType: 'Bearer',
+      expiresIn: webJwtExpiresIn,
+      webSession: serializeWebSession({ ...row, id: row.web_session_id }),
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.post('/v1/auth/web-session/upgrade', authRequired, async (req, res, next) => {
+  if (!requireTrustedWebSessionRequest(req, res)) return
+  try {
+    const { rows } = await pool.query(
+      `SELECT ${userSelectColumns}
+       FROM fallback_users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.auth.sub],
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+
+    const user = sanitizeUser(await hydrateUserRow(rows[0]))
+    const payload = await issueWebSession(user, req, res, {
+      sessionId: req.auth.client === 'web' ? req.auth.sid : '',
+      deviceLabel: req.body?.deviceLabel,
+    })
+    await recordAudit('auth_web_session_upgraded', user.id, {
+      previousClient: cleanText(req.auth.client || 'legacy', 40),
+    })
+    return res.json(payload)
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.delete('/v1/auth/web-session', async (req, res, next) => {
+  if (!requireTrustedWebSessionRequest(req, res)) return
+  const refreshToken = readWebSessionCookie(req, { production: isProduction })
+  clearWebSessionCookie(res)
+  if (refreshToken.length < 32 || refreshToken.length > 4096) {
+    return res.json({ ok: true, revoked: false })
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE fallback_web_sessions
+       SET revoked_at = COALESCE(revoked_at, NOW()),
+           updated_at = NOW()
+       WHERE refresh_token_hash = $1
+         AND revoked_at IS NULL
+       RETURNING id, user_id`,
+      [hashAuthRefreshToken(refreshToken)],
+    )
+    if (rows[0]) {
+      await recordAudit('auth_web_session_logout', rows[0].user_id, { sessionId: rows[0].id })
+    }
+    return res.json({ ok: true, revoked: Boolean(rows[0]) })
   } catch (error) {
     return next(error)
   }
@@ -2076,6 +2882,7 @@ async function handleWebLoginPairing(req, res, next) {
     }
 
     if (action === 'consume') {
+      if (!requireTrustedWebSessionRequest(req, res)) return
       const pairing = await findPairing(req.body?.pairId, req.body?.nonce)
       if (pairing.status === 'expired' || isPairingExpired(pairing)) {
         return res.status(410).json({ error: 'PAIRING_EXPIRED' })
@@ -2113,18 +2920,16 @@ async function handleWebLoginPairing(req, res, next) {
 
       const user = sanitizeUser(await hydrateUserRow(userResult.rows[0]))
       await pool.query('UPDATE fallback_users SET last_login_at = NOW() WHERE id = $1', [user.id])
-      const webSession = await createWebSessionForPairing(user, updateResult.rows[0], req)
-      const webAccessToken = signUserToken(user, { sessionId: webSession.id, client: 'web' })
+      const webSessionPayload = await issueWebSession(user, req, res, {
+        pairingId: updateResult.rows[0].id,
+        deviceLabel: updateResult.rows[0].device_label,
+      })
       await recordAudit('auth_web_login_pairing_consumed', user.id, { pairId: pairing.id })
 
       return res.json(
         serializePairing(updateResult.rows[0], {
-          user,
-          accessToken: webAccessToken,
-          refreshToken: webAccessToken,
-          tokenType: 'Bearer',
-          expiresIn: jwtExpiresIn,
-          webSession: serializeWebSession(webSession),
+          ...webSessionPayload,
+          refreshToken: null,
         }),
       )
     }
@@ -2206,6 +3011,7 @@ app.delete('/v1/auth/web-sessions/:sessionId', authRequired, async (req, res, ne
 
 app.post('/v1/auth/activate-local-password', async (req, res, next) => {
   try {
+    if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const supabaseAccessToken = String(req.body?.supabaseAccessToken || '').trim()
     const password = String(req.body?.password || '')
     const supabaseAdmin = getSupabaseAdminClient()
@@ -2265,8 +3071,11 @@ app.post('/v1/auth/activate-local-password', async (req, res, next) => {
 
     const user = sanitizeUser(await hydrateUserRow(rows[0]))
     await recordAudit('auth_activate_local_password', user.id, { email })
-    await revokeUserAuthSessions(user.id)
-    return res.json({ ok: true, ...(await issueUserSession(user, req)) })
+    await revokeAllUserSessions(user.id)
+    if (await hasEnabledSecondFactor(user.id)) {
+      return res.json({ ok: true, requiresTwoFactor: true })
+    }
+    return res.json({ ok: true, ...(await issueSessionForRequest(user, req, res)) })
   } catch (error) {
     return next(error)
   }
@@ -2376,7 +3185,18 @@ async function deleteExternalAuthUser(userId) {
 }
 
 registerStorageRoutes(app, { pool, authRequired })
-registerDataRoutes(app, { pool, authRequired, appealAuthRequired, deleteExternalAuthUser })
+registerDataRoutes(app, {
+  pool,
+  authRequired,
+  appealAuthRequired,
+  deleteExternalAuthUser,
+  signStorageObjectReference: signStoredObjectReference,
+})
+registerGooglePlayRtdnRoutes(app, {
+  pool,
+  packageName: googlePlayConfiguration().packageName,
+  processNotification: (event, config) => processGooglePlayRtdnNotification(pool, event, config),
+})
 registerPostgrestCompatRoutes(app, { pool, authRequired, authOptional })
 registerAiRoutes(app, { authRequired })
 
@@ -2387,8 +3207,11 @@ app.use((req, res) => {
 app.use((error, _req, res, _next) => {
   console.error('[api] request failed', {
     requestId: _req.requestId,
-    code: String(error?.code || 'INTERNAL_ERROR'),
-    message: String(error?.message || 'Unexpected request error').slice(0, 240),
+    ...safeErrorLogDetails(error, {
+      production: isProduction,
+      fallbackCode: 'INTERNAL_ERROR',
+      fallbackMessage: 'Unexpected request error',
+    }),
   })
   const status = Number(error?.status || error?.statusCode || 500)
   const safeStatus = status >= 400 && status <= 599 ? status : 500
@@ -2417,22 +3240,63 @@ let liveDrawGuessReconciler
 let googlePlayRefundRunning = false
 let creatorPayoutTimer
 let creatorPayoutRunning = false
+let rateLimitCleanupTimer
+let resumableUploadCleanupTimer
 
-ensureAuthMetadataColumns()
-  .then(() => ensureLocalStorageTables(pool))
-  .then(() => ensureLocalDataTables(pool))
-  .then(() => ensureScheduledMessageTables(pool))
-  .then(() => ensurePostgrestCompatTables(pool))
+withSchemaInitializationLock({
+  pool,
+  statementTimeoutMs: boundedInteger(
+    process.env.SCHEMA_INITIALIZATION_TIMEOUT_MS,
+    180_000,
+    30_000,
+    15 * 60_000,
+  ),
+  task: async (client) => {
+    await ensureAuthMetadataColumns(client)
+    await ensureLocalStorageTables(client)
+    await ensureLocalDataTables(client)
+    await ensureScheduledMessageTables(client)
+    await ensurePostgrestCompatTables(client)
+    await ensureGooglePlayRtdnTables(client)
+  },
+})
   .then(() => {
     server = app.listen(port, '0.0.0.0', () => {
       console.log(`${serviceName} ${version} listening on ${port}`)
     })
+    // Match the Android upload budget while retaining strict header and idle
+    // connection limits. TUS chunks normally complete much sooner; this also
+    // protects the rolling-deployment fallback that still sends one PUT.
+    server.requestTimeout = 20 * 60_000
+    server.headersTimeout = 15_000
+    server.keepAliveTimeout = 65_000
+    server.maxHeadersCount = 100
+    const runRateLimitCleanup = () => {
+      void pruneExpiredRateLimitWindows(pool).catch((error) => {
+        console.error('[rate-limit] cleanup failed', safeErrorLogDetails(error, {
+          production: isProduction,
+          fallbackCode: 'UNKNOWN',
+        }))
+      })
+    }
+    runRateLimitCleanup()
+    rateLimitCleanupTimer = setInterval(runRateLimitCleanup, 60 * 60_000)
+    rateLimitCleanupTimer.unref?.()
+    const runResumableUploadCleanup = () => {
+      void cleanupExpiredResumableUploads(pool).catch((error) => {
+        console.error('[storage] resumable cleanup failed', safeErrorLogDetails(error, {
+          production: isProduction,
+          fallbackCode: 'UNKNOWN',
+        }))
+      })
+    }
+    runResumableUploadCleanup()
+    resumableUploadCleanupTimer = setInterval(runResumableUploadCleanup, 15 * 60_000)
+    resumableUploadCleanupTimer.unref?.()
     liveDrawGuessReconciler = startLiveDrawGuessReconciler({ pool })
     const runScheduledMessages = () => {
       void processDueScheduledMessageJobs(pool).catch((error) => {
-        console.error('[scheduled-messages] worker failed', {
-          message: String(error?.message || error).slice(0, 240),
-        })
+        console.error('[scheduled-messages] worker failed', safeErrorLogDetails(error, { production: isProduction }))
       })
     }
     runScheduledMessages()
@@ -2440,9 +3304,7 @@ ensureAuthMetadataColumns()
     scheduledMessageTimer.unref?.()
     const runNotificationDigests = () => {
       void processDueNotificationDigests(pool).catch((error) => {
-        console.error('[notification-digest] worker failed', {
-          message: String(error?.message || error).slice(0, 240),
-        })
+        console.error('[notification-digest] worker failed', safeErrorLogDetails(error, { production: isProduction }))
       })
     }
     runNotificationDigests()
@@ -2450,9 +3312,10 @@ ensureAuthMetadataColumns()
     notificationDigestTimer.unref?.()
     const runLiveFollowerNotifications = () => {
       void processPendingLiveFollowerNotifications(pool).catch((error) => {
-        console.error('[live-followers] notification worker failed', {
-          code: String(error?.code || error?.message || 'UNKNOWN').slice(0, 80),
-        })
+        console.error('[live-followers] notification worker failed', safeErrorLogDetails(error, {
+          production: isProduction,
+          fallbackCode: 'UNKNOWN',
+        }))
       })
     }
     runLiveFollowerNotifications()
@@ -2460,9 +3323,7 @@ ensureAuthMetadataColumns()
     liveFollowerNotificationTimer.unref?.()
     const runCommunityEventReminders = () => {
       void processDueCommunityEventReminders(pool).catch((error) => {
-        console.error('[community-event-reminders] worker failed', {
-          message: String(error?.message || error).slice(0, 240),
-        })
+        console.error('[community-event-reminders] worker failed', safeErrorLogDetails(error, { production: isProduction }))
       })
     }
     runCommunityEventReminders()
@@ -2470,19 +3331,20 @@ ensureAuthMetadataColumns()
     communityEventReminderTimer.unref?.()
     const runBirthdayNotifications = () => {
       void processBirthdayNotifications(pool).catch((error) => {
-        console.error('[birthday-notifications] worker failed', {
-          message: String(error?.message || error).slice(0, 240),
-        })
+        console.error('[birthday-notifications] worker failed', safeErrorLogDetails(error, { production: isProduction }))
       })
     }
     runBirthdayNotifications()
     birthdayNotificationTimer = setInterval(runBirthdayNotifications, 15 * 60_000)
     birthdayNotificationTimer.unref?.()
-    const refundReconciliationEnabled = /^(1|true|yes|on)$/i.test(
-      String(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_ENABLED || '').trim(),
-    )
+    const refundReconciliationSetting = String(
+      process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_ENABLED || '',
+    ).trim()
+    const refundReconciliationEnabled = refundReconciliationSetting
+      ? /^(1|true|yes|on)$/i.test(refundReconciliationSetting)
+      : true
     const refundIntervalMinutes = Math.max(5, Math.min(
-      Math.trunc(Number(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_INTERVAL_MINUTES || 15) || 15),
+      Math.trunc(Number(process.env.GOOGLE_PLAY_REFUND_RECONCILIATION_INTERVAL_MINUTES || 5) || 5),
       24 * 60,
     ))
     const runGooglePlayRefundReconciliation = () => {
@@ -2497,9 +3359,10 @@ ensureAuthMetadataColumns()
           })
         })
         .catch((error) => {
-          console.error('[google-play-refunds] reconciliation failed', {
-            code: String(error?.code || error?.message || 'UNKNOWN').slice(0, 80),
-          })
+          console.error('[google-play-refunds] reconciliation failed', safeErrorLogDetails(error, {
+            production: isProduction,
+            fallbackCode: 'UNKNOWN',
+          }))
         })
         .finally(() => { googlePlayRefundRunning = false })
     }
@@ -2515,9 +3378,10 @@ ensureAuthMetadataColumns()
       void processApprovedCreatorPayouts(pool)
         .then(() => reconcileCreatorPayouts(pool))
         .catch((error) => {
-          console.error('[creator-payouts] worker failed', {
-            code: String(error?.code || error?.message || 'UNKNOWN').slice(0, 80),
-          })
+          console.error('[creator-payouts] worker failed', safeErrorLogDetails(error, {
+            production: isProduction,
+            fallbackCode: 'UNKNOWN',
+          }))
         })
         .finally(() => { creatorPayoutRunning = false })
     }
@@ -2526,7 +3390,7 @@ ensureAuthMetadataColumns()
     creatorPayoutTimer.unref?.()
   })
   .catch((error) => {
-    console.error('[api] failed to initialize local data tables', error)
+    console.error('[api] failed to initialize local data tables', safeErrorLogDetails(error, { production: isProduction }))
     process.exit(1)
   })
 
@@ -2539,6 +3403,8 @@ async function shutdown(signal) {
   if (googlePlayRefundTimer) clearInterval(googlePlayRefundTimer)
   if (liveFollowerNotificationTimer) clearInterval(liveFollowerNotificationTimer)
   if (creatorPayoutTimer) clearInterval(creatorPayoutTimer)
+  if (rateLimitCleanupTimer) clearInterval(rateLimitCleanupTimer)
+  if (resumableUploadCleanupTimer) clearInterval(resumableUploadCleanupTimer)
   liveDrawGuessReconciler?.stop()
   if (!server) {
     await pool.end()

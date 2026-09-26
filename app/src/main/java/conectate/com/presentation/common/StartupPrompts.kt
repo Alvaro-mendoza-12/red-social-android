@@ -1,5 +1,6 @@
 package conectate.com.presentation.common
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.app.NotificationManager
@@ -16,9 +17,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberPermissionState
 import conectate.com.presentation.components.BatteryOptimizationDialog
 import conectate.com.util.DeviceUtils
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +27,7 @@ private const val TEST_RUNTIME_PREFS = "test_runtime_prefs"
 private const val DISABLE_STARTUP_PROMPTS_KEY = "disable_startup_prompts"
 private const val FULL_SCREEN_CALL_PROMPTED_KEY = "full_screen_call_prompted"
 
-@OptIn(ExperimentalPermissionsApi::class)
+@SuppressLint("InlinedApi") // ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT is only reached on API 34+.
 @Composable
 fun StartupPrompts() {
     val context = LocalContext.current
@@ -39,15 +37,6 @@ fun StartupPrompts() {
     }
 
     if (disableStartupPrompts) return
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        val permissionState = rememberPermissionState(android.Manifest.permission.POST_NOTIFICATIONS)
-        LaunchedEffect(Unit) {
-            if (!permissionState.status.isGranted) {
-                permissionState.launchPermissionRequest()
-            }
-        }
-    }
 
     var showFullScreenCallDialog by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {

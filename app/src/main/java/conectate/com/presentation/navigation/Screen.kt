@@ -55,17 +55,20 @@ sealed class Screen(val route: String) {
             "profile_video_feed/${android.net.Uri.encode(profileId)}/${android.net.Uri.encode(videoId)}" +
                 "?initialIndex=${initialIndex.coerceAtLeast(0)}"
     }
-    object VideoPlayer : Screen("video_player/{videoId}?focusCommentId={focusCommentId}") {
-        fun createRoute(videoId: String, focusCommentId: String? = null): String {
+    object VideoPlayer : Screen("video_player/{videoId}?focusCommentId={focusCommentId}&resumeMs={resumeMs}&endMs={endMs}") {
+        fun createRoute(videoId: String, focusCommentId: String? = null, resumeMs: Long = 0L,
+                        endMs: Long = 0L): String {
             val base = "video_player/$videoId"
-            return if (focusCommentId.isNullOrBlank()) {
-                base
-            } else {
-                "$base?focusCommentId=${android.net.Uri.encode(focusCommentId)}"
-            }
+            val params = mutableListOf<String>()
+            if (!focusCommentId.isNullOrBlank()) params += "focusCommentId=${android.net.Uri.encode(focusCommentId)}"
+            if (resumeMs > 0L) params += "resumeMs=$resumeMs"
+            if (endMs > 0L) params += "endMs=$endMs"
+            return if (params.isEmpty()) base else "$base?${params.joinToString("&")}"
         }
     }
     object VideoUpload : Screen("video_upload")
+    object OfflineVideos : Screen("offline_videos")
+    object CreatePost : Screen("create_post")
     
     object Profile : Screen("profile")
     object EditProfile : Screen("edit_profile")
@@ -79,11 +82,11 @@ sealed class Screen(val route: String) {
     object AccountSettings : Screen("account_settings")
     object SecuritySettings : Screen("security_settings")
     object PrivacySettings : Screen("privacy_settings")
+    object ContentSafety : Screen("content_safety")
     object CustomizeApp : Screen("customize_app")
     object NotificationSettings : Screen("notification_settings")
     object ChatSettings : Screen("chat_settings")
     object StorageSettings : Screen("storage_settings")
-    object OfflineVideos : Screen("offline_videos")
     object LanguageSettings : Screen("language_settings")
     object ThemeSettings : Screen("theme_settings")
     object HelpSettings : Screen("help_settings")
@@ -183,6 +186,10 @@ sealed class Screen(val route: String) {
     object MomentViewer : Screen("moment_viewer/{momentId}") {
         fun createRoute(momentId: String) = "moment_viewer/$momentId"
     }
+    object MomentHighlightViewer : Screen("moment_highlight/{highlightId}?title={title}") {
+        fun createRoute(highlightId: String, title: String): String =
+            "moment_highlight/${android.net.Uri.encode(highlightId)}?title=${android.net.Uri.encode(title)}"
+    }
     
     object LiveViewer : Screen("live_viewer/{streamId}") {
         fun createRoute(streamId: String) = "live_viewer/$streamId"
@@ -252,10 +259,13 @@ sealed class Screen(val route: String) {
         }
     }
     
-    object VideoEditor : Screen("video_editor/{videoUri}") {
-        fun createRoute(videoUri: android.net.Uri): String {
+    object VideoEditor : Screen("video_editor/{videoUri}?soundUri={soundUri}") {
+        fun createRoute(videoUri: android.net.Uri, soundUri: android.net.Uri? = null): String {
             val encoded = java.net.URLEncoder.encode(videoUri.toString(), java.nio.charset.StandardCharsets.UTF_8.toString())
-            return "video_editor/$encoded"
+            val encodedSound = soundUri?.let {
+                java.net.URLEncoder.encode(it.toString(), java.nio.charset.StandardCharsets.UTF_8.toString())
+            }
+            return "video_editor/$encoded${encodedSound?.let { "?soundUri=$it" }.orEmpty()}"
         }
     }
 }

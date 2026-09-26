@@ -10,7 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,7 +20,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import conectate.com.data.model.Comment
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -75,7 +74,7 @@ fun CommentsSheet(
                     Icon(Icons.Default.Close, contentDescription = "Cerrar")
                 }
             }
-            Divider(color = Color.LightGray.copy(alpha = 0.5f))
+            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
         }
 
         // Comments List
@@ -151,7 +150,7 @@ fun CommentsSheet(
                     }
                 }
             }
-            Divider(color = Color.LightGray.copy(alpha = 0.5f))
+            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -188,7 +187,7 @@ fun CommentsSheet(
                     enabled = commentText.isNotBlank(),
                     colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Icon(Icons.Default.Send, "Enviar")
+                    Icon(Icons.AutoMirrored.Filled.Send, "Enviar")
                 }
             }
         }

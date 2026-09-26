@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.auth.AccountSuspendedException
 import conectate.com.data.localfallback.LocalFallbackMigratedPasswordResetRequiredException
 import conectate.com.data.localfallback.LocalFallbackMigratedPasswordSetupRequiredException
+import conectate.com.data.localfallback.LocalFallbackTwoFactorRequiredException
+import conectate.com.data.localfallback.LocalFallbackPasswordChangedNeedsTwoFactorException
 import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.model.User
 import conectate.com.data.repository.AuthRepository
@@ -47,6 +49,8 @@ sealed class AuthState {
     ) : AuthState()
     object PasswordResetSent : AuthState()
     object PasswordChanged : AuthState()
+    data class TwoFactorRequired(val message: String) : AuthState()
+    object PasswordChangedNeedsTwoFactor : AuthState()
     data class Error(val message: String) : AuthState()
 }
 
@@ -162,12 +166,12 @@ class AuthViewModel @Inject constructor(
     }
 
 
-    fun signInWithEmail(email: String, password: String) {
+    fun signInWithEmail(email: String, password: String, secondFactorCode: String? = null) {
         viewModelScope.launch {
             _appealMessage.value = null
             _authState.value = AuthState.Loading
             
-            var result = authRepository.signInWithEmail(email, password)
+            var result = authRepository.signInWithEmail(email, password, secondFactorCode)
             _authState.value = result.fold(
                 onSuccess = {
                     _isUserLoggedIn.value = true
@@ -176,6 +180,8 @@ class AuthViewModel @Inject constructor(
                 },
                 onFailure = {
                     when (it) {
+                        is LocalFallbackTwoFactorRequiredException ->
+                            AuthState.TwoFactorRequired(it.message.orEmpty())
                         is AccountSuspendedException -> suspendedState(it)
                         is LocalFallbackMigratedPasswordSetupRequiredException ->
                             AuthState.MigratedPasswordSetupRequired(
@@ -237,6 +243,24 @@ class AuthViewModel @Inject constructor(
             } else {
                 result.exceptionOrNull().toUserFacingMessage("No se pudo guardar la cuenta actual.")
             }
+        }
+    }
+
+    fun prepareAddAccount(onReady: () -> Unit) {
+        if (_authState.value is AuthState.Loading) return
+        viewModelScope.launch {
+            _accountSwitchMessage.value = "Guardando la cuenta actual…"
+            authRepository.rememberCurrentAccount().fold(
+                onSuccess = {
+                    _accountSwitchMessage.value = null
+                    // A previous login success must not complete the add-account screen.
+                    _authState.value = AuthState.Idle
+                    onReady()
+                },
+                onFailure = {
+                    _accountSwitchMessage.value = it.toUserFacingMessage("No se pudo guardar la cuenta actual.")
+                },
+            )
         }
     }
 
@@ -346,12 +370,16 @@ class AuthViewModel @Inject constructor(
             val result = authRepository.requestLocalFallbackPasswordReset(normalizedEmail)
             _authState.value = result.fold(
                 onSuccess = {
-                    AuthState.MigrationPasswordCodeSent(
-                        email = normalizedEmail,
-                        resetToken = it.resetToken,
-                        delivery = it.delivery,
-                        expiresInMinutes = it.expiresInMinutes
-                    )
+                    if (it.delivery == "disabled") {
+                        AuthState.Error("El correo de recuperación aún no está habilitado. Si guardaste un código fuera del teléfono, vuelve y toca «Tengo un código guardado». Sin código ni otra sesión, el equipo debe verificar que la cuenta es tuya.")
+                    } else {
+                        AuthState.MigrationPasswordCodeSent(
+                            email = normalizedEmail,
+                            resetToken = it.resetToken,
+                            delivery = it.delivery,
+                            expiresInMinutes = it.expiresInMinutes
+                        )
+                    }
                 },
                 onFailure = {
                     AuthState.Error(mapAuthError(it))
@@ -371,8 +399,32 @@ class AuthViewModel @Inject constructor(
                     AuthState.Success(it)
                 },
                 onFailure = {
-                    AuthState.Error(mapAuthError(it))
+                    if (it is LocalFallbackPasswordChangedNeedsTwoFactorException)
+                        AuthState.PasswordChangedNeedsTwoFactor
+                    else AuthState.Error(mapAuthError(it))
                 }
+            )
+        }
+    }
+
+    fun confirmSavedPasswordRecoveryCode(
+        email: String,
+        recoveryCode: String,
+        newPassword: String,
+        secondFactorCode: String?
+    ) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Loading
+            val result = authRepository.confirmSavedPasswordRecoveryCode(
+                email.trim().lowercase(), recoveryCode, newPassword, secondFactorCode
+            )
+            _authState.value = result.fold(
+                onSuccess = {
+                    _isUserLoggedIn.value = true
+                    _currentUserId.value = it.id
+                    AuthState.Success(it)
+                },
+                onFailure = { AuthState.Error(mapAuthError(it)) }
             )
         }
     }
@@ -388,7 +440,9 @@ class AuthViewModel @Inject constructor(
                     AuthState.Success(it)
                 },
                 onFailure = {
-                    AuthState.Error(mapAuthError(it))
+                    if (it is LocalFallbackPasswordChangedNeedsTwoFactorException)
+                        AuthState.PasswordChangedNeedsTwoFactor
+                    else AuthState.Error(mapAuthError(it))
                 }
             )
         }
@@ -423,7 +477,11 @@ class AuthViewModel @Inject constructor(
                         _currentUserId.value = it.id
                         AuthState.Success(it)
                     },
-                    onFailure = { AuthState.Error(mapAuthError(it)) }
+                    onFailure = {
+                        if (it is LocalFallbackPasswordChangedNeedsTwoFactorException)
+                            AuthState.PasswordChangedNeedsTwoFactor
+                        else AuthState.Error(mapAuthError(it))
+                    }
                 )
                 return@launch
             }
@@ -465,7 +523,11 @@ class AuthViewModel @Inject constructor(
                     _currentUserId.value = it.id
                     AuthState.Success(it)
                 },
-                onFailure = { AuthState.Error(mapAuthError(it)) }
+                onFailure = {
+                    if (it is LocalFallbackPasswordChangedNeedsTwoFactorException)
+                        AuthState.PasswordChangedNeedsTwoFactor
+                    else AuthState.Error(mapAuthError(it))
+                }
             )
         }
     }

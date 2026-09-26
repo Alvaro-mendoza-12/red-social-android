@@ -84,7 +84,7 @@ codigo legacy Supabase de forma definitiva.
 Comando Android validado:
 
 ```powershell
-$env:JAVA_HOME='D:\red social - copia\tools\jdk-17\jdk-17.0.18+8'
+$env:JAVA_HOME='D:\red social - live-gifts\tools\jdk-17\jdk-17.0.18+8'
 .\gradlew.bat --no-daemon --console=plain "-Dorg.gradle.workers.max=1" "-Dkotlin.compiler.execution.strategy=in-process" :app:compileDebugKotlin --stacktrace
 ```
 

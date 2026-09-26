@@ -45,7 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -128,7 +128,7 @@ fun StickerPickerDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                TabRow(
+                SecondaryTabRow(
                     selectedTabIndex = selectedTab,
                     containerColor = Color.Transparent,
                     divider = {}
@@ -279,8 +279,12 @@ fun PackManagementSection(
                         onClick = { onPackSelect(pack.id) },
                         label = { Text(pack.name) },
                         border = if (selectedPackId == pack.id) 
-                            AssistChipDefaults.assistChipBorder(borderColor = MaterialTheme.colorScheme.primary, borderWidth = 2.dp)
-                            else AssistChipDefaults.assistChipBorder()
+                            AssistChipDefaults.assistChipBorder(
+                                enabled = true,
+                                borderColor = MaterialTheme.colorScheme.primary,
+                                borderWidth = 2.dp,
+                            )
+                            else AssistChipDefaults.assistChipBorder(enabled = true)
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     if (!downloadedPacks.contains(pack.id)) {

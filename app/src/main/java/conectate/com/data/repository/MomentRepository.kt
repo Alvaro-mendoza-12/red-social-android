@@ -8,6 +8,8 @@ import android.webkit.MimeTypeMap
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
+import conectate.com.data.music.isApprovedCommonsAssetUrl
+import conectate.com.data.music.isApprovedCommonsPageUrl
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.localfallback.UbuntuRealtimeClient
@@ -37,6 +39,7 @@ import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.media.MediaMetadataRetriever
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.time.OffsetDateTime
 import java.util.UUID
 import javax.inject.Inject
@@ -49,14 +52,16 @@ class MomentRepository @Inject constructor(
     private val localFallbackApiClient: LocalFallbackApiClient,
     private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val storageService: StorageService,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     private companion object {
         private const val MOMENTS_FALLBACK_POLL_INTERVAL_MS = 45_000L
         private const val MAX_MOMENT_VIDEO_DURATION_SECONDS = 25L
         private const val MAX_MOMENT_VIDEO_DURATION_MS = MAX_MOMENT_VIDEO_DURATION_SECONDS * 1_000L
         private const val MAX_MOMENT_MEDIA_BYTES = 35L * 1024 * 1024
+        private const val MAX_MOMENT_MUSIC_BYTES = 80L * 1024 * 1024
         private const val IMAGE_MOMENT_DISPLAY_DURATION_MS = 6_000L
+        private const val LOCAL_MOMENT_MUSIC_SOURCE = "novvin_moment_local"
     }
 
     private val _moments = MutableStateFlow<List<Moment>>(emptyList())
@@ -370,6 +375,7 @@ class MomentRepository @Inject constructor(
                 visibility = json["visibility"]?.jsonPrimitive?.content ?: "all",
                 visibilityType = visibilityType,
                 excludedIds = excluded,
+                audienceIds = json["audience_ids"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList(),
                 createdAt = json["created_at"]?.jsonPrimitive?.content,
                 expiresAt = expiresAt,
                 username = validUsername ?: "Usuario",
@@ -378,7 +384,31 @@ class MomentRepository @Inject constructor(
                 isVerified = profile?.get("is_verified")?.jsonPrimitive?.boolean ?: false,
                 caption = json["caption"]?.jsonPrimitive?.contentOrNull,
                 isViewed = isViewed,
-                allowReplies = json["allow_replies"]?.jsonPrimitive?.boolean ?: true
+                allowReplies = json["allow_replies"]?.jsonPrimitive?.boolean ?: true,
+                overlayText = json["overlay_text"]?.jsonPrimitive?.contentOrNull,
+                overlayColor = json["overlay_color"]?.jsonPrimitive?.contentOrNull ?: "#FFFFFFFF",
+                overlayFont = json["overlay_font"]?.jsonPrimitive?.contentOrNull ?: "sans",
+                overlayScale = json["overlay_scale"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f,
+                overlayX = json["overlay_x"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0.5f,
+                overlayY = json["overlay_y"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0.38f,
+                musicUrl = UbuntuStorageUrl.rewrite(json["music_url"]?.jsonPrimitive?.contentOrNull),
+                musicAudioUrl = UbuntuStorageUrl.rewrite(json["music_audio_url"]?.jsonPrimitive?.contentOrNull),
+                musicId = json["music_id"]?.jsonPrimitive?.contentOrNull,
+                musicTitle = json["music_title"]?.jsonPrimitive?.contentOrNull,
+                musicArtist = json["music_artist"]?.jsonPrimitive?.contentOrNull,
+                musicSource = json["music_source"]?.jsonPrimitive?.contentOrNull,
+                musicSourceUrl = json["music_source_url"]?.jsonPrimitive?.contentOrNull,
+                musicLicense = json["music_license"]?.jsonPrimitive?.contentOrNull,
+                musicLicenseUrl = json["music_license_url"]?.jsonPrimitive?.contentOrNull,
+                musicStartMs = json["music_start_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L,
+                musicDurationMs = json["music_duration_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 6_000L,
+                musicEndMs = json["music_end_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
+                musicVolume = json["music_volume"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f,
+                originalAudioVolume = json["original_audio_volume"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f,
+                musicFadeInMs = json["music_fade_in_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L,
+                musicFadeOutMs = json["music_fade_out_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L,
+                duckOriginalAudio = json["duck_original_audio"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false,
+                musicEmbedded = json["music_embedded"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false,
             ).normalizedStorageUrls()
 
             // Add or update in list
@@ -455,7 +485,8 @@ class MomentRepository @Inject constructor(
                         durationType = json["duration_type"]?.jsonPrimitive?.contentOrNull ?: "24h",
                         visibility = json["visibility"]?.jsonPrimitive?.contentOrNull ?: "all",
                         visibilityType = visibilityType,
-                        excludedIds = emptyList(),
+                        excludedIds = json["excluded_ids"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList(),
+                        audienceIds = json["audience_ids"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList(),
                         createdAt = json["created_at"]?.jsonPrimitive?.contentOrNull,
                         expiresAt = json["expires_at"]?.jsonPrimitive?.contentOrNull,
                         username = json["owner_name"]?.jsonPrimitive?.contentOrNull ?: "Usuario",
@@ -464,7 +495,33 @@ class MomentRepository @Inject constructor(
                         isVerified = json["is_verified"]?.jsonPrimitive?.booleanOrNull ?: false,
                         caption = json["caption"]?.jsonPrimitive?.contentOrNull,
                         isViewed = json["viewed_by_me"]?.jsonPrimitive?.booleanOrNull ?: false,
-                        allowReplies = json["allow_replies"]?.jsonPrimitive?.booleanOrNull ?: true
+                        allowReplies = json["allow_replies"]?.jsonPrimitive?.booleanOrNull ?: true,
+                        overlayText = json["overlay_text"]?.jsonPrimitive?.contentOrNull,
+                        overlayColor = json["overlay_color"]?.jsonPrimitive?.contentOrNull ?: "#FFFFFFFF",
+                        overlayFont = json["overlay_font"]?.jsonPrimitive?.contentOrNull ?: "sans",
+                        overlayScale = json["overlay_scale"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f,
+                        overlayX = json["overlay_x"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0.5f,
+                        overlayY = json["overlay_y"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0.38f,
+                        musicUrl = UbuntuStorageUrl.rewrite(json["music_url"]?.jsonPrimitive?.contentOrNull),
+                        musicAudioUrl = UbuntuStorageUrl.rewrite(json["music_audio_url"]?.jsonPrimitive?.contentOrNull),
+                        musicId = json["music_id"]?.jsonPrimitive?.contentOrNull,
+                        musicTitle = json["music_title"]?.jsonPrimitive?.contentOrNull,
+                        musicArtist = json["music_artist"]?.jsonPrimitive?.contentOrNull,
+                        musicSource = json["music_source"]?.jsonPrimitive?.contentOrNull,
+                        musicSourceUrl = json["music_source_url"]?.jsonPrimitive?.contentOrNull,
+                        musicLicense = json["music_license"]?.jsonPrimitive?.contentOrNull,
+                        musicLicenseUrl = json["music_license_url"]?.jsonPrimitive?.contentOrNull,
+                        musicStartMs = json["music_start_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L,
+                        musicDurationMs = json["music_duration_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 6_000L,
+                        musicEndMs = json["music_end_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
+                        musicVolume = json["music_volume"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f,
+                        originalAudioVolume = json["original_audio_volume"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f,
+                        musicFadeInMs = json["music_fade_in_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L,
+                        musicFadeOutMs = json["music_fade_out_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L,
+                        duckOriginalAudio = json["duck_original_audio"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false,
+                        musicEmbedded = json["music_embedded"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false,
+                        reactionCount = json["reaction_count"]?.jsonPrimitive?.intOrNull ?: 0,
+                        isLikedByMe = json["reacted_by_me"]?.jsonPrimitive?.booleanOrNull ?: false
                     ).normalizedStorageUrls()
                 }
                 _moments.value = parsed
@@ -512,7 +569,10 @@ class MomentRepository @Inject constructor(
                         if (visibilityType == "private" && userId != currentUserId) return@mapNotNull null
 
                         var excluded = json["excluded_ids"]?.jsonArray?.mapNotNull { it.jsonPrimitive.content } ?: emptyList()
+                        val audienceIds = json["audience_ids"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
                         if (excluded.contains(currentUserId) && userId != currentUserId) return@mapNotNull null
+                        val audience = json["visibility"]?.jsonPrimitive?.contentOrNull ?: "all"
+                        if (audience == "only_selected" && userId != currentUserId && currentUserId !in audienceIds) return@mapNotNull null
 
                         var profileElement = json["user"]
                         var profile = when {
@@ -565,6 +625,7 @@ class MomentRepository @Inject constructor(
                             visibility = json["visibility"]?.jsonPrimitive?.content ?: "all",
                             visibilityType = visibilityType,
                             excludedIds = excluded,
+                            audienceIds = audienceIds,
                             createdAt = json["created_at"]?.jsonPrimitive?.content,
                             expiresAt = json["expires_at"]?.jsonPrimitive?.content,
                             username = validUsername ?: "Usuario",
@@ -573,7 +634,31 @@ class MomentRepository @Inject constructor(
                             isVerified = profile?.get("is_verified")?.jsonPrimitive?.boolean ?: false,
                             caption = json["caption"]?.jsonPrimitive?.contentOrNull,
                             isViewed = viewedMomentIds.contains(momentId),
-                            allowReplies = json["allow_replies"]?.jsonPrimitive?.boolean ?: true
+                            allowReplies = json["allow_replies"]?.jsonPrimitive?.boolean ?: true,
+                            overlayText = json["overlay_text"]?.jsonPrimitive?.contentOrNull,
+                            overlayColor = json["overlay_color"]?.jsonPrimitive?.contentOrNull ?: "#FFFFFFFF",
+                            overlayFont = json["overlay_font"]?.jsonPrimitive?.contentOrNull ?: "sans",
+                            overlayScale = json["overlay_scale"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f,
+                            overlayX = json["overlay_x"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0.5f,
+                            overlayY = json["overlay_y"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0.38f,
+                            musicUrl = UbuntuStorageUrl.rewrite(json["music_url"]?.jsonPrimitive?.contentOrNull),
+                            musicAudioUrl = UbuntuStorageUrl.rewrite(json["music_audio_url"]?.jsonPrimitive?.contentOrNull),
+                            musicId = json["music_id"]?.jsonPrimitive?.contentOrNull,
+                            musicTitle = json["music_title"]?.jsonPrimitive?.contentOrNull,
+                            musicArtist = json["music_artist"]?.jsonPrimitive?.contentOrNull,
+                            musicSource = json["music_source"]?.jsonPrimitive?.contentOrNull,
+                            musicSourceUrl = json["music_source_url"]?.jsonPrimitive?.contentOrNull,
+                            musicLicense = json["music_license"]?.jsonPrimitive?.contentOrNull,
+                            musicLicenseUrl = json["music_license_url"]?.jsonPrimitive?.contentOrNull,
+                            musicStartMs = json["music_start_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L,
+                            musicDurationMs = json["music_duration_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 6_000L,
+                            musicEndMs = json["music_end_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
+                            musicVolume = json["music_volume"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f,
+                            originalAudioVolume = json["original_audio_volume"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f,
+                            musicFadeInMs = json["music_fade_in_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L,
+                            musicFadeOutMs = json["music_fade_out_ms"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L,
+                            duckOriginalAudio = json["duck_original_audio"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false,
+                            musicEmbedded = json["music_embedded"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false,
                         ).normalizedStorageUrls()
                 }
                 _moments.value = parsedMoments
@@ -594,11 +679,36 @@ class MomentRepository @Inject constructor(
         visibility: String,
         visibilityType: String,
         excludedIds: List<String>,
+        audienceIds: List<String> = emptyList(),
         caption: String? = null,
-        allowReplies: Boolean = true
+        allowReplies: Boolean = true,
+        overlayText: String? = null,
+        overlayColor: String = "#FFFFFFFF",
+        overlayFont: String = "sans",
+        overlayScale: Float = 1f,
+        overlayX: Float = 0.5f,
+        overlayY: Float = 0.38f,
+        musicUri: Uri? = null,
+        musicRemoteUrl: String? = null,
+        musicTitle: String? = null,
+        musicId: String? = null,
+        musicArtist: String? = null,
+        musicSource: String? = null,
+        musicSourceUrl: String? = null,
+        musicLicense: String? = null,
+        musicLicenseUrl: String? = null,
+        musicStartMs: Long = 0L,
+        musicDurationMs: Long = 6_000L,
+        musicVolume: Float = 1f,
+        originalAudioVolume: Float = 1f,
+        musicFadeInMs: Long = 0L,
+        musicFadeOutMs: Long = 0L,
+        duckOriginalAudio: Boolean = false,
+        musicEmbedded: Boolean = false,
     ): Result<Moment> = withContext(Dispatchers.IO) {
         val uploadedObjects = mutableListOf<Pair<String, String>>()
         var metadataPersisted = false
+        var metadataSubmissionAttempted = false
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user logged in"))
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -630,6 +740,8 @@ class MomentRepository @Inject constructor(
                 }
                 durationMs.coerceIn(1_000L, MAX_MOMENT_VIDEO_DURATION_MS)
             } else {
+                // A still-image Moment always owns a six-second visual window.
+                // Audio metadata must never shorten or extend that window.
                 IMAGE_MOMENT_DISPLAY_DURATION_MS
             }
 
@@ -658,6 +770,90 @@ class MomentRepository @Inject constructor(
             val mediaRemoteKey = uploadResult.getOrThrow().Key ?: fileName
             uploadedObjects += "moment-media" to mediaRemoteKey
             val mediaUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("moment-media", mediaRemoteKey)).orEmpty()
+
+            var effectiveMusicId = musicId
+            var effectiveMusicTitle = musicTitle
+            var effectiveMusicArtist = musicArtist
+            var effectiveMusicSource = musicSource
+            var effectiveMusicSourceUrl = musicSourceUrl
+            var effectiveMusicLicense = musicLicense
+            var effectiveMusicLicenseUrl = musicLicenseUrl
+            var requestedMusicUrl = musicRemoteUrl?.trim()?.takeIf { it.isNotBlank() }
+
+            if (musicUri != null) {
+                val localMusicSize = queryUriSizeBytes(musicUri)
+                if (localMusicSize !in 1..MAX_MOMENT_MUSIC_BYTES) {
+                    return@withContext Result.failure(
+                        Exception("La música seleccionada no es válida o supera el límite de 80 MB."),
+                    )
+                }
+                val localMusicContentType = resolveMomentMusicContentType(musicUri)
+                    ?: return@withContext Result.failure(Exception("Este formato de audio no es compatible."))
+                val localMusicExtension = momentMusicExtension(localMusicContentType)
+                val localMusicName = "$userId/moments/$uuid.$localMusicExtension"
+                val localMusicUpload = storageService.uploadFileFromUri(
+                    bucketName = "community-music",
+                    fileName = localMusicName,
+                    sourceUri = musicUri,
+                    sizeBytes = localMusicSize,
+                    contentType = localMusicContentType,
+                    allowOverwrite = false,
+                    onProgress = {},
+                ).getOrElse { return@withContext Result.failure(it) }
+                val localMusicRemoteKey = localMusicUpload.Key ?: localMusicName
+                uploadedObjects += "community-music" to localMusicRemoteKey
+                requestedMusicUrl = UbuntuStorageUrl.rewrite(
+                    storageService.getPublicUrl("community-music", localMusicRemoteKey),
+                )
+                effectiveMusicId = musicId?.takeIf { it.startsWith("device:") } ?: "device:$uuid"
+                effectiveMusicTitle = musicTitle?.trim()?.takeIf(String::isNotBlank) ?: "Audio del dispositivo"
+                effectiveMusicArtist = musicArtist?.trim()?.takeIf(String::isNotBlank) ?: "Audio del dispositivo"
+                effectiveMusicSource = LOCAL_MOMENT_MUSIC_SOURCE
+                effectiveMusicSourceUrl = null
+                effectiveMusicLicense = "Uso aportado por el usuario"
+                effectiveMusicLicenseUrl = null
+            }
+            val hasMusic = requestedMusicUrl != null
+            val normalizedMusicLicense = effectiveMusicLicense?.trim()?.lowercase().orEmpty()
+            if (hasMusic) {
+                val approvedCommonsLicense = normalizedMusicLicense == "cc0 1.0" ||
+                    normalizedMusicLicense == "cc0" ||
+                    normalizedMusicLicense == "public domain"
+                val approvedCommons = effectiveMusicSource == "wikimedia_commons" &&
+                    effectiveMusicId?.startsWith("commons:") == true &&
+                    requestedMusicUrl!!.isApprovedCommonsAssetUrl() &&
+                    effectiveMusicSourceUrl.orEmpty().isApprovedCommonsPageUrl() &&
+                    approvedCommonsLicense
+                val approvedCommunity = effectiveMusicSource == "novvin_community" &&
+                    effectiveMusicId?.startsWith("community:") == true &&
+                    requestedMusicUrl!!.startsWith("https://")
+                val approvedExternal = effectiveMusicSource in setOf("openverse", "jamendo") &&
+                    effectiveMusicId?.startsWith("${effectiveMusicSource}:") == true &&
+                    requestedMusicUrl!!.startsWith("https://") &&
+                    effectiveMusicSourceUrl.orEmpty().startsWith("https://") &&
+                    approvedCommonsLicense
+                val approvedOwnedLocal = effectiveMusicSource == LOCAL_MOMENT_MUSIC_SOURCE &&
+                    effectiveMusicId?.startsWith("device:") == true &&
+                    requestedMusicUrl!!.startsWith("http")
+                if ((!approvedCommons && !approvedCommunity && !approvedExternal && !approvedOwnedLocal) ||
+                    effectiveMusicTitle.isNullOrBlank() || effectiveMusicArtist.isNullOrBlank()
+                ) {
+                    return@withContext Result.failure(
+                        Exception("La pista no está aprobada para reutilizarse en Momentos."),
+                    )
+                }
+            }
+            val musicUrl = requestedMusicUrl
+            val safeMusicStartMs = musicStartMs.coerceAtLeast(0L)
+            val safeMusicDurationMs = if (hasMusic) {
+                if (normalizedMediaType == "image") {
+                    IMAGE_MOMENT_DISPLAY_DURATION_MS
+                } else {
+                    val upper = displayDurationMs.coerceAtLeast(1_000L)
+                    musicDurationMs.coerceIn(minOf(5_000L, upper), upper)
+                }
+            } else 6_000L
+            val safeMusicEndMs = safeMusicStartMs + safeMusicDurationMs
 
             // 1.1 Generate and Upload Thumbnail
             var thumbnailUrl: String? = null
@@ -699,12 +895,41 @@ class MomentRepository @Inject constructor(
                 put("visibility", visibility)
                 put("visibility_type", visibilityType)
                 put("excluded_ids", buildJsonArray { excludedIds.forEach { add(it) } })
+                put("audience_ids", buildJsonArray { audienceIds.forEach { add(it) } })
                 put("expires_at", expiresAt)
                 if (caption != null) put("caption", caption)
                 put("allow_replies", allowReplies)
+                overlayText?.takeIf { it.isNotBlank() }?.let { put("overlay_text", it.take(120)) }
+                put("overlay_color", overlayColor)
+                put("overlay_font", overlayFont)
+                put("overlay_scale", overlayScale.coerceIn(0.7f, 2.1f))
+                put("overlay_x", overlayX.coerceIn(0f, 1f))
+                put("overlay_y", overlayY.coerceIn(0f, 1f))
+                musicUrl?.let { put("music_url", it) }
+                musicUrl?.let { put("music_audio_url", it) }
+                effectiveMusicId?.takeIf { hasMusic }?.let { put("music_id", it) }
+                effectiveMusicTitle?.takeIf { it.isNotBlank() }?.let { put("music_title", it.take(100)) }
+                effectiveMusicArtist?.takeIf { hasMusic && it.isNotBlank() }?.let { put("music_artist", it.take(120)) }
+                effectiveMusicSource?.takeIf { hasMusic }?.let { put("music_source", it) }
+                effectiveMusicSourceUrl?.takeIf { hasMusic && it.isNotBlank() }?.let { put("music_source_url", it) }
+                effectiveMusicLicense?.takeIf { hasMusic }?.let { put("music_license", it) }
+                effectiveMusicLicenseUrl?.takeIf { hasMusic && it.startsWith("https://") }?.let { put("music_license_url", it) }
+                put("music_start_ms", safeMusicStartMs)
+                put("music_duration_ms", safeMusicDurationMs)
+                put("music_end_ms", safeMusicEndMs)
+                put("music_volume", musicVolume.coerceIn(0f, 1f))
+                put("original_audio_volume", originalAudioVolume.coerceIn(0f, 1f))
+                put("music_fade_in_ms", musicFadeInMs.coerceIn(0L, 5_000L))
+                put("music_fade_out_ms", musicFadeOutMs.coerceIn(0L, 5_000L))
+                put("duck_original_audio", duckOriginalAudio)
+                put("music_embedded", musicEmbedded && normalizedMediaType == "video" && hasMusic)
             }
 
             if (shouldUseUbuntuBackend()) {
+                // A timeout or a lost response cannot tell us whether the API
+                // committed the moment. Keep its media until reconciliation so
+                // a successfully published moment never loses its video/audio.
+                metadataSubmissionAttempted = true
                 val createdMoment = localFallbackApiClient.createMoment(
                     accessToken = accessToken,
                     mediaUrl = mediaUrl,
@@ -715,14 +940,49 @@ class MomentRepository @Inject constructor(
                     durationType = durationType,
                     visibility = visibility,
                     visibilityType = visibilityType,
+                    excludedIds = excludedIds,
+                    audienceIds = audienceIds,
                     caption = caption,
-                    allowReplies = allowReplies
+                    allowReplies = allowReplies,
+                    overlayText = overlayText,
+                    overlayColor = overlayColor,
+                    overlayFont = overlayFont,
+                    overlayScale = overlayScale,
+                    overlayX = overlayX,
+                    overlayY = overlayY,
+                    musicUrl = musicUrl,
+                    musicTitle = effectiveMusicTitle,
+                    musicId = effectiveMusicId,
+                    musicArtist = effectiveMusicArtist,
+                    musicSource = effectiveMusicSource,
+                    musicSourceUrl = effectiveMusicSourceUrl,
+                    musicLicense = effectiveMusicLicense,
+                    musicLicenseUrl = effectiveMusicLicenseUrl,
+                    musicStartMs = safeMusicStartMs,
+                    musicDurationMs = safeMusicDurationMs,
+                    musicEndMs = safeMusicEndMs,
+                    musicVolume = musicVolume.coerceIn(0f, 1f),
+                    originalAudioVolume = originalAudioVolume.coerceIn(0f, 1f),
+                    musicFadeInMs = musicFadeInMs.coerceIn(0L, 5_000L),
+                    musicFadeOutMs = musicFadeOutMs.coerceIn(0L, 5_000L),
+                    duckOriginalAudio = duckOriginalAudio,
+                    musicEmbedded = musicEmbedded && normalizedMediaType == "video" && hasMusic,
                 ).getOrElse { return@withContext Result.failure(it) }
                 metadataPersisted = true
                 refreshMoments()
                 return@withContext Result.success(createdMoment.normalizedStorageUrls())
             }
 
+            // A direct PostgREST insert cannot independently revalidate the current
+            // Wikimedia metadata. Licensed music is therefore accepted only through
+            // the Novvin API route that performs the authoritative Commons lookup.
+            if (hasMusic) {
+                return@withContext Result.failure(
+                    Exception("No se pudo validar la licencia con el servidor de Novvin. Revisa la conexión e inténtalo de nuevo."),
+                )
+            }
+
+            metadataSubmissionAttempted = true
             var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/moments") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $accessToken")
@@ -743,8 +1003,13 @@ class MomentRepository @Inject constructor(
             android.util.Log.e("MomentRepository", "Exception creating moment", e)
             Result.failure(e)
         } finally {
-            if (!metadataPersisted) {
+            if (!metadataPersisted && !metadataSubmissionAttempted) {
                 cleanupUploadedMomentObjects(uploadedObjects)
+            } else if (!metadataPersisted && uploadedObjects.isNotEmpty()) {
+                android.util.Log.w(
+                    "MomentRepository",
+                    "La publicación del momento quedó sin confirmar; se conserva su contenido para reconciliación.",
+                )
             }
         }
     }
@@ -904,6 +1169,10 @@ class MomentRepository @Inject constructor(
     }
 
     private fun queryUriSizeBytes(uri: Uri): Long {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val fileLength = uri.path?.let(::File)?.takeIf { it.isFile }?.length() ?: 0L
+            if (fileLength > 0L) return fileLength
+        }
         runCatching {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
                 val index = cursor.getColumnIndex(OpenableColumns.SIZE)
@@ -919,6 +1188,44 @@ class MomentRepository @Inject constructor(
             }
         }
         return 0L
+    }
+
+    private fun resolveMomentMusicContentType(uri: Uri): String? {
+        val resolverType = context.contentResolver.getType(uri)?.substringBefore(';')?.trim()?.lowercase()
+        val supported = setOf(
+            "audio/mpeg",
+            "audio/mp4",
+            "audio/aac",
+            "audio/ogg",
+            "application/ogg",
+            "audio/opus",
+            "audio/flac",
+            "audio/x-flac",
+            "audio/wav",
+            "audio/x-wav",
+            "audio/webm",
+        )
+        if (resolverType in supported) return resolverType
+        return when (uri.lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()) {
+            "mp3" -> "audio/mpeg"
+            "m4a", "mp4" -> "audio/mp4"
+            "aac" -> "audio/aac"
+            "ogg", "oga" -> "audio/ogg"
+            "opus" -> "audio/opus"
+            "flac" -> "audio/flac"
+            "wav" -> "audio/wav"
+            "webm" -> "audio/webm"
+            else -> null
+        }
+    }
+
+    private fun momentMusicExtension(contentType: String): String = when (contentType) {
+        "audio/mpeg" -> "mp3"
+        "audio/mp4", "audio/aac" -> "m4a"
+        "audio/ogg", "application/ogg", "audio/opus" -> "ogg"
+        "audio/flac", "audio/x-flac" -> "flac"
+        "audio/webm" -> "webm"
+        else -> "wav"
     }
 
 
@@ -984,6 +1291,56 @@ class MomentRepository @Inject constructor(
             android.util.Log.e("MomentRepository", "✗ Exception in recordView: ${e.message}", e)
             android.util.Log.d("MomentRepository", "========================================")
             Result.failure(e)
+        }
+    }
+
+    suspend fun setMomentLiked(momentId: String, liked: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        val original = _moments.value
+        _moments.value = original.map { moment ->
+            if (moment.id == momentId) {
+                val delta = if (liked && !moment.isLikedByMe) 1 else if (!liked && moment.isLikedByMe) -1 else 0
+                moment.copy(
+                    isLikedByMe = liked,
+                    reactionCount = (moment.reactionCount + delta).coerceAtLeast(0)
+                )
+            } else moment
+        }
+        try {
+            val accessToken = authService.getAccessToken()
+                ?: return@withContext Result.failure(Exception("No token"))
+            val result = if (shouldUseUbuntuBackend()) {
+                localFallbackApiClient.setMomentReaction(accessToken, momentId, liked)
+            } else {
+                val userId = authService.getCurrentUserId()
+                    ?: return@withContext Result.failure(Exception("No user"))
+                val response = if (liked) {
+                    supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/moment_reactions") {
+                        header("apikey", supabaseConfig.supabaseAnonKey)
+                        header("Authorization", "Bearer $accessToken")
+                        header("Content-Type", "application/json")
+                        header("Prefer", "resolution=merge-duplicates")
+                        setBody(buildJsonObject {
+                            put("moment_id", momentId)
+                            put("user_id", userId)
+                            put("reaction", "like")
+                        })
+                    }
+                } else {
+                    supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/moment_reactions") {
+                        header("apikey", supabaseConfig.supabaseAnonKey)
+                        header("Authorization", "Bearer $accessToken")
+                        parameter("moment_id", "eq.$momentId")
+                        parameter("user_id", "eq.$userId")
+                    }
+                }
+                if (response.status.isSuccess()) Result.success(Unit)
+                else Result.failure(Exception("No se pudo actualizar la reacción"))
+            }
+            if (result.isFailure) _moments.value = original
+            result
+        } catch (error: Exception) {
+            _moments.value = original
+            Result.failure(error)
         }
     }
 
@@ -1159,7 +1516,8 @@ class MomentRepository @Inject constructor(
     private fun Moment.normalizedStorageUrls(): Moment = copy(
         mediaUrl = UbuntuStorageUrl.rewrite(mediaUrl).orEmpty(),
         thumbnailUrl = UbuntuStorageUrl.rewrite(thumbnailUrl),
-        userAvatarUrl = UbuntuStorageUrl.rewrite(userAvatarUrl)
+        userAvatarUrl = UbuntuStorageUrl.rewrite(userAvatarUrl),
+        musicUrl = UbuntuStorageUrl.rewrite(musicUrl)
     )
 
     private fun MomentView.normalizedStorageUrls(): MomentView = copy(

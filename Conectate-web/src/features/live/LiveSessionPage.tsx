@@ -17,7 +17,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { io, type Socket } from 'socket.io-client'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { StatusView } from '../../components/StatusView'
-import { readFallbackSession } from '../../core/auth/fallbackAuth'
+import { ensureFallbackAccessToken } from '../../core/auth/fallbackAuth'
 import { useAuth } from '../../core/auth/AuthProvider'
 import {
   loadFallbackLiveComments,
@@ -28,6 +28,7 @@ import {
   type FallbackLiveStream,
 } from '../../core/fallbackData'
 import { getRuntimeBackendUrl } from '../../core/runtimeBackend'
+import { buildSignalingAffinity } from '../../core/signalingAffinity'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { friendlyError, numberOf, textOf, type GenericRow } from '../../core/utils'
 import WebRTCManager from '../voice/WebRTCManager'
@@ -247,18 +248,16 @@ export function LiveSessionPage() {
 
   const startOffer = useCallback(async (peerId: string) => {
     const manager = managerRef.current
-    const socket = socketRef.current
-    if (!manager || !socket || !user || !peerId || manager.hasPeerConnection(peerId)) return
+    if (!manager || !peerId || manager.hasPeerConnection(peerId)) return
     try {
       manager.createPeerConnection(peerId, true)
-      const offer = await manager.createOffer(peerId)
-      socket.emit('offer', { target: peerId, offer, userId: user.id, name: displayName })
+      await manager.createOffer(peerId)
       await drainIce(peerId)
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo conectar con un espectador'))
       manager.disconnectPeer(peerId)
     }
-  }, [displayName, drainIce, user])
+  }, [drainIce])
 
   useEffect(() => {
     if (!stream || !user || !isFallbackSession || !cleanLiveId) return
@@ -266,11 +265,7 @@ export function LiveSessionPage() {
       setError('Esta cuenta no es propietaria del directo.')
       return
     }
-    const token = readFallbackSession()?.accessToken?.trim()
-    if (!token) {
-      setError('No hay una sesión de producción activa.')
-      return
-    }
+    let token = ''
     let disposed = false
     const currentUser = user
     const manager = new WebRTCManager(currentUser.id)
@@ -329,6 +324,8 @@ export function LiveSessionPage() {
 
     async function connect() {
       try {
+        token = await ensureFallbackAccessToken()
+        if (!token) throw new Error('No hay una sesión de producción activa.')
         setConnectionLabel('Solicitando permisos')
         await configureTurn()
         await prepareHostMedia()
@@ -344,6 +341,7 @@ export function LiveSessionPage() {
 
         const socket: LiveSocket = io(`${getRuntimeBackendUrl().replace(/\/$/, '')}/live`, {
           transports: ['websocket', 'polling'],
+          query: { affinity: buildSignalingAffinity('live', cleanLiveId) },
           auth: { token },
           autoConnect: false,
           reconnection: true,
@@ -354,6 +352,9 @@ export function LiveSessionPage() {
         socketRef.current = socket
         manager.onIceCandidate((target, candidate) => {
           socket.emit('ice-candidate', { target, candidate, userId: currentUser.id, name: displayName })
+        })
+        manager.onOfferNeeded((target, offer) => {
+          socket.emit('offer', { target, offer, userId: currentUser.id, name: displayName })
         })
 
         socket.on('connect', () => {
@@ -415,6 +416,7 @@ export function LiveSessionPage() {
             try {
               if (!manager.hasPeerConnection(payload.sender)) manager.createPeerConnection(payload.sender, false)
               const answer = await manager.createAnswer(payload.sender, payload.offer)
+              if (!answer) return
               socket.emit('answer', { target: payload.sender, answer, userId: currentUser.id, name: displayName })
               await drainIce(payload.sender)
             } catch (caught) {

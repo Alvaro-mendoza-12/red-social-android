@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import coil.compose.SubcomposeAsyncImage
 import androidx.compose.ui.layout.ContentScale
+import conectate.com.presentation.theme.LocalChatBackgroundKey
 
 @Composable
 fun ChatBackgroundLayer(
@@ -25,12 +26,49 @@ fun ChatBackgroundLayer(
     modifier: Modifier = Modifier
 ) {
     val base = MaterialTheme.colorScheme.surface
+    val globalBackground = LocalChatBackgroundKey.current
+    val effectiveType = backgroundType.trim().lowercase().let { type ->
+        if (type.isBlank() || type == "default") globalBackground.trim().lowercase() else type
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(base)
     ) {
-        when (backgroundType.trim().lowercase()) {
+        when (effectiveType) {
+            "deep_black" -> Box(Modifier.fillMaxSize().background(Color(0xFF08090B)))
+
+            "soft_noise" -> {
+                Box(Modifier.fillMaxSize().background(Color(0xFF17191D)))
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val spacing = (size.minDimension / 28f).coerceAtLeast(14f)
+                    val dot = (size.minDimension / 360f).coerceAtLeast(1f)
+                    var row = 0
+                    var y = spacing / 2f
+                    while (y < size.height) {
+                        var x = if (row % 2 == 0) spacing / 2f else spacing
+                        while (x < size.width) {
+                            drawCircle(
+                                color = Color.White.copy(alpha = if ((row + x.toInt()) % 3 == 0) 0.045f else 0.025f),
+                                radius = dot,
+                                center = Offset(x, y),
+                            )
+                            x += spacing
+                        }
+                        y += spacing
+                        row += 1
+                    }
+                }
+            }
+
+            "midnight" -> PresetGradient(
+                colors = listOf(Color(0xFF07111F), Color(0xFF102A43), Color(0xFF080D17))
+            )
+
+            "minimal" -> Box(
+                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            )
+
             "custom" -> {
                 if (!backgroundUri.isNullOrBlank()) {
                     SubcomposeAsyncImage(

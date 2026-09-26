@@ -1,4 +1,5 @@
 package conectate.com.data.repository
+import conectate.com.core.messaging.UnreadPolicy
 
 import android.content.Context
 import android.content.Intent
@@ -7,6 +8,7 @@ import android.app.NotificationManager
 import android.app.NotificationChannel
 import conectate.com.BuildConfig
 import conectate.com.core.concurrency.newSafeScope
+import conectate.com.core.messaging.MessageStatusNormalizer
 import conectate.com.core.moderation.ContentModerationService
 import conectate.com.core.moderation.ModerationContext
 import conectate.com.core.moderation.ModerationVerdict
@@ -59,6 +61,7 @@ import conectate.com.data.model.MessageReadReceipt
 import conectate.com.data.model.VoiceRoom
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
+import conectate.com.data.sync.PendingMessageSyncScheduler
 import conectate.com.domain.sync.CommunitySyncDataSource
 import conectate.com.util.ChatSoundPlayer
 import conectate.com.util.buildCallEventPreview
@@ -121,7 +124,9 @@ class CommunityRepository @Inject constructor(
     private val appMetrics: AppMetrics,
     private val operationGuard: OperationGuard,
     private val chatSoundPlayer: ChatSoundPlayer,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val readJournal: conectate.com.data.repository.message.VisibleReadJournal = conectate.com.data.repository.message.VisibleReadJournal(context),
+    private val readSynchronizer: conectate.com.data.repository.message.VisibleReadSynchronizer = conectate.com.data.repository.message.VisibleReadSynchronizer(readJournal, localFallbackApiClient, authService),
 ) : CommunitySyncDataSource {
     private val maxForwardTargetsPerBatch = 20
     private var scope = newSafeScope("CommunityRepository", Dispatchers.IO)
@@ -266,9 +271,6 @@ class CommunityRepository @Inject constructor(
                 notificationManager.cancel(cleanId.hashCode())
             } catch (e: Exception) {
                 android.util.Log.e("CommunityRepository", "Error clearing notification", e)
-            }
-            scope.launch {
-                runCatching { communityDao.resetUnreadCount(cleanId) }
             }
         }
     }
@@ -822,11 +824,15 @@ class CommunityRepository @Inject constructor(
                         
                         // Also check if this COMMUNITY is NOT currently open
                         val isCommunityCurrentlyOpen = (cleanId == currentOpenedCommunityId)
+                        if (isMember && currentUserId != null && msg.id !in readJournal.seenIds(currentUserId, "community", cleanId) &&
+                            UnreadPolicy.isEligibleStatusForReadTransition(msg.status)) {
+                            if (!isSessionSnapshotValid(sessionSnapshot, "community-insert-before-unread:$cleanId")) return@withContext
+                            communityDao.incrementUnreadCount(cleanId)
+                        }
                         
                         if (isMember && !isCommunityCurrentlyOpen) {
                             android.util.Log.d("CommunityRepository", "🔔 [UNREAD+1] Incrementando contador para $cleanId (comunidad cerrada y soy miembro)")
                             if (!isSessionSnapshotValid(sessionSnapshot, "community-insert-before-unread:$cleanId")) return@withContext
-                            communityDao.incrementUnreadCount(cleanId)
                             if (!isCallEventContentType(msg.content_type)) {
                                 showNotification(msg, localCommunity.name)
                             }
@@ -1151,6 +1157,37 @@ class CommunityRepository @Inject constructor(
         )
     }
 
+    private fun acknowledgeCommunityMessage(
+        message: CommunityMessage,
+        communityId: String = message.community_id
+    ): CommunityMessage {
+        return message.copy(
+            community_id = communityId.trim().lowercase(),
+            status = MessageStatusNormalizer.acknowledgedAfterSend(
+                status = message.status,
+                deliveredAt = message.delivered_at,
+                readAt = message.read_at
+            )
+        )
+    }
+
+    private suspend fun markCommunityMessageAcknowledged(messageId: String) {
+        val existing = communityDao.getMessageById(messageId) ?: return
+        val acknowledged = acknowledgeCommunityMessage(existing.toDomain())
+        communityDao.insertMessages(
+            listOf(
+                CommunityMessageEntity.fromDomain(
+                    msg = acknowledged,
+                    isSynced = true,
+                    pendingAction = null,
+                    retryCount = existing.retry_count,
+                    lastRetryAt = existing.last_retry_at
+                )
+            )
+        )
+        updateCommunityMessageInFlow(acknowledged.community_id, acknowledged)
+    }
+
     private fun mergeSyncedCommunityMessageWithLocalState(
         incoming: CommunityMessage,
         local: CommunityMessage?
@@ -1311,6 +1348,7 @@ class CommunityRepository @Inject constructor(
             name = item.title.ifBlank { "Comunidad" },
             image = item.avatarUrl.ifBlank { null },
             description = item.description.takeIf { it.isNotBlank() },
+            category = item.category.trim().takeIf { it.isNotBlank() },
             is_public = item.isPublic,
             created_at = updatedAt,
             creator_id = creatorId,
@@ -1324,6 +1362,28 @@ class CommunityRepository @Inject constructor(
         )
     }
 
+    private fun communityFromFallbackRoom(
+        room: JsonObject?,
+        currentUserId: String,
+        fallback: Community,
+    ): Community {
+        val source = room ?: return fallback
+        fun text(vararg keys: String): String? = keys.firstNotNullOfOrNull { key ->
+            source[key]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+        }
+        val creatorId = text("creator_id", "owner_id", "user_id")?.lowercase() ?: fallback.creator_id
+        return fallback.copy(
+            name = text("name", "title") ?: fallback.name,
+            image = text("image", "image_url", "avatar_url") ?: fallback.image,
+            description = text("description", "about") ?: fallback.description,
+            category = text("category") ?: fallback.category,
+            is_public = source["is_public"]?.jsonPrimitive?.booleanOrNull ?: fallback.is_public,
+            creator_id = creatorId,
+            created_at = text("created_at") ?: fallback.created_at,
+            is_member = fallback.is_member || creatorId.equals(currentUserId, ignoreCase = true),
+        )
+    }
+
     private suspend fun syncCommunitiesFromLocalFallback(): Result<Unit> {
         return try {
             val userId = authService.getCurrentUserId()?.trim()?.lowercase()
@@ -1331,6 +1391,7 @@ class CommunityRepository @Inject constructor(
             val token = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("Sesion Ubuntu no disponible"))
             val sessionSnapshot = captureSessionSnapshot(userId)
+            scope.launch { readSynchronizer.flush(userId, "community", token) }
             val inbox = localFallbackApiClient.loadMessagesInbox(token, "communities").getOrThrow()
             val activeItems = inbox.items.filter { it.id.isNotBlank() }
             val activeIds = activeItems.map { it.id.trim().lowercase() }.distinct()
@@ -1344,18 +1405,28 @@ class CommunityRepository @Inject constructor(
             if (!isSessionSnapshotValid(sessionSnapshot, "community-ubuntu-sync-before-upsert:$userId")) {
                 return Result.success(Unit)
             }
-            communityDao.insertCommunities(
-                activeItems.map { item ->
+            val communities = activeItems.map { item ->
                     val cleanId = item.id.trim().lowercase()
+                    val inboxCommunity = communityFromFallbackInbox(item, userId)
+                    // Older deployed inbox payloads may omit category. The room endpoint
+                    // already contains the canonical value, so enrich only missing rows.
+                    val completeCommunity = if (inboxCommunity.category.isNullOrBlank()) {
+                        localFallbackApiClient.loadCommunityRoom(token, cleanId)
+                            .getOrNull()
+                            ?.let { room -> communityFromFallbackRoom(room.chat, userId, inboxCommunity) }
+                            ?: inboxCommunity
+                    } else {
+                        inboxCommunity
+                    }
                     CommunityEntity.fromDomain(
-                        community = communityFromFallbackInbox(item, userId),
+                        community = completeCommunity,
                         unreadCount = CollectionMessageSyncSupport.resolveDisplayedUnreadCount(
                             isConversationOpen = cleanId == currentOpenedCommunityId,
-                            exactUnread = localUnreadCounts[cleanId] ?: item.unreadCount
+                            exactUnread = readJournal.resolveUnread(userId, "community", cleanId, item.unreadCount, item.unreadMessageIds)
                         )
                     )
                 }
-            )
+            communityDao.insertCommunities(communities)
             communityDao.insertMembers(
                 activeItems.mapNotNull { item ->
                     val communityId = item.id.trim().lowercase()
@@ -1654,9 +1725,21 @@ class CommunityRepository @Inject constructor(
                 .filter { it.isNotBlank() }
                 .distinct()
             if (cleanMessageIds.isEmpty()) return@withContext
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured && !token.isNullOrBlank()) {
-                localFallbackApiClient.markCollectionAsRead(token, "communities", cleanId)
-                    .onFailure { android.util.Log.w("CommunityRepository", "Ubuntu mark community read failed for $cleanId", it) }
+            val session = captureSessionSnapshot(currentUserId)
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val incomingIds = communityDao.getMessagesSync(cleanId).filter {
+                    it.id in cleanMessageIds && it.sender_id.trim().lowercase() != currentUserId &&
+                        conectate.com.core.messaging.UnreadPolicy.isEligibleStatusForReadTransition(it.status)
+                }.map { it.id }
+                if (!isSessionSnapshotValid(session, "community-visible-local")) return@withContext
+                val newlySeen = readJournal.record(currentUserId, "community", cleanId, incomingIds)
+                communityDao.markMessagesAsReadByIds(cleanId, now, currentUserId, incomingIds)
+                communityDao.subtractReadMessages(cleanId, newlySeen.size)
+                _activeCommunityMessages[cleanId]?.update { messages -> messages.map {
+                    if (it.id in incomingIds) it.copy(status = "read", read_at = now) else it
+                } }
+                if (!token.isNullOrBlank()) readSynchronizer.flush(currentUserId, "community", token)
+                return@withContext
             }
             var remotelyReadIds = if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 cleanMessageIds.toSet()
@@ -1680,6 +1763,7 @@ class CommunityRepository @Inject constructor(
                 requestedIds = cleanMessageIds,
                 remotelyReadIds = remotelyReadIds
             )
+            if (!isSessionSnapshotValid(session, "community-visible-persist")) return@withContext
             if (idsToMark.isNotEmpty()) {
                 communityDao.markMessagesAsReadByIds(cleanId, now, currentUserId, idsToMark)
             }
@@ -2218,7 +2302,8 @@ class CommunityRepository @Inject constructor(
         forwardedFromMessageId: String? = null,
         forwardedFromUserId: String? = null,
         messageId: String? = null,
-        channelId: String? = null
+        channelId: String? = null,
+        onQueued: suspend () -> Unit = {}
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         try {
@@ -2331,11 +2416,13 @@ class CommunityRepository @Inject constructor(
                     )
                 )
             )
+            PendingMessageSyncScheduler.enqueue(context, "community_message_pending")
             updateCommunityMessageInFlow(cleanId, msg)
+            onQueued()
             val preview = buildConversationBackgroundPreview(contentType, finalContent)
                 ?: buildCallEventPreview(contentType, finalContent)
                 ?: if (contentType == "text") finalContent else "Multimedia"
-            communityDao.updateMetadata(cleanId, preview, now)
+            communityDao.updateMetadataIfNewer(cleanId, preview, now)
 
             try {
                 operationGuard.audit(
@@ -2411,12 +2498,13 @@ class CommunityRepository @Inject constructor(
                         forwardedFromMessageId = forwardedFromMessageId,
                         forwardedFromUserId = forwardedFromUserId
                     ).map { serverMessage ->
-                        val synced = serverMessage.copy(
-                            community_id = cleanId,
-                            channel_id = serverMessage.channel_id ?: msg.channel_id,
-                            status = "sent",
-                            reply_to_id = serverMessage.reply_to_id ?: msg.reply_to_id,
-                            reply_to = serverMessage.reply_to ?: msg.reply_to
+                        val synced = mergeSyncedCommunityMessageWithLocalState(
+                            incoming = acknowledgeCommunityMessage(serverMessage, cleanId).copy(
+                                channel_id = serverMessage.channel_id ?: msg.channel_id,
+                                reply_to_id = serverMessage.reply_to_id ?: msg.reply_to_id,
+                                reply_to = serverMessage.reply_to ?: msg.reply_to
+                            ),
+                            local = msg
                         )
                         communityDao.insertMessages(
                             listOf(
@@ -2427,7 +2515,7 @@ class CommunityRepository @Inject constructor(
                                 )
                             )
                         )
-                        communityDao.updateMetadata(
+                        communityDao.updateMetadataIfNewer(
                             cleanId,
                             CollectionMessageSyncSupport.buildMetadataPreview(synced.content_type, synced.content),
                             synced.created_at
@@ -2625,23 +2713,25 @@ class CommunityRepository @Inject constructor(
     private suspend fun insertCommunityMessageWithRetry(
         messageId: String,
         payload: JsonObject,
-        maxAttempts: Int = 4
+        maxAttempts: Int = 4,
+        isCurrentSession: () -> Boolean = { true }
     ): Result<Unit> {
         return CollectionPendingMessageRetrySupport.retryPendingMessageSend(
             messageId = messageId,
             maxAttempts = maxAttempts,
-            sendAction = { sendCommunityMessageSecureOrFallback(messageId = messageId, payload = payload) },
+            sendAction = {
+                if (!isCurrentSession()) Result.failure(IllegalStateException("La cuenta cambió durante el envío"))
+                else sendCommunityMessageSecureOrFallback(messageId = messageId, payload = payload)
+            },
             isDuplicateKeyError = CollectionRepositorySupport::isDuplicateKeyError,
             isRetryableNetworkError = { error -> CollectionRepositorySupport.isRetryableNetworkError(error, transientNetworkRetryCodes) },
-            onConfirmedSuccess = {
-                communityDao.updateMessageSyncStatus(messageId, isSynced = true, pendingAction = null)
-            },
-            onDuplicateTreatedAsSuccess = {
-                communityDao.updateMessageSyncStatus(messageId, isSynced = true, pendingAction = null)
-            },
+            onConfirmedSuccess = { if (isCurrentSession()) markCommunityMessageAcknowledged(messageId) },
+            onDuplicateTreatedAsSuccess = { if (isCurrentSession()) markCommunityMessageAcknowledged(messageId) },
             onTerminalFailure = {
-                communityDao.markRetryAttempt(messageId, java.time.Instant.now().toString())
-                communityDao.updateMessageSyncStatus(messageId, isSynced = false, pendingAction = "send")
+                if (isCurrentSession()) {
+                    communityDao.markRetryAttempt(messageId, java.time.Instant.now().toString())
+                    communityDao.updateMessageSyncStatus(messageId, isSynced = false, pendingAction = "send")
+                }
             },
             failureMessage = "No se pudo sincronizar mensaje de comunidad"
         )
@@ -2669,10 +2759,13 @@ class CommunityRepository @Inject constructor(
 
     private suspend fun retryPendingCommunityMessages(maxBatch: Int = 40) {
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
+        val session = captureSessionSnapshot(userId)
         val pending = communityDao.getPendingOutgoingMessages(maxBatch)
+        if (!isSessionSnapshotValid(session, "community-pending-loaded")) return
         if (pending.isEmpty()) return
 
         pending.forEach { originalEntity ->
+            if (!isSessionSnapshotValid(session, "community-pending-start")) return
             if (originalEntity.sender_id.trim().lowercase() != userId) return@forEach
             var pendingEntity = originalEntity
             PendingOutgoingMediaStore.resolve(context, pendingEntity.media_url)?.let { localMediaUri ->
@@ -2688,8 +2781,10 @@ class CommunityRepository @Inject constructor(
                     android.util.Log.w("CommunityRepository", "Pending community media still unavailable: ${pendingEntity.id}", error)
                     return@forEach
                 }
+                if (!isSessionSnapshotValid(session, "community-pending-media-uploaded")) return
                 pendingEntity = pendingEntity.copy(media_url = remoteUrl)
                 communityDao.insertMessages(listOf(pendingEntity))
+                if (!isSessionSnapshotValid(session, "community-pending-media-persisted")) return
                 updateCommunityMessageInFlow(pendingEntity.community_id, pendingEntity.toDomain())
                 PendingOutgoingMediaStore.delete(context, localMediaUri)
             }
@@ -2726,15 +2821,31 @@ class CommunityRepository @Inject constructor(
                         forwardedFromMessageId = pendingEntity.forwarded_from_message_id,
                         forwardedFromUserId = pendingEntity.forwarded_from_user_id
                     ).onSuccess { serverMessage ->
-                        communityDao.updateMessageSyncStatus(pendingEntity.id, isSynced = true, pendingAction = null)
-                        updateCommunityMessageInFlow(
-                            pendingEntity.community_id,
-                            serverMessage.copy(community_id = pendingEntity.community_id, status = "sent")
+                        if (!isSessionSnapshotValid(session, "community-pending-acknowledge")) return@onSuccess
+                        val synced = mergeSyncedCommunityMessageWithLocalState(
+                            incoming = acknowledgeCommunityMessage(serverMessage, pendingEntity.community_id),
+                            local = pendingEntity.toDomain()
                         )
+                        communityDao.insertMessages(
+                            listOf(
+                                CommunityMessageEntity.fromDomain(
+                                    msg = synced,
+                                    isSynced = true,
+                                    pendingAction = null,
+                                    retryCount = pendingEntity.retry_count,
+                                    lastRetryAt = pendingEntity.last_retry_at
+                                )
+                            )
+                        )
+                        if (!isSessionSnapshotValid(session, "community-pending-acknowledged")) return@onSuccess
+                        updateCommunityMessageInFlow(pendingEntity.community_id, synced)
                     }
                 }
             } else {
-                insertCommunityMessageWithRetry(pendingEntity.id, payload)
+                insertCommunityMessageWithRetry(
+                    pendingEntity.id, payload,
+                    isCurrentSession = { isSessionSnapshotValid(session, "community-pending-retry") }
+                )
             }
         }
     }
@@ -2865,7 +2976,7 @@ class CommunityRepository @Inject constructor(
                     messageId = messageId,
                     forEveryone = forEveryone
                 )
-                if (result.isFailure && existing != null) {
+                if (result.isFailure) {
                     communityDao.insertMessages(listOf(CommunityMessageEntity.fromDomain(existing)))
                     updateCommunityMessageInFlow(communityId, existing)
                 }
@@ -3014,11 +3125,19 @@ class CommunityRepository @Inject constructor(
 
 
     suspend fun getCommunityMembers(communityId: String): Result<List<CommunityMember>> = withContext(Dispatchers.IO) {
+        val cleanCommunityId = communityId.trim().lowercase()
+        val cachedMembers = runCatching { loadCachedCommunityMembers(cleanCommunityId) }
+            .getOrDefault(emptyList())
         try {
-            val cleanCommunityId = communityId.trim().lowercase()
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                val token = authService.getAccessTokenAwait()
-                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                val token = authService.getAccessTokenAwait()?.trim().orEmpty()
+                if (token.isBlank()) {
+                    return@withContext if (cachedMembers.isNotEmpty()) {
+                        Result.success(cachedMembers)
+                    } else {
+                        Result.failure(Exception("Sesion Ubuntu no disponible"))
+                    }
+                }
                 val payload = localFallbackApiClient.loadCommunityRoom(token, cleanCommunityId).getOrThrow()
                 val members = payload.participants
                     .mapNotNull { participant ->
@@ -3044,6 +3163,9 @@ class CommunityRepository @Inject constructor(
                     })
                     return@withContext Result.success(members)
                 }
+                // Keep the last usable snapshot if the room temporarily returns
+                // no participants while the server is recovering.
+                if (cachedMembers.isNotEmpty()) return@withContext Result.success(cachedMembers)
             }
             var response = supabaseConfig.client.postgrest["community_members"].select {
                 filter { eq("community_id", communityId) }
@@ -3066,19 +3188,36 @@ class CommunityRepository @Inject constructor(
             
             Result.success(enriched)
         } catch (e: Exception) {
-            var local = communityDao.getMembersFlow(communityId.trim().lowercase()).first().map {
-                CommunityMember(it.community_id, it.user_id, it.role, it.joined_at)
+            val local = cachedMembers.ifEmpty {
+                runCatching { loadCachedCommunityMembers(cleanCommunityId) }.getOrDefault(emptyList())
             }
-            val localProfiles = collectionMemberProfileStore.loadProfiles(local.map { it.user_id })
-            val enrichedLocal = local.map { member ->
-                var profile = localProfiles[member.user_id.trim().lowercase()]
-                member.copy(
-                    userName = profile?.userName ?: member.userName,
-                    userImage = profile?.userImage ?: member.userImage
-                )
-            }
-            if (enrichedLocal.isNotEmpty()) Result.success(enrichedLocal)
+            if (local.isNotEmpty()) Result.success(local)
             else Result.failure(e)
+        }
+    }
+
+    /**
+     * Reads the last membership snapshot without touching the network.
+     * Room stores membership separately from profile data, so enrich it with
+     * the account-scoped UserRepository cache for offline chat headers/lists.
+     */
+    private suspend fun loadCachedCommunityMembers(communityId: String): List<CommunityMember> {
+        val basicMembers = communityDao.getMembersFlow(communityId).first().map {
+            CommunityMember(it.community_id, it.user_id, it.role, it.joined_at)
+        }
+        if (basicMembers.isEmpty()) return emptyList()
+
+        val cachedProfiles = basicMembers
+            .map { it.user_id.trim().lowercase() }
+            .distinct()
+            .associateWith { userRepository.getCachedUserById(it) }
+
+        return basicMembers.map { member ->
+            val profile = cachedProfiles[member.user_id.trim().lowercase()]
+            member.copy(
+                userName = member.userName?.takeIf { it.isNotBlank() } ?: profile?.displayName,
+                userImage = member.userImage?.takeIf { it.isNotBlank() } ?: profile?.avatar_url
+            )
         }
     }
 
@@ -3100,6 +3239,7 @@ class CommunityRepository @Inject constructor(
             if (!isSessionSnapshotValid(sessionSnapshot, "community-sync-messages-start:$cleanId")) return
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 val token = authService.getAccessTokenAwait() ?: return
+                val seenIds = readJournal.seenIds(currentUserId, "community", cleanId)
                 val payload = localFallbackApiClient.loadCommunityRoom(token, cleanId).getOrElse { error ->
                     android.util.Log.e("CommunityRepository", "Error syncing Ubuntu community messages for $communityId", error)
                     return
@@ -3109,14 +3249,21 @@ class CommunityRepository @Inject constructor(
                     .mapValues { (_, entity) -> entity.toDomain() }
                 val mergedResponse = payload.messages.mapNotNull { row ->
                     runCatching {
-                        json.decodeFromJsonElement<CommunityMessage>(row).copy(community_id = cleanId, status = "sent")
+                        acknowledgeCommunityMessage(
+                            json.decodeFromJsonElement<CommunityMessage>(row),
+                            cleanId
+                        )
                     }.getOrNull()
                 }.map { incoming ->
                     mergeSyncedCommunityMessageWithLocalState(
                         incoming = incoming,
                         local = localMessagesById[incoming.id.trim().lowercase()]
                     )
-                }
+                }.map { message ->
+                        if (message.id in seenIds && !message.deleted_for_all &&
+                            conectate.com.core.messaging.UnreadPolicy.isEligibleStatusForReadTransition(message.status))
+                            message.copy(status = "read") else message
+                    }
                 if (!isSessionSnapshotValid(sessionSnapshot, "community-sync-messages-after-ubuntu:$cleanId")) return
                 if (_activeCommunityMessages.containsKey(cleanId)) {
                     val current = _activeCommunityMessages[cleanId]?.value ?: emptyList()

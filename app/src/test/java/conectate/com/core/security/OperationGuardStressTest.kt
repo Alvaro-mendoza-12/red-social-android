@@ -106,6 +106,22 @@ class OperationGuardStressTest {
             }
         )
     }
+
+    @Test
+    fun `unique scopes cannot grow the local guard without bound`() = runBlocking {
+        val guard = OperationGuard(telemetry = RecordingTelemetry(), logger = NoOpLogger())
+
+        repeat(OperationGuard.MAX_ACTIVE_BUCKETS + 400) { index ->
+            val decision = guard.acquire(
+                action = GuardedAction.DIRECT_MESSAGE_SEND,
+                actorId = "user-bounded",
+                scopeId = "chat-$index"
+            )
+            assertTrue(decision.allowed)
+        }
+
+        assertTrue(guard.activeBucketCountForTesting() <= OperationGuard.MAX_ACTIVE_BUCKETS)
+    }
 }
 
 private class RecordingTelemetry : AppTelemetry {

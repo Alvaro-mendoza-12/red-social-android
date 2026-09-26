@@ -41,4 +41,7 @@
     <string name="widget_action_videos">Videos</string>
     <string name="widget_action_moment">Moment</string>
     <string name="widget_action_chat">Chat</string>
+    <string name="two_factor_local_reset_title">Account security</string>
+    <string name="two_factor_local_reset_message">Encrypted storage on this device was reset. If your account uses two-step verification, sign in with your authenticator or a backup code. Server-side protection remains active.</string>
+    <string name="two_factor_local_reset_ok">Got it</string>
 </resources>

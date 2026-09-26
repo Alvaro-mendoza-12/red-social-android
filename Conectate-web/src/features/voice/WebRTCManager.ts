@@ -1,11 +1,15 @@
+import { WebRtcPeerSession } from '../calls/WebRtcPeerSession';
+
 export class WebRTCManager {
   private localStream: MediaStream | null = null;
   private peerConnections: Map<string, RTCPeerConnection> = new Map();
+  private peerSessions: Map<string, WebRtcPeerSession> = new Map();
   private dataChannels: Map<string, RTCDataChannel> = new Map();
   private onTrackCallbacks: ((track: MediaStreamTrack, stream: MediaStream, peerId: string) => void)[] = [];
   private onDataChannelCallbacks: ((data: any, from: string) => void)[] = [];
   private onConnectionStateCallbacks: ((state: RTCPeerConnectionState, peerId: string) => void)[] = [];
   private onIceCandidateCallback: ((peerId: string, candidate: RTCIceCandidateInit) => void) | null = null;
+  private onOfferNeededCallback: ((peerId: string, offer: RTCSessionDescriptionInit) => void) | null = null;
   private iceServers: RTCIceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' }
@@ -66,6 +70,8 @@ export class WebRTCManager {
   }
 
   createPeerConnection(peerId: string, isInitiator: boolean): RTCPeerConnection {
+    const existing = this.peerConnections.get(peerId);
+    if (existing) return existing;
     const configuration = {
       iceServers: this.iceServers
     };
@@ -87,6 +93,7 @@ export class WebRTCManager {
     };
 
     peerConnection.onconnectionstatechange = () => {
+      this.peerSessions.get(peerId)?.handleConnectionState(peerConnection.connectionState);
       this.onConnectionStateCallbacks.forEach(callback => {
         callback(peerConnection.connectionState, peerId);
       });
@@ -99,48 +106,51 @@ export class WebRTCManager {
     }
 
     this.peerConnections.set(peerId, peerConnection);
+    const session = new WebRtcPeerSession(peerConnection, {
+      polite: !isInitiator,
+      sendOffer: (offer) => this.onOfferNeededCallback?.(peerId, offer),
+    });
+    this.peerSessions.set(peerId, session);
+    session.bindNegotiation();
     return peerConnection;
   }
 
   async createOffer(peerId: string): Promise<RTCSessionDescriptionInit> {
-    const peerConnection = this.peerConnections.get(peerId);
-    if (!peerConnection) {
+    const session = this.peerSessions.get(peerId);
+    if (!session) {
       throw new Error('Peer connection not found');
     }
 
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
+    const offer = await session.negotiate();
+    if (!offer) throw new Error('Peer connection is not ready to negotiate');
     return offer;
   }
 
-  async createAnswer(peerId: string, offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
-    const peerConnection = this.peerConnections.get(peerId);
-    if (!peerConnection) {
+  async createAnswer(peerId: string, offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit | null> {
+    const session = this.peerSessions.get(peerId);
+    if (!session) {
       throw new Error('Peer connection not found');
     }
 
-    await peerConnection.setRemoteDescription(offer);
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-    return answer;
+    return session.receiveOffer(offer);
   }
 
   async handleAnswer(peerId: string, answer: RTCSessionDescriptionInit): Promise<void> {
-    const peerConnection = this.peerConnections.get(peerId);
-    if (!peerConnection) {
+    const session = this.peerSessions.get(peerId);
+    if (!session) {
       throw new Error('Peer connection not found');
     }
 
-    await peerConnection.setRemoteDescription(answer);
+    await session.receiveAnswer(answer);
   }
 
   async handleIceCandidate(peerId: string, candidate: RTCIceCandidateInit): Promise<void> {
-    const peerConnection = this.peerConnections.get(peerId);
-    if (!peerConnection) {
+    const session = this.peerSessions.get(peerId);
+    if (!session) {
       throw new Error('Peer connection not found');
     }
 
-    await peerConnection.addIceCandidate(candidate);
+    await session.addIceCandidate(candidate);
   }
 
   createDataChannel(peerId: string, label: string = 'data'): RTCDataChannel {
@@ -208,6 +218,10 @@ export class WebRTCManager {
     this.onIceCandidateCallback = callback;
   }
 
+  onOfferNeeded(callback: (peerId: string, offer: RTCSessionDescriptionInit) => void): void {
+    this.onOfferNeededCallback = callback;
+  }
+
   setIceServers(iceServers: RTCIceServer[]): void {
     if (iceServers.length > 0) {
       this.iceServers = iceServers;
@@ -228,6 +242,8 @@ export class WebRTCManager {
     }
 
     if (peerConnection) {
+      this.peerSessions.get(peerId)?.dispose();
+      this.peerSessions.delete(peerId);
       peerConnection.close();
       this.peerConnections.delete(peerId);
     }

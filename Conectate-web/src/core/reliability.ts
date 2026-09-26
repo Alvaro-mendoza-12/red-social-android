@@ -26,8 +26,31 @@ type RetryOptions = {
   shouldRetry?: (error: unknown) => boolean
 }
 
-const queueStorageKey = 'conectate-web-deferred-mutations-v1'
+const legacyQueueStorageKey = 'conectate-web-deferred-mutations-v1'
+const queueStoragePrefix = 'conectate-web-deferred-mutations-v2:'
 const maxMutationAttempts = 8
+
+function queueStorageKey(accountId: string): string {
+  const normalized = accountId.trim().toLowerCase()
+  if (!normalized) throw new Error('DEFERRED_MUTATION_ACCOUNT_REQUIRED')
+  return `${queueStoragePrefix}${encodeURIComponent(normalized)}`
+}
+
+function createMutationId(): string {
+  const cryptoApi = globalThis.crypto
+  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID()
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16))
+    bytes[6] = (bytes[6] & 0x0f) | 0x40
+    bytes[8] = (bytes[8] & 0x3f) | 0x80
+    const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }
+  // This identifier is only local queue bookkeeping, never an auth or
+  // idempotency credential. Keep older browsers functional without weakening
+  // any server-side security boundary.
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
 
 function jitter(ms: number): number {
   return Math.round(ms + Math.random() * (ms * 0.25))
@@ -71,10 +94,13 @@ function normalizeQueue(raw: unknown): DeferredMutation[] {
     )
 }
 
-function readQueue(): DeferredMutation[] {
+function readQueue(accountId: string): DeferredMutation[] {
   if (typeof window === 'undefined') return []
   try {
-    const raw = window.localStorage.getItem(queueStorageKey)
+    // The old queue had no owner and cannot be replayed safely after account
+    // switching. Drop it rather than guessing who created its mutations.
+    window.localStorage.removeItem(legacyQueueStorageKey)
+    const raw = window.localStorage.getItem(queueStorageKey(accountId))
     if (!raw) return []
     return normalizeQueue(JSON.parse(raw))
   } catch {
@@ -82,10 +108,10 @@ function readQueue(): DeferredMutation[] {
   }
 }
 
-function writeQueue(queue: DeferredMutation[]) {
+function writeQueue(accountId: string, queue: DeferredMutation[]) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(queueStorageKey, JSON.stringify(queue))
+    window.localStorage.setItem(queueStorageKey(accountId), JSON.stringify(queue))
     window.dispatchEvent(new Event('conectate-web-deferred-queue-updated'))
   } catch {
     // Ignore storage write failures.
@@ -105,21 +131,22 @@ function createMutationDedupeKey<TType extends DeferredMutationType>(
   return type
 }
 
-export function getDeferredMutationCount(): number {
-  return readQueue().length
+export function getDeferredMutationCount(accountId: string): number {
+  return readQueue(accountId).length
 }
 
 export function enqueueDeferredMutation<TType extends DeferredMutationType>(
   type: TType,
   payload: DeferredMutationPayloadMap[TType],
+  accountId: string,
 ): number {
   const dedupeKey = createMutationDedupeKey(type, payload)
-  const queue = readQueue()
+  const queue = readQueue(accountId)
   if (queue.some((item) => item.dedupeKey === dedupeKey)) {
     return queue.length
   }
   const next: DeferredMutation = {
-    id: crypto.randomUUID(),
+    id: createMutationId(),
     type,
     payload: payload as DeferredMutationPayloadMap[DeferredMutationType],
     dedupeKey,
@@ -128,7 +155,7 @@ export function enqueueDeferredMutation<TType extends DeferredMutationType>(
     lastError: '',
   }
   const nextQueue = [...queue, next]
-  writeQueue(nextQueue)
+  writeQueue(accountId, nextQueue)
   return nextQueue.length
 }
 
@@ -193,9 +220,10 @@ export type FlushDeferredQueueResult = {
 
 export async function flushDeferredMutations(
   executor: FlushMutationExecutor,
+  accountId: string,
   maxPerRun = 50,
 ): Promise<FlushDeferredQueueResult> {
-  const queue = readQueue()
+  const queue = readQueue(accountId)
   if (queue.length === 0) {
     return { processed: 0, failed: 0, remaining: 0 }
   }
@@ -222,7 +250,7 @@ export async function flushDeferredMutations(
   }
 
   const untouched = queue.slice(maxPerRun)
-  writeQueue([...survivors, ...untouched])
+  writeQueue(accountId, [...survivors, ...untouched])
   return {
     processed,
     failed,

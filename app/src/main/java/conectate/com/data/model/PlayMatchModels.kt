@@ -126,6 +126,7 @@ data class PlayMatchProfile(
     val userId: String,
     val displayName: String = "Jugador",
     val avatarUrl: String? = null,
+    val avatarMediaType: String? = null,
     val gamerBio: String = "",
     val regionCode: String = "",
     val languages: List<String> = emptyList(),
@@ -233,6 +234,9 @@ data class PlayMatchCriteria(
 @Serializable
 data class UpdatePlayMatchProfileRequest(
     val expectedVersion: Long,
+    val gamerDisplayName: String,
+    val gamerAvatarUrl: String?,
+    val gamerAvatarMediaType: String?,
     val gamerBio: String,
     val regionCode: String,
     val languages: List<String>,

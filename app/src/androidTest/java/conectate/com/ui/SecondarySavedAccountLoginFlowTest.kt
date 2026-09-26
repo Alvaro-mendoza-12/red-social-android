@@ -23,7 +23,7 @@ class SecondarySavedAccountLoginFlowTest {
 
     private val seedRule = object : ExternalResource() {
         override fun before() {
-            TestRuntimeFixture.clear()
+            TestRuntimeFixture.begin()
             harness = TestRuntimeFixture.seedDualSavedAccountsLoginHarness()
         }
 

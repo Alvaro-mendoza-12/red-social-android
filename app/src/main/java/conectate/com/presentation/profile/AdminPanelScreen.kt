@@ -35,6 +35,7 @@ import conectate.com.data.localfallback.AdminUser
 import conectate.com.data.localfallback.SystemHealthResponse
 import conectate.com.presentation.components.FullScreenImageDialog
 import coil.compose.AsyncImage
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -338,7 +339,9 @@ fun AdminPanelScreen(
                             readOnly = true,
                             label = { Text("Regla aplicada") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(ruleMenuExpanded) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                         )
                         ExposedDropdownMenu(
                             expanded = ruleMenuExpanded,
@@ -386,7 +389,9 @@ fun AdminPanelScreen(
                             readOnly = true,
                             label = { Text("Severidad") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(severityMenuExpanded) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                         )
                         ExposedDropdownMenu(
                             expanded = severityMenuExpanded,
@@ -593,7 +598,7 @@ fun AdminPanelScreen(
                 title = { Text("Panel de Administrador") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 },
                 actions = {
@@ -616,7 +621,7 @@ fun AdminPanelScreen(
 
         if (isAdmin || isLoading) {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            ScrollableTabRow(selectedTabIndex = selectedTabIndex) {
+            PrimaryScrollableTabRow(selectedTabIndex = selectedTabIndex) {
                 Tab(selected = selectedTabIndex == 0, onClick = { selectedTabIndex = 0 }, text = { Text("Resumen") })
                 Tab(selected = selectedTabIndex == 1, onClick = { selectedTabIndex = 1 }, text = { Text("Usuarios") })
                 Tab(selected = selectedTabIndex == 2, onClick = { selectedTabIndex = 2 }, text = { Text("Suspendidos") })
@@ -842,7 +847,7 @@ private fun CustomBadgesCard(
                         )
                     }
                 }
-                if (index < badges.lastIndex) Divider()
+                if (index < badges.lastIndex) HorizontalDivider()
             }
         }
     }
@@ -1052,7 +1057,19 @@ private fun AdminUserCard(
                     Text(user.email, style = MaterialTheme.typography.bodySmall)
                     if (user.username.isNotBlank()) Text("@${user.username}", style = MaterialTheme.typography.bodySmall)
                 }
-                if (user.isTestAccount) AssistChip(onClick = {}, label = { Text("PRUEBA") })
+                if (user.isTestAccount) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    ) {
+                        Text(
+                            "PRUEBA",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                        )
+                    }
+                }
                 Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = "Ver detalles")
             }
 
@@ -1216,7 +1233,7 @@ private fun ModerationAppealCard(
             }
             Text("Regla: ${appeal.ruleTitle}", fontWeight = FontWeight.SemiBold)
             Text("Decisión: ${appeal.explanation}")
-            Divider()
+            HorizontalDivider()
             Text("Apelación", fontWeight = FontWeight.SemiBold)
             Text(appeal.statement)
             Text(

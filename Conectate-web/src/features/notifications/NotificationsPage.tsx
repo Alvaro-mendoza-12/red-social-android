@@ -383,7 +383,7 @@ export function NotificationsPage() {
     setActionMessage(null)
 
     if (!isBrowserOnline()) {
-      enqueueDeferredMutation('notification_mark_read', { notificationId })
+      enqueueDeferredMutation('notification_mark_read', { notificationId }, user.id)
       if (!silent) {
         setActionMessage('Sin conexión: la notificación se marcará en cuanto vuelva la red.')
       }
@@ -398,7 +398,7 @@ export function NotificationsPage() {
       return true
     } catch (caught) {
       if (isLikelyTransientError(caught)) {
-        enqueueDeferredMutation('notification_mark_read', { notificationId })
+        enqueueDeferredMutation('notification_mark_read', { notificationId }, user.id)
         if (!silent) {
           setActionMessage('Sincronización diferida: se completará automáticamente.')
         }
@@ -419,7 +419,7 @@ export function NotificationsPage() {
     setActionMessage(null)
 
     if (!isBrowserOnline()) {
-      enqueueDeferredMutation('notification_mark_all', {})
+      enqueueDeferredMutation('notification_mark_all', {}, user.id)
       setActionMessage('Sin conexión: el marcado global quedó en cola de sincronización.')
       return
     }
@@ -431,7 +431,7 @@ export function NotificationsPage() {
       })
     } catch (caught) {
       if (isLikelyTransientError(caught)) {
-        enqueueDeferredMutation('notification_mark_all', {})
+        enqueueDeferredMutation('notification_mark_all', {}, user.id)
         setActionMessage('Sincronización diferida: se completará automáticamente.')
         return
       }
@@ -454,7 +454,7 @@ export function NotificationsPage() {
     try {
       if (!isBrowserOnline()) {
         unreadIds.forEach((notificationId) => {
-          enqueueDeferredMutation('notification_mark_read', { notificationId })
+          enqueueDeferredMutation('notification_mark_read', { notificationId }, user.id)
         })
         setActionMessage('Sin conexión: el marcado visible quedó en cola de sincronización.')
         return
@@ -467,7 +467,7 @@ export function NotificationsPage() {
     } catch (caught) {
       if (isLikelyTransientError(caught)) {
         unreadIds.forEach((notificationId) => {
-          enqueueDeferredMutation('notification_mark_read', { notificationId })
+          enqueueDeferredMutation('notification_mark_read', { notificationId }, user.id)
         })
         setActionMessage('Sincronización diferida: se completará automáticamente.')
       } else {

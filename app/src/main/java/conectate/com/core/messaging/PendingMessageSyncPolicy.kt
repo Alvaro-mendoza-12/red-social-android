@@ -15,8 +15,17 @@ internal object PendingMessageSyncPolicy {
         serverMessage: Message?,
         queuedMessage: Message,
         chatId: String
-    ): Message = (serverMessage ?: queuedMessage).copy(
-        chat_id = chatId.trim().lowercase(),
-        status = "sent"
-    )
+    ): Message {
+        val acknowledged = serverMessage ?: queuedMessage.copy(status = "sent")
+        return acknowledged.copy(
+            chat_id = chatId.trim().lowercase(),
+            media_url = acknowledged.media_url ?: queuedMessage.media_url,
+            thumbnail_url = acknowledged.thumbnail_url ?: queuedMessage.thumbnail_url,
+            status = MessageStatusNormalizer.acknowledgedAfterSend(
+                status = acknowledged.status,
+                deliveredAt = acknowledged.delivered_at,
+                readAt = acknowledged.read_at
+            )
+        )
+    }
 }

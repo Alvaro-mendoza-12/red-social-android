@@ -1,13 +1,16 @@
 package conectate.com.presentation.wallet
 
 import androidx.annotation.DrawableRes
+import android.util.LruCache
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -17,19 +20,39 @@ import conectate.com.data.model.visualKey
 import kotlin.math.floor
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+private object GiftSpriteSheetCache {
+    // Los atlas son recursos nodpi: la misma imagen sirve para todas las
+    // densidades. Compartirlos evita decodificar el mismo grupo por cada regalo.
+    private val sheets = object : LruCache<Int, ImageBitmap>(16 * 1024 * 1024) {
+        override fun sizeOf(key: Int, value: ImageBitmap): Int =
+            (value.width.toLong() * value.height * 4L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    fun getOrDecode(resources: android.content.res.Resources, @DrawableRes drawableRes: Int): ImageBitmap? =
+        synchronized(sheets) {
+            sheets.get(drawableRes) ?: runCatching {
+                ImageBitmap.imageResource(resources, drawableRes).also { sheets.put(drawableRes, it) }
+            }.getOrNull()
+        }
+}
 
 /**
  * Secuencia de poses dibujadas: no deforma ni traslada una miniatura estática.
  * Cada celda contiene una postura distinta del personaje.
  */
 internal data class GiftSpriteSheetSpec(
-    @DrawableRes val drawableRes: Int,
+    @param:DrawableRes val drawableRes: Int,
     val columns: Int = 4,
     val rows: Int = 2,
     val frameCount: Int = 8,
     val cycles: Float,
     val firstRow: Int = 0,
-    val interpolationSteps: Int = 4,
+    // Cada pose se mezcla mediante una curva continua. Ocho pasos por pose
+    // garantizan al menos 64 estados visuales incluso en los atlas de 8 poses.
+    val interpolationSteps: Int = 8,
 )
 
 internal data class GiftSpriteBlend(
@@ -62,12 +85,12 @@ internal fun giftSpriteSheetSpec(visualKey: String): GiftSpriteSheetSpec? = when
     "solar-hummingbird" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_solar_hummingbird_sheet,
         cycles = 5.5f,
-        interpolationSteps = 4,
+        interpolationSteps = 8,
     )
     "forest-guardian" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_forest_guardian_sheet,
         cycles = 2.25f,
-        interpolationSteps = 4,
+        interpolationSteps = 8,
     )
     "cosmic-whale" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_cosmic_whale_sheet,
@@ -92,13 +115,11 @@ private fun groupedSprite(
     frameCount = 4,
     cycles = cycles,
     firstRow = row,
-    interpolationSteps = when (drawableRes) {
-        R.drawable.gift_anim_group_1_sheet -> 2
-        R.drawable.gift_anim_group_2_sheet,
-        R.drawable.gift_anim_group_3_sheet -> 4
-        R.drawable.gift_anim_group_4_sheet -> 8
-        else -> 16
-    },
+    // Los atlas agrupados contienen cuatro poses verdaderamente distintas.
+    // La interpolación conserva esas poses y crea 64 estados de transición
+    // fluidos; la escena, partículas y articulación siguen animándose a la
+    // frecuencia real de la pantalla.
+    interpolationSteps = 16,
 )
 
 internal fun giftSpriteFrame(
@@ -167,18 +188,29 @@ internal fun GiftAnimatedArtwork(
         return
     }
 
-    // El progreso recompone esta escena en cada frame. Conservar la hoja evita
-    // una nueva decodificación RGBA por frame en equipos con poca memoria.
-    val resources = LocalContext.current.resources
-    val spriteSheet = remember(resources, spec.drawableRes) {
-        ImageBitmap.imageResource(resources, spec.drawableRes)
+    // Las hojas ocupan unos 6 MiB descomprimidas. Decodificarlas en el hilo de
+    // interfaz congelaba el primer regalo en dispositivos de gama de entrada.
+    val resources = LocalResources.current
+    val spriteSheet by produceState<ImageBitmap?>(
+        initialValue = null,
+        key1 = resources,
+        key2 = spec.drawableRes,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            GiftSpriteSheetCache.getOrDecode(resources, spec.drawableRes)
+        }
+    }
+    val artwork = spriteSheet
+    if (artwork == null) {
+        GiftArtwork(gift, modifier)
+        return
     }
     val blend = giftSpriteBlend(progress, animationsEnabled, spec)
-    val frameWidth = remember(spriteSheet.width, spec.columns) {
-        spriteSheet.width / spec.columns.coerceAtLeast(1)
+    val frameWidth = remember(artwork.width, spec.columns) {
+        artwork.width / spec.columns.coerceAtLeast(1)
     }
-    val frameHeight = remember(spriteSheet.height, spec.rows) {
-        spriteSheet.height / spec.rows.coerceAtLeast(1)
+    val frameHeight = remember(artwork.height, spec.rows) {
+        artwork.height / spec.rows.coerceAtLeast(1)
     }
     fun sourceOffset(frame: Int) = IntOffset(
         x = (frame % spec.columns) * frameWidth,
@@ -193,7 +225,7 @@ internal fun GiftAnimatedArtwork(
         )
         if (destinationSize == IntSize.Zero) return@Canvas
         drawImage(
-            image = spriteSheet,
+            image = artwork,
             srcOffset = sourceOffset(blend.currentFrame),
             srcSize = IntSize(frameWidth, frameHeight),
             dstOffset = destinationOffset,
@@ -203,7 +235,7 @@ internal fun GiftAnimatedArtwork(
         )
         if (blend.nextFrame != blend.currentFrame && blend.nextAlpha > 0f) {
             drawImage(
-                image = spriteSheet,
+                image = artwork,
                 srcOffset = sourceOffset(blend.nextFrame),
                 srcSize = IntSize(frameWidth, frameHeight),
                 dstOffset = destinationOffset,

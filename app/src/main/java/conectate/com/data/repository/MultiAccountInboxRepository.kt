@@ -54,7 +54,7 @@ internal data class InactiveAccountUnreadSnapshot(
 
 @Singleton
 class MultiAccountInboxRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val accountSessionRepository: AccountSessionRepository,
     private val authService: AuthService,
     private val supabaseConfig: SupabaseConfig,

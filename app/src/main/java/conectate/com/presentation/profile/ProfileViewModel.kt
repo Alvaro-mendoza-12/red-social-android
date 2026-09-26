@@ -2,6 +2,7 @@ package conectate.com.presentation.profile
 
 import android.net.Uri
 import androidx.lifecycle.ViewModel
+import conectate.com.core.observability.AppMetrics
 import androidx.lifecycle.viewModelScope
 import conectate.com.core.media.ProfileMediaMutation
 import conectate.com.core.media.ProfileMediaSync
@@ -9,9 +10,11 @@ import conectate.com.core.media.ProfileMutationClock
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.model.User
 import conectate.com.data.repository.UserRepository
+import conectate.com.data.repository.ProfileViewer
 import conectate.com.data.repository.AuthRepository
 import conectate.com.data.repository.VideoRepository
 import conectate.com.data.model.Video
+import conectate.com.data.model.MomentHighlight
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,12 +26,15 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.model.Post
 import conectate.com.data.repository.FriendRepository
 import conectate.com.data.repository.FriendStatus
 import conectate.com.data.repository.PostMutationEvent
+import conectate.com.data.repository.MomentHighlightRepository
+import conectate.com.presentation.components.PreparedAudioClip
 
 sealed class ProfileUiState {
     object Loading : ProfileUiState()
@@ -45,7 +51,9 @@ class ProfileViewModel @Inject constructor(
     private val badgeRepository: conectate.com.data.repository.BadgeRepository,
     val postRepository: conectate.com.data.repository.PostRepository,
     val shareRepository: conectate.com.data.repository.ShareRepository,
-    private val friendRepository: FriendRepository
+    private val friendRepository: FriendRepository,
+    private val momentHighlightRepository: MomentHighlightRepository,
+    private val appMetrics: AppMetrics
 ) : ViewModel() {
 
     private val _profileState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
@@ -65,6 +73,14 @@ class ProfileViewModel @Inject constructor(
 
     private val _favoriteVideos = MutableStateFlow<List<Video>>(emptyList())
     val favoriteVideos: StateFlow<List<Video>> = _favoriteVideos.asStateFlow()
+
+    private val _momentHighlights = MutableStateFlow<List<MomentHighlight>>(emptyList())
+    val momentHighlights: StateFlow<List<MomentHighlight>> = _momentHighlights.asStateFlow()
+    private val _profileViewers = MutableStateFlow<List<ProfileViewer>>(emptyList())
+    val profileViewers: StateFlow<List<ProfileViewer>> = _profileViewers.asStateFlow()
+    private var lastRecordedProfileId: String? = null
+    private val momentHighlightCache = mutableMapOf<String, List<MomentHighlight>>()
+    private var loadedHighlightUserId: String? = null
 
     private val _selectedTab = MutableStateFlow(0) // 0: Videos, 1: Posts, 2: Compartidos, 3: Favoritos
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
@@ -153,19 +169,49 @@ class ProfileViewModel @Inject constructor(
         loadUserPosts(idToLoad)
         loadSharedContent(idToLoad)
         loadFavoriteVideos(idToLoad)
+        loadMomentHighlights(idToLoad)
         val readGeneration = profileMutationClock.snapshot()
 
         viewModelScope.launch {
             try {
                 val currentState = _profileState.value
                 val isSameUser = (currentState is ProfileUiState.Success && currentState.user.id == idToLoad)
-                if (!isSameUser) {
+                val cachedUser = if (isSameUser) {
+                    (currentState as ProfileUiState.Success).user
+                } else {
+                    userRepository.getCachedUserById(idToLoad)
+                }
+                if (!isSameUser && cachedUser != null) {
+                    _profileState.value = ProfileUiState.Success(cachedUser)
+                } else if (!isSameUser) {
                     _profileState.value = ProfileUiState.Loading
                 }
 
                 val shouldForceNetwork = forceNetwork ?: !isSameUser
+                if (!shouldForceNetwork && cachedUser != null) {
+                    badgeRepository.getUserBadges(cachedUser.id).onSuccess { badges ->
+                        val latest = (_profileState.value as? ProfileUiState.Success)?.user
+                            ?.takeIf { it.id == cachedUser.id }
+                            ?: cachedUser
+                        _profileState.value = ProfileUiState.Success(latest.copy(badges = badges))
+                    }
+                    subscribeToProfileUpdates(idToLoad)
+                    return@launch
+                }
 
-                val result = userRepository.getUserById(idToLoad, forceNetwork = shouldForceNetwork)
+                val result = withTimeoutOrNull(PROFILE_LOAD_TIMEOUT_MS) {
+                    userRepository.getUserById(idToLoad, forceNetwork = shouldForceNetwork)
+                }
+                if (result == null) {
+                    val hasUsableProfile = (_profileState.value as? ProfileUiState.Success)
+                        ?.user?.id == idToLoad
+                    if (profileMutationClock.isCurrent(readGeneration) && !hasUsableProfile) {
+                        _profileState.value = ProfileUiState.Error(
+                            "El perfil tardó demasiado en responder. Comprueba tu conexión y reintenta."
+                        )
+                    }
+                    return@launch
+                }
                 result.onSuccess { user ->
                     if (!profileMutationClock.isCurrent(readGeneration)) {
                         android.util.Log.d("ProfileViewModel", "Ignoring stale profile read for $idToLoad")
@@ -180,6 +226,21 @@ class ProfileViewModel @Inject constructor(
                        }
 
                        _profileState.value = ProfileUiState.Success(userWithBadges)
+
+                       if (currentUserId == userWithBadges.id) {
+                           loadProfileViewers(userWithBadges.profile_view_history_enabled)
+                       } else if (
+                           userWithBadges.profile_view_history_enabled &&
+                           lastRecordedProfileId != userWithBadges.id
+                       ) {
+                           lastRecordedProfileId = userWithBadges.id
+                           viewModelScope.launch {
+                               userRepository.recordProfileView(
+                                   profileId = userWithBadges.id,
+                                   targetAllowsHistory = true
+                               )
+                           }
+                       }
                        
                        // Start Realtime Subscription
                        subscribeToProfileUpdates(idToLoad)
@@ -194,16 +255,60 @@ class ProfileViewModel @Inject constructor(
                            checkFriendStatus(idToLoad)
                        }
                     } else {
-                        _profileState.value = ProfileUiState.Error("User not found")
+                        val hasUsableProfile = (_profileState.value as? ProfileUiState.Success)
+                            ?.user?.id == idToLoad
+                        if (!hasUsableProfile) _profileState.value = ProfileUiState.Error("User not found")
                     }
                 }.onFailure { e ->
-                    if (profileMutationClock.isCurrent(readGeneration)) {
+                    val hasUsableProfile = (_profileState.value as? ProfileUiState.Success)
+                        ?.user?.id == idToLoad
+                    if (profileMutationClock.isCurrent(readGeneration) && !hasUsableProfile) {
                         _profileState.value = ProfileUiState.Error(e.message ?: "Unknown error")
                     }
                 }
             } catch (e: Exception) {
-                _profileState.value = ProfileUiState.Error("Crash prevented: ${e.message}")
+                val hasUsableProfile = (_profileState.value as? ProfileUiState.Success)
+                    ?.user?.id == idToLoad
+                if (!hasUsableProfile) {
+                    _profileState.value = ProfileUiState.Error("Crash prevented: ${e.message}")
+                }
             }
+        }
+    }
+
+    fun loadProfileViewers(enabled: Boolean = true) {
+        if (!enabled) {
+            _profileViewers.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            userRepository.getRecentProfileViewers()
+                .onSuccess { _profileViewers.value = it }
+        }
+    }
+
+    private companion object {
+        const val PROFILE_LOAD_TIMEOUT_MS = 15_000L
+    }
+
+    private fun loadMomentHighlights(userId: String) {
+        if (loadedHighlightUserId != userId) {
+            loadedHighlightUserId = userId
+            _momentHighlights.value = momentHighlightCache[userId].orEmpty()
+        }
+        viewModelScope.launch {
+            momentHighlightRepository.getHighlightsForUser(userId)
+                .onSuccess { highlights ->
+                    val visible = highlights.filter { it.isPublic || userId == currentUserId }
+                    momentHighlightCache[userId] = visible
+                    if (loadedHighlightUserId == userId) _momentHighlights.value = visible
+                }
+                .onFailure { error ->
+                    android.util.Log.w("ProfileViewModel", "No se pudieron cargar los momentos destacados", error)
+                    if (loadedHighlightUserId == userId && momentHighlightCache[userId] == null) {
+                        _momentHighlights.value = emptyList()
+                    }
+                }
         }
     }
 
@@ -399,6 +504,77 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    fun saveProfileMusic(
+        clip: PreparedAudioClip?,
+        removeMusic: Boolean,
+        onSuccess: (String?) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        val currentUser = (_profileState.value as? ProfileUiState.Success)?.user
+        if (currentUser == null) {
+            onError("No se pudo cargar tu perfil.")
+            return
+        }
+        if (clip == null && !removeMusic) {
+            onSuccess(currentUser.favorite_music_url)
+            return
+        }
+
+        viewModelScope.launch {
+            var uploadedUrl: String? = null
+            fun deleteTemporaryClip() {
+                if (clip?.uri?.scheme.equals("file", ignoreCase = true)) {
+                    clip?.uri?.path?.let { path -> runCatching { java.io.File(path).delete() } }
+                }
+            }
+            try {
+                val nextUrl = if (removeMusic) {
+                    ""
+                } else {
+                    val selectedClip = clip ?: error("Selecciona una canción.")
+                    userRepository.uploadProfileMusic(
+                        uri = selectedClip.uri,
+                        contentTypeHint = selectedClip.mimeType,
+                    ).getOrElse { error ->
+                        onError(error.message ?: "No se pudo subir la canción seleccionada.")
+                        return@launch
+                    }.also { uploadedUrl = it }
+                }
+
+                val update = userRepository.updateProfile(
+                    currentUser.id,
+                    UpdateProfileRequest(favorite_music_url = nextUrl),
+                )
+                if (update.isFailure) {
+                    uploadedUrl?.let { userRepository.deleteUploadedProfileMusic(it) }
+                    onError(
+                        update.exceptionOrNull()?.message
+                            ?: "No se pudo guardar la música de entrada.",
+                    )
+                    return@launch
+                }
+
+                profileMutationClock.markCommitted()
+                val normalizedUrl = nextUrl.takeIf(String::isNotBlank)
+                _profileState.value = ProfileUiState.Success(
+                    currentUser.copy(favorite_music_url = normalizedUrl),
+                )
+                val previousUrl = currentUser.favorite_music_url.orEmpty()
+                if (previousUrl.isNotBlank() && previousUrl != nextUrl) {
+                    userRepository.deleteUploadedProfileMusic(previousUrl)
+                }
+                onSuccess(normalizedUrl)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                uploadedUrl?.let { userRepository.deleteUploadedProfileMusic(it) }
+                onError(error.message ?: "No se pudo guardar la música de entrada.")
+            } finally {
+                deleteTemporaryClip()
+            }
+        }
+    }
+
     fun updateProfile(
         name: String,
         bio: String,
@@ -413,6 +589,11 @@ class ProfileViewModel @Inject constructor(
         coverImageUri: Uri?,
         removeAvatar: Boolean = false,
         removeCover: Boolean = false,
+        interests: List<String>? = null,
+        hobbies: List<String>? = null,
+        linkedGames: List<String>? = null,
+        socialLinks: Map<String, String>? = null,
+        username: String? = null,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
@@ -500,6 +681,7 @@ class ProfileViewModel @Inject constructor(
 
                 val updateRequest = UpdateProfileRequest(
                     display_name = finalName, // Null if not changed
+                    username = username,
                     bio = bio,
                     country = country,
                     city = city,
@@ -512,6 +694,10 @@ class ProfileViewModel @Inject constructor(
                     cover_url = coverUrl.takeIf { coverImageUri != null },
                     remove_avatar = removeAvatar,
                     remove_cover = removeCover,
+                    interests = interests,
+                    hobbies = hobbies,
+                    linked_games = linkedGames,
+                    social_links = socialLinks,
                     last_name_change = lastNameChange
                 )
 
@@ -522,6 +708,7 @@ class ProfileViewModel @Inject constructor(
                     profileMutationClock.markCommitted()
                     val optimisticUser = currentUser?.copy(
                         display_name = updateRequest.display_name ?: currentUser.display_name,
+                        username = updateRequest.username ?: currentUser.username,
                         bio = updateRequest.bio,
                         country = updateRequest.country,
                         city = updateRequest.city,
@@ -532,6 +719,10 @@ class ProfileViewModel @Inject constructor(
                         avatar_video_muted = updateRequest.avatar_video_muted ?: currentUser.avatar_video_muted,
                         avatar_duration_ms = if (updateRequest.remove_avatar) null else updateRequest.avatar_duration_ms ?: currentUser.avatar_duration_ms,
                         cover_url = if (updateRequest.remove_cover) null else updateRequest.cover_url ?: currentUser.cover_url,
+                        interests = updateRequest.interests ?: currentUser.interests,
+                        hobbies = updateRequest.hobbies ?: currentUser.hobbies,
+                        linked_games = updateRequest.linked_games ?: currentUser.linked_games,
+                        social_links = updateRequest.social_links ?: currentUser.social_links,
                         last_name_change = updateRequest.last_name_change ?: currentUser.last_name_change
                     )
                     val confirmedUser = userRepository.getCachedUserSnapshot(userId)
@@ -738,7 +929,8 @@ class ProfileViewModel @Inject constructor(
                 // Use the repository to ensure full cleanup (DB + In-memory + FCM)
                 authRepository.signOut()
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("ProfileViewModel", "Sign-out failed", e)
+                appMetrics.recordFailure("auth_sign_out", e)
             }
         }
     }

@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Refresh
@@ -88,6 +88,20 @@ fun CreatorEarningsScreen(
         ?: formatMoney(summary.heldCredits, currency)
     val paidLabel = serverBalances?.let { formatMinorMoney(it.paidMinor, currency) }
         ?: formatMoney(summary.paidCredits, currency)
+    val totalCoins = (serverBalances?.totalCoins?.takeIf { it > 0 }
+        ?: summary.totalCoins.toLong().takeIf { it > 0 }
+        ?: 0L)
+    val pendingCoins = serverBalances?.pendingCoins?.takeIf { it > 0 }
+        ?: summary.pendingCoins.toLong()
+    val heldCoins = serverBalances?.heldCoins?.takeIf { it > 0 }
+        ?: summary.heldCoins.toLong()
+    val paidCoins = serverBalances?.paidCoins?.takeIf { it > 0 }
+        ?: summary.paidCoins.toLong()
+    val totalMinor = serverBalances?.let {
+        (it.pendingMinor + it.availableMinor + it.heldMinor + it.paidMinor - it.recoveryDebtMinor)
+            .coerceAtLeast(0L)
+    } ?: 0L
+    val hasServerMoneyValuation = payoutSummary?.configured == true || totalMinor > 0L
 
     Scaffold(
         topBar = {
@@ -95,7 +109,7 @@ fun CreatorEarningsScreen(
                 title = { Text("Ganancias") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 },
                 actions = {
@@ -136,38 +150,33 @@ fun CreatorEarningsScreen(
                             Icon(Icons.Default.Payments, contentDescription = null, modifier = Modifier.size(36.dp))
                             Spacer(Modifier.size(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text("Ganancia disponible", style = MaterialTheme.typography.labelLarge)
                                 Text(
-                                    availableLabel,
+                                    "Ganancia acumulada",
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                                Text(
+                                    if (hasServerMoneyValuation) {
+                                        formatMinorMoney(totalMinor, currency)
+                                    } else {
+                                        "Conversión monetaria pendiente"
+                                    },
                                     style = MaterialTheme.typography.headlineMedium,
                                     fontWeight = FontWeight.Black
                                 )
+                                if (totalCoins > 0) {
+                                    Text(
+                                        "Equivalencia respaldada por ${formatCoins(totalCoins.toInt())} monedas recibidas · retiro en preparación",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
                             }
                         }
                         OutlinedButton(
-                            onClick = {
-                                when {
-                                    payoutSummary?.configured != true -> showWithdrawalInfo = true
-                                    payoutSummary?.creatorVerified != true -> showWithdrawalInfo = true
-                                    payoutSummary?.account == null -> showAccountDialog = true
-                                    !payoutVerified -> showWithdrawalInfo = true
-                                    payoutSummary?.enabled != true -> showWithdrawalInfo = true
-                                    else -> showRequestDialog = true
-                                }
-                            },
+                            onClick = { showWithdrawalInfo = true },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = !payoutLoading,
+                            enabled = false,
                         ) {
-                            Text(
-                                when {
-                                    payoutSummary?.configured != true -> "PayPal Sandbox pendiente"
-                                    payoutSummary?.creatorVerified != true -> "Verificación requerida"
-                                    payoutSummary?.account == null -> "Registrar cuenta PayPal"
-                                    !payoutVerified -> "Cuenta en verificación"
-                                    payoutSummary?.enabled != true -> "Retiros en prueba"
-                                    else -> "Solicitar retiro"
-                                }
-                            )
+                            Text("Retiros próximamente")
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -175,12 +184,12 @@ fun CreatorEarningsScreen(
                         ) {
                             EarningsMetric(
                                 label = "Pendiente",
-                                value = pendingLabel,
+                                value = formatCoinOrMoney(pendingCoins, pendingLabel),
                                 modifier = Modifier.weight(1f)
                             )
                             EarningsMetric(
                                 label = "En revisión",
-                                value = heldLabel,
+                                value = formatCoinOrMoney(heldCoins, heldLabel),
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -196,7 +205,7 @@ fun CreatorEarningsScreen(
                             )
                             EarningsMetric(
                                 label = "Pagado",
-                                value = paidLabel,
+                                value = formatCoinOrMoney(paidCoins, paidLabel),
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -438,6 +447,9 @@ private fun BigDecimal.longValueExactOrNull(): Long? = runCatching { longValueEx
 private fun formatMinorMoney(amountMinor: Long, currency: String): String =
     formatMoney(BigDecimal.valueOf(amountMinor, 2), currency)
 
+private fun formatCoinOrMoney(coins: Long, fallback: String): String =
+    if (coins > 0) "${formatCoins(coins.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())} monedas" else fallback
+
 @Composable
 private fun EarningsMetric(label: String, value: String, modifier: Modifier = Modifier) {
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f), shape = RoundedCornerShape(14.dp)) {
@@ -512,7 +524,11 @@ private fun PayoutAccountCard(
             if (provider.isNullOrBlank()) {
                 Text("No hay un proveedor de retiros conectado.")
             } else {
-                Text("${provider.replaceFirstChar { it.titlecase(Locale.getDefault()) }} · ${maskPayoutReference(reference) ?: "referencia protegida"}")
+                Text(
+                    "${provider.replaceFirstChar {
+                        it.titlecase(androidx.compose.ui.platform.LocalLocale.current.platformLocale)
+                    }} · ${maskPayoutReference(reference) ?: "referencia protegida"}"
+                )
                 Text("Moneda de liquidación: $currency", style = MaterialTheme.typography.bodySmall)
             }
             OutlinedButton(onClick = onOpenInfo, modifier = Modifier.fillMaxWidth()) {

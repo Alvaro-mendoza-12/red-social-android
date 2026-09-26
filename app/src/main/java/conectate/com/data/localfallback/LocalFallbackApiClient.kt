@@ -1,8 +1,11 @@
 package conectate.com.data.localfallback
 
 import conectate.com.BuildConfig
+import conectate.com.core.network.InteractiveReadDeadlines
+import conectate.com.core.network.runReadWithDeadline
 import conectate.com.data.auth.AccountSuspendedException
 import conectate.com.data.model.Comment
+import conectate.com.data.model.Community
 import conectate.com.data.model.CommunityMessage
 import conectate.com.data.model.CommunityChannel
 import conectate.com.data.model.CommunityChannelCatalog
@@ -21,6 +24,7 @@ import conectate.com.data.model.LiveComment
 import conectate.com.data.model.LiveChapter
 import conectate.com.data.model.LiveStream
 import conectate.com.data.model.LiveBattle
+import conectate.com.data.model.LiveBattleCandidate
 import conectate.com.data.model.LiveCollaborationCapabilities
 import conectate.com.data.model.LiveGuestInvitation
 import conectate.com.data.model.LiveParticipantState
@@ -81,6 +85,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
 import java.util.UUID
+import java.net.URI
 import kotlin.math.roundToInt
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -98,7 +103,8 @@ data class AdminAccessInfo(
     val accessLevel: String = "none",
     val isOwner: Boolean = false,
     val canWrite: Boolean = false,
-    val canDeleteUsers: Boolean = false
+    val canDeleteUsers: Boolean = false,
+    val capabilities: Set<String> = emptySet()
 )
 
 data class AdminBadgeOption(
@@ -208,6 +214,24 @@ data class AnonymousMatchResult(
     val session: AnonymousChatSession? = null
 )
 
+data class AnonymousBottle(
+    val id: String,
+    val content: String,
+    val status: String,
+    val perspective: String,
+    val attemptCount: Int = 0,
+    val offeredAt: String? = null,
+    val expiresAt: String? = null,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)
+
+data class AnonymousBottleResult(
+    val status: String,
+    val bottle: AnonymousBottle? = null,
+    val session: AnonymousChatSession? = null,
+)
+
 @Serializable
 data class LocalFallbackUser(
     val id: String = "",
@@ -242,11 +266,13 @@ data class LocalFallbackInboxItem(
     val title: String = "",
     val subtitle: String = "",
     val description: String = "",
+    val category: String = "",
     val updatedAt: String = "",
     val kind: String = "chat",
     val avatarUrl: String = "",
     val profileId: String? = null,
     val unreadCount: Int = 0,
+    val unreadMessageIds: List<String>? = null,
     val lastMessageId: String? = null,
     val lastMessageSenderId: String? = null,
     val lastMessageContentType: String? = null,
@@ -470,6 +496,11 @@ private data class LocalFallbackLiveBattleResponse(
 )
 
 @Serializable
+private data class LocalFallbackLiveBattleCandidatesResponse(
+    val items: List<LiveBattleCandidate> = emptyList()
+)
+
+@Serializable
 private data class LocalFallbackLiveSupportersResponse(
     val items: List<conectate.com.data.model.LiveSupporter> = emptyList()
 )
@@ -490,7 +521,13 @@ private data class LocalFallbackCreateLiveRequest(
     val id: String,
     val title: String,
     val source: String,
-    val hashtags: List<String>
+    val hashtags: List<String>,
+    val coverUrl: String? = null,
+    val gameName: String? = null,
+    val category: String? = null,
+    val visibility: String = "public",
+    val giftsEnabled: Boolean = true,
+    val battlesEnabled: Boolean = true
 )
 
 @Serializable
@@ -658,7 +695,36 @@ private data class LocalFallbackStorageListResponse(
 @Serializable
 private data class LocalFallbackLoginRequest(
     val email: String,
-    val password: String
+    val password: String,
+    val totpCode: String? = null,
+    val backupCode: String? = null
+)
+
+@Serializable
+data class ServerTwoFactorStatus(
+    val enabled: Boolean = false,
+    val recoveryCodesRemaining: Int = 0
+)
+
+@Serializable
+data class ServerTwoFactorSetup(
+    val secret: String,
+    val provisioningUri: String
+)
+
+data class ServerTwoFactorEnabled(
+    val session: LocalFallbackAuthResponse,
+    val recoveryCodes: List<String>
+)
+
+@Serializable
+data class PasswordRecoveryCodeStatus(
+    val recoveryCodesRemaining: Int = 0
+)
+
+@Serializable
+private data class PasswordRecoveryCodeRotation(
+    val recoveryCodes: List<String> = emptyList()
 )
 
 @Serializable
@@ -810,7 +876,8 @@ private data class LocalFallbackCreateVoiceRoomRequest(
     val maxParticipants: Int = 50,
     val agoraChannelName: String? = null,
     val readableId: String? = null,
-    val roomMode: String = "casual"
+    val roomMode: String = "casual",
+    val password: String? = null
 )
 
 @Serializable
@@ -822,6 +889,7 @@ private data class LocalFallbackMembershipMutationRequest(
 @Serializable
 internal data class LocalFallbackUpdateProfileRequest(
     val displayName: String? = null,
+    val username: String? = null,
     val bio: String? = null,
     val country: String? = null,
     val city: String? = null,
@@ -839,6 +907,7 @@ internal data class LocalFallbackUpdateProfileRequest(
     val availabilitySchedule: String? = null,
     val profileSectionOrder: List<String>? = null,
     val profileSectionVisibility: Map<String, String>? = null,
+    val socialLinks: Map<String, String>? = null,
     val avatarUrl: String? = null,
     val avatarMediaType: String? = null,
     val avatarVideoMuted: Boolean? = null,
@@ -853,6 +922,7 @@ internal data class LocalFallbackUpdateProfileRequest(
     val favoritesPublic: Boolean? = null,
     val breakMode: String? = null,
     val profileVisibility: String? = null,
+    val profileViewHistoryEnabled: Boolean? = null,
     val lastSeenVisibility: String? = null,
     val onlineStatusVisibility: String? = null
 )
@@ -865,6 +935,7 @@ internal data class LocalFallbackUpdateProfileRequest(
  */
 internal fun LocalFallbackUpdateProfileRequest.toSparseJson(): JsonObject = buildJsonObject {
     displayName?.let { put("displayName", JsonPrimitive(it)) }
+    username?.let { put("username", JsonPrimitive(it)) }
     bio?.let { put("bio", JsonPrimitive(it)) }
     country?.let { put("country", JsonPrimitive(it)) }
     city?.let { put("city", JsonPrimitive(it)) }
@@ -888,6 +959,9 @@ internal fun LocalFallbackUpdateProfileRequest.toSparseJson(): JsonObject = buil
     profileSectionVisibility?.let { values ->
         put("profileSectionVisibility", JsonObject(values.mapValues { JsonPrimitive(it.value) }))
     }
+    socialLinks?.let { values ->
+        put("socialLinks", JsonObject(values.mapValues { JsonPrimitive(it.value) }))
+    }
     avatarUrl?.let { put("avatarUrl", JsonPrimitive(it)) }
     avatarMediaType?.let { put("avatarMediaType", JsonPrimitive(it)) }
     avatarVideoMuted?.let { put("avatarVideoMuted", JsonPrimitive(it)) }
@@ -902,6 +976,7 @@ internal fun LocalFallbackUpdateProfileRequest.toSparseJson(): JsonObject = buil
     favoritesPublic?.let { put("favoritesPublic", JsonPrimitive(it)) }
     breakMode?.let { put("breakMode", JsonPrimitive(it)) }
     profileVisibility?.let { put("profileVisibility", JsonPrimitive(it)) }
+    profileViewHistoryEnabled?.let { put("profileViewHistoryEnabled", JsonPrimitive(it)) }
     lastSeenVisibility?.let { put("lastSeenVisibility", JsonPrimitive(it)) }
     onlineStatusVisibility?.let { put("onlineStatusVisibility", JsonPrimitive(it)) }
 }
@@ -918,6 +993,7 @@ private data class LocalFallbackCreatePostRequest(
     val mediaUrls: List<String> = emptyList(),
     val mediaType: String? = null,
     val visibility: String = "public",
+    val isSensitive: Boolean = false,
     val remixAllowed: Boolean = false,
     val remixAudience: String = "public"
 )
@@ -1071,7 +1147,8 @@ private data class LocalFallbackVoiceJoinRequest(
     val userName: String? = null,
     val userAvatarUrl: String? = null,
     val socketId: String? = null,
-    val isMuted: Boolean = false
+    val isMuted: Boolean = false,
+    val password: String? = null
 )
 
 @Serializable
@@ -1290,8 +1367,25 @@ private data class LocalFallbackCreateVideoRequest(
     val coverUrl: String? = null,
     val durationSeconds: Long = 0,
     val isPublic: Boolean = true,
-    val tags: List<String> = emptyList()
+    val isSensitive: Boolean = false,
+    val tags: List<String> = emptyList(),
+    val soundId: String? = null,
+    val soundSourceVideoId: String? = null,
+    val clientPublishId: String? = null,
+    val chapters: List<conectate.com.data.model.VideoChapter> = emptyList(),
+    val allowClipSharing: Boolean = true,
 )
+
+@Serializable
+private data class LocalFallbackUpdateVideoRequest(
+    val title: String,
+    val description: String,
+    val isPublic: Boolean,
+    val allowClipSharing: Boolean,
+)
+
+@Serializable
+data class MomentNotificationPreferences(val enabled: Boolean = false)
 
 @Serializable
 private data class LocalFallbackCreateVideoCommentRequest(
@@ -1366,6 +1460,18 @@ class LocalFallbackMigratedPasswordSetupRequiredException(
 
 class LocalFallbackSessionRenewalRequiredException :
     Exception("Tu sesión ya no se puede renovar. Inicia sesión nuevamente.")
+
+class LocalFallbackTwoFactorRequiredException(val reason: String) : Exception(
+    when (reason) {
+        "TWO_FACTOR_LOCKED" -> "Demasiados intentos. Espera 15 minutos antes de probar otro código."
+        "TWO_FACTOR_INVALID" -> "El código de verificación no coincide o ya se usó."
+        else -> "Escribe el código de tu aplicación autenticadora o un código de respaldo."
+    }
+)
+
+class LocalFallbackPasswordChangedNeedsTwoFactorException : Exception(
+    "Contraseña actualizada. Entra con tu nueva contraseña y el código de tu autenticador."
+)
 
 @Serializable
 data class LocalFallbackPasswordResetResponse(
@@ -1456,7 +1562,11 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
-    suspend fun login(email: String, password: String): Result<LocalFallbackAuthResponse> {
+    suspend fun login(
+        email: String,
+        password: String,
+        secondFactorCode: String? = null
+    ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         RuntimeBackendEndpoint.ensureFreshEndpoint()
         val normalizedEmail = email.trim().lowercase()
@@ -1464,7 +1574,13 @@ class LocalFallbackApiClient @Inject constructor(
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/login") {
                 localHeaders()
                 contentType(ContentType.Application.Json)
-                setBody(LocalFallbackLoginRequest(normalizedEmail, password))
+                val code = secondFactorCode?.trim()?.takeIf(String::isNotBlank)
+                setBody(LocalFallbackLoginRequest(
+                    normalizedEmail,
+                    password,
+                    totpCode = code?.takeIf { it.matches(Regex("[0-9]{6}")) },
+                    backupCode = code?.takeUnless { it.matches(Regex("[0-9]{6}")) }
+                ))
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
@@ -1565,6 +1681,9 @@ class LocalFallbackApiClient @Inject constructor(
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
+                if (json.parseToJsonElement(body).jsonObject["requiresTwoFactor"]?.jsonPrimitive?.content == "true") {
+                    return Result.failure(LocalFallbackPasswordChangedNeedsTwoFactorException())
+                }
                 Result.success(json.decodeFromString<LocalFallbackAuthResponse>(body).normalized())
             } else {
                 Result.failure(toException(response, decodeError(body)))
@@ -1591,15 +1710,145 @@ class LocalFallbackApiClient @Inject constructor(
 
     suspend fun loadMessagesInbox(accessToken: String, tab: String = "chats"): Result<LocalFallbackInboxResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        return requestJson<LocalFallbackInboxResponse>("$baseUrl/v1/data/messages/inbox?tab=${urlEncode(tab)}", accessToken)
-            .map { it.normalized() }
+        return runReadWithDeadline(InteractiveReadDeadlines.InboxMillis) {
+            requestJson<LocalFallbackInboxResponse>(
+                "$baseUrl/v1/data/messages/inbox?tab=${urlEncode(tab)}",
+                accessToken,
+            ).getOrThrow().normalized()
+        }
     }
+
+    suspend fun twoFactorStatus(accessToken: String): Result<ServerTwoFactorStatus> = try {
+        val response = supabaseConfig.httpClient.get("$baseUrl/v1/auth/2fa/status") {
+            localHeaders(accessToken)
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) Result.success(json.decodeFromString(body))
+        else Result.failure(toException(response, decodeError(body)))
+    } catch (error: Exception) { Result.failure(error) }
+
+    suspend fun passwordRecoveryCodeStatus(accessToken: String): Result<PasswordRecoveryCodeStatus> = try {
+        val response = supabaseConfig.httpClient.get("$baseUrl/v1/auth/password-recovery-codes/status") {
+            localHeaders(accessToken)
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) Result.success(json.decodeFromString(body))
+        else Result.failure(toException(response, decodeError(body)))
+    } catch (error: Exception) { Result.failure(error) }
+
+    suspend fun rotatePasswordRecoveryCodes(
+        accessToken: String,
+        password: String,
+        secondFactorCode: String?
+    ): Result<List<String>> = try {
+        val code = secondFactorCode?.trim().orEmpty()
+        val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/password-recovery-codes/rotate") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(mapOf(
+                "password" to password,
+                "totpCode" to code.takeIf { it.matches(Regex("[0-9]{6}")) },
+                "backupCode" to code.takeUnless { it.matches(Regex("[0-9]{6}")) }
+            ))
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) Result.success(
+            json.decodeFromString<PasswordRecoveryCodeRotation>(body).recoveryCodes
+        ) else Result.failure(toException(response, decodeError(body)))
+    } catch (error: Exception) { Result.failure(error) }
+
+    suspend fun confirmSavedPasswordRecoveryCode(
+        email: String,
+        recoveryCode: String,
+        newPassword: String,
+        secondFactorCode: String?
+    ): Result<LocalFallbackAuthResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        return try {
+            val code = secondFactorCode?.trim().orEmpty()
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/password-recovery-codes/confirm") {
+                localHeaders()
+                contentType(ContentType.Application.Json)
+                setBody(mapOf(
+                    "email" to email.trim().lowercase(),
+                    "recoveryCode" to recoveryCode.trim(),
+                    "newPassword" to newPassword,
+                    "totpCode" to code.takeIf { it.matches(Regex("[0-9]{6}")) },
+                    "backupCode" to code.takeUnless { it.matches(Regex("[0-9]{6}")) }
+                ))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(
+                json.decodeFromString<LocalFallbackAuthResponse>(body).normalized()
+            ) else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun setupTwoFactor(accessToken: String, password: String): Result<ServerTwoFactorSetup> = try {
+        val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/2fa/setup") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("password" to password))
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) Result.success(json.decodeFromString(body))
+        else Result.failure(toException(response, decodeError(body)))
+    } catch (error: Exception) { Result.failure(error) }
+
+    suspend fun enableTwoFactor(
+        accessToken: String,
+        password: String,
+        totpCode: String
+    ): Result<ServerTwoFactorEnabled> = try {
+        val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/2fa/enable") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("password" to password, "totpCode" to totpCode))
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) {
+            val payload = json.parseToJsonElement(body).jsonObject
+            val codes = payload["recoveryCodes"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+            Result.success(ServerTwoFactorEnabled(
+                session = json.decodeFromString<LocalFallbackAuthResponse>(body).normalized(),
+                recoveryCodes = codes
+            ))
+        } else Result.failure(toException(response, decodeError(body)))
+    } catch (error: Exception) { Result.failure(error) }
+
+    suspend fun disableTwoFactor(
+        accessToken: String,
+        password: String,
+        code: String
+    ): Result<Unit> = try {
+        val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/2fa/disable") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(mapOf(
+                "password" to password,
+                "totpCode" to code.takeIf { it.matches(Regex("[0-9]{6}")) },
+                "backupCode" to code.takeUnless { it.matches(Regex("[0-9]{6}")) }
+            ))
+        }
+        if (response.status.isSuccess()) Result.success(Unit)
+        else Result.failure(toException(response, decodeError(response.bodyAsText())))
+    } catch (error: Exception) { Result.failure(error) }
 
     suspend fun loadChat(accessToken: String, chatId: String): Result<LocalFallbackChatResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        return requestJson<LocalFallbackChatResponse>("$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}", accessToken)
-            .map { it.normalized() }
+        return runReadWithDeadline(InteractiveReadDeadlines.ConversationHistoryMillis) {
+            requestJson<LocalFallbackChatResponse>(
+                "$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}",
+                accessToken,
+            ).getOrThrow().normalized()
+        }
     }
+
+    suspend fun loadChatMetadata(accessToken: String, chatId: String): Result<Chat> =
+        loadChat(accessToken, chatId).mapCatching { response ->
+            mapChat(response.chat ?: throw IllegalStateException("Chat no encontrado"))
+        }
 
     suspend fun markChatAsRead(accessToken: String, chatId: String): Result<Unit> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
@@ -1615,6 +1864,39 @@ class LocalFallbackApiClient @Inject constructor(
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    /** Distinct endpoint so older servers cannot silently turn a viewport receipt into read-all. */
+    suspend fun markVisibleMessagesAsRead(accessToken: String, chatId: String, messageIds: List<String>): Result<Set<String>> {
+        return markVisibleConversationMessagesAsRead(accessToken, "chat", chatId, messageIds)
+    }
+
+    suspend fun markVisibleConversationMessagesAsRead(accessToken: String, kind: String, roomId: String, messageIds: List<String>): Result<Set<String>> {
+        val collection = when (kind) { "chat" -> "chats"; "group" -> "groups"; "community" -> "communities"; else -> return Result.failure(IllegalArgumentException("Unknown conversation kind")) }
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        if (messageIds.isEmpty()) return Result.success(emptySet())
+        require(messageIds.size <= 200)
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/messages/$collection/${urlEncode(roomId)}/read-visible") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("messageIds", JsonArray(messageIds.map(::JsonPrimitive))) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val payload = kotlinx.serialization.json.Json.parseToJsonElement(body).jsonObject
+                val confirmed = payload["messageIds"]?.jsonArray
+                    ?: return Result.failure(Exception("El servidor no confirmó los mensajes leídos."))
+                Result.success(confirmed.mapNotNull { it.jsonPrimitive.contentOrNull }
+                    .map { it.trim().lowercase() }.filter { it in messageIds }.toSet())
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -1807,6 +2089,25 @@ class LocalFallbackApiClient @Inject constructor(
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    /** Revokes only the mobile session represented by this opaque refresh credential. */
+    suspend fun revokeSession(refreshToken: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val token = refreshToken.trim()
+        if (token.isBlank()) return Result.failure(Exception("No hay sesión que cerrar."))
+        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/logout") {
+                localHeaders()
+                contentType(ContentType.Application.Json)
+                setBody(mapOf("refreshToken" to token))
+            }
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(response.bodyAsText())))
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -2063,13 +2364,20 @@ class LocalFallbackApiClient @Inject constructor(
 
     suspend fun loadCurrentProfile(accessToken: String): Result<LocalFallbackProfileResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        return requestJson<LocalFallbackProfileResponse>("$baseUrl/v1/data/profile/me", accessToken)
+        return runReadWithDeadline(InteractiveReadDeadlines.ProfileMillis) {
+            requestJson<LocalFallbackProfileResponse>("$baseUrl/v1/data/profile/me", accessToken)
+                .getOrThrow()
+        }
     }
 
     suspend fun loadProfile(accessToken: String, profileId: String): Result<LocalFallbackProfileResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        return requestJson<LocalFallbackProfileResponse>("$baseUrl/v1/data/profiles/${urlEncode(profileId)}", accessToken)
-            .map { it.normalized() }
+        return runReadWithDeadline(InteractiveReadDeadlines.ProfileMillis) {
+            requestJson<LocalFallbackProfileResponse>(
+                "$baseUrl/v1/data/profiles/${urlEncode(profileId)}",
+                accessToken,
+            ).getOrThrow().normalized()
+        }
     }
 
     suspend fun getBlockRelationship(
@@ -2295,6 +2603,7 @@ class LocalFallbackApiClient @Inject constructor(
     suspend fun updateCurrentProfile(
         accessToken: String,
         displayName: String? = null,
+        username: String? = null,
         bio: String? = null,
         country: String? = null,
         city: String? = null,
@@ -2312,6 +2621,7 @@ class LocalFallbackApiClient @Inject constructor(
         availabilitySchedule: String? = null,
         profileSectionOrder: List<String>? = null,
         profileSectionVisibility: Map<String, String>? = null,
+        socialLinks: Map<String, String>? = null,
         avatarUrl: String? = null,
         avatarMediaType: String? = null,
         avatarVideoMuted: Boolean? = null,
@@ -2326,6 +2636,7 @@ class LocalFallbackApiClient @Inject constructor(
         favoritesPublic: Boolean? = null,
         breakMode: String? = null,
         profileVisibility: String? = null,
+        profileViewHistoryEnabled: Boolean? = null,
         lastSeenVisibility: String? = null,
         onlineStatusVisibility: String? = null
     ): Result<LocalFallbackProfileResponse> {
@@ -2337,6 +2648,7 @@ class LocalFallbackApiClient @Inject constructor(
                 setBody(
                     LocalFallbackUpdateProfileRequest(
                         displayName = displayName,
+                        username = username,
                         bio = bio,
                         country = country,
                         city = city,
@@ -2354,6 +2666,7 @@ class LocalFallbackApiClient @Inject constructor(
                         availabilitySchedule = availabilitySchedule,
                         profileSectionOrder = profileSectionOrder,
                         profileSectionVisibility = profileSectionVisibility,
+                        socialLinks = socialLinks,
                         avatarUrl = UbuntuStorageUrl.rewrite(avatarUrl),
                         avatarMediaType = avatarMediaType,
                         avatarVideoMuted = avatarVideoMuted,
@@ -2368,6 +2681,7 @@ class LocalFallbackApiClient @Inject constructor(
                         favoritesPublic = favoritesPublic,
                         breakMode = breakMode,
                         profileVisibility = profileVisibility,
+                        profileViewHistoryEnabled = profileViewHistoryEnabled,
                         lastSeenVisibility = lastSeenVisibility,
                         onlineStatusVisibility = onlineStatusVisibility
                     ).toSparseJson()
@@ -2404,8 +2718,33 @@ class LocalFallbackApiClient @Inject constructor(
         val durationType: String = "24h",
         val visibility: String = "all",
         val visibilityType: String = "public",
+        val excludedIds: List<String> = emptyList(),
+        val audienceIds: List<String> = emptyList(),
         val caption: String? = null,
-        val allowReplies: Boolean = true
+        val allowReplies: Boolean = true,
+        val overlayText: String? = null,
+        val overlayColor: String = "#FFFFFFFF",
+        val overlayFont: String = "sans",
+        val overlayScale: Float = 1f,
+        val overlayX: Float = 0.5f,
+        val overlayY: Float = 0.38f,
+        val musicUrl: String? = null,
+        val musicTitle: String? = null,
+        val musicId: String? = null,
+        val musicArtist: String? = null,
+        val musicSource: String? = null,
+        val musicSourceUrl: String? = null,
+        val musicLicense: String? = null,
+        val musicLicenseUrl: String? = null,
+        val musicStartMs: Long = 0L,
+        val musicDurationMs: Long = 6_000L,
+        val musicEndMs: Long? = null,
+        val musicVolume: Float = 1f,
+        val originalAudioVolume: Float = 1f,
+        val musicFadeInMs: Long = 0L,
+        val musicFadeOutMs: Long = 0L,
+        val duckOriginalAudio: Boolean = false,
+        val musicEmbedded: Boolean = false,
     )
 
     @Serializable
@@ -2428,8 +2767,33 @@ class LocalFallbackApiClient @Inject constructor(
         durationType: String,
         visibility: String,
         visibilityType: String,
+        excludedIds: List<String>,
+        audienceIds: List<String>,
         caption: String?,
-        allowReplies: Boolean
+        allowReplies: Boolean,
+        overlayText: String?,
+        overlayColor: String,
+        overlayFont: String,
+        overlayScale: Float,
+        overlayX: Float,
+        overlayY: Float,
+        musicUrl: String?,
+        musicTitle: String?,
+        musicId: String?,
+        musicArtist: String?,
+        musicSource: String?,
+        musicSourceUrl: String?,
+        musicLicense: String?,
+        musicLicenseUrl: String?,
+        musicStartMs: Long,
+        musicDurationMs: Long,
+        musicEndMs: Long?,
+        musicVolume: Float,
+        originalAudioVolume: Float,
+        musicFadeInMs: Long,
+        musicFadeOutMs: Long,
+        duckOriginalAudio: Boolean,
+        musicEmbedded: Boolean,
     ): Result<Moment> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -2446,8 +2810,33 @@ class LocalFallbackApiClient @Inject constructor(
                         durationType = durationType,
                         visibility = visibility,
                         visibilityType = visibilityType,
+                        excludedIds = excludedIds,
+                        audienceIds = audienceIds,
                         caption = caption,
-                        allowReplies = allowReplies
+                        allowReplies = allowReplies,
+                        overlayText = overlayText,
+                        overlayColor = overlayColor,
+                        overlayFont = overlayFont,
+                        overlayScale = overlayScale,
+                        overlayX = overlayX,
+                        overlayY = overlayY,
+                        musicUrl = UbuntuStorageUrl.rewrite(musicUrl),
+                        musicTitle = musicTitle,
+                        musicId = musicId,
+                        musicArtist = musicArtist,
+                        musicSource = musicSource,
+                        musicSourceUrl = musicSourceUrl,
+                        musicLicense = musicLicense,
+                        musicLicenseUrl = musicLicenseUrl,
+                        musicStartMs = musicStartMs,
+                        musicDurationMs = musicDurationMs,
+                        musicEndMs = musicEndMs,
+                        musicVolume = musicVolume,
+                        originalAudioVolume = originalAudioVolume,
+                        musicFadeInMs = musicFadeInMs,
+                        musicFadeOutMs = musicFadeOutMs,
+                        duckOriginalAudio = duckOriginalAudio,
+                        musicEmbedded = musicEmbedded,
                     )
                 )
             }
@@ -2481,7 +2870,9 @@ class LocalFallbackApiClient @Inject constructor(
                 append("&mode=${urlEncode(it)}")
             }
         }
-        return requestJson<LocalFallbackRawFeedResponse>(query, accessToken)
+        return runReadWithDeadline(InteractiveReadDeadlines.FirstPageMillis) {
+            requestJson<LocalFallbackRawFeedResponse>(query, accessToken).getOrThrow()
+        }
             .map { response -> LocalFallbackFeedResponse(response.items.map { mapPost(it) }) }
     }
 
@@ -2523,7 +2914,8 @@ class LocalFallbackApiClient @Inject constructor(
         mediaType: String?,
         visibility: String,
         remixAllowed: Boolean = false,
-        remixAudience: String = "public"
+        remixAudience: String = "public",
+        isSensitive: Boolean = false
     ): Result<Post> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -2538,6 +2930,7 @@ class LocalFallbackApiClient @Inject constructor(
                         mediaUrls = normalizedMediaUrls,
                         mediaType = mediaType,
                         visibility = visibility,
+                        isSensitive = isSensitive,
                         remixAllowed = remixAllowed,
                         remixAudience = remixAudience
                     )
@@ -3110,6 +3503,23 @@ class LocalFallbackApiClient @Inject constructor(
         ).map { it.items }
     }
 
+    suspend fun loadMomentNotificationPreferences(accessToken: String): Result<MomentNotificationPreferences> =
+        requestJson("$baseUrl/v1/data/moments/notification-preferences", accessToken)
+
+    suspend fun updateMomentNotificationPreferences(
+        accessToken: String,
+        enabled: Boolean
+    ): Result<MomentNotificationPreferences> = try {
+        val response = supabaseConfig.httpClient.put("$baseUrl/v1/data/moments/notification-preferences") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("enabled" to enabled))
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) Result.success(json.decodeFromString(body))
+        else Result.failure(toException(response, decodeError(body)))
+    } catch (error: Exception) { Result.failure(error) }
+
     suspend fun loadLiveCollaborationCapabilities(
         accessToken: String
     ): Result<LiveCollaborationCapabilities> {
@@ -3338,7 +3748,8 @@ class LocalFallbackApiClient @Inject constructor(
     suspend fun startLiveBattle(
         accessToken: String,
         liveId: String,
-        opponentUserId: String
+        opponentUserId: String,
+        opponentLiveId: String? = null,
     ): Result<LiveBattle> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -3347,7 +3758,10 @@ class LocalFallbackApiClient @Inject constructor(
             ) {
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
-                setBody(buildJsonObject { put("opponentUserId", opponentUserId.trim()) })
+                setBody(buildJsonObject {
+                    put("opponentUserId", opponentUserId.trim())
+                    opponentLiveId?.trim()?.takeIf(String::isNotBlank)?.let { put("opponentLiveId", it) }
+                })
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
@@ -3357,6 +3771,43 @@ class LocalFallbackApiClient @Inject constructor(
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun loadLiveBattleCandidates(
+        accessToken: String,
+        liveId: String,
+    ): Result<List<LiveBattleCandidate>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return requestJson<LocalFallbackLiveBattleCandidatesResponse>(
+            "$baseUrl/v1/data/live/${urlEncode(liveId)}/battles/candidates",
+            accessToken,
+        ).map { it.items }
+    }
+
+    suspend fun respondToLiveBattle(
+        accessToken: String,
+        liveId: String,
+        battleId: String,
+        accepted: Boolean,
+    ): Result<LiveBattle> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post(
+                "$baseUrl/v1/data/live/${urlEncode(liveId)}/battles/${urlEncode(battleId)}/respond",
+            ) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("accepted", accepted) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val battle = json.decodeFromString<LocalFallbackLiveBattleResponse>(body).battle
+                    ?: return Result.failure(Exception("El servidor no devolvió la batalla."))
+                Result.success(battle)
+            } else Result.failure(toException(response, decodeError(body)))
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -3383,6 +3834,10 @@ class LocalFallbackApiClient @Inject constructor(
             accessToken
         ).map { it.items }
     }
+
+    suspend fun loadLiveGiftEvents(accessToken: String, liveId: String): Result<List<conectate.com.data.model.LiveGiftEvent>> =
+        requestJson<LiveGiftEventsResponse>("$baseUrl/v1/data/live/${urlEncode(liveId)}/gifts", accessToken)
+            .map { it.items }
 
     suspend fun loadCurrentLiveDrawGuess(
         accessToken: String,
@@ -3590,7 +4045,13 @@ class LocalFallbackApiClient @Inject constructor(
         id: String,
         title: String,
         source: String,
-        hashtags: List<String>
+        hashtags: List<String>,
+        coverUrl: String? = null,
+        gameName: String? = null,
+        category: String? = null,
+        visibility: String = "public",
+        giftsEnabled: Boolean = true,
+        battlesEnabled: Boolean = true
     ): Result<LiveStream> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -3602,7 +4063,13 @@ class LocalFallbackApiClient @Inject constructor(
                         id = id,
                         title = title,
                         source = source,
-                        hashtags = hashtags
+                        hashtags = hashtags,
+                        coverUrl = coverUrl,
+                        gameName = gameName,
+                        category = category,
+                        visibility = visibility,
+                        giftsEnabled = giftsEnabled,
+                        battlesEnabled = battlesEnabled
                     )
                 )
             }
@@ -3711,7 +4178,10 @@ class LocalFallbackApiClient @Inject constructor(
         query: String? = null,
         sharedBy: String? = null,
         favoritedBy: String? = null,
-        recommended: Boolean = false
+        soundId: String? = null,
+        recommended: Boolean = false,
+        feedSessionId: String? = null,
+        followingOnly: Boolean = false,
     ): Result<List<Video>> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         val url = buildString {
@@ -3720,9 +4190,16 @@ class LocalFallbackApiClient @Inject constructor(
             query?.trim()?.takeIf { it.isNotBlank() }?.let { append("&q=${urlEncode(it)}") }
             sharedBy?.trim()?.takeIf { it.isNotBlank() }?.let { append("&sharedBy=${urlEncode(it)}") }
             favoritedBy?.trim()?.takeIf { it.isNotBlank() }?.let { append("&favoritedBy=${urlEncode(it)}") }
+            soundId?.trim()?.takeIf { it.isNotBlank() }?.let { append("&soundId=${urlEncode(it)}") }
             if (recommended) append("&recommended=true")
+            if (followingOnly) append("&followingOnly=true")
+            feedSessionId?.trim()?.takeIf { it.isNotBlank() }?.let {
+                append("&feedSessionId=${urlEncode(it.take(80))}")
+            }
         }
-        return requestJson<LocalFallbackRawVideosResponse>(url, accessToken)
+        return runReadWithDeadline(InteractiveReadDeadlines.FirstPageMillis) {
+            requestJson<LocalFallbackRawVideosResponse>(url, accessToken).getOrThrow()
+        }
             .map { response -> response.items.map { mapVideo(it) } }
     }
 
@@ -3744,7 +4221,13 @@ class LocalFallbackApiClient @Inject constructor(
         thumbnailUrl: String?,
         durationSeconds: Long,
         isPublic: Boolean,
-        tags: List<String>
+        isSensitive: Boolean = false,
+        tags: List<String>,
+        soundId: String? = null,
+        soundSourceVideoId: String? = null,
+        clientPublishId: String? = null,
+        chapters: List<conectate.com.data.model.VideoChapter> = emptyList(),
+        allowClipSharing: Boolean = true,
     ): Result<Video> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -3762,7 +4245,13 @@ class LocalFallbackApiClient @Inject constructor(
                         coverUrl = normalizedThumbUrl,
                         durationSeconds = durationSeconds,
                         isPublic = isPublic,
-                        tags = tags
+                        isSensitive = isSensitive,
+                        tags = tags,
+                        soundId = soundId,
+                        soundSourceVideoId = soundSourceVideoId,
+                        clientPublishId = clientPublishId,
+                        chapters = chapters,
+                        allowClipSharing = allowClipSharing,
                     )
                 )
             }
@@ -3807,6 +4296,63 @@ class LocalFallbackApiClient @Inject constructor(
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/moments/${urlEncode(momentId)}/view") {
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun updateVideo(accessToken: String, videoId: String, title: String,
+                            description: String, isPublic: Boolean,
+                            allowClipSharing: Boolean): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/videos/${urlEncode(videoId)}") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackUpdateVideoRequest(title, description, isPublic, allowClipSharing))
+            }
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(response.bodyAsText())))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun getVideoByPublishId(accessToken: String, attemptId: String): Result<Video?> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get(
+                "$baseUrl/v1/data/videos/publish-attempt/${urlEncode(attemptId)}") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.value == 404) Result.success(null)
+            else if (response.status.isSuccess()) {
+                val video = json.decodeFromString<LocalFallbackRawVideoResponse>(body).video
+                    ?: return Result.failure(Exception("El servidor no devolvió el video publicado."))
+                Result.success(mapVideo(video))
+            } else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun setMomentReaction(accessToken: String, momentId: String, liked: Boolean): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = if (liked) {
+                supabaseConfig.httpClient.post("$baseUrl/v1/data/moments/${urlEncode(momentId)}/reaction") {
+                    localHeaders(accessToken)
+                    contentType(ContentType.Application.Json)
+                }
+            } else {
+                supabaseConfig.httpClient.delete("$baseUrl/v1/data/moments/${urlEncode(momentId)}/reaction") {
+                    localHeaders(accessToken)
+                }
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) Result.success(Unit)
@@ -3968,6 +4514,219 @@ class LocalFallbackApiClient @Inject constructor(
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
             val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/videos/${urlEncode(videoId)}/share") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackRawVideoShareResponse>(body).normalized(defaultSharedByMe = false))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun getVideoWatchLater(accessToken: String, cursor: String = "", sort: String = "newest"): Result<VideoWatchLaterPage> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val suffix = "?sort=${urlEncode(sort)}" +
+                cursor.takeIf(String::isNotBlank)?.let { "&cursor=${urlEncode(it)}" }.orEmpty()
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/videos/watch-later/list$suffix") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(json.decodeFromString<VideoWatchLaterPage>(body))
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun setVideoWatchLater(accessToken: String, videoId: String, saved: Boolean): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val url = "$baseUrl/v1/data/videos/watch-later/${urlEncode(videoId)}"
+            val response = if (saved) supabaseConfig.httpClient.put(url) { localHeaders(accessToken) }
+            else supabaseConfig.httpClient.delete(url) { localHeaders(accessToken) }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun getVideoHistory(accessToken: String, cursor: String = ""): Result<VideoHistoryPage> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val suffix = cursor.takeIf(String::isNotBlank)?.let { "?cursor=${urlEncode(it)}" }.orEmpty()
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/videos/history/list$suffix") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(json.decodeFromString<VideoHistoryPage>(body))
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun recordVideoHistory(accessToken: String, videoId: String,
+                                   positionMs: Long, durationMs: Long): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.put("$baseUrl/v1/data/videos/history/${urlEncode(videoId)}") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(VideoHistoryProgress(positionMs, durationMs))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun deleteVideoHistory(accessToken: String, videoId: String? = null): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val suffix = videoId?.let { "/${urlEncode(it)}" }.orEmpty()
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/videos/history$suffix") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun getVideoCollections(accessToken: String): Result<VideoCollectionCatalog> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/videos/collections") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(json.decodeFromString<VideoCollectionCatalog>(body))
+            // Older servers interpret /videos/collections as /videos/:videoId.
+            // A VIDEO_NOT_FOUND on this catalog route cannot refer to a selected video.
+            else {
+                val error = decodeError(body)
+                if (response.status.value == 404 && error.error in setOf("NOT_FOUND", "VIDEO_NOT_FOUND")) {
+                    Result.failure(BackendRouteUnavailableException())
+                } else {
+                    Result.failure(toException(response, error))
+                }
+            }
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun saveVideoCollection(accessToken: String, name: String,
+                                    collectionId: String? = null): Result<VideoCollection> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val url = "$baseUrl/v1/data/videos/collections" +
+                collectionId?.let { "/${urlEncode(it)}" }.orEmpty()
+            val response = if (collectionId == null) supabaseConfig.httpClient.post(url) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(VideoCollectionNameRequest(name))
+            } else supabaseConfig.httpClient.patch(url) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(VideoCollectionNameRequest(name))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(json.decodeFromString<VideoCollection>(body))
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun deleteVideoCollection(accessToken: String, collectionId: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete(
+                "$baseUrl/v1/data/videos/collections/${urlEncode(collectionId)}") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun getVideoCollectionItems(accessToken: String, collectionId: String,
+                                        search: String = "", offset: Int = 0): Result<VideoCollectionPage> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val suffix = "?offset=$offset" + (search.takeIf(String::isNotBlank)
+                ?.let { "&search=${urlEncode(it)}" }.orEmpty())
+            val response = supabaseConfig.httpClient.get(
+                "$baseUrl/v1/data/videos/collections/${urlEncode(collectionId)}/items$suffix") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(json.decodeFromString<VideoCollectionPage>(body))
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun setVideoCollectionItem(accessToken: String, collectionId: String,
+                                       videoId: String, add: Boolean): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val url = "$baseUrl/v1/data/videos/collections/${urlEncode(collectionId)}/items/${urlEncode(videoId)}"
+            val response = if (add) supabaseConfig.httpClient.put(url) { localHeaders(accessToken) }
+            else supabaseConfig.httpClient.delete(url) { localHeaders(accessToken) }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun moveVideoCollectionItem(accessToken: String, collectionId: String,
+                                        videoId: String, direction: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch(
+                "$baseUrl/v1/data/videos/collections/${urlEncode(collectionId)}/items/${urlEncode(videoId)}/move") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(VideoCollectionMoveRequest(direction))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit)
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun sharePost(accessToken: String, postId: String): Result<LocalFallbackVideoShareResult> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/share") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackRawVideoShareResponse>(body).normalized(defaultSharedByMe = true))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun unsharePost(accessToken: String, postId: String): Result<LocalFallbackVideoShareResult> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/share") {
                 localHeaders(accessToken)
             }
             val body = response.bodyAsText()
@@ -4516,6 +5275,69 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun getMessageMarkers(accessToken: String, kind: String, roomId: String): Result<MessageMarkersResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get(
+                "$baseUrl/v1/data/messages/markers/${urlEncode(kind)}/${urlEncode(roomId)}"
+            ) { localHeaders(accessToken) }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(json.decodeFromString<MessageMarkersResponse>(body))
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun getGlobalSavedMessages(
+        accessToken: String,
+        kind: String = "",
+        roomId: String = "",
+        type: String = "",
+        from: String = "",
+        to: String = "",
+        cursor: String = "",
+        search: String = "",
+    ): Result<GlobalSavedMessagesResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val filters = listOf("kind" to kind, "roomId" to roomId, "type" to type,
+                "from" to from, "to" to to, "cursor" to cursor, "search" to search)
+                .filter { it.second.isNotBlank() }
+                .joinToString("&") { (key, value) -> "$key=${urlEncode(value)}" }
+            val url = "$baseUrl/v1/data/messages/saved" + if (filters.isEmpty()) "" else "?$filters"
+            val response = supabaseConfig.httpClient.get(url) { localHeaders(accessToken) }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(json.decodeFromString<GlobalSavedMessagesResponse>(body))
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun updateMessageMarker(
+        accessToken: String,
+        kind: String,
+        roomId: String,
+        messageId: String,
+        marker: String,
+        enabled: Boolean,
+        label: String = "",
+    ): Result<MessageMarkersResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        if (marker !in setOf("pin", "saved")) return Result.failure(IllegalArgumentException("Marcador no válido."))
+        return try {
+            val url = "$baseUrl/v1/data/messages/markers/${urlEncode(kind)}/${urlEncode(roomId)}/${urlEncode(messageId)}/$marker"
+            val response = if (enabled) supabaseConfig.httpClient.put(url) {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(mapOf("label" to label))
+            } else supabaseConfig.httpClient.delete(url) { localHeaders(accessToken) }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(json.decodeFromString<MessageMarkersResponse>(body))
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
     suspend fun deleteChatMessage(
         accessToken: String,
         chatId: String,
@@ -4535,8 +5357,11 @@ class LocalFallbackApiClient @Inject constructor(
             if (response.status.isSuccess()) {
                 Result.success(json.decodeFromString<LocalFallbackMessageResponse>(body).message)
             } else {
-                Result.failure(toException(response, decodeError(body)))
+                val error = decodeError(body)
+                Result.failure(ChatMessageDeleteException(response.status.value, error.error.orEmpty()))
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -4936,7 +5761,8 @@ class LocalFallbackApiClient @Inject constructor(
         isPublic: Boolean,
         maxParticipants: Int,
         agoraChannelName: String?,
-        roomMode: String
+        roomMode: String,
+        password: String?
     ): Result<VoiceRoom> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -4951,7 +5777,8 @@ class LocalFallbackApiClient @Inject constructor(
                         isPublic = isPublic,
                         maxParticipants = maxParticipants,
                         agoraChannelName = agoraChannelName,
-                        roomMode = roomMode
+                        roomMode = roomMode,
+                        password = password
                     )
                 )
             }
@@ -4993,14 +5820,23 @@ class LocalFallbackApiClient @Inject constructor(
         userName: String?,
         userAvatarUrl: String?,
         socketId: String?,
-        isMuted: Boolean
+        isMuted: Boolean,
+        password: String? = null
     ): Result<List<VoiceParticipant>> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/voice/rooms/${urlEncode(roomId)}/join") {
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
-                setBody(LocalFallbackVoiceJoinRequest(userName, UbuntuStorageUrl.rewrite(userAvatarUrl), socketId, isMuted))
+                setBody(
+                    LocalFallbackVoiceJoinRequest(
+                        userName = userName,
+                        userAvatarUrl = UbuntuStorageUrl.rewrite(userAvatarUrl),
+                        socketId = socketId,
+                        isMuted = isMuted,
+                        password = password
+                    )
+                )
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
@@ -5314,6 +6150,9 @@ class LocalFallbackApiClient @Inject constructor(
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
+                if (json.parseToJsonElement(body).jsonObject["requiresTwoFactor"]?.jsonPrimitive?.content == "true") {
+                    return Result.failure(LocalFallbackPasswordChangedNeedsTwoFactorException())
+                }
                 Result.success(json.decodeFromString<LocalFallbackAuthResponse>(body).normalized())
             } else {
                 Result.failure(toException(response, decodeError(body)))
@@ -5325,17 +6164,26 @@ class LocalFallbackApiClient @Inject constructor(
 
     private suspend inline fun <reified T> requestJson(url: String, accessToken: String): Result<T> {
         return try {
-            requestJsonOnce<T>(url, accessToken).fold(
+            // The URL is assembled by callers before the suspending read. A
+            // rotating Quick Tunnel can change during that small window, so
+            // validate discovery first and rebuild the same path/query on the
+            // current trusted origin before spending the read deadline.
+            val initialUrl = rebaseToCurrentEndpoint(url)
+            requestJsonOnce<T>(initialUrl, accessToken).fold(
                 onSuccess = { Result.success(it) },
                 onFailure = { firstError ->
-                    val retryUrl = refreshedRetryUrl(url)
-                    if (retryUrl != null && retryUrl != url) {
+                    val retryUrl = refreshedRetryUrl(initialUrl)
+                    if (retryUrl != null && retryUrl != initialUrl) {
                         requestJsonOnce<T>(retryUrl, accessToken)
                     } else {
                         Result.failure(firstError)
                     }
                 }
             )
+        } catch (cancelled: CancellationException) {
+            // A tab/account change cancels obsolete reads. Retrying after that
+            // cancellation races the new request and can resurrect stale UI.
+            throw cancelled
         } catch (error: Exception) {
             val retryUrl = refreshedRetryUrl(url)
             if (retryUrl != null && retryUrl != url) {
@@ -5352,6 +6200,7 @@ class LocalFallbackApiClient @Inject constructor(
         }
         val body = response.bodyAsText()
         return if (response.status.isSuccess()) {
+            RuntimeBackendEndpoint.noteSuccessfulRead(url)
             Result.success(json.decodeFromString(body))
         } else {
             val error = toException(response, decodeError(body))
@@ -5402,6 +6251,15 @@ class LocalFallbackApiClient @Inject constructor(
     private fun toException(response: HttpResponse, error: LocalFallbackErrorResponse): Exception {
         val code = (error.error ?: error.message).orEmpty().trim()
         return when (code) {
+            "NOT_FOUND" -> BackendRouteUnavailableException()
+            "VIDEO_NOT_FOUND", "VIDEOS_NOT_FOUND" ->
+                Exception("Este video ya no está disponible o no tienes acceso.")
+            "INVALID_RECOVERY_CODE" ->
+                Exception("El código de recuperación no coincide o ya fue utilizado.")
+            "RECOVERY_CODE_AND_PASSWORD_REQUIRED" ->
+                Exception("Escribe un código de recuperación válido y una contraseña de al menos 8 caracteres.")
+            "TWO_FACTOR_REQUIRED", "TWO_FACTOR_INVALID", "TWO_FACTOR_LOCKED" ->
+                LocalFallbackTwoFactorRequiredException(code)
             "ACCOUNT_SUSPENDED" -> AccountSuspendedException(
                 suspensionEndDate = error.suspendedUntil ?: error.until,
                 reason = error.suspensionReason ?: error.reason,
@@ -5615,6 +6473,7 @@ class LocalFallbackApiClient @Inject constructor(
             availability_schedule = textOf(row, "availability_schedule", "availabilitySchedule").ifBlank { null },
             profile_section_order = stringListOf(row, "profile_section_order", "profileSectionOrder"),
             profile_section_visibility = stringMapOf(row, "profile_section_visibility", "profileSectionVisibility"),
+            social_links = stringMapOf(row, "social_links", "socialLinks"),
             followers_count = intOf(row, "followers_count", "followers"),
             following_count = intOf(row, "following_count", "following"),
             post_count = intOf(row, "post_count", "posts"),
@@ -5624,6 +6483,12 @@ class LocalFallbackApiClient @Inject constructor(
             favorites_public = boolOf(row, "favorites_public", "favoritesPublic"),
             break_mode = textOf(row, "break_mode", "breakMode").ifBlank { "off" },
             profile_visibility = textOf(row, "profile_visibility", "profileVisibility").ifBlank { "everyone" },
+            profile_view_history_enabled = boolOf(
+                row,
+                "profile_view_history_enabled",
+                "profileViewHistoryEnabled",
+                fallback = true
+            ),
             last_seen_visibility = textOf(row, "last_seen_visibility", "lastSeenVisibility").ifBlank { "everyone" },
             online_status_visibility = textOf(row, "online_status_visibility", "onlineStatusVisibility").ifBlank { "everyone" },
             is_admin = boolOf(row, "is_admin", "isAdmin"),
@@ -5880,7 +6745,7 @@ class LocalFallbackApiClient @Inject constructor(
             remixSourceUserId = textOf(row, "remix_source_user_id", "remixSourceUserId").ifBlank { null },
             remixSourceUserName = textOf(row, "remix_source_user_name", "remixSourceUserName").ifBlank { null },
             remixDepth = intOf(row, "remix_depth", "remixDepth")
-        )
+        ).also { it.isSensitive = boolOf(row, "is_sensitive", "isSensitive") }
     }
 
     private fun mapComment(row: JsonObject, fallbackPostId: String): Comment {
@@ -5956,8 +6821,20 @@ class LocalFallbackApiClient @Inject constructor(
             sharedByMe = boolOf(row, "shared_by_me", "sharedByMe"),
             favoriteCount = intOf(row, "favorite_count", "favoriteCount"),
             favoritedByMe = boolOf(row, "favorited_by_me", "favoritedByMe"),
-            isVerified = boolOf(row, "is_verified", "isVerified", "verified")
-        )
+            isVerified = boolOf(row, "is_verified", "isVerified", "verified"),
+            soundId = textOf(row, "sound_id", "soundId").ifBlank { null },
+            soundSourceVideoId = textOf(row, "sound_source_video_id", "soundSourceVideoId").ifBlank { null },
+            soundTitle = textOf(row, "sound_title", "soundTitle").ifBlank { null },
+            soundArtist = textOf(row, "sound_artist", "soundArtist").ifBlank { null },
+            soundUrl = UbuntuStorageUrl.rewrite(textOf(row, "sound_url", "soundUrl")),
+            chapters = runCatching {
+                json.decodeFromJsonElement<List<conectate.com.data.model.VideoChapter>>(
+                    row["chapters"] ?: JsonArray(emptyList())
+                )
+            }.getOrDefault(emptyList()),
+            allowClipSharing = boolOf(row, "allow_clip_sharing", "allowClipSharing", fallback = true),
+            ownedByMe = boolOf(row, "owned_by_me", "ownedByMe")
+        ).also { it.isSensitive = boolOf(row, "is_sensitive", "isSensitive") }
 
     private fun mapMoment(row: JsonObject): Moment =
         Moment(
@@ -5976,16 +6853,46 @@ class LocalFallbackApiClient @Inject constructor(
                 is JsonArray -> excluded.mapNotNull { it.jsonPrimitive.contentOrNull }
                 else -> emptyList()
             },
+            audienceIds = when (val audience = row["audience_ids"] ?: row["audienceIds"]) {
+                is JsonArray -> audience.mapNotNull { it.jsonPrimitive.contentOrNull }
+                else -> emptyList()
+            },
             createdAt = textOf(row, "created_at", "createdAt").ifBlank { null },
             expiresAt = textOf(row, "expires_at", "expiresAt").ifBlank { null },
             caption = textOf(row, "caption").ifBlank { null },
             allowReplies = boolOf(row, "allow_replies", "allowReplies", fallback = true),
+            overlayText = textOf(row, "overlay_text", "overlayText").ifBlank { null },
+            overlayColor = textOf(row, "overlay_color", "overlayColor").ifBlank { "#FFFFFFFF" },
+            overlayFont = textOf(row, "overlay_font", "overlayFont").ifBlank { "sans" },
+            overlayScale = textOf(row, "overlay_scale", "overlayScale").toFloatOrNull() ?: 1f,
+            overlayX = textOf(row, "overlay_x", "overlayX").toFloatOrNull() ?: 0.5f,
+            overlayY = textOf(row, "overlay_y", "overlayY").toFloatOrNull() ?: 0.38f,
+            musicUrl = UbuntuStorageUrl.rewrite(textOf(row, "music_url", "musicUrl").ifBlank { null }),
+            musicAudioUrl = UbuntuStorageUrl.rewrite(textOf(row, "music_audio_url", "musicAudioUrl").ifBlank { null }),
+            musicId = textOf(row, "music_id", "musicId").ifBlank { null },
+            musicTitle = textOf(row, "music_title", "musicTitle").ifBlank { null },
+            musicArtist = textOf(row, "music_artist", "musicArtist").ifBlank { null },
+            musicSource = textOf(row, "music_source", "musicSource").ifBlank { null },
+            musicSourceUrl = textOf(row, "music_source_url", "musicSourceUrl").ifBlank { null },
+            musicLicense = textOf(row, "music_license", "musicLicense").ifBlank { null },
+            musicLicenseUrl = textOf(row, "music_license_url", "musicLicenseUrl").ifBlank { null },
+            musicStartMs = longOf(row, "music_start_ms", "musicStartMs"),
+            musicDurationMs = longOf(row, "music_duration_ms", "musicDurationMs").takeIf { it > 0L } ?: 6_000L,
+            musicEndMs = longOf(row, "music_end_ms", "musicEndMs").takeIf { it > 0L },
+            musicVolume = textOf(row, "music_volume", "musicVolume").toFloatOrNull() ?: 1f,
+            originalAudioVolume = textOf(row, "original_audio_volume", "originalAudioVolume").toFloatOrNull() ?: 1f,
+            musicFadeInMs = longOf(row, "music_fade_in_ms", "musicFadeInMs").coerceIn(0L, 5_000L),
+            musicFadeOutMs = longOf(row, "music_fade_out_ms", "musicFadeOutMs").coerceIn(0L, 5_000L),
+            duckOriginalAudio = boolOf(row, "duck_original_audio", "duckOriginalAudio"),
+            musicEmbedded = boolOf(row, "music_embedded", "musicEmbedded"),
             username = textOf(row, "owner_name", "username", "user_name").ifBlank { null },
             userDisplayName = textOf(row, "owner_name", "display_name", "userDisplayName").ifBlank { null },
             userAvatarUrl = UbuntuStorageUrl.rewrite(textOf(row, "owner_avatar_url", "avatar_url", "user_avatar_url")),
             isVerified = boolOf(row, "is_verified", "isVerified", "verified"),
             viewCount = intOf(row, "views_count", "viewCount"),
-            isViewed = boolOf(row, "viewed_by_me", "isViewed")
+            isViewed = boolOf(row, "viewed_by_me", "isViewed"),
+            reactionCount = intOf(row, "reaction_count", "reactionCount"),
+            isLikedByMe = boolOf(row, "reacted_by_me", "isLikedByMe")
         )
 
     private fun mapMomentView(row: JsonObject, fallbackMomentId: String): MomentView =
@@ -6080,6 +6987,7 @@ class LocalFallbackApiClient @Inject constructor(
                 participantCount = intOf(row, "current_participants", "participant_count", "active_participants"),
                 maxParticipants = intOf(row, "max_participants", "capacity", fallback = 50),
                 isPublic = boolOf(row, "is_public", "public", fallback = true),
+                passwordRequired = boolOf(row, "password_required", "passwordRequired"),
                 isActive = boolOf(row, "is_active", "active", fallback = true),
                 readableId = textOf(row, "readable_id").ifBlank { null },
                 roomMode = textOf(row, "room_mode", "roomMode").ifBlank { "casual" },
@@ -6197,6 +7105,168 @@ class LocalFallbackApiClient @Inject constructor(
             put("lookingFor", lookingFor)
         }
     )
+
+    suspend fun refreshAnonymousBottleAvailability(
+        accessToken: String,
+        gender: String,
+        lookingFor: String,
+    ): Result<AnonymousBottleResult> = anonymousBottleRequest(
+        accessToken = accessToken,
+        path = "/v1/data/proximity/random/availability",
+        method = "POST",
+        body = buildJsonObject {
+            put("gender", gender)
+            put("lookingFor", lookingFor)
+        },
+    )
+
+    suspend fun sendAnonymousBottle(
+        accessToken: String,
+        content: String,
+        gender: String,
+        lookingFor: String,
+    ): Result<AnonymousBottleResult> = anonymousBottleRequest(
+        accessToken = accessToken,
+        path = "/v1/data/proximity/random/bottles",
+        method = "POST",
+        body = buildJsonObject {
+            put("content", content)
+            put("gender", gender)
+            put("lookingFor", lookingFor)
+        },
+    )
+
+    suspend fun loadOutgoingAnonymousBottle(accessToken: String): Result<AnonymousBottleResult> =
+        anonymousBottleRequest(
+            accessToken = accessToken,
+            path = "/v1/data/proximity/random/bottles/outgoing",
+            method = "GET",
+        )
+
+    suspend fun loadIncomingAnonymousBottle(accessToken: String): Result<AnonymousBottleResult> =
+        anonymousBottleRequest(
+            accessToken = accessToken,
+            path = "/v1/data/proximity/random/bottles/incoming",
+            method = "GET",
+        )
+
+    suspend fun disableAnonymousBottleAvailability(accessToken: String): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/proximity/random/availability") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(true)
+            else Result.failure(Exception(apiErrorCode(body, "No se pudo cerrar la recepción de botellas.")))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    private suspend fun rebaseToCurrentEndpoint(url: String): String {
+        val currentBase = RuntimeBackendEndpoint.ensureFreshEndpoint()
+            ?.trimEnd('/')
+            ?.takeIf(String::isNotBlank)
+            ?: return url
+        return runCatching {
+            val parsed = URI(url.trim())
+            if (parsed.host.isNullOrBlank()) return@runCatching url
+            val path = parsed.rawPath.orEmpty().ifBlank { "/" }
+            val query = parsed.rawQuery?.let { "?$it" }.orEmpty()
+            val fragment = parsed.rawFragment?.let { "#$it" }.orEmpty()
+            "$currentBase$path$query$fragment"
+        }.getOrDefault(url)
+    }
+
+    suspend fun deleteOwnAccount(accessToken: String): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/rest/v1/rpc/delete_own_account") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {})
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(Unit)
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun respondToAnonymousBottle(
+        accessToken: String,
+        bottleId: String,
+        accept: Boolean,
+    ): Result<AnonymousBottleResult> = anonymousBottleRequest(
+        accessToken = accessToken,
+        path = "/v1/data/proximity/random/bottles/$bottleId/respond",
+        method = "POST",
+        body = buildJsonObject { put("action", if (accept) "accept" else "decline") },
+    )
+
+    suspend fun cancelAnonymousBottle(accessToken: String, bottleId: String): Result<Boolean> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.delete("$baseUrl/v1/data/proximity/random/bottles/$bottleId") {
+                localHeaders(accessToken)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(true)
+            else Result.failure(Exception(apiErrorCode(body, "No se pudo cancelar la botella.")))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    private suspend fun anonymousBottleRequest(
+        accessToken: String,
+        path: String,
+        method: String,
+        body: JsonObject? = null,
+    ): Result<AnonymousBottleResult> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = when (method) {
+                "POST" -> supabaseConfig.httpClient.post("$baseUrl$path") {
+                    localHeaders(accessToken)
+                    contentType(ContentType.Application.Json)
+                    body?.let { setBody(it) }
+                }
+                else -> supabaseConfig.httpClient.get("$baseUrl$path") { localHeaders(accessToken) }
+            }
+            val responseBody = response.bodyAsText()
+            if (!response.status.isSuccess()) {
+                return Result.failure(Exception(apiErrorCode(responseBody, "No se pudo actualizar la botella anónima.")))
+            }
+            val root = json.parseToJsonElement(responseBody).jsonObject
+            Result.success(
+                AnonymousBottleResult(
+                    status = textOf(root, "status").ifBlank { "idle" },
+                    bottle = root["bottle"]
+                        ?.takeUnless { it is JsonNull }
+                        ?.jsonObject
+                        ?.let(::mapAnonymousBottle),
+                    session = root["session"]
+                        ?.takeUnless { it is JsonNull }
+                        ?.jsonObject
+                        ?.let(::mapAnonymousSession),
+                ),
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    private fun apiErrorCode(body: String, fallback: String): String = runCatching {
+        json.parseToJsonElement(body).jsonObject["error"]?.jsonPrimitive?.contentOrNull
+    }.getOrNull()?.takeIf(String::isNotBlank) ?: fallback
 
     suspend fun loadAnonymousMatchStatus(accessToken: String): Result<AnonymousMatchResult> =
         anonymousMatchRequest(
@@ -6383,6 +7453,18 @@ class LocalFallbackApiClient @Inject constructor(
         )
     }
 
+    private fun mapAnonymousBottle(row: JsonObject): AnonymousBottle = AnonymousBottle(
+        id = textOf(row, "id"),
+        content = textOf(row, "content"),
+        status = textOf(row, "status").ifBlank { "searching" },
+        perspective = textOf(row, "perspective").ifBlank { "sender" },
+        attemptCount = intOf(row, "attempt_count"),
+        offeredAt = textOf(row, "offered_at").ifBlank { null },
+        expiresAt = textOf(row, "expires_at").ifBlank { null },
+        createdAt = textOf(row, "created_at"),
+        updatedAt = textOf(row, "updated_at"),
+    )
+
     private fun mapAnonymousMessage(row: JsonObject): AnonymousChatMessage = AnonymousChatMessage(
         id = textOf(row, "id"),
         clientMessageId = textOf(row, "client_message_id"),
@@ -6442,11 +7524,11 @@ class LocalFallbackApiClient @Inject constructor(
         )
     }
 
-    suspend fun loadSystemHealth(): Result<SystemHealthResponse> {
+    suspend fun loadSystemHealth(accessToken: String): Result<SystemHealthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return runCatching {
             val response = supabaseConfig.httpClient.get("$baseUrl/v1/system/health") {
-                localHeaders()
+                localHeaders(accessToken)
             }
             val body = response.bodyAsText()
             if (!response.status.isSuccess()) {
@@ -6596,7 +7678,12 @@ class LocalFallbackApiClient @Inject constructor(
                         accessLevel = textOf(body, "accessLevel", "access_level").ifBlank { "none" },
                         isOwner = boolOf(body, "isOwner", "is_owner"),
                         canWrite = boolOf(body, "canWrite", "can_write"),
-                        canDeleteUsers = boolOf(body, "canDeleteUsers", "can_delete_users")
+                        canDeleteUsers = boolOf(body, "canDeleteUsers", "can_delete_users"),
+                        capabilities = body["capabilities"]
+                            ?.jsonArray
+                            ?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotBlank) }
+                            ?.toSet()
+                            .orEmpty()
                     )
                 )
             } else {
@@ -6949,8 +8036,34 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
-    suspend fun exploreCommunities(accessToken: String, query: String): Result<List<conectate.com.data.model.Community>> {
-        return Result.failure(Exception("Not implemented yet"))
+    suspend fun exploreCommunities(accessToken: String, query: String): Result<List<Community>> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/messages/communities/explore") {
+                localHeaders(accessToken)
+                query.trim()
+                    .take(80)
+                    .takeIf(String::isNotBlank)
+                    ?.let { parameter("q", it) }
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) {
+                return Result.failure(toException(response, decodeError(body)))
+            }
+
+            val payload = json.parseToJsonElement(body)
+            val items = payload as? JsonArray ?: return Result.failure(
+                Exception("La respuesta de comunidades no tiene un formato válido.")
+            )
+            val communities = items.mapNotNull { element ->
+                runCatching { json.decodeFromJsonElement<Community>(element) }.getOrNull()
+            }
+            Result.success(communities)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     suspend fun submitUserReport(

@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Edit
@@ -107,7 +107,7 @@ fun GroupDetailScreen(
                 title = { Text(group?.name ?: "Detalles del grupo") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
                     }
                 },
                 actions = {
@@ -141,7 +141,7 @@ fun GroupDetailScreen(
                                 },
                                 leadingIcon = { Icon(Icons.Default.Share, null) }
                             )
-                            Divider()
+                            HorizontalDivider()
 
                             if (amICreator) {
                                 DropdownMenuItem(
@@ -167,7 +167,7 @@ fun GroupDetailScreen(
                             )
                         }
                         if (group != null && !amICreator) {
-                            if (canManageMembers) Divider()
+                            if (canManageMembers) HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("Salir del grupo") },
                                 onClick = {
@@ -180,7 +180,7 @@ fun GroupDetailScreen(
                                     }
                                 },
                                 leadingIcon = {
-                                    Icon(Icons.Default.ExitToApp, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                                 }
                             )
                         } else if (group == null) {
@@ -290,7 +290,7 @@ fun GroupDetailScreen(
                                 contentColor = MaterialTheme.colorScheme.error
                             )
                         ) {
-                            Icon(Icons.Default.ExitToApp, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("Salir del grupo")
                         }
@@ -559,7 +559,7 @@ fun AddMemberDialog(
                                 }
                             }
                         }
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
             }

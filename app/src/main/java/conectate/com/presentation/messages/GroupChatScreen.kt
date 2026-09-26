@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.CircleShape
@@ -25,7 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,12 @@ import java.util.Locale
 import conectate.com.util.ChatContactPayload
 import conectate.com.presentation.messages.stickers.StickerButton
 import conectate.com.presentation.messages.stickers.StickerPanel
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.Forward
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.Send
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -59,11 +66,19 @@ fun GroupChatScreen(
     val messageText by viewModel.messageText.collectAsState()
     val isSending by viewModel.isSending.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val markersViewModel: ConversationMarkersViewModel = hiltViewModel()
+    val markerFeedback by markersViewModel.feedback.collectAsState()
+    LaunchedEffect(groupId) { markersViewModel.bind("group", groupId) }
+    LaunchedEffect(markerFeedback) {
+        markerFeedback?.let { snackbarHostState.showSnackbar(it); markersViewModel.clearFeedback() }
+    }
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val downloadChatMedia = rememberChatMediaDownload(viewModel::getCurrentUserId) { viewModel.getPlayableUrl(it) }
     val universalForwardCoordinator = LocalUniversalForwardCoordinator.current
     val currentUserId = viewModel.getCurrentUserId()
+    LaunchedEffect(currentUserId) { markersViewModel.refresh() }
     val lifecycleOwner = LocalLifecycleOwner.current
     
     // Voice recording states
@@ -76,8 +91,10 @@ fun GroupChatScreen(
     val replyToMessage by viewModel.replyToMessage.collectAsState()
     val editingMessage by viewModel.editingMessage.collectAsState()
     val currentPlayingAudioId by viewModel.currentPlayingAudioId.collectAsState()
+    val isAudioPlaying by viewModel.isAudioPlaying.collectAsState()
     val audioProgress by viewModel.audioProgress.collectAsState()
     val audioDurationLabel by viewModel.audioDurationLabel.collectAsState()
+    val audioPlaybackSpeed by viewModel.audioPlaybackSpeed.collectAsState()
     val selectedMessage by viewModel.selectedMessage.collectAsState()
     val reactionPickerMessage by viewModel.reactionPickerMessage.collectAsState()
     val forwardPickerMessage by viewModel.forwardPickerMessage.collectAsState()
@@ -98,6 +115,9 @@ fun GroupChatScreen(
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
+    var showWorkspace by remember(groupId) { mutableStateOf(false) }
+    var workspaceKind by remember(groupId) { mutableStateOf(ChatWorkspaceKind.TASK) }
+    var workspaceSource by remember(groupId) { mutableStateOf<conectate.com.data.model.Message?>(null) }
     var backgroundImageToCrop by remember { mutableStateOf<Uri?>(null) }
     val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         backgroundImageToCrop = uri
@@ -185,10 +205,12 @@ fun GroupChatScreen(
         }
     }
 
-    val documentPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        pendingDocumentUri = uri
+    var showDocumentPicker by remember { mutableStateOf(false) }
+    if (showDocumentPicker) {
+        conectate.com.presentation.documents.DocumentPickerSheet(
+            onDismiss = { showDocumentPicker = false },
+            onPicked = { uri -> showDocumentPicker = false; pendingDocumentUri = uri },
+        )
     }
 
     val gifPickerLauncher = rememberLauncherForActivityResult(
@@ -338,7 +360,7 @@ fun GroupChatScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
                     }
                 },
                 actions = {
@@ -356,13 +378,24 @@ fun GroupChatScreen(
                         Icon(Icons.Default.MoreVert, contentDescription = "Opciones del grupo")
                     }
                     DropdownMenu(expanded = showHeaderMenu, onDismissRequest = { showHeaderMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Mi espacio y cronograma") },
+                            enabled = state != null,
+                            leadingIcon = { Icon(Icons.Default.EventNote, contentDescription = null) },
+                            onClick = {
+                                showHeaderMenu = false
+                                workspaceSource = null
+                                workspaceKind = ChatWorkspaceKind.TASK
+                                showWorkspace = true
+                            },
+                        )
                         val amICreator = state?.group?.creator_id
                             ?.trim()
                             ?.equals(currentUserId, ignoreCase = true) == true
                         if (state != null && !amICreator) {
                             DropdownMenuItem(
                                 text = { Text("Salir del grupo") },
-                                leadingIcon = { Icon(Icons.Default.ExitToApp, contentDescription = null) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null) },
                                 onClick = {
                                     showHeaderMenu = false
                                     viewModel.leaveGroup {
@@ -392,6 +425,13 @@ fun GroupChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            ConversationMarkersBar(markersViewModel) { messageId ->
+                val index = messages.indexOfFirst { it.id.equals(messageId, ignoreCase = true) }
+                scope.launch {
+                    if (index >= 0) listState.animateScrollToItem(index)
+                    else snackbarHostState.showSnackbar("El mensaje no está en el historial cargado.")
+                }
+            }
             Box(modifier = Modifier.weight(1f)) {
                 ChatBackgroundLayer(
                     backgroundType = chatBackgroundSettings.backgroundType,
@@ -455,9 +495,13 @@ fun GroupChatScreen(
                                         isAdmin = memberProfile?.is_admin == true,
                                         isVerified = memberProfile?.is_verified ?: false,
                                         userBadges = memberProfile?.badges ?: emptyList(),
-                                        isPlaying = currentPlayingAudioId == msg.id,
+                                        isAudioActive = currentPlayingAudioId == msg.id,
+                                        isPlaying = currentPlayingAudioId == msg.id && isAudioPlaying,
                                         progress = if (currentPlayingAudioId == msg.id) audioProgress else 0f,
                                         duration = if (currentPlayingAudioId == msg.id) audioDurationLabel else (msg.content.ifBlank { "0:00" }),
+                                        playbackSpeed = audioPlaybackSpeed,
+                                        onSeekAudio = { _, fraction -> viewModel.seekAudio(fraction) },
+                                        onChangeAudioSpeed = { viewModel.cycleAudioPlaybackSpeed() },
                                         onPlayAudio = { viewModel.playAudio(it) },
                                         onLongClick = { viewModel.onMessageLongClick(msg) },
                                         onResolveUrl = { path ->
@@ -668,7 +712,12 @@ fun GroupChatScreen(
                                     VoiceState.RECORDING -> {
                                          val minutes = recordingDuration / 1000 / 60
                                          val seconds = (recordingDuration / 1000) % 60
-                                         val timeString = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+                                         val timeString = String.format(
+                                             androidx.compose.ui.platform.LocalLocale.current.platformLocale,
+                                             "%02d:%02d",
+                                             minutes,
+                                             seconds,
+                                         )
                                          Row(verticalAlignment = Alignment.CenterVertically) {
                                              Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                                              Spacer(modifier = Modifier.width(4.dp))
@@ -697,7 +746,7 @@ fun GroupChatScreen(
                                         Icon(Icons.Default.Pause, null, tint = MaterialTheme.colorScheme.primary)
                                     }
                                     FloatingActionButton(onClick = { viewModel.stopRecording(true) }, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp), elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)) {
-                                        Icon(Icons.Default.Send, null, modifier = Modifier.size(20.dp))
+                                        Icon(Icons.AutoMirrored.Filled.Send, null, modifier = Modifier.size(20.dp))
                                     }
                                 }
                                 VoiceState.PAUSED -> {
@@ -710,7 +759,7 @@ fun GroupChatScreen(
                                 }
                                 VoiceState.REVIEWING -> {
                                     FloatingActionButton(onClick = { viewModel.sendCurrentRecording() }, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp), elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)) {
-                                        Icon(Icons.Default.Send, null, modifier = Modifier.size(20.dp))
+                                        Icon(Icons.AutoMirrored.Filled.Send, null, modifier = Modifier.size(20.dp))
                                     }
                                 }
                                 else -> {}
@@ -763,10 +812,10 @@ fun GroupChatScreen(
                                 shape = CircleShape,
                                 elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                             ) {
-                                if (isSending) {
+                                if (isSending && messageText.isBlank()) {
                                     CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                                 } else {
-                                    Icon(imageVector = if (messageText.isNotBlank()) Icons.Default.Send else Icons.Default.Mic, contentDescription = null)
+                                    Icon(imageVector = if (messageText.isNotBlank()) Icons.AutoMirrored.Filled.Send else Icons.Default.Mic, contentDescription = if (messageText.isNotBlank()) "Enviar mensaje" else "Grabar audio")
                                 }
                             }
                         }
@@ -832,6 +881,7 @@ fun GroupChatScreen(
             mediaItems = activeMediaItems,
             initialIndex = fullScreenImageInitialIndex!!,
             secureContent = oneTimeMediaItems.isNotEmpty(),
+            onDownload = if (oneTimeMediaItems.isNotEmpty()) null else downloadChatMedia,
             onDismiss = {
                 fullScreenImageInitialIndex = null
                 oneTimeMediaItems = emptyList()
@@ -845,9 +895,39 @@ fun GroupChatScreen(
         )
     }
 
+    if (showWorkspace && uiState is GroupChatUiState.Success) {
+        ConversationWorkspaceDialog(
+            type = "group", conversationId = groupId,
+            composerText = messageText, initialKind = workspaceKind, source = workspaceSource,
+            onDismiss = { showWorkspace = false; workspaceSource = null },
+            onLoadDraft = { draft ->
+                viewModel.cancelEdit()
+                viewModel.cancelReply()
+                viewModel.updateMessageText(draft)
+                showWorkspace = false
+            },
+            onOpenSource = { id ->
+                val index = messages.indexOfFirst { it.id == id }
+                if (index >= 0) {
+                    showWorkspace = false
+                    scope.launch { listState.animateScrollToItem(index) }
+                } else scope.launch { snackbarHostState.showSnackbar("El mensaje no está en el historial cargado.") }
+            },
+        )
+    }
+
     if (selectedMessage != null) {
         ModalBottomSheet(onDismissRequest = { viewModel.dismissMessageActions() }) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(16.dp)
+                .heightIn(max = 560.dp)
+                .then(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()))) {
+                MessageMarkerActions(selectedMessage, markersViewModel, viewModel::dismissMessageActions)
+                WorkspaceCaptureActions(selectedMessage, currentUserId) { kind, source ->
+                    workspaceKind = kind
+                    workspaceSource = source
+                    viewModel.dismissMessageActions()
+                    showWorkspace = true
+                }
                 
                 // Own message?
                 if (selectedMessage?.sender_id == currentUserId) {
@@ -990,7 +1070,7 @@ fun GroupChatScreen(
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                         Spacer(modifier = Modifier.width(16.dp))
                         Text("Reenviar")
                     }
@@ -1006,7 +1086,7 @@ fun GroupChatScreen(
                     .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Reply, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                    Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                     Spacer(modifier = Modifier.width(16.dp))
                     Text("Responder")
                 }
@@ -1152,8 +1232,8 @@ fun GroupChatScreen(
                     Spacer(Modifier.width(16.dp))
                     Text("Audio")
                 }
-                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; documentPickerLauncher.launch("*/*") }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary)
+                Row(modifier = Modifier.fillMaxWidth().clickable { showAttachmentSheet = false; showDocumentPicker = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.AutoMirrored.Filled.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
                     Text("Documento")
                 }
@@ -1286,6 +1366,7 @@ fun GroupChatScreen(
             maxClipDurationMs = null,
             allowFullTrack = true,
             defaultToFullTrack = true,
+            enableOpenCatalog = false,
             onBrowseFiles = { audioPickerLauncher.launch("audio/*") },
             onDismiss = {
                 showAudioPickerDialog = false
@@ -1308,9 +1389,9 @@ fun GroupChatScreen(
         conectate.com.presentation.components.DocumentSharePreviewDialog(
             uri = documentUri,
             onDismiss = { pendingDocumentUri = null },
-            onConfirm = {
+            onConfirmDocument = { selectedDocument ->
                 viewModel.sendMediaMessage(
-                    documentUri,
+                    selectedDocument,
                     context,
                     forcedMessageType = "document",
                     customContent = "📎 Archivo",

@@ -1,4 +1,6 @@
 import { io, type Socket } from 'socket.io-client'
+import { buildSignalingAffinity } from '../../core/signalingAffinity'
+import { WebRtcPeerSession } from './WebRtcPeerSession'
 
 export interface CallParticipant {
   id: string
@@ -104,7 +106,9 @@ export class WebCallManager {
   private socket: CallSocket | null = null
   private ownSocketId = ''
   private localStream: MediaStream | null = null
+  private screenTrack: MediaStreamTrack | null = null
   private peerConnections = new Map<string, RTCPeerConnection>()
+  private peerSessions = new Map<string, WebRtcPeerSession>()
   private participants = new Map<string, CallParticipant>()
   private pendingCandidates = new Map<string, RTCIceCandidateInit[]>()
   private iceServers: RTCIceServer[] = [
@@ -216,12 +220,16 @@ export class WebCallManager {
 
     this.peerConnections.forEach((connection) => connection.close())
     this.peerConnections.clear()
+    this.peerSessions.forEach((session) => session.dispose())
+    this.peerSessions.clear()
     this.pendingCandidates.clear()
     this.participants.clear()
 
     this.socket?.disconnect()
     this.socket = null
     this.ownSocketId = ''
+    this.screenTrack?.stop()
+    this.screenTrack = null
     this.stopLocalStream()
 
     this.callState = {
@@ -295,6 +303,7 @@ export class WebCallManager {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
       const screenTrack = screenStream.getVideoTracks()[0]
       if (!screenTrack) return
+      this.screenTrack = screenTrack
 
       await Promise.all(
         Array.from(this.peerConnections.values()).map(async (connection) => {
@@ -308,14 +317,21 @@ export class WebCallManager {
       )
 
       screenTrack.onended = () => {
-        this.callState = { ...this.callState, isScreenSharing: false }
-        this.notifyCallStateChange()
+        void this.stopScreenShare()
       }
       this.callState = { ...this.callState, isScreenSharing: true }
       this.notifyCallStateChange()
       return
     }
 
+    await this.stopScreenShare()
+  }
+
+  private async stopScreenShare(): Promise<void> {
+    if (!this.localStream) return
+    const activeScreenTrack = this.screenTrack
+    this.screenTrack = null
+    if (activeScreenTrack) activeScreenTrack.onended = null
     const cameraTrack = this.localStream.getVideoTracks()[0] ?? null
     await Promise.all(
       Array.from(this.peerConnections.values()).map(async (connection) => {
@@ -323,7 +339,9 @@ export class WebCallManager {
         if (sender) await sender.replaceTrack(cameraTrack)
       }),
     )
+    activeScreenTrack?.stop()
     this.callState = { ...this.callState, isScreenSharing: false }
+    this.onLocalStreamCallbacks.forEach((callback) => callback(this.localStream))
     this.notifyCallStateChange()
   }
 
@@ -356,6 +374,7 @@ export class WebCallManager {
 
     const socket = io(toCallNamespaceUrl(this.signalingBaseUrl), {
       transports: ['websocket', 'polling'],
+      query: { affinity: buildSignalingAffinity('call', callId) },
       auth: { token: this.accessToken },
       autoConnect: false,
       reconnection: true,
@@ -415,6 +434,8 @@ export class WebCallManager {
 
     socket.on('user-left', (socketId) => {
       this.participants.delete(socketId)
+      this.peerSessions.get(socketId)?.dispose()
+      this.peerSessions.delete(socketId)
       this.peerConnections.get(socketId)?.close()
       this.peerConnections.delete(socketId)
       if (this.participants.size === 0 && this.callState.currentCallId === callId) {
@@ -497,6 +518,13 @@ export class WebCallManager {
     return !isPolite
   }
 
+  private isPolitePeer(socketId: string): boolean {
+    const remoteUserId = this.participants.get(socketId)?.id?.trim() || socketId
+    if (!this.ownSocketId) return true
+    return this.userId.localeCompare(remoteUserId) < 0 ||
+      (this.userId === remoteUserId && this.ownSocketId.localeCompare(socketId) < 0)
+  }
+
   private getOrCreatePeerConnection(socketId: string): RTCPeerConnection {
     const existing = this.peerConnections.get(socketId)
     if (existing) return existing
@@ -534,6 +562,7 @@ export class WebCallManager {
     }
 
     connection.onconnectionstatechange = () => {
+      this.peerSessions.get(socketId)?.handleConnectionState(connection.connectionState)
       if (isConnectedState(connection.connectionState)) {
         this.callState = { ...this.callState, connectionLabel: 'En llamada' }
         this.startCallTimer()
@@ -544,22 +573,38 @@ export class WebCallManager {
     }
 
     this.peerConnections.set(socketId, connection)
+    const session = new WebRtcPeerSession(connection, {
+      polite: this.isPolitePeer(socketId),
+      sendOffer: (offer) => {
+        this.socket?.emit('offer', {
+          target: socketId,
+          offer,
+          userId: this.userId,
+          name: this.displayName,
+        })
+      },
+      onRecoveryState: (state, attempt) => {
+        if (state === 'recovering') {
+          this.callState = { ...this.callState, connectionLabel: `Recuperando medios (${attempt}/3)...` }
+        } else if (state === 'exhausted') {
+          this.callState = { ...this.callState, connectionLabel: 'No se pudo recuperar. Vuelve a intentar.' }
+        }
+        this.notifyCallStateChange()
+      },
+      onError: () => {
+        this.callState = { ...this.callState, connectionLabel: 'Reintentando conexión de medios...' }
+        this.notifyCallStateChange()
+      },
+    })
+    this.peerSessions.set(socketId, session)
+    session.bindNegotiation()
     void this.flushPendingCandidates(socketId)
     return connection
   }
 
   private async createAndSendOffer(socketId: string): Promise<void> {
-    const connection = this.getOrCreatePeerConnection(socketId)
-    if (connection.signalingState !== 'stable') return
-
-    const offer = await connection.createOffer()
-    await connection.setLocalDescription(offer)
-    this.socket?.emit('offer', {
-      target: socketId,
-      offer,
-      userId: this.userId,
-      name: this.displayName,
-    })
+    this.getOrCreatePeerConnection(socketId)
+    await this.peerSessions.get(socketId)?.negotiate()
   }
 
   private async handleOffer(payload: OfferPayload): Promise<void> {
@@ -573,11 +618,10 @@ export class WebCallManager {
       avatarUrl: this.participants.get(socketId)?.avatarUrl,
     })
 
-    const connection = this.getOrCreatePeerConnection(socketId)
-    await connection.setRemoteDescription(payload.offer)
+    this.getOrCreatePeerConnection(socketId)
+    const answer = await this.peerSessions.get(socketId)?.receiveOffer(payload.offer)
+    if (!answer) return
     await this.flushPendingCandidates(socketId)
-    const answer = await connection.createAnswer()
-    await connection.setLocalDescription(answer)
     this.socket?.emit('answer', {
       target: socketId,
       answer,
@@ -590,9 +634,9 @@ export class WebCallManager {
   private async handleAnswer(payload: AnswerPayload): Promise<void> {
     const socketId = payload.sender?.trim()
     if (!socketId) return
-    const connection = this.peerConnections.get(socketId)
-    if (!connection || connection.signalingState === 'stable') return
-    await connection.setRemoteDescription(payload.answer)
+    const session = this.peerSessions.get(socketId)
+    if (!session) return
+    await session.receiveAnswer(payload.answer)
     await this.flushPendingCandidates(socketId)
     this.startCallTimer()
   }
@@ -607,7 +651,7 @@ export class WebCallManager {
       this.pendingCandidates.set(socketId, queued)
       return
     }
-    await connection.addIceCandidate(payload.candidate)
+    await this.peerSessions.get(socketId)?.addIceCandidate(payload.candidate)
   }
 
   private async flushPendingCandidates(socketId: string): Promise<void> {
@@ -616,7 +660,7 @@ export class WebCallManager {
     const queued = this.pendingCandidates.get(socketId) ?? []
     this.pendingCandidates.delete(socketId)
     for (const candidate of queued) {
-      await connection.addIceCandidate(candidate)
+      await this.peerSessions.get(socketId)?.addIceCandidate(candidate)
     }
   }
 

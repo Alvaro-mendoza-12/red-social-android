@@ -52,12 +52,14 @@ object IncomingCallNotificationFactory {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val acceptPending = PendingIntent.getBroadcast(
+        // Android 12+ blocks notification trampolines (notification -> receiver
+        // -> activity). Open the lightweight incoming-call activity directly so
+        // answering a cold-start call is immediate and reliable.
+        val acceptPending = PendingIntent.getActivity(
             context,
             notificationId + 1,
-            Intent(context, IncomingCallActionReceiver::class.java).apply {
-                action = IncomingCallActionReceiver.ACTION_ACCEPT
-                copyInviteExtras(invite, avatarBytes)
+            buildIncomingCallActivityIntent(context, invite, avatarBytes).apply {
+                putExtra(IncomingCallActivity.EXTRA_AUTO_ACCEPT, true)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )

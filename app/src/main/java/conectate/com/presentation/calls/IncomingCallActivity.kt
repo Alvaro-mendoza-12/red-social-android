@@ -62,20 +62,30 @@ import conectate.com.services.IncomingCallForegroundService
 import conectate.com.util.TrustedNavigationIntents.markTrusted
 
 import dagger.hilt.android.AndroidEntryPoint
+import dagger.Lazy
 import javax.inject.Inject
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 @AndroidEntryPoint
 class IncomingCallActivity : ComponentActivity() {
 
     @Inject
-    lateinit var callRepository: CallRepository
+    lateinit var callRepositoryProvider: Lazy<CallRepository>
 
     @Inject
     lateinit var themePreferences: ThemePreferences
 
     private var pendingAcceptInvite: CallInvite? = null
+    private val terminalActionStarted = AtomicBoolean(false)
+    private val activeInviteState = mutableStateOf<CallInvite?>(null)
+    private val callerAvatarState = mutableStateOf<Bitmap?>(null)
+
+    // CallRepository owns WebRTC, sockets and audio services. Construct it only
+    // after the user accepts/declines so the incoming-call screen itself can
+    // appear immediately from a stopped process.
+    private val callRepository: CallRepository
+        get() = callRepositoryProvider.get()
 
     private val acceptPermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -93,6 +103,7 @@ class IncomingCallActivity : ComponentActivity() {
         if (hasAudio && hasCamera) {
             performAcceptInvite(invite)
         } else {
+            terminalActionStarted.set(false)
             AppFeedbackBus.showError(
                 if (invite.isVideo) {
                     "Activa micrófono y cámara para contestar la videollamada."
@@ -113,22 +124,18 @@ class IncomingCallActivity : ComponentActivity() {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
         } else {
-            
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-            )
+            configureLegacyLockScreenWindow()
         }
 
-        var invite = intent.toInviteOrNull()
+        val invite = intent.toInviteOrNull()
         if (invite == null) {
             finish()
             return
         }
 
         val autoAccept = intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false)
-        var avatarBitmap = intent.toAvatarBitmapOrNull()
+        activeInviteState.value = invite
+        callerAvatarState.value = intent.toAvatarBitmapOrNull()
 
         setContent {
             val isDarkMode by themePreferences.isDarkMode.collectAsStateWithLifecycle()
@@ -141,12 +148,16 @@ class IncomingCallActivity : ComponentActivity() {
                 fontOption = fontOption,
                 textScale = textScale
             ) {
-                IncomingCallScreen(
-                    invite = invite,
-                    callerAvatarBitmap = avatarBitmap,
-                    onAccept = { acceptInvite(invite) },
-                    onDecline = { declineInvite(invite) }
-                )
+                val activeInvite by activeInviteState
+                val callerAvatar by callerAvatarState
+                activeInvite?.let { current ->
+                    IncomingCallScreen(
+                        invite = current,
+                        callerAvatarBitmap = callerAvatar,
+                        onAccept = { acceptInvite(current) },
+                        onDecline = { declineInvite(current) }
+                    )
+                }
             }
         }
 
@@ -157,7 +168,31 @@ class IncomingCallActivity : ComponentActivity() {
         }
     }
 
+    @Suppress("DEPRECATION")
+    private fun configureLegacyLockScreenWindow() {
+        // setShowWhenLocked/setTurnScreenOn existen desde API 27; la app aún
+        // soporta API 24-26, donde estas banderas son la única alternativa.
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        )
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val invite = intent.toInviteOrNull() ?: return
+        terminalActionStarted.set(false)
+        activeInviteState.value = invite
+        callerAvatarState.value = intent.toAvatarBitmapOrNull()
+        if (intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false)) {
+            acceptInvite(invite)
+        }
+    }
+
     private fun acceptInvite(invite: CallInvite) {
+        if (!terminalActionStarted.compareAndSet(false, true)) return
         val missingPermissions = requiredCallPermissions(invite)
             .filterNot(::hasPermission)
             .toTypedArray()
@@ -184,9 +219,8 @@ class IncomingCallActivity : ComponentActivity() {
                 return@launch
             }
             callRepository.refreshAudioSession()
-            delay(300)
-            callRepository.refreshAudioSessionRepeatedly(attempts = 2, delayMs = 500)
             navigateToCall(invite.callId)
+            callRepository.refreshAudioSessionRepeatedly(attempts = 3, delayMs = 400)
             finish()
         }
     }
@@ -203,6 +237,7 @@ class IncomingCallActivity : ComponentActivity() {
     }
 
     private fun declineInvite(invite: CallInvite) {
+        if (!terminalActionStarted.compareAndSet(false, true)) return
         lifecycleScope.launch {
             clearIncomingCallNotification(invite.callId)
             IncomingCallForegroundService.stop(this@IncomingCallActivity)
@@ -241,6 +276,7 @@ private fun Intent.toInviteOrNull(): CallInvite? {
     var title = getStringExtra("call_title")?.trim().orEmpty().ifBlank { callerName }
     var contextType = getStringExtra("call_context_type")?.trim().orEmpty().ifBlank { "dm" }
     var contextId = getStringExtra("call_context_id")?.trim().orEmpty().ifBlank { null }
+    val isVideo = getBooleanExtra("call_is_video", false)
 
     if (callId.isBlank() || callerUserId.isBlank()) return null
     return CallInvite(
@@ -250,7 +286,8 @@ private fun Intent.toInviteOrNull(): CallInvite? {
         callerName = callerName.ifBlank { "Usuario" },
         callerAvatarUrl = callerAvatarUrl,
         contextType = contextType,
-        contextId = contextId
+        contextId = contextId,
+        isVideo = isVideo,
     )
 }
 

@@ -34,11 +34,11 @@ docker compose exec -T db pg_dump \
   > "$TEMP_DIR/postgres.dump"
 
 echo "==> Exportando storage local"
-docker compose exec -T api tar -C /data/storage -czf - . \
+docker compose exec -T -u 10001:10001 api tar -C /data/storage -czf - . \
   > "$TEMP_DIR/storage.tar.gz"
 
 echo "==> Exportando estado local de Novvin"
-docker compose exec -T ai-chatbot tar -C /data/ai -czf - . \
+docker compose exec -T -u 1000:1000 ai-chatbot tar -C /data/ai -czf - . \
   > "$TEMP_DIR/ai-chatbot-data.tar.gz"
 
 cp docker-compose.yml "$TEMP_DIR/docker-compose.yml"

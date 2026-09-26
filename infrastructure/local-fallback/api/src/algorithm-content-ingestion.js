@@ -109,7 +109,9 @@ function deriveTrustedContentClassification(kind, row) {
       creatorId,
       languageCode: detectLanguage(text),
       formatKey: inferFormat(kind, row),
-      audioKey: null,
+      // sound_id is assigned and canonicalized by the trusted video route;
+      // unlike creator tags, it is safe to use as an audio affinity key.
+      audioKey: kind === 'video' ? normalizedId(row?.sound_id ?? row?.soundId) || null : null,
       communityId: null,
       safetyState: 'allowed',
       classifierVersion: CLASSIFIER_VERSION,

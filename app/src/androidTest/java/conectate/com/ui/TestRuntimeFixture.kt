@@ -32,12 +32,33 @@ object TestRuntimeFixture {
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
+    private val fixturePreferenceFiles = listOf(TestRuntimeOverrides.PREFS_NAME, MULTI_ACCOUNT_INBOX_PREFS)
+    private var originalPreferences: Map<String, Map<String, Any>>? = null
+
+    /** Snapshot only the stores touched by account-fixture tests, then seed an isolated empty fixture. */
+    @Synchronized
+    fun begin() {
+        check(originalPreferences == null) { "An account-fixture scope is already active." }
+        val context = appContext()
+        originalPreferences = fixturePreferenceFiles.associateWith { name ->
+            snapshot(context.getSharedPreferences(name, Context.MODE_PRIVATE).all)
+        }
+        val overrides = context.getSharedPreferences(TestRuntimeOverrides.PREFS_NAME, Context.MODE_PRIVATE)
+        check(overrides.edit()
+            .remove(TestRuntimeOverrides.ENABLE_AUTH_FIXTURES_KEY)
+            .remove(TestRuntimeOverrides.SESSION_OVERRIDE_KEY)
+            .remove(TestRuntimeOverrides.STORED_ACCOUNTS_OVERRIDE_KEY)
+            .commit()) { "Could not initialize account-fixture preferences." }
+        check(context.getSharedPreferences(MULTI_ACCOUNT_INBOX_PREFS, Context.MODE_PRIVATE)
+            .edit().clear().commit()) { "Could not initialize account-fixture inbox." }
+    }
 
     fun seedSavedAccountHarness(
         userId: String = "qa-user-001",
         email: String = "qa.saved.account@conectate.test",
         displayName: String = "Cuenta QA"
     ): RuntimeSessionOverride {
+        checkFixtureScope()
         val context = appContext()
         val session = RuntimeSessionOverride(
             userId = userId,
@@ -81,6 +102,7 @@ object TestRuntimeFixture {
     }
 
     fun seedDualSavedAccountsHarness(): SeededSavedAccountsHarness {
+        checkFixtureScope()
         val context = appContext()
         val activeSession = RuntimeSessionOverride(
             userId = "qa-user-a",
@@ -165,15 +187,16 @@ object TestRuntimeFixture {
         )
     }
 
+    @Synchronized
     fun clear() {
         val context = appContext()
-        context.getSharedPreferences(TestRuntimeOverrides.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .remove(TestRuntimeOverrides.ENABLE_AUTH_FIXTURES_KEY)
-            .remove(TestRuntimeOverrides.SESSION_OVERRIDE_KEY)
-            .remove(TestRuntimeOverrides.STORED_ACCOUNTS_OVERRIDE_KEY)
-            .apply()
-        context.deleteSharedPreferences(MULTI_ACCOUNT_INBOX_PREFS)
+        val original = originalPreferences ?: return
+        original.forEach { (name, values) ->
+            val editor = context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear()
+            values.forEach { (key, value) -> putPreference(editor, key, value) }
+            check(editor.commit()) { "Could not restore account-fixture preferences: $name" }
+        }
+        originalPreferences = null
     }
 
     private fun enableAuthFixtures(context: Context) {
@@ -184,4 +207,27 @@ object TestRuntimeFixture {
     }
 
     private fun appContext(): Context = ApplicationProvider.getApplicationContext()
+
+    private fun checkFixtureScope() = check(originalPreferences != null) {
+        "Call TestRuntimeFixture.begin() before writing test accounts."
+    }
+
+    private fun snapshot(values: Map<String, *>): Map<String, Any> = values.mapNotNull { (key, value) ->
+        when (value) {
+            is String, is Int, is Long, is Float, is Boolean -> key to value
+            is Set<*> -> key to value.filterIsInstance<String>().toMutableSet()
+            else -> null
+        }
+    }.toMap()
+
+    private fun putPreference(editor: android.content.SharedPreferences.Editor, key: String, value: Any) {
+        when (value) {
+            is String -> editor.putString(key, value)
+            is Int -> editor.putInt(key, value)
+            is Long -> editor.putLong(key, value)
+            is Float -> editor.putFloat(key, value)
+            is Boolean -> editor.putBoolean(key, value)
+            is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toMutableSet())
+        }
+    }
 }

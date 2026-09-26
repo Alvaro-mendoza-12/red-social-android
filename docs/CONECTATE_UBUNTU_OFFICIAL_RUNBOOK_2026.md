@@ -149,7 +149,7 @@ La rutina remota usada por ese comando es
 Desde Windows CMD:
 
 ```bat
-cd /d "D:\red social - copia"
+cd /d "D:\red social - live-gifts"
 scp -P 2222 "infrastructure\local-fallback\api\src\server.js" alvaro@127.0.0.1:/home/alvaro/conectate-local-fallback/api/src/server.js
 scp -P 2222 "infrastructure\local-fallback\api\src\data-routes.js" alvaro@127.0.0.1:/home/alvaro/conectate-local-fallback/api/src/data-routes.js
 scp -P 2222 "infrastructure\local-fallback\api\src\admin-moderation-routes.js" alvaro@127.0.0.1:/home/alvaro/conectate-local-fallback/api/src/admin-moderation-routes.js

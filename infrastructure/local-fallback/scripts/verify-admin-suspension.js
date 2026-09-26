@@ -49,8 +49,8 @@ async function login(email, expected = 200) {
 
 function realtimeAccepted(token) {
   return new Promise((resolve, reject) => {
-    const url = `${apiUrl.replace(/^http/i, 'ws')}/realtime/?token=${encodeURIComponent(token)}`
-    const socket = new WebSocket(url)
+    const url = `${apiUrl.replace(/^http/i, 'ws')}/realtime/`
+    const socket = new WebSocket(url, { headers: { Authorization: `Bearer ${token}` } })
     const timeout = setTimeout(() => {
       socket.terminate()
       reject(new Error('Realtime accepted connection timeout'))
@@ -76,8 +76,8 @@ function realtimeAccepted(token) {
 
 function realtimeRejected(token) {
   return new Promise((resolve, reject) => {
-    const url = `${apiUrl.replace(/^http/i, 'ws')}/realtime/?token=${encodeURIComponent(token)}`
-    const socket = new WebSocket(url)
+    const url = `${apiUrl.replace(/^http/i, 'ws')}/realtime/`
+    const socket = new WebSocket(url, { headers: { Authorization: `Bearer ${token}` } })
     let connected = false
     const timeout = setTimeout(() => {
       socket.terminate()

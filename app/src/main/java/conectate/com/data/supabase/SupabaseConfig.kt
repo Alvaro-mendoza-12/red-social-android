@@ -1,6 +1,5 @@
 package conectate.com.data.supabase
 
-import android.os.Looper
 import android.util.Log
 import conectate.com.BuildConfig
 import conectate.com.data.localfallback.RuntimeBackendEndpoint
@@ -14,14 +13,13 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.logging.*
 import io.ktor.client.plugins.*
 import io.ktor.client.request.get
+import conectate.com.core.network.AutomaticRetryPolicy
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.json.*
 import io.github.jan.supabase.annotations.SupabaseInternal
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -31,7 +29,7 @@ import javax.inject.Singleton
 
 @Singleton
 class SupabaseConfig @Inject constructor(
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
     private val realtimeMutex = Mutex()
     private val realtimeProbeMutex = Mutex()
@@ -85,11 +83,15 @@ class SupabaseConfig @Inject constructor(
         install(HttpRequestRetry) {
             maxRetries = 2
             exponentialDelay(base = 300.0, maxDelayMs = 4_000)
-            retryIf { _, response ->
-                response.status.value == 429 || response.status.value >= 500
+            retryIf { request, response ->
+                AutomaticRetryPolicy.mayRetryResponse(
+                    method = request.method.value,
+                    statusCode = response.status.value,
+                )
             }
-            retryOnExceptionIf { _, cause ->
-                cause is IOException || cause is HttpRequestTimeoutException
+            retryOnExceptionIf { request, cause ->
+                AutomaticRetryPolicy.mayRetry(request.method.value) &&
+                    (cause is IOException || cause is HttpRequestTimeoutException)
             }
         }
         install(ContentNegotiation) {
@@ -134,7 +136,7 @@ class SupabaseConfig @Inject constructor(
                         else -> DISABLED_SUPABASE_KEY
                     }
                     val startAt = System.currentTimeMillis()
-                    createSupabaseClientOnMain(targetUrl, targetKey).also { created ->
+                    createSupabaseClientInternal(targetUrl, targetKey).also { created ->
                         compatibilityClient = created
                         compatibilityClientUrl = targetUrl
                         Log.i(
@@ -240,19 +242,6 @@ class SupabaseConfig @Inject constructor(
         }
     }
 
-    private fun createSupabaseClientOnMain(
-        safeUrl: String,
-        safeKey: String
-    ): io.github.jan.supabase.SupabaseClient {
-        return if (Looper.myLooper() == Looper.getMainLooper()) {
-            createSupabaseClientInternal(safeUrl, safeKey)
-        } else {
-            runBlocking(Dispatchers.Main.immediate) {
-                createSupabaseClientInternal(safeUrl, safeKey)
-            }
-        }
-    }
-
     @OptIn(io.github.jan.supabase.annotations.SupabaseInternal::class)
     private fun createSupabaseClientInternal(
         safeUrl: String,
@@ -282,6 +271,12 @@ class SupabaseConfig @Inject constructor(
                     alwaysAutoRefresh = false
                     autoLoadFromStorage = false
                     autoSaveToStorage = false
+                    // Ubuntu owns authentication and token refresh. The legacy SDK facade is
+                    // retained only for PostgREST compatibility, so registering Android
+                    // lifecycle callbacks is unnecessary. More importantly, this client can
+                    // legitimately be created by a repository on Dispatchers.IO; Lifecycle's
+                    // addObserver is main-thread-only and would otherwise abort that sync.
+                    enableLifecycleCallbacks = false
                 }
             }
             install(io.github.jan.supabase.realtime.Realtime) {

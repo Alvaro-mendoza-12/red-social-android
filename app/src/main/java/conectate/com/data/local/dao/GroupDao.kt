@@ -13,6 +13,8 @@ data class GroupUnreadCountRow(
 
 @Dao
 interface GroupDao {
+    @Query("UPDATE groups SET unread_count = MAX(0, unread_count - :count) WHERE id = :groupId")
+    suspend fun subtractReadMessages(groupId: String, count: Int)
     // GROUPS
     @Query("SELECT * FROM groups WHERE is_deleted = 0 ORDER BY COALESCE(last_message_at, created_at) DESC")
     fun getAllGroupsFlow(): Flow<List<GroupEntity>>
@@ -75,6 +77,16 @@ interface GroupDao {
 
     @Query("UPDATE groups SET last_message = :lastMsg, last_message_at = :lastTime WHERE id = :groupId")
     suspend fun updateMetadata(groupId: String, lastMsg: String?, lastTime: String?)
+
+    // Concurrent sends may be acknowledged out of order. Keep the newest preview.
+    @Query("""
+        UPDATE groups SET last_message = :lastMsg, last_message_at = :lastTime
+        WHERE id = :groupId AND (
+            last_message_at IS NULL OR
+            COALESCE(julianday(:lastTime), 0) >= COALESCE(julianday(last_message_at), 0)
+        )
+    """)
+    suspend fun updateMetadataIfNewer(groupId: String, lastMsg: String?, lastTime: String?)
 
     @Query("UPDATE groups SET unread_count = 0 WHERE id = :groupId")
     suspend fun resetUnreadCount(groupId: String)

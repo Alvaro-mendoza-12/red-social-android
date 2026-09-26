@@ -1,0 +1,32 @@
+[Unit]
+Description=NOVVIN named Cloudflare Tunnel
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=novvin-cloudflared
+EnvironmentFile=/etc/novvin/cloudflared.env
+# cloudflared reads TUNNEL_TOKEN from the environment. Keeping it out of
+# ExecStart prevents the secret from appearing in process listings.
+ExecStart=/usr/bin/env cloudflared tunnel --no-autoupdate run
+Restart=always
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=20s
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

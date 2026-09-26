@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class UpdateProfileRequest(
     val display_name: String? = null,
+    val username: String? = null,
     val bio: String? = null,
     val country: String? = null,
     val city: String? = null,
@@ -22,6 +23,7 @@ data class UpdateProfileRequest(
     val availability_schedule: String? = null,
     val profile_section_order: List<String>? = null,
     val profile_section_visibility: Map<String, String>? = null,
+    val social_links: Map<String, String>? = null,
     val avatar_url: String? = null,
     val avatar_media_type: String? = null,
     val avatar_video_muted: Boolean? = null,
@@ -37,6 +39,7 @@ data class UpdateProfileRequest(
     val favorites_public: Boolean? = null,
     val break_mode: String? = null,
     val profile_visibility: String? = null,
+    val profile_view_history_enabled: Boolean? = null,
     val last_seen_visibility: String? = null,
     val online_status_visibility: String? = null,
     val balance: Double? = null

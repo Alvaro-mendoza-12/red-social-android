@@ -54,47 +54,81 @@ async function run() {
       throw new Error('Registration did not return separate access and refresh credentials')
     }
 
-    const rotation = await jsonRequest('/v1/auth/refresh', {
+    const renewal = await jsonRequest('/v1/auth/refresh', {
       method: 'POST',
       body: JSON.stringify({ refreshToken: firstRefresh }),
     })
-    if (!rotation.response.ok) {
-      throw new Error(`Refresh rotation failed: ${rotation.response.status} ${JSON.stringify(rotation.body)}`)
+    if (!renewal.response.ok) {
+      throw new Error(`Refresh renewal failed: ${renewal.response.status} ${JSON.stringify(renewal.body)}`)
     }
-    const secondAccess = String(rotation.body?.accessToken || '')
-    const secondRefresh = String(rotation.body?.refreshToken || '')
-    if (!secondAccess || !secondRefresh || secondRefresh === firstRefresh) {
-      throw new Error('Refresh rotation did not issue a new credential pair')
+    const renewedAccess = String(renewal.body?.accessToken || '')
+    const renewedRefresh = String(renewal.body?.refreshToken || '')
+    if (!renewedAccess || renewedRefresh !== firstRefresh) {
+      throw new Error('Active session renewal did not preserve its refresh credential')
     }
 
     const me = await jsonRequest('/v1/auth/me', {
-      headers: { authorization: `Bearer ${secondAccess}` },
+      headers: { authorization: `Bearer ${renewedAccess}` },
     })
     if (!me.response.ok || me.body?.user?.email !== fixtureEmail) {
-      throw new Error(`Rotated access token was rejected: ${me.response.status} ${JSON.stringify(me.body)}`)
+      throw new Error(`Renewed access token was rejected: ${me.response.status} ${JSON.stringify(me.body)}`)
     }
 
-    const replay = await jsonRequest('/v1/auth/refresh', {
+    const secondLogin = await jsonRequest('/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: fixtureEmail, password: fixturePassword }),
+    })
+    const secondRefresh = String(secondLogin.body?.refreshToken || '')
+    if (!secondLogin.response.ok || !secondRefresh || secondRefresh === firstRefresh) {
+      throw new Error(`Second independent login failed: ${secondLogin.response.status}`)
+    }
+
+    const logout = await jsonRequest('/v1/auth/logout', {
       method: 'POST',
       body: JSON.stringify({ refreshToken: firstRefresh }),
     })
-    if (replay.response.status !== 401 || replay.body?.error !== 'INVALID_REFRESH_TOKEN') {
-      throw new Error(`Consumed refresh token was not rejected: ${replay.response.status} ${JSON.stringify(replay.body)}`)
+    if (!logout.response.ok || logout.body?.revoked !== true) {
+      throw new Error(`Mobile logout did not revoke its session: ${logout.response.status}`)
+    }
+    const repeatedLogout = await jsonRequest('/v1/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken: firstRefresh }),
+    })
+    if (!repeatedLogout.response.ok || repeatedLogout.body?.revoked !== false) {
+      throw new Error('Repeated mobile logout was not idempotent')
     }
 
     const revokedAccess = await jsonRequest('/v1/auth/me', {
       headers: { authorization: `Bearer ${firstAccess}` },
     })
     if (revokedAccess.response.status !== 401) {
-      throw new Error(`Access token from rotated session remained active: ${revokedAccess.response.status}`)
+      throw new Error(`Access token from revoked session remained active: ${revokedAccess.response.status}`)
+    }
+
+    const revokedRefresh = await jsonRequest('/v1/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken: firstRefresh, accessToken: firstAccess }),
+    })
+    if (revokedRefresh.response.status !== 401 || revokedRefresh.body?.error !== 'INVALID_REFRESH_TOKEN') {
+      throw new Error(`Revoked session recovered through another active session: ${revokedRefresh.response.status}`)
+    }
+
+    const independentRefresh = await jsonRequest('/v1/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken: secondRefresh }),
+    })
+    if (!independentRefresh.response.ok) {
+      throw new Error(`Independent active session was affected: ${independentRefresh.response.status}`)
     }
 
     console.log(JSON.stringify({
       ok: true,
       distinctCredentials: true,
-      rotationAccepted: true,
-      replayRejected: true,
+      activeRenewalAccepted: true,
+      revokedRefreshRejected: true,
       previousAccessRevoked: true,
+      mobileLogoutRevokedOneSession: true,
+      independentSessionStillActive: true,
       fixtureRemoved: true,
     }))
   } finally {

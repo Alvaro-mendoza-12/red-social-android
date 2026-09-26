@@ -36,6 +36,7 @@ async function loadReleaseMetadata({
   const fromEnvironment = {
     release: String(process.env.APP_RELEASE || '').trim(),
     commit: String(process.env.APP_COMMIT_SHA || '').trim(),
+    sourceDigest: String(process.env.APP_SOURCE_DIGEST || '').trim(),
     deployedAtUtc: String(process.env.APP_DEPLOYED_AT_UTC || '').trim(),
   }
   const file = await fileSystem.promises.readFile(metadataPath, 'utf8')
@@ -44,6 +45,7 @@ async function loadReleaseMetadata({
   return {
     release: fromEnvironment.release || file.release || 'unknown',
     commit: fromEnvironment.commit || file.commit || 'unknown',
+    sourceDigest: fromEnvironment.sourceDigest || file.source_digest || null,
     deployedAtUtc: fromEnvironment.deployedAtUtc || file.deployed_at_utc || null,
     environment: String(process.env.APP_ENVIRONMENT || process.env.NODE_ENV || 'unknown').trim(),
   }

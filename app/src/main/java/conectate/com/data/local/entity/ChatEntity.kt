@@ -57,6 +57,7 @@ data class ChatEntity(
         return Chat(
             id = id,
             group_name = name, // Map entity 'name' to domain 'group_name'
+            group_image = display_image.takeIf { is_group },
             is_group = is_group,
             // created_by removed from domain
             participants = participantsList,

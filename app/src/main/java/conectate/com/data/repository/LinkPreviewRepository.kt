@@ -1,14 +1,10 @@
 package conectate.com.data.repository
 
-import android.content.Context
-import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.LinkPreview
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jsoup.Jsoup
@@ -17,12 +13,35 @@ import java.net.URL
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val MAX_PREVIEW_REDIRECTS = 4
+private const val MAX_PREVIEW_BODY_BYTES = 1_000_000
+private val TRUSTED_PREVIEW_DOMAINS = setOf(
+    "youtube.com", "youtu.be",
+    "twitter.com", "x.com",
+    "instagram.com",
+    "facebook.com", "fb.com",
+    "tiktok.com",
+    "spotify.com", "open.spotify.com",
+    "news.google.com",
+    "reddit.com",
+    "github.com",
+    "linkedin.com",
+    "wa.me", "whatsapp.com",
+)
+
+internal fun isTrustedPreviewUrl(value: String): Boolean {
+    return runCatching {
+        val url = URL(value)
+        val host = url.host.trim().trim('[', ']').lowercase().trimEnd('.')
+        url.protocol.equals("https", ignoreCase = true) &&
+            url.userInfo.isNullOrBlank() &&
+            host.isNotBlank() &&
+            TRUSTED_PREVIEW_DOMAINS.any { domain -> host == domain || host.endsWith(".$domain") }
+    }.getOrDefault(false)
+}
+
 @Singleton
-class LinkPreviewRepository @Inject constructor(
-    @ApplicationContext private val context: Context
-) {
-    private val scope = newSafeScope("LinkPreviewRepository", Dispatchers.IO)
-    
+class LinkPreviewRepository @Inject constructor() {
     private val _previewCache = mutableMapOf<String, LinkPreview>()
     private val _loadingUrls = MutableStateFlow<Set<String>>(emptySet())
     val loadingUrls: StateFlow<Set<String>> = _loadingUrls.asStateFlow()
@@ -30,19 +49,6 @@ class LinkPreviewRepository @Inject constructor(
     companion object {
         private const val PREVIEW_TIMEOUT_MS = 8_000L
         private const val MAX_CACHE_SIZE = 100
-        private val TRUSTED_DOMAINS = setOf(
-            "youtube.com", "youtu.be",
-            "twitter.com", "x.com",
-            "instagram.com",
-            "facebook.com", "fb.com",
-            "tiktok.com",
-            "spotify.com", "open.spotify.com",
-            "news.google.com",
-            "reddit.com",
-            "github.com",
-            "linkedin.com",
-            "wa.me", "whatsapp.com"
-        )
     }
     
     suspend fun getPreview(url: String): LinkPreview? = withContext(Dispatchers.IO) {
@@ -80,18 +86,15 @@ class LinkPreviewRepository @Inject constructor(
     }
     
     private fun fetchPreview(url: String): LinkPreview? {
+        if (!isTrustedPreviewUrl(url)) return createFallbackPreview(url)
         return try {
-            val doc: Document = Jsoup.connect(url)
-                .timeout(5000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .followRedirects(true)
-                .get()
+            val (doc, finalUrl) = fetchTrustedDocument(url) ?: return createFallbackPreview(url)
             
-            val title = extractTitle(doc, url)
+            val title = extractTitle(doc, finalUrl)
             val description = extractDescription(doc)
-            val imageUrl = extractImage(doc, url)
-            val siteName = extractSiteName(doc, url)
-            val type = detectContentType(doc, url)
+            val imageUrl = extractImage(doc, finalUrl)
+            val siteName = extractSiteName(doc, finalUrl)
+            val type = detectContentType(doc, finalUrl)
             
             LinkPreview(
                 url = url,
@@ -105,6 +108,29 @@ class LinkPreviewRepository @Inject constructor(
             // Fallback: create basic preview from URL
             createFallbackPreview(url)
         }
+    }
+
+    private fun fetchTrustedDocument(initialUrl: String): Pair<Document, String>? {
+        var currentUrl = initialUrl
+        repeat(MAX_PREVIEW_REDIRECTS + 1) { redirectCount ->
+            if (!isTrustedPreviewUrl(currentUrl)) return null
+            val response = Jsoup.connect(currentUrl)
+                .timeout(5000)
+                .userAgent("NOVVIN Link Preview/3.3 (Android)")
+                .followRedirects(false)
+                .maxBodySize(MAX_PREVIEW_BODY_BYTES)
+                .execute()
+            if (response.statusCode() in 300..399) {
+                if (redirectCount >= MAX_PREVIEW_REDIRECTS) return null
+                val location = response.header("Location")?.trim().orEmpty()
+                if (location.isBlank()) return null
+                currentUrl = URL(URL(currentUrl), location).toString()
+                return@repeat
+            }
+            if (response.statusCode() !in 200..299) return null
+            return response.parse() to currentUrl
+        }
+        return null
     }
     
     private fun extractTitle(doc: Document, url: String): String {
@@ -273,12 +299,7 @@ class LinkPreviewRepository @Inject constructor(
     }
     
     fun isTrustedDomain(url: String): Boolean {
-        return try {
-            val host = URL(normalizeUrl(url)).host.lowercase()
-            TRUSTED_DOMAINS.any { host.contains(it) }
-        } catch (e: Exception) {
-            false
-        }
+        return isTrustedPreviewUrl(normalizeUrl(url))
     }
     
     fun clearCache() {

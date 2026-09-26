@@ -13,7 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
@@ -95,26 +95,14 @@ fun CommentSheet(
 ) {
     var newCommentText by remember { mutableStateOf("") }
     var pendingSentText by remember { mutableStateOf<String?>(null) }
+    var commentOrder by remember { mutableStateOf(VideoCommentOrder.RECENT) }
+    var commentAuthorFilter by remember { mutableStateOf(VideoCommentAuthorFilter.ALL) }
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     var showStickerPanel by remember { mutableStateOf(false) }
     
-    // Group comments
-    val commentIds = remember(comments) { comments.map { it.id.trim().lowercase() }.toSet() }
-    val topLevelComments = remember(comments, commentIds) {
-        comments.filter { comment ->
-            val parent = comment.parentId.normalizedCommentParent()
-            parent == null || parent !in commentIds
-        }
-    }
-    val replies = remember(comments) {
-        val ids = comments.map { it.id.trim().lowercase() }.toSet()
-        comments
-            .mapNotNull { comment ->
-                val parent = comment.parentId.normalizedCommentParent()
-                if (parent != null && parent in ids) parent to comment else null
-            }
-            .groupBy({ it.first }, { it.second })
+    val visibleThreads = remember(comments, commentOrder, commentAuthorFilter, currentUserId, videoCreatorId) {
+        visibleVideoCommentThreads(comments, commentOrder, commentAuthorFilter, currentUserId, videoCreatorId)
     }
 
     LaunchedEffect(comments, pendingSentText) {
@@ -143,7 +131,7 @@ fun CommentSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() },
-        windowInsets = WindowInsets.ime // This is key for the sheet itself moving up
+        contentWindowInsets = { WindowInsets.ime } // Keep the sheet above the keyboard.
     ) {
         Column(
             modifier = Modifier
@@ -176,14 +164,20 @@ fun CommentSheet(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
+            VideoCommentFilterControls(
+                order = commentOrder,
+                authorFilter = commentAuthorFilter,
+                onOrderChange = { commentOrder = it },
+                onAuthorFilterChange = { commentAuthorFilter = it },
+            )
 
-            if (comments.isEmpty()) {
+            if (visibleThreads.isEmpty()) {
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Sé el primero en comentar",
+                        text = if (comments.isEmpty()) "Sé el primero en comentar" else "No hay comentarios con este filtro",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -194,13 +188,13 @@ fun CommentSheet(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-                    items(topLevelComments) { comment ->
+                    items(visibleThreads, key = { it.root.id }) { thread ->
                         CommentThreadItem(
-                            comment = comment,
-                            replies = replies[comment.id.trim().lowercase()] ?: emptyList(),
+                            comment = thread.root,
+                            replies = thread.replies,
                             onPlayAudio = onPlayAudio,
-                            isPlaying = currentPlayingCommentId == comment.id,
-                            progress = if (currentPlayingCommentId == comment.id) audioProgress else 0f,
+                            isPlaying = currentPlayingCommentId == thread.root.id,
+                            progress = if (currentPlayingCommentId == thread.root.id) audioProgress else 0f,
                             currentPlayingCommentId = currentPlayingCommentId,
                             audioProgress = audioProgress,
                             currentUserId = currentUserId,
@@ -269,7 +263,12 @@ fun CommentSheet(
                                     val minutes = (recordingDuration / 1000) / 60
                                     val seconds = (recordingDuration / 1000) % 60
                                     Text(
-                                        text = "Grabando... " + String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds),
+                                        text = "Grabando... " + String.format(
+                                            androidx.compose.ui.platform.LocalLocale.current.platformLocale,
+                                            "%02d:%02d",
+                                            minutes,
+                                            seconds,
+                                        ),
                                         color = MaterialTheme.colorScheme.error
                                     )
                                 }
@@ -361,7 +360,7 @@ fun CommentSheet(
                                     Icon(Icons.Default.Pause, "Pausar", tint = MaterialTheme.colorScheme.primary)
                                 }
                                 IconButton(onClick = { onStopRecording(true) }) {
-                                    Icon(Icons.Default.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
+                                    Icon(Icons.AutoMirrored.Filled.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
                                 }
                             }
                             VoiceState.PAUSED -> {
@@ -380,7 +379,7 @@ fun CommentSheet(
                                     Icon(Icons.Default.Mic, "Reanudar", tint = MaterialTheme.colorScheme.primary)
                                 }
                                 IconButton(onClick = { onStopRecording(true) }) {
-                                    Icon(Icons.Default.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
+                                    Icon(Icons.AutoMirrored.Filled.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
                                 }
                             }
                             else -> {}
@@ -416,7 +415,7 @@ fun CommentSheet(
                                     contentColor = MaterialTheme.colorScheme.onPrimary
                                 )
                             ) {
-                                Icon(Icons.Default.Send, "Enviar")
+                                Icon(Icons.AutoMirrored.Filled.Send, "Enviar")
                             }
                         }
                     }
@@ -770,7 +769,7 @@ fun AudioCommentPlayer(
         Spacer(modifier = Modifier.width(8.dp))
         
         LinearProgressIndicator(
-            progress = progress,
+            progress = { progress },
             modifier = Modifier.weight(1f).height(4.dp).clip(CircleShape),
             color = MaterialTheme.colorScheme.primary,
             trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)

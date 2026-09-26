@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -77,12 +78,27 @@ class PostRepository @Inject constructor(
     private val hashtagRepository: HashtagRepository,
     private val upstashCache: UpstashCacheService,
     private val localFallbackApiClient: LocalFallbackApiClient,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
+    /**
+     * Keep a local-fallback session on its own API even during the short
+     * startup window in which endpoint discovery has not yet promoted the
+     * runtime URL to the primary Supabase facade.
+     */
+    private fun usesLocalFallbackBackend(): Boolean =
+        localFallbackApiClient.isConfigured &&
+            (supabaseConfig.isLocalFallbackPrimary || authService.isLocalFallbackSession())
+
     private val cacheJson = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
         encodeDefaults = true
+    }
+    // The feed must remain useful when the API is slow or temporarily offline.
+    // Keep metadata account-scoped so one signed-in account never sees another
+    // account's personalized state on the same device.
+    private val localFeedCache by lazy(LazyThreadSafetyMode.NONE) {
+        context.getSharedPreferences("social_feed_metadata_cache", Context.MODE_PRIVATE)
     }
     private val _mutationEvents = MutableSharedFlow<PostMutationEvent>(extraBufferCapacity = 32)
     val mutationEvents: SharedFlow<PostMutationEvent> = _mutationEvents.asSharedFlow()
@@ -117,6 +133,34 @@ class PostRepository @Inject constructor(
         "FIRE"
     )
     private val maxPostMediaBytes = 25L * 1024 * 1024
+
+    private fun localFeedKey(mode: String): String {
+        val accountId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty().ifBlank { "guest" }
+        return "$mode:$accountId"
+    }
+
+    private fun readLocalFeed(mode: String): List<Post> = runCatching {
+        localFeedCache.getString(localFeedKey(mode), null)
+            ?.let { cacheJson.decodeFromString<List<Post>>(it) }
+            .orEmpty()
+    }.getOrDefault(emptyList())
+
+    private fun persistLocalFeed(mode: String, posts: List<Post>) {
+        runCatching {
+            localFeedCache.edit()
+                .putString(localFeedKey(mode), cacheJson.encodeToString(posts.take(60)))
+                .apply()
+        }.onFailure { error ->
+            android.util.Log.w("PostRepository", "No se pudo guardar la caché local del feed", error)
+        }
+    }
+
+    /** Returns the last usable feed snapshot without touching the network. */
+    fun getCachedGlobalPosts(mode: String = "discover"): List<Post> {
+        val normalizedMode = mode.trim().lowercase().takeIf { it in setOf("discover", "following") }
+            ?: "discover"
+        return readLocalFeed(normalizedMode)
+    }
 
     suspend fun searchPublicContent(
         query: String,
@@ -169,16 +213,24 @@ class PostRepository @Inject constructor(
     fun getGlobalPosts(
         offset: Int = 0,
         limit: Int = 20,
-        mode: String = "discover"
+        mode: String = "discover",
+        emitCachedSnapshots: Boolean = true,
     ): Flow<List<Post>> = flow {
         var startedAt = System.currentTimeMillis()
         val normalizedMode = mode.trim().lowercase().takeIf { it in setOf("discover", "following") }
             ?: "discover"
         val cacheKey = "posts:$normalizedMode:offset=$offset:limit=$limit"
+        val localSnapshot = if (offset == 0 && emitCachedSnapshots) readLocalFeed(normalizedMode) else emptyList()
+        var hasFallbackEmission = false
+
+        if (localSnapshot.isNotEmpty()) {
+            emit(localSnapshot)
+            hasFallbackEmission = true
+        }
         
         try {
             _globalFeedError.value = null
-            if (supabaseConfig.isLocalFallbackPrimary) {
+            if (usesLocalFallbackBackend()) {
                 val accessToken = authService.getAccessToken()
                 if (accessToken == null) {
                     _globalFeedError.value = "Tu sesión no está disponible. Vuelve a iniciar sesión."
@@ -186,7 +238,7 @@ class PostRepository @Inject constructor(
                         metric = "posts_fetch",
                         attributes = mapOf("source" to "ubuntu", "reason" to "missing_access_token")
                     )
-                    emit(emptyList())
+                    if (!hasFallbackEmission) emit(emptyList())
                     return@flow
                 }
                 val result = localFallbackApiClient.loadFeed(
@@ -202,20 +254,21 @@ class PostRepository @Inject constructor(
                             ?: "No se pudo cargar el feed público."
                     android.util.Log.e("PostRepository", "Error fetching Ubuntu feed", error)
                     appMetrics.recordFailure("posts_fetch", error, mapOf("source" to "ubuntu"))
-                    emit(emptyList())
+                    if (!hasFallbackEmission) emit(emptyList())
                     return@flow
                 }
                 val posts = result.getOrThrow().items
                 _globalFeedError.value = null
+                if (offset == 0) persistLocalFeed(normalizedMode, posts)
                 appMetrics.incrementCounter(
                     metric = "posts_fetch_success",
                     attributes = mapOf("source" to "ubuntu", "count" to posts.size.toString())
                 )
-                emit(posts)
+                if (posts.isNotEmpty() || !hasFallbackEmission) emit(posts)
                 return@flow
             }
 
-            if (offset == 0) {
+            if (offset == 0 && emitCachedSnapshots) {
                 val cachedJson = upstashCache.get(cacheKey)
                 val cachedPosts = cachedJson
                     ?.let { runCatching { cacheJson.decodeFromString<List<Post>>(it) }.getOrNull() }
@@ -249,7 +302,8 @@ class PostRepository @Inject constructor(
                     } else rawPosts
                     posts = enrichPostReactions(accessToken, posts, currentUserId)
 
-                    if (offset == 0 && posts.isNotEmpty()) {
+                    if (offset == 0) {
+                        persistLocalFeed(normalizedMode, posts)
                         val stored = runCatching {
                             upstashCache.set(cacheKey, cacheJson.encodeToString(posts), 300)
                         }.getOrDefault(false)
@@ -274,7 +328,7 @@ class PostRepository @Inject constructor(
                         metric = "posts_fetch",
                         attributes = mapOf("source" to "global", "http_status" to response.status.value.toString())
                     )
-                    emit(emptyList())
+                    if (!hasFallbackEmission) emit(emptyList())
                 }
             } else {
                 _globalFeedError.value = "Tu sesión no está disponible. Vuelve a iniciar sesión."
@@ -282,14 +336,16 @@ class PostRepository @Inject constructor(
                     metric = "posts_fetch",
                     attributes = mapOf("source" to "global", "reason" to "missing_access_token")
                 )
-                emit(emptyList())
+                if (!hasFallbackEmission) emit(emptyList())
             }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 android.util.Log.e("PostRepository", "Error fetching global posts", e)
                 _globalFeedError.value =
                     e.message?.takeIf { it.isNotBlank() } ?: "No se pudo cargar el feed público."
                 appMetrics.recordFailure("posts_fetch", e, mapOf("source" to "global"))
-                emit(emptyList())
+                if (!hasFallbackEmission) emit(emptyList())
             }
         }.flowOn(kotlinx.coroutines.Dispatchers.IO)
 
@@ -580,7 +636,8 @@ class PostRepository @Inject constructor(
         mediaUris: List<Uri>,
         visibility: String = "public",
         remixAllowed: Boolean = false,
-        remixAudience: String = "public"
+        remixAudience: String = "public",
+        isSensitive: Boolean = false
     ): Result<Post> {
         var startedAt = System.currentTimeMillis()
         val uploadedObjects = mutableListOf<Pair<String, String>>()
@@ -704,7 +761,8 @@ class PostRepository @Inject constructor(
                     mediaType = firstMediaType,
                     visibility = visibility,
                     remixAllowed = remixAllowed,
-                    remixAudience = remixAudience
+                    remixAudience = remixAudience,
+                    isSensitive = isSensitive
                 )
                 if (created.isSuccess) {
                     metadataPersisted = true
@@ -731,6 +789,7 @@ class PostRepository @Inject constructor(
                 mediaUrls = mediaUrls,
                 isVerified = isVerified,
                 visibility = visibility,
+                isSensitive = isSensitive,
                 remixAllowed = remixAllowed,
                 remixAudience = remixAudience,
                 tags = extractedHashtags
@@ -1928,6 +1987,7 @@ class PostRepository @Inject constructor(
         @SerialName("media_urls") val mediaUrls: List<String>,
         @SerialName("is_verified") val isVerified: Boolean,
         @SerialName("visibility") val visibility: String = "public",
+        @SerialName("is_sensitive") val isSensitive: Boolean = false,
         @SerialName("remix_allowed") val remixAllowed: Boolean = false,
         @SerialName("remix_audience") val remixAudience: String = "public",
         @SerialName("tags") val tags: List<String> = emptyList()

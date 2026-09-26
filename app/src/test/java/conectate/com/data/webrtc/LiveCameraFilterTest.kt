@@ -38,6 +38,25 @@ class LiveCameraFilterTest {
     }
 
     @Test
+    fun `enhance sliders change luma and warmth independently`() {
+        val bright = LiveCameraAdjustments(enabled = true, smooth = 0f, brightness = 1f, warmth = 0.5f)
+        val warm = LiveCameraAdjustments(enabled = true, smooth = 0f, brightness = 0.5f, warmth = 1f)
+
+        assertTrue(LiveCameraFilterColorMath.luma(100, LiveCameraFilter.NONE, bright) > 100)
+        assertTrue(
+            LiveCameraFilterColorMath.chroma(128, LiveCameraFilter.NONE, true, warm) <
+                LiveCameraFilterColorMath.chroma(128, LiveCameraFilter.NONE, false, warm)
+        )
+    }
+
+    @Test
+    fun `disabled enhancement leaves natural channels unchanged`() {
+        val disabled = LiveCameraAdjustments(enabled = false, smooth = 1f, brightness = 1f, warmth = 1f)
+        assertEquals(110, LiveCameraFilterColorMath.luma(110, LiveCameraFilter.NONE, disabled))
+        assertEquals(140, LiveCameraFilterColorMath.chroma(140, LiveCameraFilter.NONE, true, disabled))
+    }
+
+    @Test
     fun `processor reports filter performance changes`() {
         val states = mutableListOf<LiveFilterPerformanceState>()
         val processor = LiveCameraFilterProcessor(

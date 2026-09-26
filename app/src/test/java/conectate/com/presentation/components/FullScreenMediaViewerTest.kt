@@ -7,8 +7,25 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import androidx.compose.ui.unit.dp
 
 class FullScreenMediaViewerTest {
+
+    @Test
+    fun socialOverlay_usesMeasuredInsetPlusClearanceWithoutScreenSpecificOffset() {
+        assertEquals(40.dp, reliableBottomSafePadding(24.dp, 28.dp, 12.dp))
+        assertEquals(60.dp, reliableBottomSafePadding(48.dp, 28.dp, 12.dp))
+        assertEquals(28.dp, reliableBottomSafePadding(0.dp, 28.dp, 0.dp))
+    }
+
+    @Test
+    fun socialOverlay_addsOnlyViewportBasedClearanceOnTallWindows() {
+        assertEquals(0.dp, tallPostOverlayClearance(640))
+        assertEquals(0.dp, tallPostOverlayClearance(800))
+        assertEquals(12.dp, tallPostOverlayClearance(820))
+        assertEquals(24.dp, tallPostOverlayClearance(873))
+        assertEquals(24.dp, tallPostOverlayClearance(915))
+    }
 
     @Test
     fun fitMediaInViewport_preservesLandscapeAndPortraitAspectRatios() {
@@ -96,6 +113,34 @@ class FullScreenMediaViewerTest {
         assertTrue(isVideoMediaType("view_once_video"))
         assertFalse(isGalleryMediaType("view_once_video"))
         assertFalse(isGalleryMediaType("audio"))
+    }
+
+    @Test
+    fun loadedPreview_preventsBlockingSpinnerAndErrorWhileOriginalImproves() {
+        assertFalse(
+            shouldShowBlockingImageProgress(
+                isOriginalLoading = true,
+                isPreviewReady = true
+            )
+        )
+        assertFalse(
+            shouldShowBlockingImageError(
+                hasOriginalError = true,
+                isPreviewReady = true
+            )
+        )
+        assertTrue(
+            shouldShowBlockingImageProgress(
+                isOriginalLoading = true,
+                isPreviewReady = false
+            )
+        )
+        assertTrue(
+            shouldShowBlockingImageError(
+                hasOriginalError = true,
+                isPreviewReady = false
+            )
+        )
     }
 
     @Test

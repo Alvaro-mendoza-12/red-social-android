@@ -1,6 +1,7 @@
 package conectate.com.services
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -34,6 +35,10 @@ internal data class LiveForegroundState(
     val types: Int = 0
 )
 
+// These foreground-service type constants are compile-time bit flags. The
+// actual typed startForeground call remains guarded by the corresponding SDK
+// checks below, so referencing the flags is safe on the supported API range.
+@SuppressLint("InlinedApi")
 internal object LiveForegroundPolicy {
     private val supportedTypes =
         ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or

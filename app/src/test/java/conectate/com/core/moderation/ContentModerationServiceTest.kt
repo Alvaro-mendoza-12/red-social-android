@@ -10,7 +10,7 @@ import org.junit.Test
 
 class ContentModerationServiceTest {
 
-    private val service = SimpleContentModerationService(NoOpMetrics())
+    private val service = SimpleContentModerationService(NoOpMetrics(), ModerationNoticeCenter())
 
     @Test
     fun `blocked term returns block verdict`() {
@@ -42,6 +42,35 @@ class ContentModerationServiceTest {
         )
 
         assertEquals(ModerationVerdict.BLOCK, result.verdict)
+    }
+
+    @Test
+    fun `spanish insults are masked before a comment is published`() {
+        val result = service.moderate(
+            text = "eres un imbécil y un estúpido",
+            context = ModerationContext.COMMENT_CONTENT
+        )
+
+        assertEquals(ModerationVerdict.SANITIZE, result.verdict)
+        assertFalse(result.sanitizedText.contains("imbécil", ignoreCase = true))
+        assertFalse(result.sanitizedText.contains("estúpido", ignoreCase = true))
+    }
+
+    @Test
+    fun `obfuscated insults are masked but benign compliments remain`() {
+        val obfuscated = service.moderate(
+            text = "eres p.v.t.4 e 1mb3c1l",
+            context = ModerationContext.COMMENT_CONTENT
+        )
+        val benign = service.moderate(
+            text = "Qué bonito, quedó muy rico.",
+            context = ModerationContext.COMMENT_CONTENT
+        )
+
+        assertEquals(ModerationVerdict.SANITIZE, obfuscated.verdict)
+        assertFalse(obfuscated.sanitizedText.contains("p.v.t.4", ignoreCase = true))
+        assertFalse(obfuscated.sanitizedText.contains("1mb3c1l", ignoreCase = true))
+        assertEquals(ModerationVerdict.ALLOW, benign.verdict)
     }
 }
 

@@ -12,7 +12,6 @@ import androidx.lifecycle.lifecycleScope
 import conectate.com.data.repository.AuthRepository
 import conectate.com.data.model.LiveRole
 import conectate.com.presentation.common.MainActivityContent
-import conectate.com.presentation.common.StartupPrompts
 import conectate.com.presentation.messages.isIncomingShareIntent
 import conectate.com.presentation.messages.parseIncomingShareIntent
 import conectate.com.presentation.messages.takeIncomingSharePersistablePermissions
@@ -22,6 +21,7 @@ import conectate.com.services.LiveChatHeadService
 import conectate.com.util.IncomingSharePayload
 import conectate.com.util.PendingOutgoingMediaStore
 import dagger.hilt.android.AndroidEntryPoint
+import dagger.Lazy
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -45,33 +45,64 @@ class MainActivity : ComponentActivity() {
     lateinit var authRepository: AuthRepository
 
     @Inject
-    lateinit var notificationRepository: conectate.com.data.repository.NotificationRepository
+    lateinit var notificationRepository: Lazy<conectate.com.data.repository.NotificationRepository>
 
     @Inject
     lateinit var themePreferences: conectate.com.data.local.prefs.ThemePreferences
 
     @Inject
-    lateinit var voiceRoomRepository: conectate.com.data.repository.VoiceRoomRepository
+    lateinit var voiceRoomRepository: Lazy<conectate.com.data.repository.VoiceRoomRepository>
 
     @Inject
-    lateinit var callRepository: conectate.com.data.repository.CallRepository
+    lateinit var callRepository: Lazy<conectate.com.data.repository.CallRepository>
 
     @Inject
-    lateinit var liveRepository: conectate.com.data.repository.LiveRepository
+    lateinit var liveRepository: Lazy<conectate.com.data.repository.LiveRepository>
 
     @Inject
-    lateinit var userRepository: conectate.com.data.repository.UserRepository
+    lateinit var userRepository: Lazy<conectate.com.data.repository.UserRepository>
+
+    @Inject
+    lateinit var moderationNoticeCenter: conectate.com.core.moderation.ModerationNoticeCenter
+
+    @Inject
+    lateinit var contentSafetyPreferences: conectate.com.data.local.prefs.ContentSafetyPreferences
+
+    @Inject
+    lateinit var messagesPreferences: conectate.com.data.local.prefs.MessagesPreferences
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val createStartedAtMs = android.os.SystemClock.elapsedRealtime()
         super.onCreate(savedInstanceState)
+        if (BuildConfig.DEBUG) {
+            android.util.Log.d(
+                "StartupTiming",
+                "MainActivity super.onCreate completed in ${android.os.SystemClock.elapsedRealtime() - createStartedAtMs} ms"
+            )
+        }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         acceptIncomingIntent(intent)
+
+        lifecycleScope.launch {
+            moderationNoticeCenter.notices.collect { notice ->
+                if (contentSafetyPreferences.moderationWarningsEnabled.value) {
+                    android.widget.Toast.makeText(
+                        this@MainActivity,
+                        notice,
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
 
         setContent {
             val isDarkMode by themePreferences.isDarkMode.collectAsStateWithLifecycle()
             val appTheme by themePreferences.appTheme.collectAsStateWithLifecycle()
             val fontOption by themePreferences.fontOption.collectAsStateWithLifecycle()
             val textScale by themePreferences.textScale.collectAsStateWithLifecycle()
+            val sensitiveContentMode by contentSafetyPreferences.sensitiveContentMode.collectAsStateWithLifecycle()
+            val chatAccent by messagesPreferences.chatAccent.collectAsStateWithLifecycle()
+            val chatBackground by messagesPreferences.chatBackground.collectAsStateWithLifecycle()
             val currentIntent by intentState
             val incomingShare by incomingShareState
             RedSocialTheme(
@@ -80,20 +111,31 @@ class MainActivity : ComponentActivity() {
                 fontOption = fontOption,
                 textScale = textScale
             ) {
-                StartupPrompts()
-                MainActivityContent(
-                    currentIntent = currentIntent,
-                    onIntentConsumed = { intentState.value = null },
-                    incomingShare = incomingShare,
-                    onIncomingShareConsumed = ::discardIncomingShare,
-                    authRepository = authRepository,
-                    notificationRepository = notificationRepository,
-                    voiceRoomRepository = voiceRoomRepository,
-                    callRepository = callRepository,
-                    liveRepository = liveRepository,
-                    activityScope = lifecycleScope
-                )
+                androidx.compose.runtime.CompositionLocalProvider(
+                    conectate.com.presentation.theme.LocalSensitiveContentMode provides sensitiveContentMode,
+                    conectate.com.presentation.theme.LocalChatAccentKey provides chatAccent,
+                    conectate.com.presentation.theme.LocalChatBackgroundKey provides chatBackground,
+                ) {
+                    MainActivityContent(
+                        currentIntent = currentIntent,
+                        onIntentConsumed = { intentState.value = null },
+                        incomingShare = incomingShare,
+                        onIncomingShareConsumed = ::discardIncomingShare,
+                        authRepository = authRepository,
+                        notificationRepositoryProvider = notificationRepository,
+                        voiceRoomRepositoryProvider = voiceRoomRepository,
+                        callRepositoryProvider = callRepository,
+                        liveRepositoryProvider = liveRepository,
+                        activityScope = lifecycleScope
+                    )
+                }
             }
+        }
+        if (BuildConfig.DEBUG) {
+            android.util.Log.d(
+                "StartupTiming",
+                "MainActivity setContent submitted in ${android.os.SystemClock.elapsedRealtime() - createStartedAtMs} ms"
+            )
         }
     }
 
@@ -216,7 +258,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun syncLiveChatHead(shouldShow: Boolean) {
-        val session = liveRepository.activeSession.value
+        val hasSession = authRepository.getAuthStateFlow().value?.user?.id?.isNotBlank() == true
+        val session = if (hasSession) liveRepository.get().activeSession.value else null
         val shouldRun = shouldShow && session?.role == LiveRole.HOST
         val intent = Intent(this, LiveChatHeadService::class.java).apply {
             action = if (shouldRun) LiveChatHeadService.ACTION_START else LiveChatHeadService.ACTION_STOP
@@ -239,7 +282,7 @@ class MainActivity : ComponentActivity() {
             try {
                 val userId = authRepository.getCurrentUserId()
                 if (userId != null) {
-                    userRepository.setOnlineStatus(userId, isOnline)
+                    userRepository.get().setOnlineStatus(userId, isOnline)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("MainActivity", "Error updating online status", e)

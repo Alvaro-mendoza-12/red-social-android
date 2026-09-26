@@ -26,6 +26,7 @@ import conectate.com.core.production.ProductionReadyOptimizer
 import conectate.com.data.observability.SupabaseTelemetryExporter
 import conectate.com.data.sync.SyncManager
 import dagger.hilt.android.HiltAndroidApp
+import dagger.Lazy
 import javax.inject.Inject
 import androidx.hilt.work.HiltWorkerFactory
 import kotlinx.coroutines.Dispatchers
@@ -36,20 +37,23 @@ import conectate.com.util.AppDeviceTier
 import conectate.com.util.AppPerformanceProfiles
 import conectate.com.data.localfallback.RuntimeBackendEndpoint
 import conectate.com.data.webrtc.WebRTCManager
+import java.util.concurrent.atomic.AtomicReference
 
 @HiltAndroidApp
 class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
     
-    @Inject lateinit var workerFactory: HiltWorkerFactory // ⚠️ No hay @Provides para este tipo
-    @Inject lateinit var crashReporter: CrashReporter
-    @Inject lateinit var logger: AppLogger
-    @Inject lateinit var appMetrics: AppMetrics
-    @Inject lateinit var telemetryExporter: SupabaseTelemetryExporter
-    @Inject lateinit var syncManager: SyncManager
-    @Inject lateinit var runtimeStabilityMonitor: RuntimeStabilityMonitor
+    @Inject lateinit var workerFactory: HiltWorkerFactory // Provisto por la integración Hilt/WorkManager.
+    // Keep the application graph light. Incoming-call UI must be able to render
+    // before analytics, sync and observability singletons are constructed.
+    @Inject lateinit var crashReporter: Lazy<CrashReporter>
+    @Inject lateinit var logger: Lazy<AppLogger>
+    @Inject lateinit var appMetrics: Lazy<AppMetrics>
+    @Inject lateinit var telemetryExporter: Lazy<SupabaseTelemetryExporter>
+    @Inject lateinit var syncManager: Lazy<SyncManager>
+    @Inject lateinit var runtimeStabilityMonitor: Lazy<RuntimeStabilityMonitor>
     
     // 🔥 PRODUCTION OPTIMIZER
-    private lateinit var productionOptimizer: ProductionReadyOptimizer
+    private val productionOptimizer = AtomicReference<ProductionReadyOptimizer?>(null)
 
     override val workManagerConfiguration: Configuration
         get() = try {
@@ -59,22 +63,25 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
                 .setMinimumLoggingLevel(android.util.Log.INFO)
                 .build()
         } catch (e: Exception) {
-            Configuration.Builder().build()
+            // Current workers have public Context/WorkerParameters constructors and
+            // can use WorkManager's default factory. Make a failed Hilt setup
+            // visible: future injected workers would otherwise fail in the queue.
+            android.util.Log.e("SocialApp", "Hilt worker factory unavailable; using default WorkManager factory", e)
+            Configuration.Builder()
+                .setMinimumLoggingLevel(android.util.Log.INFO)
+                .build()
         }
 
-    private val appScope = newSafeScope("SocialApp", Dispatchers.Default) // ⚠️ Sin SupervisorJob
+    private val appScope = newSafeScope("SocialApp", Dispatchers.Default) // newSafeScope incluye SupervisorJob.
 
     override fun onCreate() {
         super.onCreate()
 
         RuntimeBackendEndpoint.initialize(this)
         
-        // 🔥 INICIALIZAR OPTIMIZADOR DE PRODUCCIÓN
-        productionOptimizer = ProductionReadyOptimizer(this)
-        productionOptimizer.initializeForProduction()
-        
-        // Initialize Coil with optimized settings
-        Coil.setImageLoader(newImageLoader())
+        // Coil discovers ImageLoaderFactory from the Application and creates the
+        // loader on first image use. Avoid building its caches on the critical
+        // cold-start path (especially when only showing an incoming call).
         
         // Initialize crash reporting. Telemetry must never prevent the app from opening.
         runCatching {
@@ -96,34 +103,48 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
             try {
                 android.util.Log.e("SocialApp", "FATAL CRASH in thread ${thread.name}: ${throwable.message}", throwable)
                 if (::crashReporter.isInitialized) {
-                    crashReporter.recordFatalException(threadName = thread.name, throwable = throwable)
+                    crashReporter.get().recordFatalException(threadName = thread.name, throwable = throwable)
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("SocialApp", "Fatal-crash reporting failed", e)
             }
             defaultHandler?.uncaughtException(thread, throwable)
-        }
-
-        // Runtime watchdogs for ANR-like stalls and memory pressure.
-        try {
-            runtimeStabilityMonitor.start(this)
-        } catch (e: Exception) {
-            android.util.Log.e("SocialApp", "RuntimeStabilityMonitor start failed", e)
         }
 
         // Initialize background tasks safely - NO BLOQUEAR MAIN THREAD
         appScope.launch {
             try {
+                // This touches the filesystem and scans a transient cache directory.
+                // Initialize it off the main thread so a large cache cannot delay first draw.
+                launch(Dispatchers.IO) {
+                    try {
+                        val optimizer = ProductionReadyOptimizer(this@SocialApp)
+                        optimizer.initializeForProduction()
+                        productionOptimizer.set(optimizer)
+                    } catch (e: Exception) {
+                        android.util.Log.e("SocialApp", "Production optimizer initialization failed", e)
+                    }
+                }
                 launch {
                     RuntimeBackendEndpoint.refresh(this@SocialApp)
+                }
+                // Runtime watchdogs are important but do not need to delay the
+                // first frame of an incoming call or launcher cold start.
+                launch {
+                    try {
+                        delay(500)
+                        runtimeStabilityMonitor.get().start(this@SocialApp)
+                    } catch (e: Exception) {
+                        android.util.Log.e("SocialApp", "RuntimeStabilityMonitor start failed", e)
+                    }
                 }
                 // Monitor Metrics Alerts - Delay slightly to allow UI to settle
                 launch {
                     try {
                         delay(1500)
-                        appMetrics.alerts.collect { alert ->
+                        appMetrics.get().alerts.collect { alert ->
                             if (alert.severity == MetricAlertSeverity.CRITICAL) {
-                                crashReporter.recordMessage(
+                                crashReporter.get().recordMessage(
                                     message = "critical_metric_${alert.metric}",
                                     attributes = mapOf("msg" to alert.message) + alert.attributes
                                 )
@@ -138,7 +159,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
                 launch {
                     try {
                         delay(2500)
-                        telemetryExporter.start()
+                        telemetryExporter.get().start()
                     } catch (e: Exception) {
                         android.util.Log.e("SocialApp", "Telemetry start failed", e)
                     }
@@ -148,7 +169,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
                 launch {
                     try {
                         delay(3500)
-                        syncManager.start()
+                        syncManager.get().start()
                     } catch (e: Exception) {
                         android.util.Log.e("SocialApp", "SyncManager start failed", e)
                     }
@@ -207,20 +228,19 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
             .build()
     }
 
-    @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        runCatching { productionOptimizer.onTrimMemory(level) }
+        runCatching { productionOptimizer.get()?.onTrimMemory(level) }
             .onFailure {
                 if (::logger.isInitialized) {
-                    logger.w("SocialApp", "Production optimizer trim hook failed", it)
+                    logger.get().w("SocialApp", "Production optimizer trim hook failed", it)
                 }
             }
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             runCatching { Coil.imageLoader(this).memoryCache?.clear() }
                 .onFailure {
                     if (::logger.isInitialized) {
-                        logger.w("SocialApp", "Image cache trim failed", it)
+                        logger.get().w("SocialApp", "Image cache trim failed", it)
                     }
                 }
             WebRTCManager.releaseIdleResources()
@@ -229,16 +249,16 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
 
     override fun onLowMemory() {
         super.onLowMemory()
-        runCatching { productionOptimizer.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE) }
+        runCatching { productionOptimizer.get()?.onLowMemory() }
             .onFailure {
                 if (::logger.isInitialized) {
-                    logger.w("SocialApp", "Production optimizer low memory hook failed", it)
+                    logger.get().w("SocialApp", "Production optimizer low memory hook failed", it)
                 }
             }
         runCatching { Coil.imageLoader(this).memoryCache?.clear() }
             .onFailure {
                 if (::logger.isInitialized) {
-                    logger.w("SocialApp", "Image cache clear failed", it)
+                    logger.get().w("SocialApp", "Image cache clear failed", it)
                 }
             }
         WebRTCManager.releaseIdleResources()

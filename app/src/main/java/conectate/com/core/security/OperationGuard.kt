@@ -4,6 +4,7 @@ import conectate.com.core.logging.AppLogger
 import conectate.com.core.telemetry.AppTelemetry
 import conectate.com.core.telemetry.TelemetryEvent
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.max
@@ -59,6 +60,7 @@ class OperationGuard @Inject constructor(
     private val logger: AppLogger
 ) {
     private val buckets = ConcurrentHashMap<String, RateBucket>()
+    private val acquisitionsSinceMaintenance = AtomicInteger(0)
 
     suspend fun acquire(
         action: GuardedAction,
@@ -68,9 +70,11 @@ class OperationGuard @Inject constructor(
     ): GuardDecision {
         val nowMs = System.currentTimeMillis()
         val key = buildBucketKey(action, actorId, scopeId)
+        maintainBuckets(nowMs, key)
         val bucket = buckets.computeIfAbsent(key) { RateBucket() }
 
         val decision = synchronized(bucket) {
+            bucket.lastTouchedAtMs = nowMs
             evaluateBucket(bucket, action, nowMs, enforceMinInterval)
         }
 
@@ -86,6 +90,39 @@ class OperationGuard @Inject constructor(
 
         return decision
     }
+
+    private fun maintainBuckets(nowMs: Long, protectedKey: String) {
+        val isPeriodicMaintenance =
+            acquisitionsSinceMaintenance.incrementAndGet() % BUCKET_MAINTENANCE_INTERVAL == 0
+        val needsCapacity = !buckets.containsKey(protectedKey) && buckets.size >= MAX_ACTIVE_BUCKETS
+        if (!isPeriodicMaintenance && !needsCapacity) return
+
+        buckets.entries.forEach { entry ->
+            if (entry.key == protectedKey) return@forEach
+            val idle = synchronized(entry.value) {
+                nowMs - entry.value.lastTouchedAtMs >= BUCKET_IDLE_RETENTION_MS
+            }
+            if (idle) {
+                buckets.remove(entry.key, entry.value)
+            }
+        }
+
+        val targetSize = if (needsCapacity) MAX_ACTIVE_BUCKETS - 1 else MAX_ACTIVE_BUCKETS
+        val excess = buckets.size - targetSize
+        if (excess <= 0) return
+
+        buckets.entries
+            .asSequence()
+            .filter { it.key != protectedKey }
+            .map { entry ->
+                entry to synchronized(entry.value) { entry.value.lastTouchedAtMs }
+            }
+            .sortedBy { it.second }
+            .take(excess)
+            .forEach { (entry, _) -> buckets.remove(entry.key, entry.value) }
+    }
+
+    internal fun activeBucketCountForTesting(): Int = buckets.size
 
     suspend fun audit(
         action: GuardedAction,
@@ -181,11 +218,15 @@ class OperationGuard @Inject constructor(
 
     private data class RateBucket(
         val acceptedAtMs: ArrayDeque<Long> = ArrayDeque(),
-        var lastAcceptedAtMs: Long = 0L
+        var lastAcceptedAtMs: Long = 0L,
+        var lastTouchedAtMs: Long = 0L
     )
 
     companion object {
         private const val TAG = "OperationGuard"
+        internal const val MAX_ACTIVE_BUCKETS = 2_048
+        private const val BUCKET_MAINTENANCE_INTERVAL = 128
+        private const val BUCKET_IDLE_RETENTION_MS = 15 * 60_000L
     }
 }
 

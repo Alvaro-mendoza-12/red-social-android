@@ -3,25 +3,38 @@ package conectate.com.presentation.profile
 import androidx.compose.runtime.Composable
 
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -30,9 +43,14 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import conectate.com.data.localfallback.UbuntuStorageUrl
+import conectate.com.core.profile.ProfileSocialLinks
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.DeviceAudioPickerDialog
 import conectate.com.presentation.components.ImageCropPreset
+import conectate.com.presentation.components.PreparedAudioClip
 import conectate.com.presentation.components.SimpleImageCropDialog
+import conectate.com.presentation.components.SocialBrandLogo
+import conectate.com.presentation.components.SocialPlatform
 import conectate.com.presentation.messages.MessageMediaComposer
 import kotlinx.coroutines.delay
 import java.time.Instant
@@ -55,6 +73,7 @@ fun EditProfileScreen(
 
     // State for fields
     var name by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf("") }
     var country by remember { mutableStateOf("") }
     var city by remember { mutableStateOf("") }
@@ -70,18 +89,40 @@ fun EditProfileScreen(
     var trimCandidateUri by remember { mutableStateOf<Uri?>(null) }
     var trimCandidateDurationMs by remember { mutableStateOf(0L) }
     var pendingImageCrop by remember { mutableStateOf<Pair<Uri, ProfileImageTarget>?>(null) }
-    var fullScreenPreviewUrl by remember { mutableStateOf<String?>(null) }
     var initialized by remember { mutableStateOf(false) }
+    var instagram by remember { mutableStateOf("") }
+    var tiktok by remember { mutableStateOf("") }
+    var facebook by remember { mutableStateOf("") }
+    var xProfile by remember { mutableStateOf("") }
+    var whatsapp by remember { mutableStateOf("") }
+    var interestsText by remember { mutableStateOf("") }
+    var hobbiesText by remember { mutableStateOf("") }
+    var linkedGamesText by remember { mutableStateOf("") }
+    var favoriteMusicUrl by remember { mutableStateOf("") }
+    var pendingProfileMusic by remember { mutableStateOf<PreparedAudioClip?>(null) }
+    var profileMusicMarkedForRemoval by remember { mutableStateOf(false) }
+    var showProfileMusicPicker by remember { mutableStateOf(false) }
+    var profileMusicPickerInitialUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedSection by remember { mutableStateOf<ProfileEditSection?>(null) }
 
     var isTrimmingAvatar by remember { mutableStateOf(false) }
 
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
     var unifiedPickerTarget by remember { mutableStateOf(ProfileImageTarget.AVATAR) }
+    val profileMusicFileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri != null) {
+            profileMusicPickerInitialUri = uri
+            showProfileMusicPicker = true
+        }
+    }
 
     LaunchedEffect(profileState) {
         if (!initialized && profileState is ProfileUiState.Success) {
             val user = (profileState as ProfileUiState.Success).user
             name = user.displayName
+            username = user.username.orEmpty()
             bio = user.bio ?: ""
             country = user.country ?: ""
             city = user.city ?: ""
@@ -90,6 +131,15 @@ fun EditProfileScreen(
             avatarMediaType = user.avatar_media_type
             avatarDurationMs = user.avatar_duration_ms
             avatarVideoMuted = user.avatar_video_muted
+            instagram = user.social_links["instagram"].orEmpty()
+            tiktok = user.social_links["tiktok"].orEmpty()
+            facebook = user.social_links["facebook"].orEmpty()
+            xProfile = user.social_links["x"].orEmpty()
+            whatsapp = user.social_links["whatsapp"].orEmpty()
+            interestsText = user.interests.joinToString(", ")
+            hobbiesText = user.hobbies.joinToString(", ")
+            linkedGamesText = user.linked_games.joinToString(", ")
+            favoriteMusicUrl = user.favorite_music_url.orEmpty()
             initialized = true
         }
     }
@@ -208,10 +258,20 @@ fun EditProfileScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Editar Perfil") },
+                title = {
+                    Text(
+                        selectedSection?.title ?: "Editar perfil",
+                        maxLines = 1,
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, "Atrás")
+                    IconButton(
+                        onClick = {
+                            if (selectedSection == null) navController.popBackStack()
+                            else selectedSection = null
+                        }
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atrás")
                     }
                 }
             )
@@ -220,327 +280,174 @@ fun EditProfileScreen(
         Box(modifier = Modifier.padding(padding)) {
              when (val state = profileState) {
                 is ProfileUiState.Success -> {
-                    val rewrittenCoverUrl = remember(state.user.cover_url) {
-                        UbuntuStorageUrl.rewrite(state.user.cover_url)
-                    }
-                    val coverCacheKey = remember(state.user.cover_url) {
-                        UbuntuStorageUrl.stableCacheKey(state.user.cover_url)
-                    }
-                    val persistedCoverRequest = remember(rewrittenCoverUrl, coverCacheKey) {
-                        rewrittenCoverUrl?.let { coverUrl ->
-                            ImageRequest.Builder(context)
-                                .data(coverUrl)
-                                .memoryCacheKey(coverCacheKey)
-                                .diskCacheKey(coverCacheKey)
-                                .placeholderMemoryCacheKey(coverCacheKey)
-                                .memoryCachePolicy(CachePolicy.ENABLED)
-                                .diskCachePolicy(CachePolicy.ENABLED)
-                                .crossfade(false)
-                                .build()
-                        }
-                    }
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .navigationBarsPadding()
-                            .imePadding()
-                            .verticalScroll(rememberScrollState())
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Cover Photo Section
-                        Text(
-                            "Foto de Portada",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.align(Alignment.Start)
-                        )
-                        
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp)
-                        ) {
-                            // Cover image preview
-                            androidx.compose.foundation.Image(
-                                painter = if (coverImageUri != null) {
-                                    coil.compose.rememberAsyncImagePainter(coverImageUri)
-                                } else if (persistedCoverRequest != null) {
-                                    coil.compose.rememberAsyncImagePainter(persistedCoverRequest)
-                                } else {
-                                    coil.compose.rememberAsyncImagePainter(null)
-                                },
-                                contentDescription = "Portada",
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                                    .clickable { 
-                                        unifiedPickerTarget = ProfileImageTarget.COVER
-                                        showUnifiedMediaPicker = true 
-                                    },
-                                contentScale = ContentScale.Crop
-                            )
-                            
-                            // Overlay for empty state
-                            if (coverImageUri == null && state.user.cover_url.isNullOrEmpty()) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                                        .clickable { 
-                                            unifiedPickerTarget = ProfileImageTarget.COVER
-                                            showUnifiedMediaPicker = true
-                                        }
-                                        .background(MaterialTheme.colorScheme.primaryContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        "Toca para agregar portada",
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    val currentSection = selectedSection
+                    ProfileEditSections(
+                        section = currentSection,
+                        user = state.user,
+                        isLoading = isLoading,
+                        errorMessage = errorMessage,
+                        name = name,
+                        onNameChange = { name = it.take(50) },
+                        username = username,
+                        onUsernameChange = { username = it.removePrefix("@").take(24) },
+                        bio = bio,
+                        onBioChange = { bio = it },
+                        country = country,
+                        onCountryChange = { country = it.take(80) },
+                        city = city,
+                        onCityChange = { city = it.take(80) },
+                        gender = gender,
+                        onGenderChange = { gender = it },
+                        showGenderDropdown = showGenderDropdown,
+                        onGenderDropdownChange = { showGenderDropdown = it },
+                        birthDate = birthDate,
+                        birthDateIsValid = birthDateIsValid,
+                        onOpenBirthDate = { showBirthDatePicker = true },
+                        imageUri = imageUri,
+                        avatarMediaType = avatarMediaType,
+                        avatarVideoMuted = avatarVideoMuted,
+                        onAvatarVideoMutedChange = { avatarVideoMuted = it },
+                        coverImageUri = coverImageUri,
+                        onPickAvatar = {
+                            unifiedPickerTarget = ProfileImageTarget.AVATAR
+                            showUnifiedMediaPicker = true
+                        },
+                        onPickCover = {
+                            unifiedPickerTarget = ProfileImageTarget.COVER
+                            showUnifiedMediaPicker = true
+                        },
+                        interestsText = interestsText,
+                        onInterestsChange = { interestsText = it.take(400) },
+                        hobbiesText = hobbiesText,
+                        onHobbiesChange = { hobbiesText = it.take(400) },
+                        linkedGamesText = linkedGamesText,
+                        onLinkedGamesChange = { linkedGamesText = it.take(400) },
+                        profileMusicPreviewUrl = pendingProfileMusic?.uri?.toString()
+                            ?: favoriteMusicUrl.takeIf(String::isNotBlank),
+                        profileMusicName = pendingProfileMusic?.displayName
+                            ?: favoriteMusicUrl.takeIf(String::isNotBlank)?.let { "Canción actual" },
+                        profileMusicMarkedForRemoval = profileMusicMarkedForRemoval,
+                        onPickProfileMusic = {
+                            profileMusicPickerInitialUri = null
+                            showProfileMusicPicker = true
+                        },
+                        onRemoveProfileMusic = {
+                            pendingProfileMusic = null
+                            profileMusicMarkedForRemoval = true
+                        },
+                        instagram = instagram,
+                        onInstagramChange = { instagram = it.take(240) },
+                        tiktok = tiktok,
+                        onTikTokChange = { tiktok = it.take(240) },
+                        facebook = facebook,
+                        onFacebookChange = { facebook = it.take(240) },
+                        xProfile = xProfile,
+                        onXChange = { xProfile = it.take(240) },
+                        whatsapp = whatsapp,
+                        onWhatsAppChange = { whatsapp = it.take(24) },
+                        onSelectSection = {
+                            errorMessage = null
+                            selectedSection = it
+                        },
+                        onSave = {
+                            val trimmedName = name.trim()
+                            val trimmedUsername = username.trim()
+                            val usernameChanged = currentSection == ProfileEditSection.BASIC &&
+                                trimmedUsername != state.user.username.orEmpty().trim()
+                            val trimmedBio = bio.trim()
+                            when {
+                                currentSection == null -> Unit
+                                currentSection == ProfileEditSection.MUSIC -> {
+                                    isLoading = true
+                                    errorMessage = null
+                                    viewModel.saveProfileMusic(
+                                        clip = pendingProfileMusic,
+                                        removeMusic = profileMusicMarkedForRemoval,
+                                        onSuccess = { savedUrl ->
+                                            isLoading = false
+                                            favoriteMusicUrl = savedUrl.orEmpty()
+                                            pendingProfileMusic = null
+                                            profileMusicMarkedForRemoval = false
+                                            selectedSection = null
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                if (savedUrl.isNullOrBlank()) "Música quitada" else "Música guardada",
+                                                android.widget.Toast.LENGTH_SHORT,
+                                            ).show()
+                                        },
+                                        onError = {
+                                            isLoading = false
+                                            errorMessage = it
+                                        },
                                     )
                                 }
-                            }
-                            
-                            // Edit button
-                            Button(
-                                onClick = { 
-                                    unifiedPickerTarget = ProfileImageTarget.COVER
-                                    showUnifiedMediaPicker = true 
-                                },
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(8.dp)
-                            ) {
-                                Text("Cambiar")
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        // Profile Photo Section
-                        Text(
-                            "Foto de Perfil",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.align(Alignment.Start)
-                        )
-                        
-                        // Profile Image with Edit Overlay
-                        Box(contentAlignment = Alignment.BottomEnd) {
-                             CircularProfileImage(
-                                imageUrl = imageUri?.toString() ?: state.user.avatar_url,
-                                size = 120.dp,
-                                mediaType = avatarMediaType ?: state.user.avatar_media_type,
-                                muted = avatarVideoMuted,
-                                allowSound = true
-                            )
-                            Button(
-                                onClick = { 
-                                    unifiedPickerTarget = ProfileImageTarget.AVATAR
-                                    showUnifiedMediaPicker = true
-                                },
-                                modifier = Modifier.offset(y = 10.dp)
-                            ) {
-                                Text("Cambiar")
-                            }
-                        }
-
-                        if ((avatarMediaType ?: state.user.avatar_media_type)?.contains("video", ignoreCase = true) == true) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Reproducir avatar con sonido")
-                                Switch(
-                                    checked = !avatarVideoMuted,
-                                    onCheckedChange = { avatarVideoMuted = !it }
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        val canChangeName by remember(state) {
-                            derivedStateOf {
-                                val lastChange = state.user.last_name_change
-                                if (lastChange == null) true
-                                else {
-                                    try {
-                                        // Simple Parsing or proper DateTimeformatter
-                                        // Assuming ISO-8601
-                                        val lastDate = java.time.LocalDateTime.parse(lastChange)
-                                        val diff = java.time.Duration.between(lastDate, java.time.LocalDateTime.now()).toDays()
-                                        diff >= 7
-                                    } catch (e: Exception) { true }
-                                }
-                            }
-                        }
-
-                        OutlinedTextField(
-                            value = name,
-                            onValueChange = { name = it },
-                            label = { Text("Nombre Completo") },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = canChangeName,
-                            supportingText = { 
-                                if (!canChangeName) {
-                                    Text("Solo puedes cambiar esto cada 7 días", color = MaterialTheme.colorScheme.error)
-                                } else {
-                                    Text("Solo puedes cambiar esto cada 7 días") 
-                                }
-                            }
-                        )
-
-                        OutlinedTextField(
-                            value = bio,
-                            onValueChange = { if (it.length <= 500) bio = it }, // Hard limit input
-                            label = { Text("Biografía") },
-                            modifier = Modifier.fillMaxWidth(),
-                            minLines = 3,
-                            maxLines = 5,
-                            supportingText = {
-                                Text("${bio.length}/500 caracteres", 
-                                    color = if (bio.length >= 500) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        )
-
-                        OutlinedTextField(
-                            value = country,
-                            onValueChange = { country = it },
-                            label = { Text("País") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        OutlinedTextField(
-                            value = city,
-                            onValueChange = { city = it },
-                            label = { Text("Ciudad") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        ExposedDropdownMenuBox(
-                            expanded = showGenderDropdown,
-                            onExpandedChange = { showGenderDropdown = it },
-                        ) {
-                            OutlinedTextField(
-                                value = when (gender) {
-                                    "man" -> "Hombre"
-                                    "woman" -> "Mujer"
-                                    else -> "Prefiero no decirlo"
-                                },
-                                onValueChange = {},
-                                readOnly = true,
-                                label = { Text("Me identifico como") },
-                                leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null) },
-                                trailingIcon = {
-                                    ExposedDropdownMenuDefaults.TrailingIcon(showGenderDropdown)
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .menuAnchor(),
-                            )
-                            ExposedDropdownMenu(
-                                expanded = showGenderDropdown,
-                                onDismissRequest = { showGenderDropdown = false },
-                            ) {
-                                listOf(
-                                    "man" to "Hombre",
-                                    "woman" to "Mujer",
-                                    "unspecified" to "Prefiero no decirlo",
-                                ).forEach { (value, label) ->
-                                    DropdownMenuItem(
-                                        text = { Text(label) },
-                                        onClick = {
-                                            gender = value
-                                            showGenderDropdown = false
+                                trimmedName.length !in 2..50 ->
+                                    errorMessage = "El nombre debe tener entre 2 y 50 caracteres"
+                                usernameChanged && !Regex("[A-Za-z0-9_.-]{3,24}").matches(trimmedUsername) ->
+                                    errorMessage = "El usuario debe tener 3–24 letras, números, _, . o -."
+                                !birthDateIsValid ->
+                                    errorMessage = "Selecciona una fecha de nacimiento válida"
+                                currentSection == ProfileEditSection.SOCIAL &&
+                                    !socialLinksAreValid(instagram, tiktok, facebook, xProfile, whatsapp) ->
+                                    errorMessage = "Usa enlaces HTTPS oficiales y un número internacional válido"
+                                else -> {
+                                    isLoading = true
+                                    errorMessage = null
+                                    viewModel.updateProfile(
+                                        name = trimmedName,
+                                        username = trimmedUsername.takeIf { usernameChanged },
+                                        bio = trimmedBio,
+                                        country = country.trim(),
+                                        city = city.trim(),
+                                        gender = gender,
+                                        birthDate = birthDate.takeIf(String::isNotBlank),
+                                        imageUri = imageUri.takeIf {
+                                            currentSection == ProfileEditSection.APPEARANCE
+                                        },
+                                        avatarMediaType = avatarMediaType,
+                                        avatarVideoMuted = avatarVideoMuted,
+                                        avatarDurationMs = avatarDurationMs,
+                                        coverImageUri = coverImageUri.takeIf {
+                                            currentSection == ProfileEditSection.APPEARANCE
+                                        },
+                                        interests = parseProfileList(interestsText).takeIf {
+                                            currentSection == ProfileEditSection.INTERESTS
+                                        },
+                                        hobbies = parseProfileList(hobbiesText).takeIf {
+                                            currentSection == ProfileEditSection.INTERESTS
+                                        },
+                                        linkedGames = parseProfileList(linkedGamesText).takeIf {
+                                            currentSection == ProfileEditSection.INTERESTS
+                                        },
+                                        socialLinks = normalizedSocialLinks(
+                                            instagram = instagram,
+                                            tiktok = tiktok,
+                                            facebook = facebook,
+                                            xProfile = xProfile,
+                                            whatsapp = whatsapp,
+                                        ).takeIf {
+                                            currentSection == ProfileEditSection.SOCIAL
+                                        },
+                                        onSuccess = {
+                                            isLoading = false
+                                            imageUri = null
+                                            coverImageUri = null
+                                            selectedSection = null
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "Cambios guardados",
+                                                android.widget.Toast.LENGTH_SHORT,
+                                            ).show()
+                                        },
+                                        onError = {
+                                            isLoading = false
+                                            errorMessage = it
                                         },
                                     )
                                 }
                             }
-                        }
-
-                        OutlinedTextField(
-                            value = parsedBirthDate?.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
-                                ?: birthDate,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Fecha de nacimiento") },
-                            leadingIcon = { Icon(Icons.Default.Cake, contentDescription = null) },
-                            trailingIcon = {
-                                IconButton(onClick = { showBirthDatePicker = true }) {
-                                    Icon(Icons.Default.CalendarMonth, contentDescription = "Elegir fecha")
-                                }
-                            },
-                            isError = !birthDateIsValid,
-                            supportingText = {
-                                Text("El día se usa para avisar a tus amigos en tu cumpleaños.")
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showBirthDatePicker = true },
-                        )
-
-                        if (errorMessage != null) {
-                            Text(errorMessage ?: "", color = MaterialTheme.colorScheme.error)
-                        }
-
-                        Button(
-                            onClick = {
-                                val trimmedName = name.trim()
-                                val trimmedBio = bio.trim()
-                                
-                                when {
-                                    trimmedName.isEmpty() -> errorMessage = "El nombre no puede estar vacío"
-                                    trimmedName.length < 2 -> errorMessage = "El nombre es muy corto"
-                                    trimmedName.length > 50 -> errorMessage = "El nombre es muy largo"
-                                    !birthDateIsValid -> errorMessage = "Selecciona una fecha de nacimiento válida"
-                                    else -> {
-                                        isLoading = true
-                                        errorMessage = null
-                                        viewModel.updateProfile(
-                                            name = trimmedName,
-                                            bio = trimmedBio,
-                                            country = country.trim(),
-                                            city = city.trim(),
-                                            gender = gender,
-                                            birthDate = birthDate.takeIf { it.isNotBlank() },
-                                            imageUri = imageUri,
-                                            avatarMediaType = avatarMediaType,
-                                            avatarVideoMuted = avatarVideoMuted,
-                                            avatarDurationMs = avatarDurationMs,
-                                            coverImageUri = coverImageUri,
-                                            onSuccess = {
-                                                isLoading = false
-                                                // No need to force reload, optimistic update in ViewModel handles it
-                                                android.widget.Toast.makeText(
-                                                    context, 
-                                                    "¡Cambios guardados exitosamente!", 
-                                                    android.widget.Toast.LENGTH_SHORT
-                                                ).show()
-                                                navController.popBackStack()
-                                            },
-                                            onError = {
-                                                isLoading = false
-                                                errorMessage = it
-                                            }
-                                        )
-                                    }
-                                }
-                            },
-                            enabled = !isLoading,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                             if (isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp),
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            } else {
-                                Text("Guardar Cambios")
-                            }
-                        }
-                    }
+                        },
+                    )
                 }
                 is ProfileUiState.Error -> {
                      Column(
@@ -549,7 +456,9 @@ fun EditProfileScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text("Error al cargar perfil")
-                        Button(onClick = { /* retry? */ }) { Text("Reintentar") }
+                        Button(onClick = { viewModel.loadUserProfile(userId = null, forceNetwork = true) }) {
+                            Text("Reintentar")
+                        }
                     }
                 }
                 ProfileUiState.Loading -> {
@@ -618,6 +527,27 @@ fun EditProfileScreen(
                     }
                 }
             }
+        )
+    }
+    if (showProfileMusicPicker) {
+        DeviceAudioPickerDialog(
+            initialUri = profileMusicPickerInitialUri,
+            title = "Música de entrada",
+            confirmLabel = "Usar en mi perfil",
+            maxClipDurationMs = 60_000L,
+            defaultClipDurationMs = 30_000L,
+            allowFullTrack = false,
+            onBrowseFiles = { profileMusicFileLauncher.launch("audio/*") },
+            onDismiss = {
+                showProfileMusicPicker = false
+                profileMusicPickerInitialUri = null
+            },
+            onClipReady = { clip ->
+                pendingProfileMusic = clip
+                profileMusicMarkedForRemoval = false
+                showProfileMusicPicker = false
+                profileMusicPickerInitialUri = null
+            },
         )
     }
     }
@@ -733,6 +663,130 @@ private fun formatAvatarTrimTime(ms: Long): String {
     val seconds = totalTenths / 10L
     val tenths = totalTenths % 10L
     return "$seconds.${tenths}s"
+}
+
+@Composable
+internal fun ProfileSocialLinksEditor(
+    instagram: String,
+    onInstagramChange: (String) -> Unit,
+    tiktok: String,
+    onTikTokChange: (String) -> Unit,
+    facebook: String,
+    onFacebookChange: (String) -> Unit,
+    xProfile: String,
+    onXChange: (String) -> Unit,
+    whatsapp: String,
+    onWhatsAppChange: (String) -> Unit,
+) {
+    val fields = listOf(
+        Triple(SocialPlatform.INSTAGRAM, instagram, onInstagramChange),
+        Triple(SocialPlatform.TIKTOK, tiktok, onTikTokChange),
+        Triple(SocialPlatform.FACEBOOK, facebook, onFacebookChange),
+        Triple(SocialPlatform.X, xProfile, onXChange),
+        Triple(SocialPlatform.WHATSAPP, whatsapp, onWhatsAppChange),
+    )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column {
+            fields.forEachIndexed { index, (platform, value, onValueChange) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 58.dp)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SocialBrandLogo(platform = platform, size = 38.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = platform.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        BasicTextField(
+                            value = value,
+                            onValueChange = onValueChange,
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = if (platform == SocialPlatform.WHATSAPP) {
+                                    KeyboardType.Phone
+                                } else {
+                                    KeyboardType.Uri
+                                },
+                                imeAction = if (index == fields.lastIndex) ImeAction.Done else ImeAction.Next,
+                            ),
+                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                            decorationBox = { innerTextField ->
+                                Box(contentAlignment = Alignment.CenterStart) {
+                                    if (value.isBlank()) {
+                                        Text(
+                                            text = platform.placeholder,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
+                                            maxLines = 1,
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            },
+                        )
+                    }
+                }
+                if (index != fields.lastIndex) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 62.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun normalizedSocialLinks(
+    instagram: String,
+    tiktok: String,
+    facebook: String,
+    xProfile: String,
+    whatsapp: String,
+): Map<String, String> = ProfileSocialLinks.normalize(
+    mapOf(
+        "instagram" to instagram,
+        "tiktok" to tiktok,
+        "facebook" to facebook,
+        "x" to xProfile,
+        "whatsapp" to whatsapp,
+    ),
+)
+
+private fun parseProfileList(value: String): List<String> = value
+    .split(',', '\n', ';')
+    .map(String::trim)
+    .filter(String::isNotBlank)
+    .distinctBy(String::lowercase)
+    .take(24)
+
+private fun socialLinksAreValid(
+    instagram: String,
+    tiktok: String,
+    facebook: String,
+    xProfile: String,
+    whatsapp: String,
+): Boolean {
+    return ProfileSocialLinks.isValidInput("instagram", instagram) &&
+        ProfileSocialLinks.isValidInput("tiktok", tiktok) &&
+        ProfileSocialLinks.isValidInput("facebook", facebook) &&
+        ProfileSocialLinks.isValidInput("x", xProfile) &&
+        ProfileSocialLinks.isValidInput("whatsapp", whatsapp)
 }
 
 enum class ProfileImageTarget {

@@ -31,7 +31,7 @@ import conectate.com.data.local.entity.FollowEntity
 import conectate.com.data.local.dao.GroupDao
 import conectate.com.data.local.dao.CommunityDao
 
-const val APP_DATABASE_VERSION = 53
+const val APP_DATABASE_VERSION = 55
 
 @Database(
     entities = [
@@ -39,6 +39,7 @@ const val APP_DATABASE_VERSION = 53
         ChatEntity::class, 
         ChatSettingsEntity::class,
         MessageEntity::class,
+        conectate.com.data.local.entity.MessageDeletionEntity::class,
         VideoStatsEntity::class,
         VideoCommentEntity::class,
         GroupEntity::class,
@@ -61,6 +62,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
     abstract fun chatSettingsDao(): ChatSettingsDao
     abstract fun messageDao(): MessageDao
+    abstract fun messageDeletionDao(): conectate.com.data.local.dao.MessageDeletionDao
     abstract fun videoStatsDao(): VideoStatsDao
     abstract fun videoCommentDao(): VideoCommentDao
     abstract fun groupDao(): GroupDao

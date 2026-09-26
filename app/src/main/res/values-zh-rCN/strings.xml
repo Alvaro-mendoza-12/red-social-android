@@ -41,4 +41,7 @@
     <string name="widget_action_videos">视频</string>
     <string name="widget_action_moment">动态</string>
     <string name="widget_action_chat">聊天</string>
+    <string name="two_factor_local_reset_title">账户安全</string>
+    <string name="two_factor_local_reset_message">此设备的加密存储已重置。如果账户启用了两步验证，请使用身份验证器或备用代码登录。服务器端的保护仍然有效。</string>
+    <string name="two_factor_local_reset_ok">知道了</string>
 </resources>

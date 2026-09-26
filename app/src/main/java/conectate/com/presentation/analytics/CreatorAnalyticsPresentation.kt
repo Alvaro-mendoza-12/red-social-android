@@ -6,7 +6,7 @@ import conectate.com.data.model.VideoAnalyticsReport
 
 internal fun creatorAnalyticsErrorMessage(error: Throwable): String = when ((error as? CreatorAnalyticsApiException)?.code) {
     "CREATOR_ANALYTICS_DISABLED" ->
-        "No se pudo iniciar el servicio de estadísticas. Actualiza e inténtalo nuevamente."
+        "El servicio no terminó de iniciar. Reintenta para actualizar la conexión."
     "CREATOR_ANALYTICS_OWNER_REQUIRED" ->
         "Solo el creador puede consultar estas estadísticas."
     "CONTENT_NOT_FOUND" ->
@@ -14,8 +14,8 @@ internal fun creatorAnalyticsErrorMessage(error: Throwable): String = when ((err
     "AUTH_REQUIRED", "USER_NOT_FOUND" ->
         "Tu sesión venció. Inicia sesión nuevamente."
     "BACKEND_UNAVAILABLE" ->
-        "El servidor de estadísticas no está disponible."
-    else -> "No se pudieron cargar las estadísticas. Revisa tu conexión e inténtalo nuevamente."
+        "No pudimos conectar con el servidor. Revisa tu conexión y vuelve a intentarlo."
+    else -> "No pudimos actualizar los datos. Revisa tu conexión y vuelve a intentarlo."
 }
 
 internal fun VideoAnalyticsReport.hasConfirmedActivity(): Boolean =

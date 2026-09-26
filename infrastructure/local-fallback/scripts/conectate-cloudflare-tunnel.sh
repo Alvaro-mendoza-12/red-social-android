@@ -9,6 +9,9 @@ SYSTEM_LOG="$HOME/cloudflared.log"
 URL_FILE="$HOME/conectate-public-url.txt"
 PID_FILE="$HOME/.cache/conectate-cloudflare-tunnel.pid"
 COMPOSE_LOCK="${CONECTATE_COMPOSE_LOCK:-$HOME/.cache/conectate-compose.lock}"
+TUNNEL_HEALTH_PROBES="${TUNNEL_HEALTH_PROBES:-3}"
+TUNNEL_HEALTH_REQUIRED_SUCCESSES="${TUNNEL_HEALTH_REQUIRED_SUCCESSES:-2}"
+TUNNEL_HEALTH_TIMEOUT_SECONDS="${TUNNEL_HEALTH_TIMEOUT_SECONDS:-8}"
 mkdir -p "$(dirname "$PID_FILE")"
 
 env_value() {
@@ -16,9 +19,26 @@ env_value() {
   sed -n "s/^$1=//p" "$ROOT_DIR/.env" | tail -n 1
 }
 
+set_env_value() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" "$ROOT_DIR/.env" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$ROOT_DIR/.env"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$ROOT_DIR/.env"
+  fi
+}
+
 tunnel_ready() {
-  local url="$1"
-  curl -fsS --max-time 20 "${url%/}/ready" >/dev/null 2>&1
+  local url="$1" successes=0
+  local probe
+  for probe in $(seq 1 "$TUNNEL_HEALTH_PROBES"); do
+    if curl -4 -fsS --max-time "$TUNNEL_HEALTH_TIMEOUT_SECONDS" \
+      "${url%/}/ready" >/dev/null 2>&1; then
+      successes=$((successes + 1))
+    fi
+    [ "$probe" -lt "$TUNNEL_HEALTH_PROBES" ] && sleep 1
+  done
+  [ "$successes" -ge "$TUNNEL_HEALTH_REQUIRED_SUCCESSES" ]
 }
 
 wait_backend() {
@@ -27,6 +47,16 @@ wait_backend() {
     sleep 2
   done
   return 1
+}
+
+reconcile_stack_public_url() {
+  cd "$ROOT_DIR"
+  docker compose up -d --remove-orphans >/dev/null 2>&1 || return 1
+  # Nginx resolves Compose service names when its workers start. Recreating
+  # api/realtime/signaling without reloading edge leaves stale container IPs
+  # and turns an otherwise healthy tunnel into a persistent 502.
+  docker compose restart edge >/dev/null 2>&1 || return 1
+  wait_backend
 }
 
 wait_stack_startup() {
@@ -55,43 +85,83 @@ wait_stack_startup() {
 
 publish_duckdns_txt() {
   local url="$1"
-  local domain token
+  local domain token private_key ttl envelope
   domain="$(env_value DUCKDNS_DOMAIN)"
   token="$(env_value DUCKDNS_TOKEN)"
   [ -n "$domain" ] && [ -n "$token" ] || return 0
+  private_key="$(env_value BACKEND_DISCOVERY_PRIVATE_KEY_FILE)"
+  ttl="$(env_value BACKEND_DISCOVERY_TTL_SECONDS)"
+  ttl="${ttl:-86400}"
+  if [ -z "$private_key" ] || [ ! -r "$private_key" ]; then
+    echo 'ERROR: falta BACKEND_DISCOVERY_PRIVATE_KEY_FILE legible; no se publico un TXT inseguro' >&2
+    return 1
+  fi
+  envelope="$(node "$ROOT_DIR/scripts/backend-discovery-envelope.mjs" sign \
+    --private-key "$private_key" --url "$url" --ttl-seconds "$ttl")" || return 1
+  [[ "$envelope" == novvin1:* ]] || return 1
   domain="${domain%.duckdns.org}"
   curl -fsS --max-time 20 \
-    "https://www.duckdns.org/update?domains=${domain}&token=${token}&txt=${url}&verbose=true" \
-    | grep -q '^OK' && echo "DUCKDNS_TXT_OK=$url"
+    "https://www.duckdns.org/update?domains=${domain}&token=${token}&txt=${envelope}&verbose=true" \
+    | grep -q '^OK' && echo "DUCKDNS_SIGNED_TXT_OK=${domain}.duckdns.org"
 }
 
 update_public_url() {
   local url="$1"
-  local previous
+  local previous_env advertised_url stable_url
   wait_stack_startup
   (
     flock --wait 240 9 || {
       echo 'ERROR: no se pudo adquirir el bloqueo de Docker Compose' >&2
       exit 1
     }
-    previous="$(cat "$URL_FILE" 2>/dev/null || true)"
-    if [ "$previous" != "$url" ]; then
+    stable_url="$(env_value STABLE_PUBLIC_BASE_URL)"
+    advertised_url="$url"
+    if [[ "$stable_url" =~ ^https://[-a-zA-Z0-9.]+\.ts\.net:8443$ ]] && tunnel_ready "$stable_url"; then
+      advertised_url="$stable_url"
+    elif [ -n "$stable_url" ]; then
+      echo 'WARN: origen estable no disponible; usando temporalmente el túnel de respaldo' >&2
+    fi
+    previous_env="$(env_value PUBLIC_BASE_URL)"
+    if [ "$previous_env" != "$advertised_url" ]; then
       cd "$ROOT_DIR"
-      if grep -q '^PUBLIC_BASE_URL=' .env 2>/dev/null; then
-        sed -i "s|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=$url|" .env
-      else
-        printf 'PUBLIC_BASE_URL=%s\n' "$url" >> .env
-      fi
-      docker compose up -d --remove-orphans >/dev/null 2>&1
-      wait_backend || {
-        echo 'ERROR: la API no se recupero despues de actualizar PUBLIC_BASE_URL' >&2
+      set_env_value PUBLIC_BASE_URL "$advertised_url"
+      if ! reconcile_stack_public_url; then
+        echo 'ERROR: el stack no se recupero despues de actualizar PUBLIC_BASE_URL; revirtiendo' >&2
+        if [ -n "$previous_env" ]; then
+          set_env_value PUBLIC_BASE_URL "$previous_env"
+          reconcile_stack_public_url || \
+            echo 'ERROR: el stack tampoco se recupero despues del rollback' >&2
+        fi
         exit 1
-      }
+      fi
     fi
     echo "$url" > "$URL_FILE"
   ) 9>"$COMPOSE_LOCK"
-  publish_duckdns_txt "$url" || true
-  echo "PUBLIC_URL=$url"
+  advertised_url="$(env_value PUBLIC_BASE_URL)"
+  publish_duckdns_txt "$advertised_url" || echo 'WARN: el endpoint funciona, pero la rotacion firmada no se publico' >&2
+  echo "PUBLIC_URL=$advertised_url"
+}
+
+current_public_url() {
+  local url
+  url="$(cat "$URL_FILE" 2>/dev/null || true)"
+  [[ "$url" =~ ^https://[-a-zA-Z0-9.]+\.trycloudflare\.com$ ]] || return 1
+
+  # A living process may reconnect forever after its Quick Tunnel name was
+  # removed. DNS agreement is a useful early signal, but it is not sufficient:
+  # resolvers can briefly return unknown while the edge is unhealthy and a
+  # stale process can still own the old log entry. Every cycle therefore needs
+  # a bounded end-to-end /ready probe before the URL is retained. This keeps a
+  # dead public hostname from being advertised indefinitely while preserving
+  # the existing three-probe/ two-success tolerance in tunnel_ready(). If the connector that owns the published hostname is still
+  # alive but /ready fails, the loop below rotates it instead of advertising
+  # that stale process.
+  if node "$ROOT_DIR/scripts/public-tunnel-dns.mjs" "$url" >/dev/null; then
+    echo "PUBLIC_URL_DNS_REMOVED=$url" >&2
+    return 1
+  fi
+  tunnel_ready "$url" || return 1
+  printf '%s\n' "$url"
 }
 
 system_tunnel_url() {
@@ -128,7 +198,10 @@ stop_own_tunnel() {
 
 start_own_tunnel() {
   : > "$OWN_LOG"
-  "$BIN" tunnel --no-autoupdate --url "$LOCAL_EDGE" >>"$OWN_LOG" 2>&1 &
+  # This host has exhibited intermittent QUIC/IPv6 route loss. HTTP/2 over
+  # IPv4 is slower on paper but materially more stable for long media ranges.
+  "$BIN" tunnel --no-autoupdate --protocol http2 --edge-ip-version 4 \
+    --url "$LOCAL_EDGE" >>"$OWN_LOG" 2>&1 &
   echo "$!" > "$PID_FILE"
 }
 
@@ -148,14 +221,22 @@ while true; do
     continue
   fi
 
-  if public_url="$(system_tunnel_url)"; then
-    stop_own_tunnel
+  # Keep the published endpoint while it is healthy. Choosing a candidate
+  # merely because it is also healthy caused a URL/container rotation every
+  # cycle and interrupted active clients.
+  if public_url="$(current_public_url)"; then
     update_public_url "$public_url"
     sleep 90
     continue
   fi
 
   if public_url="$(own_tunnel_url)"; then
+    update_public_url "$public_url"
+    sleep 90
+    continue
+  fi
+
+  if public_url="$(system_tunnel_url)"; then
     update_public_url "$public_url"
     sleep 90
     continue

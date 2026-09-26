@@ -207,7 +207,7 @@ bash scripts/setup-public-duckdns-caddy.sh
 Desde Windows tambien se puede lanzar con:
 
 ```powershell
-cd "D:\red social - copia"
+cd "D:\red social - live-gifts"
 powershell -ExecutionPolicy Bypass -File ".\scripts\setup-vm-public-access.ps1"
 ```
 
@@ -245,7 +245,7 @@ SUPABASE_ANON_KEY=
 Compilar:
 
 ```powershell
-cd "D:\red social - copia"
+cd "D:\red social - live-gifts"
 .\gradlew.bat --no-daemon --console=plain :app:compileDebugKotlin
 ```
 

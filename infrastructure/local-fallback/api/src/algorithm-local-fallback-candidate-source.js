@@ -175,6 +175,7 @@ const SOCIAL_CANDIDATE_SQL = `
       OR lower(account.id::text) = ANY($1::text[])
       OR lower(COALESCE(account.supabase_user_id::text, '')) = ANY($1::text[])
     )
+    AND post.updated_at <= $2::timestamptz
     AND NOT EXISTS (
       SELECT 1
       FROM fallback_profile_moderation moderation
@@ -203,7 +204,7 @@ const SOCIAL_CANDIDATE_SQL = `
       )
     )
   ORDER BY post.updated_at DESC, post.id DESC
-  LIMIT $2
+  LIMIT $3
 `
 
 const VIDEO_CANDIDATE_SQL = `
@@ -229,6 +230,11 @@ const VIDEO_CANDIDATE_SQL = `
     video.video_url,
     video.cover_url,
     video.thumbnail_url,
+    video.sound_id,
+    video.sound_source_video_id,
+    video.sound_title,
+    video.sound_artist,
+    video.sound_url,
     video.duration_seconds,
     video.views,
     video.like_count,
@@ -283,6 +289,7 @@ const VIDEO_CANDIDATE_SQL = `
     WHERE classified_topic.classification_id = classification.id
   ) classification_topics ON classification_topics.entries IS NOT NULL
   WHERE video.is_public = TRUE
+    AND video.updated_at <= $2::timestamptz
     AND NOT EXISTS (
       SELECT 1
       FROM fallback_video_deletions deleted_video
@@ -336,7 +343,7 @@ const VIDEO_CANDIDATE_SQL = `
       )
     )
   ORDER BY video.updated_at DESC, video.id DESC
-  LIMIT $2
+  LIMIT $3
 `
 
 const BLOCK_EDGE_SQL = `
@@ -387,7 +394,8 @@ const INFERRED_TOPIC_SIGNALS_SQL = `
      AND classification.safety_state = 'allowed'
     JOIN fallback_algorithm_content_topics topic
       ON topic.classification_id = classification.id
-   WHERE interaction.occurred_at >= NOW() - INTERVAL '180 days'
+   WHERE interaction.occurred_at >= $2::timestamptz - INTERVAL '180 days'
+     AND interaction.occurred_at <= $2::timestamptz
    GROUP BY interaction.source, topic.topic_key, topic.subtopic_key
    ORDER BY strength DESC, interaction.source, topic.topic_key, topic.subtopic_key
    LIMIT 256
@@ -634,9 +642,22 @@ function videoCandidate(row, now) {
   const creatorId = normalizeId(row?.public_creator_id) || aliases[0]
   const classification = classificationMetadata(row)
   if (!id || !creatorId || aliases.length === 0 || classification.topics.length === 0) return null
+  // A classified row is not enough for a playable recommendation. Never let
+  // an empty, insecure, or credential-bearing media URL reach the feed as a
+  // black card; the provider must fail closed and let another candidate fill
+  // the page instead.
+  const videoUrl = safePublicUrl(row.video_url)
+  if (!videoUrl) return null
   const createdAt = safeTimestamp(row.created_at)
   const updatedAt = safeTimestamp(row.updated_at) || createdAt
   const tags = classification.topics
+  // `video` is retained as a compatibility marker for older clients, but a
+  // format preference must use a real subset.  Long-form videos therefore
+  // receive `long-video`; otherwise a legacy negative `video` rule could be
+  // interpreted as "block every video".
+  const specificFormat = classification.formatKey === 'video'
+    ? 'long-video'
+    : classification.formatKey
   return {
     id,
     surface: 'video',
@@ -650,9 +671,14 @@ function videoCandidate(row, now) {
       user_profile_image: safePublicUrl(row.avatar_url),
       title: cleanPublicText(row.title, 240),
       description: cleanPublicText(row.description),
-      video_url: safePublicUrl(row.video_url),
+      video_url: videoUrl,
       cover_url: safePublicUrl(row.cover_url),
       thumbnail_url: safePublicUrl(row.thumbnail_url),
+      sound_id: normalizeId(row.sound_id) || id,
+      sound_source_video_id: normalizeId(row.sound_source_video_id) || id,
+      sound_title: cleanPublicText(row.sound_title, 180) || `Sonido original — ${publicDisplayName(row.display_name)}`,
+      sound_artist: cleanPublicText(row.sound_artist, 120) || publicDisplayName(row.display_name),
+      sound_url: safePublicUrl(row.sound_url) || videoUrl,
       duration_seconds: safeNumber(row.duration_seconds, 86_400),
       views: safeNumber(row.views),
       like_count: safeNumber(row.like_count),
@@ -666,7 +692,7 @@ function videoCandidate(row, now) {
     contentKey: `video:${id}`,
     topics: tags,
     subtopics: classification.subtopics,
-    formats: ['video', ...(classification.formatKey ? [classification.formatKey] : [])],
+    formats: ['video', ...(specificFormat ? [specificFormat] : [])],
     audioKeys: classification.audioKey ? [classification.audioKey] : [],
     languages: classification.languageCode ? [classification.languageCode] : [],
     communityKeys: classification.communityId ? [classification.communityId] : [],
@@ -679,6 +705,18 @@ function videoCandidate(row, now) {
     snapshotUpdatedAt: safeTimestamp(row.classification_updated_at) || updatedAt,
     snapshotProfileUpdatedAt: safeTimestamp(row.profile_updated_at),
   }
+}
+
+function stableSnapshotItem(candidate) {
+  const item = { ...(candidate?.item || {}) }
+  // Engagement counters update while somebody is scrolling and must never
+  // invalidate an otherwise stable page cursor. They are response metadata,
+  // not candidate identity or ranking inputs.
+  delete item.views
+  delete item.like_count
+  delete item.comment_count
+  delete item.share_count
+  return item
 }
 
 function snapshotId(surface, candidates, unavailable = false) {
@@ -698,7 +736,7 @@ function snapshotId(surface, candidates, unavailable = false) {
       communityKeys: candidate.communityKeys,
       updatedAt: candidate.snapshotUpdatedAt,
       profileUpdatedAt: candidate.snapshotProfileUpdatedAt,
-      item: candidate.item,
+      item: stableSnapshotItem(candidate),
     })),
   }
   const digest = crypto.createHash('sha256').update(JSON.stringify(shape), 'utf8').digest('base64url')
@@ -734,10 +772,10 @@ function inferredSignalsFromRows(rows) {
   return { sources }
 }
 
-async function loadInferredSignals(pool, viewerIds) {
+async function loadInferredSignals(pool, viewerIds, snapshotTime) {
   if (!(await tablesAvailable(pool, INFERENCE_TABLES))) return { sources: {} }
   try {
-    const result = await pool.query(INFERRED_TOPIC_SIGNALS_SQL, [viewerIds])
+    const result = await pool.query(INFERRED_TOPIC_SIGNALS_SQL, [viewerIds, snapshotTime])
     return inferredSignalsFromRows(result?.rows)
   } catch {
     // Inference is optional. A storage failure must never weaken the safety
@@ -763,6 +801,14 @@ function rawMapperFor(surface) {
   return surface === 'social' ? socialCandidate : videoCandidate
 }
 
+function recommendationSnapshotTime(input, now) {
+  const cursorValue = input?.cursor?.providerState?.asOf
+  const cursorTime = Date.parse(String(cursorValue || ''))
+  if (Number.isFinite(cursorTime)) return new Date(cursorTime).toISOString()
+  const requestedTime = Number.isFinite(Number(input?.now)) ? Number(input.now) : Number(now())
+  return new Date(requestedTime).toISOString()
+}
+
 /**
  * Produces the two reader functions expected by createAlgorithmCandidateProvider.
  * The object is deliberately not coupled to Express or to data-routes.js.
@@ -778,11 +824,12 @@ function createAlgorithmLocalFallbackCandidateSource({ pool, now = () => Date.no
       if (!(await tablesAvailable(pool, REQUIRED_TABLES[surface]))) return emptyBatch(surface)
 
       const limit = boundedInteger(input.maxCandidates ?? input.limit, 1, MAX_CANDIDATES, MAX_CANDIDATES)
-      const timestamp = Number.isFinite(Number(input.now)) ? Number(input.now) : Number(now())
+      const snapshotTime = recommendationSnapshotTime(input, now)
+      const timestamp = Date.parse(snapshotTime)
       try {
         const [result, inferredSignals] = await Promise.all([
-          pool.query(rawQueryFor(surface), [viewerIds, limit]),
-          loadInferredSignals(pool, viewerIds),
+          pool.query(rawQueryFor(surface), [viewerIds, snapshotTime, limit]),
+          loadInferredSignals(pool, viewerIds, snapshotTime),
         ])
         if (!Array.isArray(result?.rows)) return emptyBatch(surface)
         const candidates = result.rows
@@ -791,7 +838,7 @@ function createAlgorithmLocalFallbackCandidateSource({ pool, now = () => Date.no
           .slice(0, MAX_CANDIDATES)
         return {
           snapshotId: snapshotId(surface, candidates),
-          providerState: null,
+          providerState: { asOf: snapshotTime },
           inferredSignals,
           candidates,
         }

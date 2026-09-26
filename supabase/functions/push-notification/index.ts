@@ -1,12 +1,46 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 /**
  * Edge Function triggered by Webhooks on multiple tables.
  */
 serve(async (req) => {
     try {
+        if (req.method !== 'POST') {
+            return new Response(JSON.stringify({ error: 'METHOD_NOT_ALLOWED' }), {
+                status: 405,
+                headers: { 'Content-Type': 'application/json', 'Allow': 'POST' },
+            })
+        }
+
+        const configuredWebhookSecret = Deno.env.get('PUSH_WEBHOOK_SECRET') ?? ''
+        if (!configuredWebhookSecret) {
+            console.error('[push-notification] PUSH_WEBHOOK_SECRET is not configured')
+            return new Response(JSON.stringify({ error: 'SERVICE_NOT_CONFIGURED' }), {
+                status: 503,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        }
+        const authorization = req.headers.get('authorization') ?? ''
+        const bearerSecret = authorization.toLowerCase().startsWith('bearer ')
+            ? authorization.slice(7).trim()
+            : ''
+        const suppliedWebhookSecret = req.headers.get('x-novvin-webhook-secret') ?? bearerSecret
+        if (!constantTimeEquals(configuredWebhookSecret, suppliedWebhookSecret)) {
+            return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
+                status: 401,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        }
+
+        const declaredLength = Number(req.headers.get('content-length') || '0')
+        if (Number.isFinite(declaredLength) && declaredLength > 256 * 1024) {
+            return new Response(JSON.stringify({ error: 'PAYLOAD_TOO_LARGE' }), {
+                status: 413,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        }
         const payload = await req.json()
-        console.log("Notification Payload Received:", payload)
 
         // Handle both formats:
         // 1) direct payload: { table, record }
@@ -15,11 +49,25 @@ serve(async (req) => {
         const table = (payload.table || payload.entity || "").toString().trim()
         const record = payload.record || payload.new_record || payload.new || payload
 
-        if (!table || (eventType && eventType !== "INSERT" && eventType !== "UPDATE")) {
+        if (!table || eventType !== "INSERT" || !record || typeof record !== 'object') {
             return new Response(JSON.stringify({ message: "Ignore payload format" }), { status: 200 })
         }
 
-        console.log(`Processing table: ${table}, record:`, record)
+        console.log(JSON.stringify({
+            event: 'push_webhook_received',
+            table,
+            eventType: eventType || 'UNKNOWN',
+            recordId: String(record?.id || ''),
+        }))
+
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        if (!supabaseUrl || !serviceRoleKey) {
+            throw new Error('SUPABASE_EDGE_CONFIGURATION_MISSING')
+        }
+        const supabase = createClient(supabaseUrl, serviceRoleKey, {
+            auth: { persistSession: false, autoRefreshToken: false },
+        })
 
         let recipientIds: string[] = []
         let notificationTitle = "Novvin"
@@ -42,33 +90,35 @@ serve(async (req) => {
             }
         }
 
-        // Reemplazar lógica de Supabase con llamadas a tu servidor propio
-        const fetchFromServer = async (endpoint, params) => {
-            const url = `http://192.168.18.22/api/${endpoint}`;
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(params),
-            });
-            return response.json();
-        };
-
-        // Reemplazar lógica de Supabase para obtener datos de chats
         if (table === 'messages') {
-            const chatId = record.chat_id;
-            const senderId = record.sender_id;
-            const content = record.content || "Nuevo mensaje";
+            const chatId = record.chat_id
+            const senderId = record.sender_id
+            const content = record.content || "Nuevo mensaje"
 
-            const chat = await fetchFromServer('chats/get', { id: chatId });
-            const participants = chat.participants || [];
-            const cleanSenderId = senderId.trim().toLowerCase();
-            recipientIds = participants.filter((id) => id.trim().toLowerCase() !== cleanSenderId);
+            const { data: chat, error: chatError } = await supabase
+                .from('chats')
+                .select('participants, is_group, group_name')
+                .eq('id', chatId)
+                .single()
+            if (chatError) throw chatError
 
-            const senderProfile = await fetchFromServer('profiles/get', { id: senderId });
-            const senderName = senderProfile?.full_name || "Usuario";
-            const isGroup = chat.is_group || false;
-            notificationTitle = isGroup ? (chat.group_name || "Grupo") : senderName;
-            notificationBody = isGroup ? `${senderName}: ${content}` : content;
+            const participants = Array.isArray(chat?.participants) ? chat.participants : []
+            const cleanSenderId = String(senderId || '').trim().toLowerCase()
+            recipientIds = participants
+                .map((id: unknown) => String(id))
+                .filter((id: string) => id.trim().toLowerCase() !== cleanSenderId)
+
+            const { data: senderProfile, error: senderError } = await supabase
+                .from('profiles')
+                .select('full_name, avatar_url')
+                .eq('id', senderId)
+                .single()
+            if (senderError) throw senderError
+
+            const senderName = senderProfile?.full_name || "Usuario"
+            const isGroup = chat?.is_group || false
+            notificationTitle = isGroup ? (chat?.group_name || "Grupo") : senderName
+            notificationBody = isGroup ? `${senderName}: ${content}` : content
 
             fcmData = {
                 id: String(record.id),
@@ -307,12 +357,7 @@ serve(async (req) => {
         }
 
         // 3. Get FCM tokens for those recipients
-        const { data: tokens, error: tError } = await supabase
-            .from('fcm_tokens')
-            .select('token')
-            .in('user_id', recipientIds)
-
-        if (tError) throw tError
+        const tokens = await loadFcmTokens(supabase, recipientIds)
         if (!tokens || tokens.length === 0) {
             return new Response(JSON.stringify({ message: "No tokens" }), { status: 200 })
         }
@@ -329,18 +374,12 @@ serve(async (req) => {
         const FIREBASE_MESSAGING_URL = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`
 
         // 6. Send notifications via FCM
-        const sendResults = await Promise.all(tokens.map(async (t: any) => {
+        const sendOne = async (t: { token: string }) => {
             const isCallInvite = String(fcmData?.type || "").trim().toLowerCase() === "call_invite"
             const ttlValue = isCallInvite ? "45s" : "86400s"
             const normalizedData = Object.fromEntries(
                 Object.entries(fcmData || {}).map(([key, value]) => [key, value == null ? "" : String(value)])
             )
-            if (isCallInvite) {
-                console.log(
-                    `[push-notification] Sending call_invite to token ${String(t.token).slice(0, 12)}... ` +
-                    `for call ${String(normalizedData["call_id"] || "")}`
-                )
-            }
             const messageBody = {
                 message: {
                     token: t.token,
@@ -385,25 +424,96 @@ serve(async (req) => {
                 body: JSON.stringify(messageBody)
             })
             const responseText = await res.text()
-            if (isCallInvite) {
-                console.log(
-                    `[push-notification] FCM response for call_invite ${String(normalizedData["call_id"] || "")}: ` +
-                    `${res.status} ${responseText}`
-                )
-            }
             return {
                 ok: res.ok,
                 status: res.status,
-                body: responseText
+                providerCode: safeFcmErrorCode(responseText),
             }
-        }))
+        }
+        const sendResults = await mapWithConcurrency(tokens, 20, sendOne)
 
-        return new Response(JSON.stringify({ success: true, results: sendResults }), { status: 200 })
+        const delivered = sendResults.filter((result) => result.ok).length
+        return new Response(JSON.stringify({
+            success: delivered === sendResults.length,
+            attempted: sendResults.length,
+            delivered,
+            failed: sendResults.length - delivered,
+        }), {
+            status: delivered === sendResults.length ? 200 : 207,
+            headers: { 'Content-Type': 'application/json' },
+        })
     } catch (error) {
-        console.error("Error in push-notification function:", error)
-        return new Response(JSON.stringify({ error: error.message }), { status: 500 })
+        const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR'
+        console.error('[push-notification] request failed:', message)
+        return new Response(JSON.stringify({ error: 'PUSH_DELIVERY_FAILED' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+        })
     }
 })
+
+function constantTimeEquals(expected: string, supplied: string): boolean {
+    const encoder = new TextEncoder()
+    const left = encoder.encode(expected)
+    const right = encoder.encode(supplied)
+    const maxLength = Math.max(left.length, right.length)
+    let difference = left.length ^ right.length
+    for (let index = 0; index < maxLength; index++) {
+        difference |= (left[index] ?? 0) ^ (right[index] ?? 0)
+    }
+    return difference === 0
+}
+
+async function loadFcmTokens(
+    supabase: any,
+    recipientIds: string[],
+): Promise<Array<{ token: string }>> {
+    const uniqueTokens = new Set<string>()
+    for (let offset = 0; offset < recipientIds.length; offset += 100) {
+        const batch = recipientIds.slice(offset, offset + 100)
+        const { data, error } = await supabase
+            .from('fcm_tokens')
+            .select('token')
+            .in('user_id', batch)
+        if (error) throw error
+        for (const row of data || []) {
+            const token = String(row?.token || '').trim()
+            if (token) uniqueTokens.add(token)
+        }
+    }
+    return [...uniqueTokens].map((token) => ({ token }))
+}
+
+async function mapWithConcurrency<T, R>(
+    values: T[],
+    concurrency: number,
+    transform: (value: T) => Promise<R>,
+): Promise<R[]> {
+    const results = new Array<R>(values.length)
+    let nextIndex = 0
+    const workers = Array.from(
+        { length: Math.min(Math.max(concurrency, 1), values.length) },
+        async () => {
+            while (true) {
+                const index = nextIndex++
+                if (index >= values.length) return
+                results[index] = await transform(values[index])
+            }
+        },
+    )
+    await Promise.all(workers)
+    return results
+}
+
+function safeFcmErrorCode(responseText: string): string {
+    try {
+        const payload = JSON.parse(responseText)
+        const code = String(payload?.error?.status || payload?.error?.details?.[0]?.errorCode || '')
+        return /^[A-Z0-9_]{1,80}$/.test(code) ? code : ''
+    } catch {
+        return ''
+    }
+}
 
 /**
  * Minimal implementation to generate a Google OAuth2 access token for FCM

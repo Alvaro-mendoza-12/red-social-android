@@ -7,7 +7,7 @@ import javax.inject.Singleton
 
 @Singleton
 class DismissedRequestsPreferences @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     private val prefs = context.getSharedPreferences("friend_requests_prefs", Context.MODE_PRIVATE)
     

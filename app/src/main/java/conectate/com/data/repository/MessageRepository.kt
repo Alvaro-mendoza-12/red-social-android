@@ -14,8 +14,9 @@ import conectate.com.data.local.prefs.MessagesPreferences
 import conectate.com.data.model.Chat
 import conectate.com.data.model.ChatParticipant
 import conectate.com.data.model.ChatWithLastMessage
+import conectate.com.data.model.CommunityMessage
+import conectate.com.data.model.GroupMessage
 import conectate.com.data.model.Message
-import conectate.com.data.repository.collection.CollectionDeleteRetrySupport
 import conectate.com.data.repository.message.MessageCacheManager
 import conectate.com.data.repository.message.MessageRemoteStore
 import conectate.com.data.repository.message.MessageRealtimeSync
@@ -24,15 +25,38 @@ import conectate.com.data.repository.message.MessageNotificationService
 import conectate.com.data.repository.message.MessageUnreadCounter
 import conectate.com.data.repository.message.MessageSessionStateStore
 import conectate.com.data.repository.message.MessageMediaResolver
+import conectate.com.data.repository.message.InboxSyncPolicy
+import conectate.com.data.repository.message.InboxSyncState
+import conectate.com.data.repository.message.InboxIdentityCache
+import conectate.com.data.repository.message.mergeInboxConversationIdentity
+import conectate.com.data.repository.message.matchesExactDirectParticipants
+import conectate.com.data.repository.message.normalizedParticipantIds
+import conectate.com.data.repository.message.selectCachedDirectChat
+import conectate.com.data.repository.message.PendingMessageBatchRunner
+import conectate.com.data.repository.message.PendingSendOutcome
+import conectate.com.data.repository.message.MessageSendCoordinator
+import conectate.com.data.repository.message.AccountChatReader
+import conectate.com.data.repository.message.accountScopedChatFlow
+import conectate.com.data.repository.message.isAccessibleTo
+import conectate.com.data.repository.message.SessionListenerBinding
+import conectate.com.data.repository.message.MessageDeletionQueue
+import conectate.com.data.repository.message.MessageDeletionTransport
+import conectate.com.data.repository.message.applyMessageDeletions
+import conectate.com.domain.sync.PendingSyncRetryException
+import conectate.com.data.repository.message.ChatMediaPrefetchCandidate
+import conectate.com.data.repository.message.selectRecentChatMediaForPrefetch
 import conectate.com.data.repository.message.MessageReportStore
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
+import conectate.com.data.sync.PendingMessageSyncScheduler
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.local.entity.ChatEntity
 import conectate.com.core.messaging.UnreadPolicy
+import conectate.com.core.network.InteractiveReadDeadlines
+import conectate.com.core.network.runReadWithDeadline
 import conectate.com.core.moderation.ContentModerationService
 import conectate.com.core.moderation.ModerationContext
 import conectate.com.core.moderation.ModerationVerdict
@@ -86,11 +110,12 @@ class MessageRepository @Inject constructor(
     private val chatDao: conectate.com.data.local.dao.ChatDao,
     private val userDao: conectate.com.data.local.dao.UserDao,
     private val messageDao: conectate.com.data.local.dao.MessageDao,
+    private val database: conectate.com.data.local.AppDatabase,
     private val moderationService: ContentModerationService,
     private val appMetrics: AppMetrics,
     private val operationGuard: OperationGuard,
     private val chatSoundPlayer: ChatSoundPlayer,
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     // Nuevos stores inyectados
     private val messageCacheManager: MessageCacheManager,
     private val messageRemoteStore: MessageRemoteStore,
@@ -98,7 +123,10 @@ class MessageRepository @Inject constructor(
     private val messagePolicyEngine: MessagePolicyEngine,
     private val messageNotificationService: MessageNotificationService,
     private val messageUnreadCounter: MessageUnreadCounter,
-    private val sessionStateStore: MessageSessionStateStore
+    private val sessionStateStore: MessageSessionStateStore,
+    private val inboxIdentityCache: InboxIdentityCache,
+    private val readJournal: conectate.com.data.repository.message.VisibleReadJournal = conectate.com.data.repository.message.VisibleReadJournal(context),
+    private val readSynchronizer: conectate.com.data.repository.message.VisibleReadSynchronizer = conectate.com.data.repository.message.VisibleReadSynchronizer(readJournal, localFallbackApiClient, authService),
 ) : ChatSyncDataSource {
     companion object {
         private const val MAX_FORWARD_TARGETS_PER_BATCH = 20
@@ -118,7 +146,7 @@ class MessageRepository @Inject constructor(
     
     // 1. User Chats List (Global)
     private val _userChats = MutableStateFlow<List<ChatWithLastMessage>>(emptyList())
-    val userChats: Flow<List<ChatWithLastMessage>> = _userChats
+    val userChats: Flow<List<ChatWithLastMessage>> get() = observeVisibleInbox()
 
     // 2. Messages per Chat (Active)
     // Key: chat_id, Value: StateFlow of Messages
@@ -136,8 +164,14 @@ class MessageRepository @Inject constructor(
 
     // 5. Throttle expensive history fetches to avoid reloading on every chat-list pulse.
     private val chatHistoryFetchTimestamps = ConcurrentHashMap<String, Long>()
-
-    private var hasPurgedZombies = false
+    private val inboxSyncMutex = Mutex()
+    private val messageSendCoordinator = MessageSendCoordinator()
+    private val inboxPreviewReader = conectate.com.data.repository.message.InboxPreviewReader(database, ::currentSessionUserId)
+    private val deletionTransport = MessageDeletionTransport(localFallbackApiClient, supabaseConfig, ::shouldUseUbuntuBackend)
+    private val deletionQueue = MessageDeletionQueue(database, messageSendCoordinator,
+        { authService.ensureValidAccessToken() }, deletionTransport::delete)
+    private val _inboxSyncState = MutableStateFlow(InboxSyncState())
+    val inboxSyncState: StateFlow<InboxSyncState> = _inboxSyncState.asStateFlow()
 
     // 6. Transient ID Mapper (FCM -> UUID) allows replies to work even during race conditions
     private val transientIdMap = ConcurrentHashMap<String, String>()
@@ -165,8 +199,7 @@ class MessageRepository @Inject constructor(
         appMetrics = appMetrics,
         operationGuard = operationGuard
     )
-    private var sessionStatusJob: Job? = null
-    private var globalListenerJob: Job? = null
+    private val sessionListeners: SessionListenerBinding
 
     private fun shouldUseUbuntuBackend(): Boolean =
         localFallbackApiClient.isConfigured &&
@@ -193,27 +226,10 @@ class MessageRepository @Inject constructor(
     }
 
     init {
-        // One-time nuke of local DMs to ensure clean state after critical identity bug
-        scope.launch {
-            try {
-                val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-                val hasNuked = prefs.getBoolean("identity_fix_nuke_done_v4", false)
-                
-                if (!hasNuked) {
-                    android.util.Log.w("MessageRepository", "Nuclear Reset: Purging ALL local chats (One-time migration).")
-                    chatDao.nukeAllChats()
-                    messageDao.nukeAllMessages()
-                    prefs.edit().putBoolean("identity_fix_nuke_done_v4", true).apply()
-                }
-                hasPurgedZombies = true
-            } catch (e: Exception) {
-                android.util.Log.e("MessageRepository", "Failed to nuke chats", e)
-            }
-        }
-        
+        // Room history and the durable outbox survive process/session restarts.
+        // Identity repairs must be scoped to individual rows, never a startup wipe.
         // Start Global Realtime Listener using new MessageRealtimeSync component
-        sessionStatusJob = scope.launch {
-            val userIdFlow: Flow<String?> = if (supabaseConfig.isLocalFallbackPrimary) {
+        val userIdFlow: Flow<String?> = if (supabaseConfig.isLocalFallbackPrimary) {
                 authService.currentSession.map { session ->
                     session?.user?.id?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
                 }
@@ -226,10 +242,8 @@ class MessageRepository @Inject constructor(
                     }
                 }
             }
-            userIdFlow.collect { userId ->
-                globalListenerJob?.cancel()
-                if (userId.isNullOrBlank()) return@collect
-                globalListenerJob = scope.launch {
+        sessionListeners = SessionListenerBinding(scope, userIdFlow, messageRealtimeSync::clearAll) { userId ->
+                    val session = captureSessionSnapshot(userId)
                     android.util.Log.d(
                         "MessageRepository",
                         "[RECEIVE-FIX] Session active ($userId): Starting MessageRealtimeSync",
@@ -238,17 +252,17 @@ class MessageRepository @Inject constructor(
 
                     launch {
                         messageRealtimeSync.messageEvents.collect { msg ->
-                            messageEvents.emit(msg)
+                            if (isSessionSnapshotValid(session, "session-message-event")) messageEvents.emit(msg)
                         }
                     }
 
                     launch {
                         messageCacheManager.cachedChats.collect { chats ->
-                            _userChats.value = chats
+                            if (isSessionSnapshotValid(session, "session-chat-cache")) {
+                                _userChats.value = chats.filter { it.chat.isAccessibleTo(userId) }
+                            }
                         }
                     }
-                }
-            }
         }
     }
 
@@ -266,10 +280,8 @@ class MessageRepository @Inject constructor(
         sessionStateStore.clearAll()
         // Nuevos stores
         messageCacheManager.clearAll()
-        messageRealtimeSync.clearAll()
+        sessionListeners.stopActive()
         messageUnreadCounter.clearCache()
-        globalListenerJob?.cancel()
-        sessionStatusJob?.cancel()
     }
 
     fun setActiveChatSession(chatId: String?, isVisible: Boolean) {
@@ -299,6 +311,7 @@ class MessageRepository @Inject constructor(
         
         var currentUserId = sessionSnapshot.accountId
         var wasAlreadyStored = false
+        var mediaMessageToPrefetch: Message? = null
         
         // 1. ATOMIC PROCESSING (Room + UI Flow)
         // We lock for the specific chat to ensure Realtime and FCM events happen sequentially.
@@ -361,6 +374,7 @@ class MessageRepository @Inject constructor(
                     // Save to Room
                     var entity = conectate.com.data.local.entity.MessageEntity.fromDomain(finalizedMsg, isSynced = true)
                     messageDao.insertMessage(entity)
+                    mediaMessageToPrefetch = finalizedMsg
                     
                     // 2. FLOW UPDATES (Atomic update inside Mutex)
                     if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-before-flow:$cleanId")) return@withLock
@@ -373,6 +387,8 @@ class MessageRepository @Inject constructor(
                     android.util.Log.e("MessageRepository", "❌ Room handling error", e)
                 }
             }
+
+        mediaMessageToPrefetch?.let { prefetchRecentChatMedia(listOf(it)) }
 
         // Un FCM parcial seguido por el evento completo solo debe enriquecer la
         // fila; no debe volver a sumar no leídos, reproducir sonido ni notificar.
@@ -586,26 +602,29 @@ class MessageRepository @Inject constructor(
         val shouldIncrementUnread = UnreadPolicy.shouldIncrementUnread(
             senderId = cleanSenderId,
             currentUserId = cleanCurrentUserId,
-            isConversationVisible = sessionStateStore.isActiveChatVisible(msg.chat_id)
-        )
+            // Opening a chat does not mean its newest message is actually in the viewport.
+            isConversationVisible = false
+        ) && msg.id !in readJournal.seenIds(cleanCurrentUserId, "chat", msg.chat_id) &&
+            UnreadPolicy.isEligibleStatusForReadTransition(msg.status)
         if (shouldIncrementUnread) {
             sessionStateStore.clearLocalReadOverride(msg.chat_id)
         }
         val newUnread = when {
             shouldIncrementUnread -> existing.unreadCount + 1
             cleanSenderId == cleanCurrentUserId -> existing.unreadCount
-            else -> 0
+            else -> existing.unreadCount
         }
         
-        // Construct preview
-        var preview = buildPreviewForContentType(msg.content_type, msg.content)
+        // A slow acknowledgement must not replace a newer queued message in the inbox.
+        val previewMessage = conectate.com.data.repository.message.newestInboxMessage(msg, existing.lastMessage) ?: msg
+        val preview = buildPreviewForContentType(previewMessage.content_type, previewMessage.content)
 
         currentChats[index] = existing.copy(
-            lastMessage = msg,
+            lastMessage = previewMessage,
             unreadCount = newUnread,
             chat = existing.chat.copy(
                 last_message = preview,
-                last_message_at = msg.created_at
+                last_message_at = previewMessage.created_at
             )
         )
         _userChats.value = sortChatsByPriority(currentChats)
@@ -613,11 +632,9 @@ class MessageRepository @Inject constructor(
         // Persist immediately so Room emits the reordered list without waiting on a nested launch.
         var chatId = msg.chat_id.trim().lowercase()
         try {
-            chatDao.updateLastMessage(chatId, preview, msg.safeCreatedAt, msg.id, msg.sender_id)
+            chatDao.updateLastMessage(chatId, preview, previewMessage.safeCreatedAt, previewMessage.id, previewMessage.sender_id)
             if (shouldIncrementUnread) {
                 chatDao.incrementUnreadCount(chatId)
-            } else if (sessionStateStore.isActiveChatVisible(chatId)) {
-                chatDao.markAsRead(chatId)
             }
         } catch (e: Exception) {
             android.util.Log.e("MessageRepository", "Global insert Room update failed", e)
@@ -672,83 +689,95 @@ class MessageRepository @Inject constructor(
 
     // --- CHAT LIST ---
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     fun getUserChatsFlow(): Flow<List<ChatWithLastMessage>> {
-        scope.launch { getUserChats() } // Background sync
-
-        return authService.observeSession()
-            .map { session ->
-                session?.user?.id?.trim()?.lowercase()
-                    ?: authService.getCurrentUserId()?.trim()?.lowercase()
-            }
-            .distinctUntilChanged()
-            .flatMapLatest { activeUserId ->
-                if (activeUserId.isNullOrBlank()) {
-                    flowOf(emptyList())
-                } else {
-                    chatDao.getAllChatsFlow()
-                        .flatMapLatest { entities ->
-                            val visibleEntities = entities.filter { it.chat.belongsToUser(activeUserId) }
-                            val lastMessageIds = visibleEntities
-                                .mapNotNull { it.chat.last_message_id?.trim() }
-                                .filter { it.isNotBlank() }
-                                .distinct()
-
-                            if (lastMessageIds.isEmpty()) {
-                                flowOf(visibleEntities.map { it.toDomainWithDetails() })
-                            } else {
-                                messageDao.getMessagesByIdsFlow(lastMessageIds).map { messageEntities ->
-                                    val messageMap = messageEntities.associateBy { it.id.trim().lowercase() }
-                                    visibleEntities.map { entity ->
-                                        val overrideMessage = entity.chat.last_message_id
-                                            ?.trim()
-                                            ?.lowercase()
-                                            ?.let(messageMap::get)
-                                            ?.toDomain()
-                                        entity.toDomainWithDetails(overrideMessage)
-                                    }
-                                }
-                            }
-                        }
-                }
-                }
-            .distinctUntilChanged()
+        scope.launch { getUserChats() } // Optional network sync; presentation stays local.
+        return observeVisibleInbox()
     }
 
-    suspend fun getUserChats(): Result<List<ChatWithLastMessage>> {
+    private fun observeVisibleInbox(): Flow<List<ChatWithLastMessage>> = inboxPreviewReader.observe(
+        authService.observeSession().map { session ->
+            session?.user?.id?.trim()?.lowercase() ?: currentSessionUserId()
+        }
+    )
+
+    suspend fun getUserChats(force: Boolean = false): Result<List<ChatWithLastMessage>> {
+        return inboxSyncMutex.withLock {
+            val now = System.currentTimeMillis()
+            val currentState = _inboxSyncState.value
+            if (!InboxSyncPolicy.shouldStart(
+                    force = force,
+                    isRefreshing = currentState.isRefreshing,
+                    nowMillis = now,
+                    lastCompletedAtMillis = currentState.lastCompletedAtMillis,
+                )
+            ) {
+                return@withLock Result.success(_userChats.value)
+            }
+
+            _inboxSyncState.value = currentState.copy(isRefreshing = true, lastError = null)
+            try {
+                val result = runReadWithDeadline(InteractiveReadDeadlines.InboxMillis) {
+                    syncUserChats().getOrThrow()
+                }
+                val completedAt = System.currentTimeMillis()
+                _inboxSyncState.value = InboxSyncState(
+                    isRefreshing = false,
+                    hasCompletedInitialSync = true,
+                    lastError = result.exceptionOrNull()?.message,
+                    lastCompletedAtMillis = completedAt,
+                )
+                result
+            } catch (cancelled: CancellationException) {
+                _inboxSyncState.update { it.copy(isRefreshing = false) }
+                throw cancelled
+            }
+        }
+    }
+
+    private suspend fun syncUserChats(): Result<List<ChatWithLastMessage>> {
         return try {
             var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
             var cleanUserId = userId.trim().lowercase()
+            val identityGeneration = conectate.com.core.media.ProfileIdentityImageStore.generation(cleanUserId)
             var sessionSnapshot = captureSessionSnapshot(userId)
-            var accessToken = authService.ensureValidAccessToken()
-                .getOrElse { return Result.failure(it) }
 
             // 0. Fetch Local Chats first (for fallback/optimistic)
             val allLocalEntities = chatDao.getAllChatsSync()
             val visibleLocalEntities = allLocalEntities.filter { it.belongsToUser(cleanUserId) }
             val allLocalChatsDomain = visibleLocalEntities.map { it.toDomain() }
+            val localOnly = visibleLocalEntities
+                .sortedWith(
+                    compareBy<ChatEntity> { it.is_archived }
+                        .thenByDescending { it.is_pinned }
+                        .thenByDescending { normalizeDate(it.last_message_at ?: "") }
+                )
+                .map { it.toDomainWithDetails() }
             
             // PRE-LOAD: Ensure UI has local data while we fetch remote
             if (_userChats.value.isEmpty() && isSessionSnapshotValid(sessionSnapshot, "get-user-chats-preload")) {
-                val preLoad = visibleLocalEntities
-                    .sortedWith(
-                        compareBy<ChatEntity> { it.is_archived }
-                            .thenByDescending { it.is_pinned }
-                            .thenByDescending { normalizeDate(it.last_message_at ?: "") }
-                    )
-                    .map { it.toDomainWithDetails() }
-                _userChats.value = preLoad
-                android.util.Log.d("MessageRepository", "📦 Pre-loaded ${preLoad.size} chats from Room")
+                _userChats.value = localOnly
+                android.util.Log.d("MessageRepository", "📦 Pre-loaded ${localOnly.size} chats from Room")
+            }
+
+            // Token refresh can require the network. It must happen only after
+            // Room has supplied the account-scoped inbox; otherwise an expired
+            // token makes an already-cached inbox look unavailable offline.
+            var accessToken = authService.ensureValidAccessToken().getOrElse { error ->
+                if (localOnly.isNotEmpty() && isSessionSnapshotValid(sessionSnapshot, "get-user-chats-auth-offline")) {
+                    _userChats.value = localOnly
+                    android.util.Log.w("MessageRepository", "Remote inbox auth unavailable; using Room cache", error)
+                }
+                return InboxSyncPolicy.cachedOrFailure(localOnly, error)
             }
 
             if (shouldUseUbuntuBackend()) {
+                scope.launch { readSynchronizer.flush(cleanUserId, "chat", accessToken) }
                 val localInbox = localFallbackApiClient.loadMessagesInbox(accessToken, "chats")
                     .getOrElse { error ->
                         android.util.Log.w("MessageRepository", "Local fallback inbox failed", error)
                         if (allLocalChatsDomain.isEmpty()) {
                             return Result.failure(error)
                         }
-                        val localOnly = visibleLocalEntities.map { it.toDomainWithDetails() }
                         if (isSessionSnapshotValid(sessionSnapshot, "local-fallback-inbox-local-only")) {
                             _userChats.value = localOnly
                         }
@@ -756,10 +785,15 @@ class MessageRepository @Inject constructor(
                     }
 
                 val existingLocalChats = allLocalChatsDomain.associateBy { it.id }
+                val existingLocalSnapshots = visibleLocalEntities
+                    .map(ChatEntity::toDomainWithDetails)
+                    .associateBy { it.chat.id.trim().lowercase() }
                 val mappedChats = localInbox.items
                     .filter { it.kind == "chat" }
                     .map { item -> 
-                        val mapped = mapLocalFallbackInboxItem(item, cleanUserId)
+                        val mapped = mapLocalFallbackInboxItem(item, cleanUserId).copy(
+                            unreadCount = readJournal.resolveUnread(cleanUserId, "chat", item.id, item.unreadCount, item.unreadMessageIds)
+                        )
                         val existing = existingLocalChats[mapped.chat.id]
                         val mappedTime = mapped.chat.last_message_at ?: ""
                         val existingTime = existing?.last_message_at ?: ""
@@ -767,7 +801,7 @@ class MessageRepository @Inject constructor(
                         val normalizedClearedAt = normalizeDate(effectiveClearedAt.orEmpty())
                         val normalizedExistingTime = normalizeDate(existingTime)
                         
-                        if (
+                        val mergedMessages = if (
                             existing != null &&
                             existingTime > mappedTime &&
                             (normalizedClearedAt.isEmpty() || normalizedExistingTime > normalizedClearedAt)
@@ -792,6 +826,10 @@ class MessageRepository @Inject constructor(
                                 chat = mapped.chat.copy(cleared_at = effectiveClearedAt)
                             )
                         }
+                        mergeInboxConversationIdentity(
+                            existing = existingLocalSnapshots[mapped.chat.id.trim().lowercase()],
+                            incoming = mergedMessages,
+                        )
                     }
                     .let(::sortChatsByPriority)
 
@@ -816,6 +854,7 @@ class MessageRepository @Inject constructor(
                                     )
                                 }
                             )
+                            inboxIdentityCache.persist(mappedChats, cleanUserId, identityGeneration)
                         }.onFailure {
                             android.util.Log.w("MessageRepository", "Could not cache local fallback inbox", it)
                         }
@@ -951,7 +990,10 @@ class MessageRepository @Inject constructor(
                                 isFavorite = isFavorite
                             )
                         }
-                    } catch(e: Exception) {}
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        android.util.Log.w("MessageRepository", "Could not read chat participant state", e)
+                    }
                 }
             }
 
@@ -1166,8 +1208,9 @@ class MessageRepository @Inject constructor(
             val remoteMap = distinctList.associateBy { it.chat.id }
             
             // A. Merge Remote with Cache (Prefer Cache if fresher)
-            val mergedRemote = distinctList.map { fetched ->
-                var cached = currentMap[fetched.chat.id]
+            val mergedRemote = distinctList.map { remote ->
+                var cached = currentMap[remote.chat.id]
+                val fetched = mergeInboxConversationIdentity(cached, remote)
                 val cachedTime = cached?.lastMessage?.safeCreatedAt
                 val fetchedTime = fetched.lastMessage?.safeCreatedAt
                 val cachedClearedAt = cached?.clearedAt
@@ -1270,23 +1313,9 @@ class MessageRepository @Inject constructor(
                     // Filter out chats that user has deleted locally (Redundant but safe for DB update list)
                     val chatsToUpdate = finalMergedList // Already filtered above
                     
-                    // Update Users first to avoid FK issues
+                    // Preserve a durable identity snapshot before replacing chat rows.
                     if (!isSessionSnapshotValid(sessionSnapshot, "get-user-chats-before-users")) return@launch
-                    val userEntities = chatsToUpdate.mapNotNull { chat ->
-                        var otherId = chat.chat.participants.firstOrNull { it != userId }
-                        if (otherId != null && chat.otherUserName != "Usuario") {
-                            conectate.com.data.local.entity.UserEntity(
-                                id = otherId,
-                                username = chat.otherUserName ?: "",
-                                full_name = chat.otherUserName ?: "",
-                                avatar_url = chat.otherUserImage,
-                                bio = null
-                            )
-                        } else null
-                    }
-                    if (userEntities.isNotEmpty()) {
-                        userDao.insertUsers(userEntities)
-                    }
+                    inboxIdentityCache.persist(chatsToUpdate, cleanUserId, identityGeneration)
 
                     // --- PURGE INVALID CACHE (Ghost Chats / Missing Participant) ---
                     // If a chat exists locally but Supabase says we aren't participants, or it doesn't return it
@@ -1405,6 +1434,8 @@ class MessageRepository @Inject constructor(
                 return Result.success(chatDao.getAllChatsSync().map { it.toDomainWithDetails() })
             }
             Result.success(finalMergedList)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             android.util.Log.e("MessageRepository", "getUserChats error", e)
             Result.failure(e)
@@ -1505,83 +1536,61 @@ class MessageRepository @Inject constructor(
 
 
     override suspend fun retryPendingMessages(maxBatch: Int): Result<Int> = withContext(Dispatchers.IO) {
-        try {
-            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
-                ?: return@withContext Result.success(0)
-            // A restored network can coincide with an expired access token. Use the
-            // normal refresh path here; otherwise queued messages remain stuck until
-            // a later unrelated session event happens to refresh the token.
-            var token = authService.ensureValidAccessToken()
-                .getOrElse { return@withContext Result.success(0) }
-
-            val pendingMessages = messageDao.getPendingSendMessages()
-                .take(maxBatch.coerceAtLeast(1))
-            if (pendingMessages.isEmpty()) {
-                return@withContext Result.success(0)
-            }
-
-            var syncedCount = 0
-            pendingMessages.forEach { pending ->
-                if (pending.sender_id.trim().lowercase() != currentUserId) return@forEach
-                when (syncPendingSendMessage(pending, token)) {
-                    PendingSendOutcome.SENT -> syncedCount++
-                    PendingSendOutcome.RETRY_LATER ->
-                        messageDao.updateSyncStatus(pending.id, "sending", false, "send")
-                    PendingSendOutcome.TERMINAL_FAILURE ->
-                        // Do not retry a known validation/permission failure every
-                        // time the network changes. It remains visible as failed,
-                        // but it no longer blocks or pollutes the automatic queue.
-                        messageDao.updateSyncStatus(pending.id, "failed", false, null)
+        val accountId = currentSessionUserId() ?: return@withContext Result.success(0)
+        val session = captureSessionSnapshot(accountId)
+        PendingMessageBatchRunner(
+            loadPending = { messageDao.getPendingSendMessages() },
+            accessToken = { authService.ensureValidAccessToken() },
+            send = { message, token ->
+                messageSendCoordinator.withMessage(message.id) {
+                    // A foreground send may have finished while this worker waited.
+                    val latest = messageDao.getMessageById(message.id)
+                    val deletion = database.messageDeletionDao().get(message.id, accountId, true)
+                    if (latest == null || latest.is_synced || latest.pending_action != "send" ||
+                        (deletion != null && deletion.state != "failed")) {
+                        PendingSendOutcome.SKIPPED
+                    } else {
+                        syncPendingSendMessage(latest, token, session)
+                    }
                 }
-            }
-
-            Result.success(syncedCount)
-        } catch (e: Exception) {
-            android.util.Log.e("MessageRepository", "retryPendingMessages failed", e)
-            Result.failure(e)
-        }
+            },
+            markTerminalFailure = { message -> messageDao.markPendingSendFailed(message.id) }
+        ).run(accountId, maxBatch) { isSessionSnapshotValid(session, "retryPendingMessages") }
     }
 
 
 
     override suspend fun retryPendingDeletes(maxBatch: Int): Result<Int> = withContext(Dispatchers.IO) {
-        try {
-            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
-                ?: return@withContext Result.success(0)
+        val actor = currentSessionUserId() ?: return@withContext Result.success(0)
+        val session = captureSessionSnapshot(actor)
+        deletionQueue.retry(actor, maxBatch) { isSessionSnapshotValid(session, "retryPendingDeletes") }
+    }
 
-            val pendingDeletes = messageDao.getPendingDeleteMessages()
-                .take(maxBatch.coerceAtLeast(1))
-            if (pendingDeletes.isEmpty()) {
-                return@withContext Result.success(0)
-            }
-
-            var syncedCount = 0
-            pendingDeletes.forEach { pending ->
-                var synced = syncPendingDeleteMessage(pending, currentUserId)
-                if (synced) {
-                    var syncedEntity = pending.copy(
-                        status = "sent",
-                        is_synced = true,
-                        pending_action = null
-                    )
-                    messageDao.insertMessage(syncedEntity)
-                    updateMessageInFlow(syncedEntity.chat_id, syncedEntity.toDomain())
-                    syncedCount++
-                }
-            }
-
-            Result.success(syncedCount)
-        } catch (e: Exception) {
-            android.util.Log.e("MessageRepository", "retryPendingDeletes failed", e)
-            Result.failure(e)
+    private suspend fun isSendCancelledByDeletion(
+        messageId: String,
+        actor: String,
+        session: SessionWriteGuard.Snapshot
+    ): Boolean {
+        val deletion = database.messageDeletionDao().get(messageId, actor.trim().lowercase(), true)
+        if (!isSessionSnapshotValid(session, "send-deletion-check")) {
+            throw PendingSyncRetryException("Send session changed")
         }
+        return deletion?.let { it.state != "failed" } == true
     }
 
     private suspend fun syncPendingSendMessage(
         pending: conectate.com.data.local.entity.MessageEntity,
-        token: String
+        token: String,
+        session: SessionWriteGuard.Snapshot
     ): PendingSendOutcome {
+        fun requireCurrentSession() {
+            if (!isSessionSnapshotValid(session, "syncPendingSendMessage")) {
+                throw PendingSyncRetryException("Outbox session changed")
+            }
+        }
         return try {
+            requireCurrentSession()
+            if (isSendCancelledByDeletion(pending.id, pending.sender_id, session)) return PendingSendOutcome.SKIPPED
             var pendingMessage = pending.toDomain().copy(
                 chat_id = pending.chat_id.trim().lowercase(),
                 sender_id = pending.sender_id.trim().lowercase(),
@@ -1594,6 +1603,7 @@ class MessageRepository @Inject constructor(
                     mediaUri = localMediaUri,
                     mediaType = pendingMessage.content_type
                 ).getOrElse { error ->
+                    if (error is CancellationException) throw error
                     android.util.Log.w("MessageRepository", "Pending media upload still unavailable for ${pending.id}", error)
                     return if (isRetryableNetworkFailure(error.message)) {
                         PendingSendOutcome.RETRY_LATER
@@ -1601,6 +1611,8 @@ class MessageRepository @Inject constructor(
                         PendingSendOutcome.TERMINAL_FAILURE
                     }
                 }
+                requireCurrentSession()
+                if (isSendCancelledByDeletion(pending.id, pending.sender_id, session)) return PendingSendOutcome.SKIPPED
                 pendingMessage = pendingMessage.copy(
                     media_url = upload.url,
                     thumbnail_url = upload.thumbnailUrl,
@@ -1613,10 +1625,14 @@ class MessageRepository @Inject constructor(
                         pendingAction = "send"
                     )
                 )
+                requireCurrentSession()
                 updateMessageInFlow(pending.chat_id, pendingMessage)
                 deletePendingChatMedia(localMediaUri)
             }
+            requireCurrentSession()
+            if (isSendCancelledByDeletion(pending.id, pending.sender_id, session)) return PendingSendOutcome.SKIPPED
             val serverResult = sendMessageToBackend(token = token, msg = pendingMessage)
+            requireCurrentSession()
             val isDuplicate = serverResult.statusCode == 409 ||
                 (serverResult.errorBody?.contains("23505") == true)
 
@@ -1646,6 +1662,7 @@ class MessageRepository @Inject constructor(
                     pendingAction = null
                 )
             )
+            requireCurrentSession()
             updateMessageInFlow(pending.chat_id, syncedMessage)
 
             var preview = buildPreviewForContentType(syncedMessage.content_type, syncedMessage.content)
@@ -1660,6 +1677,8 @@ class MessageRepository @Inject constructor(
             PendingSendOutcome.SENT
         } catch (error: CancellationException) {
             throw error
+        } catch (error: PendingSyncRetryException) {
+            throw error
         } catch (e: Exception) {
             android.util.Log.e("MessageRepository", "retryPendingMessages failed for ${pending.id}", e)
             if (isRetryableNetworkFailure(e.message)) {
@@ -1670,75 +1689,7 @@ class MessageRepository @Inject constructor(
         }
     }
 
-    private suspend fun syncPendingDeleteMessage(
-        pending: conectate.com.data.local.entity.MessageEntity,
-        currentUserId: String
-    ): Boolean {
-        if (shouldUseUbuntuBackend()) {
-            val token = authService.getAccessToken()?.trim().orEmpty()
-            if (token.isBlank()) return false
-            return localFallbackApiClient.deleteChatMessage(
-                accessToken = token,
-                chatId = pending.chat_id,
-                messageId = pending.id,
-                forEveryone = pending.deleted_for_all
-            ).onSuccess { serverMessage ->
-                messageDao.insertMessage(
-                    conectate.com.data.local.entity.MessageEntity.fromDomain(
-                        msg = serverMessage,
-                        isSynced = true,
-                        pendingAction = null
-                    )
-                )
-                updateMessageInFlow(serverMessage.chat_id.trim().lowercase(), serverMessage)
-            }.onFailure { error ->
-                android.util.Log.w("MessageRepository", "Ubuntu delete failed for ${pending.id}", error)
-            }.isSuccess
-        }
 
-        val deleteResult = CollectionDeleteRetrySupport.retryRemoteDelete(
-            logTag = "MessageRepository",
-            messageId = pending.id,
-            remoteDelete = {
-                if (pending.deleted_for_all) {
-                    supabaseConfig.client.postgrest["messages"].update({
-                        set("deleted_for_all", true)
-                    }) {
-                        filter { eq("id", pending.id) }
-                    }
-                } else {
-                    var deletedBy = parseDeletedBy(pending)
-                        .map { it.trim().lowercase() }
-                        .toMutableList()
-                    if (!deletedBy.contains(currentUserId)) {
-                        deletedBy.add(currentUserId)
-                    }
-                    supabaseConfig.client.postgrest["messages"].update({
-                        set("deleted_by", deletedBy.distinct())
-                    }) {
-                        filter { eq("id", pending.id) }
-                    }
-                }
-            },
-            isRetryableNetworkError = { error ->
-                var text = error.message?.lowercase().orEmpty()
-                transientNetworkRetryCodes.any { code -> text.contains(code) }
-            }
-        )
-
-        deleteResult.exceptionOrNull()?.let { error ->
-            android.util.Log.w("MessageRepository", "retryPendingDeletes failed for ${pending.id}", error)
-        }
-        return deleteResult.isSuccess
-    }
-
-    private fun parseDeletedBy(message: conectate.com.data.local.entity.MessageEntity): List<String> {
-        return try {
-            Json.decodeFromString(message.deleted_by_json)
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
 
     private suspend fun countUnreadMessages(chatId: String, userId: String, token: String): Int {
         return try {
@@ -1778,13 +1729,15 @@ class MessageRepository @Inject constructor(
     suspend fun setNickname(targetUserId: String, nickname: String?): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
+            val session = captureSessionSnapshot(currentUserId)
             var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
             if (shouldUseUbuntuBackend()) {
                 val result = localFallbackApiClient.setNickname(token, targetUserId, nickname)
                 if (result.isFailure) return@withContext result
 
-                val chat = chatDao.getChatByOtherUserId(targetUserId)
+                if (!isSessionSnapshotValid(session, "setNickname")) return@withContext Result.failure(CancellationException("Session changed"))
+                val chat = findLocalDirectChat(currentUserId, targetUserId)
                 if (chat != null) {
                     chatDao.updateNickname(chat.id, nickname)
                     val currentChats = _userChats.value.toMutableList()
@@ -1819,7 +1772,8 @@ class MessageRepository @Inject constructor(
             }
 
             // Update local Room
-            var chat = chatDao.getChatByOtherUserId(targetUserId)
+            if (!isSessionSnapshotValid(session, "setNickname")) return@withContext Result.failure(CancellationException("Session changed"))
+            var chat = findLocalDirectChat(currentUserId, targetUserId)
             if (chat != null) {
                 chatDao.updateNickname(chat.id, nickname)
                 
@@ -1911,25 +1865,30 @@ class MessageRepository @Inject constructor(
         var cleanId = chatId.trim().lowercase()
         if (cleanId.isBlank()) return@withContext emptyList()
 
-        var activeUserId = currentSessionUserId()
+        val activeUserId = currentSessionUserId() ?: return@withContext emptyList()
+        val session = captureSessionSnapshot(activeUserId)
+        val chat = chatDao.getChatById(cleanId)
+        if (chat?.toDomain()?.isAccessibleTo(activeUserId) != true) return@withContext emptyList()
         val localMessages = messageDao.getMessagesSync(cleanId).map { it.toDomain() }
-        var unified = unifyMessageList(localMessages)
-
-        if (activeUserId.isNullOrBlank()) {
-            unified
-        } else {
-            unified.filterNot { message ->
-                message.deleted_by.any { deletedBy ->
-                    deletedBy.trim().lowercase() == activeUserId
-                }
-            }
-        }
+        val deletionIntents = database.messageDeletionDao().forChat(cleanId)
+        if (!isSessionSnapshotValid(session, "getCachedMessages")) return@withContext emptyList()
+        applyMessageDeletions(unifyMessageList(localMessages), deletionIntents, activeUserId)
+            .filter { chat.cleared_at == null || (it.created_at ?: "") > chat.cleared_at }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun getMessagesFlow(chatId: String): Flow<List<Message>> {
-        var cleanId = chatId.trim().lowercase()
-        
+        val cleanId = chatId.trim().lowercase()
+        return accountScopedChatFlow(
+            accounts = authService.observeSession().map { it?.user?.id },
+            chats = chatDao.getChatByIdFlow(cleanId).map { it?.toDomain() },
+            currentAccount = ::currentSessionUserId,
+            empty = emptyList()
+        ) { _, accountId -> getMessagesForAccountFlow(cleanId, accountId) }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun getMessagesForAccountFlow(cleanId: String, accountId: String): Flow<List<Message>> {
         return _userChats.flatMapLatest { chats ->
             var currentChat = chats.find { it.chat.id.trim().lowercase() == cleanId }
             
@@ -1941,6 +1900,9 @@ class MessageRepository @Inject constructor(
                 } catch(e: Exception) { /* ignore */ }
             }
             
+            if (currentChat?.chat?.isAccessibleTo(accountId) != true || currentSessionUserId() != accountId) {
+                return@flatMapLatest flowOf(emptyList())
+            }
             var participants = currentChat?.chat?.participants?.map { it.trim().lowercase() }?.sorted() ?: emptyList()
             var isGroup = currentChat?.chat?.is_group == true
             
@@ -1972,7 +1934,7 @@ class MessageRepository @Inject constructor(
                 }
             }
 
-            combine(flows) { lists -> 
+            val reconciled = combine(flows) { lists ->
                 val allMsgs = lists.flatMap { it }
                 var unified = unifyMessageList(allMsgs)
                 var activeUserId = currentSessionUserId()
@@ -1991,6 +1953,10 @@ class MessageRepository @Inject constructor(
                 if (clearedAt != null) {
                     visibleForUser.filter { (it.created_at ?: "") > clearedAt }
                 } else visibleForUser
+            }
+            val deletionFlows = siblingIds.map { database.messageDeletionDao().observeChat(it) }
+            combine(reconciled, combine(deletionFlows) { it.toList().flatten() }) { messages, intents ->
+                applyMessageDeletions(messages, intents, accountId)
             }.distinctUntilChanged()
         }
     }
@@ -2022,11 +1988,17 @@ class MessageRepository @Inject constructor(
                         android.util.Log.w("MessageRepository", "Local fallback chat history failed for $chatId", error)
                         return
                     }
+                val seenIds = readJournal.seenIds(sessionUserId, "chat", chatId)
                 val rawMsgs = localChat.messages
                     .mapNotNull { messageJson ->
                         runCatching { json.decodeFromJsonElement<Message>(messageJson) }.getOrNull()
                     }
                     .map { it.copy(chat_id = chatId).withNormalizedStatus() }
+                    .map { message ->
+                        if (message.id in seenIds && !message.deleted_for_all &&
+                            conectate.com.core.messaging.UnreadPolicy.isEligibleStatusForReadTransition(message.status))
+                            message.copy(status = "read") else message
+                    }
 
                 val currentById = _activeChatMessages[chatId]
                     ?.value
@@ -2064,6 +2036,7 @@ class MessageRepository @Inject constructor(
                     if (!isSessionSnapshotValid(sessionSnapshot, "local-fallback-history-flow:$chatId")) return
                     flow.update { current -> unifyMessageList(current + filteredRawMsgs) }
                 }
+                prefetchRecentChatMedia(filteredRawMsgs)
                 return
             }
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
@@ -2141,9 +2114,52 @@ class MessageRepository @Inject constructor(
                     }
                     android.util.Log.d("MessageRepository", "✅ History merge complete for $chatId. Total: ${flow.value.size}")
                 }
+                prefetchRecentChatMedia(filteredHydratedMsgs)
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) { 
             android.util.Log.e("MessageRepository", "fetchMessageHistory error", e)
+        }
+    }
+
+    private fun prefetchRecentChatMedia(messages: List<Message>) {
+        prefetchChatMedia(
+            messages.map { message ->
+                ChatMediaPrefetchCandidate(
+                    contentType = message.content_type,
+                    mediaUrl = message.media_url,
+                    mediaSizeBytes = message.media_size.takeIf { it > 0L }
+                )
+            }
+        )
+    }
+
+    internal fun prefetchRecentGroupMedia(messages: List<GroupMessage>) {
+        prefetchChatMedia(
+            messages.map { message ->
+                ChatMediaPrefetchCandidate(message.content_type, message.media_url)
+            }
+        )
+    }
+
+    internal fun prefetchRecentCommunityMedia(messages: List<CommunityMessage>) {
+        prefetchChatMedia(
+            messages.map { message ->
+                ChatMediaPrefetchCandidate(message.content_type, message.media_url)
+            }
+        )
+    }
+
+    private fun prefetchChatMedia(candidates: Iterable<ChatMediaPrefetchCandidate>) {
+        selectRecentChatMediaForPrefetch(candidates).forEach { mediaPath ->
+            scope.launch {
+                mediaResolver.getPlayableUrl(
+                    path = mediaPath,
+                    allowOfflineMediaCache = true,
+                    isPrefetch = true
+                )
+            }
         }
     }
 
@@ -2254,6 +2270,48 @@ class MessageRepository @Inject constructor(
     // --- ACTIONS ---
 
     suspend fun sendMessage(
+        chatId: String,
+        content: String,
+        replyToId: String? = null,
+        mediaUri: Uri? = null,
+        mediaType: String = "text",
+        messageId: String? = null,
+        existingMediaUrl: String? = null,
+        isForwarded: Boolean = false,
+        forwardedFromMessageId: String? = null,
+        forwardedFromUserId: String? = null,
+        allowRapidMediaBatch: Boolean = false,
+        onQueued: suspend () -> Unit = {}
+    ): Result<Message> {
+        val id = messageId ?: UUID.randomUUID().toString()
+        val session = captureSessionSnapshot()
+        return messageSendCoordinator.withMessage(id) {
+            if (!isSessionSnapshotValid(session, "sendMessage:lock")) {
+                return@withMessage Result.failure(CancellationException("Session changed"))
+            }
+            val cached = if (messageId != null) messageDao.getMessageById(id) else null
+            if (!isSessionSnapshotValid(session, "sendMessage:cached")) {
+                return@withMessage Result.failure(CancellationException("Session changed"))
+            }
+            if (cached != null && (cached.sender_id.trim().lowercase() != session.accountId ||
+                    cached.chat_id.trim().lowercase() != chatId.trim().lowercase())) {
+                return@withMessage Result.failure(IllegalArgumentException("Message belongs to another conversation"))
+            }
+            val deletion = database.messageDeletionDao().get(id, session.accountId.orEmpty(), true)
+            if (cached?.deleted_for_all == true || (deletion != null && deletion.state != "failed")) {
+                return@withMessage Result.failure(IllegalStateException("No se puede reenviar un mensaje eliminado"))
+            }
+            if (cached != null && cached.is_synced && cached.sender_id.trim().lowercase() == session.accountId &&
+                cached.chat_id.trim().lowercase() == chatId.trim().lowercase()) {
+                return@withMessage Result.success(cached.toDomain())
+            }
+            sendMessageInternal(session, chatId, content, replyToId, mediaUri, mediaType, id, existingMediaUrl,
+                isForwarded, forwardedFromMessageId, forwardedFromUserId, allowRapidMediaBatch, onQueued)
+        }
+    }
+
+    private suspend fun sendMessageInternal(
+        session: SessionWriteGuard.Snapshot,
         chatId: String, 
         content: String, 
         replyToId: String? = null,
@@ -2264,7 +2322,8 @@ class MessageRepository @Inject constructor(
         isForwarded: Boolean = false,
         forwardedFromMessageId: String? = null,
         forwardedFromUserId: String? = null,
-        allowRapidMediaBatch: Boolean = false
+        allowRapidMediaBatch: Boolean = false,
+        onQueued: suspend () -> Unit = {}
     ): Result<Message> {
         // Fix: Define ID outside try block so it's visible in catch block
         var id = messageId ?: UUID.randomUUID().toString()
@@ -2272,9 +2331,13 @@ class MessageRepository @Inject constructor(
         var auditUserId: String? = null
         var queuedMessage: Message? = null
         val startedAt = System.currentTimeMillis()
+        fun requireCurrentSession() {
+            if (!isSessionSnapshotValid(session, "sendMessage")) throw CancellationException("Session changed")
+        }
         
         return try {
             var userId = (authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))).trim().lowercase()
+            requireCurrentSession()
             auditUserId = userId
 
             val guardDecision = operationGuard.acquire(
@@ -2384,6 +2447,7 @@ class MessageRepository @Inject constructor(
                 } else null
             )
             queuedMessage = msg
+            requireCurrentSession()
             
             android.util.Log.d("MessageRepository", "📦 Message object created: id=$id, chat_id=$cleanId, sender_id=$userId")
 
@@ -2396,13 +2460,18 @@ class MessageRepository @Inject constructor(
                     pendingAction = "send"
                 )
                 messageDao.insertMessage(optimisticEntity)
+                PendingMessageSyncScheduler.enqueue(context, "direct_message_pending")
                 android.util.Log.d("MessageRepository", "✅ Optimistic Message saved to Room: ${msg.id}")
             } catch (error: Exception) {
                 pendingMediaUri?.let(::deletePendingChatMedia)
                 return Result.failure(IllegalStateException("No se pudo guardar el mensaje en el dispositivo", error))
             }
 
+            // Durable acceptance releases the composer before any delivery/network work.
+            onQueued()
+
             // --- 2. UPDATE MEMORY (FLOW) ---
+            requireCurrentSession()
             addMessageToFlow(cleanId, msg)
             val optimisticChats = _userChats.value.toMutableList()
             val optimisticChatIndex = optimisticChats.indexOfFirst {
@@ -2429,6 +2498,7 @@ class MessageRepository @Inject constructor(
             }
 
             val token = authService.ensureValidAccessToken().getOrElse { error ->
+                if (error is CancellationException) throw error
                 android.util.Log.w("MessageRepository", "Message queued until the session can reconnect", error)
                 runCatching {
                     operationGuard.audit(
@@ -2441,18 +2511,24 @@ class MessageRepository @Inject constructor(
                 }
                 return Result.success(msg)
             }
+            requireCurrentSession()
 
+            if (isSendCancelledByDeletion(id, userId, session)) return Result.success(msg.copy(deleted_for_all = true))
             if (pendingMediaUri != null) {
                 val mediaUpload = uploadChatMedia(cleanId, pendingMediaUri, mediaType)
                     .getOrElse { error ->
+                        if (error is CancellationException) throw error
+                        requireCurrentSession()
                         val reason = error.message ?: "No se pudo subir multimedia"
                         android.util.Log.w("MessageRepository", "Media upload queued: $reason", error)
                         if (isRetryableNetworkFailure(error.message)) {
                             return Result.success(msg)
                         }
-                        messageDao.updateSyncStatus(id, "failed", false, null)
+                        messageDao.markPendingSendFailed(id)
                         return Result.failure(Exception(reason))
                     }
+                requireCurrentSession()
+                if (isSendCancelledByDeletion(id, userId, session)) return Result.success(msg.copy(deleted_for_all = true))
                 msg = msg.copy(
                     media_url = mediaUpload.url,
                     thumbnail_url = mediaUpload.thumbnailUrl,
@@ -2466,17 +2542,21 @@ class MessageRepository @Inject constructor(
                         pendingAction = "send"
                     )
                 )
+                requireCurrentSession()
                 addMessageToFlow(cleanId, msg)
                 deletePendingChatMedia(pendingMediaUri)
                 android.util.Log.d("MessageRepository", "✅ Media uploaded (${mediaUpload.contentType}): ${mediaUpload.url}")
             }
 
             // --- 3. SEND TO SERVER ---
+            requireCurrentSession()
+            if (isSendCancelledByDeletion(id, userId, session)) return Result.success(msg.copy(deleted_for_all = true))
             android.util.Log.d("MessageRepository", "📡 Sending message to backend (secure RPC with fallback)...")
             val serverSendResult = sendMessageToBackend(
                 token = token,
                 msg = msg
             )
+            requireCurrentSession()
             android.util.Log.d("MessageRepository", "📨 Backend status: ${serverSendResult.statusCode}")
 
             // --- 4. HANDLE RESPONSE (UPDATE LOCAL) ---
@@ -2501,10 +2581,12 @@ class MessageRepository @Inject constructor(
                     android.util.Log.e("MessageRepository", "❌ Failed to cache acknowledged message", error)
                 }
 
+                requireCurrentSession()
                 addMessageToFlow(cleanId, returnedMsg)
 
                 scope.launch {
                     try {
+                        requireCurrentSession()
                         val preview = buildPreviewForContentType(returnedMsg.content_type, returnedMsg.content)
                         updateChatLastMessageInternal(
                             cleanId,
@@ -2522,6 +2604,7 @@ class MessageRepository @Inject constructor(
                  // Proactive Chat List Update (Existing Logic - Optimized)
                  scope.launch {
                      try {
+                         requireCurrentSession()
                          var currentChats = _userChats.value.toMutableList()
                          var idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
                          if (idx != -1) {
@@ -2533,7 +2616,10 @@ class MessageRepository @Inject constructor(
                             // But for "Instant" feel, we trigger a fast fetch
                             getUserChats() 
                          }
-                     } catch(e: Exception) { }
+                     } catch (e: Exception) {
+                         if (e is CancellationException) throw e
+                         android.util.Log.w("MessageRepository", "Could not refresh chat list after send", e)
+                     }
                  }
 
                 runCatching {
@@ -2565,7 +2651,6 @@ class MessageRepository @Inject constructor(
                 )
                 
                 if (isRetryableBackendFailure(serverSendResult.statusCode, errorBody)) {
-                    messageDao.updateSyncStatus(id, "sending", false, "send")
                     runCatching {
                         operationGuard.audit(
                             action = GuardedAction.DIRECT_MESSAGE_SEND,
@@ -2580,7 +2665,7 @@ class MessageRepository @Inject constructor(
 
                 // A server-side validation or permission error remains visible, but
                 // must not be auto-retried as if it were a connectivity failure.
-                messageDao.updateSyncStatus(id, "failed", false, null)
+                messageDao.markPendingSendFailed(id)
 
                 runCatching {
                     operationGuard.audit(
@@ -2602,19 +2687,17 @@ class MessageRepository @Inject constructor(
                 Result.failure(Exception(normalizedError))
             }
         } catch (error: CancellationException) {
-            queuedMessage?.let {
-                runCatching { messageDao.updateSyncStatus(id, "sending", false, "send") }
-            }
+            // The durable row already records pending/sent. Cancellation must not
+            // revert a server/realtime acknowledgement back into an unsent message.
             throw error
         } catch (e: Exception) {
             android.util.Log.e("MessageRepository", "❌❌ EXCEPTION in sendMessage", e)
             val pending = queuedMessage
             if (pending != null && isRetryableNetworkFailure(e.message)) {
-                runCatching { messageDao.updateSyncStatus(id, "sending", false, "send") }
                 return Result.success(pending)
             }
              // Update Room to FAILED status
-            runCatching { messageDao.updateSyncStatus(id, "failed", false, null) }
+            runCatching { messageDao.markPendingSendFailed(id) }
             var actorId = auditUserId
             if (!actorId.isNullOrBlank()) {
                 runCatching {
@@ -2667,12 +2750,6 @@ class MessageRepository @Inject constructor(
         val errorBody: String? = null
     )
 
-    private enum class PendingSendOutcome {
-        SENT,
-        RETRY_LATER,
-        TERMINAL_FAILURE
-    }
-
     private suspend fun sendMessageToBackend(
         token: String,
         msg: Message
@@ -2696,7 +2773,11 @@ class MessageRepository @Inject constructor(
                     BackendSendResult(
                         isSuccess = true,
                         statusCode = 201,
-                        message = sent.copy(status = "sent")
+                        message = PendingMessageSyncPolicy.acknowledgedMessage(
+                            serverMessage = sent,
+                            queuedMessage = msg,
+                            chatId = msg.chat_id
+                        )
                     )
                 },
                 onFailure = { error ->
@@ -2734,10 +2815,15 @@ class MessageRepository @Inject constructor(
             if (rpcResponse.status.isSuccess()) {
                 var raw = runCatching { rpcResponse.bodyAsText() }.getOrNull().orEmpty()
                 val parsed = parseMessageResponse(raw)
+                val acknowledged = parsed ?: msg.copy(status = "sent")
                 return BackendSendResult(
                     isSuccess = true,
                     statusCode = rpcResponse.status.value,
-                    message = parsed?.copy(status = "sent") ?: msg.copy(status = "sent")
+                    message = PendingMessageSyncPolicy.acknowledgedMessage(
+                        serverMessage = acknowledged,
+                        queuedMessage = msg,
+                        chatId = msg.chat_id
+                    )
                 )
             }
 
@@ -2786,6 +2872,10 @@ class MessageRepository @Inject constructor(
         val clean = errorBody.trim()
         return when {
             isBlockedByRecipientError(clean) -> "CHAT_BLOCKED_BY_RECIPIENT"
+            clean.contains("FRIEND_REQUEST_PENDING", ignoreCase = true) ->
+                "Ya enviaste un primer mensaje. Podrás escribir de nuevo cuando acepte tu solicitud de amistad."
+            clean.contains("FRIEND_REQUEST_REJECTED", ignoreCase = true) ->
+                "La solicitud de amistad fue rechazada."
             clean.isBlank() -> "SEND_FAILED"
             else -> clean
         }
@@ -2807,7 +2897,10 @@ class MessageRepository @Inject constructor(
                 parameter("id", "eq.$chatId")
                 setBody(update)
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            android.util.Log.w("MessageRepository", "Could not update remote chat preview", e)
+        }
     }
 
     private suspend fun updateChatLastMessage(chatId: String, msg: Message, token: String) {
@@ -2855,7 +2948,7 @@ class MessageRepository @Inject constructor(
                             android.util.Log.w("MessageRepository", "Ubuntu markChatAsRead failed for $cleanId", e)
                         }
                 } else {
-                    android.util.Log.w("MessageRepository", "markChatAsRead: no Ubuntu token available for $cleanId")
+                    android.util.Log.w("MessageRepository", "markChatAsRead: no Ubuntu session token")
                 }
             } else if (!token.isNullOrBlank()) {
                 var remoteReadSynced = false
@@ -2912,7 +3005,7 @@ class MessageRepository @Inject constructor(
                     android.util.Log.w("MessageRepository", "chat_participants last_read_at sync failed for $cleanId", e)
                 }
             } else {
-                android.util.Log.w("MessageRepository", "markChatAsRead: no token available, skipping remote sync for $cleanId")
+                android.util.Log.w("MessageRepository", "markChatAsRead: no session token; remote sync skipped")
             }
 
             // Instant local convergence for read state (viewport/read receipt UX).
@@ -3060,9 +3153,10 @@ class MessageRepository @Inject constructor(
 
     suspend fun markMessagesAsRead(chatId: String, messageIds: Collection<String>): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
             var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("No user"))
+            val session = captureSessionSnapshot(currentUserId)
+            if (!isSessionSnapshotValid(session, "markMessagesAsRead")) return@withContext Result.failure(Exception("La cuenta cambió."))
             var cleanId = chatId.trim().lowercase()
             val cleanMessageIds = messageIds
                 .map { it.trim().lowercase() }
@@ -3071,6 +3165,25 @@ class MessageRepository @Inject constructor(
             if (cleanId.isBlank() || cleanMessageIds.isEmpty()) return@withContext Result.success(Unit)
 
             var now = java.time.Instant.now().toString()
+            if (shouldUseUbuntuBackend()) {
+                val incomingIds = messageDao.getMessagesForChat(cleanId).filter {
+                    it.id in cleanMessageIds && it.sender_id.trim().lowercase() != currentUserId &&
+                        conectate.com.core.messaging.UnreadPolicy.isEligibleStatusForReadTransition(it.status)
+                }.map { it.id }
+                if (!isSessionSnapshotValid(session, "visible-read-local")) return@withContext Result.failure(Exception("La cuenta cambió."))
+                val newlySeen = readJournal.record(currentUserId, "chat", cleanId, incomingIds)
+                messageDao.markMessagesAsReadByIds(cleanId, currentUserId, now, incomingIds)
+                chatDao.subtractReadMessages(cleanId, newlySeen.size)
+                _userChats.update { chats -> chats.map {
+                    if (it.chat.id == cleanId) it.copy(unreadCount = (it.unreadCount - newlySeen.size).coerceAtLeast(0)) else it
+                } }
+                _activeChatMessages[cleanId]?.update { messages -> messages.map {
+                    if (it.id in incomingIds) it.copy(status = "read", read_at = now) else it
+                } }
+                authService.getAccessToken()?.let { readSynchronizer.flush(currentUserId, "chat", it) }
+                return@withContext Result.success(Unit)
+            }
+            val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
             var updatePayload = buildJsonObject {
                 put("status", "read")
                 put("read_at", now)
@@ -3124,6 +3237,7 @@ class MessageRepository @Inject constructor(
             }
             if (idsToMark.isEmpty()) return@withContext Result.success(Unit)
 
+            if (!isSessionSnapshotValid(session, "markMessagesAsRead.persist")) return@withContext Result.failure(Exception("La cuenta cambió."))
             messageDao.markMessagesAsReadByIds(cleanId, currentUserId, now, idsToMark)
             val localUnread = messageDao.countUnreadIncoming(cleanId, currentUserId)
             if (localUnread <= 0) {
@@ -3136,6 +3250,8 @@ class MessageRepository @Inject constructor(
             } catch (_: Exception) {
             }
             Result.success(Unit)
+        } catch (error: CancellationException) {
+            throw error
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -3247,6 +3363,7 @@ class MessageRepository @Inject constructor(
         )
 
         messageDao.insertMessage(conectate.com.data.local.entity.MessageEntity.fromDomain(optimistic, isSynced = false, pendingAction = "send"))
+        PendingMessageSyncScheduler.enqueue(context, "direct_poll_pending")
         addMessageToFlow(cleanId, optimistic)
         chatDao.updateLastMessage(
             chatId = cleanId,
@@ -3256,53 +3373,84 @@ class MessageRepository @Inject constructor(
             senderId = userId
         )
 
-        var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-        
-        try {
-            var payload = buildJsonObject {
-                put("p_chat_id", cleanId)
-                put("p_message_id", msgId)
-                put("p_question", sanitizedQuestion)
-                put("p_options", JsonArray(sanitizedOptions.map { JsonPrimitive(it) }))
-                put("p_allows_multiple", allowsMultiple)
+        val pollSession = captureSessionSnapshot(userId)
+        return@withContext messageSendCoordinator.withMessage(msgId) {
+            if (!isSessionSnapshotValid(pollSession, "sendPollMessage:lock")) throw CancellationException("Session changed")
+            val latest = messageDao.getMessageById(msgId)
+            if (latest == null || latest.pending_action != "send" || isSendCancelledByDeletion(msgId, userId, pollSession)) {
+                return@withMessage Result.success(Unit)
             }
-            
-            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_create_chat_poll_message") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                setBody(payload)
+            val token = authService.getAccessToken() ?: return@withMessage Result.failure(Exception("No token"))
+
+            try {
+                var payload = buildJsonObject {
+                    put("p_chat_id", cleanId)
+                    put("p_message_id", msgId)
+                    put("p_question", sanitizedQuestion)
+                    put("p_options", JsonArray(sanitizedOptions.map { JsonPrimitive(it) }))
+                    put("p_allows_multiple", allowsMultiple)
+                }
+
+                var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_create_chat_poll_message") {
+                    header("Authorization", "Bearer $token")
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Content-Type", "application/json")
+                    setBody(payload)
+                }
+
+                if (!isSessionSnapshotValid(pollSession, "sendPollMessage:response")) throw CancellationException("Session changed")
+                if (response.status.isSuccess()) {
+                    var synced = optimistic.copy(status = "sent")
+                    messageDao.insertMessage(conectate.com.data.local.entity.MessageEntity.fromDomain(synced, isSynced = true))
+                    updateMessageInFlow(cleanId, synced)
+                    Result.success(Unit)
+                } else {
+                    val error = response.bodyAsText()
+                    Result.failure(Exception("Error al crear encuesta: $error"))
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                Result.failure(e)
             }
-            
-            if (response.status.isSuccess()) {
-                var synced = optimistic.copy(status = "sent")
-                messageDao.insertMessage(conectate.com.data.local.entity.MessageEntity.fromDomain(synced, isSynced = true))
-                updateMessageInFlow(cleanId, synced)
-                Result.success(Unit)
-            } else {
-                val error = response.bodyAsText()
-                Result.failure(Exception("Error al crear encuesta: $error"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
 
 
+    private suspend fun findLocalDirectChat(accountId: String, targetUserId: String): ChatEntity? =
+        selectCachedDirectChat(
+            candidates = chatDao.getChatsByOtherUserId(targetUserId.trim().lowercase()),
+            accountId = accountId,
+            targetUserId = targetUserId
+        )
+
     suspend fun findChatByParticipants(normalizedParticipants: List<String>): Result<Chat> {
         return try {
-            var token = authService.getAccessToken() 
-                ?: return Result.failure(Exception("No token"))
+            val expectedParticipants = normalizedParticipantIds(normalizedParticipants)
+            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+                ?: return Result.failure(Exception("No user"))
+            val session = captureSessionSnapshot(currentUserId)
+            if (expectedParticipants.size != 2 || currentUserId !in expectedParticipants) {
+                return Result.failure(IllegalArgumentException("Direct chat requires the active account and one other participant"))
+            }
+            val targetUserId = expectedParticipants.firstOrNull { it != currentUserId }
+                ?: return Result.failure(Exception("No target user"))
+
+            // Opening a known conversation from a profile is an offline read.
+            // Never require a token refresh before checking the Room index.
+            val localChat = findLocalDirectChat(currentUserId, targetUserId)?.toDomain()
+            if (!isSessionSnapshotValid(session, "findChatByParticipants")) throw CancellationException("Session changed")
+            if (localChat != null) {
+                return Result.success(localChat)
+            }
+
+            var token = authService.ensureValidAccessToken()
+                .getOrElse { return Result.failure(it) }
+            if (!isSessionSnapshotValid(session, "findChatByParticipants:token")) throw CancellationException("Session changed")
 
             if (shouldUseUbuntuBackend()) {
-                val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
-                    ?: return Result.failure(Exception("No user"))
-                val targetUserId = normalizedParticipants
-                    .map { it.trim().lowercase() }
-                    .firstOrNull { it.isNotBlank() && it != currentUserId }
-                    ?: return Result.failure(Exception("No target user"))
-
                 val result = localFallbackApiClient.createDirectChat(token, targetUserId)
+                if (!isSessionSnapshotValid(session, "findChatByParticipants:remote")) throw CancellationException("Session changed")
                 result.getOrNull()?.let { chat ->
                     cacheChat(chat)
                     getUserChats()
@@ -3313,7 +3461,7 @@ class MessageRepository @Inject constructor(
             // Query for chats that contain these exact 2 participants
             // Query for chats that contain these exact 2 participants (using contains filter)
             // Use curly braces for Postgres array contains filter (Standard)
-            val participantsFilter = "{${normalizedParticipants.joinToString(",")}}"
+            val participantsFilter = "{${expectedParticipants.joinToString(",")}}"
             
             var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/chats"
@@ -3326,15 +3474,12 @@ class MessageRepository @Inject constructor(
             
             if (response.status.isSuccess()) {
                 var chats = response.body<List<Chat>>()
+                if (!isSessionSnapshotValid(session, "findChatByParticipants:remote")) throw CancellationException("Session changed")
                 
                 // Find all chats with EXACTLY these participants (sorted)
-                val matchingChat = chats.filter { chat ->
-                    // MUST be exactly 2 participants for a DM
-                    var chatParticipants = chat.participants
-                        .map { it.trim().lowercase() }
-                        .sorted()
-                    chatParticipants.size == 2 && chatParticipants == normalizedParticipants
-                }.maxByOrNull { it.safeLastMessageAt } // Pick the most active one to avoid ghost IDs
+                val matchingChat = chats
+                    .filter { it.matchesExactDirectParticipants(expectedParticipants) }
+                    .maxByOrNull { it.safeLastMessageAt } // Pick the most active one to avoid ghost IDs
                 
                 if (matchingChat != null) {
                     android.util.Log.d("MessageRepository", 
@@ -3354,9 +3499,13 @@ class MessageRepository @Inject constructor(
      * Cache a chat locally after finding it remotely
      */
     private suspend fun cacheChat(chat: Chat) {
+        val session = captureSessionSnapshot()
+        cacheChatMembership(chat, session)
         scope.launch {
             try {
+                if (!isSessionSnapshotValid(session, "cacheChat:start")) return@launch
                 var userId = authService.getCurrentUserId() ?: return@launch
+                if (chat.participants.none { it.trim().lowercase() == userId.trim().lowercase() }) return@launch
                 var otherId = chat.participants.firstOrNull { 
                     it.trim().lowercase() != userId.trim().lowercase() 
                 }
@@ -3380,7 +3529,10 @@ class MessageRepository @Inject constructor(
                                 userDao.insertUser(
                                     conectate.com.data.local.entity.UserEntity.fromDomain(fetchedProfile)
                                 )
-                            } catch (e: Exception) { }
+                            } catch (e: Exception) {
+                                if (e is CancellationException) throw e
+                                android.util.Log.w("MessageRepository", "Could not cache chat participant profile", e)
+                            }
                         }
                     }
                 }
@@ -3398,6 +3550,7 @@ class MessageRepository @Inject constructor(
                     nickname = chat.nickname,
                     clearedAt = chat.cleared_at
                 )
+                if (!isSessionSnapshotValid(session, "cacheChat:write")) return@launch
                 chatDao.insertChat(entity)
                 android.util.Log.d("MessageRepository", "Cached chat locally: ${chat.id}")
             } catch (e: Exception) {
@@ -3408,16 +3561,21 @@ class MessageRepository @Inject constructor(
     
     
     suspend fun getOrCreateChat(targetUserId: String): Result<Chat> {
-        var userId = authService.getCurrentUserId() 
+        val userId = currentSessionUserId()
             ?: return Result.failure(Exception("No user"))
+        val session = captureSessionSnapshot(userId)
         val cleanTargetUserId = targetUserId.trim().lowercase()
         if (cleanTargetUserId.isBlank() || cleanTargetUserId.startsWith("placeholder_")) {
             return Result.failure(Exception("Usuario destino invalido"))
         }
+        if (cleanTargetUserId == userId) return Result.failure(Exception("No puedes crear un chat contigo mismo"))
+        val cached = findLocalDirectChat(userId, cleanTargetUserId)
+        if (!isSessionSnapshotValid(session, "getOrCreateChat:local")) throw CancellationException("Session changed")
+        if (cached != null) return Result.success(cached.toDomain())
 
         if (shouldUseUbuntuBackend()) {
-            val token = authService.getAccessToken()
-                ?: return Result.failure(Exception("No token"))
+            val token = authService.ensureValidAccessToken().getOrElse { return Result.failure(it) }
+            if (!isSessionSnapshotValid(session, "getOrCreateChat:token")) throw CancellationException("Session changed")
             val canonicalTargetId = userRepository.getUserById(cleanTargetUserId)
                 .getOrNull()
                 ?.id
@@ -3425,10 +3583,12 @@ class MessageRepository @Inject constructor(
                 ?.lowercase()
                 ?.takeIf { it.isNotBlank() }
                 ?: cleanTargetUserId
+            if (!isSessionSnapshotValid(session, "getOrCreateChat:profile")) throw CancellationException("Session changed")
             if (canonicalTargetId == userId.trim().lowercase()) {
                 return Result.failure(Exception("No puedes crear un chat contigo mismo"))
             }
             val result = localFallbackApiClient.createDirectChat(token, canonicalTargetId)
+            if (!isSessionSnapshotValid(session, "getOrCreateChat:remote")) throw CancellationException("Session changed")
             result.getOrNull()?.let { chat ->
                 cacheChat(chat)
                 getUserChats()
@@ -3446,6 +3606,8 @@ class MessageRepository @Inject constructor(
         
         // 1. Try to find existing chat with these exact participants (remote source of truth)
         var existingChat = findChatByParticipants(normalizedParticipants)
+        if (!isSessionSnapshotValid(session, "getOrCreateChat:lookup")) throw CancellationException("Session changed")
+        existingChat.exceptionOrNull()?.let { if (it is CancellationException) throw it }
         if (existingChat.isSuccess) {
             var chat = existingChat.getOrThrow()
             android.util.Log.d("MessageRepository", "Found existing chat: ${chat.id}")
@@ -3455,12 +3617,8 @@ class MessageRepository @Inject constructor(
             return existingChat
         }
         
-        // 2. NO FALLBACK TO LOCAL CACHE FOR 1-1 CHATS
-        // We MUST trust the server as the unique source of truth to avoid 'zombie' IDs
-        // from Room interfering with new legit chats.
-        // If findChatByParticipants failed, we proceed to create a new, clean one.
-        
-        // 3. Create new chat (constraint will prevent duplicates at DB level)
+        // No exact local/remote match. Creation remains server-authoritative;
+        // never fabricate an ID that could receive unsendable offline messages.
         android.util.Log.d("MessageRepository", "Creating new chat (none found on server)")
         return createNewChat(listOf(targetUserId))
     }
@@ -3640,17 +3798,19 @@ class MessageRepository @Inject constructor(
 
     suspend fun getChatByUserId(targetUserId: String): Result<Chat> {
         val cleanTargetId = targetUserId.trim().lowercase()
+        val accountId = currentSessionUserId() ?: return Result.failure(Exception("No user"))
+        val session = captureSessionSnapshot(accountId)
+        val participants = listOf(accountId, cleanTargetId)
         // 1. Check DAO (Source of Truth for "known" chats)
-        val localEntity = chatDao.getChatByOtherUserId(cleanTargetId)
+        val localEntity = findLocalDirectChat(accountId, cleanTargetId)
+        if (!isSessionSnapshotValid(session, "getChatByUserId:local")) return Result.failure(CancellationException("Session changed"))
         if (localEntity != null) {
             return Result.success(localEntity.toDomainWithDetails().chat)
         }
 
         // 2. Check Memory Cache
         val memoryMatch = _userChats.value.firstOrNull { 
-            !it.chat.is_group && 
-            it.chat.participants.size == 2 && // Strict size check
-            it.chat.participants.any { p -> p.trim().lowercase() == cleanTargetId }
+            it.chat.matchesExactDirectParticipants(participants)
         }?.chat
         
         if (memoryMatch != null) return Result.success(memoryMatch)
@@ -3658,10 +3818,9 @@ class MessageRepository @Inject constructor(
         // 3. Refresh & Check Remote
         // This fetches latest list from Supabase, so if it exists there, we find it.
         return getUserChats().mapCatching { list ->
+             if (!isSessionSnapshotValid(session, "getChatByUserId:remote")) throw CancellationException("Session changed")
              list.firstOrNull { 
-                 !it.chat.is_group && 
-                 it.chat.participants.size == 2 && // Strict size check
-                 it.chat.participants.any { p -> p.trim().lowercase() == cleanTargetId }
+                 it.chat.matchesExactDirectParticipants(participants)
              }?.chat ?: throw Exception("No chat found")
         }
     }
@@ -3801,90 +3960,87 @@ class MessageRepository @Inject constructor(
     }
     
     suspend fun getChatById(chatId: String): Result<Chat> {
-          var cleanId = chatId.trim().lowercase()
-          // 1. Try local DAO (Enriched with nicknames/cleared_at)
-          var entity = chatDao.getChatById(cleanId)
-          if (entity != null) return Result.success(entity.toDomain())
+        val accountId = currentSessionUserId()
+        val session = captureSessionSnapshot(accountId)
+        val result = AccountChatReader(
+            local = { id -> chatDao.getChatById(id)?.toDomain() },
+            memory = { id -> _userChats.value.find { it.chat.id.trim().lowercase() == id }?.chat },
+            remote = { id -> runReadWithDeadline(InteractiveReadDeadlines.ConversationHistoryMillis) {
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                if (!isSessionSnapshotValid(session, "getChatById:token")) throw CancellationException("Session changed")
+                if (shouldUseUbuntuBackend()) {
+                    localFallbackApiClient.loadChatMetadata(token, id).getOrThrow()
+                } else {
+                    val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chats") {
+                        header("Authorization", "Bearer $token")
+                        header("apikey", supabaseConfig.supabaseAnonKey)
+                        parameter("id", "eq.$id")
+                    }
+                    if (!response.status.isSuccess()) throw IllegalStateException("Error HTTP ${response.status}")
+                    response.body<List<Chat>>().firstOrNull() ?: throw IllegalStateException("Chat no encontrado")
+                }
+            } }
+        ).read(chatId, accountId) { isSessionSnapshotValid(session, "getChatById") }
+        result.getOrNull()?.let { cacheChatMembership(it, session) }
+        if (!isSessionSnapshotValid(session, "getChatById:return")) throw CancellationException("Session changed")
+        return result
+    }
 
-          // 2. Try Memory Cache
-          var cached = _userChats.value.find { it.chat.id.trim().lowercase() == cleanId }?.chat
-          if (cached != null) return Result.success(cached)
-
-          // 3. Network Fallback
-          authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-          var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-          
-          return try {
-              var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chats") {
-                    header("Authorization", "Bearer $token")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    parameter("id", "eq.$cleanId")
-              }
-              if (response.status.isSuccess()) {
-                  var c = response.body<List<Chat>>().firstOrNull()
-                  if (c != null) Result.success(c) else Result.failure(Exception("Not found"))
-              } else Result.failure(Exception("Error HTTP ${response.status}"))
-          } catch(e: Exception) {
-              Result.failure(e)
-          }
+    // Membership is persisted before observers subscribe, using local identity
+    // only. Optional remote profile hydration must never gate cached messages.
+    private suspend fun cacheChatMembership(chat: Chat, session: SessionWriteGuard.Snapshot) {
+        if (!chat.isAccessibleTo(session.accountId)) return
+        val existing = chatDao.getChatById(chat.id)
+        if (existing?.toDomain()?.isAccessibleTo(session.accountId) == true) return
+        val otherId = chat.participants.firstOrNull { it.trim().lowercase() != session.accountId }
+        val identity = otherId?.let { userDao.getUser(it.trim().lowercase()) }
+        if (!isSessionSnapshotValid(session, "cacheChatMembership")) throw CancellationException("Session changed")
+        chatDao.insertChat(ChatEntity.fromDomain(
+            chat, displayName = identity?.full_name ?: chat.group_name,
+            displayImage = identity?.avatar_url ?: chat.group_image, unreadCount = 0,
+            lastMsg = chat.last_message, lastTime = chat.last_message_at, otherUserId = otherId
+        ))
     }
 
     fun getChatFlow(id: String): Flow<Chat?> {
-        var cleanId = id.trim().lowercase()
-        return chatDao.getChatByIdFlow(cleanId).map { it?.toDomain() }
+        val cleanId = id.trim().lowercase()
+        return accountScopedChatFlow(
+            accounts = authService.observeSession().map { it?.user?.id },
+            chats = chatDao.getChatByIdFlow(cleanId).map { it?.toDomain() },
+            currentAccount = ::currentSessionUserId,
+            empty = null as Chat?
+        ) { chat, _ -> flowOf(chat) }.distinctUntilChanged()
     }
     
 
 
     suspend fun deleteMessage(messageId: String, forEveryone: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            var currentUserId = authService.getCurrentUserId()
-                ?: return@withContext Result.failure(Exception("No hay usuario"))
-            var cleanUserId = currentUserId.trim().lowercase()
-
-            var localMsg = messageDao.getMessageById(messageId)
-                ?: return@withContext Result.failure(Exception("Mensaje no encontrado localmente"))
-
-            val pendingDelete = if (forEveryone) {
-                localMsg.copy(
-                    deleted_for_all = true,
-                    is_synced = false,
-                    pending_action = "delete"
-                )
-            } else {
-                val currentDeletedBy = parseDeletedBy(localMsg).map { it.trim().lowercase() }
-                val newDeletedBy = (currentDeletedBy + cleanUserId).distinct()
-                localMsg.copy(
-                    deleted_by_json = Json.encodeToString(newDeletedBy),
-                    is_synced = false,
-                    pending_action = "delete"
-                )
-            }
-
-            messageDao.insertMessage(pendingDelete)
-            updateMessageInFlow(pendingDelete.chat_id.trim().lowercase(), pendingDelete.toDomain())
-
-            var remoteSynced = syncPendingDeleteMessage(pendingDelete, cleanUserId)
-            if (remoteSynced) {
-                var syncedEntity = pendingDelete.copy(
-                    status = "sent",
-                    is_synced = true,
-                    pending_action = null
-                )
-                messageDao.insertMessage(syncedEntity)
-                updateMessageInFlow(syncedEntity.chat_id.trim().lowercase(), syncedEntity.toDomain())
-            } else {
-                android.util.Log.w(
-                    "MessageRepository",
-                    "Delete queued offline for message=$messageId, forEveryone=$forEveryone"
-                )
-            }
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
+        val actor = currentSessionUserId()
+            ?: return@withContext Result.failure(IllegalStateException("No hay una cuenta activa"))
+        val session = captureSessionSnapshot(actor)
+        val result = deletionQueue.enqueue(messageId.trim(), actor, forEveryone) {
+            isSessionSnapshotValid(session, "queueMessageDeletion")
         }
+        if (result.isSuccess) {
+            PendingMessageSyncScheduler.enqueue(context, "direct_message_delete_pending")
+            // The screen is driven by the persisted intent immediately, without
+            // waiting for a token, connectivity, transport retries or a worker.
+            scope.launch { retryPendingDeletes(30) }
+        }
+        result
     }
+
+    fun getMessageDeletionFailures(chatId: String): Flow<List<conectate.com.data.local.entity.MessageDeletionEntity>> =
+        accountScopedChatFlow(
+            accounts = authService.observeSession().map { it?.user?.id },
+            chats = chatDao.getChatByIdFlow(chatId).map { it?.toDomain() },
+            currentAccount = ::currentSessionUserId,
+            empty = emptyList()
+        ) { _, actor ->
+            database.messageDeletionDao().observeChat(chatId).map { intents ->
+                intents.filter { it.actor_id == actor && it.state == "failed" }
+            }
+        }
 
 
 
@@ -4209,6 +4365,12 @@ class MessageRepository @Inject constructor(
         allowOfflineMediaCache: Boolean = true
     ): Result<String> = mediaResolver.getPlayableUrl(path, allowOfflineMediaCache)
 
+    suspend fun getOfflineChatMediaUsage(): conectate.com.core.media.ChatOfflineMediaUsage? =
+        offlineMediaCache.currentAccountUsage()
+
+    suspend fun clearOfflineChatMedia(expectedAccountKey: String): Boolean =
+        offlineMediaCache.clearCurrentAccount(expectedAccountKey)
+
     fun getShareableUrl(path: String): Result<String> = mediaResolver.getShareableUrl(path)
 
     suspend fun consumeViewOnceMedia(
@@ -4512,7 +4674,8 @@ class MessageRepository @Inject constructor(
             val headerBytes = readUriHeaderBytes(mediaUri)
                 ?: return@withContext Result.failure(Exception("No se pudo leer archivo"))
             val (mimeType, extension) = resolveMediaUploadMeta(mediaType, mediaUri, headerBytes)
-            val filename = "$cleanChatId/${System.currentTimeMillis()}$extension"
+            // Two attachments queued in the same millisecond must never replace each other.
+            val filename = "$cleanChatId/${System.currentTimeMillis()}_${UUID.randomUUID()}$extension"
             val sizeBytes = queryUriSizeBytes(mediaUri)
             val upload = if (sizeBytes > 0L && shouldStreamChatMediaUpload(mimeType, sizeBytes)) {
                 storageService.uploadFileFromUri(
@@ -4521,13 +4684,13 @@ class MessageRepository @Inject constructor(
                     sourceUri = mediaUri,
                     sizeBytes = sizeBytes,
                     contentType = mimeType,
-                    allowOverwrite = true,
+                    allowOverwrite = false,
                     onProgress = {}
                 )
             } else {
                 val bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
                     ?: return@withContext Result.failure(Exception("No se pudo leer archivo"))
-                storageService.uploadFile("chat-media", filename, bytes, mimeType)
+                storageService.uploadFile("chat-media", filename, bytes, mimeType, allowOverwrite = false)
             }
 
             if (upload.isFailure) {

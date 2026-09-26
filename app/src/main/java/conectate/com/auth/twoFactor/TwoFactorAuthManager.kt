@@ -23,11 +23,13 @@ import kotlinx.serialization.json.Json
 
 @Singleton
 class TwoFactorAuthManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
 
     companion object {
         private const val SHARED_PREFS_NAME = "two_factor_auth_prefs"
+        private const val RECOVERY_FLAGS_NAME = "app_flags"
+        private const val LOCAL_STORE_RESET_KEY = "two_factor_local_store_reset"
         private const val SECRET_KEY = "totp_secret"
         private const val BACKUP_CODES_KEY = "backup_codes"
         private const val IS_2FA_ENABLED_KEY = "is_2fa_enabled"
@@ -38,6 +40,15 @@ class TwoFactorAuthManager @Inject constructor(
         private const val TOTP_PERIOD_SECONDS = 30
         private const val TOTP_DIGITS = 6
         private const val BACKUP_CODES_COUNT = 10
+
+        fun hasLocalStoreResetNotice(context: Context): Boolean = context
+            .getSharedPreferences(RECOVERY_FLAGS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(LOCAL_STORE_RESET_KEY, false)
+
+        fun dismissLocalStoreResetNotice(context: Context) {
+            context.getSharedPreferences(RECOVERY_FLAGS_NAME, Context.MODE_PRIVATE)
+                .edit().remove(LOCAL_STORE_RESET_KEY).apply()
+        }
     }
 
     @Serializable
@@ -89,6 +100,8 @@ class TwoFactorAuthManager @Inject constructor(
                 "TwoFactorAuthManager",
                 "Encrypted 2FA preferences could not be opened; resetting the local encrypted store (${firstError.javaClass.simpleName}).",
             )
+            context.getSharedPreferences(RECOVERY_FLAGS_NAME, Context.MODE_PRIVATE)
+                .edit().putBoolean(LOCAL_STORE_RESET_KEY, true).apply()
             context.deleteSharedPreferences(SHARED_PREFS_NAME)
             runCatching { createSecurePreferences() }.getOrElse { recoveryError ->
                 throw IllegalStateException("No se pudo recuperar el almacenamiento cifrado de 2FA.", recoveryError)

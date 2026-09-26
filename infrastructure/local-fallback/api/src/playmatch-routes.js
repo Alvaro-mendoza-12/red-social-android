@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { candidateFitsCriteria, normalizeCandidateCriteria } = require('./playmatch-candidate-constraints')
 const {
   ensureDynamicPlayMatchCatalogTables,
   loadGameConfiguration,
@@ -53,32 +54,18 @@ function safePhotos(value) {
   return cleanArray(value, 4, 1000).filter((url) => /^https:\/\//i.test(url))
 }
 
-function testerSubjects() {
-  return new Set(
-    [process.env.PLAYMATCH_TESTER_IDS, process.env.PLAYMATCH_TESTER_EMAILS]
-      .filter(Boolean)
-      .join(',')
-      .split(',')
-      .map(normalizeId)
-      .filter(Boolean),
-  )
-}
-
+// PlayMatch is a regular authenticated product area. Access control belongs to
+// authentication, moderation and privacy, not to a hidden tester allow-list.
+// Keep the function for callers/tests while making its contract explicit.
 function playMatchEnabledFor(identity) {
-  if (booleanEnv('PLAYMATCH_GAMES_ENABLED', false)) return true
-  const allowed = testerSubjects()
-  const subjects = [
-    ...(identity?.values || []),
-    identity?.email,
-    identity?.localUserId,
-    identity?.preferredUserId,
-    identity?.displayUserId,
-  ].map(normalizeId).filter(Boolean)
-  return subjects.some((subject) => allowed.has(subject))
+  return Boolean(identity)
 }
 
 function cursorSecret() {
-  return cleanText(process.env.PLAYMATCH_CURSOR_SECRET, 512)
+  // JWT_SECRET is mandatory at server start and already has sufficient entropy.
+  // A dedicated secret can still be rotated independently in production, but
+  // its absence must never disable the whole Games tab.
+  return cleanText(process.env.PLAYMATCH_CURSOR_SECRET || process.env.JWT_SECRET, 512)
 }
 
 function encodeCursor(offset) {
@@ -118,6 +105,10 @@ function localUserId(user) {
 }
 
 async function ensurePlayMatchTables(pool) {
+  // Older production databases predate looping/video avatars. Keep this
+  // defensive DDL next to the queries that depend on the column so a delayed
+  // migration can never make the whole Games tab fail with PostgreSQL 42703.
+  await pool.query(`ALTER TABLE fallback_users ADD COLUMN IF NOT EXISTS avatar_media_type TEXT`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_game_catalog (
       id TEXT PRIMARY KEY,
@@ -155,6 +146,9 @@ async function ensurePlayMatchTables(pool) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
+  await pool.query(`ALTER TABLE fallback_gaming_profiles ADD COLUMN IF NOT EXISTS gamer_display_name TEXT`)
+  await pool.query(`ALTER TABLE fallback_gaming_profiles ADD COLUMN IF NOT EXISTS gamer_avatar_url TEXT`)
+  await pool.query(`ALTER TABLE fallback_gaming_profiles ADD COLUMN IF NOT EXISTS gamer_avatar_media_type TEXT`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_user_games (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -356,7 +350,7 @@ function mapAvailability(row) {
 
 async function loadBundle(db, userId) {
   const { rows: profileRows } = await db.query(
-    `SELECT gp.*, u.supabase_user_id, u.display_name, u.avatar_url
+    `SELECT gp.*, u.supabase_user_id, u.display_name, u.avatar_url, u.avatar_media_type
        FROM fallback_gaming_profiles gp
        JOIN fallback_users u ON u.id = gp.user_id
       WHERE gp.user_id = $1
@@ -394,7 +388,7 @@ async function loadBundles(db, userIds) {
   if (!ids.length) return new Map()
   const [{ rows: profiles }, { rows: games }, { rows: availability }, { rows: preferences }] = await Promise.all([
     db.query(
-      `SELECT gp.*, u.supabase_user_id, u.display_name, u.avatar_url
+      `SELECT gp.*, u.supabase_user_id, u.display_name, u.avatar_url, u.avatar_media_type
          FROM fallback_gaming_profiles gp
          JOIN fallback_users u ON u.id = gp.user_id
         WHERE gp.user_id = ANY($1::uuid[])`,
@@ -432,8 +426,9 @@ function mapProfileBundle(bundle, { own = false, connected = false, score = null
   const canSeeAvailability = own || profile.availability_visibility === 'public' || (connected && profile.availability_visibility === 'connections')
   return {
     userId: publicUserId(profile),
-    displayName: profile.display_name || 'Jugador',
-    avatarUrl: profile.avatar_url || null,
+    displayName: profile.gamer_display_name || profile.display_name || 'Jugador',
+    avatarUrl: profile.gamer_avatar_url || profile.avatar_url || null,
+    avatarMediaType: profile.gamer_avatar_media_type || profile.avatar_media_type || null,
     gamerBio: profile.gamer_bio || '',
     regionCode: profile.region_code || '',
     languages: profile.languages || [],
@@ -513,6 +508,33 @@ function availabilityOverlapMinutes(left = [], right = []) {
     }
   }
   return overlap
+}
+
+function localDayAndMinute(timezone, instantMs = Date.now()) {
+  const safeTimezone = validTimezone(timezone) || 'UTC'
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: safeTimezone,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+  const parts = Object.fromEntries(formatter.formatToParts(new Date(instantMs)).map((part) => [part.type, part.value]))
+  const day = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[parts.weekday]
+  return { day: Number.isInteger(day) ? day : 0, minute: Number(parts.hour) * 60 + Number(parts.minute) }
+}
+
+function bundleAvailableNow(bundle, instantMs = Date.now()) {
+  const entries = Array.isArray(bundle?.availability) ? bundle.availability : []
+  return entries.some((entry) => {
+    const { day, minute } = localDayAndMinute(entry.timezone || bundle?.profile?.timezone || 'UTC', instantMs)
+    const slotDay = Number(entry.day_of_week ?? entry.dayOfWeek)
+    const start = Number(entry.start_minute ?? entry.startMinute)
+    const end = Number(entry.end_minute ?? entry.endMinute)
+    if (![slotDay, start, end].every(Number.isFinite)) return false
+    if (end > start) return day === slotDay && minute >= start && minute < end
+    return (day === slotDay && minute >= start) || (day === (slotDay + 1) % 7 && minute < end)
+  })
 }
 
 function intersection(left = [], right = [], selector = (value) => value) {
@@ -597,18 +619,25 @@ function computeCompatibility(viewer, candidate, criteria = {}) {
 async function candidateBundles(db, viewer, filters = {}) {
   const viewerAliases = [normalizeId(viewer.id), normalizeId(viewer.supabase_user_id)].filter(Boolean)
   const query = cleanText(filters.query, 120).toLowerCase()
-  const gameId = normalizeId(filters.gameId)
-  const platform = normalizeId(filters.platform)
-  const region = normalizeId(filters.region)
+  const criteria = normalizeCandidateCriteria(filters)
   const { rows } = await db.query(
-    `SELECT gp.*, u.supabase_user_id, u.display_name, u.avatar_url
+    `SELECT gp.*, u.supabase_user_id, u.display_name, u.avatar_url, u.avatar_media_type
        FROM fallback_gaming_profiles gp
        JOIN fallback_users u ON u.id = gp.user_id
       WHERE gp.discoverable = TRUE
         AND gp.adult_confirmed = TRUE
         AND gp.user_id <> $1
-        AND ($2 = '' OR lower(u.display_name) LIKE '%' || $2 || '%' OR lower(gp.gamer_bio) LIKE '%' || $2 || '%')
-        AND ($3 = '' OR lower(gp.region_code) = $3)
+        AND ($2 = ''
+          OR lower(COALESCE(gp.gamer_display_name, u.display_name, '')) LIKE '%' || $2 || '%'
+          OR lower(gp.gamer_bio) LIKE '%' || $2 || '%'
+          OR EXISTS (
+            SELECT 1
+              FROM fallback_user_games search_ug
+              JOIN fallback_game_catalog search_gc ON search_gc.id = search_ug.game_id
+             WHERE search_ug.user_id = gp.user_id
+               AND lower(search_gc.name) LIKE '%' || $2 || '%'
+          ))
+        AND (cardinality($3::text[]) = 0 OR lower(btrim(gp.region_code)) = ANY($3::text[]))
         AND NOT EXISTS (
           SELECT 1 FROM fallback_user_blocks ub
            WHERE (lower(ub.blocker_id) = ANY($4::text[]) AND lower(ub.blocked_id) IN (lower(u.id::text), lower(COALESCE(u.supabase_user_id::text, ''))))
@@ -617,8 +646,11 @@ async function candidateBundles(db, viewer, filters = {}) {
         AND NOT EXISTS (
           SELECT 1 FROM fallback_profile_moderation pm
            WHERE lower(pm.user_id) IN (lower(u.id::text), lower(COALESCE(u.supabase_user_id::text, '')))
-             AND pm.suspension_status = 'active'
-             AND (pm.suspension_end_date IS NULL OR pm.suspension_end_date > NOW())
+             AND pm.is_suspended = TRUE
+             AND (
+               COALESCE(pm.suspended_until, pm.suspension_end_date) IS NULL
+               OR COALESCE(pm.suspended_until, pm.suspension_end_date) > NOW()
+             )
         )
         AND (NOT $7::boolean OR NOT EXISTS (
           SELECT 1 FROM fallback_gaming_matches gm
@@ -626,11 +658,26 @@ async function candidateBundles(db, viewer, filters = {}) {
              AND ((gm.user_a_id = $1 AND gm.user_b_id = gp.user_id)
                OR (gm.user_b_id = $1 AND gm.user_a_id = gp.user_id))
         ))
-        AND ($5 = '' OR EXISTS (SELECT 1 FROM fallback_user_games ug WHERE ug.user_id = gp.user_id AND lower(ug.game_id) = $5))
-        AND ($6 = '' OR EXISTS (SELECT 1 FROM fallback_user_games ug WHERE ug.user_id = gp.user_id AND lower(ug.platform) = $6))
+        AND ((cardinality($5::text[]) = 0 AND cardinality($6::text[]) = 0 AND cardinality($8::text[]) = 0)
+          OR EXISTS (
+            SELECT 1 FROM fallback_user_games ug
+              JOIN fallback_game_catalog gc ON gc.id = ug.game_id AND gc.active = TRUE
+             WHERE ug.user_id = gp.user_id
+               AND (cardinality($5::text[]) = 0 OR lower(btrim(ug.game_id)) = ANY($5::text[]))
+               AND (cardinality($6::text[]) = 0 OR lower(btrim(ug.platform)) = ANY($6::text[]))
+               AND (cardinality($8::text[]) = 0 OR lower(btrim(ug.role_key)) = ANY($8::text[]))
+          ))
+        AND (cardinality($9::text[]) = 0 OR EXISTS (
+          SELECT 1 FROM unnest(gp.languages) AS spoken(language)
+           WHERE lower(btrim(spoken.language)) = ANY($9::text[])
+        ))
+        AND (cardinality($10::text[]) = 0 OR lower(btrim(gp.play_style)) = ANY($10::text[]))
+        AND (NOT $11::boolean OR gp.voice_preference = TRUE)
       ORDER BY gp.updated_at DESC
       LIMIT 250`,
-    [localUserId(viewer), query, region, viewerAliases, gameId, platform, Boolean(filters.excludeRecentMatches)],
+    [localUserId(viewer), query, criteria.regions, viewerAliases, criteria.gameIds,
+      criteria.platforms, Boolean(filters.excludeRecentMatches), criteria.roles,
+      criteria.languages, criteria.styles, criteria.voiceRequired],
   )
   if (!rows.length) return []
   const ids = rows.map((row) => row.user_id)
@@ -654,36 +701,14 @@ async function candidateBundles(db, viewer, filters = {}) {
     games: games.filter((row) => row.user_id === profile.user_id),
     availability: availability.filter((row) => row.user_id === profile.user_id),
     preferences: preferences.find((row) => row.user_id === profile.user_id) || null,
-  }))
+  })).filter((candidate) => candidateFitsCriteria(candidate, criteria))
 }
 
 function cleanCriteria(body = {}) {
   return {
-    gameIds: cleanArray(body.gameIds || body.game_ids, 12),
-    platforms: cleanArray(body.platforms, 8),
-    styles: cleanArray(body.styles, 4),
-    languages: cleanArray(body.languages, 8),
-    regions: cleanArray(body.regions, 8),
-    roles: cleanArray(body.roles, 12),
+    ...normalizeCandidateCriteria(body),
     rankTolerance: Math.max(0, Math.min(Number(body.rankTolerance ?? body.rank_tolerance ?? 2) || 0, 10)),
-    voiceRequired: Boolean(body.voiceRequired ?? body.voice_required),
   }
-}
-
-function candidateFitsCriteria(candidate, criteria = {}) {
-  const games = candidate.games || []
-  const gameIds = cleanArray(criteria.gameIds || criteria.game_ids, 12).map(normalizeId)
-  const platforms = cleanArray(criteria.platforms, 8).map(normalizeId)
-  const roles = cleanArray(criteria.roles, 12).map(normalizeId)
-  const languages = cleanArray(criteria.languages, 8).map(normalizeId)
-  const regions = cleanArray(criteria.regions, 8).map(normalizeId)
-  if (gameIds.length && !games.some((game) => gameIds.includes(normalizeId(game.game_id || game.gameId)))) return false
-  if (platforms.length && !games.some((game) => platforms.includes(normalizeId(game.platform)))) return false
-  if (roles.length && !games.some((game) => roles.includes(normalizeId(game.role_key || game.role)))) return false
-  if (languages.length && !candidate.profile?.languages?.some((value) => languages.includes(normalizeId(value)))) return false
-  if (regions.length && !regions.includes(normalizeId(candidate.profile?.region_code))) return false
-  if (criteria.voiceRequired && !candidate.profile?.voice_preference) return false
-  return true
 }
 
 async function sessionResponse(db, row, viewerUser) {
@@ -759,10 +784,6 @@ function registerPlayMatchRoutes(app, {
       return null
     }
     const identity = userIdentity(user)
-    if (!playMatchEnabledFor(identity)) {
-      res.status(404).json({ error: 'PLAYMATCH_DISABLED' })
-      return null
-    }
     if (!cursorSecret()) {
       res.status(503).json({ error: 'PLAYMATCH_NOT_READY' })
       return null
@@ -779,12 +800,12 @@ function registerPlayMatchRoutes(app, {
       res.json({
         capabilities: {
           enabled,
-          testerAccess: !booleanEnv('PLAYMATCH_GAMES_ENABLED', false) && enabled,
+          testerAccess: false,
           adultConfirmationRequired: booleanEnv('PLAYMATCH_REQUIRE_ADULT_CONFIRMATION', true),
           preciseLocationUsed: false,
           privateMessagesUsedForMatching: false,
           matchmakingRealtime: true,
-          photosEnabled: booleanEnv('PLAYMATCH_PHOTOS_ENABLED', false),
+          photosEnabled: booleanEnv('PLAYMATCH_PHOTOS_ENABLED', true),
         },
       })
     } catch (error) {
@@ -849,7 +870,13 @@ function registerPlayMatchRoutes(app, {
       }
       const adultConfirmed = Boolean(req.body?.adultConfirmed)
       const discoverable = Boolean(req.body?.discoverable) && (!booleanEnv('PLAYMATCH_REQUIRE_ADULT_CONFIRMATION', true) || adultConfirmed)
-      const photos = booleanEnv('PLAYMATCH_PHOTOS_ENABLED', false) ? safePhotos(req.body?.photos) : []
+      const photos = booleanEnv('PLAYMATCH_PHOTOS_ENABLED', true) ? safePhotos(req.body?.photos) : []
+      const gamerDisplayName = cleanText(req.body?.gamerDisplayName || req.body?.gamer_display_name, 40)
+      const gamerAvatarUrl = safePhotos([req.body?.gamerAvatarUrl || req.body?.gamer_avatar_url])[0] || null
+      const gamerAvatarMediaType = ['image', 'gif', 'video'].includes(normalizeId(req.body?.gamerAvatarMediaType || req.body?.gamer_avatar_media_type))
+        ? normalizeId(req.body?.gamerAvatarMediaType || req.body?.gamer_avatar_media_type)
+        : null
+      if (!gamerDisplayName) return res.status(400).json({ error: 'GAMER_NAME_REQUIRED' })
       const { rows } = await pool.query(
         `UPDATE fallback_gaming_profiles
             SET gamer_bio = $3,
@@ -865,6 +892,9 @@ function registerPlayMatchRoutes(app, {
                 availability_visibility = $13,
                 photo_urls = CASE WHEN $16 THEN $14::jsonb ELSE photo_urls END,
                 timezone = $15,
+                gamer_display_name = $17,
+                gamer_avatar_url = $18,
+                gamer_avatar_media_type = $19,
                 version = version + 1,
                 updated_at = NOW()
           WHERE user_id = $1 AND version = $2
@@ -885,7 +915,10 @@ function registerPlayMatchRoutes(app, {
           availabilityVisibility,
           JSON.stringify(photos),
           timezone,
-          booleanEnv('PLAYMATCH_PHOTOS_ENABLED', false),
+          booleanEnv('PLAYMATCH_PHOTOS_ENABLED', true),
+          gamerDisplayName,
+          gamerAvatarUrl,
+          gamerAvatarMediaType,
         ],
       )
       if (!rows[0]) {
@@ -1079,8 +1112,12 @@ function registerPlayMatchRoutes(app, {
         gameId: req.query.gameId,
         platform: req.query.platform,
         region: req.query.region,
+        availableNow: String(req.query.availableNow || '').toLowerCase() === 'true',
       }
-      const candidates = await candidateBundles(pool, ctx.user, filters)
+      const loadedCandidates = await candidateBundles(pool, ctx.user, filters)
+      const candidates = filters.availableNow
+        ? loadedCandidates.filter((candidate) => bundleAvailableNow(candidate))
+        : loadedCandidates
       const ranked = candidates
         .map((candidate) => ({ candidate, ...computeCompatibility(viewer, candidate, filters) }))
         .sort((a, b) => b.score - a.score || String(a.candidate.profile.user_id).localeCompare(String(b.candidate.profile.user_id)))
@@ -1500,6 +1537,8 @@ function registerPlayMatchRoutes(app, {
 
 module.exports = {
   availabilityOverlapMinutes,
+  bundleAvailableNow,
+  candidateBundles,
   computeCompatibility,
   candidateFitsCriteria,
   decodeCursor,

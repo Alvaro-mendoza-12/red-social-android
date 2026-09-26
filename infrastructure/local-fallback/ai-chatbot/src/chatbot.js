@@ -8,6 +8,7 @@ const {
 } = require('./knowledge-engine')
 const { classifyGeneralRisk, redactSensitiveText } = require('./safety-policy')
 const { TEXT_PIPELINE_VERSION, normalizeText, tokenize, vectorize } = require('./text')
+const { contextualizeMessage } = require('./conversation-context')
 
 const MODEL_TYPE = 'conectate-first-party-hybrid-v5'
 const DEFAULT_HIDDEN_SIZE = 512
@@ -315,9 +316,9 @@ class ConectateChatbot {
       }
     }
 
-    const knowledgeResponse = this.knowledgeEngine.answer(message, context)
+    const knowledgeResponse = this.knowledgeEngine.answer(contextualMessage, context)
     const hasDomainAnchor = /\b(conectate|novvin|perfil|cuenta|social|publicacion|post|momento|historia|video|clip|mensaje|chat|grupo|comunidad|voz|notificacion|android|seguidor|seguidores)\b/i.test(
-      normalizeText(message),
+      normalizeText(contextualMessage),
     )
     const preferKnowledge = knowledgeResponse && (
       !intent || (!diagnosticIntentId && !hasDomainAnchor && prediction.confidence < 0.65)
@@ -327,7 +328,7 @@ class ConectateChatbot {
         ...knowledgeResponse,
         source: 'conectate-first-party-hybrid-v5',
         learnedFromUsers: false,
-        contextual: false,
+        contextual: contextualMessage !== message,
         guideUsed: false,
         matchedTokens: matchedTokenCount,
       }
@@ -438,20 +439,7 @@ class ConectateChatbot {
   }
 
   contextualize(message, context = {}) {
-    const clean = String(message || '').trim()
-    const normalizedClean = normalizeText(clean)
-    const shortFollowUp = tokenize(clean).length <= 4 && /^(y|tambien|entonces|eso|esa|ese|ahi|donde|pero|foto|portada|grupo|comunidad)\b/i.test(normalizedClean)
-    if (!shortFollowUp) return clean
-    const userMessages = String(context.history || '')
-      .split('\n')
-      .filter((line) => line.startsWith('Usuario:'))
-      .map((line) => line.slice('Usuario:'.length).trim())
-      .filter(Boolean)
-    if (!userMessages.length) return clean
-    const lastMessageIsCurrent = normalizeText(userMessages[userMessages.length - 1]) === normalizedClean
-    const previousIndex = lastMessageIsCurrent ? userMessages.length - 2 : userMessages.length - 1
-    if (previousIndex < 0) return clean
-    return `${userMessages[previousIndex]} ${clean}`
+    return contextualizeMessage(message, context)
   }
 
   recordFeedback(payload = {}) {

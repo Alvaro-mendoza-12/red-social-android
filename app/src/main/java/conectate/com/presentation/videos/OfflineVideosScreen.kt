@@ -25,7 +25,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
@@ -63,7 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -105,7 +105,7 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class OfflineVideosViewModel @Inject constructor(
     private val repository: OfflineVideoRepository,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
     val videos: StateFlow<List<OfflineVideoEntry>> = repository.videos
     val downloadProgress: StateFlow<Map<String, Float>> = repository.downloadProgress
@@ -247,7 +247,7 @@ private fun OfflineVideoLibraryScreen(
                 title = { Text("Videos sin conexión") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 },
                 actions = {
@@ -355,13 +355,13 @@ private fun OfflineVideoLibraryScreen(
                                 Text("${videos.size}/$targetCount")
                             }
                             LinearProgressIndicator(
-                                progress = (videos.size.toFloat() / targetCount.toFloat()).coerceIn(0f, 1f),
+                                progress = { (videos.size.toFloat() / targetCount.toFloat()).coerceIn(0f, 1f) },
                                 modifier = Modifier.fillMaxWidth()
                             )
                             activeDownload?.let {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     CircularProgressIndicator(
-                                        progress = it,
+                                        progress = { it },
                                         modifier = Modifier.size(18.dp),
                                         strokeWidth = 2.dp
                                     )
@@ -686,7 +686,7 @@ private fun OfflineSwipeFeed(
                 color = Color.Black.copy(alpha = 0.55f)
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Atrás", tint = Color.White)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás", tint = Color.White)
                 }
             }
             Spacer(Modifier.weight(1f))

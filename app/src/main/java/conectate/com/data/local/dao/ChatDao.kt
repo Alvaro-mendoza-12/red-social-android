@@ -44,6 +44,9 @@ interface ChatDao {
     @Query("UPDATE chats SET unread_count = 0 WHERE id = :chatId")
     suspend fun markAsRead(chatId: String)
 
+    @Query("UPDATE chats SET unread_count = MAX(0, unread_count - :count) WHERE id = :chatId")
+    suspend fun subtractReadMessages(chatId: String, count: Int)
+
     suspend fun markChatAsRead(chatId: String) {
         markAsRead(chatId)
     }
@@ -92,8 +95,8 @@ interface ChatDao {
     @Query("UPDATE chats SET unread_count = unread_count + 1 WHERE id = :chatId")
     suspend fun incrementUnreadCount(chatId: String)
 
-    @Query("SELECT * FROM chats WHERE is_group = 0 AND other_user_id = :otherUserId AND is_deleted = 0 LIMIT 1")
-    suspend fun getChatByOtherUserId(otherUserId: String): ChatEntity?
+    @Query("SELECT * FROM chats WHERE is_group = 0 AND LOWER(TRIM(other_user_id)) = :otherUserId AND is_deleted = 0 ORDER BY last_message_at DESC, id ASC")
+    suspend fun getChatsByOtherUserId(otherUserId: String): List<ChatEntity>
 
     // Get all chats including deleted (for checking deletion status)
     @Query("SELECT * FROM chats")
@@ -125,7 +128,4 @@ interface ChatDao {
     @Query("UPDATE chats SET is_favorite = :isFavorite WHERE LOWER(id) = LOWER(:chatId)")
     suspend fun updateFavoriteState(chatId: String, isFavorite: Boolean)
 
-    // NUCLEAR: Clear local cache to force re-sync
-    @Query("DELETE FROM chats")
-    suspend fun nukeAllChats()
 }

@@ -1,4 +1,6 @@
 const crypto = require('crypto')
+const { appAdminHasCapability } = require('./admin-moderation-routes')
+const { ADMIN_CAPABILITY } = require('./admin-capabilities')
 
 const PAYOUT_FLAG = 'CREATOR_PAYOUTS_ENABLED'
 const PAYOUT_STATES = Object.freeze([
@@ -201,23 +203,47 @@ function buildBalanceSnapshot({ earnings = [], requests = [], allocations = [], 
   let pendingMinor = 0
   let rawAvailableMinor = 0
   let recoveryDebtMinor = 0
+  let pendingCoins = 0
+  let availableCoins = 0
+  let heldCoins = 0
+  let paidCoins = 0
+  let totalCoins = 0
   const eligible = []
   for (const earning of earnings) {
     const earningId = String(earning.id || earning.row_id || '')
     const status = String(earning.status || '').toLowerCase()
     if (!earningId || ['reversed', 'non_withdrawable', 'cancelled', 'failed'].includes(status)) continue
     const valueMinor = earningValueMinor(earning, configuration)
-    if (valueMinor <= 0) continue
+    const valueCoins = coinsForEarning(earning)
+    if (valueCoins <= 0 && valueMinor <= 0) continue
     const paid = paidByEarning.get(earningId) || 0
     const allocated = allocatedByEarning.get(earningId) || 0
+    const allocatedCoins = configuration.minorPerCoin > 0
+      ? Math.min(valueCoins, Math.ceil(allocated / configuration.minorPerCoin))
+      : 0
+    const remainingCoins = Math.max(0, valueCoins - allocatedCoins)
+    totalCoins += valueCoins
+    if (configuration.minorPerCoin > 0 && allocatedCoins > 0) {
+      for (const allocation of allocations.filter((item) => String(item.earning_id) === earningId)) {
+        const allocationCoins = Math.min(
+          valueCoins,
+          Math.ceil(parsePositiveInteger(allocation.allocated_minor) / configuration.minorPerCoin),
+        )
+        const allocationState = String(requestById.get(String(allocation.request_id))?.status || '').toUpperCase()
+        if (RESERVED_STATES.has(allocationState)) heldCoins += allocationCoins
+        if (allocationState === 'PAID') paidCoins += allocationCoins
+      }
+    }
     recoveryDebtMinor += Math.max(0, paid - valueMinor)
     const remaining = Math.max(0, valueMinor - allocated)
     const createdAt = Date.parse(String(earning.created_at || earning.wrapper_created_at || ''))
     const availableAt = Number.isFinite(createdAt) ? createdAt + holdMs : Number.POSITIVE_INFINITY
     if (availableAt > now) {
       pendingMinor += remaining
+      pendingCoins += remainingCoins
     } else if (remaining > 0) {
       rawAvailableMinor += remaining
+      availableCoins += remainingCoins
       eligible.push({ earningId, remainingMinor: remaining, availableAt })
     }
   }
@@ -236,8 +262,19 @@ function buildBalanceSnapshot({ earnings = [], requests = [], allocations = [], 
     heldMinor,
     paidMinor,
     recoveryDebtMinor,
+    pendingCoins,
+    availableCoins,
+    heldCoins,
+    paidCoins,
+    totalCoins,
     eligible,
   }
+}
+
+function coinsForEarning(earning) {
+  return parsePositiveInteger(
+    earning?.withdrawable_amount_diamonds ?? earning?.amount_diamonds,
+  )
 }
 
 function allocatePayout(snapshot, amountMinor) {
@@ -419,17 +456,7 @@ async function creatorIsVerified(client, identity) {
 }
 
 async function actorIsPayoutAdmin(client, identity) {
-  const aliases = identityValues(identity)
-  if (aliases.length === 0) return false
-  const { rows } = await client.query(
-    `SELECT EXISTS (
-       SELECT 1 FROM fallback_profile_moderation
-       WHERE lower(user_id) = ANY($1::text[])
-         AND (is_admin = TRUE OR admin_is_owner = TRUE OR admin_access_level IN ('write','full'))
-     ) AS allowed`,
-    [aliases],
-  )
-  return rows[0]?.allowed === true
+  return appAdminHasCapability(client, identity, ADMIN_CAPABILITY.FINANCE_MANAGE)
 }
 
 async function insertLedger(client, { creatorUserId, requestId = null, eventKey, eventType, amountMinor = 0, currency, metadata = {} }) {
@@ -482,6 +509,11 @@ function publicSummary(data, configuration, verified, now = Date.now()) {
       heldMinor: balance.heldMinor,
       paidMinor: balance.paidMinor,
       recoveryDebtMinor: balance.recoveryDebtMinor,
+      pendingCoins: balance.pendingCoins,
+      availableCoins: balance.availableCoins,
+      heldCoins: balance.heldCoins,
+      paidCoins: balance.paidCoins,
+      totalCoins: balance.totalCoins,
     },
     requests: data.requests.slice(0, 50).map(publicRequest),
   }

@@ -13,7 +13,7 @@ import javax.inject.Singleton
 
 @Singleton
 class MessageSessionStateStore @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     companion object {
         private const val VIEW_ONCE_PREFS = "view_once_guard"

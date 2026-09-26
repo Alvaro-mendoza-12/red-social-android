@@ -464,7 +464,6 @@ function ChatMessageMedia({ message }: { message: ChatMessage }) {
 
   const previewUrl = preview?.url || (shouldBypassNgrok ? '' : mediaSourceUrl)
   const openUrl = kind === 'image' ? previewUrl || mediaSourceUrl : preview?.url || mediaSourceUrl
-  const effectiveContentType = preview?.contentType || message.contentType
   const effectiveSize = preview?.size || message.mediaSize
   const title = message.content.trim() || fileNameFromUrl(message.mediaUrl)
   const sizeLabel = formatFileSize(effectiveSize)
@@ -1581,6 +1580,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     if (!supabase && !useUbuntu) return
     const text = (editingMessageId ? editingDraft : draft).trim()
     if ((!text && pendingAttachments.length === 0) || sending || uploading) return
+    const submittedDraft = draft
+    const sendingTextOnly = !editingMessageId && pendingAttachments.length === 0
+    if (sendingTextOnly) setDraft('')
     setSending(true)
     try {
       if (editingMessageId) {
@@ -1589,7 +1591,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           upsertMessageInState(mapMessage(response.message))
           setEditingMessageId(null)
           setEditingDraft('')
-          setDraft('')
           return
         }
         if (!supabase) return
@@ -1611,16 +1612,15 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         )
         setEditingMessageId(null)
         setEditingDraft('')
-        setDraft('')
       } else if (pendingAttachments.length > 0) {
         await sendPendingAttachments(text)
-        setDraft('')
+        setDraft((current) => current === submittedDraft ? '' : current)
       } else {
         await sendMessage({ content: text, replyToId })
         setReplyToId(null)
-        setDraft('')
       }
     } catch (caught) {
+      if (sendingTextOnly) setDraft((current) => current || submittedDraft)
       setError(friendlyError(caught, 'No se pudo enviar el mensaje'))
     } finally {
       setSending(false)

@@ -3,17 +3,21 @@ package conectate.com.data.repository
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Movie
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
 import conectate.com.core.media.ProfileMediaMutation
 import conectate.com.core.media.ProfileMediaSync
+import conectate.com.core.media.ProfileIdentityImageStore
+import conectate.com.core.media.ProfileIdentityRequest
+import conectate.com.core.media.gifSingleLoopDurationMs
+import conectate.com.core.profile.ProfileSocialLinks
 import conectate.com.core.testing.TestRuntimeOverrides
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.LocalFallbackProfileResponse
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.User
+import conectate.com.data.model.profileSearchQuery
 import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.repository.user.UserLocalStateStore
 import conectate.com.data.supabase.AuthService
@@ -51,6 +55,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -76,6 +81,11 @@ data class ProfileAvatarUpload(
     val durationMs: Long? = null
 )
 
+data class ProfileViewer(
+    val user: User,
+    val viewedAt: String
+)
+
 @Singleton
 class UserRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
@@ -83,7 +93,7 @@ class UserRepository @Inject constructor(
     private val storageService: StorageService,
     private val localFallbackApiClient: LocalFallbackApiClient,
     private val userDao: conectate.com.data.local.dao.UserDao,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     @Volatile
     private var blockedMentionCacheUserId: String? = null
@@ -97,6 +107,7 @@ class UserRepository @Inject constructor(
     private val blockedMentionCacheTtlMs = 30_000L
     private val avatarMaxBytes = 50L * 1024 * 1024
     private val localStateStore = UserLocalStateStore(context)
+    private val networkJson = Json { ignoreUnknownKeys = true }
 
     private val _profileUpdates = kotlinx.coroutines.flow.MutableSharedFlow<User>(
         extraBufferCapacity = 1,
@@ -109,6 +120,39 @@ class UserRepository @Inject constructor(
             (supabaseConfig.isLocalFallbackPrimary || authService.isLocalFallbackSession())
 
     private fun normalizePrivacyUserId(userId: String): String = localStateStore.normalizeUserId(userId)
+
+    /**
+     * Keep a small durable avatar fallback whenever a profile reaches the local
+     * repository. Coil's cache is evictable, while Room only stores the URL; the
+     * fallback lets the UI still show the last known identity image offline.
+     */
+    private fun captureProfileIdentityRequest(): ProfileIdentityRequest {
+        val accountId = authService.getCurrentUserId().orEmpty()
+        return ProfileIdentityRequest(accountId, ProfileIdentityImageStore.generation(accountId))
+    }
+
+    private fun warmProfileIdentityImage(user: User?, request: ProfileIdentityRequest) {
+        if (!request.belongsTo(authService.getCurrentUserId())) return
+        val avatarUrl = user?.avatar_url
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?: return
+        ProfileIdentityImageStore.warm(context, listOf(avatarUrl), request.accountId, request.generation)
+    }
+
+    private fun warmProfileIdentityImages(users: Iterable<User>, request: ProfileIdentityRequest) {
+        if (!request.belongsTo(authService.getCurrentUserId())) return
+        ProfileIdentityImageStore.warm(
+            context,
+            users.asSequence()
+                .mapNotNull { it.avatar_url?.trim()?.takeIf(String::isNotBlank) }
+                .distinct()
+                .take(96)
+                .toList(),
+            accountId = request.accountId,
+            expectedGeneration = request.generation,
+        )
+    }
 
     private fun sanitizeProfileText(value: String?): String? {
         return value
@@ -258,6 +302,7 @@ class UserRepository @Inject constructor(
                     "profile_section_visibility",
                     "profileSectionVisibility"
                 ),
+                social_links = profile.stringMapValue("social_links", "socialLinks"),
                 followers_count = profile.intValue("followers_count", "follower_count", "followers") ?: response.stats.followers,
                 following_count = profile.intValue("following_count", "following") ?: response.stats.following,
                 post_count = profile.intValue("post_count", "posts_count", "posts") ?: response.stats.posts,
@@ -267,6 +312,10 @@ class UserRepository @Inject constructor(
                 profile_visibility = sanitizeProfileText(
                     profile.stringValue("profile_visibility", "profileVisibility")
                 ) ?: "everyone",
+                profile_view_history_enabled = profile.booleanValue(
+                    "profile_view_history_enabled",
+                    "profileViewHistoryEnabled"
+                ) ?: true,
                 last_seen_visibility = sanitizeProfileText(
                     profile.stringValue("last_seen_visibility", "lastSeenVisibility")
                 ) ?: "everyone",
@@ -285,7 +334,9 @@ class UserRepository @Inject constructor(
         )
     }
 
-    private suspend fun loadCurrentLocalFallbackProfile(): Result<User?> {
+    private suspend fun loadCurrentLocalFallbackProfile(
+        identityRequest: ProfileIdentityRequest = captureProfileIdentityRequest(),
+    ): Result<User?> {
         val token = authService.getAccessTokenAwait()
             ?: return Result.failure(Exception("No access token"))
         val fallbackId = authService.getCurrentUserId()
@@ -298,6 +349,7 @@ class UserRepository @Inject constructor(
                 if (user != null) {
                     userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(user))
                     saveProfileLocally(user)
+                    warmProfileIdentityImage(user, identityRequest)
                 }
                 user
             }
@@ -429,6 +481,9 @@ class UserRepository @Inject constructor(
             user.birth_date?.let { put("birth_date", JsonPrimitive(it)) }
             user.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
             user.bio?.let { put("bio", JsonPrimitive(it)) }
+            if (user.social_links.isNotEmpty()) {
+                put("social_links", JsonObject(user.social_links.mapValues { JsonPrimitive(it.value) }))
+            }
             if (privacyPolicyAccepted) {
                 put("privacy_policy_accepted", JsonPrimitive(true))
                 if (acceptedAt != null) {
@@ -462,6 +517,7 @@ class UserRepository @Inject constructor(
             (
                 errorBody.contains("duplicate key", ignoreCase = true) ||
                     errorBody.contains("already exists", ignoreCase = true) ||
+                    errorBody.contains("USERNAME_TAKEN", ignoreCase = true) ||
                     errorBody.contains("23505")
                 )
     }
@@ -475,6 +531,7 @@ class UserRepository @Inject constructor(
                 put("display_name", JsonPrimitive(it))
                 put("full_name", JsonPrimitive(it))
             }
+            request.username?.let { put("username", JsonPrimitive(it)) }
             request.bio?.let { put("bio", JsonPrimitive(it)) }
             request.country?.let { put("country", JsonPrimitive(it)) }
             request.city?.let { put("city", JsonPrimitive(it)) }
@@ -504,6 +561,9 @@ class UserRepository @Inject constructor(
             request.profile_section_visibility?.let { values ->
                 put("profile_section_visibility", JsonObject(values.mapValues { JsonPrimitive(it.value) }))
             }
+            request.social_links?.let { values ->
+                put("social_links", JsonObject(values.mapValues { JsonPrimitive(it.value) }))
+            }
             request.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
             request.avatar_media_type?.let { put("avatar_media_type", JsonPrimitive(it)) }
             request.avatar_video_muted?.let { put("avatar_video_muted", JsonPrimitive(it)) }
@@ -525,6 +585,9 @@ class UserRepository @Inject constructor(
             request.favorites_public?.let { put("favorites_public", JsonPrimitive(it)) }
             request.break_mode?.let { put("break_mode", JsonPrimitive(it)) }
             request.profile_visibility?.let { put("profile_visibility", JsonPrimitive(it)) }
+            request.profile_view_history_enabled?.let {
+                put("profile_view_history_enabled", JsonPrimitive(it))
+            }
             request.last_seen_visibility?.let { put("last_seen_visibility", JsonPrimitive(it)) }
             request.online_status_visibility?.let { put("online_status_visibility", JsonPrimitive(it)) }
             request.balance?.let { put("balance", JsonPrimitive(it)) }
@@ -542,6 +605,7 @@ class UserRepository @Inject constructor(
             ProfileMediaSync.sameReference(expected, actual) || sameText(expected, actual)
 
         if (request.display_name?.let { !sameText(it, user.display_name ?: user.full_name) } == true) return "display_name"
+        if (request.username?.let { !sameText(it, user.username) } == true) return "username"
         if (request.bio?.let { !sameText(it, user.bio) } == true) return "bio"
         if (request.country?.let { !sameText(it, user.country) } == true) return "country"
         if (request.city?.let { !sameText(it, user.city) } == true) return "city"
@@ -564,6 +628,9 @@ class UserRepository @Inject constructor(
         }
         if (request.profile_section_visibility?.let { it != user.profile_section_visibility } == true) {
             return "profile_section_visibility"
+        }
+        if (request.social_links?.let { !ProfileSocialLinks.equivalent(it, user.social_links) } == true) {
+            return "social_links"
         }
         ProfileMediaSync.confirmationFailure(
             mutation = ProfileMediaMutation(
@@ -589,6 +656,10 @@ class UserRepository @Inject constructor(
         if (request.favorites_public != null && request.favorites_public != user.favorites_public) return "favorites_public"
         if (request.break_mode?.let { !sameText(it, user.break_mode) } == true) return "break_mode"
         if (request.profile_visibility?.let { !sameText(it, user.profile_visibility) } == true) return "profile_visibility"
+        if (
+            request.profile_view_history_enabled != null &&
+            request.profile_view_history_enabled != user.profile_view_history_enabled
+        ) return "profile_view_history_enabled"
         if (request.last_seen_visibility?.let { !sameText(it, user.last_seen_visibility) } == true) {
             return "last_seen_visibility"
         }
@@ -613,7 +684,8 @@ class UserRepository @Inject constructor(
     private suspend fun fetchRemoteUserById(
         userId: String,
         token: String,
-        currentUserId: String?
+        currentUserId: String?,
+        identityRequest: ProfileIdentityRequest,
     ): Result<User?> {
         return try {
             suspend fun requestProfile(accessToken: String): Pair<HttpResponse, String> {
@@ -651,6 +723,7 @@ class UserRepository @Inject constructor(
                 if (userId == currentUserId) {
                     saveProfileLocally(user)
                 }
+                warmProfileIdentityImage(user, identityRequest)
             } else {
                 android.util.Log.w("UserRepository", "Network profile lookup returned empty for $userId")
             }
@@ -667,8 +740,9 @@ class UserRepository @Inject constructor(
             return Result.success(fakeUser)
         }
 
+        val identityRequest = captureProfileIdentityRequest()
         if (shouldUseUbuntuBackend()) {
-            return loadCurrentLocalFallbackProfile()
+            return loadCurrentLocalFallbackProfile(identityRequest)
                 .mapCatching { user ->
                     user ?: throw IllegalStateException("No se pudo cargar el perfil desde Ubuntu")
                 }
@@ -680,7 +754,7 @@ class UserRepository @Inject constructor(
         var token = authService.getAccessTokenAwait()
             ?: return Result.failure(Exception("No access token"))
 
-        fetchRemoteUserById(currentUserId, token, currentUserId).getOrNull()?.let { existingUser ->
+        fetchRemoteUserById(currentUserId, token, currentUserId, identityRequest).getOrNull()?.let { existingUser ->
             return Result.success(existingUser)
         }
 
@@ -741,7 +815,7 @@ class UserRepository @Inject constructor(
         createProfile(seedUser, privacyPolicyAccepted = privacyAccepted)
             .getOrElse { return Result.failure(it) }
 
-        val repairedUser = fetchRemoteUserById(currentUserId, token, currentUserId).getOrNull()
+        val repairedUser = fetchRemoteUserById(currentUserId, token, currentUserId, identityRequest).getOrNull()
             ?: getLocalProfile()?.takeIf { normalizePrivacyUserId(it.id) == currentUserId }
             ?: applyLocalUserOverrides(seedUser)
 
@@ -751,10 +825,25 @@ class UserRepository @Inject constructor(
     // ─────────────────────────────────────────────
     // GET USER BY ID
     // ─────────────────────────────────────────────
+    suspend fun getCachedUserById(userId: String): User? {
+        val normalizedUserId = normalizePrivacyUserId(userId)
+        TestRuntimeOverrides.currentUser(context)
+            ?.takeIf { normalizePrivacyUserId(it.id) == normalizedUserId }
+            ?.let { return it }
+        val currentUserId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
+        if (normalizedUserId == currentUserId) {
+            getLocalProfile()
+                ?.takeIf { normalizePrivacyUserId(it.id) == normalizedUserId }
+                ?.let { return it }
+        }
+        return userDao.getUser(normalizedUserId)?.toDomain()?.let(::applyLocalUserOverrides)
+    }
+
     suspend fun getUserById(userId: String, forceNetwork: Boolean = true): Result<User?> {
         TestRuntimeOverrides.currentUser(context)
             ?.takeIf { normalizePrivacyUserId(it.id) == normalizePrivacyUserId(userId) }
             ?.let { return Result.success(it) }
+        val identityRequest = captureProfileIdentityRequest()
         return try {
             var normalizedUserId = normalizePrivacyUserId(userId)
             var currentUserId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
@@ -784,7 +873,7 @@ class UserRepository @Inject constructor(
                 currentUserId != null &&
                 normalizedUserId == currentUserId
             ) {
-                val localResult = loadCurrentLocalFallbackProfile()
+                val localResult = loadCurrentLocalFallbackProfile(identityRequest)
                 localResult.onSuccess { localUser -> return Result.success(localUser) }
 
                 getLocalProfile()?.takeIf { normalizePrivacyUserId(it.id) == normalizedUserId }?.let { localUser ->
@@ -805,11 +894,24 @@ class UserRepository @Inject constructor(
                     return Result.failure(Exception("No hay token local para cargar el perfil desde Ubuntu"))
                 }
                 localFallbackApiClient.loadProfileUser(token, normalizedUserId)
-                    .onSuccess { remoteUser -> return Result.success(remoteUser) }
+                    .onSuccess { remoteUser ->
+                        if (remoteUser != null) {
+                            val normalizedRemoteUser = applyLocalUserOverrides(remoteUser)
+                            userDao.insertUser(
+                                conectate.com.data.local.entity.UserEntity.fromDomain(normalizedRemoteUser)
+                            )
+                            warmProfileIdentityImage(normalizedRemoteUser, identityRequest)
+                            return Result.success(normalizedRemoteUser)
+                        }
+                        remoteLookupWasEmpty = true
+                    }
                     .onFailure { throwable -> remoteFailure = throwable }
 
                 userDao.getUser(normalizedUserId)?.toDomain()?.let { cachedUser ->
                     return Result.success(applyLocalUserOverrides(cachedUser))
+                }
+                if (remoteLookupWasEmpty) {
+                    return Result.success(null)
                 }
                 return Result.failure(
                     remoteFailure ?: Exception("No se pudo cargar el perfil desde Ubuntu")
@@ -817,7 +919,7 @@ class UserRepository @Inject constructor(
             }
 
             if (token != null) {
-                fetchRemoteUserById(normalizedUserId, token, currentUserId)
+                fetchRemoteUserById(normalizedUserId, token, currentUserId, identityRequest)
                     .onSuccess { remoteUser ->
                         if (remoteUser != null) {
                             return Result.success(remoteUser)
@@ -861,6 +963,8 @@ class UserRepository @Inject constructor(
             } else {
                 Result.failure(remoteFailure ?: Exception("Error loading profile"))
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
              try {
                 var normalizedUserId = normalizePrivacyUserId(userId)
@@ -872,9 +976,115 @@ class UserRepository @Inject constructor(
                 if (cachedEntity != null) {
                     return Result.success(applyLocalUserOverrides(cachedEntity.toDomain()))
                 }
-            } catch (e2: Exception) { }
+            } catch (e2: Exception) {
+                if (e2 is CancellationException) throw e2
+                android.util.Log.w("UserRepository", "Cached profile fallback failed", e2)
+            }
             
             Result.failure(e)
+        }
+    }
+
+    suspend fun recordProfileView(
+        profileId: String,
+        targetAllowsHistory: Boolean
+    ): Result<Unit> {
+        val viewerId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
+            ?: return Result.success(Unit)
+        val normalizedProfileId = normalizePrivacyUserId(profileId)
+        if (viewerId == normalizedProfileId || !targetAllowsHistory) return Result.success(Unit)
+
+        val viewer = getCachedUserById(viewerId)
+            ?: getUserById(viewerId, forceNetwork = false).getOrNull()
+        if (viewer?.profile_view_history_enabled != true) return Result.success(Unit)
+
+        val token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No access token"))
+        return runCatching {
+            val response = supabaseConfig.httpClient.post(
+                "${supabaseConfig.supabaseUrl.removeSuffix("/")}/rest/v1/profile_views"
+            ) {
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header(HttpHeaders.Authorization, "Bearer $token")
+                header("Prefer", "resolution=merge-duplicates,return=minimal")
+                parameter("on_conflict", "profile_id,viewer_id")
+                contentType(ContentType.Application.Json)
+                setBody(
+                    buildJsonObject {
+                        put("profile_id", JsonPrimitive(normalizedProfileId))
+                        put("viewer_id", JsonPrimitive(viewerId))
+                        put("viewed_at", JsonPrimitive(java.time.Instant.now().toString()))
+                    }
+                )
+            }
+            if (!response.status.isSuccess()) {
+                throw Exception("No se pudo registrar la visita (${response.status.value})")
+            }
+        }
+    }
+
+    suspend fun getRecentProfileViewers(limit: Int = 50): Result<List<ProfileViewer>> {
+        val ownerId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
+            ?: return Result.success(emptyList())
+        val owner = getCachedUserById(ownerId)
+            ?: getUserById(ownerId, forceNetwork = false).getOrNull()
+        if (owner?.profile_view_history_enabled != true) return Result.success(emptyList())
+
+        val token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No access token"))
+        return runCatching {
+            val baseUrl = supabaseConfig.supabaseUrl.removeSuffix("/")
+            val visitsResponse = supabaseConfig.httpClient.get("$baseUrl/rest/v1/profile_views") {
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header(HttpHeaders.Authorization, "Bearer $token")
+                parameter("select", "viewer_id,viewed_at")
+                parameter("profile_id", "eq.$ownerId")
+                parameter("order", "viewed_at.desc")
+                parameter("limit", limit.coerceIn(1, 100))
+            }
+            if (!visitsResponse.status.isSuccess()) {
+                throw Exception("No se pudieron cargar las visitas (${visitsResponse.status.value})")
+            }
+            val rows = Json.parseToJsonElement(visitsResponse.bodyAsText()) as? JsonArray ?: JsonArray(emptyList())
+            val orderedVisits = rows.mapNotNull { element ->
+                val row = element as? JsonObject ?: return@mapNotNull null
+                val id = row.stringValue("viewer_id")?.let(::normalizePrivacyUserId)
+                    ?: return@mapNotNull null
+                id to row.stringValue("viewed_at").orEmpty()
+            }.distinctBy { it.first }
+            if (orderedVisits.isEmpty()) return@runCatching emptyList()
+
+            val ids = orderedVisits.map { it.first }
+            val profilesResponse = supabaseConfig.httpClient.get("$baseUrl/rest/v1/profiles") {
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header(HttpHeaders.Authorization, "Bearer $token")
+                parameter("select", "*")
+                parameter("id", "in.(${ids.joinToString(",")})")
+            }
+            if (!profilesResponse.status.isSuccess()) {
+                throw Exception("No se pudieron cargar los perfiles visitantes (${profilesResponse.status.value})")
+            }
+            val users = profilesResponse.body<List<User>>().associateBy { normalizePrivacyUserId(it.id) }
+            orderedVisits.mapNotNull { (id, viewedAt) ->
+                users[id]?.let { ProfileViewer(applyLocalUserOverrides(it), viewedAt) }
+            }
+        }
+    }
+
+    suspend fun clearProfileViewHistory(): Result<Unit> {
+        val userId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
+            ?: return Result.success(Unit)
+        val token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No access token"))
+        return runCatching {
+            val url = "${supabaseConfig.supabaseUrl.removeSuffix("/")}/rest/v1/profile_views"
+            listOf("profile_id" to userId, "viewer_id" to userId).forEach { (field, id) ->
+                val response = supabaseConfig.httpClient.delete(url) {
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header(HttpHeaders.Authorization, "Bearer $token")
+                    parameter(field, "eq.$id")
+                }
+                if (!response.status.isSuccess()) {
+                    throw Exception("No se pudo limpiar el historial (${response.status.value})")
+                }
+            }
         }
     }
 
@@ -1014,6 +1224,12 @@ class UserRepository @Inject constructor(
             authService.getCurrentUserId()?.trim()?.takeIf { it.isNotBlank() }
                 ?: return Result.failure(Exception("No user"))
 
+            if (shouldUseUbuntuBackend()) {
+                val result = localFallbackApiClient.deleteOwnAccount(token)
+                if (result.isSuccess) localStateStore.clearAll()
+                return result
+            }
+
             var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/delete_own_account") {
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $token")
@@ -1045,6 +1261,7 @@ class UserRepository @Inject constructor(
     }
 
     suspend fun getUsersByIds(userIds: List<String>): Result<List<User>> {
+        val identityRequest = captureProfileIdentityRequest()
         val normalizedIds = userIds
             .map(::normalizePrivacyUserId)
             .filter { it.isNotBlank() }
@@ -1079,6 +1296,7 @@ class UserRepository @Inject constructor(
                 val mergedUsers = (remoteUsers + cachedUsers.filterNot { remoteIds.contains(normalizePrivacyUserId(it.id)) })
                 // Save all to Room
                 userDao.insertUsers(mergedUsers.map { conectate.com.data.local.entity.UserEntity.fromDomain(it) })
+                warmProfileIdentityImages(mergedUsers, identityRequest)
                 Result.success(mergedUsers)
             } else {
                 if (cachedUsers.isNotEmpty()) {
@@ -1100,6 +1318,7 @@ class UserRepository @Inject constructor(
     // CREATE PROFILE (AFTER SIGNUP)
     // ─────────────────────────────────────────────
     suspend fun createProfile(user: User, privacyPolicyAccepted: Boolean = false): Result<Unit> {
+        val identityRequest = captureProfileIdentityRequest()
         return try {
             var token = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
@@ -1166,6 +1385,7 @@ class UserRepository @Inject constructor(
                     )
 
                 userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(createdUser))
+                warmProfileIdentityImage(createdUser, identityRequest)
                 var currentUserId = authService.getCurrentUserId()?.let(::normalizePrivacyUserId)
                 if (currentUserId == null || normalizePrivacyUserId(createdUser.id) == currentUserId) {
                     saveProfileLocally(createdUser)
@@ -1516,6 +1736,7 @@ class UserRepository @Inject constructor(
         userId: String,
         request: UpdateProfileRequest
     ): Result<Unit> {
+        val identityRequest = captureProfileIdentityRequest()
         return try {
             var token = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token"))
@@ -1533,6 +1754,7 @@ class UserRepository @Inject constructor(
                 val response = localFallbackApiClient.updateCurrentProfile(
                     accessToken = token,
                     displayName = request.display_name,
+                    username = request.username,
                     bio = request.bio,
                     country = request.country,
                     city = request.city,
@@ -1550,6 +1772,7 @@ class UserRepository @Inject constructor(
                     availabilitySchedule = request.availability_schedule,
                     profileSectionOrder = request.profile_section_order,
                     profileSectionVisibility = request.profile_section_visibility,
+                    socialLinks = request.social_links,
                     avatarUrl = request.avatar_url,
                     avatarMediaType = request.avatar_media_type,
                     avatarVideoMuted = request.avatar_video_muted,
@@ -1564,6 +1787,7 @@ class UserRepository @Inject constructor(
                     favoritesPublic = request.favorites_public,
                     breakMode = request.break_mode,
                     profileVisibility = request.profile_visibility,
+                    profileViewHistoryEnabled = request.profile_view_history_enabled,
                     lastSeenVisibility = request.last_seen_visibility,
                     onlineStatusVisibility = request.online_status_visibility
                 )
@@ -1582,14 +1806,20 @@ class UserRepository @Inject constructor(
                     }
                     userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(updatedUser))
                     saveProfileLocally(updatedUser)
+                    warmProfileIdentityImage(updatedUser, identityRequest)
                     _profileUpdates.emit(updatedUser)
                     return Result.success(Unit)
                 }
 
-                return Result.failure(
-                    response.exceptionOrNull()
-                        ?: Exception("No se pudo actualizar el perfil en Ubuntu")
-                )
+                val profileError = response.exceptionOrNull()
+                    ?: Exception("No se pudo actualizar el perfil en Ubuntu")
+                return Result.failure(when {
+                    profileError.message.orEmpty().contains("USERNAME_TAKEN", ignoreCase = true) ->
+                        Exception("Nombre de usuario en uso. Elige otro, por ejemplo con _01 o _02.")
+                    profileError.message.orEmpty().contains("USERNAME_INVALID", ignoreCase = true) ->
+                        Exception("Usa entre 3 y 24 letras, números, puntos, guiones o guiones bajos.")
+                    else -> profileError
+                })
             }
 
             // ✅ ENFORCE 7-DAY NAME CHANGE COOLDOWN
@@ -1689,6 +1919,7 @@ class UserRepository @Inject constructor(
                     if (updatedUser.id == authService.getCurrentUserId()) {
                         saveProfileLocally(updatedUser)
                     }
+                    warmProfileIdentityImage(updatedUser, identityRequest)
                     _profileUpdates.emit(updatedUser)
                 } else {
                     return Result.failure(Exception("El servidor respondió sin una fila de perfil actualizada"))
@@ -1705,6 +1936,12 @@ class UserRepository @Inject constructor(
                 Result.success(Unit)
             } else {
                 android.util.Log.e("UserRepository", "Update failed ${response.status}: $responseBody")
+                if (responseBody.contains("USERNAME_TAKEN", ignoreCase = true)) {
+                    return Result.failure(Exception("Nombre de usuario en uso. Elige otro, por ejemplo con _01 o _02."))
+                }
+                if (responseBody.contains("USERNAME_INVALID", ignoreCase = true)) {
+                    return Result.failure(Exception("Usa entre 3 y 24 letras, números, puntos, guiones o guiones bajos."))
+                }
                 Result.failure(Exception("Update failed ${response.status}: $responseBody"))
             }
         } catch (e: Exception) {
@@ -2156,9 +2393,7 @@ class UserRepository @Inject constructor(
     }
 
     private fun gifDurationMs(bytes: ByteArray): Long {
-        return runCatching {
-            Movie.decodeByteArray(bytes, 0, bytes.size)?.duration()?.toLong() ?: PROFILE_AVATAR_MAX_DURATION_MS
-        }.getOrDefault(PROFILE_AVATAR_MAX_DURATION_MS)
+        return gifSingleLoopDurationMs(bytes) ?: PROFILE_AVATAR_MAX_DURATION_MS
     }
 
     private fun inferProfileAvatarMimeType(bytes: ByteArray): String? {
@@ -2331,7 +2566,7 @@ class UserRepository @Inject constructor(
                     ?: return@withContext Result.failure(Exception("No access token"))
                 return@withContext localFallbackApiClient.searchProfileUsers(
                     accessToken = token,
-                    query = sanitizedQuery,
+                    query = profileSearchQuery(sanitizedQuery),
                     limit = 20
                 ).map { users -> users.deduplicatedForSearch() }
             }
@@ -2466,7 +2701,7 @@ class UserRepository @Inject constructor(
             }
             if (response.status.isSuccess()) {
                  var bodyStr = response.bodyAsText()
-                 var users = Json { ignoreUnknownKeys = true }.decodeFromString<List<User>>(bodyStr)
+                 val users = networkJson.decodeFromString<List<User>>(bodyStr)
                  Result.success(users)
             } else {
                  Result.failure(Exception("Error fetching admins: ${response.status}"))
@@ -2587,7 +2822,7 @@ class UserRepository @Inject constructor(
                 var bodyStr = response.body<String>()
                 // Robust checking using JSON parsing
                 val isFollowing = try {
-                    var json = Json { ignoreUnknownKeys = true }
+                    val json = networkJson
                     var list = json.decodeFromString<List<Map<String, String>>>(bodyStr)
                     list.isNotEmpty()
                 } catch (e: Exception) {
@@ -2640,7 +2875,7 @@ class UserRepository @Inject constructor(
 
             var bodyStr = response.body<String>()
             val followedIds = try {
-                var json = Json { ignoreUnknownKeys = true }
+                val json = networkJson
                 json.decodeFromString<List<Map<String, String>>>(bodyStr)
                     .mapNotNull { it["following_id"]?.trim()?.lowercase() }
                     .filter { it.isNotBlank() }
@@ -2675,7 +2910,7 @@ class UserRepository @Inject constructor(
 
              if (response.status.isSuccess()) {
                 var rawBody = response.body<String>()
-                var json = Json { ignoreUnknownKeys = true }
+                val json = networkJson
                 // Parse List<FollowerResponse>
                 var list = json.decodeFromString<List<FollowerResponse>>(rawBody)
                 var users = list.mapNotNull { it.profile }
@@ -2705,7 +2940,7 @@ class UserRepository @Inject constructor(
 
              if (response.status.isSuccess()) {
                 var rawBody = response.body<String>()
-                var json = Json { ignoreUnknownKeys = true }
+                val json = networkJson
                 // Parse List<FollowingResponse>
                 var list = json.decodeFromString<List<FollowingResponse>>(rawBody)
                 var users = list.mapNotNull { it.profile }
@@ -3069,7 +3304,7 @@ class UserRepository @Inject constructor(
 
             if (response.status.isSuccess()) {
                 var bodyStr = response.bodyAsText()
-                var json = Json { ignoreUnknownKeys = true }
+                val json = networkJson
                 var list = json.decodeFromString<List<JsonObject>>(bodyStr)
                 if (list.isNotEmpty()) {
                     val statusElement = list[0]["status"]
@@ -3141,7 +3376,7 @@ class UserRepository @Inject constructor(
             
             if (response.status.isSuccess()) {
                  var bodyStr = response.bodyAsText()
-                 var users = Json { ignoreUnknownKeys = true }.decodeFromString<List<User>>(bodyStr)
+                 val users = networkJson.decodeFromString<List<User>>(bodyStr)
                  Result.success(users)
             } else {
                  Result.failure(Exception("Error fetching admins: ${response.status}"))
@@ -3243,13 +3478,13 @@ class UserRepository @Inject constructor(
             if (authService.isLocalFallbackModeEnabled()) {
                 var token = accessToken.trim()
                 if (token.isBlank()) return Result.failure(Exception("No token"))
-                android.util.Log.d("UserRepository", "Setting Ubuntu online status (explicit token) for $userId to $isOnline")
+                android.util.Log.d("UserRepository", "Updating Ubuntu online status (explicit session, online=$isOnline)")
                 return localFallbackApiClient.updatePresence(token, isOnline).map { Unit }
             }
             var token = accessToken.trim()
             if (token.isBlank()) return Result.failure(Exception("No token"))
 
-            android.util.Log.d("UserRepository", "Setting online status (explicit token) for $userId to $isOnline")
+            android.util.Log.d("UserRepository", "Updating online status (explicit session, online=$isOnline)")
 
             var response = supabaseConfig.httpClient.post(
                 "${supabaseConfig.supabaseUrl}/rest/v1/rpc/update_user_online_status"
@@ -3267,8 +3502,7 @@ class UserRepository @Inject constructor(
                 android.util.Log.d("UserRepository", "Online status updated successfully (explicit token)")
                 Result.success(Unit)
             } else {
-                var err = response.bodyAsText()
-                android.util.Log.e("UserRepository", "Failed to update online status (explicit token): ${response.status} - $err")
+                android.util.Log.e("UserRepository", "Failed to update online status (status=${response.status})")
                 Result.failure(Exception("Failed to update status"))
             }
         } catch (e: Exception) {

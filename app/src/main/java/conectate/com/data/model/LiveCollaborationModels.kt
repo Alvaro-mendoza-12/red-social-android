@@ -55,9 +55,14 @@ data class LiveParticipantState(
 data class LiveBattle(
     val id: String = "",
     @SerialName("live_id") val liveId: String = "",
+    @SerialName("opponent_live_id") val opponentLiveId: String? = null,
     @SerialName("left_user_id") val leftUserId: String = "",
     @SerialName("right_user_id") val rightUserId: String = "",
     val status: String = "active",
+    @SerialName("room_name") val roomName: String? = null,
+    @SerialName("requested_by_user_id") val requestedByUserId: String? = null,
+    @SerialName("invitation_expires_at") val invitationExpiresAt: String? = null,
+    @SerialName("responded_at") val respondedAt: String? = null,
     @SerialName("score_version") val scoreVersion: Long = 0L,
     @SerialName("left_score") val leftScore: Long = 0L,
     @SerialName("right_score") val rightScore: Long = 0L,
@@ -66,6 +71,18 @@ data class LiveBattle(
     @SerialName("ended_at") val endedAt: String? = null,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
+)
+
+@Serializable
+data class LiveBattleCandidate(
+    @SerialName("live_id") val liveId: String = "",
+    @SerialName("user_id") val userId: String = "",
+    val name: String = "Creador",
+    @SerialName("avatar_url") val avatarUrl: String? = null,
+    val title: String = "",
+    @SerialName("viewer_count") val viewerCount: Int = 0,
+    val category: String? = null,
+    @SerialName("started_at") val startedAt: String? = null,
 )
 
 @Serializable

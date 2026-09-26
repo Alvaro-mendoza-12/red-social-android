@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
 import conectate.com.data.repository.MomentRepository
+import conectate.com.data.repository.MomentHighlightRepository
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -15,6 +16,7 @@ import javax.inject.Inject
 @HiltViewModel
 class MomentViewModel @Inject constructor(
     private val repository: MomentRepository,
+    private val highlightRepository: MomentHighlightRepository,
     private val messageRepository: conectate.com.data.repository.MessageRepository,
     private val authService: AuthService
 ) : ViewModel() {
@@ -178,23 +180,39 @@ class MomentViewModel @Inject constructor(
         }
     }
 
-    fun sendReply(momentId: String, text: String, receiverId: String) {
+    fun saveMomentToHighlight(
+        moment: Moment,
+        title: String,
+        onResult: (Result<conectate.com.data.model.MomentHighlight>) -> Unit
+    ) {
+        viewModelScope.launch {
+            onResult(highlightRepository.saveMomentToHighlight(moment, title))
+        }
+    }
+
+    fun toggleLike(moment: Moment, onResult: (Result<Unit>) -> Unit = {}) {
+        viewModelScope.launch {
+            onResult(repository.setMomentLiked(moment.id, !moment.isLikedByMe))
+        }
+    }
+
+    fun sendReply(momentId: String, text: String, receiverId: String, onResult: (Result<Unit>) -> Unit = {}) {
         viewModelScope.launch {
             val messageText = "Respondió a tu estado: $text"
             
             // Resolve Chat ID first
             val chatResult = messageRepository.getOrCreateChat(receiverId)
             chatResult.onSuccess { chat ->
-                messageRepository.sendMessage(
+                val result = messageRepository.sendMessage(
                     chatId = chat.id,
                     content = messageText,
                     mediaType = "text"
                 )
+                onResult(result.map { Unit })
             }.onFailure {
                 // Determine if we should fail or try a direct send (if Repository supports it, but it seems it needs chatId)
                 android.util.Log.e("MomentViewModel", "Failed to resolve chat for reply", it)
-                // For now, we unfortunately can't send if we don't have a chat ID.
-                // We could try sending with receiverId if the repo supported it, but it seems strictly chatId based.
+                onResult(Result.failure(it))
             }
         }
     }

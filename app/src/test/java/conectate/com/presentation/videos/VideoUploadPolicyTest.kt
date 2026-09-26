@@ -8,13 +8,13 @@ import org.junit.Test
 class VideoUploadPolicyTest {
 
     @Test
-    fun shortCompatibleVideo_isReadyRegardlessOfNormalFileSize() {
+    fun shortCompatibleVideo_isReadyAtStreamingSafeBitrate() {
         val decision = evaluateVideoPreparation(
             durationMs = 16_000L,
             width = 1080,
             height = 1920,
             fps = 30f,
-            fileSizeBytes = 95L * 1024L * 1024L
+            fileSizeBytes = 6L * 1024L * 1024L
         )
 
         assertFalse(decision.requiresEditor)
@@ -36,7 +36,7 @@ class VideoUploadPolicyTest {
     }
 
     @Test
-    fun largeButShortSource_isAcceptedBecauseDurationIsThePublishingLimit() {
+    fun highBitrateSource_requiresOptimizationEvenWhenShort() {
         val decision = evaluateVideoPreparation(
             durationMs = 16_000L,
             width = 1080,
@@ -45,7 +45,7 @@ class VideoUploadPolicyTest {
             fileSizeBytes = 121L * 1024L * 1024L
         )
 
-        assertFalse(decision.requiresEditor)
-        assertEquals(VideoPreparationReason.READY, decision.reason)
+        assertTrue(decision.requiresEditor)
+        assertEquals(VideoPreparationReason.HIGH_BITRATE, decision.reason)
     }
 }

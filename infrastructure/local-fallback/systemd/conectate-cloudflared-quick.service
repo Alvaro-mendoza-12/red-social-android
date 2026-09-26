@@ -1,0 +1,16 @@
+[Unit]
+Description=Conectate Cloudflared Quick Tunnel
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alvaro
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate --protocol http2 --edge-ip-version 4 --url http://127.0.0.1:3080
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/alvaro/cloudflared.log
+StandardError=append:/home/alvaro/cloudflared.log
+
+[Install]
+WantedBy=multi-user.target

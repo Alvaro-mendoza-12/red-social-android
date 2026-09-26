@@ -12,7 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,6 +37,7 @@ fun CreatePostScreen(
     var caption by remember { mutableStateOf("") }
     var remixAllowed by remember { mutableStateOf(false) }
     var remixAudience by remember { mutableStateOf("public") }
+    var isSensitive by remember { mutableStateOf(false) }
     val selectedMediaUris = remember { mutableStateListOf<Uri>() }
     var showMediaComposer by remember { mutableStateOf(false) }
     val isCreating by viewModel.isCreating.collectAsState()
@@ -74,7 +75,7 @@ fun CreatePostScreen(
                 title = { Text("Nueva Publicación") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 actions = {
@@ -84,7 +85,8 @@ fun CreatePostScreen(
                                 caption = caption,
                                 mediaUris = selectedMediaUris,
                                 remixAllowed = remixAllowed,
-                                remixAudience = remixAudience
+                                remixAudience = remixAudience,
+                                isSensitive = isSensitive
                             )
                         },
                         enabled = !isCreating && (caption.isNotBlank() || selectedMediaUris.isNotEmpty())
@@ -123,8 +125,11 @@ fun CreatePostScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                colors = TextFieldDefaults.textFieldColors(
-                    containerColor = Color.Transparent,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
+                    errorContainerColor = Color.Transparent,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent
                 )
@@ -212,6 +217,23 @@ fun CreatePostScreen(
                 }
             }
             Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Contenido sensible (+18)", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Añade una cubierta según las preferencias de cada persona.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = isSensitive, onCheckedChange = { isSensitive = it })
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

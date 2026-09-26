@@ -105,16 +105,18 @@ class UbuntuRealtimeClient @Inject constructor() {
         val base = RuntimeBackendEndpoint.baseUrl.trim().removeSuffix("/")
         if (!base.startsWith("http")) return null
         val wsBase = base.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://")
-        val token = accessToken
-        if (token.isBlank()) return null
-        return "$wsBase/realtime/?token=${java.net.URLEncoder.encode(token, Charsets.UTF_8.name())}"
+        if (accessToken.isBlank()) return null
+        return "$wsBase/realtime/"
     }
 
     @Synchronized
     private fun ensureConnected() {
         if (socket != null) return
         val url = wsUrl() ?: return
-        val request = Request.Builder().url(url).build()
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $accessToken")
+            .build()
         socket = client.newWebSocket(
             request,
             object : WebSocketListener() {

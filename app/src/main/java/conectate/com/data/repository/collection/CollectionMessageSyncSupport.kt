@@ -23,11 +23,12 @@ internal object CollectionMessageSyncSupport {
         return cleanRequestedIds.filter { confirmedIds.contains(it) }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun resolveDisplayedUnreadCount(
         isConversationOpen: Boolean,
         exactUnread: Int
     ): Int {
-        if (isConversationOpen) return 0
+        // Being inside the room does not mean older or off-screen messages were seen.
         return exactUnread.coerceAtLeast(0)
     }
 
@@ -38,7 +39,7 @@ internal object CollectionMessageSyncSupport {
         createdAtSelector: (T) -> String
     ): List<T> {
         return (current + incoming)
-            .distinctBy(idSelector)
+            .associateBy(idSelector).values
             .sortedBy(createdAtSelector)
     }
 

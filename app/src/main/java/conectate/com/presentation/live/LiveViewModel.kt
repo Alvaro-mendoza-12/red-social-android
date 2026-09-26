@@ -38,11 +38,25 @@ class LiveViewModel @Inject constructor(
 
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
+    private val _isLoadingStreams = MutableStateFlow(false)
+    val isLoadingStreams = _isLoadingStreams.asStateFlow()
+    private val _streamsLoadError = MutableStateFlow<String?>(null)
+    val streamsLoadError = _streamsLoadError.asStateFlow()
 
     fun refreshStreams() {
+        if (_isLoadingStreams.value) return
         viewModelScope.launch {
-            liveRepository.refreshActiveStreams()
-            liveRepository.refreshLiveReplays()
+            _isLoadingStreams.value = true
+            _streamsLoadError.value = null
+            try {
+                val result = liveRepository.refreshActiveStreams()
+                _streamsLoadError.value = result.exceptionOrNull()?.let {
+                    "No se pudo comprobar quién está en vivo. Revisa tu conexión e inténtalo de nuevo."
+                }
+            } finally {
+                _isLoadingStreams.value = false
+            }
+            runCatching { liveRepository.refreshLiveReplays() }
         }
     }
 

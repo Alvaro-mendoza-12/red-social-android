@@ -5,23 +5,33 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.provider.OpenableColumns
 import androidx.core.content.ContextCompat
 import conectate.com.core.concurrency.nextRetryDelayMs
 import conectate.com.core.concurrency.newSafeScope
+import conectate.com.core.observability.AppMetrics
 import conectate.com.data.model.ActiveLiveSession
 import conectate.com.data.model.LiveComment
+import conectate.com.data.model.LiveBattleState
+import conectate.com.data.model.LiveBattleStatus
 import conectate.com.data.model.LiveCollaborationCapabilities
+import conectate.com.data.model.LiveGuestAccessState
+import conectate.com.data.model.LiveGuestParticipant
+import conectate.com.data.model.LiveGuestRequest
+import conectate.com.data.model.LiveGuestRequestStatus
 import conectate.com.data.model.LiveGuestInvitation
 import conectate.com.data.model.LiveBattle
+import conectate.com.data.model.LiveBattleCandidate
 import conectate.com.data.model.LiveQuality
 import conectate.com.data.model.LiveReaction
 import conectate.com.data.model.LiveModerationState
 import conectate.com.data.model.LiveRole
 import conectate.com.data.model.LiveSource
 import conectate.com.data.model.LiveStream
+import conectate.com.data.model.LiveMusicPlaybackState
 import conectate.com.data.model.LiveViewerParticipant
 import conectate.com.data.model.LiveGiftEvent
 import conectate.com.data.model.GiftReceipt
@@ -29,14 +39,18 @@ import conectate.com.data.model.VirtualGift
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.livekit.LiveKitRoomBridge
 import conectate.com.data.local.prefs.LivePreferences
+import conectate.com.data.model.LiveCreatorLayoutStyle
 import conectate.com.data.signaling.SignalingConfig
 import conectate.com.data.signaling.attachBearerToken
+import conectate.com.data.signaling.attachSignalingAffinity
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.webrtc.LiveCameraFilter
+import conectate.com.data.webrtc.LiveCameraAdjustments
 import conectate.com.data.webrtc.LiveFilterPerformanceState
 import conectate.com.data.webrtc.WebRTCManager
+import conectate.com.data.webrtc.LiveMusicAudioMixer
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.realtime.*
@@ -87,16 +101,22 @@ import java.net.HttpURLConnection
 import java.net.URL
 import conectate.com.util.VideoUtils
 
+internal fun resolvedInitialHostVideoEnabled(
+    source: LiveSource,
+    requestedEnabled: Boolean?,
+): Boolean = source != LiveSource.AUDIO && (requestedEnabled ?: true)
+
 @Singleton
 class LiveRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val userRepository: UserRepository,
     private val localFallbackApiClient: LocalFallbackApiClient,
     private val liveKitRoomBridge: LiveKitRoomBridge,
     private val storageService: StorageService,
-    private val livePreferences: LivePreferences
+    private val livePreferences: LivePreferences,
+    private val appMetrics: AppMetrics
 ) {
     private companion object {
         private const val SOCKET_RECONNECT_ATTEMPTS = 10
@@ -138,6 +158,10 @@ class LiveRepository @Inject constructor(
     @Volatile
     private var projectionStopToken: String? = null
     private val projectionStopJobLock = Any()
+    private val setupProjectionIntentLock = Any()
+    private var pendingSetupProjectionIntent: Intent? = null
+    @Volatile
+    private var setupCameraPreviewActive = false
     private val projectionState = LiveProjectionStateCoordinator()
     private val sourcePersistenceMutex = Mutex()
     private val sessionStartupMutex = Mutex()
@@ -153,7 +177,6 @@ class LiveRepository @Inject constructor(
     private val localReactionBatches = LinkedHashMap<String, Int>()
     private val liveEndConfirmationLock = Any()
     private var pendingLiveEndConfirmation: Pair<String, CompletableDeferred<Boolean>>? = null
-    private val giftExpiryJobs = ConcurrentHashMap<String, Job>()
     private val knownViewerSocketIds = ConcurrentHashMap.newKeySet<String>()
     private var lastAdaptiveQualityChangeAtMs: Long = 0L
     private var hostSessionStartedElapsedMs: Long = 0L
@@ -166,6 +189,7 @@ class LiveRepository @Inject constructor(
     private var peakViewerCount: Int = 0
     private var sessionCommentCount: Int = 0
     private var sessionReactionCount: Int = 0
+    private val liveMusicMixer = LiveMusicAudioMixer(context)
 
     private val _activeStreams = MutableStateFlow<List<LiveStream>>(emptyList())
     val activeStreams: StateFlow<List<LiveStream>> = _activeStreams.asStateFlow()
@@ -188,6 +212,9 @@ class LiveRepository @Inject constructor(
     private val _activeSession = MutableStateFlow<ActiveLiveSession?>(null)
     val activeSession: StateFlow<ActiveLiveSession?> = _activeSession.asStateFlow()
 
+    private val _liveMusic = MutableStateFlow(LiveMusicPlaybackState())
+    val liveMusic: StateFlow<LiveMusicPlaybackState> = _liveMusic.asStateFlow()
+
     private val _comments = MutableStateFlow<List<LiveComment>>(emptyList())
     val comments: StateFlow<List<LiveComment>> = _comments.asStateFlow()
 
@@ -197,14 +224,35 @@ class LiveRepository @Inject constructor(
     private val _reactionCount = MutableStateFlow(0L)
     val reactionCount: StateFlow<Long> = _reactionCount.asStateFlow()
 
-    private val _giftEvents = MutableStateFlow<List<LiveGiftEvent>>(emptyList())
-    val giftEvents: StateFlow<List<LiveGiftEvent>> = _giftEvents.asStateFlow()
+    private val giftEventStore = LiveGiftEventStore()
+    val giftEvents: StateFlow<List<LiveGiftEvent>> = giftEventStore.events
 
     private val _viewerCount = MutableStateFlow(0)
     val viewerCount: StateFlow<Int> = _viewerCount.asStateFlow()
 
     private val _liveViewers = MutableStateFlow<List<LiveViewerParticipant>>(emptyList())
     val liveViewers: StateFlow<List<LiveViewerParticipant>> = _liveViewers.asStateFlow()
+
+    private val _guestRequests = MutableStateFlow<List<LiveGuestRequest>>(emptyList())
+    val guestRequests: StateFlow<List<LiveGuestRequest>> = _guestRequests.asStateFlow()
+
+    private val _activeGuests = MutableStateFlow<List<LiveGuestParticipant>>(emptyList())
+    val activeGuests: StateFlow<List<LiveGuestParticipant>> = _activeGuests.asStateFlow()
+
+    private val _guestAccessState = MutableStateFlow(LiveGuestAccessState())
+    val guestAccessState: StateFlow<LiveGuestAccessState> = _guestAccessState.asStateFlow()
+
+    private val _isGuestBroadcasting = MutableStateFlow(false)
+    val isGuestBroadcasting: StateFlow<Boolean> = _isGuestBroadcasting.asStateFlow()
+
+    private val _isGuestMicEnabled = MutableStateFlow(true)
+    val isGuestMicEnabled: StateFlow<Boolean> = _isGuestMicEnabled.asStateFlow()
+
+    private val _isGuestVideoEnabled = MutableStateFlow(true)
+    val isGuestVideoEnabled: StateFlow<Boolean> = _isGuestVideoEnabled.asStateFlow()
+
+    private val _battleState = MutableStateFlow(LiveBattleState())
+    val battleState: StateFlow<LiveBattleState> = _battleState.asStateFlow()
 
     private val _collaborationCapabilities = MutableStateFlow(LiveCollaborationCapabilities())
     val collaborationCapabilities: StateFlow<LiveCollaborationCapabilities> = _collaborationCapabilities.asStateFlow()
@@ -214,6 +262,8 @@ class LiveRepository @Inject constructor(
 
     private val _activeBattle = MutableStateFlow<LiveBattle?>(null)
     val activeBattle: StateFlow<LiveBattle?> = _activeBattle.asStateFlow()
+    private val _battleCandidates = MutableStateFlow<List<LiveBattleCandidate>>(emptyList())
+    val battleCandidates: StateFlow<List<LiveBattleCandidate>> = _battleCandidates.asStateFlow()
     private val _liveSupporters = MutableStateFlow<List<conectate.com.data.model.LiveSupporter>>(emptyList())
     val liveSupporters: StateFlow<List<conectate.com.data.model.LiveSupporter>> = _liveSupporters.asStateFlow()
 
@@ -232,11 +282,27 @@ class LiveRepository @Inject constructor(
     private val _isVideoEnabled = MutableStateFlow(true)
     val isVideoEnabled: StateFlow<Boolean> = _isVideoEnabled.asStateFlow()
 
+    @Volatile
+    private var pendingInitialHostVideoEnabled: Boolean? = null
+
+    fun setInitialHostVideoEnabled(enabled: Boolean) {
+        pendingInitialHostVideoEnabled = enabled
+    }
+
+    fun initialHostVideoEnabled(source: LiveSource): Boolean =
+        resolvedInitialHostVideoEnabled(source, pendingInitialHostVideoEnabled)
+
     private val _currentSource = MutableStateFlow(LiveSource.CAMERA)
     val currentSource: StateFlow<LiveSource> = _currentSource.asStateFlow()
 
     private val _cameraFilter = MutableStateFlow(livePreferences.cameraFilter)
     val cameraFilter: StateFlow<LiveCameraFilter> = _cameraFilter.asStateFlow()
+
+    private val _cameraAdjustments = MutableStateFlow(LiveCameraAdjustments(enabled = true))
+    val cameraAdjustments: StateFlow<LiveCameraAdjustments> = _cameraAdjustments.asStateFlow()
+
+    private val _creatorLayoutStyle = MutableStateFlow(livePreferences.creatorLayoutStyle)
+    val creatorLayoutStyle: StateFlow<LiveCreatorLayoutStyle> = _creatorLayoutStyle.asStateFlow()
 
     private val _cameraFilterPerformance = MutableStateFlow(
         _cameraFilter.value.toDefaultPerformanceState()
@@ -299,21 +365,21 @@ class LiveRepository @Inject constructor(
     private fun localAccessToken(): String = authService.getAccessToken()?.trim().orEmpty()
 
 
-    suspend fun refreshActiveStreams() = withContext(Dispatchers.IO) {
+    suspend fun refreshActiveStreams(): Result<Unit> = withContext(Dispatchers.IO) {
         if (usesUbuntuPersistence()) {
             val token = localAccessToken()
             if (token.isBlank()) {
                 _activeStreams.value = emptyList()
-                return@withContext
+                return@withContext Result.failure(IllegalStateException("Sesión no válida"))
             }
-            localFallbackApiClient.loadLiveStreams(token, limit = 60)
-                .onSuccess { streams ->
+            return@withContext localFallbackApiClient.loadLiveStreams(token, limit = 60)
+                .map { streams ->
                     _activeStreams.value = filterToServerActiveStreams(normalizeActiveStreams(streams))
+                    Unit
                 }
                 .onFailure { error ->
                     android.util.Log.e("LiveRepository", "Error refreshing Ubuntu live streams", error)
                 }
-            return@withContext
         }
         try {
             reconcileOwnedGhostStreamsIfNeeded()
@@ -324,12 +390,14 @@ class LiveRepository @Inject constructor(
             }.decodeList<LiveStream>()
             val normalized = normalizeActiveStreams(streams)
             _activeStreams.value = filterToServerActiveStreams(normalized)
+            Result.success(Unit)
         } catch (e: Exception) {
             if (supabaseConfig.reportServiceRestrictionIfPresent("live-streams-refresh", e)) {
                 android.util.Log.w("LiveRepository", "Live streams unavailable because the Supabase project is restricted.")
             } else {
                 android.util.Log.e("LiveRepository", "Error refreshing live streams", e)
             }
+            Result.failure(e)
         }
     }
 
@@ -544,6 +612,24 @@ class LiveRepository @Inject constructor(
         }
     }
 
+    /**
+     * Revalidates mutable room controls (guest requests, active state, source)
+     * for every participant. Realtime signaling carries media/events, but it
+     * is not the authority for persisted room policy.
+     */
+    suspend fun refreshActiveLiveStream(liveId: String): Result<LiveStream> =
+        withContext(Dispatchers.IO) {
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            getLiveStreamById(normalizedId).onSuccess { updated ->
+                _activeSession.update { current ->
+                    current?.takeIf { it.stream.id.equals(normalizedId, ignoreCase = true) }
+                        ?.copy(stream = updated, viewerCount = updated.viewerCount)
+                        ?: current
+                }
+            }
+        }
+
     suspend fun getLiveCollaborationCapabilities(): Result<LiveCollaborationCapabilities> =
         withContext(Dispatchers.IO) {
             if (!usesUbuntuPersistence()) {
@@ -629,16 +715,47 @@ class LiveRepository @Inject constructor(
         }
     }
 
-    suspend fun startBattle(liveId: String, opponentUserId: String): Result<LiveBattle> =
+    suspend fun startBattle(
+        liveId: String,
+        opponentUserId: String,
+        opponentLiveId: String? = null,
+    ): Result<LiveBattle> =
         withContext(Dispatchers.IO) {
             val token = localAccessToken()
             if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
             val normalizedId = normalizeLiveSessionId(liveId)
                 ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
-            localFallbackApiClient.startLiveBattle(token, normalizedId, opponentUserId).onSuccess {
+            localFallbackApiClient.startLiveBattle(token, normalizedId, opponentUserId, opponentLiveId).onSuccess {
                 _activeBattle.value = it
+                applyAuthoritativeBattle(normalizedId, it)
             }
         }
+
+    suspend fun refreshBattleCandidates(liveId: String): Result<List<LiveBattleCandidate>> =
+        withContext(Dispatchers.IO) {
+            val token = localAccessToken()
+            if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+            val normalizedId = normalizeLiveSessionId(liveId)
+                ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+            localFallbackApiClient.loadLiveBattleCandidates(token, normalizedId).onSuccess {
+                _battleCandidates.value = it
+            }
+        }
+
+    suspend fun respondToCrossLiveBattle(
+        liveId: String,
+        battleId: String,
+        accepted: Boolean,
+    ): Result<LiveBattle> = withContext(Dispatchers.IO) {
+        val token = localAccessToken()
+        if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+        val normalizedId = normalizeLiveSessionId(liveId)
+            ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
+        localFallbackApiClient.respondToLiveBattle(token, normalizedId, battleId, accepted).onSuccess {
+            _activeBattle.value = if (accepted) it else null
+            applyAuthoritativeBattle(normalizedId, it)
+        }
+    }
 
     suspend fun refreshActiveBattle(liveId: String): Result<LiveBattle?> =
         withContext(Dispatchers.IO) {
@@ -648,6 +765,8 @@ class LiveRepository @Inject constructor(
                 ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
             localFallbackApiClient.loadActiveLiveBattle(token, normalizedId).onSuccess {
                 _activeBattle.value = it
+                if (it != null) applyAuthoritativeBattle(normalizedId, it)
+                else if (_battleState.value.battleId.isNotBlank()) _battleState.value = LiveBattleState()
             }
         }
 
@@ -662,6 +781,17 @@ class LiveRepository @Inject constructor(
             }
         }
 
+    suspend fun refreshLiveGiftEvents(liveId: String) = withContext(Dispatchers.IO) {
+        val normalizedId = normalizeLiveSessionId(liveId) ?: return@withContext
+        if (_activeSession.value?.stream?.id != normalizedId) return@withContext
+        val token = localAccessToken().takeIf { it.isNotBlank() } ?: return@withContext
+        localFallbackApiClient.loadLiveGiftEvents(token, normalizedId).onSuccess { events ->
+            events.forEach { event ->
+                giftEventStore.record(event, _activeSession.value?.stream?.id.orEmpty())
+            }
+        }
+    }
+
     suspend fun endBattle(liveId: String): Result<LiveBattle> = withContext(Dispatchers.IO) {
         val battle = _activeBattle.value
             ?: return@withContext Result.failure(Exception("No hay una batalla activa"))
@@ -669,7 +799,50 @@ class LiveRepository @Inject constructor(
         if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         localFallbackApiClient.endLiveBattle(token, liveId, battle.id).onSuccess {
             _activeBattle.value = null
+            applyAuthoritativeBattle(liveId, it)
         }
+    }
+
+    private fun applyAuthoritativeBattle(localLiveId: String, battle: LiveBattle) {
+        val localIsLeft = battle.liveId.equals(localLiveId, ignoreCase = true)
+        val opponentId = if (localIsLeft) battle.rightUserId else battle.leftUserId
+        val candidate = _battleCandidates.value.firstOrNull {
+            it.userId.equals(opponentId, ignoreCase = true) ||
+                it.liveId.equals(if (localIsLeft) battle.opponentLiveId else battle.liveId, ignoreCase = true)
+        }
+        val status = when (battle.status.lowercase()) {
+            "invited" -> LiveBattleStatus.INVITED
+            "active" -> LiveBattleStatus.ACTIVE
+            "ended", "canceled", "expired" -> LiveBattleStatus.FINISHED
+            "rejected" -> LiveBattleStatus.REJECTED
+            else -> LiveBattleStatus.NONE
+        }
+        val startedAtMs = battle.startedAt?.let { raw ->
+            runCatching { java.time.OffsetDateTime.parse(raw).toInstant().toEpochMilli() }.getOrNull()
+        } ?: 0L
+        _battleState.value = LiveBattleState(
+            battleId = battle.id,
+            status = status,
+            opponentLiveId = if (localIsLeft) battle.opponentLiveId.orEmpty() else battle.liveId,
+            opponentUserId = opponentId,
+            opponentName = candidate?.name.orEmpty().ifBlank { "Creador LIVE" },
+            opponentAvatarUrl = candidate?.avatarUrl,
+            hostScore = (if (localIsLeft) battle.leftScore else battle.rightScore).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            opponentScore = (if (localIsLeft) battle.rightScore else battle.leftScore).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            durationSeconds = 180,
+            startedAtMs = startedAtMs,
+            invitationIncoming = battle.status.equals("invited", true) &&
+                battle.opponentLiveId.equals(localLiveId, true),
+            message = when (status) {
+                LiveBattleStatus.INVITED -> if (battle.opponentLiveId.equals(localLiveId, true)) {
+                    "Otro creador te invitó a una batalla LIVE."
+                } else "Invitación enviada; esperando respuesta."
+                LiveBattleStatus.ACTIVE -> "Batalla LIVE en curso"
+                LiveBattleStatus.REJECTED -> "La invitación fue rechazada."
+                LiveBattleStatus.FINISHED -> "Batalla finalizada"
+                else -> null
+            },
+        )
     }
 
     suspend fun removeLiveGuest(liveId: String, guestUserId: String): Result<Unit> =
@@ -722,10 +895,22 @@ class LiveRepository @Inject constructor(
         val session = localFallbackApiClient.issueLiveSfuSession(token, normalizedId, role)
             .getOrElse { return@withContext Result.failure(it) }
         val connected = liveKitRoomBridge.connect(session, publishAudio, publishCamera)
-        if (connected.isFailure) return@withContext connected
+        if (connected.isFailure) {
+            runCatching {
+                localFallbackApiClient.updateLiveParticipantState(token, normalizedId, "disconnected")
+            }.onFailure { error ->
+                android.util.Log.w("LiveRepository", "Unable to clear LiveKit participant after failed connection.", error)
+            }
+            return@withContext connected
+        }
         val marked = localFallbackApiClient.updateLiveParticipantState(token, normalizedId, "connected")
         if (marked.isFailure) {
             liveKitRoomBridge.disconnectAwait()
+            runCatching {
+                localFallbackApiClient.updateLiveParticipantState(token, normalizedId, "disconnected")
+            }.onFailure { error ->
+                android.util.Log.w("LiveRepository", "Unable to clear LiveKit participant after failed confirmation.", error)
+            }
             return@withContext Result.failure(
                 marked.exceptionOrNull() ?: Exception("No se pudo confirmar el participante del live.")
             )
@@ -749,7 +934,13 @@ class LiveRepository @Inject constructor(
     suspend fun createLiveStream(
         title: String,
         source: LiveSource,
-        hashtags: List<String> = emptyList()
+        hashtags: List<String> = emptyList(),
+        coverUrl: String? = null,
+        gameName: String? = null,
+        category: String? = null,
+        visibility: String = "public",
+        giftsEnabled: Boolean = true,
+        battlesEnabled: Boolean = true
     ): Result<LiveStream> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
@@ -776,13 +967,19 @@ class LiveRepository @Inject constructor(
                     id = streamId,
                     title = title.trim().take(80),
                     source = source.name.lowercase(),
-                    hashtags = normalizedHashtags
-                ).onSuccess {
-                    refreshActiveStreams()
-                }
+                    hashtags = normalizedHashtags,
+                    coverUrl = coverUrl?.trim()?.takeIf { it.isNotBlank() },
+                    gameName = gameName?.trim()?.take(80)?.takeIf { it.isNotBlank() },
+                    category = category?.trim()?.take(40)?.takeIf { it.isNotBlank() },
+                    visibility = visibility.trim().lowercase().takeIf {
+                        it in setOf("public", "followers", "private")
+                    } ?: "public",
+                    giftsEnabled = giftsEnabled,
+                    battlesEnabled = battlesEnabled
+                )
             }
 
-            fun buildPayload(includeHashtags: Boolean) = buildJsonObject {
+            fun buildPayload(includeHashtags: Boolean, includeMetadata: Boolean) = buildJsonObject {
                 // IMPORTANT: do not send created_at=null (would override DB default and break NOT NULL).
                 // A live becomes active only after the host actually joins the signaling session.
                 put("id", streamId)
@@ -791,6 +988,19 @@ class LiveRepository @Inject constructor(
                 put("host_name", hostName)
                 if (!hostAvatar.isNullOrBlank()) put("host_avatar_url", hostAvatar)
                 put("source", source.name.lowercase())
+                if (includeMetadata) {
+                    coverUrl?.trim()?.takeIf { it.isNotBlank() }?.let { put("cover_url", it) }
+                    gameName?.trim()?.take(80)?.takeIf { it.isNotBlank() }?.let { put("game_name", it) }
+                    category?.trim()?.take(40)?.takeIf { it.isNotBlank() }?.let { put("category", it) }
+                    put(
+                        "visibility",
+                        visibility.trim().lowercase().takeIf {
+                            it in setOf("public", "followers", "private")
+                        } ?: "public"
+                    )
+                    put("gifts_enabled", giftsEnabled)
+                    put("battles_enabled", battlesEnabled)
+                }
                 put("is_active", false)
                 put("viewer_count", 0)
                 if (includeHashtags && normalizedHashtags.isNotEmpty()) {
@@ -805,26 +1015,51 @@ class LiveRepository @Inject constructor(
                 }
             }
 
-            try {
-                supabaseConfig.client.postgrest["live_streams"].insert(buildPayload(includeHashtags = true))
-            } catch (e: Exception) {
-                var lowered = e.message?.lowercase().orEmpty()
-                val isHashtagsColumnMissing = normalizedHashtags.isNotEmpty() &&
-                    lowered.contains("hashtags") &&
-                    (lowered.contains("column") || lowered.contains("does not exist"))
-                if (isHashtagsColumnMissing) {
-                    // Backwards compatibility: if DB hasn't been migrated yet, retry without hashtags.
-                    supabaseConfig.client.postgrest["live_streams"].insert(buildPayload(includeHashtags = false))
-                } else {
-                    throw e
+            var includeHashtags = true
+            var includeMetadata = true
+            var inserted = false
+            var insertError: Exception? = null
+            var attempts = 0
+            while (!inserted && attempts < 3) {
+                attempts += 1
+                try {
+                    supabaseConfig.client.postgrest["live_streams"].insert(
+                        buildPayload(
+                            includeHashtags = includeHashtags,
+                            includeMetadata = includeMetadata
+                        )
+                    )
+                    inserted = true
+                } catch (error: Exception) {
+                    insertError = error
+                    val lowered = error.message?.lowercase().orEmpty()
+                    val missingColumn =
+                        lowered.contains("column") ||
+                            lowered.contains("does not exist") ||
+                            lowered.contains("schema cache")
+                    val missingMetadata = missingColumn && listOf(
+                        "cover_url",
+                        "game_name",
+                        "category",
+                        "visibility",
+                        "gifts_enabled",
+                        "battles_enabled"
+                    ).any(lowered::contains)
+                    val missingHashtags =
+                        missingColumn && normalizedHashtags.isNotEmpty() && lowered.contains("hashtags")
+                    when {
+                        missingMetadata && includeMetadata -> includeMetadata = false
+                        missingHashtags && includeHashtags -> includeHashtags = false
+                        else -> throw error
+                    }
                 }
             }
+            if (!inserted) throw insertError ?: IllegalStateException("No se pudo crear el live.")
 
             val created = supabaseConfig.client.postgrest["live_streams"].select {
                 filter { eq("id", streamId) }
             }.decodeSingle<LiveStream>()
 
-            refreshActiveStreams()
             Result.success(created)
         } catch (e: Exception) {
             android.util.Log.e("LiveRepository", "Error creating live stream", e)
@@ -871,7 +1106,7 @@ class LiveRepository @Inject constructor(
 
             _currentSource.value = stream.source.toLiveSource()
             _isPaused.value = false
-            _isVideoEnabled.value = _currentSource.value != LiveSource.AUDIO
+            _isVideoEnabled.value = initialHostVideoEnabled(_currentSource.value)
             screenCaptureActive = false
             validateHostCapturePermissions()?.let { message ->
                 return@withContext Result.failure(SecurityException(message))
@@ -890,8 +1125,9 @@ class LiveRepository @Inject constructor(
             }
 
             webRTCManager?.ensureLocalTracks()
-            webRTCManager?.setAudioEnabled(_isMicEnabled.value)
+            webRTCManager?.let { applyHostOutgoingAudio(it, _isMicEnabled.value) }
             _activeSession.value = ActiveLiveSession(stream = stream, role = LiveRole.HOST, viewerCount = stream.viewerCount)
+            pendingInitialHostVideoEnabled = null
             hostSessionStartedElapsedMs = SystemClock.elapsedRealtime()
             startAdaptiveQualityMonitor()
             startService(stream = stream, role = LiveRole.HOST)
@@ -1001,11 +1237,64 @@ class LiveRepository @Inject constructor(
             else -> enabled
         }
         _isMicEnabled.value = effectiveEnabled
-        webRTCManager?.setAudioEnabled(effectiveEnabled)
+        liveMusicMixer.setMicrophoneEnabled(effectiveEnabled)
+        webRTCManager?.setAudioEnabled(effectiveEnabled || liveMusicMixer.isEnabled)
         if (session?.role == LiveRole.HOST) {
             refreshForegroundServiceType()
         }
         emitLiveState()
+    }
+
+    suspend fun prepareLiveMusic(
+        uri: Uri,
+        displayName: String,
+        startMs: Long = 0L,
+        endMs: Long? = null,
+    ): Result<LiveMusicPlaybackState> {
+        _liveMusic.value = _liveMusic.value.copy(preparing = true, error = null)
+        return liveMusicMixer.prepare(uri, startMs, endMs).mapCatching { prepared ->
+            liveMusicMixer.setMicrophoneEnabled(_isMicEnabled.value)
+            val state = LiveMusicPlaybackState(
+                displayName = displayName.trim().ifBlank { "Audio seleccionado" },
+                uri = uri.toString(),
+                durationMs = prepared.durationMs,
+                enabled = true,
+                volume = _liveMusic.value.volume.coerceIn(0f, 1f),
+                preparing = false,
+            )
+            liveMusicMixer.setVolume(state.volume)
+            liveMusicMixer.setEnabled(true)
+            webRTCManager?.setOutgoingAudioBufferCallback(liveMusicMixer)
+            webRTCManager?.setAudioEnabled(true)
+            _liveMusic.value = state
+            state
+        }.onFailure { error ->
+            _liveMusic.value = _liveMusic.value.copy(
+                preparing = false,
+                error = error.message ?: "No se pudo preparar esta canción.",
+            )
+        }
+    }
+
+    fun setLiveMusicEnabled(enabled: Boolean) {
+        val effective = enabled && _liveMusic.value.isPrepared
+        liveMusicMixer.setEnabled(effective)
+        _liveMusic.value = _liveMusic.value.copy(enabled = effective, error = null)
+        webRTCManager?.setAudioEnabled(_isMicEnabled.value || effective)
+        refreshForegroundServiceType()
+    }
+
+    fun setLiveMusicVolume(volume: Float) {
+        val normalized = volume.coerceIn(0f, 1f)
+        liveMusicMixer.setVolume(normalized)
+        _liveMusic.value = _liveMusic.value.copy(volume = normalized, error = null)
+    }
+
+    fun clearLiveMusic() {
+        liveMusicMixer.clear()
+        _liveMusic.value = LiveMusicPlaybackState()
+        webRTCManager?.setAudioEnabled(_isMicEnabled.value)
+        refreshForegroundServiceType()
     }
 
     fun setQuality(value: LiveQuality) {
@@ -1019,6 +1308,113 @@ class LiveRepository @Inject constructor(
         webRTCManager?.setCameraFilter(filter)
     }
 
+    fun setCameraAdjustments(adjustments: LiveCameraAdjustments) {
+        _cameraAdjustments.value = adjustments.normalized()
+        updateCameraFilterPerformanceForSource()
+        webRTCManager?.setCameraAdjustments(_cameraAdjustments.value)
+    }
+
+    fun setCreatorLayoutStyle(style: LiveCreatorLayoutStyle) {
+        _creatorLayoutStyle.value = style
+        livePreferences.setCreatorLayoutStyle(style)
+    }
+
+    /** Opens the real camera pipeline before a live row/session is created. */
+    suspend fun startSetupCameraPreview(): Result<Unit> = withContext(Dispatchers.IO) {
+        if (_activeSession.value != null) {
+            return@withContext Result.failure(Exception("Ya existe un live activo"))
+        }
+        if (!hasPermission(android.Manifest.permission.CAMERA)) {
+            return@withContext Result.failure(Exception("Concede permiso a la cámara para probarla"))
+        }
+        val userId = authService.getCurrentUserId()?.trim().orEmpty()
+        if (userId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+        if (!initializeWebRTC(userId)) {
+            return@withContext Result.failure(Exception("No se pudo preparar la cámara"))
+        }
+        val manager = webRTCManager
+            ?: return@withContext Result.failure(Exception("No se pudo preparar la cámara"))
+        manager.setCameraFilter(_cameraFilter.value)
+        manager.setCameraAdjustments(_cameraAdjustments.value)
+        val started = manager.startVideoAwait(
+            isScreen = false,
+            intent = null,
+            isFront = true,
+            targetWidth = 640,
+            targetHeight = 480,
+            targetFps = 20
+        )
+        setupCameraPreviewActive = started
+        if (started) Result.success(Unit)
+        else Result.failure(Exception("La cámara no pudo iniciar en este dispositivo"))
+    }
+
+    /**
+     * Starts a private MediaProjection preview without creating or publishing a LIVE row.
+     * This makes practice mode exercise the same capture pipeline used by a real broadcast.
+     */
+    suspend fun startSetupScreenPreview(intent: Intent): Result<Unit> = withContext(Dispatchers.IO) {
+        if (_activeSession.value != null) {
+            return@withContext Result.failure(Exception("Ya existe un live activo"))
+        }
+        val userId = authService.getCurrentUserId()?.trim().orEmpty()
+        if (userId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+        if (!initializeWebRTC(userId)) {
+            return@withContext Result.failure(Exception("No se pudo preparar la pantalla"))
+        }
+        val manager = webRTCManager
+            ?: return@withContext Result.failure(Exception("No se pudo preparar la pantalla"))
+        val projectionIntent = Intent(intent)
+        val started = manager.startVideoAwait(
+            isScreen = true,
+            intent = projectionIntent,
+            targetWidth = 960,
+            targetHeight = 540,
+            targetFps = 15,
+            onProjectionStopped = { setupCameraPreviewActive = false },
+        )
+        setupCameraPreviewActive = started
+        if (started) {
+            storeSetupScreenProjectionIntent(projectionIntent)
+            Result.success(Unit)
+        } else {
+            Result.failure(Exception("No se pudo iniciar la vista previa de pantalla"))
+        }
+    }
+
+    fun switchSetupCameraPreview(): Boolean {
+        if (!setupCameraPreviewActive || _activeSession.value != null) return false
+        return runCatching {
+            webRTCManager?.switchCamera() ?: false
+        }.getOrDefault(false)
+    }
+
+    suspend fun stopSetupCameraPreview() = withContext(Dispatchers.IO) {
+        if (!setupCameraPreviewActive || _activeSession.value != null) return@withContext
+        setupCameraPreviewActive = false
+        runCatching { webRTCManager?.stopVideoAwait() }
+    }
+
+    fun stopSetupCameraPreviewAsync() {
+        scope.launch { stopSetupCameraPreview() }
+    }
+
+    fun storeSetupScreenProjectionIntent(intent: Intent) {
+        synchronized(setupProjectionIntentLock) {
+            pendingSetupProjectionIntent = Intent(intent)
+        }
+    }
+
+    fun consumeSetupScreenProjectionIntent(): Intent? =
+        synchronized(setupProjectionIntentLock) {
+            pendingSetupProjectionIntent?.let(::Intent).also {
+                pendingSetupProjectionIntent = null
+            }
+        }
+
+    fun hasSetupScreenProjectionIntent(): Boolean =
+        synchronized(setupProjectionIntentLock) { pendingSetupProjectionIntent != null }
+
     fun switchCamera(): Boolean {
         val session = _activeSession.value ?: return false
         if (
@@ -1029,8 +1425,11 @@ class LiveRepository @Inject constructor(
         ) return false
         val manager = webRTCManager ?: return false
         return runCatching {
-            manager.switchCamera()
-            true
+            manager.switchCamera { succeeded ->
+                if (!succeeded) {
+                    _runtimeErrors.tryEmit("No se pudo cambiar de cámara. Inténtalo nuevamente.")
+                }
+            }
         }.getOrElse { error ->
             android.util.Log.e("LiveRepository", "Unable to switch live camera", error)
             _runtimeErrors.tryEmit("No se pudo cambiar de cámara. Inténtalo nuevamente.")
@@ -1090,7 +1489,7 @@ class LiveRepository @Inject constructor(
                     _isVideoEnabled.value = true
                     micEnabledOverride?.let { enabled ->
                         _isMicEnabled.value = enabled
-                        manager.setAudioEnabled(enabled)
+                        applyHostOutgoingAudio(manager, enabled)
                     }
                     updateSessionSource(LiveSource.CAMERA)
                     refreshForegroundServiceType()
@@ -1190,7 +1589,7 @@ class LiveRepository @Inject constructor(
                     _isVideoEnabled.value = true
                     micEnabledOverride?.let { enabled ->
                         _isMicEnabled.value = enabled
-                        manager.setAudioEnabled(enabled)
+                        applyHostOutgoingAudio(manager, enabled)
                     }
                     updateSessionSource(LiveSource.SCREEN)
                     refreshForegroundServiceType()
@@ -1285,7 +1684,7 @@ class LiveRepository @Inject constructor(
         _isVideoEnabled.value = false
         micEnabledOverride?.let { enabled ->
             _isMicEnabled.value = enabled
-            manager.setAudioEnabled(enabled)
+            applyHostOutgoingAudio(manager, enabled)
         }
         updateSessionSource(source)
         manager.setVideoSendEnabled(false, renegotiate = false)
@@ -1405,7 +1804,7 @@ class LiveRepository @Inject constructor(
                 _currentSource.value = source
                 _isVideoEnabled.value = true
                 _isMicEnabled.value = micEnabled
-                manager.setAudioEnabled(micEnabled)
+                applyHostOutgoingAudio(manager, micEnabled)
                 if (source != LiveSource.SCREEN) {
                     projectionState.clearActive()
                     screenCaptureActive = false
@@ -1433,6 +1832,257 @@ class LiveRepository @Inject constructor(
     }
 
 
+
+    /**
+     * Persists the request before advertising it over the low-latency socket.
+     * This prevents the UI from showing an accepted seat that the authoritative
+     * collaboration API later rejects because of policy or capacity.
+     */
+    fun requestGuestAccess() {
+        val session = _activeSession.value ?: return
+        if (session.role != LiveRole.VIEWER) return
+        if (_guestAccessState.value.status == LiveGuestRequestStatus.ACCEPTED ||
+            _guestAccessState.value.status == LiveGuestRequestStatus.PENDING
+        ) {
+            return
+        }
+        if (socket?.connected() != true) {
+            _guestAccessState.value = LiveGuestAccessState(
+                status = LiveGuestRequestStatus.NONE,
+                message = "Reconectando al directo…"
+            )
+            _runtimeErrors.tryEmit("Espera un momento mientras se reconecta el directo.")
+            return
+        }
+        _guestAccessState.value = LiveGuestAccessState(
+            status = LiveGuestRequestStatus.PENDING,
+            message = "Enviando solicitud…"
+        )
+        scope.launch(Dispatchers.IO) {
+            requestToJoinLive(session.stream.id)
+                .onSuccess {
+                    val active = _activeSession.value
+                    if (active?.role != LiveRole.VIEWER || active.stream.id != session.stream.id) {
+                        return@onSuccess
+                    }
+                    val activeSocket = socket
+                    if (activeSocket?.connected() == true) {
+                        activeSocket.emit(
+                            "live-guest-request",
+                            org.json.JSONObject().put("liveId", session.stream.id)
+                        )
+                        _guestAccessState.value = LiveGuestAccessState(
+                            status = LiveGuestRequestStatus.PENDING,
+                            message = "Solicitud enviada al anfitrión."
+                        )
+                    } else {
+                        _guestAccessState.value = LiveGuestAccessState(
+                            status = LiveGuestRequestStatus.NONE,
+                            message = "La solicitud quedó guardada; reconecta para avisar al anfitrión."
+                        )
+                        _runtimeErrors.tryEmit("Se perdió la conexión mientras se enviaba la solicitud.")
+                    }
+                }
+                .onFailure { error ->
+                    android.util.Log.w("LiveRepository", "Unable to persist guest request", error)
+                    _guestAccessState.value = LiveGuestAccessState(
+                        status = LiveGuestRequestStatus.NONE,
+                        message = "No se pudo enviar la solicitud."
+                    )
+                    _runtimeErrors.tryEmit("No se pudo enviar la solicitud para unirte.")
+                }
+        }
+    }
+
+    fun cancelGuestAccessRequest() {
+        val session = _activeSession.value ?: return
+        if (session.role != LiveRole.VIEWER) return
+        socket?.emit(
+            "live-guest-cancel",
+            org.json.JSONObject().put("liveId", session.stream.id)
+        )
+        _guestAccessState.value = LiveGuestAccessState(
+            status = LiveGuestRequestStatus.NONE,
+            message = "Solicitud cancelada."
+        )
+    }
+
+    fun respondToGuestRequest(socketId: String, accepted: Boolean) {
+        val session = _activeSession.value ?: return
+        if (session.role != LiveRole.HOST || socketId.isBlank()) return
+        val request = _guestRequests.value.firstOrNull { it.socketId == socketId }
+        if (request == null) {
+            _runtimeErrors.tryEmit("La solicitud ya no está disponible.")
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val invitation = _guestInvitations.value.firstOrNull {
+                it.inviteeUserId == request.userId && it.status.equals("pending", ignoreCase = true)
+            } ?: refreshGuestInvitations(session.stream.id).getOrNull()?.firstOrNull {
+                it.inviteeUserId == request.userId && it.status.equals("pending", ignoreCase = true)
+            }
+            if (invitation == null) {
+                _runtimeErrors.tryEmit("La solicitud venció o ya fue respondida.")
+                refreshGuestInvitations(session.stream.id)
+                return@launch
+            }
+
+            respondToGuestInvitation(session.stream.id, invitation.id, accepted)
+                .onSuccess {
+                    _guestRequests.update { current -> current.filterNot { it.socketId == socketId } }
+                    socket?.emit(
+                        "live-guest-response",
+                        org.json.JSONObject().apply {
+                            put("liveId", session.stream.id)
+                            put("targetSocketId", socketId)
+                            put("accepted", accepted)
+                        }
+                    )
+                }
+                .onFailure { error ->
+                    android.util.Log.w("LiveRepository", "Unable to persist guest response", error)
+                    _runtimeErrors.tryEmit("No se pudo responder la solicitud.")
+                }
+        }
+    }
+
+    fun startGuestBroadcast(videoEnabled: Boolean, micEnabled: Boolean): Boolean {
+        val session = _activeSession.value ?: return false
+        if (session.role != LiveRole.VIEWER ||
+            _guestAccessState.value.status != LiveGuestRequestStatus.ACCEPTED
+        ) {
+            return false
+        }
+        if (micEnabled && !hasPermission(android.Manifest.permission.RECORD_AUDIO)) {
+            _runtimeErrors.tryEmit("Concede permiso al micrófono para participar en el directo.")
+            return false
+        }
+        if (videoEnabled && !hasPermission(android.Manifest.permission.CAMERA)) {
+            _runtimeErrors.tryEmit("Concede permiso a la cámara para participar en el directo.")
+            return false
+        }
+
+        val manager = webRTCManager ?: return false
+        _isGuestMicEnabled.value = micEnabled
+        _isGuestVideoEnabled.value = videoEnabled
+        _isGuestBroadcasting.value = true
+        manager.ensureLocalTracks()
+        manager.setAudioEnabled(micEnabled)
+        manager.setVideoSendEnabled(videoEnabled, renegotiate = false)
+        if (!videoEnabled) {
+            manager.stopVideo()
+            return true
+        }
+
+        val quality = _quality.value
+        manager.startVideo(
+            isScreen = false,
+            isFront = true,
+            targetWidth = quality.width,
+            targetHeight = quality.height,
+            targetFps = 24,
+            onComplete = { started ->
+                _isGuestBroadcasting.value = started
+                if (!started) {
+                    _isGuestVideoEnabled.value = false
+                    manager.setVideoSendEnabled(false, renegotiate = false)
+                    _runtimeErrors.tryEmit("No se pudo iniciar la cámara del invitado.")
+                } else {
+                    manager.setVideoSendEnabled(true)
+                }
+            }
+        )
+        return true
+    }
+
+    fun setGuestMicEnabled(enabled: Boolean) {
+        if (!_isGuestBroadcasting.value) return
+        if (enabled && !hasPermission(android.Manifest.permission.RECORD_AUDIO)) {
+            _runtimeErrors.tryEmit("Concede permiso al micrófono para activarlo.")
+            return
+        }
+        _isGuestMicEnabled.value = enabled
+        webRTCManager?.setAudioEnabled(enabled)
+    }
+
+    fun setGuestVideoEnabled(enabled: Boolean): Boolean {
+        if (!_isGuestBroadcasting.value) return false
+        if (enabled && !hasPermission(android.Manifest.permission.CAMERA)) {
+            _runtimeErrors.tryEmit("Concede permiso a la cámara para activarla.")
+            return false
+        }
+        _isGuestVideoEnabled.value = enabled
+        val manager = webRTCManager ?: return false
+        if (enabled && !manager.hasLocalVideoTrack()) {
+            val quality = _quality.value
+            manager.startVideo(
+                isScreen = false,
+                isFront = true,
+                targetWidth = quality.width,
+                targetHeight = quality.height,
+                targetFps = 24,
+                onComplete = { started ->
+                    _isGuestVideoEnabled.value = started
+                    manager.setVideoSendEnabled(started)
+                    if (!started) _runtimeErrors.tryEmit("No se pudo activar la cámara.")
+                }
+            )
+        } else {
+            manager.setVideoEnabled(enabled)
+        }
+        return true
+    }
+
+    fun leaveGuestSeat() {
+        stopGuestMedia(emitLeave = true)
+        _guestAccessState.value = LiveGuestAccessState(
+            status = LiveGuestRequestStatus.NONE,
+            message = "Saliste de la sala multi-host."
+        )
+    }
+
+    private fun stopGuestMedia(emitLeave: Boolean) {
+        val session = _activeSession.value
+        if (_isGuestBroadcasting.value || _localVideoTrack.value != null) {
+            webRTCManager?.setAudioEnabled(false)
+            webRTCManager?.setVideoSendEnabled(false, renegotiate = false)
+            webRTCManager?.stopVideo()
+        }
+        _isGuestBroadcasting.value = false
+        _isGuestMicEnabled.value = true
+        _isGuestVideoEnabled.value = true
+        if (emitLeave && session?.role == LiveRole.VIEWER) {
+            socket?.emit(
+                "live-guest-leave",
+                org.json.JSONObject().put("liveId", session.stream.id)
+            )
+        }
+    }
+
+    fun startBattle(opponentSocketId: String, durationSeconds: Int) {
+        val session = _activeSession.value ?: return
+        if (session.role != LiveRole.HOST || !session.stream.battlesEnabled) return
+        socket?.emit(
+            "live-battle-start",
+            org.json.JSONObject().apply {
+                put("liveId", session.stream.id)
+                put("targetSocketId", opponentSocketId)
+                put("durationSeconds", durationSeconds.coerceIn(30, 600))
+            }
+        )
+    }
+
+    fun respondToBattle(accepted: Boolean) {
+        val session = _activeSession.value ?: return
+        if (session.role != LiveRole.VIEWER) return
+        socket?.emit(
+            "live-battle-response",
+            org.json.JSONObject().apply {
+                put("liveId", session.stream.id)
+                put("accepted", accepted)
+            }
+        )
+    }
 
     suspend fun sendComment(content: String): Result<Unit> = withContext(Dispatchers.IO) {
         var session = _activeSession.value ?: return@withContext Result.failure(Exception("No hay live activo"))
@@ -1586,10 +2236,7 @@ class LiveRepository @Inject constructor(
             receiverId = receipt.receiverId,
             gift = receipt.gift
         )
-        if (_giftEvents.value.none { it.transactionId == event.transactionId }) {
-            _giftEvents.update { (it + event).takeLast(4) }
-            scheduleGiftExpiry(event)
-        }
+        giftEventStore.record(event, activeLiveId)
         if (!receipt.isPublic) {
             return
         }
@@ -1963,8 +2610,16 @@ class LiveRepository @Inject constructor(
                 _runtimeErrors.tryEmit("El motor del live no está preparado.")
                 return
             }
-            webRTCManager?.setRemoteAudioPlaybackEnabled(role == LiveRole.VIEWER)
-            webRTCManager?.setAudioEnabled(role == LiveRole.HOST && _isMicEnabled.value)
+            // The host must hear an accepted multi-host guest as soon as that
+            // participant publishes audio. Viewers still keep local capture off.
+            webRTCManager?.setRemoteAudioPlaybackEnabled(true)
+            liveMusicMixer.setMicrophoneEnabled(_isMicEnabled.value)
+            webRTCManager?.setOutgoingAudioBufferCallback(
+                liveMusicMixer.takeIf { role == LiveRole.HOST && it.hasPreparedMusic }
+            )
+            webRTCManager?.setAudioEnabled(
+                role == LiveRole.HOST && (_isMicEnabled.value || liveMusicMixer.isEnabled)
+            )
             webRTCManager?.setVideoSendEnabled(
                 enabled = role == LiveRole.HOST && !_isPaused.value && _isVideoEnabled.value,
                 renegotiate = false
@@ -1978,6 +2633,7 @@ class LiveRepository @Inject constructor(
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
                 timeout = 10_000
                 transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
+                attachSignalingAffinity("live", liveId)
                 attachBearerToken(authService.getAccessToken())
             }
             val endpointBaseUrl = conectate.com.data.localfallback.RuntimeBackendEndpoint.baseUrl
@@ -2141,6 +2797,125 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("viewer-count", it) }
             }
 
+            createdSocket.on("live-guest-requests") { args ->
+                if (socket !== createdSocket || role != LiveRole.HOST) return@on
+                runCatching {
+                    val array = args.firstOrNull() as? org.json.JSONArray ?: return@runCatching
+                    _guestRequests.value = buildList {
+                        for (index in 0 until array.length()) {
+                            val item = array.optJSONObject(index) ?: continue
+                            val socketId = item.optString("socketId").trim()
+                            val guestUserId = item.optString("userId").trim()
+                            if (socketId.isBlank() || guestUserId.isBlank()) continue
+                            add(
+                                LiveGuestRequest(
+                                    socketId = socketId,
+                                    userId = guestUserId,
+                                    name = item.optString("name", "Usuario").ifBlank { "Usuario" },
+                                    avatarUrl = item.optString("avatarUrl").takeIf { it.isNotBlank() },
+                                    requestedAtMs = item.optLong("requestedAtMs", System.currentTimeMillis())
+                                )
+                            )
+                        }
+                    }
+                }.onFailure { logMalformedSignal("live-guest-requests", it) }
+            }
+
+            createdSocket.on("live-guest-request") { args ->
+                if (socket !== createdSocket || role != LiveRole.HOST) return@on
+                runCatching {
+                    val item = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    val socketId = item.optString("socketId").trim()
+                    val guestUserId = item.optString("userId").trim()
+                    if (socketId.isBlank() || guestUserId.isBlank()) return@runCatching
+                    val request = LiveGuestRequest(
+                        socketId = socketId,
+                        userId = guestUserId,
+                        name = item.optString("name", "Usuario").ifBlank { "Usuario" },
+                        avatarUrl = item.optString("avatarUrl").takeIf { it.isNotBlank() },
+                        requestedAtMs = item.optLong("requestedAtMs", System.currentTimeMillis())
+                    )
+                    _guestRequests.update { current ->
+                        (current.filterNot { it.socketId == request.socketId } + request)
+                            .sortedBy { it.requestedAtMs }
+                    }
+                }.onFailure { logMalformedSignal("live-guest-request", it) }
+            }
+
+            createdSocket.on("live-guests") { args ->
+                if (socket !== createdSocket) return@on
+                runCatching {
+                    val array = args.firstOrNull() as? org.json.JSONArray ?: return@runCatching
+                    val previousSocketIds = _activeGuests.value.mapTo(mutableSetOf()) { it.socketId }
+                    val currentSocketIds = mutableSetOf<String>()
+                    val guests = buildList {
+                        for (index in 0 until array.length()) {
+                            val item = array.optJSONObject(index) ?: continue
+                            val guestSocketId = item.optString("socketId").trim()
+                            val guestUserId = item.optString("userId").trim()
+                            if (guestSocketId.isBlank() || guestUserId.isBlank()) continue
+                            currentSocketIds += guestSocketId
+                            add(
+                                LiveGuestParticipant(
+                                    socketId = guestSocketId,
+                                    userId = guestUserId,
+                                    name = item.optString("name", "Invitado").ifBlank { "Invitado" },
+                                    avatarUrl = item.optString("avatarUrl").takeIf { it.isNotBlank() }
+                                )
+                            )
+                            if (guestSocketId != createdSocket.id()) {
+                                webRTCManager?.onUserJoined(guestSocketId, guestUserId)
+                            }
+                        }
+                    }
+                    (previousSocketIds - currentSocketIds)
+                        .filterNot { it == createdSocket.id() }
+                        .forEach { webRTCManager?.onUserLeft(it) }
+                    _activeGuests.value = guests
+                    if (role == LiveRole.HOST) {
+                        _guestRequests.update { requests ->
+                            requests.filterNot { request -> currentSocketIds.contains(request.socketId) }
+                        }
+                    }
+                }.onFailure { logMalformedSignal("live-guests", it) }
+            }
+
+            createdSocket.on("live-guest-status") { args ->
+                if (socket !== createdSocket || role != LiveRole.VIEWER) return@on
+                runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    val status = when (data.optString("status").trim().lowercase()) {
+                        "pending" -> LiveGuestRequestStatus.PENDING
+                        "accepted" -> LiveGuestRequestStatus.ACCEPTED
+                        "rejected" -> LiveGuestRequestStatus.REJECTED
+                        else -> LiveGuestRequestStatus.NONE
+                    }
+                    _guestAccessState.value = LiveGuestAccessState(
+                        status = status,
+                        message = data.optString("message").trim().takeIf { it.isNotBlank() }
+                    )
+                    if (status != LiveGuestRequestStatus.ACCEPTED) {
+                        stopGuestMedia(emitLeave = false)
+                    }
+                }.onFailure { logMalformedSignal("live-guest-status", it) }
+            }
+
+            createdSocket.on("live-battle-state") { args ->
+                if (socket !== createdSocket) return@on
+                runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    _battleState.value = data.toLiveBattleState()
+                }.onFailure { logMalformedSignal("live-battle-state", it) }
+            }
+
+            createdSocket.on("live-battle-invitation") { args ->
+                if (socket !== createdSocket || role != LiveRole.VIEWER) return@on
+                runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    _battleState.value = data.toLiveBattleState().copy(status = LiveBattleStatus.INVITED)
+                }.onFailure { logMalformedSignal("live-battle-invitation", it) }
+            }
+
             createdSocket.on("live-state") { args ->
                 if (socket !== createdSocket) return@on
                 if (role != LiveRole.VIEWER) return@on
@@ -2191,6 +2966,31 @@ class LiveRepository @Inject constructor(
                     data?.optString("message")?.trim().orEmpty()
                 }.getOrDefault("").ifBlank {
                     "Este directo continúa desde otro dispositivo."
+                }
+                scope.launch {
+                    if (!_activeSession.value?.stream?.id.equals(liveId, ignoreCase = true)) {
+                        return@launch
+                    }
+                    closeCoordinator.closeOnce {
+                        disconnectAndClear()
+                        Result.success(Unit)
+                    }
+                    _runtimeErrors.emit(message)
+                }
+            }
+
+            // The signaling server rejected this host join before adding the
+            // socket to the room because another process still owns the Redis
+            // lease. Treat it exactly as a device replacement so the host UI
+            // never remains stuck in a falsely active Live session.
+            createdSocket.on("live-host-conflict") { args ->
+                if (socket !== createdSocket || role != LiveRole.HOST) return@on
+                completeLiveEndConfirmation(liveId, confirmed = false)
+                val message = runCatching {
+                    val data = args.firstOrNull() as? org.json.JSONObject
+                    data?.optString("message")?.trim().orEmpty()
+                }.getOrDefault("").ifBlank {
+                    "Este directo ya tiene un anfitrión activo. Inténtalo de nuevo en unos segundos."
                 }
                 scope.launch {
                     if (!_activeSession.value?.stream?.id.equals(liveId, ignoreCase = true)) {
@@ -2372,10 +3172,7 @@ class LiveRepository @Inject constructor(
                             priceDiamonds = giftData.optInt("priceDiamonds", 0).coerceAtLeast(0)
                         )
                     )
-                    if (_giftEvents.value.none { it.transactionId == transactionId }) {
-                        _giftEvents.update { (it + event).takeLast(4) }
-                        scheduleGiftExpiry(event)
-                    }
+                    giftEventStore.record(event, _activeSession.value?.stream?.id.orEmpty())
                 }.onFailure { logMalformedSignal("gift", it) }
             }
 
@@ -2504,13 +3301,24 @@ class LiveRepository @Inject constructor(
                 webRTCManager = WebRTCManager(
                     context = context,
                     signalingEvents = events,
-                    accessTokenProvider = { authService.getAccessToken() }
+                    accessTokenProvider = { authService.getAccessToken() },
+                    failureReporter = { metric, throwable ->
+                        appMetrics.recordFailure(
+                            metric = metric,
+                            throwable = throwable.takeIf { metric == "webrtc_init" },
+                            attributes = mapOf("errorType" to throwable::class.java.simpleName)
+                        )
+                    }
                 ).also { created ->
+                    created.setOutgoingAudioBufferCallback(
+                        liveMusicMixer.takeIf { it.hasPreparedMusic }
+                    )
                     created.setCurrentUser(userId, "")
                     created.setCameraFilterPerformanceListener { state ->
                         onCameraFilterPerformanceChanged(state)
                     }
                     created.setCameraFilter(_cameraFilter.value)
+                    created.setCameraAdjustments(_cameraAdjustments.value)
                     created.refreshManagedIceServers()
                     _isMediaReady.value = true
                     _eglBaseContext.value = created.getEglBaseContext()
@@ -2537,6 +3345,7 @@ class LiveRepository @Inject constructor(
                 manager.hardResetAwait()
                 manager.setCurrentUser(userId, "")
                 manager.setCameraFilter(_cameraFilter.value)
+                manager.setCameraAdjustments(_cameraAdjustments.value)
                 manager.refreshManagedIceServers()
                 _isMediaReady.value = true
                 _eglBaseContext.value = manager.getEglBaseContext()
@@ -2550,6 +3359,14 @@ class LiveRepository @Inject constructor(
             _remoteVideoTracks.value = emptyMap()
             false
         }
+    }
+
+    private fun applyHostOutgoingAudio(manager: WebRTCManager, micEnabled: Boolean) {
+        liveMusicMixer.setMicrophoneEnabled(micEnabled)
+        manager.setOutgoingAudioBufferCallback(
+            liveMusicMixer.takeIf { it.hasPreparedMusic }
+        )
+        manager.setAudioEnabled(micEnabled || liveMusicMixer.isEnabled)
     }
 
     private fun onCameraFilterPerformanceChanged(state: LiveFilterPerformanceState) {
@@ -2568,7 +3385,11 @@ class LiveRepository @Inject constructor(
         ) {
             LiveFilterPerformanceState.NOT_APPLIED_TO_SCREEN
         } else {
-            _cameraFilter.value.toDefaultPerformanceState()
+            if (_cameraFilter.value == LiveCameraFilter.NONE && !_cameraAdjustments.value.hasVisibleEffect) {
+                LiveFilterPerformanceState.NATURAL
+            } else {
+                LiveFilterPerformanceState.FULL
+            }
         }
     }
 
@@ -2781,8 +3602,6 @@ class LiveRepository @Inject constructor(
             pendingReactionUserId = ""
             localReactionBatches.clear()
         }
-        giftExpiryJobs.values.toList().forEach { it.cancel() }
-        giftExpiryJobs.clear()
 
         val channelToClose = commentsChannel
         commentsChannel = null
@@ -2823,11 +3642,19 @@ class LiveRepository @Inject constructor(
         _comments.value = emptyList()
         _reactions.value = emptyList()
         _reactionCount.value = 0L
-        _giftEvents.value = emptyList()
+        giftEventStore.clear()
         _viewerCount.value = 0
         _liveViewers.value = emptyList()
+        _guestRequests.value = emptyList()
+        _activeGuests.value = emptyList()
+        _guestAccessState.value = LiveGuestAccessState()
+        _isGuestBroadcasting.value = false
+        _isGuestMicEnabled.value = true
+        _isGuestVideoEnabled.value = true
+        _battleState.value = LiveBattleState()
         _guestInvitations.value = emptyList()
         _activeBattle.value = null
+        _battleCandidates.value = emptyList()
         _collaborationCapabilities.value = LiveCollaborationCapabilities()
         _moderationState.value = LiveModerationState()
         _isMicEnabled.value = true
@@ -2851,16 +3678,6 @@ class LiveRepository @Inject constructor(
             delay(ttlMs)
             _reactions.update { it.filterNot { r -> r.id == id } }
             reactionExpiryJobs.remove(id)?.cancel()
-        }
-    }
-
-    private fun scheduleGiftExpiry(event: LiveGiftEvent) {
-        val id = event.transactionId.trim()
-        if (id.isBlank() || giftExpiryJobs.containsKey(id)) return
-        giftExpiryJobs[id] = scope.launch {
-            delay(4_500L)
-            _giftEvents.update { it.filterNot { gift -> gift.transactionId == id } }
-            giftExpiryJobs.remove(id)?.cancel()
         }
     }
 
@@ -3003,7 +3820,7 @@ class LiveRepository @Inject constructor(
         var type = 0
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            _isMicEnabled.value &&
+            (_isMicEnabled.value || liveMusicMixer.isEnabled) &&
             hasPermission(android.Manifest.permission.RECORD_AUDIO)
         ) {
             type = type or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
@@ -3234,7 +4051,9 @@ class LiveRepository @Inject constructor(
     }
 
     private fun validateHostCapturePermissions(): String? {
-        if (_isMicEnabled.value && !hasPermission(android.Manifest.permission.RECORD_AUDIO)) {
+        if ((_isMicEnabled.value || liveMusicMixer.isEnabled) &&
+            !hasPermission(android.Manifest.permission.RECORD_AUDIO)
+        ) {
             return "Falta el permiso del micrófono para iniciar el live."
         }
         if (
@@ -3274,6 +4093,28 @@ class LiveRepository @Inject constructor(
             trim().equals("audio", ignoreCase = true) -> LiveSource.AUDIO
             else -> LiveSource.CAMERA
         }
+    }
+
+    private fun org.json.JSONObject.toLiveBattleState(): LiveBattleState {
+        val status = when (optString("status").trim().lowercase()) {
+            "invited" -> LiveBattleStatus.INVITED
+            "active" -> LiveBattleStatus.ACTIVE
+            "finished" -> LiveBattleStatus.FINISHED
+            "rejected" -> LiveBattleStatus.REJECTED
+            else -> LiveBattleStatus.NONE
+        }
+        return LiveBattleState(
+            status = status,
+            opponentSocketId = optString("opponentSocketId").trim(),
+            opponentUserId = optString("opponentUserId").trim(),
+            opponentName = optString("opponentName").trim(),
+            opponentAvatarUrl = optString("opponentAvatarUrl").trim().takeIf { it.isNotBlank() },
+            hostScore = optInt("hostScore", 0).coerceAtLeast(0),
+            opponentScore = optInt("opponentScore", 0).coerceAtLeast(0),
+            durationSeconds = optInt("durationSeconds", 180).coerceIn(30, 600),
+            startedAtMs = optLong("startedAtMs", 0L).coerceAtLeast(0L),
+            message = optString("message").trim().takeIf { it.isNotBlank() }
+        )
     }
 }
 

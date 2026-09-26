@@ -50,7 +50,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
@@ -59,8 +59,8 @@ import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.RotateRight
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.RotateRight
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Visibility
@@ -417,15 +417,24 @@ private fun KeepMediaCanvasFixedWhileTyping() {
     val dialogView = LocalView.current
     DisposableEffect(dialogView) {
         val window = (dialogView.parent as? DialogWindowProvider)?.window
-        val previousMode = window?.attributes?.softInputMode
+        val usesLegacyResize = Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+        val previousMode = window?.attributes?.softInputMode?.takeIf { usesLegacyResize }
         // Let Compose receive the IME inset so the action row stays above the
         // keyboard on short and tall devices. ADJUST_NOTHING caused the send
-        // controls to be painted underneath the keyboard on several OEMs.
-        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        // controls to be painted underneath the keyboard on several OEMs. On
+        // Android 11+ decorFitsSystemWindows=false + imePadding is authoritative.
+        if (usesLegacyResize) window?.enableLegacyImeResize()
         onDispose {
             if (previousMode != null) window?.setSoftInputMode(previousMode)
         }
     }
+}
+
+@Suppress("DEPRECATION")
+private fun android.view.Window.enableLegacyImeResize() {
+    // API 24-29 require this flag; the constant is deprecated only because
+    // edge-to-edge/insets replaced it on newer Android versions.
+    setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 }
 
 @Composable
@@ -741,7 +750,7 @@ private fun MessageEditorStep(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack, enabled = !isSending) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Galería", tint = Color.White)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Galería", tint = Color.White)
             }
             LazyRow(
                 modifier = Modifier.weight(1f),
@@ -761,7 +770,7 @@ private fun MessageEditorStep(
                 }
                 if (active.type == "image") {
                     item {
-                        RoundToolButton(Icons.Default.RotateRight, "Girar") {
+                        RoundToolButton(Icons.AutoMirrored.Filled.RotateRight, "Girar") {
                             onEditChange(active.uri, edit.copy(rotateQuarterTurns = (edit.rotateQuarterTurns + 1) % 4))
                         }
                     }
@@ -970,12 +979,12 @@ private fun MessageEditorStep(
                 FloatingActionButton(
                     onClick = { if (!isSending) onSend() },
                     containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = Color.White
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
                     if (isSending) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.Default.Send, contentDescription = confirmContentDescription)
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = confirmContentDescription)
                     }
                 }
             }

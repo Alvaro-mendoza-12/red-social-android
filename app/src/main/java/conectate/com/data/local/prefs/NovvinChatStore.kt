@@ -14,7 +14,7 @@ private val Context.novvinChatDataStore by preferencesDataStore(name = "novvin_c
 
 @Singleton
 class NovvinChatStore @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     suspend fun load(userId: String): String? =
         context.novvinChatDataStore.data.first()[keyFor(userId)]

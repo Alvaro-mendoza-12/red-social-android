@@ -27,7 +27,9 @@ import javax.inject.Inject
 @HiltViewModel
 class VoiceRoomActiveViewModel @Inject constructor(
     private val voiceRoomRepository: VoiceRoomRepository,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val userRepository: conectate.com.data.repository.UserRepository,
+    private val messageRepository: conectate.com.data.repository.MessageRepository,
 ) : ViewModel() {
     private companion object {
         const val REACTION_VISIBLE_MS = 5_400L
@@ -118,13 +120,26 @@ class VoiceRoomActiveViewModel @Inject constructor(
     private val _inviteQuery = MutableStateFlow("")
     val inviteQuery: StateFlow<String> = _inviteQuery.asStateFlow()
 
-    private val _inviteResults = MutableStateFlow<List<UserInvite>>(emptyList())
-    val inviteResults: StateFlow<List<UserInvite>> = _inviteResults.asStateFlow()
-
-    private val _isSearchingInvites = MutableStateFlow(false)
-    val isSearchingInvites: StateFlow<Boolean> = _isSearchingInvites.asStateFlow()
+    private val inviteSearch = conectate.com.presentation.search.UnifiedSearchController<UserInvite, Unit>(viewModelScope,
+        findUsers = { term ->
+            val account = authService.getCurrentUserId()
+            userRepository.searchUsers(term).map { users ->
+                check(account == authService.getCurrentUserId())
+                users.filterNot { it.id == account }.distinctBy { it.id }.map {
+                    UserInvite(it.id, it.displayName?.takeIf(String::isNotBlank) ?: it.username?.takeIf(String::isNotBlank) ?: it.full_name?.takeIf(String::isNotBlank) ?: "Usuario", it.avatar_url)
+                }
+            }
+        }, findContent = { Result.success(emptyList()) })
+    val inviteResults = inviteSearch.users
+    val isSearchingInvites = inviteSearch.loading
+    val inviteSearchError = inviteSearch.usersError
+    private val _invitingId = MutableStateFlow<String?>(null)
+    val invitingId = _invitingId.asStateFlow()
+    private val _inviteNotice = MutableStateFlow<String?>(null)
+    val inviteNotice = _inviteNotice.asStateFlow()
 
     private var joinedRoomId: String? = null
+    private var pendingPasswordRoomId: String? = null
     private var stageSyncJob: Job? = null
 
     init {
@@ -189,9 +204,18 @@ class VoiceRoomActiveViewModel @Inject constructor(
                 _videoMode.value = session.videoMode
                 _isMuted.value = session.isMuted
                 if (session.connectionState == conectate.com.data.repository.VoiceConnectionState.ERROR) {
-                    _joinError.value = session.connectionError ?: "No se pudo conectar con la sala de voz."
+                    val error = session.connectionError ?: "No se pudo conectar con la sala de voz."
+                    _joinError.value = error
+                    if (_room.value?.passwordRequired == true && error.contains("VOICE_ROOM_ACCESS_DENIED")) {
+                        pendingPasswordRoomId = _room.value?.id
+                        _passwordError.value = "La contraseña no es correcta."
+                        _showPasswordPrompt.value = true
+                    }
                 } else if (session.isConnected) {
                     _joinError.value = null
+                    _passwordError.value = null
+                    _showPasswordPrompt.value = false
+                    pendingPasswordRoomId = null
                 }
                 session.room?.let { _room.value = it }
             }
@@ -227,7 +251,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
         return voiceRoomRepository.getEglBaseContext()
     }
 
-    fun joinRoom(roomId: String) {
+    fun joinRoom(roomId: String, password: String? = null) {
         viewModelScope.launch {
             _joinError.value = null
             val seed = authService.getCurrentUserProfileSeed()
@@ -242,6 +266,20 @@ class VoiceRoomActiveViewModel @Inject constructor(
                 val roomResult = voiceRoomRepository.getRoomById(roomId)
                 val resolvedRoom = roomResult.getOrThrow()
                 _room.value = resolvedRoom
+                val isCreator = resolvedRoom.creatorId.trim().equals(userId.trim(), ignoreCase = true)
+                if (resolvedRoom.passwordRequired && !isCreator && password == null) {
+                    pendingPasswordRoomId = resolvedRoom.id
+                    _passwordError.value = null
+                    _showPasswordPrompt.value = true
+                    return@launch
+                }
+                if (resolvedRoom.passwordRequired && !isCreator && password.isNullOrEmpty()) {
+                    _passwordError.value = "Escribe la contraseña de la sala."
+                    _showPasswordPrompt.value = true
+                    return@launch
+                }
+                _showPasswordPrompt.value = false
+                _passwordError.value = null
                 if (joinedRoomId == resolvedRoom.id && _isJoined.value) return@launch
                 joinedRoomId = resolvedRoom.id
 
@@ -261,7 +299,8 @@ class VoiceRoomActiveViewModel @Inject constructor(
                     displayName = displayName,
                     avatarUrl = seed?.avatarUrl,
                     signalingRoomId = roomId,
-                    startMuted = startMuted
+                    startMuted = startMuted,
+                    roomPassword = password
                 )
                 if (resolvedRoom.isStageMode()) {
                     startStageSync(resolvedRoom.id)
@@ -563,7 +602,13 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     fun validatePassword(password: String) {
+        val roomId = pendingPasswordRoomId ?: _room.value?.id ?: return
+        if (password.isEmpty()) {
+            _passwordError.value = "Escribe la contraseña de la sala."
+            return
+        }
         _showPasswordPrompt.value = false
+        joinRoom(roomId, password)
     }
 
     fun markChatRead() {
@@ -586,23 +631,29 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     fun onInviteQueryChanged(query: String) {
-        _inviteQuery.value = query
-        viewModelScope.launch {
-            if (query.isNotBlank()) {
-                _isSearchingInvites.value = true
-                // Search users
-                kotlinx.coroutines.delay(500)
-                _inviteResults.value = emptyList()
-                _isSearchingInvites.value = false
-            } else {
-                _inviteResults.value = emptyList()
-            }
-        }
+        _inviteQuery.value = query.take(120)
+        inviteSearch.search(_inviteQuery.value)
     }
 
     fun inviteUser(user: UserInvite) {
+        val room = _room.value ?: return
+        val account = authService.getCurrentUserId() ?: return
+        if (_invitingId.value != null) return
+        _invitingId.value = user.id
+        _inviteNotice.value = null
         viewModelScope.launch {
-            // Send invite via signaling
+            try {
+                kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                    val chat = messageRepository.getOrCreateChat(user.id).getOrThrow()
+                    check(account == authService.getCurrentUserId())
+                    messageRepository.sendMessage(chat.id,
+                        "Te invito a la sala de voz ${room.name}.\nID de sala: ${room.readableId ?: room.id}\nPuedes encontrarla en Social · Salas de voz con este ID.").getOrThrow()
+                } ?: error("La invitación tardó demasiado.")
+                if (account == authService.getCurrentUserId()) _inviteNotice.value = "Invitación añadida al chat con ${user.displayName}."
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+            } catch (_: Exception) {
+                if (account == authService.getCurrentUserId()) _inviteNotice.value = "No se confirmó el envío. Revisa la conversación antes de reintentar."
+            } finally { _invitingId.value = null }
         }
     }
 

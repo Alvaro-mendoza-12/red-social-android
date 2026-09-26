@@ -11,8 +11,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -52,6 +53,8 @@ fun LiveDiscoveryScreen(
     val myHistory by viewModel.myLiveHistory.collectAsStateWithLifecycle()
     val uploadProgress by viewModel.replayUploadProgress.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val isLoadingStreams by viewModel.isLoadingStreams.collectAsStateWithLifecycle()
+    val streamsLoadError by viewModel.streamsLoadError.collectAsStateWithLifecycle()
     var selectedTab by remember { mutableIntStateOf(0) }
     var pendingReplayLiveId by remember { mutableStateOf<String?>(null) }
     val replayPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -75,7 +78,12 @@ fun LiveDiscoveryScreen(
                 title = { Text("Transmisiones en Vivo", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = viewModel::refreshStreams, enabled = !isLoadingStreams) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Actualizar directos")
                     }
                 }
             )
@@ -91,7 +99,7 @@ fun LiveDiscoveryScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
+            PrimaryTabRow(selectedTabIndex = selectedTab) {
                 listOf("En vivo", "Repeticiones", "Mis directos").forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTab == index,
@@ -100,9 +108,26 @@ fun LiveDiscoveryScreen(
                     )
                 }
             }
+            if (selectedTab == 0 && isLoadingStreams && activeStreams.isNotEmpty()) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            if (selectedTab == 0 && streamsLoadError != null && activeStreams.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "La lista puede estar desactualizada.",
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(onClick = viewModel::refreshStreams) { Text("Reintentar") }
+                }
+            }
             if (uploadProgress > 0f) {
                 LinearProgressIndicator(
-                    progress = uploadProgress,
+                    progress = { uploadProgress },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -113,22 +138,35 @@ fun LiveDiscoveryScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.Wifi,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
+                    if (selectedTab == 0 && isLoadingStreams) {
+                        CircularProgressIndicator()
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Wifi,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = when (selectedTab) {
                             1 -> "Todavía no hay repeticiones publicadas"
                             2 -> "Aún no has finalizado ningún directo"
-                            else -> "No hay transmisiones activas"
+                            else -> when {
+                                isLoadingStreams -> "Buscando directos…"
+                                streamsLoadError != null -> streamsLoadError.orEmpty()
+                                else -> "No hay transmisiones activas"
+                            }
                         },
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 24.dp),
                     )
+                    if (selectedTab == 0 && streamsLoadError != null && !isLoadingStreams) {
+                        TextButton(onClick = viewModel::refreshStreams) { Text("Reintentar") }
+                    }
                 }
             }
         } else {

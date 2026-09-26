@@ -3,12 +3,45 @@ FALLBACK_API_PORT=3001
 FALLBACK_EDGE_PORT=3080
 FALLBACK_REALTIME_PORT=3002
 FALLBACK_DB_PORT=5433
+# Pool de PostgreSQL para la API. Aumentar DATABASE_POOL_MAX solo después de
+# medir la base de datos y considerando todas las réplicas de la API.
+DATABASE_POOL_MAX=10
+DATABASE_POOL_MIN=0
+DATABASE_POOL_IDLE_TIMEOUT_MS=30000
+DATABASE_POOL_CONNECTION_TIMEOUT_MS=10000
+# Tiempo máximo por sentencia durante las migraciones aditivas de arranque.
+SCHEMA_INITIALIZATION_TIMEOUT_MS=180000
+# Login, recuperación y uploads usan PostgreSQL como contador compartido entre réplicas.
 PUBLIC_BASE_URL=
+# Producción requiere un dominio HTTPS estable. Los Quick Tunnels y los
+# dominios efímeros de ngrok sólo se permiten si se declara explícitamente
+# durante una prueba controlada; no son una ruta de lanzamiento.
+ALLOW_EPHEMERAL_PUBLIC_ORIGIN=false
+# Descubrimiento rotatorio firmado. La clave privada se genera fuera del repo,
+# chmod 600, y sólo existe en el servidor. El TXT nunca publica una URL plana.
+DUCKDNS_DOMAIN=conectate-alvaro.duckdns.org
+DUCKDNS_TOKEN=
+BACKEND_DISCOVERY_PRIVATE_KEY_FILE=/home/alvaro/.config/novvin/backend-discovery-private.pem
+BACKEND_DISCOVERY_TTL_SECONDS=86400
 # En Ubuntu (deploy): ../signaling-server desde esta carpeta. En el repo Windows: ../../signaling-server
 SIGNALING_CONTEXT=../signaling-server
 JWT_SECRET=change-this-with-openssl-rand-hex-32
+# Mantén esta clave fija: cifra los secretos TOTP. No la cambies al rotar JWT_SECRET.
+TOTP_ENCRYPTION_KEY=change-this-with-a-different-openssl-rand-hex-32
+STORAGE_SIGNING_SECRET=change-this-with-a-different-openssl-rand-hex-32
+STORAGE_ACCEL_PREFIX=/_novvin_storage
+REALTIME_INTERNAL_SECRET=change-this-with-openssl-rand-hex-32
+LIVE_INTERNAL_EVENTS_TOKEN=change-this-with-another-openssl-rand-hex-32
+OPENVERSE_API_TOKEN=
+OPENVERSE_API_BASE=https://api.openverse.org/v1/audio/
+JAMENDO_CLIENT_ID=
 JWT_ISSUER=conectate-local-fallback
 JWT_EXPIRES_IN=7d
+# Web: bearer corto sólo en memoria + sesión opaca HttpOnly. No subir el bearer
+# web por encima de 30 minutos sin una revisión formal de riesgo.
+WEB_JWT_EXPIRES_IN=15m
+WEB_SESSION_TTL_DAYS=30
+WEB_SESSION_RATE_LIMIT_PER_15_MINUTES=120
 CORS_ORIGIN=https://red-social-android.vercel.app
 AUTH_REGISTER_RATE_LIMIT_PER_HOUR=10
 AUTH_LOGIN_RATE_LIMIT_PER_15_MINUTES=20
@@ -16,7 +49,27 @@ AUTH_PASSWORD_RESET_RATE_LIMIT_PER_15_MINUTES=5
 AUTH_SENSITIVE_RATE_LIMIT_PER_15_MINUTES=12
 AUTH_PAIRING_RATE_LIMIT_PER_MINUTE=90
 STORAGE_UPLOAD_RATE_LIMIT_PER_10_MINUTES=120
-SIGNALING_ALLOWED_ORIGINS=*
+SIGNALING_ALLOWED_ORIGINS=https://red-social-android.vercel.app
+HTTP_RATE_LIMIT_PER_MINUTE=180
+SOCKET_RATE_LIMIT_PER_MINUTE=90
+SOCKET_EVENT_RATE_LIMIT_PER_MINUTE=900
+# Redis Streams privado para difusión entre réplicas y recuperación de sesiones Socket.IO.
+# scripts/deploy-stack-safely.sh crea el archivo con permisos 600 si no existe.
+SIGNALING_REDIS_PASSWORD_FILE=./secrets/signaling-redis-password.txt
+SIGNALING_REDIS_STREAM_COUNT=4
+SIGNALING_REDIS_MAX_MEMORY=256mb
+SIGNALING_CONNECTION_RECOVERY_MS=120000
+# Se mantiene apagado hasta que las pruebas multi-proceso demuestren la
+# rehidratación completa del estado avanzado de Live después de perder un nodo.
+SIGNALING_CONNECTION_RECOVERY_ENABLED=false
+SIGNALING_REDIS_MAX_RECONNECT_ATTEMPTS=12
+# Estado recuperable de Live en Redis. El lease corto detecta procesos caídos;
+# la instantánea nunca incluye bearer tokens ni identificadores de socket.
+SIGNALING_LIVE_STATE_TTL_SECONDS=86400
+SIGNALING_LIVE_HOST_LEASE_SECONDS=45
+# Mantén 1 hasta completar las pruebas de carga multi-réplica del estado avanzado de Live.
+SIGNALING_REPLICAS=1
+SIGNALING_MULTI_REPLICA_APPROVED=false
 # TURN/Coturn autoalojado (configúralo con scripts/configure-mini-pc-turn.sh)
 # Bajo CGNAT, Cloudflare Tunnel sólo expone API/signaling HTTP+WebSocket:
 # el audio/video/screen share necesita TURN público aparte (VPS/servicio TURN).
@@ -37,8 +90,17 @@ TURN_ENABLE_TLS=false
 # TURN_STATIC_URLS=turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp
 # TURN_STATIC_USERNAME=
 # TURN_STATIC_CREDENTIAL=
-PASSWORD_RESET_DELIVERY=console
+# Producción falla de forma segura si se intenta usar console/response, porque
+# expondrían tokens de recuperación en logs o respuestas HTTP.
+PASSWORD_RESET_DELIVERY=disabled
 PASSWORD_RESET_TOKEN_TTL_MINUTES=30
+# Para habilitar recuperación real por correo: PASSWORD_RESET_DELIVERY=smtp
+# Configura estos valores solo en .env privado, nunca en Git.
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_FROM=
+SMTP_USER=
+SMTP_PASS=
 LEGACY_SUPABASE_IMPORT_ENABLED=false
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
@@ -73,9 +135,19 @@ GOOGLE_PLAY_SERVICE_ACCOUNT_DIR=./secrets
 GOOGLE_PLAY_SERVICE_ACCOUNT_FILE=/run/novvin-secrets/google-play-service-account.json
 # Compatibilidad heredada: no rellenar si se usa GOOGLE_PLAY_SERVICE_ACCOUNT_FILE.
 GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=
-GOOGLE_PLAY_REFUND_RECONCILIATION_ENABLED=false
-GOOGLE_PLAY_REFUND_RECONCILIATION_INTERVAL_MINUTES=15
-GOOGLE_PLAY_REFUND_RECONCILIATION_LOOKBACK_HOURS=72
+GOOGLE_PLAY_REFUND_RECONCILIATION_ENABLED=true
+GOOGLE_PLAY_REFUND_RECONCILIATION_INTERVAL_MINUTES=5
+GOOGLE_PLAY_REFUND_RECONCILIATION_LOOKBACK_HOURS=720
+# Google Play RTDN: el audience debe ser exactamente el endpoint HTTPS público.
+# Pub/Sub firma cada push con OIDC; esta cuenta es la identidad autorizada a invocarlo.
+GOOGLE_PLAY_RTDN_ENABLED=false
+GOOGLE_PLAY_RTDN_AUDIENCE=https://api.example.com/webhooks/google-play/rtdn
+GOOGLE_PLAY_RTDN_PUSH_SERVICE_ACCOUNT_EMAIL=novvin-rtdn-push@example-project.iam.gserviceaccount.com
+# Defensa adicional opcional en la URL de la suscripción. OIDC ya autentica
+# audiencia, emisor y cuenta; dejar vacío evita secretos en URL y registros.
+GOOGLE_PLAY_RTDN_VERIFICATION_TOKEN=
+# NEUTRAL aporta evidencia de consumo sin decidir automáticamente el contracargo.
+GOOGLE_PLAY_PENDING_REFUND_PREFERENCE=NEUTRAL
 
 # Retiros de creadores. Permanecen cerrados hasta completar PayPal Sandbox,
 # registrar el webhook firmado y revisar la tasa comercial por moneda.
@@ -147,16 +219,17 @@ SOCIALIZATION_ROOMS_ENABLED=false
 # limitada, use PLAYMATCH_TESTER_IDS con IDs de usuario separados por coma y un
 # secreto de cursor generado fuera del repositorio. Nunca use ubicación precisa,
 # mensajes privados, edad o género como señales de coincidencia.
-PLAYMATCH_GAMES_ENABLED=false
+PLAYMATCH_GAMES_ENABLED=true
 PLAYMATCH_TESTER_IDS=
 PLAYMATCH_TESTER_EMAILS=
 PLAYMATCH_CURSOR_SECRET=
 PLAYMATCH_REQUIRE_ADULT_CONFIRMATION=true
-PLAYMATCH_PHOTOS_ENABLED=false
+PLAYMATCH_PHOTOS_ENABLED=true
 PLAYMATCH_CATALOG_ADMIN_SYNC_ENABLED=false
 PLAYMATCH_CATALOG_PROVIDER=wikidata
 PLAYMATCH_CATALOG_MIN_RELEASE_YEAR=2000
 PLAYMATCH_CATALOG_USER_AGENT=NovvinPlayMatch/1.0 (catalog-sync; support@conectate.com)
+PLAYMATCH_STEAM_STORE_ASSETS_APPROVED=false
 # RAWG actualmente requiere un plan comercial para Novvin. Mantener en false
 # hasta obtener y documentar autorizacion comercial; la clave vive solo en el servidor.
 PLAYMATCH_RAWG_COMMERCIAL_USE_APPROVED=false
@@ -186,3 +259,10 @@ AI_KNOWLEDGE_THRESHOLD=0.34
 AI_KNOWLEDGE_HIDDEN_SIZE=96
 AI_KNOWLEDGE_EPOCHS=140
 AI_KNOWLEDGE_LEARNING_RATE=0.055
+
+# Música comunitaria. En producción el escaneo es obligatorio. Mantenga las
+# firmas de ClamAV actualizadas mediante el job/volumen de infraestructura;
+# Android nunca recibe ni ejecuta este comando.
+MUSIC_ANTIVIRUS_REQUIRED=true
+MUSIC_ANTIVIRUS_COMMAND=clamscan
+MUSIC_ANTIVIRUS_TIMEOUT_MS=90000

@@ -1,0 +1,1 @@
+ALTER TABLE fallback_videos ADD COLUMN IF NOT EXISTS allow_clip_sharing BOOLEAN NOT NULL DEFAULT TRUE;

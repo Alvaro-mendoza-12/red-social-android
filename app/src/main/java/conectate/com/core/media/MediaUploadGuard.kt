@@ -171,6 +171,23 @@ class MediaUploadGuard @Inject constructor() {
             ),
             allowedExtensions = setOf("mp3", "m4a", "wav", "ogg", "webm", "flac")
         ),
+        "community-music" to BucketPolicy(
+            maxBytes = 80L * 1024L * 1024L,
+            allowedContentTypes = setOf(
+                "audio/mpeg",
+                "audio/mp4",
+                "audio/aac",
+                "audio/wav",
+                "audio/x-wav",
+                "audio/ogg",
+                "application/ogg",
+                "audio/opus",
+                "audio/webm",
+                "audio/flac",
+                "audio/x-flac"
+            ),
+            allowedExtensions = setOf("mp3", "m4a", "aac", "wav", "ogg", "opus", "webm", "flac")
+        ),
         "moment-media" to BucketPolicy(
             maxBytes = 35L * 1024 * 1024,
             allowedContentTypes = setOf(

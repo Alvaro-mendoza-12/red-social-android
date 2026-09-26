@@ -50,7 +50,7 @@ class RuntimeStabilityMonitor @Inject constructor(
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     private val memoryCallbacks = object : ComponentCallbacks2 {
         override fun onTrimMemory(level: Int) {
-            if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
                 handleMemoryPressure(source = "trim_memory", level = level)
             }
         }
@@ -63,6 +63,13 @@ class RuntimeStabilityMonitor @Inject constructor(
     }
 
     fun start(application: Application) {
+        // ProcessLifecycleOwner enforces main-thread observer registration. Application
+        // startup intentionally calls this monitor from a background scope, so marshal
+        // the complete one-time initialization instead of silently disabling it.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post { start(application) }
+            return
+        }
         if (!started.compareAndSet(false, true)) return
 
         application.registerComponentCallbacks(memoryCallbacks)

@@ -80,6 +80,7 @@ async function invokeFallbackPairing(body: Record<string, unknown>, fallbackErro
   const data = await fallbackApiJson<PairingResponse>('/v1/auth/web-login-pairing', {
     method: 'POST',
     auth: false,
+    webSession: String(body.action || '').trim().toLowerCase() === 'consume',
     body: JSON.stringify(body),
   })
   if (data.error) {

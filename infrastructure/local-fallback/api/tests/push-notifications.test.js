@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict')
-const { buildData } = require('../src/push-notifications')
+const { buildData, pushNotificationsStatus } = require('../src/push-notifications')
 
 function testRecipientIsAuthoritative() {
   const data = buildData({
@@ -35,6 +35,14 @@ function testPayloadDoesNotSerializeObjectsOrSecrets() {
   assert.equal(data.enabled, 'true')
 }
 
+function testPublicStatusDoesNotExposeConfigurationPaths() {
+  const status = pushNotificationsStatus()
+  assert.equal(Object.hasOwn(status, 'error'), false)
+  assert.equal(JSON.stringify(status).includes('/run/secrets'), false)
+  assert.match(status.errorCode || '', /^[A-Z0-9_.-]+$/)
+}
+
 testRecipientIsAuthoritative()
 testPayloadDoesNotSerializeObjectsOrSecrets()
+testPublicStatusDoesNotExposeConfigurationPaths()
 console.log('push notification payload tests passed')

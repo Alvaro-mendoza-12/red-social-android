@@ -11,6 +11,7 @@ import conectate.com.data.model.AlgorithmDataPermissions
 import conectate.com.data.model.AlgorithmDataPermissionInput
 import conectate.com.data.model.AlgorithmFeedMix
 import conectate.com.data.model.AlgorithmPreferenceInput
+import conectate.com.data.model.AlgorithmPreference
 import conectate.com.data.model.AlgorithmProfile
 import conectate.com.data.model.CreateAlgorithmProfileRequest
 import conectate.com.data.model.CreateTemporaryAlgorithmPreferenceRequest
@@ -25,7 +26,6 @@ import conectate.com.data.recommendations.AuthoritativeRecommendationPage
 import conectate.com.data.recommendations.AuthoritativeRecommendationSurface
 import conectate.com.data.recommendations.MappedAuthoritativeRecommendationPage
 import conectate.com.data.recommendations.OpaqueRecommendationCursor
-import conectate.com.data.recommendations.canUseAuthoritativeRecommendations
 import conectate.com.data.recommendations.mapSocialPostsExact
 import conectate.com.data.recommendations.mapVideosExact
 import conectate.com.data.supabase.AuthService
@@ -42,6 +42,29 @@ import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class ExplicitPreferenceChange(
+    val accountId: String,
+    val profileId: String,
+    val appliedProfileRevision: Long,
+    val surface: String,
+    val dimension: String,
+    val subjectKey: String,
+    val appliedScore: Int,
+    val appliedId: String,
+    val appliedUpdatedAt: String?,
+    val previous: AlgorithmPreferenceInput?,
+)
+
+internal fun canUndoExplicitPreference(
+    current: AlgorithmPreference?,
+    change: ExplicitPreferenceChange,
+): Boolean = current != null && change.appliedId.isNotBlank() &&
+    current.id == change.appliedId && current.surface == change.surface &&
+    current.dimension == change.dimension &&
+    current.subjectKey.equals(change.subjectKey, ignoreCase = true) &&
+    current.score == change.appliedScore && current.updatedAt != null &&
+    current.updatedAt == change.appliedUpdatedAt
+
 /**
  * Server-authoritative owner of a user's explicit feed settings.
  *
@@ -51,7 +74,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class AlgorithmRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val authService: AuthService,
     private val apiClient: AlgorithmApiClient,
     private val supabaseConfig: SupabaseConfig,
@@ -77,20 +100,24 @@ class AlgorithmRepository @Inject constructor(
     suspend fun loadSocialRecommendationPage(
         cursor: OpaqueRecommendationCursor? = null,
         limit: Int = 60,
+        refreshSeed: String? = null,
     ): Result<MappedAuthoritativeRecommendationPage<Post>> = loadRecommendationPage(
         surface = AuthoritativeRecommendationSurface.SOCIAL,
         cursor = cursor,
         limit = limit,
+        refreshSeed = refreshSeed,
         mapper = AuthoritativeRecommendationPage::mapSocialPostsExact,
     )
 
     suspend fun loadVideoRecommendationPage(
         cursor: OpaqueRecommendationCursor? = null,
         limit: Int = 20,
+        refreshSeed: String? = null,
     ): Result<MappedAuthoritativeRecommendationPage<Video>> = loadRecommendationPage(
         surface = AuthoritativeRecommendationSurface.VIDEO,
         cursor = cursor,
         limit = limit,
+        refreshSeed = refreshSeed,
         mapper = AuthoritativeRecommendationPage::mapVideosExact,
     )
 
@@ -226,7 +253,7 @@ class AlgorithmRepository @Inject constructor(
         subjectKey: String,
         subjectLabel: String?,
         score: Int,
-    ): Result<AlgorithmConfig> = explicitPreferenceMutex.withLock {
+    ): Result<ExplicitPreferenceChange> = explicitPreferenceMutex.withLock {
         val normalizedSurface = surface.trim().lowercase()
         val normalizedDimension = dimension.trim().lowercase()
         val normalizedKey = subjectKey.trim().lowercase()
@@ -236,8 +263,10 @@ class AlgorithmRepository @Inject constructor(
         ) {
             return@withLock Result.failure(IllegalArgumentException("La preferencia no es válida."))
         }
+        val requestAccountId = authService.getCurrentUserId()
+            ?: return@withLock Result.failure(IllegalStateException("Necesitas iniciar sesión."))
         withToken { token ->
-            suspend fun persist(): Result<AlgorithmConfig> {
+            suspend fun persist(): Result<ExplicitPreferenceChange> {
                 val capabilities = apiClient.capabilities(token).getOrElse { return Result.failure(it) }
                 if (!capabilities.enabled || !capabilities.preferencesEnabled || !capabilities.classificationEnabled) {
                     return Result.failure(
@@ -263,6 +292,12 @@ class AlgorithmRepository @Inject constructor(
                     subjectLabel = subjectLabel?.trim()?.take(120)?.takeIf(String::isNotBlank),
                     score = score,
                 )
+                val previous = config.preferences.firstOrNull {
+                    it.surface == input.surface && it.dimension == input.dimension &&
+                        it.subjectKey.equals(input.subjectKey, ignoreCase = true)
+                }?.let {
+                    AlgorithmPreferenceInput(it.surface, it.dimension, it.subjectKey, it.subjectLabel, it.score)
+                }
                 val merged = config.preferences
                     .filterNot {
                         it.surface == input.surface &&
@@ -282,7 +317,24 @@ class AlgorithmRepository @Inject constructor(
                     token,
                     config.profile.id,
                     UpdateAlgorithmPreferencesRequest(config.profile.revision, merged),
-                ).flatMapConfig(token) { config.profile.id }
+                ).flatMapConfig(token) { config.profile.id }.map { saved ->
+                    val applied = saved.preferences.firstOrNull {
+                        it.surface == input.surface && it.dimension == input.dimension &&
+                            it.subjectKey.equals(input.subjectKey, ignoreCase = true)
+                    }
+                    ExplicitPreferenceChange(
+                        accountId = requestAccountId,
+                        profileId = saved.profile.id,
+                        appliedProfileRevision = saved.profile.revision,
+                        surface = input.surface,
+                        dimension = input.dimension,
+                        subjectKey = input.subjectKey,
+                        appliedScore = input.score,
+                        appliedId = applied?.id.orEmpty(),
+                        appliedUpdatedAt = applied?.updatedAt,
+                        previous = previous,
+                    )
+                }
             }
 
             val first = persist()
@@ -291,32 +343,57 @@ class AlgorithmRepository @Inject constructor(
         }
     }
 
+    suspend fun undoExplicitPreference(change: ExplicitPreferenceChange): Result<AlgorithmConfig> =
+        explicitPreferenceMutex.withLock {
+            if (change.accountId.isBlank() || authService.getCurrentUserId() != change.accountId ||
+                change.appliedId.isBlank()) {
+                return@withLock Result.failure(IllegalStateException("La cuenta o la preferencia cambió."))
+            }
+            withToken { token ->
+                val current = apiClient.config(token, change.profileId)
+                    .getOrElse { return@withToken Result.failure(it) }
+                if (current.profile.revision != change.appliedProfileRevision) {
+                    return@withToken Result.failure(
+                        IllegalStateException("Mi algoritmo cambió en otra sesión."),
+                    )
+                }
+                val applied = current.preferences.firstOrNull { it.id == change.appliedId }
+                if (!canUndoExplicitPreference(applied, change)) {
+                    return@withToken Result.failure(
+                        IllegalStateException("La preferencia ya cambió en otra sesión."),
+                    )
+                }
+                val currentApplied = checkNotNull(applied)
+                val previous = change.previous
+                if (previous == null) {
+                    apiClient.deletePreference(token, current.profile.id, currentApplied.id,
+                        current.profile.revision).flatMapConfig(token) { current.profile.id }
+                } else {
+                    apiClient.replacePreferences(token, current.profile.id,
+                        UpdateAlgorithmPreferencesRequest(current.profile.revision, listOf(previous)))
+                        .flatMapConfig(token) { current.profile.id }
+                }
+            }
+        }
+
     private suspend fun <T> loadRecommendationPage(
         surface: AuthoritativeRecommendationSurface,
         cursor: OpaqueRecommendationCursor?,
         limit: Int,
+        refreshSeed: String? = null,
         mapper: (AuthoritativeRecommendationPage) -> Result<MappedAuthoritativeRecommendationPage<T>>,
     ): Result<MappedAuthoritativeRecommendationPage<T>> = withToken { token ->
-        val capabilities = apiClient.capabilities(token).getOrElse { error ->
-            return@withToken Result.failure(error)
-        }
-        val config = apiClient.config(token).getOrElse { error ->
-            return@withToken Result.failure(error)
-        }
-        cacheConfirmed(config)
-        if (!canUseAuthoritativeRecommendations(capabilities, config)) {
-            return@withToken Result.failure(
-                AuthoritativeRecommendationsUnavailableException("AUTHORITATIVE_RECOMMENDATIONS_DISABLED"),
-            )
-        }
-
+        // The recommendations endpoint is authoritative for capability and
+        // profile checks. Calling capabilities + config before every first
+        // page added two network round trips to the hottest app path.
         when (
             val decoded = apiClient.recommendations(
                 accessToken = token,
                 surface = surface,
-                profileId = config.profile.id,
+                profileId = null,
                 cursor = cursor,
                 limit = limit,
+                refreshSeed = refreshSeed,
             ).getOrElse { error -> return@withToken Result.failure(error) }
         ) {
             is AuthoritativeRecommendationDecodeResult.Authoritative -> mapper(decoded.page)

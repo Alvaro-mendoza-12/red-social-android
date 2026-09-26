@@ -4,26 +4,31 @@ Esta guía está hecha para **este proyecto** y para tu flujo real en **Android 
 
 ## 1. Estado actual del proyecto
 
-Valores tomados de [app/build.gradle.kts](d:/red%20social%20-%20copia/app/build.gradle.kts):
+Valores tomados de `app/build.gradle.kts`:
 
 - Módulo Android: `app`
 - `applicationId`: `conectate.com`
-- `versionCode`: `23`
-- `versionName`: `2.1.3`
-- `minSdk`: `26`
-- `targetSdk`: `35`
-- `compileSdk`: `35`
+- `versionCode`: `66`
+- `versionName`: `3.3.4`
+- `minSdk`: `24`
+- `targetSdk`: `36`
+- `compileSdk`: `36`
+- Android Gradle Plugin: `8.13.2`
+- Gradle wrapper: `8.13`
 
-El proyecto **sí tiene configuración para firmado release**, pero solo se activa si existe el archivo local:
+El proyecto exige configuración de firmado release mediante una de estas rutas:
 
 - `keystore.properties`
+- variables de entorno `NOVVIN_UPLOAD_*`
 
-Ese archivo **no se sube a git** y en este workspace ahora mismo **no existe**. Por eso, si intentas compilar release sin configurarlo, puedes terminar con build incompleto para Play o con artefactos no firmados.
+El archivo **no se sube a git**. Si falta la configuración, `verifyReleaseSigningConfiguration` detiene cualquier build release antes de generar un artefacto que pueda confundirse con uno publicable.
+
+El nivel 36 es obligatorio para mantener NOVVIN preparada para las actualizaciones de Google Play exigidas desde el 31 de agosto de 2026 ([requisito oficial](https://developer.android.com/google/play/requirements/target-sdk)). No se debe volver a bajar `targetSdk` para esquivar una incompatibilidad: cualquier regresión de Android 16 se corrige y se valida en dispositivo.
 
 Importante:
 
 - si usas el asistente `Build > Generate Signed Bundle / APK...`, Android Studio puede pedirte el keystore directamente y firmar desde ahí
-- si quieres que `bundleRelease` o `assembleRelease` por Gradle/terminal salgan firmados de forma automática, sí necesitas `keystore.properties`
+- para `bundleRelease` o `assembleRelease` por terminal necesitas `keystore.properties` o las variables `NOVVIN_UPLOAD_STORE_FILE`, `NOVVIN_UPLOAD_STORE_PASSWORD`, `NOVVIN_UPLOAD_KEY_ALIAS` y `NOVVIN_UPLOAD_KEY_PASSWORD`
 
 ## 2. Qué necesitas antes de generar el AAB
 
@@ -45,9 +50,9 @@ Si ya tienes tu llave, solo necesitas ubicar:
 - `keyAlias`
 - `keyPassword`
 
-### Opción B: todavía no tienes tu llave
+### Opción B: primera publicación y todavía no existe una llave
 
-Puedes crearla desde Android Studio:
+Solo para una app que nunca fue publicada, puedes crearla desde Android Studio. Para una actualización de NOVVIN debes recuperar la clave de carga registrada en Play Console; no crees otra distinta.
 
 1. Abre Android Studio.
 2. Ve a `Build > Generate Signed Bundle / APK...`
@@ -72,7 +77,7 @@ Recomendación fuerte:
 
 En la raíz del repo ya existe este ejemplo:
 
-- [keystore.properties.example](d:/red%20social%20-%20copia/keystore.properties.example)
+- `keystore.properties.example`
 
 Haz una copia local llamada:
 
@@ -98,13 +103,13 @@ Notas importantes:
 
 Abre:
 
-- [app/build.gradle.kts](d:/red%20social%20-%20copia/app/build.gradle.kts)
+- `app/build.gradle.kts`
 
 Y actualiza si corresponde:
 
 ```kotlin
-versionCode = 24
-versionName = "2.1.4"
+versionCode = 67
+versionName = "3.3.5"
 ```
 
 Regla práctica:
@@ -174,16 +179,13 @@ Salida esperada:
 
 - `app/build/outputs/bundle/release/app-release.aab`
 
-Si además quieres APK release por ABI:
+Si además necesitas un APK release de validación:
 
 ```powershell
 .\gradlew.bat :app:assembleRelease
 ```
 
-Salida esperada:
-
-- `app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk`
-- `app/build/outputs/apk/release/app-armeabi-v7a-release-unsigned.apk`
+La salida debe estar firmada por la configuración release. Para Play Console usa siempre el AAB.
 
 ## 9. Qué subir a Google Play Console
 
@@ -210,7 +212,7 @@ Como esta versión también toca live streaming, el orden recomendado es:
 
 Para el lado VPS/live revisa también:
 
-- [VOICE_VPS_RUNBOOK_2026.md](d:/red%20social%20-%20copia/docs/VOICE_VPS_RUNBOOK_2026.md)
+- [VOICE_VPS_RUNBOOK_2026.md](VOICE_VPS_RUNBOOK_2026.md)
 
 ## 11. Pasos en Google Play Console
 
@@ -241,6 +243,7 @@ Cuando valides bien:
 - `versionName` actualizado si corresponde
 - `quality_gate.ps1` en verde
 - presupuesto de tamaño en verde para APKs por ABI y `.aab`
+- compatibilidad de páginas de 16 KiB en verde (`verify_android_page_size.py`)
 - live hotfix desplegado en VPS
 - SQL de `live_streams.is_active = false` aplicado
 - `keystore.properties` configurado

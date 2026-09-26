@@ -15,14 +15,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -88,7 +89,7 @@ fun AlgorithmSettingsScreen(
                 title = { Text("Mi algoritmo") },
                 navigationIcon = {
                     IconButton(onClick = navController::popBackStack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 },
                 actions = {
@@ -204,7 +205,17 @@ private fun AlgorithmUnavailableContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (hasCachedConfiguration) {
-                        AssistChip(onClick = {}, label = { Text("Se conserva la última configuración confirmada") })
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ) {
+                            Text(
+                                "Se conserva la última configuración confirmada",
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            )
+                        }
                     }
                     Button(onClick = onRetry) { Text("Reintentar") }
                 }
@@ -541,7 +552,7 @@ private fun DataPermissionsCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Datos utilizados", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("Elige las señales públicas o de uso que pueden ayudar a recomendar. Los mensajes privados nunca se usan.", style = MaterialTheme.typography.bodySmall)
-            Divider(Modifier.padding(vertical = 4.dp))
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
             PermissionToggle("Likes", permissions.likes, enabled) { onUpdate(permissions.copy(likes = it)) }
             PermissionToggle("Personas seguidas", permissions.follows, enabled) { onUpdate(permissions.copy(follows = it)) }
             PermissionToggle("Búsquedas", permissions.searches, enabled) { onUpdate(permissions.copy(searches = it)) }

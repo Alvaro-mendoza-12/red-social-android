@@ -32,12 +32,14 @@ class GiftAnimatedArtworkTest {
     }
 
     @Test
-    fun `medium and premium timelines interpolate at least 16 useful states`() {
-        val medium = requireNotNull(giftSpriteSheetSpec("star-garden"))
+    fun `all gift timelines expose between 50 and 100 useful visual states`() {
         val premium = requireNotNull(giftSpriteSheetSpec("aurora-genesis"))
         val dragon = requireNotNull(giftSpriteSheetSpec("celestial-dragon"))
 
-        assertEquals(16, giftEffectiveTimelineStates(medium))
+        NOVVIN_GIFT_VISUAL_KEYS.forEach { key ->
+            val states = giftEffectiveTimelineStates(requireNotNull(giftSpriteSheetSpec(key)))
+            assertTrue("$key has $states states", states in 50..100)
+        }
         assertEquals(64, giftEffectiveTimelineStates(premium))
         assertEquals(64, giftEffectiveTimelineStates(dragon))
         val blend = giftSpriteBlend(0.137f, animationsEnabled = true, spec = premium)

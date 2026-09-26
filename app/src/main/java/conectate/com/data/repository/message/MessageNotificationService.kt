@@ -22,7 +22,7 @@ import javax.inject.Singleton
 
 @Singleton
 class MessageNotificationService @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val chatSoundPlayer: ChatSoundPlayer,
     private val chatDao: ChatDao,
     private val sessionStateStore: MessageSessionStateStore

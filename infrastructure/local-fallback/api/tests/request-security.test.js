@@ -1,10 +1,12 @@
 const assert = require('assert/strict')
 const {
   boundedInteger,
+  constantTimeSecretEqual,
   createFixedWindowRateLimiter,
   createRateLimitMiddleware,
   isTrustedProxyAddress,
   normalizeIpAddress,
+  parseCorsOrigins,
   requestIpAddress,
 } = require('../src/request-security')
 
@@ -35,6 +37,21 @@ async function run() {
   assert.equal(normalizeIpAddress('::ffff:192.168.1.4'), '192.168.1.4')
   assert.equal(isTrustedProxyAddress('172.18.0.2'), true)
   assert.equal(isTrustedProxyAddress('172.40.0.2'), false)
+  assert.equal(constantTimeSecretEqual('same-secret', 'same-secret'), true)
+  assert.equal(constantTimeSecretEqual('same-secret', 'different-secret'), false)
+  assert.equal(constantTimeSecretEqual('', ''), false)
+  assert.equal(constantTimeSecretEqual('short', 'a-much-longer-secret'), false)
+  assert.deepEqual(
+    parseCorsOrigins('https://app.novvin.example, https://admin.novvin.example/'),
+    ['https://app.novvin.example', 'https://admin.novvin.example'],
+  )
+  assert.equal(parseCorsOrigins('*'), '*')
+  assert.throws(() => parseCorsOrigins('*', { production: true }), /trusted HTTPS origin/)
+  assert.throws(
+    () => parseCorsOrigins('http://app.novvin.example', { production: true }),
+    /trusted HTTPS origin/,
+  )
+  assert.throws(() => parseCorsOrigins('https://app.novvin.example/path'), /invalid origin/)
 
   assert.equal(requestIpAddress({
     headers: { 'cf-connecting-ip': '203.0.113.8' },

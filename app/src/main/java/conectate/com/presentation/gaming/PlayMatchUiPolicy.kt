@@ -4,6 +4,12 @@ import conectate.com.data.gaming.PlayMatchApiException
 import conectate.com.data.model.PlayMatchGameCatalogItem
 
 object PlayMatchUiPolicy {
+    fun hasDistinctCover(game: PlayMatchGameCatalogItem): Boolean {
+        val cover = game.coverUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        val explicitLogo = game.logoUrl?.trim()?.takeIf { it.isNotEmpty() }
+        return explicitLogo == null || explicitLogo != cover
+    }
+
     fun gameGridColumns(widthDp: Int, fontScale: Float = 1f): Int = when {
         fontScale >= 1.5f && widthDp < 600 -> 1
         widthDp >= 840 -> 4
@@ -33,9 +39,10 @@ object PlayMatchUiPolicy {
         game != null && !showsOfficialRank(game)
 
     fun safeError(error: Throwable): String = when ((error as? PlayMatchApiException)?.code) {
-        "PLAYMATCH_DISABLED" -> "Juegos todavía no está habilitado para esta cuenta de prueba."
-        "PLAYMATCH_NOT_READY" -> "Juegos está temporalmente en preparación."
+        "PLAYMATCH_DISABLED" -> "Juegos no está disponible en este servidor. Actualiza el servicio e inténtalo otra vez."
+        "PLAYMATCH_NOT_READY" -> "Juegos está temporalmente en preparación. Reintenta en unos segundos."
         "BACKEND_UNAVAILABLE" -> "No hay conexión con el servidor. Comprueba Internet e inténtalo otra vez."
+        "INTERNAL_ERROR" -> "Juegos no pudo actualizar todos los datos. Reintenta en unos segundos."
         "ADULT_CONFIRMATION_REQUIRED" -> "Confirma que eres mayor de edad antes de buscar compañeros."
         "PROFILE_NOT_DISCOVERABLE" -> "Activa la visibilidad del perfil gamer para comenzar la búsqueda."
         "ADD_GAME_REQUIRED" -> "Agrega al menos un juego antes de buscar compañeros."

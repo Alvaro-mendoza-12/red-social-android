@@ -44,7 +44,8 @@ import javax.inject.Singleton
 @Singleton
 class WalletRepository @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
-    private val authService: AuthService
+    private val authService: AuthService,
+    @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
 ) {
     private companion object {
         private const val TAG = "WalletRepository"
@@ -52,7 +53,19 @@ class WalletRepository @Inject constructor(
     }
 
     private val _coinBalance = MutableStateFlow(0)
+    private val giftAttempts = context.getSharedPreferences("pending_gift_attempts", android.content.Context.MODE_PRIVATE)
+    private val giftSendCoordinator = GiftSendCoordinator(
+        read = { giftAttempts.getString(it, null) },
+        write = { operation, key ->
+            val editor = giftAttempts.edit()
+            if (key == null) editor.remove(operation) else editor.putString(operation, key)
+            check(editor.commit()) { "No se pudo guardar la confirmación del regalo. Reintenta." }
+        },
+    )
     val coinBalance: StateFlow<Int> = _coinBalance.asStateFlow()
+
+    private val _coinDebt = MutableStateFlow(0)
+    val coinDebt: StateFlow<Int> = _coinDebt.asStateFlow()
 
     private val _availableGifts = MutableStateFlow<List<VirtualGift>>(emptyList())
     val availableGifts: StateFlow<List<VirtualGift>> = _availableGifts.asStateFlow()
@@ -67,12 +80,14 @@ class WalletRepository @Inject constructor(
         runCatching {
             if (!supabaseConfig.isConfigured) {
                 _coinBalance.value = 0
+                _coinDebt.value = 0
                 return@runCatching
             }
 
             val userId = authService.getCurrentUserId()?.trim().orEmpty()
             if (userId.isBlank()) {
                 _coinBalance.value = 0
+                _coinDebt.value = 0
                 return@runCatching
             }
 
@@ -83,9 +98,12 @@ class WalletRepository @Inject constructor(
                 ?: WalletBalance(userId = userId)
 
             _coinBalance.value = balance.balanceDiamonds.coerceAtLeast(0)
+            _coinDebt.value = balance.balanceDebtDiamonds.coerceAtLeast(0)
         }.onFailure { error ->
             Log.e(TAG, "Unable to fetch wallet balance", error)
-            _coinBalance.value = 0
+            // A temporary network failure must never make a real wallet look
+            // empty or hide a refund debt. Keep the last server-confirmed
+            // snapshot until a later refresh succeeds.
         }
     }
 
@@ -178,6 +196,11 @@ class WalletRepository @Inject constructor(
 
     fun currentAccountId(): String? = authService.getCurrentUserId()?.trim()?.takeIf { it.isNotBlank() }
 
+    fun hasPendingGift(receiverId: String, liveStreamId: String, giftId: String, isPublic: Boolean): Boolean {
+        val accountId = currentAccountId() ?: return false
+        return giftSendCoordinator.hasPending(giftOperationKey(accountId, receiverId, liveStreamId, giftId, isPublic))
+    }
+
     suspend fun sendGift(
         receiverId: String,
         giftId: String,
@@ -211,10 +234,10 @@ class WalletRepository @Inject constructor(
             if (canonicalCost <= 0) {
                 throw IllegalArgumentException("El regalo seleccionado no tiene precio valido")
             }
-            if (_coinBalance.value < canonicalCost) {
-                throw IllegalStateException("Saldo insuficiente")
-            }
-
+            giftSendCoordinator.execute(
+                operation = giftOperationKey(senderId, cleanReceiverId, cleanLiveStreamId, cleanGiftId, isPublic),
+                proposedKey = idempotencyKey,
+            ) { durableKey ->
             val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/send_virtual_gift") {
                 restHeaders(token)
                 contentType(ContentType.Application.Json)
@@ -223,7 +246,7 @@ class WalletRepository @Inject constructor(
                     put("p_sender_id", senderId)
                     put("p_receiver_id", cleanReceiverId)
                     put("p_gift_id", cleanGiftId)
-                    put("p_idempotency_key", idempotencyKey)
+                    put("p_idempotency_key", durableKey)
                     put("p_is_public", isPublic)
                     put("p_message", JsonNull)
                     if (cleanLiveStreamId.isBlank()) {
@@ -242,11 +265,13 @@ class WalletRepository @Inject constructor(
 
             val receipt = decodeFirstObject(body)
                 ?: throw IllegalStateException("El servidor no devolvió el comprobante del regalo")
-            val newBalance = receipt.int("sender_balance_diamonds")
-            _coinBalance.value = newBalance.coerceAtLeast(0)
+            val transactionId = receipt.string("transaction_id")?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("El comprobante del regalo no es válido")
+            val newBalance = receipt["sender_balance_diamonds"]?.jsonPrimitive?.intOrNull
+                ?: throw IllegalStateException("El comprobante no contiene el saldo confirmado")
+            if (currentAccountId() == senderId) _coinBalance.value = newBalance.coerceAtLeast(0)
             GiftReceipt(
-                transactionId = receipt.string("transaction_id")
-                    ?: throw IllegalStateException("El comprobante del regalo no es válido"),
+                transactionId = transactionId,
                 liveStreamId = receipt.string("live_stream_id") ?: cleanLiveStreamId.takeIf { it.isNotBlank() },
                 senderId = senderId,
                 senderName = receipt.string("sender_name").orEmpty().ifBlank { "Usuario" },
@@ -262,6 +287,7 @@ class WalletRepository @Inject constructor(
                 isPublic = receipt.string("is_public")?.toBooleanStrictOrNull() ?: isPublic,
                 idempotentReplay = receipt.string("idempotent_replay")?.toBooleanStrictOrNull() ?: false
             )
+            }.getOrThrow()
         }
     }
 
@@ -351,7 +377,7 @@ class WalletRepository @Inject constructor(
         val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/wallets") {
             restHeaders(token)
             parameter("user_id", "eq.$userId")
-            parameter("select", "user_id,balance_diamonds,balance_credits,total_spent")
+            parameter("select", "user_id,balance_diamonds,balance_debt_diamonds,balance_credits,total_spent")
             parameter("limit", "1")
         }
         if (!response.status.isSuccess()) return null
@@ -390,6 +416,7 @@ class WalletRepository @Inject constructor(
         return WalletBalance(
             userId = string("user_id").orEmpty(),
             balanceDiamonds = int("balance_diamonds"),
+            balanceDebtDiamonds = int("balance_debt_diamonds"),
             balanceCredits = double("balance_credits"),
             totalSpent = double("total_spent")
         )

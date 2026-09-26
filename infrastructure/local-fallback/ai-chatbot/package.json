@@ -9,7 +9,7 @@
     "train": "node scripts/train.js",
     "evaluate": "node tests/evaluate-v5.js",
     "check": "node --check src/server.js && node --check src/chatbot.js && node --check src/neural-network.js && node --check src/knowledge-engine.js && node --check src/semantic-search.js && node --check src/thread-summary.js && node --check src/safety-policy.js && node --check scripts/train.js && node --check tests/smoke.test.js && node --check tests/knowledge-engine.test.js && node --check tests/semantic-search.test.js && node --check tests/thread-summary.test.js && node --check tests/server.test.js && node --check tests/evaluate-v5.js",
-    "test": "node tests/smoke.test.js && node tests/knowledge-engine.test.js && node tests/semantic-search.test.js && node tests/thread-summary.test.js && node tests/server.test.js"
+    "test": "node tests/conversation-context.test.js && node tests/smoke.test.js && node tests/knowledge-engine.test.js && node tests/semantic-search.test.js && node tests/thread-summary.test.js && node tests/server.test.js"
   },
   "engines": {
     "node": ">=20"

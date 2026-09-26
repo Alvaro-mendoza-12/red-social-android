@@ -29,7 +29,8 @@ class LocalNotificationHelper(private val context: Context) {
         senderId: String? = null,
         senderAvatar: String? = null,
         targetType: String? = null,
-        extraData: JsonObject? = null
+        extraData: JsonObject? = null,
+        notificationId: String? = null
     ) {
         val normalizedType = type.trim().lowercase()
         val normalizedTargetType = targetType?.trim()?.lowercase()?.ifBlank { null }
@@ -64,7 +65,7 @@ class LocalNotificationHelper(private val context: Context) {
         }
 
         val socialTypes = listOf(
-            "like", "like_post", "like_video", "follow", "friend_request",
+            "like", "like_post", "like_video", "follow", "friend_request", "new_moment",
             "comment", "comment_post", "reply_post", "comment_video", "reply_video",
             "mention", "mention_post", "mention_video",
             "share", "share_post", "share_video", "admin_warning_video",
@@ -107,6 +108,7 @@ class LocalNotificationHelper(private val context: Context) {
         val intent = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("type", normalizedType)
+            notificationId?.takeIf { it.isNotBlank() }?.let { putExtra("notification_id", it) }
             senderAvatar?.takeIf { it.isNotBlank() }?.let { putExtra("sender_avatar", it) }
             commentId?.let { putExtra("comment_id", it) }
             messageId?.let { putExtra("message_id", it) }
@@ -141,12 +143,15 @@ class LocalNotificationHelper(private val context: Context) {
                     }
                     senderId?.trim()?.takeIf { it.isNotBlank() }?.let { putExtra("host_id", it) }
                 }
+                "new_moment" -> targetId.takeIf { it.isNotBlank() }?.let { putExtra("moment_id", it) }
             }
         }.also { TrustedNavigationIntents.markTrusted(context, it) }
 
         val pendingIntent = PendingIntent.getActivity(
             context,
-            if (isLiveStarted) ("live_started:$resolvedLiveId").hashCode() else System.currentTimeMillis().toInt(),
+            if (isLiveStarted) ("live_started:$resolvedLiveId").hashCode()
+            else notificationId?.takeIf { it.isNotBlank() }?.let { ("social:$it").hashCode() }
+                ?: System.currentTimeMillis().toInt(),
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -162,6 +167,16 @@ class LocalNotificationHelper(private val context: Context) {
             .setContentIntent(pendingIntent)
             .setPriority(if (isLiveStarted) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_HIGH)
             .setCategory(if (isLiveStarted || normalizedType in socialTypes) NotificationCompat.CATEGORY_SOCIAL else NotificationCompat.CATEGORY_SYSTEM)
+
+        if (normalizedType == "new_moment") {
+            val expiry = runCatching {
+                getExtraDataValue(extraData, "expires_at")
+                    ?.let { java.time.Instant.parse(it).toEpochMilli() }
+            }.getOrNull()
+            val remaining = expiry?.minus(System.currentTimeMillis())
+            if (remaining != null && remaining <= 0) return
+            if (remaining != null) notificationBuilder.setTimeoutAfter(remaining)
+        }
 
         if (isLiveStarted) {
             notificationBuilder
@@ -184,8 +199,33 @@ class LocalNotificationHelper(private val context: Context) {
                 buildLiveSummaryNotification(channelId)
             )
         } else {
-            notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
+            val systemId = notificationId?.takeIf { it.isNotBlank() }
+                ?.let { ("social:$it").hashCode() } ?: System.currentTimeMillis().toInt()
+            notificationManager.notify(
+                if (normalizedType in socialTypes) SOCIAL_NOTIFICATION_TAG else null,
+                systemId,
+                notificationBuilder.build()
+            )
         }
+    }
+
+    fun clearSocialNotification(notificationId: String) {
+        if (notificationId.isBlank()) return
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val systemId = ("social:$notificationId").hashCode()
+        manager.cancel(SOCIAL_NOTIFICATION_TAG, systemId)
+        manager.cancel(systemId) // Notifications created before tagging may still be visible.
+    }
+
+    fun clearAllSocialNotifications() {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val socialChannel = context.getString(R.string.social_notification_channel_id)
+        manager.activeNotifications
+            .filter {
+                it.tag == SOCIAL_NOTIFICATION_TAG ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && it.notification.channelId == socialChannel)
+            }
+            .forEach { manager.cancel(it.tag, it.id) }
     }
 
     fun clearChatNotifications(chatId: String?) {
@@ -227,6 +267,7 @@ class LocalNotificationHelper(private val context: Context) {
         .build()
 
     private companion object {
+        const val SOCIAL_NOTIFICATION_TAG = "novvin_social"
         const val LIVE_NOTIFICATION_GROUP = "novvin_live_notifications"
         const val LIVE_NOTIFICATION_TAG = "live_started"
         const val LIVE_NOTIFICATION_SUMMARY_TAG = "live_started_summary"

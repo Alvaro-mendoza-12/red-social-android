@@ -70,6 +70,11 @@ function videoRow(overrides = {}) {
     video_url: 'https://cdn.example.test/videos/video-1.mp4',
     cover_url: 'https://cdn.example.test/covers/video-1.jpg',
     thumbnail_url: 'https://cdn.example.test/thumbs/video-1.jpg',
+    sound_id: 'sound-video-1',
+    sound_source_video_id: 'video-1',
+    sound_title: 'Sonido original — Creadora pública',
+    sound_artist: 'Creadora pública',
+    sound_url: 'https://cdn.example.test/videos/video-1.mp4',
     duration_seconds: 24,
     views: 17,
     like_count: 5,
@@ -192,15 +197,51 @@ async function testSocialAndVideoCandidatesArePublicAndNarrow() {
   assert.deepEqual(video.candidates[0].formats, ['video', 'short-video'])
   assert.deepEqual(video.candidates[0].audioKeys, ['instrumental'])
   assert.equal(video.candidates[0].item.video_url, 'https://cdn.example.test/videos/video-1.mp4')
+  assert.equal(video.candidates[0].item.sound_id, 'sound-video-1')
+  assert.equal(video.candidates[0].item.sound_url, 'https://cdn.example.test/videos/video-1.mp4')
   assert.equal(video.candidates[0].item.is_public, true)
   assert.deepEqual(Object.keys(video.candidates[0].item).sort(), [
     'comment_count', 'cover_url', 'created_at', 'description', 'duration_seconds',
-    'id', 'is_public', 'like_count', 'share_count', 'tags', 'thumbnail_url',
+    'id', 'is_public', 'like_count', 'share_count', 'sound_artist', 'sound_id',
+    'sound_source_video_id', 'sound_title', 'sound_url', 'tags', 'thumbnail_url',
     'title', 'updated_at', 'user_id', 'user_name', 'user_profile_image',
     'video_url', 'views',
   ])
   assert.match(social.snapshotId, /^lfc1-social-/)
   assert.match(video.snapshotId, /^lfc1-video-/)
+  assert.deepEqual(video.providerState, { asOf: new Date(NOW).toISOString() })
+  const videoQuery = pool.calls.find((entry) => entry.sql.includes('FROM fallback_videos'))
+  assert.equal(videoQuery.params[1], new Date(NOW).toISOString())
+  assert.equal(videoQuery.params[2], 50)
+}
+
+async function testFeedSnapshotIgnoresLiveCountersAndFreezesItsAsOfBoundary() {
+  const firstPool = fakePool({ videoRows: [videoRow()] })
+  const firstSource = createAlgorithmLocalFallbackCandidateSource({ pool: firstPool, now: () => NOW })
+  const first = await firstSource.loadRawCandidates({ owner: owner(), surface: 'video', now: NOW })
+
+  const laterPool = fakePool({
+    videoRows: [videoRow({ views: 9_999, like_count: 800, comment_count: 90, share_count: 70 })],
+  })
+  const laterSource = createAlgorithmLocalFallbackCandidateSource({ pool: laterPool, now: () => NOW + 60_000 })
+  const continuation = await laterSource.loadRawCandidates({
+    owner: owner(),
+    surface: 'video',
+    now: NOW + 60_000,
+    cursor: { providerState: first.providerState },
+  })
+
+  assert.equal(continuation.snapshotId, first.snapshotId)
+  assert.deepEqual(continuation.providerState, first.providerState)
+  const candidateQuery = laterPool.calls.find((entry) => entry.sql.includes('FROM fallback_videos'))
+  const signalQuery = laterPool.calls.find((entry) => entry.sql.includes('WITH interactions(source'))
+  assert.equal(candidateQuery.params[1], new Date(NOW).toISOString())
+  assert.equal(signalQuery.params[1], new Date(NOW).toISOString())
+
+  const changedPool = fakePool({ videoRows: [videoRow({ title: 'Contenido realmente editado' })] })
+  const changed = await createAlgorithmLocalFallbackCandidateSource({ pool: changedPool, now: () => NOW })
+    .loadRawCandidates({ owner: owner(), surface: 'video', now: NOW })
+  assert.notEqual(changed.snapshotId, first.snapshotId)
 }
 
 async function testSourceScrubsUnsafeDisplayAndSignedMediaUrls() {
@@ -208,7 +249,7 @@ async function testSourceScrubsUnsafeDisplayAndSignedMediaUrls() {
     videoRows: [videoRow({
       display_name: 'private@example.test',
       avatar_url: 'https://cdn.example.test/avatar.png?token=never-expose',
-      video_url: 'https://cdn.example.test/video.mp4?signature=never-expose',
+      video_url: 'https://cdn.example.test/video.mp4',
       cover_url: 'http://insecure.example.test/cover.jpg',
       thumbnail_url: 'https://cdn.example.test/thumb.jpg',
     })],
@@ -218,9 +259,16 @@ async function testSourceScrubsUnsafeDisplayAndSignedMediaUrls() {
   assert.equal(result.candidates.length, 1)
   assert.equal(result.candidates[0].item.user_name, 'Usuario')
   assert.equal(result.candidates[0].item.user_profile_image, null)
-  assert.equal(result.candidates[0].item.video_url, null)
+  assert.equal(result.candidates[0].item.video_url, 'https://cdn.example.test/video.mp4')
   assert.equal(result.candidates[0].item.cover_url, null)
   assert.equal(result.candidates[0].item.thumbnail_url, 'https://cdn.example.test/thumb.jpg')
+
+  const signedMediaPool = fakePool({
+    videoRows: [videoRow({ video_url: 'https://cdn.example.test/video.mp4?signature=never-expose' })],
+  })
+  const signedMediaSource = createAlgorithmLocalFallbackCandidateSource({ pool: signedMediaPool, now: () => NOW })
+  const signedMediaResult = await signedMediaSource.loadRawCandidates({ owner: owner(), surface: 'video', now: NOW })
+  assert.equal(signedMediaResult.candidates.length, 0)
 }
 
 async function testBlockEdgesAreBidirectionalAndWorkWithCandidateProvider() {
@@ -291,6 +339,7 @@ Promise.resolve()
   .then(testInferredSignalsAreServerDerivedAndBounded)
   .then(testSelectorsUseOnlyTheApprovedLocalFallbackBoundary)
   .then(testSocialAndVideoCandidatesArePublicAndNarrow)
+  .then(testFeedSnapshotIgnoresLiveCountersAndFreezesItsAsOfBoundary)
   .then(testSourceScrubsUnsafeDisplayAndSignedMediaUrls)
   .then(testBlockEdgesAreBidirectionalAndWorkWithCandidateProvider)
   .then(testMissingSafetyTablesAndDatabaseFailuresFailClosed)

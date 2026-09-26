@@ -28,6 +28,7 @@ object UbuntuStorageUrl {
         "post-comments-media",
         "group-audio",
         "profile-audio",
+        "community-music",
         "report-evidence"
     )
 
@@ -81,6 +82,36 @@ object UbuntuStorageUrl {
             .filter { it.isNotBlank() }
             .distinct()
 
+    /**
+     * Returns the underlying storage object without image transformation parameters.
+     * Authentication/version parameters are preserved, so signed objects remain valid.
+     */
+    fun originalObjectUrl(value: String?): String? {
+        val rewritten = rewrite(value) ?: return null
+        val normalized = rewritten.replace("\\", "/")
+        if (!normalized.contains(PUBLIC_MARKER, ignoreCase = true) &&
+            !normalized.contains(SIGNED_MARKER, ignoreCase = true)
+        ) return rewritten
+
+        val fragment = normalized.substringAfter('#', missingDelimiterValue = "")
+        val withoutFragment = normalized.substringBefore('#')
+        val base = withoutFragment.substringBefore('?')
+        val retainedQuery = withoutFragment.substringAfter('?', missingDelimiterValue = "")
+            .split('&')
+            .map(String::trim)
+            .filter { it.isNotBlank() }
+            .filterNot { parameter ->
+                parameter.substringBefore('=').trim().lowercase() in cacheVariantParameters
+            }
+            .joinToString("&")
+
+        return buildString {
+            append(base)
+            if (retainedQuery.isNotBlank()) append('?').append(retainedQuery)
+            if (fragment.isNotBlank()) append('#').append(fragment)
+        }
+    }
+
     fun stableCacheKey(value: String?): String? {
         val raw = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
         val normalized = raw.replace("\\", "/")
@@ -112,7 +143,7 @@ object UbuntuStorageUrl {
      * origins are left untouched because they may not implement this contract.
      */
     fun thumbnail(value: String?, width: Int = 1080, quality: Int = 78): String? {
-        val rewritten = rewrite(value) ?: return null
+        val rewritten = originalObjectUrl(value) ?: return null
         val root = baseUrl.trimEnd('/').takeIf { it.startsWith("http", ignoreCase = true) }
             ?: return rewritten
         if (!rewritten.startsWith("$root$PUBLIC_MARKER", ignoreCase = true)) return rewritten

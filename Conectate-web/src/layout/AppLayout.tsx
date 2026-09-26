@@ -317,7 +317,9 @@ export function AppLayout() {
   const [messageUnreadCount, setMessageUnreadCount] = useState(0)
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [isOnline, setIsOnline] = useState(isBrowserOnline())
-  const [pendingDeferredMutations, setPendingDeferredMutations] = useState(getDeferredMutationCount())
+  const [pendingDeferredMutations, setPendingDeferredMutations] = useState(
+    getDeferredMutationCount(user?.id ?? 'signed-out'),
+  )
   const [isNavCollapsed, setIsNavCollapsed] = useState(() => readNavCollapsedPreference())
   const [supabaseRestriction, setSupabaseRestriction] = useState(() => getSupabaseRestrictionSnapshot())
   const [incomingCall, setIncomingCall] = useState<IncomingCallInvite | null>(null)
@@ -699,20 +701,21 @@ export function AppLayout() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     const syncPendingCounter = () => {
-      setPendingDeferredMutations(getDeferredMutationCount())
+      setPendingDeferredMutations(getDeferredMutationCount(user?.id ?? 'signed-out'))
     }
+    syncPendingCounter()
     window.addEventListener('conectate-web-deferred-queue-updated', syncPendingCounter)
     return () => {
       window.removeEventListener('conectate-web-deferred-queue-updated', syncPendingCounter)
     }
-  }, [])
+  }, [user?.id])
 
   useEffect(() => {
     if (!isOnline || !user || (!isFallbackSession && !supabase)) return
     let isCancelled = false
 
     const flush = async () => {
-      const result = await flushDeferredMutations(executeDeferredMutation)
+      const result = await flushDeferredMutations(executeDeferredMutation, user.id)
       if (isCancelled) return
       setPendingDeferredMutations(result.remaining)
       if (result.processed > 0) {

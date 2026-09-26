@@ -19,7 +19,7 @@ class CreatorAnalyticsPresentationTest {
     @Test
     fun backendSetupFailureNeverClaimsTheFeatureIsDisabled() {
         assertEquals(
-            "No se pudo iniciar el servicio de estadísticas. Actualiza e inténtalo nuevamente.",
+            "El servicio no terminó de iniciar. Reintenta para actualizar la conexión.",
             creatorAnalyticsErrorMessage(CreatorAnalyticsApiException("CREATOR_ANALYTICS_DISABLED", 404)),
         )
     }

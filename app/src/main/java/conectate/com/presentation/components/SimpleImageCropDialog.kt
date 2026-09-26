@@ -5,7 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
-import android.media.ExifInterface
+import androidx.exifinterface.media.ExifInterface
 import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
+import conectate.com.core.media.ShareableMediaFileStore
 import coil.compose.AsyncImage
 import java.io.File
 import java.io.FileOutputStream
@@ -329,7 +330,7 @@ private suspend fun cropImageToCache(
 
     val decoded = decodeScaledBitmap(context, sourceUri)
     val cropped = cropBitmap(decoded, crop)
-    val output = File(context.cacheDir, "crop_${UUID.randomUUID()}.jpg")
+    val output = File(ShareableMediaFileStore.crops(context), "crop_${UUID.randomUUID()}.jpg")
     FileOutputStream(output).use { stream ->
         check(cropped.compress(Bitmap.CompressFormat.JPEG, 92, stream)) {
             "No se pudo comprimir el recorte"

@@ -306,7 +306,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPhoenix(center:
         val x = (index - 1) * 12f * unit
         drawPath(Path().apply {
             moveTo(center.x + x - 6f * unit, center.y + 18f * unit)
-            quadraticBezierTo(center.x + x, center.y + 47f * unit, center.x + x + 6f * unit, center.y + 22f * unit)
+            quadraticTo(center.x + x, center.y + 47f * unit, center.x + x + 6f * unit, center.y + 22f * unit)
             close()
         }, listOf(NovvinPink, NovvinGold, NovvinPurple)[index])
     }

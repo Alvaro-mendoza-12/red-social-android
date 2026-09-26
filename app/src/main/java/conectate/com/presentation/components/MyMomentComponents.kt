@@ -75,7 +75,7 @@ fun MyMomentManagementRow(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = "Visible para todos", // Fixed text as per "estan visible para todos" or dynamic
+                            text = momentAudienceLabel(moment),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -96,4 +96,17 @@ fun MyMomentManagementRow(
             }
         }
     }
+}
+
+internal fun momentAudienceLabel(moment: Moment): String = when {
+    moment.visibilityType.equals("private", ignoreCase = true) ||
+        moment.visibility.equals("only_me", ignoreCase = true) -> "Solo tú"
+    moment.visibility.equals("followers", ignoreCase = true) -> "Quienes te siguen"
+    moment.visibility.equals("following", ignoreCase = true) -> "Personas que sigues"
+    moment.visibility.equals("chats", ignoreCase = true) -> "Personas con las que hablas"
+    moment.visibility.equals("only_selected", ignoreCase = true) ->
+        "${moment.audienceIds.size} persona${if (moment.audienceIds.size == 1) "" else "s"} elegida${if (moment.audienceIds.size == 1) "" else "s"}"
+    moment.visibility.equals("except_selected", ignoreCase = true) ->
+        "Todos excepto ${moment.excludedIds.size}"
+    else -> "Visible para todos"
 }

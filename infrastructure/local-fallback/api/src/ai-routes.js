@@ -64,16 +64,22 @@ function sanitizeFeedback(body, userId) {
   }
 }
 
+function publicAiErrorCode(error) {
+  const candidate = String(error?.code || error?.payload?.error || '').trim()
+  return /^[A-Z][A-Z0-9_]{1,79}$/.test(candidate) ? candidate : 'AI_SERVICE_ERROR'
+}
+
 function handleAiError(error, res, next) {
   const status = Number(error?.status)
   if (status >= 400 && status <= 504) {
+    const code = publicAiErrorCode(error)
     const log = status >= 500 ? console.error : console.warn
     log('[api] AI proxy request failed', {
       status,
-      code: String(error.code || error.payload?.error || 'AI_SERVICE_ERROR').slice(0, 80),
+      code,
     })
     return res.status(status).json({
-      error: error.code || error.payload?.error || 'AI_SERVICE_ERROR',
+      error: code,
     })
   }
   return next(error)
@@ -200,6 +206,7 @@ module.exports = {
   callAiService,
   createFixedWindowRateLimiter,
   handleAiError,
+  publicAiErrorCode,
   registerAiRoutes,
   sanitizeContext,
   sanitizeFeedback,

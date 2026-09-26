@@ -96,7 +96,7 @@ internal class CollectionMessageReceiptRemoteStore(
         var cleanScopeId = scopeId.trim().lowercase()
         var cleanUserId = currentUserId.trim().lowercase()
         if (cleanScopeId.isBlank() || cleanUserId.isBlank() || token.isNullOrBlank()) {
-            android.util.Log.w(logTag, "markAllMessagesRead: no token available, skipping remote sync for $cleanScopeId")
+            android.util.Log.w(logTag, "markAllMessagesRead: no session token; remote sync skipped")
             return false
         }
 

@@ -24,7 +24,7 @@ import javax.inject.Inject
 class ChallengeViewModel @Inject constructor(
     private val challengeRepository: ChallengeRepository,
     private val authService: AuthService,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private var submissionsJob: Job? = null

@@ -26,7 +26,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class SocializationRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val authService: AuthService,
     private val apiClient: SocializationApiClient,
     private val supabaseConfig: SupabaseConfig,

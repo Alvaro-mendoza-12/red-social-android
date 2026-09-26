@@ -91,6 +91,112 @@ groups:
           runbook_url: "https://conectate.runbooks.com/disk-critical"
           dashboard_url: "https://grafana.conectate.local/d/node-metrics"
 
+      - alert: NetworkPacketDropsHigh
+        expr: |
+          (
+            rate(node_network_receive_drop_total{device!~"lo|veth.*|docker.*|br-.*"}[5m])
+            /
+            clamp_min(rate(node_network_receive_packets_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]), 1)
+          ) > 0.001
+          or
+          (
+            rate(node_network_transmit_drop_total{device!~"lo|veth.*|docker.*|br-.*"}[5m])
+            /
+            clamp_min(rate(node_network_transmit_packets_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]), 1)
+          ) > 0.001
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "Packet loss on {{ $labels.device }}"
+          description: "RX or TX packet loss exceeded 0.1% for five minutes on {{ $labels.instance }}"
+          runbook_url: "https://conectate.runbooks.com/network-packet-loss"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      - alert: NetworkPacketDropsCritical
+        expr: |
+          (
+            rate(node_network_receive_drop_total{device!~"lo|veth.*|docker.*|br-.*"}[5m])
+            /
+            clamp_min(rate(node_network_receive_packets_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]), 1)
+          ) > 0.01
+          or
+          (
+            rate(node_network_transmit_drop_total{device!~"lo|veth.*|docker.*|br-.*"}[5m])
+            /
+            clamp_min(rate(node_network_transmit_packets_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]), 1)
+          ) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "Critical packet loss on {{ $labels.device }}"
+          description: "RX or TX packet loss exceeded 1% for two minutes on {{ $labels.instance }}"
+          runbook_url: "https://conectate.runbooks.com/network-packet-loss"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      - alert: NetworkInterfaceErrors
+        expr: |
+          rate(node_network_receive_errs_total{device!~"lo|veth.*|docker.*|br-.*"}[5m])
+          +
+          rate(node_network_transmit_errs_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "Interface errors on {{ $labels.device }}"
+          description: "The physical interface is incrementing RX/TX errors on {{ $labels.instance }}"
+          runbook_url: "https://conectate.runbooks.com/network-interface-errors"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      - alert: ServerEthernetBelowGigabit
+        expr: |
+          node_network_up{device!~"lo|veth.*|docker.*|br-.*"} == 1
+          and node_network_speed_bytes{device!~"lo|veth.*|docker.*|br-.*"} > 0
+          and node_network_speed_bytes{device!~"lo|veth.*|docker.*|br-.*"} < 125000000
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "Server Ethernet negotiated below 1 Gbps"
+          description: "{{ $labels.device }} is up but negotiated below gigabit on {{ $labels.instance }}"
+          runbook_url: "https://conectate.runbooks.com/network-link-speed"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      - alert: DiskIOSaturationHigh
+        expr: rate(node_disk_io_time_seconds_total{device!~"loop.*|ram.*|dm-.*"}[5m]) > 0.80
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "High disk I/O saturation on {{ $labels.device }}"
+          description: "Disk busy time exceeded 80% for ten minutes on {{ $labels.instance }}"
+          runbook_url: "https://conectate.runbooks.com/disk-io-saturation"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
+      - alert: DiskIOSaturationCritical
+        expr: rate(node_disk_io_time_seconds_total{device!~"loop.*|ram.*|dm-.*"}[5m]) > 0.95
+        for: 5m
+        labels:
+          severity: critical
+          team: infrastructure
+          service: node-exporter
+        annotations:
+          summary: "Critical disk I/O saturation on {{ $labels.device }}"
+          description: "Disk busy time exceeded 95% for five minutes on {{ $labels.instance }}"
+          runbook_url: "https://conectate.runbooks.com/disk-io-saturation"
+          dashboard_url: "https://grafana.conectate.local/d/node-metrics"
+
       # 🔥 NODE DOWN - Nodo caído
       - alert: NodeDown
         expr: up{job="node-exporter"} == 0

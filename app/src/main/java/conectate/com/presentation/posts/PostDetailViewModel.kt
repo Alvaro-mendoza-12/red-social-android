@@ -34,12 +34,8 @@ class PostDetailViewModel @Inject constructor(
     private val authService: conectate.com.data.supabase.AuthService,
     private val shareRepository: conectate.com.data.repository.ShareRepository,
     private val voiceMessageManager: conectate.com.presentation.messages.VoiceMessageManager,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
-
-    init {
-        voiceMessageManager.setScope(viewModelScope)
-    }
 
     private val _uiState = MutableStateFlow(PostDetailUiState())
     val uiState: StateFlow<PostDetailUiState> = _uiState.asStateFlow()

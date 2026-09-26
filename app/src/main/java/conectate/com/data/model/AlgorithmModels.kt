@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package conectate.com.data.model
 
 import kotlinx.serialization.Serializable

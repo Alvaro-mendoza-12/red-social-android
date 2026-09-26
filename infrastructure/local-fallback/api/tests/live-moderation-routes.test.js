@@ -36,6 +36,11 @@ async function testDurableModerationSchema() {
   assert.match(schema, /CREATE TABLE IF NOT EXISTS fallback_live_chapters/)
   assert.match(schema, /offset_ms BIGINT NOT NULL CHECK \(offset_ms >= 0\)/)
   assert.match(schema, /REFERENCES fallback_live_streams\(id\) ON DELETE CASCADE/)
+  assert.match(schema, /cover_url TEXT/)
+  assert.match(schema, /game_name TEXT/)
+  assert.match(schema, /visibility TEXT NOT NULL DEFAULT 'public'/)
+  assert.match(schema, /gifts_enabled BOOLEAN NOT NULL DEFAULT TRUE/)
+  assert.match(schema, /battles_enabled BOOLEAN NOT NULL DEFAULT TRUE/)
 }
 
 Promise.resolve()

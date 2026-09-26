@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 
 @Singleton
 class CallTonePlayer @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     private val scope = newSafeScope("CallTonePlayer", Dispatchers.Default)
     private val lock = Any()

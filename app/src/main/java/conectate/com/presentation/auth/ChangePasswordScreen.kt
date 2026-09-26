@@ -13,7 +13,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -67,7 +66,7 @@ fun ChangePasswordScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = "Nueva Contraseña",
+                text = "Cambiar contraseña",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
@@ -76,7 +75,7 @@ fun ChangePasswordScreen(
             Text(
                 text = "Confirma tu contraseña actual y elige una nueva.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.Gray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 32.dp)
             )
 
@@ -103,7 +102,7 @@ fun ChangePasswordScreen(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("Nueva Contraseña") },
+                label = { Text("Nueva contraseña") },
                 modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -111,7 +110,7 @@ fun ChangePasswordScreen(
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
                         Icon(
                             imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = null
+                            contentDescription = if (passwordVisible) "Ocultar nueva contraseña" else "Ver nueva contraseña"
                         )
                     }
                 },
@@ -123,7 +122,7 @@ fun ChangePasswordScreen(
             OutlinedTextField(
                 value = confirmPassword,
                 onValueChange = { confirmPassword = it },
-                label = { Text("Confirmar Contraseña") },
+                label = { Text("Confirmar contraseña") },
                 modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                 visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -131,7 +130,7 @@ fun ChangePasswordScreen(
                     IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
                         Icon(
                             imageVector = if (confirmPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = null
+                            contentDescription = if (confirmPasswordVisible) "Ocultar confirmación" else "Ver confirmación"
                         )
                     }
                 },
@@ -173,11 +172,11 @@ fun ChangePasswordScreen(
                 if (authState is AuthState.Loading) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onPrimary,
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Cambiar Contraseña", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Cambiar contraseña", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
             

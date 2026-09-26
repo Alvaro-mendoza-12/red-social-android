@@ -13,6 +13,8 @@ data class CommunityUnreadCountRow(
 
 @Dao
 interface CommunityDao {
+    @Query("UPDATE communities SET unread_count = MAX(0, unread_count - :count) WHERE id = :communityId")
+    suspend fun subtractReadMessages(communityId: String, count: Int)
     // COMMUNITIES
     @Query("SELECT * FROM communities WHERE is_deleted = 0 ORDER BY COALESCE(last_message_at, created_at) DESC")
     fun getAllCommunitiesFlow(): Flow<List<CommunityEntity>>
@@ -45,6 +47,16 @@ interface CommunityDao {
 
     @Query("UPDATE communities SET last_message = :lastMsg, last_message_at = :lastTime WHERE id = :communityId")
     suspend fun updateMetadata(communityId: String, lastMsg: String?, lastTime: String?)
+
+    // Concurrent sends may be acknowledged out of order. Keep the newest preview.
+    @Query("""
+        UPDATE communities SET last_message = :lastMsg, last_message_at = :lastTime
+        WHERE id = :communityId AND (
+            last_message_at IS NULL OR
+            COALESCE(julianday(:lastTime), 0) >= COALESCE(julianday(last_message_at), 0)
+        )
+    """)
+    suspend fun updateMetadataIfNewer(communityId: String, lastMsg: String?, lastTime: String?)
 
     @Query("UPDATE communities SET unread_count = 0 WHERE id = :communityId")
     suspend fun resetUnreadCount(communityId: String)

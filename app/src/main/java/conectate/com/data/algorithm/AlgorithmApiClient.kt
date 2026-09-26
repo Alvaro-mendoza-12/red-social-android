@@ -33,6 +33,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
@@ -54,7 +55,7 @@ class AlgorithmApiClient @Inject constructor(
 ) {
     suspend fun capabilities(accessToken: String): Result<AlgorithmCapabilities> =
         get("/v1/data/algorithm/capabilities", accessToken) { body ->
-            decodeEnvelope(body, "capabilities")
+            decodeAlgorithmCapabilitiesPayload(supabaseConfig.json, body)
         }
 
     suspend fun profiles(accessToken: String): Result<List<AlgorithmProfile>> =
@@ -76,16 +77,18 @@ class AlgorithmApiClient @Inject constructor(
     suspend fun recommendations(
         accessToken: String,
         surface: AuthoritativeRecommendationSurface,
-        profileId: String,
+        profileId: String? = null,
         cursor: OpaqueRecommendationCursor? = null,
         limit: Int = 20,
+        refreshSeed: String? = null,
     ): Result<AuthoritativeRecommendationDecodeResult> = request(accessToken) { baseUrl ->
         supabaseConfig.httpClient.get("$baseUrl/v1/data/recommendations") {
             algorithmHeaders(accessToken)
             parameter("surface", surface.wireValue)
-            parameter("profileId", profileId.trim())
+            profileId?.trim()?.takeIf { it.isNotBlank() }?.let { parameter("profileId", it) }
             parameter("limit", limit.coerceIn(1, MAX_RECOMMENDATION_PAGE_SIZE))
             cursor?.let { parameter("cursor", it.asRequestValue()) }
+            if (cursor == null) refreshSeed?.trim()?.takeIf { it.isNotBlank() }?.let { parameter("refreshId", it.take(80)) }
         }
     }.mapCatching { body ->
         AuthoritativeRecommendationPageJson.decode(body, surface)
@@ -284,6 +287,19 @@ class AlgorithmApiClient @Inject constructor(
     private companion object {
         const val MAX_RECOMMENDATION_PAGE_SIZE = 60
     }
+}
+
+internal fun decodeAlgorithmCapabilitiesPayload(json: Json, body: String): AlgorithmCapabilities {
+    val element = json.parseToJsonElement(body)
+    val root = element as? JsonObject
+    // Current responses use { enabled, capabilities: {...} }. "capabilities"
+    // is a domain field here, not a transport envelope to unwrap.
+    val payload = if (root?.containsKey("enabled") == true) {
+        element
+    } else {
+        root?.get("capabilities") ?: element
+    }
+    return json.decodeFromJsonElement(payload)
 }
 
 @kotlinx.serialization.Serializable

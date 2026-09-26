@@ -26,7 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.PlayCircleOutline
-import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -212,7 +212,7 @@ fun MediaCaptionPreviewDialog(
                         AssistChip(
                             onClick = { rotateQuarterTurns = (rotateQuarterTurns + 1) % 4 },
                             label = { Text("Girar 90°") },
-                            leadingIcon = { Icon(Icons.Default.RotateRight, contentDescription = null) }
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = null) }
                         )
                         AssistChip(
                             onClick = { drawEnabled = !drawEnabled },

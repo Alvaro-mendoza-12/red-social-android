@@ -71,8 +71,10 @@ class CommunityChatViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<CommunityChatUiState>(CommunityChatUiState.Loading)
     val uiState: StateFlow<CommunityChatUiState> = _uiState.asStateFlow()
 
-    private val _messageText = MutableStateFlow("")
-    val messageText: StateFlow<String> = _messageText.asStateFlow()
+    private val ownerAccountId = authService.getCurrentUserId()
+    private val textComposer = QueuedMessageComposer<conectate.com.data.model.Message>()
+    private val _messageText = textComposer.text
+    val messageText: StateFlow<String> = _messageText
 
     // Voice Manager State Expose
     val voiceState = voiceMessageManager.state
@@ -82,6 +84,10 @@ class CommunityChatViewModel @Inject constructor(
 
     private val _currentPlayingAudioId = MutableStateFlow<String?>(null)
     val currentPlayingAudioId: StateFlow<String?> = _currentPlayingAudioId.asStateFlow()
+    private val _isAudioPlaying = MutableStateFlow(false)
+    val isAudioPlaying: StateFlow<Boolean> = _isAudioPlaying.asStateFlow()
+    private val _audioPlaybackSpeed = MutableStateFlow(1f)
+    val audioPlaybackSpeed: StateFlow<Float> = _audioPlaybackSpeed.asStateFlow()
 
     private val _audioProgress = MutableStateFlow(0f)
     val audioProgress: StateFlow<Float> = _audioProgress.asStateFlow()
@@ -89,8 +95,8 @@ class CommunityChatViewModel @Inject constructor(
     private val _audioDurationLabel = MutableStateFlow("0:00")
     val audioDurationLabel: StateFlow<String> = _audioDurationLabel.asStateFlow()
 
-    private val _replyToMessage = MutableStateFlow<conectate.com.data.model.Message?>(null)
-    val replyToMessage: StateFlow<conectate.com.data.model.Message?> = _replyToMessage.asStateFlow()
+    private val _replyToMessage = textComposer.reply
+    val replyToMessage: StateFlow<conectate.com.data.model.Message?> = _replyToMessage
 
     private val _editingMessage = MutableStateFlow<conectate.com.data.model.Message?>(null)
     val editingMessage: StateFlow<conectate.com.data.model.Message?> = _editingMessage.asStateFlow()
@@ -175,11 +181,10 @@ class CommunityChatViewModel @Inject constructor(
     fun init(communityId: String) {
         val cleanId = communityId.trim().lowercase()
         if (cleanId.isBlank()) return
+        if (this.communityId != cleanId) textComposer.reset()
         this.communityId = cleanId
         _activeCommunityId.value = cleanId
         observeChatBackground(cleanId)
-        // Voice Manager
-        voiceMessageManager.setScope(viewModelScope)
         voiceMessageManager.reset()
         
         loadCommunity()
@@ -187,7 +192,6 @@ class CommunityChatViewModel @Inject constructor(
         viewModelScope.launch {
             communityRepository.setActiveCommunity(cleanId)
             communityRepository.markMessagesAsDelivered(cleanId)
-            communityRepository.markAsRead(cleanId)
         }
     }
 
@@ -210,8 +214,9 @@ class CommunityChatViewModel @Inject constructor(
 
     fun selectChannel(channel: CommunityChannel) {
         if (_channels.value.none { it.id == channel.id }) return
+        if (_selectedChannel.value?.id != channel.id) textComposer.invalidatePendingSend()
         _selectedChannel.value = channel
-        _replyToMessage.value = null
+        textComposer.updateReply(null)
         _selectedMessage.value = null
     }
 
@@ -340,8 +345,7 @@ class CommunityChatViewModel @Inject constructor(
             viewModelScope.launch {
                 communityRepository.setActiveCommunity(cleanId)
                 communityRepository.markMessagesAsDelivered(cleanId)
-                communityRepository.markAsRead(cleanId)
-            }
+                }
         } else {
             messageSessionStateStore.setActiveConversation("community", cleanId, false)
             communityRepository.setActiveCommunity(null)
@@ -473,6 +477,7 @@ class CommunityChatViewModel @Inject constructor(
 
             messagesFlow.collect { messages ->
                 android.util.Log.d("CommunityChatVM", "Messages updated in UI: ${messages.size}")
+                messageRepository.prefetchRecentCommunityMedia(messages)
                 refreshPollStates(messages)
                 val currentState = _uiState.value
                 val isMember = if (currentState is CommunityChatUiState.Success) currentState.isMember else false
@@ -490,12 +495,12 @@ class CommunityChatViewModel @Inject constructor(
     }
 
     fun updateMessageText(text: String) {
-        _messageText.value = text
+        textComposer.updateText(text)
     }
 
     fun sendMessage() {
-        val content = _messageText.value
-        if (content.isBlank() || _isSending.value) return
+        if (ownerAccountId == null || ownerAccountId != authService.getCurrentUserId()) return
+        val destinationId = communityId.takeIf { it.isNotBlank() } ?: return
 
         val channel = writableChannelOrNull()
         if (_selectedChannel.value != null && channel == null) return
@@ -508,28 +513,39 @@ class CommunityChatViewModel @Inject constructor(
              return
         }
 
+        val submission = textComposer.beginSend() ?: return
+        fun isCurrentConversation() = communityId == destinationId &&
+            _selectedChannel.value?.id == channel?.id && ownerAccountId == authService.getCurrentUserId()
+        _errorMessage.value = null
         viewModelScope.launch {
-            _isSending.value = true
-            _errorMessage.value = null
-            
-            val replyTo = _replyToMessage.value
-            _replyToMessage.value = null
-            _messageText.value = "" // Optimistic UI clear
-            
-            val result = communityRepository.sendCommunityMessage(
-                communityId,
-                content,
-                replyToId = replyTo?.id,
-                replyTo = replyTo,
-                channelId = channel?.id
-            )
-            if (result.isFailure) {
-                _errorMessage.value = result.exceptionOrNull()
-                    .toUserFacingMessage("No se pudo enviar el mensaje.")
-                _messageText.value = content
-                _replyToMessage.value = replyTo
+            try {
+                if (!isCurrentConversation()) return@launch
+                val result = communityRepository.sendCommunityMessage(
+                    destinationId,
+                    submission.text,
+                    replyToId = submission.replyTo?.id,
+                    replyTo = submission.replyTo,
+                    channelId = channel?.id,
+                    onQueued = {
+                        withContext(Dispatchers.Main.immediate) {
+                            if (isCurrentConversation()) textComposer.queued(submission)
+                            else textComposer.finished(submission)
+                        }
+                    }
+                )
+                if (result.isFailure && isCurrentConversation()) {
+                    _errorMessage.value = result.exceptionOrNull()
+                        .toUserFacingMessage("No se pudo enviar el mensaje.")
+                }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (isCurrentConversation()) {
+                    _errorMessage.value = error.toUserFacingMessage("No se pudo enviar el mensaje.")
+                }
+            } finally {
+                textComposer.finished(submission)
             }
-            _isSending.value = false
         }
     }
 
@@ -925,7 +941,7 @@ class CommunityChatViewModel @Inject constructor(
     // Message Actions
     fun onSwipeToReply(message: conectate.com.data.model.Message) {
         if (message.deleted_for_all) return
-        _replyToMessage.value = message
+        textComposer.updateReply(message)
     }
 
     fun onMessageLongClick(message: conectate.com.data.model.Message) {
@@ -1031,19 +1047,19 @@ class CommunityChatViewModel @Inject constructor(
     }
 
     fun cancelReply() {
-        _replyToMessage.value = null
+        textComposer.updateReply(null)
     }
 
     fun onEditMessage(message: conectate.com.data.model.Message) {
         if (message.content_type != "text" || message.deleted_for_all) return
         _editingMessage.value = message
-        _messageText.value = message.content
+        textComposer.updateText(message.content)
         _selectedMessage.value = null
     }
 
     fun cancelEdit() {
         _editingMessage.value = null
-        _messageText.value = ""
+        textComposer.updateText("")
     }
 
     fun confirmEditMessage() {
@@ -1190,7 +1206,15 @@ class CommunityChatViewModel @Inject constructor(
 
         if (_currentPlayingAudioId.value == id) {
             mediaPlayer?.let {
-                if (it.isPlaying) it.pause() else it.start()
+                if (it.isPlaying) {
+                    it.pause()
+                    _isAudioPlaying.value = false
+                } else {
+                    applyAudioPlaybackSpeed(it)
+                    it.start()
+                    _isAudioPlaying.value = true
+                    startProgressTracker()
+                }
                 return
             }
         }
@@ -1206,11 +1230,18 @@ class CommunityChatViewModel @Inject constructor(
                             .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build()
                     )
-                    UbuntuMedia.setDataSource(this, url)
+                    val playable = messageRepository.getPlayableUrl(url).getOrNull() ?: url
+                    if (playable.startsWith("file:", ignoreCase = true)) {
+                        setDataSource(android.net.Uri.parse(playable).path)
+                    } else {
+                        UbuntuMedia.setDataSource(this, playable)
+                    }
                     prepareAsync()
                     setOnPreparedListener {
                         _currentPlayingAudioId.value = id
+                        applyAudioPlaybackSpeed(this)
                         start()
+                        _isAudioPlaying.value = true
                         startProgressTracker()
                     }
                     setOnCompletionListener { stopAudio() }
@@ -1240,9 +1271,36 @@ class CommunityChatViewModel @Inject constructor(
         }
     }
 
+    fun seekAudio(fraction: Float) {
+        val player = mediaPlayer ?: return
+        if (_currentPlayingAudioId.value == null || player.duration <= 0) return
+        val safeFraction = fraction.coerceIn(0f, 1f)
+        player.seekTo((player.duration * safeFraction).toInt())
+        _audioProgress.value = safeFraction
+        _audioDurationLabel.value = formatDuration(player.currentPosition.toLong())
+    }
+
+    fun cycleAudioPlaybackSpeed() {
+        _audioPlaybackSpeed.value = when (_audioPlaybackSpeed.value) {
+            1f -> 1.5f
+            1.5f -> 2f
+            else -> 1f
+        }
+        mediaPlayer?.let(::applyAudioPlaybackSpeed)
+    }
+
+    private fun applyAudioPlaybackSpeed(player: android.media.MediaPlayer) {
+        runCatching {
+            player.playbackParams = player.playbackParams
+                .setSpeed(_audioPlaybackSpeed.value)
+                .setPitch(1f)
+        }
+    }
+
     private fun stopAudio() {
         progressJob?.cancel()
         _currentPlayingAudioId.value = null
+        _isAudioPlaying.value = false
         _audioProgress.value = 0f
         _audioDurationLabel.value = "0:00"
         mediaPlayer?.release()

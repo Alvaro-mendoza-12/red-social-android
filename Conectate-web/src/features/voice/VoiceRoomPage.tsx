@@ -24,8 +24,9 @@ import {
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { joinFallbackVoiceRoom, leaveFallbackVoiceRoom, loadFallbackVoiceRoom } from '../../core/fallbackData'
-import { readFallbackSession } from '../../core/auth/fallbackAuth'
+import { ensureFallbackAccessToken } from '../../core/auth/fallbackAuth'
 import { getRuntimeBackendUrl } from '../../core/runtimeBackend'
+import { buildSignalingAffinity } from '../../core/signalingAffinity'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import WebRTCManager from './WebRTCManager'
 import {
@@ -94,6 +95,7 @@ type ServerEvents = {
   disconnect: (reason: string) => void
   connect_error: (error: Error) => void
   'room-joined': (payload: { roomId?: string; socketId?: string; participantCount?: number }) => void
+  'room-join-error': (payload: { roomId?: string; error?: string }) => void
   'current-participants': (participants: unknown) => void
   'user-joined': (participant: unknown) => void
   'user-left': (socketId: string) => void
@@ -116,7 +118,11 @@ type ClientEvents = {
 
 type VoiceSocket = Socket<ServerEvents, ClientEvents>
 
-const joinedRoomStorageKey = 'conectate-web-voice-joined-room'
+const joinedRoomStoragePrefix = 'conectate-web-voice-joined-room:'
+
+function joinedRoomStorageKey(accountId?: string): string {
+  return `${joinedRoomStoragePrefix}${encodeURIComponent(accountId?.trim().toLowerCase() || 'signed-out')}`
+}
 
 function readSignalingUrl(): string {
   const configured = String(import.meta.env.VITE_SIGNALING_URL ?? '').trim()
@@ -124,20 +130,22 @@ function readSignalingUrl(): string {
   return configured || fallbackApi
 }
 
-function readJoinedRoomFromStorage(): string | null {
+function readJoinedRoomFromStorage(accountId?: string): string | null {
   if (typeof window === 'undefined') return null
-  const value = window.localStorage.getItem(joinedRoomStorageKey)
+  window.localStorage.removeItem('conectate-web-voice-joined-room')
+  const value = window.localStorage.getItem(joinedRoomStorageKey(accountId))
   const clean = (value ?? '').trim()
   return clean.length > 0 ? clean : null
 }
 
-function writeJoinedRoomToStorage(roomId: string | null) {
+function writeJoinedRoomToStorage(accountId: string | undefined, roomId: string | null) {
   if (typeof window === 'undefined') return
+  const key = joinedRoomStorageKey(accountId)
   if (roomId) {
-    window.localStorage.setItem(joinedRoomStorageKey, roomId)
+    window.localStorage.setItem(key, roomId)
     return
   }
-  window.localStorage.removeItem(joinedRoomStorageKey)
+  window.localStorage.removeItem(key)
 }
 
 function profilePathFor(profileId: string, currentUserId?: string): string {
@@ -668,23 +676,16 @@ export function VoiceRoomPage() {
 
   const startPeerOffer = useCallback(async (peerId: string) => {
     const manager = webrtcManagerRef.current
-    const socket = socketRef.current
-    if (!manager || !socket || !user || !peerId || manager.hasPeerConnection(peerId)) return
+    if (!manager || !peerId || manager.hasPeerConnection(peerId)) return
 
     try {
       manager.createPeerConnection(peerId, true)
-      const offer = await manager.createOffer(peerId)
-      socket.emit('offer', {
-        target: peerId,
-        offer,
-        userId: user.id,
-        name: displayName,
-      })
+      await manager.createOffer(peerId)
       await drainIceCandidates(peerId)
     } catch (caught) {
       setJoinError(friendlyError(caught, 'No se pudo iniciar la conexión de voz'))
     }
-  }, [displayName, drainIceCandidates, user])
+  }, [drainIceCandidates])
 
   const shouldOfferToPeer = useCallback((peerSocketId: string, peerUserId?: string) => {
     const ownSocketId = socketRef.current?.id
@@ -726,7 +727,7 @@ export function VoiceRoomPage() {
   const connectSignaling = useCallback(async (manager: WebRTCManager) => {
     if (!room || !user) return
     const accessToken = useUbuntuVoice
-      ? readFallbackSession()?.accessToken?.trim()
+      ? await ensureFallbackAccessToken()
       : (await supabase?.auth.getSession())?.data.session?.access_token?.trim()
     if (!accessToken) {
       setConnectionLabel('Sin token de voz')
@@ -739,6 +740,7 @@ export function VoiceRoomPage() {
     const signalingUrl = readSignalingUrl()
     const socket: VoiceSocket = io(signalingUrl, {
       transports: ['websocket', 'polling'],
+      query: { affinity: buildSignalingAffinity('voice', room.id) },
       auth: { token: accessToken },
       autoConnect: false,
       reconnection: true,
@@ -752,6 +754,14 @@ export function VoiceRoomPage() {
       socket.emit('ice-candidate', {
         target,
         candidate,
+        userId: user.id,
+        name: displayName,
+      })
+    })
+    manager.onOfferNeeded((target, offer) => {
+      socket.emit('offer', {
+        target,
+        offer,
         userId: user.id,
         name: displayName,
       })
@@ -796,6 +806,13 @@ export function VoiceRoomPage() {
           participantCount: Math.max(0, Number(payload.participantCount)),
         } : current)
       }
+    })
+
+    socket.on('room-join-error', (payload) => {
+      if (payload.roomId && payload.roomId !== room.id) return
+      setConnectionLabel('Acceso rechazado')
+      setJoinError(payload.error || 'El servidor rechazó el acceso a esta sala de voz')
+      socket.disconnect()
     })
 
     socket.on('current-participants', (rawParticipants) => {
@@ -849,6 +866,7 @@ export function VoiceRoomPage() {
             manager.createPeerConnection(payload.sender, false)
           }
           const answer = await manager.createAnswer(payload.sender, payload.offer)
+          if (!answer) return
           socket.emit('answer', {
             target: payload.sender,
             answer,
@@ -967,7 +985,7 @@ export function VoiceRoomPage() {
         )
         setIsJoined(true)
         joinedRef.current = true
-        writeJoinedRoomToStorage(room.id)
+        writeJoinedRoomToStorage(user.id, room.id)
         const manager = webrtcManagerRef.current
         if (manager) {
           await connectSignaling(manager)
@@ -1016,7 +1034,7 @@ export function VoiceRoomPage() {
 
       setIsJoined(true)
       joinedRef.current = true
-      writeJoinedRoomToStorage(room.id)
+      writeJoinedRoomToStorage(user.id, room.id)
       await loadParticipants(room.id, { silent: true })
       const manager = webrtcManagerRef.current
       if (manager) {
@@ -1075,7 +1093,7 @@ export function VoiceRoomPage() {
         await leaveFallbackVoiceRoom(room.id)
         setIsJoined(false)
         joinedRef.current = false
-        writeJoinedRoomToStorage(null)
+        writeJoinedRoomToStorage(user.id, null)
         stopLocalMedia()
         await loadParticipants(room.id, { silent: true })
         navigate('/app/voice')
@@ -1095,7 +1113,7 @@ export function VoiceRoomPage() {
       if ((data?.length ?? 0) > 0) await syncParticipantCounter(room.id, -1)
       setIsJoined(false)
       joinedRef.current = false
-      writeJoinedRoomToStorage(null)
+      writeJoinedRoomToStorage(user.id, null)
       stopLocalMedia()
       await loadParticipants(room.id, { silent: true })
       navigate('/app/voice')
@@ -1157,7 +1175,7 @@ export function VoiceRoomPage() {
 
   useEffect(() => {
     if (!room || !user || autoJoinAttemptedRef.current || isJoined) return
-    const storedRoomId = readJoinedRoomFromStorage()
+    const storedRoomId = readJoinedRoomFromStorage(user.id)
     if (storedRoomId && storedRoomId !== room.id) return
     autoJoinAttemptedRef.current = true
     void joinRoom()

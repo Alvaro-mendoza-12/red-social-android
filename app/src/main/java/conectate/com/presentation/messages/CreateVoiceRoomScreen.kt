@@ -1,12 +1,13 @@
 package conectate.com.presentation.messages
 
+import android.content.ClipData
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
@@ -17,9 +18,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,7 +39,8 @@ fun CreateVoiceRoomScreen(
     var password by remember { mutableStateOf("") }
     val error by viewModel.error.collectAsState()
     val isCreating by viewModel.isCreating.collectAsState()
-    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -44,7 +49,7 @@ fun CreateVoiceRoomScreen(
                 navigationIcon = {
                     if (createdRoomId == null) {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                         }
                     }
                 },
@@ -90,7 +95,13 @@ fun CreateVoiceRoomScreen(
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     onClick = {
-                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(createdRoomId!!))
+                        createdRoomId?.let { roomId ->
+                            clipboardScope.launch {
+                                clipboard.setClipEntry(
+                                    ClipEntry(ClipData.newPlainText("ID de sala", roomId))
+                                )
+                            }
+                        }
                     }
                 ) {
                     Row(

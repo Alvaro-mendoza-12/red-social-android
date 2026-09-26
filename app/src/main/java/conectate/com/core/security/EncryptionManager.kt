@@ -15,7 +15,7 @@ import javax.inject.Singleton
 
 @Singleton
 class EncryptionManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     companion object {
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"

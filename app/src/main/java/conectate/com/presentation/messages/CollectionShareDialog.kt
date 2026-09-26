@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -28,6 +29,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 fun CollectionShareDialog(
     title: String,
     link: String,
+    onScan: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -62,7 +64,15 @@ fun CollectionShareDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cerrar") }
+            androidx.compose.foundation.layout.Row {
+                if (onScan != null) {
+                    TextButton(onClick = onScan) {
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = null)
+                        Text("Escanear")
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Cerrar") }
+            }
         }
     )
 }

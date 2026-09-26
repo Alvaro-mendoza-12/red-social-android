@@ -13,7 +13,7 @@ import javax.inject.Singleton
 
 @Singleton
 class NetworkConnectivityObserver @Inject constructor(
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) {
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -46,6 +46,28 @@ class NetworkConnectivityObserver @Inject constructor(
             connectivityManager.unregisterNetworkCallback(callback)
         }
     }.distinctUntilChanged()
+
+    val isCellular: Flow<Boolean> = callbackFlow {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { trySend(isCellularNetwork()) }
+            override fun onLost(network: Network) { trySend(isCellularNetwork()) }
+            override fun onUnavailable() { trySend(false) }
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                trySend(isCellularNetwork())
+            }
+        }
+        connectivityManager.registerDefaultNetworkCallback(callback)
+        trySend(isCellularNetwork())
+        awaitClose { connectivityManager.unregisterNetworkCallback(callback) }
+    }.distinctUntilChanged()
+
+    fun isCellularNetwork(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+            (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                connectivityManager.isActiveNetworkMetered)
+    }
     
     fun isNetworkAvailable(): Boolean {
         var activeNetwork = connectivityManager.activeNetwork ?: return false

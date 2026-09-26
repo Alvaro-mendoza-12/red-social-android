@@ -23,7 +23,7 @@ class SavedAccountLogoutLoginFlowTest {
 
     private val seedRule = object : ExternalResource() {
         override fun before() {
-            TestRuntimeFixture.clear()
+            TestRuntimeFixture.begin()
             session = TestRuntimeFixture.seedSavedAccountLoginHarness()
         }
 

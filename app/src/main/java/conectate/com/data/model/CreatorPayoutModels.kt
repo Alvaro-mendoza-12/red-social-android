@@ -18,6 +18,12 @@ data class CreatorPayoutBalances(
     val heldMinor: Long = 0,
     val paidMinor: Long = 0,
     val recoveryDebtMinor: Long = 0,
+    /** Coin balances are shown even while fiat conversion/withdrawals are disabled. */
+    val pendingCoins: Long = 0,
+    val availableCoins: Long = 0,
+    val heldCoins: Long = 0,
+    val paidCoins: Long = 0,
+    val totalCoins: Long = 0,
 )
 
 @Serializable

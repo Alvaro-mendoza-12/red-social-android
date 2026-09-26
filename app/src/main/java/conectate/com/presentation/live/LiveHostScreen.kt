@@ -9,7 +9,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,13 +20,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -87,7 +87,7 @@ private sealed interface HostPermissionAction {
 }
 
 @Composable
-fun LiveHostScreen(
+fun LegacyLiveHostScreen(
     navController: NavController,
     liveId: String,
     viewModel: LiveSessionViewModel = hiltViewModel()
@@ -118,6 +118,7 @@ fun LiveHostScreen(
     val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
     val liveSupporters by viewModel.liveSupporters.collectAsStateWithLifecycle()
     val channelPoints by viewModel.channelPoints.collectAsStateWithLifecycle()
+    val creatorLayoutStyle by viewModel.creatorLayoutStyle.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var hostStartRequested by remember(liveId) { mutableStateOf(false) }
@@ -128,6 +129,7 @@ fun LiveHostScreen(
     var showModerationDialog by remember { mutableStateOf(false) }
     var showCollaborationDialog by remember { mutableStateOf(false) }
     var showHostToolsSheet by remember { mutableStateOf(false) }
+    var showCreatorLayoutSheet by remember { mutableStateOf(false) }
     var showDrawGuessDialog by remember { mutableStateOf(false) }
     var showChannelPointsDialog by remember { mutableStateOf(false) }
     var showMomentDialog by remember { mutableStateOf(false) }
@@ -312,7 +314,7 @@ fun LiveHostScreen(
     }
 
     LaunchedEffect(session?.role) {
-        if (session?.role == LiveRole.HOST && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (session?.role == LiveRole.HOST) {
             showOverlayPermissionDialog = !Settings.canDrawOverlays(context)
         }
     }
@@ -350,6 +352,10 @@ fun LiveHostScreen(
             LiveSource.SCREEN -> {
                 if (viewModel.canReuseScreenShareIntent()) {
                     autoStarted = viewModel.resumeLive()
+                } else if (viewModel.consumeSetupScreenProjectionIntent()?.let(viewModel::startScreenShare) == true) {
+                    // The user already approved this one-shot MediaProjection
+                    // token in the private pre-live studio.
+                    autoStarted = true
                 } else {
                     pendingInitialStart = true
                     runCatching {
@@ -398,7 +404,9 @@ fun LiveHostScreen(
                 role = "host",
                 publishAudio = false,
                 publishCamera = false
-            )
+            ).onFailure {
+                AppFeedbackBus.showError("No se pudo preparar invitados y batallas. Revisa la conexión e inténtalo otra vez.")
+            }
         }
     }
 
@@ -423,7 +431,7 @@ fun LiveHostScreen(
             onDismissRequest = { showOverlayPermissionDialog = false },
             title = { Text("Activa el chat flotante") },
             text = {
-                Text("Para mantener el live como TikTok cuando salgas de la app, permite mostrar el chat flotante sobre otras apps.")
+                Text("Para mantener visible el chat del LIVE cuando salgas de Novvin, permite mostrarlo sobre otras aplicaciones.")
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -441,6 +449,49 @@ fun LiveHostScreen(
             dismissButton = {
                 TextButton(onClick = { showOverlayPermissionDialog = false }) {
                     Text("Después")
+                }
+            }
+        )
+    }
+
+    if (showPermissionDeniedDialog) {
+        val deniedAction = deniedPermissionAction
+        AlertDialog(
+            onDismissRequest = {
+                showPermissionDeniedDialog = false
+                if (deniedAction is HostPermissionAction.Start) hostStartRequested = false
+            },
+            title = { Text("Permisos necesarios para el LIVE") },
+            text = {
+                Text(
+                    "Novvin necesita los permisos de cámara y micrófono que elegiste. " +
+                        "Actívalos en los ajustes del sistema y vuelve a esta pantalla."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showPermissionDeniedDialog = false
+                    runCatching {
+                        appSettingsLauncher.launch(
+                            Intent(
+                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                        )
+                    }.onFailure {
+                        if (deniedAction is HostPermissionAction.Start) hostStartRequested = false
+                        AppFeedbackBus.showError("No se pudieron abrir los ajustes de Novvin.")
+                    }
+                }) {
+                    Text("Abrir ajustes")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showPermissionDeniedDialog = false
+                    if (deniedAction is HostPermissionAction.Start) hostStartRequested = false
+                }) {
+                    Text("Ahora no")
                 }
             }
         )
@@ -794,6 +845,14 @@ fun LiveHostScreen(
                         onClick = togglePauseAction,
                     )
                 )
+                add(
+                    LiveSecondaryAction(
+                        key = "creator_layout",
+                        label = "Diseño del estudio · ${creatorLayoutStyle.displayName}",
+                        description = "Cambia la distribución de tus controles sin interrumpir el directo.",
+                        onClick = { showCreatorLayoutSheet = true },
+                    )
+                )
                 add(LiveSecondaryAction("settings", "Configuración", "Fuente, calidad, filtros y estado del video.") { showSettingsDialog = true })
                 add(LiveSecondaryAction("moderation", "Moderación", "Chat, moderadores, silencios y expulsiones.") { showModerationDialog = true })
                 add(LiveSecondaryAction("guests", "Invitados y batallas", "Revisar solicitudes, invitar y administrar participantes.") { showCollaborationDialog = true })
@@ -824,6 +883,14 @@ fun LiveHostScreen(
         )
     }
 
+    if (showCreatorLayoutSheet) {
+        LiveCreatorStyleSheet(
+            selected = creatorLayoutStyle,
+            onSelect = viewModel::setCreatorLayoutStyle,
+            onDismiss = { showCreatorLayoutSheet = false },
+        )
+    }
+
     LiveSessionScaffold(
         stream = session?.stream,
         viewerCount = viewerCount,
@@ -839,6 +906,8 @@ fun LiveHostScreen(
         comments = comments,
         reactions = reactions,
         supporters = liveSupporters,
+        joinedViewers = liveViewers,
+        creatorLayoutStyle = creatorLayoutStyle,
         onSendComment = viewModel::sendComment,
         onSendReaction = viewModel::sendReaction,
         commentingEnabled = !moderation.chatPaused || moderation.canModerate,
@@ -857,7 +926,7 @@ fun LiveHostScreen(
         leadingTopBarAction = {
             IconButton(onClick = { navController.popBackStack() }) {
                 Icon(
-                    imageVector = Icons.Default.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Volver",
                     tint = Color.White
                 )
@@ -876,7 +945,13 @@ fun LiveHostScreen(
                         it.status == "pending" && it.initiatedBy == "viewer"
                     }) "Solicitud pendiente" else "Invitar",
                 onEmptySlotClick = { showCollaborationDialog = true },
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)
+                // Keep the guest PiP below the identity header.  The creator
+                // action rail is anchored above the composer, so these two
+                // layers never compete for the same vertical space.
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 128.dp, end = 12.dp)
             )
             if (floatingChatEnabled) {
                 LiveFloatingChatWindow(

@@ -20,9 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Redo
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -171,7 +171,7 @@ fun StickerEditor(
                             },
                             enabled = !isSaving && undoStack.isNotEmpty()
                         ) {
-                            Icon(Icons.Default.Undo, contentDescription = "Deshacer")
+                            Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Deshacer")
                         }
                         IconButton(
                             onClick = {
@@ -183,7 +183,7 @@ fun StickerEditor(
                             },
                             enabled = !isSaving && redoStack.isNotEmpty()
                         ) {
-                            Icon(Icons.Default.Redo, contentDescription = "Rehacer")
+                            Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Rehacer")
                         }
                         FilledTonalButton(
                             enabled = !isSaving && workingBitmap != null,
@@ -203,7 +203,7 @@ fun StickerEditor(
                                 onSave(bytes, createStickerTitleFromText(title))
                             }
                         ) {
-                            Icon(Icons.Default.Send, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
                         }
                     }
                 }

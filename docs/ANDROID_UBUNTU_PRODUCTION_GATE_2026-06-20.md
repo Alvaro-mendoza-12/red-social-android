@@ -59,7 +59,7 @@ No se debe eliminar todavia el SDK hasta migrar los modulos parciales de la tabl
 ## Comandos de revalidacion
 
 ```powershell
-Set-Location "D:\red social - copia"
+Set-Location "D:\red social - live-gifts"
 powershell -ExecutionPolicy Bypass -File ".\scripts\start-cloudflare-quick-tunnel.ps1" -HostName 127.0.0.1 -Port 2222
 .\gradlew.bat :app:testDebugUnitTest :app:assembleDebug --console=plain
 ```

@@ -36,7 +36,7 @@ import javax.inject.Singleton
 
 @Singleton
 class StickerRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val storageService: StorageService

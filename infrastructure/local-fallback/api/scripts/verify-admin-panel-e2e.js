@@ -1,5 +1,10 @@
 const jwt = require('jsonwebtoken')
+const crypto = require('crypto')
 const { Pool } = require('pg')
+const {
+  ADMIN_CAPABILITY,
+  adminAccessContract,
+} = require('../src/admin-capabilities')
 
 const databaseUrl = process.env.DATABASE_URL
 const jwtSecret = String(process.env.JWT_SECRET || '')
@@ -14,7 +19,10 @@ const pool = new Pool({ connectionString: databaseUrl, max: 2 })
 
 async function findAdminActors() {
   const { rows } = await pool.query(
-    `SELECT u.id::text AS id, u.email
+    `SELECT u.id::text AS id,
+            u.email,
+            COALESCE(m.admin_access_level, CASE WHEN m.is_admin THEN 'full' ELSE 'none' END) AS access_level,
+            COALESCE(m.admin_is_owner, FALSE) AS is_owner
      FROM fallback_users u
      JOIN fallback_profile_moderation m
        ON lower(m.user_id) IN (
@@ -52,10 +60,22 @@ async function jsonRequest(path, accessToken) {
 }
 
 async function run() {
+  const diagnosticSessionIds = []
   try {
     const actors = await findAdminActors()
-    const tokens = actors.map((actor) => jwt.sign(
-        { email: actor.email, provider: 'local-fallback' },
+    const actorsWithTokens = await Promise.all(actors.map(async (actor) => {
+      const refreshHash = crypto.createHash('sha256').update(crypto.randomBytes(48)).digest('hex')
+      const { rows } = await pool.query(
+        `INSERT INTO fallback_auth_sessions(user_id, refresh_token_hash, client, user_agent, expires_at)
+         VALUES ($1, $2, 'admin-panel-smoke', 'internal-admin-panel-smoke', NOW() + INTERVAL '5 minutes')
+         RETURNING id`,
+        [actor.id, refreshHash],
+      )
+      diagnosticSessionIds.push(rows[0].id)
+      return {
+        actor,
+        accessToken: jwt.sign(
+        { email: actor.email, provider: 'local-fallback', client: 'admin-panel-smoke', sid: rows[0].id },
         jwtSecret,
         {
           subject: actor.id,
@@ -63,16 +83,37 @@ async function run() {
           issuer: 'conectate-local-fallback',
           audience: 'conectate-clients',
         },
-      ))
+        ),
+      }
+    }))
 
-    for (const accessToken of tokens) {
-      await jsonRequest('/v1/data/admin/access', accessToken)
+    for (const { actor, accessToken } of actorsWithTokens) {
+      const access = await jsonRequest('/v1/data/admin/access', accessToken)
+      const expected = adminAccessContract({
+        level: actor.access_level,
+        isOwner: actor.is_owner === true,
+      })
+      if (JSON.stringify(access.capabilities) !== JSON.stringify(expected.capabilities)) {
+        throw new Error('Admin capability contract does not match persisted access')
+      }
+      if (
+        access.accessLevel !== expected.accessLevel ||
+        access.isOwner !== expected.isOwner ||
+        access.canWrite !== expected.canWrite ||
+        access.canDeleteUsers !== expected.canDeleteUsers
+      ) {
+        throw new Error('Admin compatibility fields do not match named capabilities')
+      }
       await jsonRequest('/v1/data/admin/catalog', accessToken)
       await jsonRequest('/v1/data/admin/users?limit=1', accessToken)
       await jsonRequest('/v1/data/admin/stats', accessToken)
     }
 
-    const accessToken = tokens[0]
+    const systemActor = actorsWithTokens.find(({ actor }) =>
+      adminAccessContract({ level: actor.access_level, isOwner: actor.is_owner === true })
+        .capabilities.includes(ADMIN_CAPABILITY.SYSTEM_READ))
+    if (!systemActor) throw new Error('At least one full administrator is required for system health verification')
+    const accessToken = systemActor.accessToken
 
     const endpoints = [
       '/v1/data/admin/access',
@@ -101,10 +142,21 @@ async function run() {
     console.log(JSON.stringify({
       ok: true,
       verifiedAdminAccounts: actors.length,
+      verifiedCapabilityContracts: actors.length,
       endpoints: results,
     }))
   } finally {
-    await pool.end()
+    try {
+      if (diagnosticSessionIds.length > 0) {
+        await pool.query(
+          `DELETE FROM fallback_auth_sessions
+           WHERE id=ANY($1::uuid[]) AND client='admin-panel-smoke'`,
+          [diagnosticSessionIds],
+        )
+      }
+    } finally {
+      await pool.end()
+    }
   }
 }
 

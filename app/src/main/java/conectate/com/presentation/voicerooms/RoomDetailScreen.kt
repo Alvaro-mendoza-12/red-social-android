@@ -8,7 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,6 +33,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 
 sealed class RoomDetailUiState {
     object Loading : RoomDetailUiState()
@@ -71,7 +74,11 @@ class RoomDetailViewModel @Inject constructor(
                     onSuccess = { room ->
                         _uiState.value = RoomDetailUiState.Success(room)
                         val currentUserId = authService.getCurrentUserId()
-                        if (currentUserId != null && !room.participantIds.contains(currentUserId)) {
+                        if (
+                            currentUserId != null &&
+                            (!room.passwordRequired || room.creatorId.equals(currentUserId, ignoreCase = true)) &&
+                            !room.participantIds.contains(currentUserId)
+                        ) {
                             joinRoom()
                         }
                         _isSpeaker.value = room.speakerIds.contains(currentUserId ?: "")
@@ -157,7 +164,7 @@ fun RoomDetailScreen(
                         }
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Salir"
                         )
                     }
@@ -350,7 +357,7 @@ fun RoomDetailScreen(
                                         MaterialTheme.colorScheme.surfaceVariant
                                 ) {
                                     Icon(
-                                        imageVector = if (isSpeaker) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                                        imageVector = if (isSpeaker) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
                                         contentDescription = "Hablar"
                                     )
                                 }
@@ -374,7 +381,7 @@ fun RoomDetailScreen(
                                     containerColor = MaterialTheme.colorScheme.error
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.ExitToApp,
+                                        imageVector = Icons.AutoMirrored.Filled.ExitToApp,
                                         contentDescription = "Salir",
                                         tint = MaterialTheme.colorScheme.onError
                                     )

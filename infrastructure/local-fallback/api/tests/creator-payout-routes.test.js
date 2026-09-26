@@ -10,6 +10,7 @@ const {
   paypalEventStatus,
   payoutConfiguration,
   processApprovedCreatorPayouts,
+  publicSummary,
   registerCreatorPayoutRoutes,
   requestDecision,
 } = require('../src/creator-payout-routes')
@@ -138,7 +139,31 @@ function testBalanceUsesOnlyPurchasedEarningsAndRefundDebt() {
   assert.equal(snapshot.recoveryDebtMinor, 60)
   assert.equal(snapshot.rawAvailableMinor, 160)
   assert.equal(snapshot.availableMinor, 100)
+  assert.equal(snapshot.pendingCoins, 50)
+  assert.equal(snapshot.availableCoins, 80)
+  assert.equal(snapshot.heldCoins, 20)
+  assert.equal(snapshot.paidCoins, 20)
+  assert.equal(snapshot.totalCoins, 170)
   assert.deepEqual(allocatePayout(snapshot, 100), [{ earningId: 'available', allocatedMinor: 100 }])
+}
+
+function testPublicSummaryExposesCoinsWhenFiatConversionIsDisabled() {
+  const summary = publicSummary({
+    account: null,
+    requests: [],
+    allocations: [],
+    earnings: [{
+      id: 'earning-pending',
+      withdrawable_amount_diamonds: 15,
+      amount_diamonds: 15,
+      status: 'pending',
+      created_at: '2026-08-10T00:00:00.000Z',
+    }],
+  }, { ...CONFIG, enabled: false, minorPerCoin: 0, minimumMinor: 0 }, false, Date.parse('2026-08-09T00:00:00.000Z'))
+  assert.equal(summary.enabled, false)
+  assert.equal(summary.balances.pendingMinor, 0)
+  assert.equal(summary.balances.totalCoins, 15)
+  assert.equal(summary.balances.pendingCoins, 15)
 }
 
 async function testPayPalSandboxSuccessAndFailure() {
@@ -368,6 +393,7 @@ async function run() {
   testEmailIsEncryptedAndMasked()
   testValidDuplicateInsufficientAndUnverifiedRequests()
   testBalanceUsesOnlyPurchasedEarningsAndRefundDebt()
+  testPublicSummaryExposesCoinsWhenFiatConversionIsDisabled()
   await testPayPalSandboxSuccessAndFailure()
   await testDuplicateSignedWebhookIsIdempotent()
   await testAccountRoutePreservesCanonicalCreatorAndDoesNotReferenceUndefinedState()

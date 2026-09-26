@@ -18,9 +18,11 @@ import org.json.JSONObject
 import org.json.JSONArray
 import org.webrtc.*
 import org.webrtc.audio.JavaAudioDeviceModule
+import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.Collections
 import java.util.WeakHashMap
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,8 +55,18 @@ interface SignalingEvents {
 class WebRTCManager(
     private val context: Context,
     private val signalingEvents: SignalingEvents,
-    private val accessTokenProvider: (() -> String?)? = null
+    private val accessTokenProvider: (() -> String?)? = null,
+    private val failureReporter: ((metric: String, throwable: Throwable) -> Unit)? = null
 ) {
+    private val cameraSwitchInProgress = AtomicBoolean(false)
+
+    private fun reportFailure(metric: String, message: String, throwable: Throwable) {
+        Log.e("WebRTCManager", message, throwable)
+        runCatching { failureReporter?.invoke(metric, throwable) }
+            .onFailure { reportingError ->
+                Log.w("WebRTCManager", "Failure telemetry could not be recorded for $metric", reportingError)
+            }
+    }
     companion object {
         // Keep remote audio at WebRTC's reference level. Extra gain on the
         // handset speaker makes echo cancellation less effective on some devices.
@@ -155,6 +167,8 @@ class WebRTCManager(
         .getOrNull()
     val eglContext: EglBase.Context? get() = rootEglBase?.eglBaseContext
     private var audioDeviceModule: JavaAudioDeviceModule? = null
+    @Volatile
+    private var outgoingAudioBufferCallback: JavaAudioDeviceModule.AudioBufferCallback? = null
     
     private var localAudioTrack: AudioTrack? = null
     private var localVideoSource: VideoSource? = null
@@ -162,6 +176,8 @@ class WebRTCManager(
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
     @Volatile
     private var selectedCameraFilter: LiveCameraFilter = LiveCameraFilter.NONE
+    @Volatile
+    private var selectedCameraAdjustments: LiveCameraAdjustments = LiveCameraAdjustments()
     private var cameraFilterProcessor: LiveCameraFilterProcessor? = null
     @Volatile
     private var cameraFilterPerformanceListener: ((LiveFilterPerformanceState) -> Unit)? = null
@@ -196,6 +212,13 @@ class WebRTCManager(
     private val localOfferTimeoutJobs = ConcurrentHashMap<String, Job>()
     private val glareRecoveryJobs = ConcurrentHashMap<String, Job>()
     private val ignoreOffer = mutableMapOf<String, Boolean>()
+    /**
+     * True while a remote OFFER is being rolled back/applied. WebRTC invokes
+     * onRenegotiationNeeded during a polite rollback on some vendor builds;
+     * without this gate that callback can create a second local offer before
+     * setRemoteDescription(OFFER) completes and strand the peer in glare.
+     */
+    private val isSettingRemoteOfferPending = mutableMapOf<String, Boolean>()
     private val isSettingRemoteAnswerPending = mutableMapOf<String, Boolean>()
     private val MAX_ICE_RETRIES = 3
     private val managedIceWaitTimeoutMs = 10_000L
@@ -315,8 +338,7 @@ class WebRTCManager(
                 }
             }
         } catch (e: Exception) {
-            Log.e("WebRTCManager", "❌ CRITICAL ERROR during init: ${e.message}")
-            e.printStackTrace()
+            reportFailure("webrtc_init", "Critical error during WebRTC initialization", e)
         }
     }
 
@@ -375,6 +397,7 @@ class WebRTCManager(
             _signalingStates.value = emptyMap()
             _debugInfo.value = emptyMap() // v7.2.4: Clear Debug Info mapping
             ignoreOffer.clear()
+            isSettingRemoteOfferPending.clear()
             isSettingRemoteAnswerPending.clear()
             outgoingVideoEnabled = true
             localSocketId = ""
@@ -464,6 +487,24 @@ class WebRTCManager(
                     .build()
             )
             .setAudioSource(preferredAudioInputSource)
+            // The callback delegates through a volatile reference so LIVE can
+            // attach/detach its authorized music mixer without rebuilding the
+            // microphone or the peer connections.
+            .setAudioBufferCallback { buffer: ByteBuffer,
+                                      audioFormat: Int,
+                                      channelCount: Int,
+                                      sampleRate: Int,
+                                      bytesRead: Int,
+                                      captureTimeNs: Long ->
+                outgoingAudioBufferCallback?.onBuffer(
+                    buffer,
+                    audioFormat,
+                    channelCount,
+                    sampleRate,
+                    bytesRead,
+                    captureTimeNs
+                ) ?: captureTimeNs
+            }
             .setAudioRecordErrorCallback(object : JavaAudioDeviceModule.AudioRecordErrorCallback {
                 override fun onWebRtcAudioRecordInitError(e: String?) { Log.e("WebRTC", "AudioRecord Init Error: $e") }
                 override fun onWebRtcAudioRecordStartError(c: JavaAudioDeviceModule.AudioRecordStartErrorCode?, e: String?) { Log.e("WebRTC", "AudioRecord Start Error: $c - $e") }
@@ -568,6 +609,10 @@ class WebRTCManager(
         localOfferTimeoutJobs.clear()
         glareRecoveryJobs.values.forEach { it.cancel() }
         glareRecoveryJobs.clear()
+        makingOffer.clear()
+        ignoreOffer.clear()
+        isSettingRemoteOfferPending.clear()
+        isSettingRemoteAnswerPending.clear()
         
         remoteAudioTracks.clear()
         _remoteVideoTracks.value = emptyMap()
@@ -774,6 +819,15 @@ class WebRTCManager(
         runCatching { source?.dispose() }
     }
 
+    /**
+     * Installs a post-capture audio callback. Only the LIVE repository uses
+     * this hook; calls and voice rooms leave it null and retain the untouched
+     * microphone path.
+     */
+    fun setOutgoingAudioBufferCallback(callback: JavaAudioDeviceModule.AudioBufferCallback?) {
+        outgoingAudioBufferCallback = callback
+    }
+
     private fun releaseReplacedVideoPipelineAfterRendererDetach(
         track: VideoTrack?,
         capturer: VideoCapturer?,
@@ -878,6 +932,7 @@ class WebRTCManager(
         localOfferTimeoutJobs.remove(cleanOldKey)?.let { localOfferTimeoutJobs[cleanNewKey] = it }
         glareRecoveryJobs.remove(cleanOldKey)?.let { glareRecoveryJobs[cleanNewKey] = it }
         ignoreOffer.remove(cleanOldKey)?.let { ignoreOffer[cleanNewKey] = it }
+        isSettingRemoteOfferPending.remove(cleanOldKey)?.let { isSettingRemoteOfferPending[cleanNewKey] = it }
         isSettingRemoteAnswerPending.remove(cleanOldKey)?.let { isSettingRemoteAnswerPending[cleanNewKey] = it }
 
         rekeyStateMap(_remoteVideoTracks, cleanOldKey, cleanNewKey)
@@ -946,6 +1001,14 @@ class WebRTCManager(
             return false
         }
 
+        if (isSettingRemoteOfferPending[peerKey] == true) {
+            Log.w("WebRTC", "Skipping offer for $peerKey ($reason): remote offer still pending")
+            if (allowRetry) {
+                scheduleOfferRetry(peerKey, remoteUserId, iceRestart, retryDelayMs, "$reason-retry")
+            }
+            return false
+        }
+
         var signalingState = pc.signalingState()
         if (signalingState != PeerConnection.SignalingState.STABLE) {
             Log.w("WebRTC", "Skipping offer for $peerKey ($reason): signaling=$signalingState")
@@ -993,6 +1056,7 @@ class WebRTCManager(
                 if (
                     signalingState == PeerConnection.SignalingState.STABLE &&
                     makingOffer[resolvedKey] != true &&
+                    isSettingRemoteOfferPending[resolvedKey] != true &&
                     isSettingRemoteAnswerPending[resolvedKey] != true
                 ) {
                     requestOffer(
@@ -1157,8 +1221,7 @@ class WebRTCManager(
         try {
             loaded = fetchSelfHostedIceServers()
         } catch (e: Exception) {
-            Log.e("WebRTC", "Managed TURN fetch exception: ${e.message}")
-            e.printStackTrace()
+            reportFailure("webrtc_turn_refresh", "Managed TURN refresh failed", e)
         } finally {
             Log.d(
                 "WebRTC",
@@ -1237,8 +1300,7 @@ class WebRTCManager(
             val errorMsg = connection.errorStream?.bufferedReader()?.use { it.readText() }
             Log.e("WebRTC", "Self-hosted TURN endpoint error $responseCode: $errorMsg")
         } catch (e: Exception) {
-            Log.e("WebRTC", "Self-hosted TURN fetch exception: ${e.message}")
-            e.printStackTrace()
+            reportFailure("webrtc_turn_fetch", "Self-hosted TURN request failed", e)
         }
         return false
     }
@@ -1383,7 +1445,13 @@ class WebRTCManager(
                             return@execute
                         }
 
-                        if (makingOffer[socketId] == true || isSettingRemoteAnswerPending[socketId] == true) {
+                        if (WebRtcNegotiationPolicy.shouldDeferLocalOffer(
+                                makingOffer = makingOffer[socketId] == true,
+                                settingRemoteOffer = isSettingRemoteOfferPending[socketId] == true,
+                                settingRemoteAnswer = isSettingRemoteAnswerPending[socketId] == true,
+                                signalingState = sigState
+                            )
+                        ) {
                             Log.d("WebRTC", "Ignoring RenegotiationNeeded for $socketId because a negotiation is already in flight")
                             return@execute
                         }
@@ -1579,7 +1647,9 @@ class WebRTCManager(
             var pc = getOrCreatePC(requestedKey, remoteUserId) ?: return@execute
             var peerKey = resolvePeerKey(requestedKey, remoteUserId) ?: requestedKey
             
-            val collision = (makingOffer[peerKey] == true) || (pc.signalingState() != PeerConnection.SignalingState.STABLE)
+            val collision = (makingOffer[peerKey] == true) ||
+                (isSettingRemoteOfferPending[peerKey] == true) ||
+                (pc.signalingState() != PeerConnection.SignalingState.STABLE)
             ignoreOffer[peerKey] = !isPolite(remoteUserId, senderSocketId) && collision
             
             if (ignoreOffer[peerKey] == true) {
@@ -1587,6 +1657,10 @@ class WebRTCManager(
                 Log.w("WebRTC", "⚔️ GLARE: Collision! IMPOLITE peer IGNORING offer from $peerKey")
                 return@execute
             }
+
+            // Set the gate before rollback. A successful rollback may invoke
+            // onRenegotiationNeeded synchronously on several WebRTC/OEM builds.
+            isSettingRemoteOfferPending[peerKey] = true
             
             if (collision) {
                 // POLITE PEER: Rollback then process remote offer
@@ -1594,10 +1668,7 @@ class WebRTCManager(
                 pc.setLocalDescription(object : SdpObserverAdapter() {
                     override fun onSetSuccess() {
                         Log.d("WebRTC", "Rollback SUCCESS for $peerKey. Processing remote offer...")
-                        executor.execute { 
-                            makingOffer[peerKey] = false
-                            processOffer(peerKey, pc, offerSdp) 
-                        }
+                        executor.execute { processOffer(peerKey, pc, offerSdp) }
                     }
                     override fun onSetFailure(s: String?) {
                         Log.e("WebRTC", "Rollback FAILED for $peerKey: $s. Trying to proceed anyway...")
@@ -1612,18 +1683,23 @@ class WebRTCManager(
     }
 
     private fun processOffer(socketId: String, pc: PeerConnection, sdp: String) {
+        isSettingRemoteOfferPending[socketId] = true
         Log.d("WebRTC", "Setting Remote Description (OFFER) for $socketId")
         pc.setRemoteDescription(object : SdpObserverAdapter() {
             override fun onSetSuccess() {
                 Log.d("WebRTC", "Remote Description (OFFER) SET successfully for $socketId")
                 cancelGlareRecovery(socketId)
                 ignoreOffer[socketId] = false
+                isSettingRemoteOfferPending[socketId] = false
+                makingOffer[socketId] = false
                 drainIceQueue(socketId, pc)
                 createAnswer(socketId, pc)
             }
             override fun onSetFailure(s: String?) {
                 cancelGlareRecovery(socketId)
                 ignoreOffer[socketId] = false
+                isSettingRemoteOfferPending[socketId] = false
+                makingOffer[socketId] = false
                 Log.e("WebRTC", "Remote Description (OFFER) FAILED: $s ($socketId)")
             }
         }, SessionDescription(SessionDescription.Type.OFFER, sdp))
@@ -1882,10 +1958,30 @@ class WebRTCManager(
         }
     }
 
-    fun switchCamera() {
+    fun switchCamera(onComplete: (Boolean) -> Unit = {}): Boolean {
+        val capturer = videoCapturer as? CameraVideoCapturer ?: return false
+        if (!cameraSwitchInProgress.compareAndSet(false, true)) return false
         executor.execute {
-            (videoCapturer as? CameraVideoCapturer)?.switchCamera(null)
+            runCatching {
+                capturer.switchCamera(object : CameraVideoCapturer.CameraSwitchHandler {
+                    override fun onCameraSwitchDone(isFrontCamera: Boolean) {
+                        cameraSwitchInProgress.set(false)
+                        onComplete(true)
+                    }
+
+                    override fun onCameraSwitchError(errorDescription: String?) {
+                        cameraSwitchInProgress.set(false)
+                        Log.e("WebRTCManager", "Camera switch failed: ${errorDescription.orEmpty()}")
+                        onComplete(false)
+                    }
+                })
+            }.onFailure { error ->
+                cameraSwitchInProgress.set(false)
+                Log.e("WebRTCManager", "Camera switch threw", error)
+                onComplete(false)
+            }
         }
+        return true
     }
 
     fun setCameraFilter(filter: LiveCameraFilter) {
@@ -1899,6 +1995,22 @@ class WebRTCManager(
                     LiveFilterPerformanceState.NATURAL
                 } else {
                     LiveFilterPerformanceState.FULL
+                }
+            )
+        }
+    }
+
+    fun setCameraAdjustments(adjustments: LiveCameraAdjustments) {
+        selectedCameraAdjustments = adjustments.normalized()
+        executor.execute {
+            cameraFilterProcessor?.selectAdjustments(selectedCameraAdjustments)
+        }
+        if (cameraFilterProcessor == null && selectedCameraFilter == LiveCameraFilter.NONE) {
+            cameraFilterPerformanceListener?.invoke(
+                if (selectedCameraAdjustments.hasVisibleEffect) {
+                    LiveFilterPerformanceState.FULL
+                } else {
+                    LiveFilterPerformanceState.NATURAL
                 }
             )
         }
@@ -2017,6 +2129,7 @@ class WebRTCManager(
                 if (!isScreen) {
                     candidateCameraFilterProcessor = LiveCameraFilterProcessor(
                         initialFilter = selectedCameraFilter,
+                        initialAdjustments = selectedCameraAdjustments,
                         onPerformanceStateChanged = { state ->
                             cameraFilterPerformanceListener?.invoke(state)
                         }
@@ -2281,6 +2394,7 @@ class WebRTCManager(
         localOfferTimeoutJobs.remove(peerKey)?.cancel()
         glareRecoveryJobs.remove(peerKey)?.cancel()
         ignoreOffer.remove(peerKey)
+        isSettingRemoteOfferPending.remove(peerKey)
         isSettingRemoteAnswerPending.remove(peerKey)
         return peerToDispose
     }

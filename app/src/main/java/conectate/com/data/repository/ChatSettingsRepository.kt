@@ -24,7 +24,7 @@ data class ChatBackgroundSettings(
 
 @Singleton
 class ChatSettingsRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val chatSettingsDao: ChatSettingsDao
 ) {
     fun observeChatBackground(chatId: String): Flow<ChatBackgroundSettings> {

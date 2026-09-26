@@ -223,7 +223,7 @@ fun PollMessageCard(
                             }
                         }
                         LinearProgressIndicator(
-                            progress = ratio,
+                            progress = { ratio },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(6.dp),

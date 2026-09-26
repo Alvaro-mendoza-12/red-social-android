@@ -55,16 +55,18 @@ fun CommunityItem(
                     modifier = Modifier.weight(1f)
                 )
                 
-                if (community.category != null) {
+                community.category?.trim()?.takeIf { it.isNotBlank() }?.let { category ->
                     Surface(
                         color = MaterialTheme.colorScheme.secondaryContainer,
                         shape = MaterialTheme.shapes.extraSmall
                     ) {
                         Text(
-                            text = community.category.uppercase(),
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            text = category,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }

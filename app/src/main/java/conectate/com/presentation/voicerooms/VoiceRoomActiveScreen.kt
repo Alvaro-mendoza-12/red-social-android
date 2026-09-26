@@ -3,6 +3,7 @@ package conectate.com.presentation.voicerooms
 import androidx.compose.runtime.Composable
 
 import android.Manifest
+import android.content.ClipData
 import android.content.Intent
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -31,6 +32,7 @@ import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.rememberRealtimeProgress
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,7 +43,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -65,6 +70,15 @@ import org.webrtc.EglBase
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Notes
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.ScreenShare
+import androidx.compose.material.icons.automirrored.rounded.StopScreenShare
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
@@ -107,22 +121,18 @@ fun VoiceRoomActiveScreen(
     
     val permissionsState = com.google.accompanist.permissions.rememberMultiplePermissionsState(permissionsToRequest)
 
-    LaunchedEffect(Unit) {
-        if (!permissionsState.allPermissionsGranted) {
-            permissionsState.launchMultiplePermissionRequest()
-        }
-    }
-    
     // v22.0: Removed DisposableEffect for AudioManager.
     // Logic is now centralized in VoiceRoomRepository to support background audio correctly.
     // The UI should NOT reset audio mode on dispose.
     
     // Load room data and join ONLY when essential permissions are granted
+    var initialPermissionRequestLaunched by rememberSaveable(roomId) { mutableStateOf(false) }
     LaunchedEffect(roomId, permissionsState.allPermissionsGranted) {
         if (permissionsState.allPermissionsGranted) {
             viewModel.joinRoom(roomId)
-        } else if (!permissionsState.shouldShowRationale) {
-             permissionsState.launchMultiplePermissionRequest()
+        } else if (!initialPermissionRequestLaunched) {
+            initialPermissionRequestLaunched = true
+            permissionsState.launchMultiplePermissionRequest()
         }
     }
     
@@ -181,7 +191,8 @@ fun VoiceRoomActiveScreen(
     var showCaptionConsent by remember { mutableStateOf(false) }
     var showSummaryConsent by remember { mutableStateOf(false) }
     
-    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     
     // v13.0: Smart Back Navigation - Exit Cinema Mode before exiting room
     // v13.0: Smart Back Navigation - Exit Cinema Mode before exiting room
@@ -249,8 +260,12 @@ fun VoiceRoomActiveScreen(
                     actions = {
                         IconButton(onClick = {
                              room?.readableId?.let { id ->
-                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(id))
-                                android.widget.Toast.makeText(context, "ID copiado", android.widget.Toast.LENGTH_SHORT).show()
+                                clipboardScope.launch {
+                                    clipboard.setClipEntry(
+                                        ClipEntry(ClipData.newPlainText("ID de sala", id))
+                                    )
+                                    android.widget.Toast.makeText(context, "ID copiado", android.widget.Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }) {
                             Icon(
@@ -281,7 +296,7 @@ fun VoiceRoomActiveScreen(
                             }
                         }) {
                             Icon(
-                                Icons.Default.ArrowBack, 
+                                Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Volver",
                                 tint = if (hasRealVideo) Color.White else MaterialTheme.colorScheme.onSurface
                             )
@@ -599,19 +614,35 @@ fun VoiceRoomActiveScreen(
                 } else if (!permissionsState.allPermissionsGranted) {
                 PermissionRequestContent { permissionsState.launchMultiplePermissionRequest() }
             } else {
-                 // Loading State
+                 // Loading / recoverable connection state
                  Column(
                      modifier = Modifier.fillMaxSize(),
                      verticalArrangement = Arrangement.Center,
                      horizontalAlignment = Alignment.CenterHorizontally
                  ) {
-                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                     Spacer(modifier = Modifier.height(16.dp))
-                     Text(
-                         text = "Cargando sala...", 
-                         style = MaterialTheme.typography.bodyMedium,
-                         color = MaterialTheme.colorScheme.onSurfaceVariant
-                     )
+                     if (joinError.isNullOrBlank()) {
+                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                         Spacer(modifier = Modifier.height(16.dp))
+                         Text(
+                             text = "Cargando sala...",
+                             style = MaterialTheme.typography.bodyMedium,
+                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                         )
+                     } else {
+                         Text(
+                             text = joinError ?: "No se pudo abrir la sala.",
+                             style = MaterialTheme.typography.bodyMedium,
+                             color = MaterialTheme.colorScheme.error,
+                             textAlign = TextAlign.Center,
+                             modifier = Modifier.padding(horizontal = 32.dp),
+                         )
+                         Spacer(modifier = Modifier.height(14.dp))
+                         Button(onClick = { viewModel.joinRoom(roomId) }) {
+                             Icon(Icons.Default.Refresh, contentDescription = null)
+                             Spacer(Modifier.width(8.dp))
+                             Text("Reintentar")
+                         }
+                     }
                      Text(
                          text = "ID: $roomId",
                          style = MaterialTheme.typography.bodySmall,
@@ -1249,7 +1280,7 @@ private fun VoiceSummaryConsentDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Notes, contentDescription = null) },
+        icon = { Icon(Icons.AutoMirrored.Filled.Notes, contentDescription = null) },
         title = { Text("Solicitar resumen de la sala") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1282,7 +1313,7 @@ private fun VoiceSummaryDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Notes, contentDescription = null) },
+        icon = { Icon(Icons.AutoMirrored.Filled.Notes, contentDescription = null) },
         title = { Text("Resumen de la sala") },
         text = {
             Column(
@@ -1391,7 +1422,7 @@ fun ControlBar(
                 item {
                     Box {
                         ControlIcon(
-                            icon = Icons.Default.Chat,
+                            icon = Icons.AutoMirrored.Filled.Chat,
                             isActive = unreadChatCount > 0,
                             activeColor = MaterialTheme.colorScheme.primary,
                             onClick = onShowChat
@@ -1406,7 +1437,7 @@ fun ControlBar(
                 }
                 item {
                     ControlIcon(
-                        icon = if (isSpeaker) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                        icon = if (isSpeaker) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
                         isActive = isSpeaker,
                         onClick = onToggleSpeaker
                     )
@@ -1414,9 +1445,9 @@ fun ControlBar(
                 item {
                     ControlIcon(
                         icon = if (videoMode == VoiceRoomRepository.VideoMode.SCREEN) {
-                            Icons.Rounded.StopScreenShare
+                            Icons.AutoMirrored.Rounded.StopScreenShare
                         } else {
-                            Icons.Rounded.ScreenShare
+                            Icons.AutoMirrored.Rounded.ScreenShare
                         },
                         isActive = videoMode == VoiceRoomRepository.VideoMode.SCREEN,
                         activeColor = Color.Red,
@@ -1442,7 +1473,7 @@ fun ControlBar(
                 }
                 item {
                     ControlIcon(
-                        icon = Icons.Default.Notes,
+                        icon = Icons.AutoMirrored.Filled.Notes,
                         isActive = isSummaryLoading,
                         activeColor = MaterialTheme.colorScheme.tertiary,
                         enabled = !isSummaryLoading,
@@ -1775,7 +1806,8 @@ fun ChatBottomSheet(
     viewModel: VoiceRoomActiveViewModel
 ) {
     val messages by viewModel.messages.collectAsState()
-    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     val context = LocalContext.current
     var text by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<ChatMessage?>(null) }
@@ -1801,8 +1833,12 @@ fun ChatBottomSheet(
                         isMe = msg.userId == viewModel.getCurrentUserId(),
                         onReply = { replyTo = msg },
                         onCopy = { body ->
-                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(body))
-                            android.widget.Toast.makeText(context, "Mensaje copiado", android.widget.Toast.LENGTH_SHORT).show()
+                            clipboardScope.launch {
+                                clipboard.setClipEntry(
+                                    ClipEntry(ClipData.newPlainText("Mensaje", body))
+                                )
+                                android.widget.Toast.makeText(context, "Mensaje copiado", android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         }
                     )
                 }
@@ -1866,7 +1902,7 @@ fun ChatBottomSheet(
                     enabled = text.isNotBlank(),
                     colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Icon(Icons.Default.Send, contentDescription = "Enviar")
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
                 }
             }
         }
@@ -1981,7 +2017,9 @@ fun InviteFriendBottomSheet(
     val inviteQuery by viewModel.inviteQuery.collectAsState()
     val inviteResults by viewModel.inviteResults.collectAsState()
     val isSearching by viewModel.isSearchingInvites.collectAsState()
-    val context = LocalContext.current
+    val invitingId by viewModel.invitingId.collectAsState()
+    val inviteNotice by viewModel.inviteNotice.collectAsState()
+    val inviteSearchError by viewModel.inviteSearchError.collectAsState()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -2012,6 +2050,9 @@ fun InviteFriendBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            Text("Envía la invitación por chat. El destinatario podrá buscar la sala por su ID.", style = MaterialTheme.typography.bodySmall)
+            inviteNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            inviteSearchError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (isSearching) {
                 Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(modifier = Modifier.size(32.dp))
@@ -2024,13 +2065,9 @@ fun InviteFriendBottomSheet(
                     items(inviteResults) { user ->
                         InviteUserItem(
                             user = user,
+                            enabled = invitingId == null,
                             onInvite = {
                                 viewModel.inviteUser(user)
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "Invitación enviada a ${user.displayName}",
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
                             }
                         )
                     }
@@ -2050,7 +2087,8 @@ fun InviteFriendBottomSheet(
 @Composable
 fun InviteUserItem(
     user: UserInvite,
-    onInvite: () -> Unit
+    onInvite: () -> Unit,
+    enabled: Boolean = true,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
@@ -2081,10 +2119,11 @@ fun InviteUserItem(
 
             Button(
                 onClick = onInvite,
+                enabled = enabled,
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
             ) {
-                Text("Invitar")
+                Text("Enviar por chat")
             }
         }
     }

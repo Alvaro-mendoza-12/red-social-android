@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,14 +41,14 @@ fun RankingScreen(
                 title = { Text("Ranking Global", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 }
             )
         }
     ) { paddingValues ->
         Column(modifier = Modifier.padding(paddingValues)) {
-            TabRow(selectedTabIndex = selectedTabIndex) {
+            PrimaryTabRow(selectedTabIndex = selectedTabIndex) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTabIndex == index,
@@ -89,7 +89,7 @@ fun VideoRanking(videos: List<Video>) {
                     )
                 }
             )
-            Divider()
+            HorizontalDivider()
         }
     }
 }
@@ -115,7 +115,7 @@ fun UserRanking(users: List<User>) {
                     }
                 }
             )
-            Divider()
+            HorizontalDivider()
         }
     }
 }
@@ -135,7 +135,7 @@ fun PostRanking(posts: List<Post>) {
                     )
                 }
             )
-            Divider()
+            HorizontalDivider()
         }
     }
 }

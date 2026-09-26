@@ -1,7 +1,11 @@
 const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
 const {
   buildProfileForUser,
   buildPublicSemanticSearchCorpus,
+  canJoinVoiceRoom,
+  cleanSet,
   collectionRoleCapabilities,
   communityChannelPayload,
   communityEventPayload,
@@ -11,15 +15,19 @@ const {
   currentUserOwnsStorageObject,
   currentUserOwnsStorageObjects,
   feedPostVisible,
+  followedProfileIds,
   enrichNotificationTarget,
   isChatActivityNotification,
   isMessagingModuleNotification,
   messageContentOf,
+  mapVoiceRoom,
   notificationContentIndexes,
   normalizeMessageRow,
   previewFromMessage,
   normalizeProfileSectionOrder,
   normalizeProfileSectionVisibility,
+  normalizeProfileForPublic,
+  normalizeProfileVisibility,
   normalizeFeedMode,
   normalizeCollectionRole,
   normalizeCommunityChannelType,
@@ -28,13 +36,75 @@ const {
   parsePublicStorageObjectUrl,
   profileClearFields,
   profileForViewer,
+  profileVisibleToViewer,
   profilePatchFromBody,
   rankPublicProfiles,
+  reportedVideoCommentIds,
   recommendationPreferenceScore,
+  legacyVideoRecommendationScore,
+  stableVideoExploreScore,
+  canonicalVideoSoundId,
+  videoMatchesSound,
+  importedRecentRows,
+  localActivityNotificationsByRecipientIds,
+  localVideos,
+  localVideosByOwnerIds,
+  localPostsByIds,
+  localPostsByOwnerIds,
+  localMomentsByIds,
+  localNotificationsByRecipientIds,
+  localReportsByReporterIds,
+  importedRowsByFieldValues,
+  importedChatsForParticipantIds,
+  localChatParticipantsByUserIds,
+  localChatsByIds,
+  localChatsForParticipantIds,
+  localCollectionMembersByRoomIds,
+  localCollectionRoomsByIds,
+  localFollowsByFollowerIds,
+  localFollowsByFollowingIds,
+  localFollowsByParticipantIds,
+  publicProfilesByIds,
+  publicProfileSearchCandidates,
+  localVideosByIds,
+  localVideosBySoundIds,
+  localVoiceRoomsByAliases,
   sameStorageObjectReference,
   storageObjectExists,
   userIdentity,
+  voiceRoomRowsByAliases,
 } = require('../src/data-routes')
+
+assert.strictEqual(normalizeProfileVisibility('connections'), 'followers')
+assert.strictEqual(normalizeProfileVisibility('unexpected-value'), 'everyone')
+assert.strictEqual(
+  profileVisibleToViewer({ id: 'private-profile', profile_visibility: 'connections' }, {
+    viewerIds: new Set(['viewer']),
+    isFollowing: false,
+  }),
+  false,
+)
+assert.strictEqual(
+  profileVisibleToViewer({ id: 'private-profile', profile_visibility: 'connections' }, {
+    viewerIds: new Set(['viewer']),
+    isFollowing: true,
+  }),
+  true,
+)
+assert.strictEqual(
+  profileVisibleToViewer({ id: 'private-profile', profile_visibility: 'only_me' }, {
+    viewerIds: new Set(['private-profile']),
+  }),
+  true,
+)
+assert.deepStrictEqual(
+  Array.from(followedProfileIds([
+    { follower_id: 'viewer', following_id: 'profile-a' },
+    { follower_id: 'someone-else', following_id: 'profile-b' },
+    { user_id: 'VIEWER', target_user_id: 'profile-c' },
+  ], new Set(['viewer']))).sort(),
+  ['profile-a', 'profile-c'],
+)
 
 assert.strictEqual(isChatActivityNotification({ type: 'message' }), true)
 assert.strictEqual(isChatActivityNotification({ type: 'group_message' }), true)
@@ -45,6 +115,132 @@ assert.strictEqual(
   }),
   false,
 )
+assert.notStrictEqual(
+  stableVideoExploreScore('account-a', 'video-1', '2026-08-21'),
+  stableVideoExploreScore('account-b', 'video-1', '2026-08-21'),
+  'exploration must be scoped to the authenticated account',
+)
+assert.notStrictEqual(
+  stableVideoExploreScore('account-a', 'video-1', '2026-08-21:session-a'),
+  stableVideoExploreScore('account-a', 'video-1', '2026-08-21:session-b'),
+  'a new feed session must vary equivalent candidates for the same account',
+)
+assert.ok(
+  legacyVideoRecommendationScore({
+    video: { id: 'seen', views: 1_000_000, created_at: '2026-08-21T00:00:00Z' },
+    viewerId: 'account-a',
+    daySeed: '2026-08-21',
+    seen: true,
+    now: Date.parse('2026-08-21T12:00:00Z'),
+  }) < legacyVideoRecommendationScore({
+    video: { id: 'fresh', views: 0, created_at: '2026-08-21T00:00:00Z' },
+    viewerId: 'account-a',
+    daySeed: '2026-08-21',
+    seen: false,
+    now: Date.parse('2026-08-21T12:00:00Z'),
+  }),
+  'a previously seen viral video must not automatically outrank unseen discovery content',
+)
+assert.equal(canonicalVideoSoundId({ id: 'legacy-video' }), 'legacy-video')
+assert.equal(videoMatchesSound({ id: 'source', sound_id: 'root-sound' }, 'root-sound'), true)
+
+const dataRoutesSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'data-routes.js'), 'utf8')
+assert.match(dataRoutesSource, /app\.post\('\/v1\/data\/feed\/posts\/:postId\/share'/)
+assert.match(dataRoutesSource, /app\.delete\('\/v1\/data\/feed\/posts\/:postId\/share'/)
+const videoDeletionTablePosition = dataRoutesSource.indexOf('CREATE TABLE IF NOT EXISTS fallback_video_deletions')
+const videoDeletionIndexPosition = dataRoutesSource.indexOf('CREATE INDEX IF NOT EXISTS idx_fallback_video_deletions_lookup')
+assert.ok(videoDeletionTablePosition >= 0, 'video deletion table DDL must exist')
+assert.ok(
+  videoDeletionIndexPosition > videoDeletionTablePosition,
+  'fresh database startup must create fallback_video_deletions before indexing it',
+)
+const firstTablePositions = new Map()
+for (const match of dataRoutesSource.matchAll(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-zA-Z_][a-zA-Z0-9_]*)/gi)) {
+  const table = match[1].toLowerCase()
+  if (!firstTablePositions.has(table)) firstTablePositions.set(table, match.index)
+}
+for (const match of dataRoutesSource.matchAll(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+[a-zA-Z_][a-zA-Z0-9_]*\s+ON\s+([a-zA-Z_][a-zA-Z0-9_]*)/gi)) {
+  const table = match[1].toLowerCase()
+  const tablePosition = firstTablePositions.get(table)
+  if (tablePosition !== undefined) {
+    assert.ok(match.index > tablePosition, `fresh database startup must create ${table} before indexing it`)
+  }
+}
+const postDetailSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf('async function loadPostDetailPayload'),
+  dataRoutesSource.indexOf('function collectionConfig'),
+)
+assert.doesNotMatch(postDetailSource, /importedRows\(pool,\s*'(?:profiles|posts|post_likes|post_reactions|post_comments|shares|follows)'/)
+assert.doesNotMatch(postDetailSource, /\b(?:localPosts|combinedFollows)\(pool/)
+const ownProfileRouteSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf("app.get('/v1/data/profile/me'"),
+  dataRoutesSource.indexOf("app.patch('/v1/data/profile/me'"),
+)
+assert.doesNotMatch(ownProfileRouteSource, /\b(?:combinedFollows|localPosts|localVideos|localReports)\(pool/)
+assert.doesNotMatch(ownProfileRouteSource, /importedRows\(pool,\s*'(?:profiles|posts|videos|chats|follows|reports)'/)
+const profileDetailRouteSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf("app.get('/v1/data/profiles/:profileId'"),
+  dataRoutesSource.indexOf("app.get('/v1/data/follows'"),
+)
+assert.doesNotMatch(profileDetailRouteSource, /\b(?:allPublicProfiles|combinedFollows|localPosts)\(pool/)
+assert.doesNotMatch(profileDetailRouteSource, /importedRows\(pool,\s*'(?:profiles|posts|post_likes|post_reactions|post_comments|follows)'/)
+const profileSearchRouteSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf("app.get('/v1/data/profiles/search'"),
+  dataRoutesSource.indexOf("app.get('/v1/data/profiles/ranking'"),
+)
+assert.doesNotMatch(profileSearchRouteSource, /\b(?:allPublicProfiles|combinedFollows)\(pool/)
+const followsRouteSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf("app.get('/v1/data/follows'"),
+  dataRoutesSource.indexOf("app.post('/v1/data/profiles/:profileId/follow'"),
+)
+assert.doesNotMatch(followsRouteSource, /\b(?:allPublicProfiles|combinedFollows|localFollows)\(pool/)
+const notificationsRouteSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf("app.get('/v1/data/notifications'"),
+  dataRoutesSource.indexOf("app.post('/v1/data/notifications'"),
+)
+assert.doesNotMatch(notificationsRouteSource, /\b(?:allPublicProfiles|localNotifications|localPosts|localVideos|localMoments)\(pool/)
+assert.doesNotMatch(notificationsRouteSource, /importedRows\(pool,\s*'(?:notifications|profiles|posts|videos|moments)'/)
+assert.doesNotMatch(notificationsRouteSource, /localNotificationsByRecipientIds\(/)
+assert.doesNotMatch(notificationsRouteSource, /20_000/)
+assert.match(notificationsRouteSource, /localActivityNotificationsByRecipientIds\(/)
+const savedCollectionsRouteSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf("app.get('/v1/data/saved-collections'"),
+  dataRoutesSource.indexOf("app.post('/v1/data/saved-collections'"),
+)
+assert.doesNotMatch(savedCollectionsRouteSource, /\b(?:allPublicProfiles|combinedFollows|localPosts|localFollows)\(pool/)
+assert.doesNotMatch(savedCollectionsRouteSource, /importedRows\(pool,\s*'(?:profiles|posts|follows)'/)
+const privateInboxStart = dataRoutesSource.indexOf('        directImportedChats,')
+assert.ok(privateInboxStart >= 0, 'private inbox targeted read block must exist')
+const privateInboxRouteSource = dataRoutesSource.slice(
+  privateInboxStart,
+  dataRoutesSource.indexOf("app.post('/v1/data/messages/chats'"),
+)
+assert.doesNotMatch(privateInboxRouteSource, /\b(?:allPublicProfiles|localChats)\(pool/)
+assert.doesNotMatch(privateInboxRouteSource, /importedRows\(pool,\s*'(?:profiles|chats|chat_participants|messages)'/)
+const privateChatDetailRouteSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf("app.get('/v1/data/messages/chats/:chatId'"),
+  dataRoutesSource.indexOf("app.post('/v1/data/messages/chats/:chatId/messages'"),
+)
+assert.doesNotMatch(privateChatDetailRouteSource, /\b(?:allPublicProfiles|localChats)\(pool/)
+assert.doesNotMatch(privateChatDetailRouteSource, /importedRows\(pool,\s*'(?:profiles|chats|chat_participants|messages)'/)
+const collectionRoomPayloadSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf('async function loadCollectionRoomPayload'),
+  dataRoutesSource.indexOf('function voiceRoomId'),
+)
+assert.doesNotMatch(collectionRoomPayloadSource, /\b(?:localCollectionRooms|localCollectionMembers)\(pool/)
+assert.doesNotMatch(collectionRoomPayloadSource, /importedRows\(pool/)
+assert.doesNotMatch(collectionRoomPayloadSource, /roomMembers\.length\s*===\s*0/)
+const forwardedMediaSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf('async function forwardedMessageMediaIsAccessible'),
+  dataRoutesSource.indexOf('async function currentUserMayReferenceMessageMedia'),
+)
+assert.doesNotMatch(forwardedMediaSource, /importedRows\(pool/)
+const friendsRouteSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf("app.get('/v1/data/friends'"),
+  dataRoutesSource.indexOf("app.post('/v1/data/friends'"),
+)
+assert.doesNotMatch(friendsRouteSource, /importedRows\(pool/)
+assert.equal(videoMatchesSound({ id: 'other', sound_id: 'another-sound' }, 'root-sound'), false)
 assert.strictEqual(isChatActivityNotification({ type: 'comment_post' }), false)
 assert.strictEqual(isMessagingModuleNotification({ type: 'call_invite' }), true)
 assert.strictEqual(isMessagingModuleNotification({ type: 'call_response' }), true)
@@ -429,6 +625,26 @@ assert.deepStrictEqual(
 assert.strictEqual(normalizeProfileSectionVisibility({ music: 'connections' }).music, 'followers')
 assert.strictEqual(normalizeProfileSectionVisibility({ hobbies: 'invalid' }).hobbies, 'everyone')
 
+const recentPresenceTimestamp = new Date(Date.now() - 5_000).toISOString()
+const publicOnlineOnly = normalizeProfileForPublic({
+  id: 'presence-user',
+  is_online: true,
+  last_seen: recentPresenceTimestamp,
+  online_status_visibility: 'everyone',
+  last_seen_visibility: 'only_me',
+})
+assert.strictEqual(publicOnlineOnly.is_online, true)
+assert.strictEqual(publicOnlineOnly.last_seen, null)
+const publicLastSeenOnly = normalizeProfileForPublic({
+  id: 'presence-user',
+  is_online: true,
+  last_seen: recentPresenceTimestamp,
+  online_status_visibility: 'only_me',
+  last_seen_visibility: 'everyone',
+})
+assert.strictEqual(publicLastSeenOnly.is_online, false)
+assert.strictEqual(publicLastSeenOnly.last_seen, recentPresenceTimestamp)
+
 const protectedProfile = {
   profile_welcome: 'Hola',
   favorite_music_url: 'https://example.test/song.mp3',
@@ -567,7 +783,286 @@ async function runBestEffortNotificationCheck() {
   }
 }
 
-Promise.all([runOwnershipChecks(), runBestEffortNotificationCheck()])
+async function runVoiceRoomPrivacyChecks() {
+  const privateRoom = {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    creator_id: 'owner-1',
+    is_public: false,
+    password: 'legacy-secret',
+  }
+  const publicPayload = mapVoiceRoom(privateRoom, new Map(), 0)
+  assert.strictEqual(publicPayload.password, undefined)
+  assert.strictEqual(publicPayload.password_hash, undefined)
+  assert.strictEqual(publicPayload.password_required, true)
+
+  const pool = { query: async () => ({ rows: [] }) }
+  const visitor = { id: 'visitor-1', email: 'visitor@example.test' }
+  assert.strictEqual(await canJoinVoiceRoom(pool, visitor, privateRoom, 'wrong'), false)
+  assert.strictEqual(await canJoinVoiceRoom(pool, visitor, privateRoom, 'legacy-secret'), true)
+  assert.strictEqual(await canJoinVoiceRoom(pool, { id: 'owner-1' }, privateRoom, ''), true)
+}
+
+async function runLocalVideoSoundColumnsCheck() {
+  let capturedSql = ''
+  const pool = {
+    query: async (sql) => {
+      capturedSql = String(sql)
+      return { rows: [] }
+    },
+  }
+  await localVideos(pool, 20)
+  for (const column of [
+    'sound_id',
+    'sound_source_video_id',
+    'sound_title',
+    'sound_artist',
+    'sound_url',
+  ]) {
+    assert.match(capturedSql, new RegExp(`\\b${column}\\b`), `local video reads must preserve ${column}`)
+  }
+}
+
+async function runTargetedVideoReadChecks() {
+  const calls = []
+  const pool = {
+    query: async (sql, params) => {
+      calls.push({ sql: String(sql), params })
+      if (String(sql).includes('information_schema.tables')) return { rows: [{ '?column?': 1 }] }
+      return { rows: [] }
+    },
+  }
+  await importedRowsByFieldValues(pool, 'videos', ['id', 'sound_id'], ['video-1'], 5)
+  const importedRead = calls.find((call) => call.sql.includes('supabase_import."videos"'))
+  assert.ok(importedRead)
+  assert.match(importedRead.sql, /to_jsonb\(t\)->>'id'/)
+  assert.match(importedRead.sql, /to_jsonb\(t\)->>'sound_id'/)
+  assert.deepStrictEqual(importedRead.params, [['video-1'], 5])
+
+  await localVideosByIds(pool, ['video-1'])
+  const localIdRead = calls.find((call) => call.sql.includes('FROM fallback_videos') && call.sql.includes('lower(id::text) = ANY'))
+  assert.deepStrictEqual(localIdRead.params, [['video-1']])
+
+  await localVideosBySoundIds(pool, ['sound-1'])
+  const soundRead = calls.find((call) => call.sql.includes("lower(COALESCE(sound_id, ''))"))
+  assert.deepStrictEqual(soundRead.params, [['sound-1']])
+}
+
+async function runTargetedPublicProfileReadChecks() {
+  const calls = []
+  const pool = {
+    query: async (sql, params) => {
+      calls.push({ sql: String(sql), params })
+      if (String(sql).includes('information_schema.tables')) return { rows: [{ '?column?': 1 }] }
+      return { rows: [] }
+    },
+  }
+  await publicProfilesByIds(pool, ['profile-1', 'PROFILE-2'])
+  const importedRead = calls.find((call) => call.sql.includes('supabase_import."profiles"'))
+  const fallbackRead = calls.find((call) => call.sql.includes('FROM fallback_users u'))
+  assert.ok(importedRead, 'targeted imported profile read must be issued')
+  assert.ok(fallbackRead, 'targeted fallback profile read must be issued')
+  assert.deepStrictEqual(importedRead.params[0], ['profile-1', 'profile-2'])
+  assert.deepStrictEqual(fallbackRead.params[0], ['profile-1', 'profile-2'])
+  assert.match(fallbackRead.sql, /lower\(u\.id::text\) = ANY/)
+
+  assert.deepStrictEqual(
+    Array.from(cleanSet(new Set(['PROFILE-2', 'profile-1', 'PROFILE-2']))),
+    ['profile-2', 'profile-1'],
+  )
+
+  await publicProfileSearchCandidates(pool, 'Ana', 25)
+  const importedSearch = calls.find((call) => call.sql.includes('FROM supabase_import.profiles AS t'))
+  const fallbackSearch = calls.find((call) => call.sql.includes('FROM fallback_users u') && call.sql.includes("$1 = ''"))
+  assert.deepStrictEqual(importedSearch.params, ['ana', '%ana%', 25])
+  assert.deepStrictEqual(fallbackSearch.params, ['ana', '%ana%', 25])
+}
+
+async function runTargetedSocialFeedReadChecks() {
+  const calls = []
+  const pool = {
+    query: async (sql, params) => {
+      calls.push({ sql: String(sql), params })
+      if (String(sql).includes('information_schema.tables')) return { rows: [{ '?column?': 1 }] }
+      return { rows: [] }
+    },
+  }
+
+  await importedRecentRows(pool, 'posts', 240)
+  const recentPosts = calls.find((call) => call.sql.includes('supabase_import."posts"'))
+  assert.ok(recentPosts)
+  assert.match(recentPosts.sql, /ORDER BY COALESCE/)
+  assert.deepStrictEqual(recentPosts.params, [240])
+
+  await localPostsByOwnerIds(pool, ['creator-1'], 80)
+  const ownerPosts = calls.find((call) => call.sql.includes('FROM fallback_posts') && call.sql.includes('lower(user_id) = ANY'))
+  assert.deepStrictEqual(ownerPosts.params, [['creator-1'], 80])
+
+  await localPostsByIds(pool, ['post-1'])
+  const postById = calls.find((call) => call.sql.includes('FROM fallback_posts') && call.sql.includes('lower(id::text) = ANY'))
+  assert.deepStrictEqual(postById.params, [['post-1']])
+
+  await localVideosByOwnerIds(pool, ['creator-1'], 80)
+  const ownerVideos = calls.find((call) => call.sql.includes('FROM fallback_videos') && call.sql.includes('lower(user_id) = ANY'))
+  assert.deepStrictEqual(ownerVideos.params, [['creator-1'], 80])
+
+  await localReportsByReporterIds(pool, ['viewer-1'], 40)
+  const reports = calls.find((call) => call.sql.includes('FROM fallback_reports') && call.sql.includes('lower(reporter_id) = ANY'))
+  assert.deepStrictEqual(reports.params, [['viewer-1'], 40])
+
+  await localNotificationsByRecipientIds(pool, ['viewer-1'], 60)
+  const notifications = calls.find((call) => call.sql.includes('FROM fallback_notifications') && call.sql.includes('lower(recipient_id) = ANY'))
+  assert.deepStrictEqual(notifications.params, [['viewer-1'], 60])
+
+  await localMomentsByIds(pool, ['moment-1'])
+  const moments = calls.find((call) => call.sql.includes('FROM fallback_moments') && call.sql.includes('lower(id::text) = ANY'))
+  assert.deepStrictEqual(moments.params, [['moment-1']])
+
+  await localFollowsByFollowerIds(pool, ['viewer-1'], 100)
+  const follows = calls.find((call) => call.sql.includes('FROM fallback_follows') && call.sql.includes('lower(follower_id) = ANY'))
+  assert.deepStrictEqual(follows.params, [['viewer-1'], 100])
+
+  await localFollowsByFollowingIds(pool, ['creator-1'], 100)
+  const followers = calls.find((call) => call.sql.includes('FROM fallback_follows') && call.sql.includes('lower(following_id) = ANY'))
+  assert.deepStrictEqual(followers.params, [['creator-1'], 100])
+
+  await localFollowsByParticipantIds(pool, ['creator-1'], 100)
+  const participantFollows = calls.find((call) => (
+    call.sql.includes('FROM fallback_follows') &&
+    call.sql.includes('lower(follower_id) = ANY') &&
+    call.sql.includes('lower(following_id) = ANY')
+  ))
+  assert.deepStrictEqual(participantFollows.params, [['creator-1'], 100])
+}
+
+async function runNotificationScalingChecks() {
+  const calls = []
+  const pool = {
+    query: async (sql, params) => {
+      calls.push({ sql: String(sql), params })
+      return {
+        rows: [{
+          id: 'notification-1',
+          recipient_id: 'viewer-1',
+          type: 'new_follower',
+          is_read: false,
+          extra_data: {},
+          created_at: '2026-08-27T12:00:00.000Z',
+          updated_at: '2026-08-27T12:00:00.000Z',
+          local_only: true,
+          unread_count_total: '17',
+        }],
+      }
+    },
+  }
+
+  const result = await localActivityNotificationsByRecipientIds(
+    pool,
+    ['VIEWER-1', 'viewer-1'],
+    { limit: 25, unreadOnly: true },
+  )
+  assert.strictEqual(calls.length, 1)
+  assert.match(calls[0].sql, /COUNT\(\*\) FILTER \(WHERE is_read = FALSE\) OVER \(\)/)
+  assert.match(calls[0].sql, /ORDER BY created_at DESC, id DESC/)
+  assert.match(calls[0].sql, /LIMIT \$6/)
+  assert.deepStrictEqual(calls[0].params[0], ['viewer-1'])
+  assert.strictEqual(calls[0].params[4], true)
+  assert.strictEqual(calls[0].params[5], 25)
+  assert.strictEqual(result.unreadCount, 17)
+  assert.strictEqual(result.rows.length, 1)
+  assert.strictEqual(result.rows[0].unread_count_total, undefined)
+
+  const empty = await localActivityNotificationsByRecipientIds(pool, [], { limit: 500 })
+  assert.deepStrictEqual(empty, { rows: [], unreadCount: 0 })
+  assert.strictEqual(calls.length, 1)
+}
+
+async function runTargetedChatReadChecks() {
+  const calls = []
+  const pool = {
+    query: async (sql, params) => {
+      calls.push({ sql: String(sql), params })
+      if (String(sql).includes('information_schema.tables')) return { rows: [{ '?column?': 1 }] }
+      return { rows: [] }
+    },
+  }
+
+  await importedChatsForParticipantIds(pool, ['viewer-1'], 80)
+  const importedChats = calls.find((call) => call.sql.includes('FROM supabase_import.chats AS t'))
+  assert.ok(importedChats)
+  assert.match(importedChats.sql, /jsonb_array_elements_text/)
+  assert.deepStrictEqual(importedChats.params, [['viewer-1'], 80])
+
+  await localChatsForParticipantIds(pool, ['viewer-1'], 80)
+  const participantChats = calls.find((call) => call.sql.includes('FROM fallback_chats c'))
+  assert.match(participantChats.sql, /fallback_chat_participants cp/)
+  assert.deepStrictEqual(participantChats.params, [['viewer-1'], 80])
+
+  await localChatsByIds(pool, ['chat-1'])
+  const chatsById = calls.find((call) => call.sql.includes('FROM fallback_chats') && call.sql.includes('lower(id::text) = ANY'))
+  assert.deepStrictEqual(chatsById.params, [['chat-1']])
+
+  await localChatParticipantsByUserIds(pool, ['viewer-1'], 80)
+  const participants = calls.find((call) => call.sql.includes('FROM fallback_chat_participants') && call.sql.includes('lower(user_id) = ANY'))
+  assert.deepStrictEqual(participants.params, [['viewer-1'], 80])
+}
+
+async function runTargetedRoomReadChecks() {
+  const calls = []
+  const pool = {
+    query: async (sql, params) => {
+      calls.push({ sql: String(sql), params })
+      if (String(sql).includes('information_schema.tables')) return { rows: [{ '?column?': 1 }] }
+      return { rows: [] }
+    },
+  }
+
+  await localCollectionRoomsByIds(pool, 'community', ['room-1'])
+  const collectionRooms = calls.find((call) => call.sql.includes('FROM fallback_collection_rooms'))
+  assert.deepStrictEqual(collectionRooms.params, ['community', ['room-1']])
+
+  await localCollectionMembersByRoomIds(pool, 'community', ['room-1'], 80)
+  const collectionMembers = calls.find((call) => call.sql.includes('FROM fallback_collection_members'))
+  assert.deepStrictEqual(collectionMembers.params, ['community', ['room-1'], 80])
+
+  await localVoiceRoomsByAliases(pool, ['voice-1'])
+  const localVoiceRoomsRead = calls.find((call) => call.sql.includes('FROM fallback_voice_rooms'))
+  assert.deepStrictEqual(localVoiceRoomsRead.params, [['voice-1']])
+
+  await voiceRoomRowsByAliases(pool, ['voice-2'])
+  const importedVoiceRoomsRead = calls.find((call) => call.sql.includes('supabase_import."voice_rooms"'))
+  assert.ok(importedVoiceRoomsRead)
+  assert.deepStrictEqual(importedVoiceRoomsRead.params, [['voice-2'], 8])
+}
+
+async function runReportedVideoCommentPrivacyChecks() {
+  const queries = []
+  const pool = { query: async (sql, params) => {
+    queries.push({ sql: String(sql), params })
+    return { rows: [{ comment_id: 'COMMENT-ONE' }] }
+  } }
+  const reported = await reportedVideoCommentIds(pool, 'VIDEO-ONE', {
+    values: ['VIEWER-ONE', 'VIEWER-ALIAS'],
+  })
+  assert.deepStrictEqual(Array.from(reported), ['comment-one'])
+  assert.deepStrictEqual(queries[0].params, ['video-one', ['viewer-one', 'viewer-alias']])
+  assert.match(queries[0].sql, /lower\(video_id\) = \$1 AND lower\(reporter_id\) = ANY/)
+  assert.deepStrictEqual(Array.from(await reportedVideoCommentIds(pool, '', { values: ['viewer-one'] })), [])
+  assert.strictEqual(queries.length, 1)
+}
+
+Promise.all([
+  runOwnershipChecks(),
+  runBestEffortNotificationCheck(),
+  runVoiceRoomPrivacyChecks(),
+  runLocalVideoSoundColumnsCheck(),
+  runTargetedVideoReadChecks(),
+  runTargetedPublicProfileReadChecks(),
+  runTargetedSocialFeedReadChecks(),
+  runNotificationScalingChecks(),
+  runTargetedChatReadChecks(),
+  runTargetedRoomReadChecks(),
+  runReportedVideoCommentPrivacyChecks(),
+])
   .then(() => console.log('data-routes tests passed'))
   .catch((error) => {
     console.error(error)

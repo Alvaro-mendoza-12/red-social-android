@@ -11,7 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -105,7 +105,7 @@ fun LiveChannelPointsDialog(
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("Guardar reglas") }
                     }
-                    item { Divider() }
+                    item { HorizontalDivider() }
                     item { Text("Nueva recompensa", fontWeight = FontWeight.Black) }
                     item { OutlinedTextField(title, { title = it.take(80) }, label = { Text("Título") }, modifier = Modifier.fillMaxWidth()) }
                     item { OutlinedTextField(description, { description = it.take(240) }, label = { Text("Descripción") }, modifier = Modifier.fillMaxWidth()) }
@@ -131,7 +131,7 @@ fun LiveChannelPointsDialog(
                     }
                 }
 
-                item { Divider() }
+                item { HorizontalDivider() }
                 item { Text("Recompensas", fontWeight = FontWeight.Black) }
                 if (state.rewards.isEmpty()) item { Text("El creador todavía no publicó recompensas.") }
                 items(state.rewards, key = { it.id }) { reward ->
@@ -160,7 +160,7 @@ fun LiveChannelPointsDialog(
                 }
 
                 if (isHost) {
-                    item { Divider() }
+                    item { HorizontalDivider() }
                     item { Text("Solicitudes", fontWeight = FontWeight.Black) }
                     if (state.redemptions.isEmpty()) item { Text("No hay solicitudes de canje.") }
                     items(state.redemptions, key = { it.id }) { redemption ->

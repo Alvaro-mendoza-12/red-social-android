@@ -55,13 +55,13 @@ En backend:
 
 Infraestructura:
 
-- Cloudflare Quick Tunnel para HTTP/WebSocket.
+- Cloudflare Tunnel nombrado para HTTP/WebSocket.
 - TURN externo recomendado si hay CGNAT.
 - coturn local disponible solo si puede exponerse públicamente.
 
 ## Por qué Cloudflare Tunnel no basta para WebRTC media
 
-Cloudflare Quick Tunnel es útil para:
+Cloudflare Tunnel es útil para:
 
 - API HTTPS;
 - WebSocket;

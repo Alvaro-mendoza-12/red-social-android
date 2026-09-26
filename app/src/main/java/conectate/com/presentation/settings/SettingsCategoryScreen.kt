@@ -9,11 +9,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
@@ -56,6 +56,9 @@ class SettingsCategoryViewModel @Inject constructor(
     val liveNotifications = preferences.liveNotificationsEnabled
     val livesInVideoFeed = preferences.livesInVideoFeedEnabled
     val livesInSocial = preferences.livesInSocialEnabled
+    val dataSaver = preferences.dataSaverEnabled
+    val videoAutoplayOnMobile = preferences.videoAutoplayOnMobile
+    val reduceMotion = preferences.reduceMotionEnabled
 
     fun setMessageNotifications(value: Boolean) = preferences.setMessageNotificationsEnabled(value)
     fun setCallNotifications(value: Boolean) = preferences.setCallNotificationsEnabled(value)
@@ -63,6 +66,9 @@ class SettingsCategoryViewModel @Inject constructor(
     fun setLiveNotifications(value: Boolean) = preferences.setLiveNotificationsEnabled(value)
     fun setLivesInVideoFeed(value: Boolean) = preferences.setLivesInVideoFeedEnabled(value)
     fun setLivesInSocial(value: Boolean) = preferences.setLivesInSocialEnabled(value)
+    fun setDataSaver(value: Boolean) = preferences.setDataSaverEnabled(value)
+    fun setVideoAutoplayOnMobile(value: Boolean) = preferences.setVideoAutoplayOnMobile(value)
+    fun setReduceMotion(value: Boolean) = preferences.setReduceMotionEnabled(value)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -94,6 +100,9 @@ fun SettingsCategoryScreen(
     val liveNotifications by viewModel.liveNotifications.collectAsState()
     val livesInVideoFeed by viewModel.livesInVideoFeed.collectAsState()
     val livesInSocial by viewModel.livesInSocial.collectAsState()
+    val dataSaver by viewModel.dataSaver.collectAsState()
+    val videoAutoplayOnMobile by viewModel.videoAutoplayOnMobile.collectAsState()
+    val reduceMotion by viewModel.reduceMotion.collectAsState()
 
     Scaffold(
         topBar = {
@@ -101,7 +110,7 @@ fun SettingsCategoryScreen(
                 title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 },
             )
@@ -142,7 +151,7 @@ fun SettingsCategoryScreen(
                     }
                     item {
                         SettingsDestination(
-                            Icons.Default.Message,
+                            Icons.AutoMirrored.Filled.Message,
                             "Preferencias de chat",
                             "Apariencia, sonidos, lectura, escritura y descargas.",
                         ) { navController.navigate(Screen.ChatSettings.route) }
@@ -158,6 +167,29 @@ fun SettingsCategoryScreen(
                 "videos" -> {
                     item {
                         SettingToggleCard(
+                            "Reproducción automática con datos móviles",
+                            "Si la desactivas, toca reproducir en cada video al usar la red móvil.",
+                            videoAutoplayOnMobile,
+                            viewModel::setVideoAutoplayOnMobile,
+                        )
+                    }
+                    item {
+                        SettingToggleCard(
+                            "Ahorro de datos del feed",
+                            "Reproduce el video que estás viendo sin descargar por adelantado los siguientes. Puede tardar más al deslizar.",
+                            dataSaver,
+                            viewModel::setDataSaver,
+                        )
+                    }
+                    item {
+                        SettingsDestination(
+                            Icons.Default.Download,
+                            "Videos sin conexión",
+                            "Elige y administra el feed que estará disponible cuando no tengas internet.",
+                        ) { navController.navigate(Screen.OfflineVideos.route) }
+                    }
+                    item {
+                        SettingToggleCard(
                             "Directos intercalados",
                             "Muestra un directo recomendado cada 10 a 15 videos.",
                             livesInVideoFeed,
@@ -166,16 +198,9 @@ fun SettingsCategoryScreen(
                     }
                     item {
                         SettingsDestination(
-                            Icons.Default.Download,
-                            "Videos descargados",
-                            "Administra el contenido disponible sin conexión.",
-                        ) { navController.navigate(Screen.OfflineVideos.route) }
-                    }
-                    item {
-                        SettingsDestination(
-                            Icons.Default.Message,
-                            "Descarga automática de multimedia",
-                            "Configura la carga automática de archivos recibidos.",
+                            Icons.AutoMirrored.Filled.Message,
+                            "Multimedia de los chats",
+                            "Configura la descarga de archivos recibidos en conversaciones.",
                         ) { navController.navigate(Screen.ChatSettings.route) }
                     }
                 }
@@ -234,6 +259,14 @@ fun SettingsCategoryScreen(
                     }
                 }
                 else -> {
+                    item {
+                        SettingToggleCard(
+                            "Reducir movimiento",
+                            "Conserva los fondos del perfil en una imagen fija y reduce celebraciones animadas.",
+                            reduceMotion,
+                            viewModel::setReduceMotion,
+                        )
+                    }
                     item {
                         SettingsDestination(
                             Icons.Default.Person,

@@ -7,6 +7,7 @@ RELEASE="${3:?release name is required}"
 RELEASE_DIR="$HOME/conectate-releases/$RELEASE"
 BACKUP_ARCHIVE="$RELEASE_DIR/predeploy-files.tar.gz"
 COMPOSE_LOCK="${CONECTATE_COMPOSE_LOCK:-$HOME/.cache/conectate-compose.lock}"
+RELEASE_COMMIT="${RELEASE_COMMIT:-}"
 
 if [[ "$STAGE_DIR" != /tmp/api-image-admin-* ]]; then
   echo "ERROR: invalid stage directory: $STAGE_DIR" >&2
@@ -90,6 +91,23 @@ cd "$ROOT_DIR"
 docker compose config --quiet
 docker compose exec -T edge nginx -t
 
+release_marker="$ROOT_DIR/.conectate-release"
+if [[ -L "$release_marker" ]]; then
+  echo "ERROR: .conectate-release no puede ser un enlace simbolico" >&2
+  exit 1
+fi
+if [[ -d "$release_marker" ]]; then
+  if find "$release_marker" -mindepth 1 -print -quit | grep -q .; then
+    echo "ERROR: .conectate-release es un directorio no vacio" >&2
+    exit 1
+  fi
+  rmdir -- "$release_marker"
+fi
+if [[ ! -e "$release_marker" ]]; then
+  umask 077
+  : > "$release_marker"
+fi
+
 echo "==> Reconstruyendo API"
 docker compose build api
 docker compose up -d --no-deps --force-recreate api
@@ -108,12 +126,26 @@ for capability in admin_users_v1 hard_delete_suspended_users_v1 image_variants_v
   grep -q "\"$capability\"" <<<"$edge_ready_json"
 done
 
-cat > "$ROOT_DIR/.conectate-release" <<EOF
+source_digest="$({
+  for file in "${FILES[@]}"; do
+    sha256sum "$STAGE_DIR/$file"
+  done
+} | sha256sum | awk '{print $1}')"
+release_commit="${RELEASE_COMMIT:-$source_digest}"
+if [[ ! "$release_commit" =~ ^[0-9a-fA-F]{7,64}$ ]]; then
+  echo "ERROR: RELEASE_COMMIT debe ser un SHA hexadecimal de 7 a 64 caracteres" >&2
+  exit 1
+fi
+
+cat > "$release_marker.next" <<EOF
 release=$RELEASE
+commit=$release_commit
+source_digest=$source_digest
 deployed_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 source=deploy-targeted-api-release.sh
 host=$(hostname)
 EOF
+mv -f -- "$release_marker.next" "$release_marker"
 
 rollback_required=false
 rm -rf -- "$STAGE_DIR"

@@ -1,5 +1,6 @@
 package conectate.com.presentation.gaming
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.*
@@ -9,16 +10,20 @@ import conectate.com.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 data class PlayMatchUiState(
     val isLoading: Boolean = true,
     val isWorking: Boolean = false,
+    val isSearchingPlayers: Boolean = false,
+    val availableNowOnly: Boolean = false,
     val capabilities: PlayMatchCapabilities = PlayMatchCapabilities(),
     val catalog: List<PlayMatchGameCatalogItem> = emptyList(),
     val catalogResults: List<PlayMatchGameCatalogItem> = emptyList(),
@@ -56,68 +61,72 @@ class PlayMatchViewModel @Inject constructor(
     private var pollingJob: Job? = null
     private var inboxJob: Job? = null
     private var catalogSearchJob: Job? = null
+    private var homeJob: Job? = null
+    private val discovery = PlayMatchDiscoveryController(viewModelScope, _state) { query ->
+        repository.players(query.text, query.game, query.platform, query.region, query.cursor, query.availableNow)
+    }
     private var catalogRequestGeneration: Long = 0
 
     init { refreshHome() }
 
     fun refreshHome() {
-        viewModelScope.launch {
+        if (homeJob?.isActive == true) return
+        homeJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            repository.capabilities().fold(
-                onSuccess = { capabilities ->
-                    _state.update { it.copy(capabilities = capabilities) }
-                    if (!capabilities.enabled) {
-                        _state.update { it.copy(isLoading = false) }
-                        return@fold
+            val capabilities = boundedRequest { repository.capabilities() }.getOrElse {
+                fail(it)
+                return@launch
+            }
+            _state.update { it.copy(capabilities = capabilities, isLoading = false) }
+            if (!capabilities.enabled) return@launch
+            // Independent typed requests hydrate as soon as each response arrives.
+            // A successful empty response clears old rows; a failed refresh preserves them.
+            search()
+            coroutineScope {
+                launch {
+                    boundedRequest { repository.popularGames() }.onSuccess { response ->
+                        _state.update { it.copy(catalog = response.items) }
                     }
-                    val catalog = repository.popularGames().getOrElse { emptyListResponse(it) }
-                    val profile = repository.profile().getOrElse { profileFailure(it) }
-                    val players = repository.players().getOrElse { playersFailure(it) }
-                    val connections = repository.connections().getOrElse { PlayMatchConnectionsResponse() }
-                    val matches = repository.matches().getOrElse { PlayMatchMatchesResponse() }
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            catalog = catalog.items,
-                            profile = profile?.profile,
-                            preferences = profile?.preferences,
-                            players = players.items,
-                            nextCursor = players.nextCursor,
-                            connections = connections.items,
-                            matches = matches.items,
-                        )
+                }
+                launch {
+                    boundedRequest { repository.profile() }.onSuccess { response ->
+                        _state.update { it.copy(profile = response.profile, preferences = response.preferences) }
                     }
-                    startInboxPolling()
-                },
-                onFailure = { fail(it) },
-            )
+                }
+                launch {
+                    boundedRequest { repository.connections() }.onSuccess { response ->
+                        _state.update { it.copy(connections = response.items) }
+                    }
+                }
+                launch {
+                    boundedRequest { repository.matches() }.onSuccess { response ->
+                        _state.update { it.copy(matches = response.items) }
+                    }
+                }
+            }
+            startInboxPolling()
         }
     }
 
     fun search(query: String = _state.value.query, gameId: String? = _state.value.gameFilter, platform: String? = _state.value.platformFilter) {
-        _state.update { it.copy(query = query, gameFilter = gameId, platformFilter = platform, isWorking = true, error = null) }
-        viewModelScope.launch {
-            repository.players(query, gameId, platform, _state.value.regionFilter).fold(
-                onSuccess = { response -> _state.update { it.copy(isWorking = false, players = response.items, nextCursor = response.nextCursor) } },
-                onFailure = { fail(it, loading = false) },
-            )
-        }
+        discovery.search(query, gameId, platform)
     }
 
-    fun setQuery(query: String) = _state.update { it.copy(query = query.take(120)) }
-
-    fun loadMore() {
-        val cursor = _state.value.nextCursor ?: return
-        if (_state.value.isWorking) return
-        _state.update { it.copy(isWorking = true) }
-        viewModelScope.launch {
-            repository.players(_state.value.query, _state.value.gameFilter, _state.value.platformFilter, _state.value.regionFilter, cursor).fold(
-                onSuccess = { response -> _state.update { current -> current.copy(isWorking = false, players = current.players + response.items, nextCursor = response.nextCursor) } },
-                onFailure = { fail(it, loading = false) },
-            )
-        }
+    fun setQuery(query: String) {
+        discovery.search(query, _state.value.gameFilter, _state.value.platformFilter, debounce = true)
     }
 
+    fun setAvailableNow(enabled: Boolean) {
+        _state.update { it.copy(availableNowOnly = enabled) }
+        search()
+    }
+
+    fun clearPlayerFilters() {
+        _state.update { it.copy(availableNowOnly = false, regionFilter = null) }
+        search(query = "", gameId = null, platform = null)
+    }
+
+    fun loadMore() = discovery.loadMore()
     fun loadProfile() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
@@ -137,6 +146,59 @@ class PlayMatchViewModel @Inject constructor(
     fun saveProfile(request: UpdatePlayMatchProfileRequest) = work("Perfil gamer actualizado.", request = { repository.updateProfile(request) }, onSuccess = { response ->
         _state.update { it.copy(profile = response.profile, preferences = response.preferences) }
     })
+
+    fun uploadGamerAvatar(uri: Uri, onUploaded: (String, String) -> Unit) {
+        if (_state.value.isWorking) return
+        _state.update { it.copy(isWorking = true, error = null) }
+        viewModelScope.launch {
+            userRepository.uploadProfileAvatarMedia(uri).fold(
+                onSuccess = { upload ->
+                    onUploaded(upload.url, upload.mediaType)
+                    _state.update { it.copy(isWorking = false, message = "Avatar gamer preparado. Guarda el perfil para confirmar.") }
+                },
+                onFailure = { fail(it, loading = false) },
+            )
+        }
+    }
+
+    fun uploadGamerPhoto(uri: Uri) {
+        val profile = _state.value.profile ?: return
+        if (!_state.value.capabilities.photosEnabled) {
+            _state.update { it.copy(error = "Las capturas gamer no están habilitadas en este servidor.") }
+            return
+        }
+        if (profile.photos.size >= 4 || _state.value.isWorking) return
+        _state.update { it.copy(isWorking = true, error = null, message = null) }
+        viewModelScope.launch {
+            userRepository.uploadProfileImage(uri).fold(
+                onSuccess = { uploadedUrl ->
+                    repository.updateProfile(profile.asUpdateRequest(photos = profile.photos + uploadedUrl)).fold(
+                        onSuccess = { response ->
+                            _state.update { it.copy(isWorking = false, profile = response.profile, preferences = response.preferences, message = "Captura gamer agregada.") }
+                        },
+                        onFailure = { error ->
+                            userRepository.deleteUploadedProfileMedia(uploadedUrl)
+                            fail(error, loading = false)
+                        },
+                    )
+                },
+                onFailure = { fail(it, loading = false) },
+            )
+        }
+    }
+
+    fun removeGamerPhoto(url: String) {
+        val profile = _state.value.profile ?: return
+        if (_state.value.isWorking || url !in profile.photos) return
+        work(
+            message = "Captura gamer eliminada.",
+            request = { repository.updateProfile(profile.asUpdateRequest(photos = profile.photos.filterNot { it == url })) },
+            onSuccess = { response ->
+                _state.update { it.copy(profile = response.profile, preferences = response.preferences) }
+                viewModelScope.launch { userRepository.deleteUploadedProfileMedia(url) }
+            },
+        )
+    }
 
     fun saveAvailability(entries: List<PlayMatchAvailability>) = work("Disponibilidad guardada.", request = { repository.saveAvailability(entries) }, onSuccess = { response ->
         _state.update { current -> current.copy(profile = current.profile?.copy(availability = response.items)) }
@@ -287,14 +349,27 @@ class PlayMatchViewModel @Inject constructor(
         }
     }
 
-    fun cancelSession() {
-        val id = _state.value.session?.id ?: return
-        work("Búsqueda cancelada.", request = { repository.cancel(id) }, onSuccess = { response ->
-            pollingJob?.cancel()
-            _state.update { it.copy(session = response.session) }
-        })
+    fun cancelSession(onDone: () -> Unit = {}) {
+        val current = _state.value.session
+        if (current == null) { onDone(); return }
+        if (_state.value.isWorking) return
+        pollingJob?.cancel()
+        _state.update { it.copy(isWorking = true, message = null, error = null) }
+        viewModelScope.launch {
+            boundedRequest { repository.cancel(current.id) }.fold(
+                onSuccess = { response ->
+                    if (_state.value.session?.id != current.id) return@fold
+                    _state.update { it.copy(isWorking = false, session = response.session, message = "Búsqueda cancelada.") }
+                    onDone()
+                },
+                onFailure = { error ->
+                    if (_state.value.session?.id != current.id) return@fold
+                    _state.update { it.copy(isWorking = false, error = PlayMatchUiPolicy.safeError(error)) }
+                    if (_state.value.session?.status in setOf("SEARCHING", "MATCH_FOUND")) pollSession(current.id)
+                },
+            )
+        }
     }
-
     fun decideMatch(decision: String) {
         val match = _state.value.session?.match ?: return
         work(if (decision == "ACCEPT") "Aceptación enviada." else "Buscaremos otra persona.", request = { repository.decideMatch(match.id, decision) }, onSuccess = {
@@ -334,6 +409,7 @@ class PlayMatchViewModel @Inject constructor(
             while (true) {
                 delay(2_000)
                 val result = repository.session(id)
+                if (_state.value.session?.id != id || _state.value.isWorking) continue
                 if (result.isFailure) {
                     val error = result.exceptionOrNull() ?: IllegalStateException("PLAYMATCH_REQUEST_FAILED")
                     _state.update { it.copy(error = PlayMatchUiPolicy.safeError(error)) }
@@ -368,9 +444,9 @@ class PlayMatchViewModel @Inject constructor(
 
     private fun <T> work(message: String, request: suspend () -> Result<T>, onSuccess: (T) -> Unit) {
         if (_state.value.isWorking) return
+        _state.update { it.copy(isWorking = true, error = null, message = null) }
         viewModelScope.launch {
-            _state.update { it.copy(isWorking = true, error = null, message = null) }
-            request().fold(
+            boundedRequest(request).fold(
                 onSuccess = { value -> onSuccess(value); _state.update { it.copy(isWorking = false, message = message) } },
                 onFailure = { fail(it, loading = false) },
             )
@@ -381,25 +457,40 @@ class PlayMatchViewModel @Inject constructor(
         _state.update { it.copy(isLoading = loading, isWorking = false, error = PlayMatchUiPolicy.safeError(error)) }
     }
 
-    private fun emptyListResponse(error: Throwable): PlayMatchCatalogResponse {
-        _state.update { it.copy(error = PlayMatchUiPolicy.safeError(error)) }
-        return PlayMatchCatalogResponse()
-    }
-
-    private fun profileFailure(error: Throwable): PlayMatchProfileResponse? {
-        _state.update { it.copy(error = PlayMatchUiPolicy.safeError(error)) }
-        return null
-    }
-
-    private fun playersFailure(error: Throwable): PlayMatchPlayersResponse {
-        _state.update { it.copy(error = PlayMatchUiPolicy.safeError(error)) }
-        return PlayMatchPlayersResponse()
+    private suspend fun <T> boundedRequest(block: suspend () -> Result<T>): Result<T> = try {
+        withTimeoutOrNull(8_000L) { block() }
+            ?: Result.failure(IllegalStateException("El servidor tardó demasiado en responder."))
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        Result.failure(error)
     }
 
     override fun onCleared() {
         pollingJob?.cancel()
         inboxJob?.cancel()
         catalogSearchJob?.cancel()
+        homeJob?.cancel()
         super.onCleared()
     }
 }
+
+private fun PlayMatchProfile.asUpdateRequest(photos: List<String> = this.photos) = UpdatePlayMatchProfileRequest(
+    expectedVersion = version,
+    gamerDisplayName = displayName,
+    gamerAvatarUrl = avatarUrl,
+    gamerAvatarMediaType = avatarMediaType,
+    gamerBio = gamerBio,
+    regionCode = regionCode,
+    languages = languages,
+    playStyle = playStyle,
+    voicePreference = voicePreference,
+    discoveryLevel = discoveryLevel,
+    discoverable = discoverable,
+    adultConfirmed = adultConfirmed == true,
+    gameIdVisibility = gameIdVisibility ?: "connections",
+    photosVisibility = photosVisibility ?: "connections",
+    availabilityVisibility = availabilityVisibility ?: "connections",
+    photos = photos.distinct().take(4),
+    timezone = timezone,
+)

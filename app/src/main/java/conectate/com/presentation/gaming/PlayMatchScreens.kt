@@ -2,13 +2,20 @@
 
 package conectate.com.presentation.gaming
 
+import android.util.Log
 import android.app.Activity
 import android.content.ContextWrapper
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
+import androidx.activity.result.contract.ActivityResultContracts
+import conectate.com.BuildConfig
+import conectate.com.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -42,14 +49,20 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
-import conectate.com.R
 import conectate.com.data.model.*
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.FullScreenImageDialog
+import conectate.com.presentation.components.MediaItem
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Message
 
 private val GamingStart = PlayMatchColors.Primary
 private val GamingEnd = PlayMatchColors.Accent
@@ -61,6 +74,7 @@ fun GamesHomeScreen(
     onOpenAddGame: () -> Unit,
     onOpenPlayer: (String) -> Unit,
     onMatchFound: (String) -> Unit,
+    onOpenChat: (String) -> Unit,
     viewModel: PlayMatchViewModel = hiltViewModel(),
 ) {
     PlayMatchSystemBars()
@@ -74,10 +88,10 @@ fun GamesHomeScreen(
             .fillMaxSize()
             .background(PlayMatchColors.Background)
             .statusBarsPadding(),
-        contentPadding = PaddingValues(horizontal = PlayMatchDimensions.ScreenPadding, vertical = 14.dp),
+        contentPadding = PaddingValues(horizontal = PlayMatchDimensions.ScreenPadding, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(PlayMatchDimensions.SectionGap),
     ) {
-        item { PlayMatchHeader(onOpenProfile) }
+        item { PlayMatchHeader(state.profile?.avatarUrl, state.profile?.avatarMediaType, onOpenProfile) }
         if (state.isLoading) {
             item { CenteredProgress("Cargando Juegos…") }
             return@LazyColumn
@@ -98,12 +112,12 @@ fun GamesHomeScreen(
             OutlinedTextField(
                 value = state.query,
                 onValueChange = viewModel::setQuery,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                 placeholder = { Text("Buscar jugadores, juegos…", color = PlayMatchColors.SecondaryText) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
                     IconButton(onClick = viewModel::search) {
-                        Icon(Icons.Default.ArrowForward, contentDescription = "Buscar")
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Buscar")
                     }
                 },
                 singleLine = true,
@@ -122,6 +136,16 @@ fun GamesHomeScreen(
             )
         }
         item { SectionTitle("Filtros de búsqueda") }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(
+                    selected = state.availableNowOnly,
+                    onClick = { viewModel.setAvailableNow(!state.availableNowOnly) },
+                    label = { Text("Disponibles ahora") },
+                )
+                TextButton(onClick = viewModel::clearPlayerFilters) { Text("Limpiar filtros") }
+            }
+        }
         item {
             FilterRail(
                 games = state.catalog,
@@ -144,6 +168,17 @@ fun GamesHomeScreen(
                 ConnectionRequestCard(connection, onAccept = { viewModel.decideConnection(connection.id, "ACCEPT") }, onReject = { viewModel.decideConnection(connection.id, "REJECT") })
             }
         }
+        val gameConversations = state.connections.filter { it.status == "ACCEPTED" && it.otherUserId.isNotBlank() }
+        if (gameConversations.isNotEmpty()) {
+            item { SectionTitle("Conversaciones de juego") }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(gameConversations, key = { it.id }) { connection ->
+                        GameConversationCard(connection) { onOpenChat(connection.otherUserId) }
+                    }
+                }
+            }
+        }
         if (state.matches.any { it.status == "PENDING" }) {
             item { SectionTitle("Matches que esperan tu decisión") }
             items(state.matches.filter { it.status == "PENDING" }, key = { it.id }) { match ->
@@ -156,13 +191,15 @@ fun GamesHomeScreen(
             }
         }
         item { SectionTitle("Jugadores cerca de ti") }
-        if (state.players.isEmpty()) {
+        if (state.isSearchingPlayers && state.players.isEmpty()) {
+            item { CenteredProgress("Buscando jugadores…") }
+        } else if (state.players.isEmpty()) {
             item { EmptyInline("Aún no hay jugadores compatibles. Ajusta tus filtros o completa tu perfil gamer.") }
         } else {
             items(state.players, key = { it.userId }) { player -> PlayerRecommendationCard(player, onOpenPlayer, onConnect = { viewModel.connect(player.userId) }) }
             if (state.nextCursor != null) item {
-                OutlinedButton(onClick = viewModel::loadMore, enabled = !state.isWorking, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), border = BorderStroke(1.dp, PlayMatchColors.Border), colors = ButtonDefaults.outlinedButtonColors(contentColor = PlayMatchColors.Accent)) {
-                    if (state.isWorking) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Ver más jugadores")
+                OutlinedButton(onClick = viewModel::loadMore, enabled = !state.isSearchingPlayers, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), border = BorderStroke(1.dp, PlayMatchColors.Border), colors = ButtonDefaults.outlinedButtonColors(contentColor = PlayMatchColors.Accent)) {
+                    if (state.isSearchingPlayers) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Ver más jugadores")
                 }
             }
         }
@@ -178,6 +215,9 @@ fun GamingProfileScreen(
     PlayMatchSystemBars()
     val state by viewModel.state.collectAsState()
     val profile = state.profile
+    var gamerName by rememberSaveable { mutableStateOf("") }
+    var gamerAvatarUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    var gamerAvatarMediaType by rememberSaveable { mutableStateOf<String?>(null) }
     var bio by rememberSaveable { mutableStateOf("") }
     var region by rememberSaveable { mutableStateOf("") }
     var languages by rememberSaveable { mutableStateOf("es") }
@@ -193,9 +233,21 @@ fun GamingProfileScreen(
     var discoveryLevel by rememberSaveable { mutableFloatStateOf(50f) }
     var showAvailabilityEditor by remember { mutableStateOf(false) }
     var editing by rememberSaveable { mutableStateOf(false) }
+    val gamerAvatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { viewModel.uploadGamerAvatar(it) { uploaded, mediaType ->
+            gamerAvatarUrl = uploaded
+            gamerAvatarMediaType = mediaType
+        } }
+    }
+    val gamerPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let(viewModel::uploadGamerPhoto)
+    }
     LaunchedEffect(Unit) { viewModel.loadProfile() }
     LaunchedEffect(profile?.version, state.preferences?.version) {
         profile?.let {
+            gamerName = it.displayName
+            gamerAvatarUrl = it.avatarUrl
+            gamerAvatarMediaType = it.avatarMediaType
             bio = it.gamerBio; region = it.regionCode; languages = it.languages.joinToString(", ").ifBlank { "es" }
             timezone = it.timezone; playStyle = it.playStyle; voice = it.voicePreference; discoverable = it.discoverable
             adult = it.adultConfirmed == true; gameVisibility = it.gameIdVisibility ?: "connections"
@@ -220,11 +272,23 @@ fun GamingProfileScreen(
             item { StatusCard(Icons.Default.Lock, "Perfil gamer no habilitado", "Esta cuenta todavía no tiene acceso a la prueba cerrada de Juegos.", "Volver", onBack) }
             return@LazyColumn
         }
+        item { PlayMatchTopBar("Mi perfil gamer", onBack) }
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CircularProfileImage(imageUrl = profile.avatarUrl, size = 80.dp, showBorder = true, borderColor = PlayMatchColors.Primary, borderWidth = 2.dp)
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    CircularProfileImage(imageUrl = gamerAvatarUrl, mediaType = gamerAvatarMediaType, size = 80.dp, showBorder = true, borderColor = PlayMatchColors.Primary, borderWidth = 2.dp)
+                    if (editing) {
+                        IconButton(
+                            onClick = { gamerAvatarPicker.launch(arrayOf("image/*", "video/mp4")) },
+                            enabled = !state.isWorking,
+                            modifier = Modifier.size(34.dp).background(PlayMatchColors.Accent, RoundedCornerShape(50)),
+                        ) {
+                            Icon(Icons.Default.PhotoCamera, "Cambiar foto del perfil gamer", tint = PlayMatchColors.Background, modifier = Modifier.size(19.dp))
+                        }
+                    }
+                }
                 Column(Modifier.weight(1f)) {
-                    Text(profile.displayName, color = PlayMatchColors.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text(gamerName.ifBlank { profile.displayName }, color = PlayMatchColors.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     Text(profile.gamerBio.ifBlank { "Añade una bio gamer para presentarte." }, color = PlayMatchColors.SecondaryText, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 IconButton(
@@ -234,6 +298,7 @@ fun GamingProfileScreen(
             }
         }
         if (editing) {
+        item { OutlinedTextField(gamerName, { gamerName = it.take(40) }, Modifier.fillMaxWidth(), label = { Text("Nombre gamer") }, singleLine = true, shape = RoundedCornerShape(10.dp), colors = playMatchTextFieldColors()) }
         item { OutlinedTextField(bio, { bio = it.take(500) }, Modifier.fillMaxWidth(), label = { Text("Biografía gamer") }, minLines = 2, shape = RoundedCornerShape(10.dp), colors = playMatchTextFieldColors()) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -267,6 +332,8 @@ fun GamingProfileScreen(
                 onClick = {
                     viewModel.saveProfile(UpdatePlayMatchProfileRequest(
                         expectedVersion = profile.version,
+                        gamerDisplayName = gamerName.trim(), gamerAvatarUrl = gamerAvatarUrl,
+                        gamerAvatarMediaType = gamerAvatarMediaType,
                         gamerBio = bio.trim(), regionCode = region.trim(),
                         languages = languages.split(',').map(String::trim).filter(String::isNotBlank),
                         playStyle = playStyle, voicePreference = voice, discoveryLevel = profile.discoveryLevel,
@@ -308,7 +375,17 @@ fun GamingProfileScreen(
         items(profile.games, key = { it.id }) { game -> UserGameCard(game, onDelete = { viewModel.deleteGame(game.id) }) }
         item { AddGameDashedButton(onAddGame) }
         item { SectionTitle("Mis fotos") }
-        item { ProfilePhotoRail(profile.photos) }
+        item {
+            ProfilePhotoRail(
+                photos = profile.photos,
+                enabled = state.capabilities.photosEnabled && !state.isWorking,
+                onAdd = { gamerPhotoPicker.launch("image/*") },
+                onRemove = viewModel::removeGamerPhoto,
+            )
+        }
+        if (!state.capabilities.photosEnabled) {
+            item { Text("Las capturas gamer todavía no están habilitadas para esta cuenta.", color = PlayMatchColors.SecondaryText, fontSize = 12.sp) }
+        }
         item { SectionTitle("Disponibilidad", action = "Agregar horario", onAction = { showAvailabilityEditor = true }) }
         if (profile.availability.isEmpty()) item { EmptyInline("Añade horarios para mejorar las coincidencias.") }
         items(profile.availability, key = { it.id ?: "${it.dayOfWeek}-${it.startMinute}-${it.endMinute}" }) { slot -> AvailabilityRow(slot) }
@@ -457,6 +534,7 @@ fun PlayerDetailScreen(
     val state by viewModel.state.collectAsState()
     var reportDialog by remember { mutableStateOf(false) }
     var blockDialog by remember { mutableStateOf(false) }
+    var selectedPhotoIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     LaunchedEffect(playerId) { viewModel.loadPlayer(playerId) }
     val player = state.playerDetail
     PlayMatchNoticeHost(state, viewModel::clearNotice)
@@ -476,13 +554,7 @@ fun PlayerDetailScreen(
             )
         }
         if (state.isLoading || player == null) { item { CenteredProgress("Cargando jugador…") }; return@LazyColumn }
-        item { PlayerHeroImage(player) }
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(player.displayName, Modifier.weight(1f), color = PlayMatchColors.White, fontSize = 27.sp, fontWeight = FontWeight.Black)
-                player.compatibilityScore?.let { MatchPercentBadge(it) }
-            }
-        }
+        item { PlayerIdentityHeader(player) }
         item { PlayerMetaChips(player) }
         if (player.gamerBio.isNotBlank()) item { Text(player.gamerBio, color = PlayMatchColors.SecondaryText, fontSize = 16.sp, lineHeight = 23.sp) }
         item { SectionTitle("Juegos en común") }
@@ -495,13 +567,28 @@ fun PlayerDetailScreen(
         }
         if (player.photos.isNotEmpty()) {
             item { SectionTitle("Fotos") }
-            item { LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(player.photos) { url -> AsyncImage(url, null, Modifier.size(128.dp).clip(RoundedCornerShape(14.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop) } } }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(player.photos.size) { index ->
+                        val url = player.photos[index]
+                        AsyncImage(
+                            model = url,
+                            contentDescription = "Abrir foto gamer ${index + 1}",
+                            modifier = Modifier
+                                .size(128.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { selectedPhotoIndex = index },
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        )
+                    }
+                }
+            }
         }
         if (player.availability.isNotEmpty()) {
             item { SectionTitle("Horarios compatibles") }
             items(player.availability, key = { it.id ?: "${it.dayOfWeek}-${it.startMinute}" }) { AvailabilityRow(it) }
         }
-        item { Button(onClick = { onMessage(player.userId) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), colors = ButtonDefaults.buttonColors(containerColor = PlayMatchColors.Primary, contentColor = PlayMatchColors.White), shape = RoundedCornerShape(12.dp)) { Icon(Icons.Default.Message, null); Spacer(Modifier.width(8.dp)); Text("Enviar mensaje", fontWeight = FontWeight.Bold) } }
+        item { Button(onClick = { onMessage(player.userId) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), colors = ButtonDefaults.buttonColors(containerColor = PlayMatchColors.Primary, contentColor = PlayMatchColors.White), shape = RoundedCornerShape(12.dp)) { Icon(Icons.AutoMirrored.Filled.Message, null); Spacer(Modifier.width(8.dp)); Text("Enviar mensaje", fontWeight = FontWeight.Bold) } }
         if (!player.connected) item { OutlinedButton(onClick = { viewModel.connect(player.userId) }, enabled = !state.isWorking, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), border = BorderStroke(1.dp, PlayMatchColors.Primary), colors = ButtonDefaults.outlinedButtonColors(contentColor = PlayMatchColors.White), shape = RoundedCornerShape(12.dp)) { Icon(Icons.Default.PersonAdd, null); Spacer(Modifier.width(8.dp)); Text("Conectar") } }
     }
     if (reportDialog && player != null) ConfirmTextDialog("Reportar jugador", "El equipo de seguridad revisará el perfil y esta interacción.", "Reportar", { reportDialog = false }) {
@@ -509,6 +596,18 @@ fun PlayerDetailScreen(
     }
     if (blockDialog && player != null) ConfirmTextDialog("Bloquear jugador", "No volverán a verse ni podrán interactuar en Novvin.", "Bloquear", { blockDialog = false }) {
         viewModel.blockPlayer(player.userId, onBack); blockDialog = false
+    }
+    selectedPhotoIndex?.let { initialIndex ->
+        val items = player?.photos.orEmpty().mapIndexed { index, url ->
+            MediaItem(id = "playmatch-${player?.userId}-$index", url = url, type = "image")
+        }
+        if (items.isNotEmpty()) {
+            FullScreenImageDialog(
+                mediaItems = items,
+                initialIndex = initialIndex,
+                onDismiss = { selectedPhotoIndex = null },
+            )
+        }
     }
 }
 
@@ -526,6 +625,8 @@ fun MatchFoundScreen(
     val match = session?.match
     val player = match?.player
     PlayMatchNoticeHost(state, viewModel::clearNotice)
+    val cancelAndBack = { viewModel.cancelSession(onBack) }
+    BackHandler(enabled = session?.status == "SEARCHING") { cancelAndBack() }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -537,12 +638,12 @@ fun MatchFoundScreen(
     ) {
         if (state.isLoading || session == null) { item { CenteredProgress("Buscando coincidencia…") }; return@LazyColumn }
         if (session.status == "SEARCHING" || player == null) {
-            item { PlayMatchTopBar("PlayMatch", onBack) }
+            item { PlayMatchTopBar("PlayMatch", cancelAndBack) }
             item { Icon(Icons.Default.SportsEsports, null, Modifier.size(76.dp), tint = GamingEnd) }
-            item { Text("Buscando compañero compatible", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
-            item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            item { Text("Puedes cancelar en cualquier momento. La sesión vence automáticamente.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            item { OutlinedButton(onClick = viewModel::cancelSession, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), border = BorderStroke(1.dp, PlayMatchColors.Border), colors = ButtonDefaults.outlinedButtonColors(contentColor = PlayMatchColors.White)) { Text("Cancelar búsqueda") } }
+            item { Text("Buscando compañero compatible", color = PlayMatchColors.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+            item { LinearProgressIndicator(Modifier.fillMaxWidth(), color = PlayMatchColors.Accent, trackColor = PlayMatchColors.Border) }
+            item { Text("Puedes cancelar en cualquier momento. La sesión vence automáticamente.", color = PlayMatchColors.SecondaryText) }
+            item { OutlinedButton(onClick = cancelAndBack, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), border = BorderStroke(1.dp, PlayMatchColors.Border), colors = ButtonDefaults.outlinedButtonColors(contentColor = PlayMatchColors.White)) { Text("Cancelar búsqueda") } }
             return@LazyColumn
         }
         item { Spacer(Modifier.height(18.dp)) }
@@ -550,9 +651,9 @@ fun MatchFoundScreen(
         item { Text("${match.score}% compatible", color = GamingEnd, fontWeight = FontWeight.Bold, fontSize = 22.sp) }
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                CircularProfileImage(imageUrl = state.profile?.avatarUrl, size = 92.dp, showBorder = true, borderColor = GamingStart, borderWidth = 3.dp)
+                CircularProfileImage(imageUrl = state.profile?.avatarUrl, mediaType = state.profile?.avatarMediaType, size = 92.dp, showBorder = true, borderColor = GamingStart, borderWidth = 3.dp)
                 Surface(color = PlayMatchColors.Card, shape = RoundedCornerShape(50)) { Icon(Icons.Default.FavoriteBorder, "Coincidencia", Modifier.padding(14.dp), tint = GamingEnd) }
-                CircularProfileImage(imageUrl = player.avatarUrl, size = 92.dp, showBorder = true, borderColor = GamingStart, borderWidth = 3.dp)
+                CircularProfileImage(imageUrl = player.avatarUrl, mediaType = player.avatarMediaType, size = 92.dp, showBorder = true, borderColor = GamingStart, borderWidth = 3.dp)
             }
         }
         item { Text("¡Tú y ${player.displayName} tienen mucho en común!", color = PlayMatchColors.SecondaryText, fontSize = 17.sp) }
@@ -573,20 +674,45 @@ fun MatchFoundScreen(
     }
 }
 
-@Composable private fun PlayMatchHeader(onProfile: () -> Unit) {
+@Composable private fun PlayMatchHeader(
+    gamerAvatarUrl: String?,
+    gamerAvatarMediaType: String?,
+    onProfile: () -> Unit,
+) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(48.dp).clip(RoundedCornerShape(13.dp)).background(Brush.linearGradient(listOf(GamingStart, GamingEnd))), contentAlignment = Alignment.Center) { Icon(Icons.Default.VideogameAsset, null, tint = Color.White, modifier = Modifier.size(27.dp)) }
-        Spacer(Modifier.width(12.dp))
-        Text("PlayMatch", color = PlayMatchColors.White, fontSize = 28.sp, fontWeight = FontWeight.Black)
-        Spacer(Modifier.width(8.dp))
-        Surface(color = PlayMatchColors.Background, shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, PlayMatchColors.Accent)) { Text("GRATIS", Modifier.padding(horizontal = 7.dp, vertical = 3.dp), color = PlayMatchColors.Accent, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+        Surface(
+            modifier = Modifier.size(44.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF0D0A1D)
+        ) {
+            Image(
+                painter = painterResource(R.drawable.novvin_playmatch_gamer),
+                contentDescription = "Novvin PlayMatch",
+                modifier = Modifier.padding(3.dp)
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Text("PlayMatch", color = PlayMatchColors.White, fontSize = 26.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.weight(1f))
-        IconButton(onClick = onProfile, modifier = Modifier.background(Color(0xFF17122F), RoundedCornerShape(50))) { Icon(Icons.Default.AccountCircle, "Abrir mi perfil gamer", tint = PlayMatchColors.White) }
+        IconButton(onClick = onProfile, modifier = Modifier.background(Color(0xFF17122F), RoundedCornerShape(50))) {
+            if (gamerAvatarUrl.isNullOrBlank()) {
+                Icon(Icons.Default.AccountCircle, "Abrir mi perfil gamer", tint = PlayMatchColors.White)
+            } else {
+                CircularProfileImage(
+                    imageUrl = gamerAvatarUrl,
+                    mediaType = gamerAvatarMediaType,
+                    size = 38.dp,
+                    showBorder = true,
+                    borderColor = PlayMatchColors.Accent,
+                    borderWidth = 1.dp,
+                )
+            }
+        }
     }
 }
 
 @Composable private fun PlayMatchTopBar(title: String, onBack: () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onBack, modifier = Modifier.background(PlayMatchColors.Card, RoundedCornerShape(50))) { Icon(Icons.Default.ArrowBack, "Volver", tint = PlayMatchColors.White) }; Spacer(Modifier.width(12.dp)); Text(title, color = PlayMatchColors.White, fontSize = 23.sp, fontWeight = FontWeight.Bold) }
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onBack, modifier = Modifier.background(PlayMatchColors.Card, RoundedCornerShape(50))) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver", tint = PlayMatchColors.White) }; Spacer(Modifier.width(12.dp)); Text(title, color = PlayMatchColors.White, fontSize = 23.sp, fontWeight = FontWeight.Bold) }
 }
 
 @Composable
@@ -596,7 +722,7 @@ private fun PlayerDetailTopBar(onBack: () -> Unit, onReport: () -> Unit, onBlock
         IconButton(
             onClick = onBack,
             modifier = Modifier.align(Alignment.CenterStart).background(PlayMatchColors.Card, RoundedCornerShape(50)),
-        ) { Icon(Icons.Default.ArrowBack, "Volver", tint = PlayMatchColors.White) }
+        ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver", tint = PlayMatchColors.White) }
         Text("Detalle del jugador", color = PlayMatchColors.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Box(Modifier.align(Alignment.CenterEnd)) {
             IconButton(
@@ -628,40 +754,101 @@ private fun PlayerDetailTopBar(onBack: () -> Unit, onReport: () -> Unit, onBlock
 
 @Composable private fun MatchmakingCallToAction(enabled: Boolean, searching: Boolean, onFind: () -> Unit, onCancel: () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().heightIn(min = 76.dp).clip(RoundedCornerShape(18.dp)).background(Brush.horizontalGradient(listOf(GamingStart, GamingEnd)))
+        Modifier.fillMaxWidth().heightIn(min = 70.dp).clip(RoundedCornerShape(17.dp)).background(Brush.horizontalGradient(listOf(GamingStart, GamingEnd)))
             .clickable(enabled = enabled, role = Role.Button, onClick = if (searching) onCancel else onFind)
-            .padding(horizontal = 18.dp, vertical = 14.dp)
+            .padding(horizontal = 15.dp, vertical = 12.dp)
             .semantics { contentDescription = if (searching) "Cancelar búsqueda de compañero" else "Encontrar compañero" },
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(color = Color.White.copy(alpha = .15f), shape = RoundedCornerShape(50)) { Icon(if (searching) Icons.Default.Close else Icons.Default.Bolt, null, tint = Color.White, modifier = Modifier.padding(12.dp).size(26.dp)) }
-            Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(if (searching) "Buscando compañero…" else "Encontrar compañero", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 19.sp); Text(if (searching) "Toca para cancelar" else "Match aleatorio al instante", color = Color.White.copy(alpha = .78f), fontSize = 13.sp) }
-            Icon(Icons.Default.ArrowForward, null, tint = Color.White)
+            Surface(color = Color.White.copy(alpha = .15f), shape = RoundedCornerShape(50)) { Icon(if (searching) Icons.Default.Close else Icons.Default.Bolt, null, tint = Color.White, modifier = Modifier.padding(10.dp).size(23.dp)) }
+            Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(if (searching) "Buscando compañero…" else "Encontrar compañero", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp); Text(if (searching) "Toca para cancelar" else "Match aleatorio al instante", color = Color.White.copy(alpha = .78f), fontSize = 12.sp) }
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Color.White)
         }
     }
 }
 
 @Composable private fun FilterRail(games: List<PlayMatchGameCatalogItem>, selectedGame: String?, selectedPlatform: String?, onGame: (String?) -> Unit, onPlatform: (String?) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { PlayMatchFilterChip("JUEGO: Todos", selectedGame == null) { onGame(null) } }
-            items(games.take(12), key = { it.id }) { game -> PlayMatchFilterChip("JUEGO: ${game.shortName.ifBlank { game.name }}", selectedGame == game.id) { onGame(game.id) } }
+    val selectedGameLabel = games.firstOrNull { it.id == selectedGame }?.let { it.shortName.ifBlank { it.name } } ?: "Todos"
+    val platforms = games.flatMap { it.platforms }.distinct()
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        CompactFilterMenu(
+            prefix = "JUEGO",
+            selected = selectedGameLabel,
+            options = listOf(null to "Todos") + games.take(40).map { it.id to it.shortName.ifBlank { it.name } },
+            onSelected = onGame,
+            modifier = Modifier.weight(1.15f),
+        )
+        CompactFilterMenu(
+            prefix = "PLATAFORMA",
+            selected = selectedPlatform ?: "Todas",
+            options = listOf(null to "Todas") + platforms.map { it to it },
+            onSelected = onPlatform,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun CompactFilterMenu(
+    prefix: String,
+    selected: String,
+    options: List<Pair<String?, String>>,
+    onSelected: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button) { expanded = true },
+            color = Color(0xFF17142F),
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.dp, Color(0xFF30275D)),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "$prefix: $selected",
+                    modifier = Modifier.weight(1f),
+                    color = PlayMatchColors.White,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(Icons.Default.KeyboardArrowDown, null, tint = PlayMatchColors.SecondaryText, modifier = Modifier.size(16.dp))
+            }
         }
-        val platforms = games.flatMap { it.platforms }.distinct()
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { PlayMatchFilterChip("PLATAFORMA: Todas", selectedPlatform == null) { onPlatform(null) } }
-            items(platforms) { value -> PlayMatchFilterChip(value.uppercase(), selectedPlatform == value) { onPlatform(value) } }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.distinctBy { it.first }.forEach { (value, label) ->
+                DropdownMenuItem(
+                    text = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    onClick = { expanded = false; onSelected(value) },
+                )
+            }
         }
     }
 }
 
 @Composable private fun PopularGameCard(game: PlayMatchGameCatalogItem, compact: Boolean = false, selected: Boolean = false, onClick: () -> Unit) {
     val width = if (compact) 82.dp else 118.dp
-    val height = if (compact) 116.dp else 172.dp
-    Card(Modifier.width(width).height(height).clickable(onClick = onClick), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = PlayMatchColors.Card), border = if (selected) BorderStroke(2.dp, PlayMatchColors.Accent) else null) {
+    val regularWidth = 104.dp
+    val height = if (compact) 116.dp else 150.dp
+    Card(Modifier.width(if (compact) width else regularWidth).height(height).clickable(onClick = onClick), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = PlayMatchColors.Card), border = if (selected) BorderStroke(2.dp, PlayMatchColors.Accent) else null) {
         Box(Modifier.fillMaxSize()) {
             GameArtwork(game, Modifier.fillMaxSize(), useCover = true)
+            Surface(
+                modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
+                color = Color.Black.copy(alpha = .72f),
+                shape = RoundedCornerShape(50),
+            ) {
+                Row(Modifier.padding(horizontal = 7.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Group, null, tint = PlayMatchColors.Accent, modifier = Modifier.size(12.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("${game.userCount}", color = PlayMatchColors.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .92f)))).padding(horizontal = 8.dp, vertical = 9.dp)) {
                 Text(game.shortName.ifBlank { game.name }, color = PlayMatchColors.White, fontSize = if (compact) 12.sp else 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -672,9 +859,28 @@ private fun PlayerDetailTopBar(onBack: () -> Unit, onReport: () -> Unit, onBlock
 @Composable private fun PlayerRecommendationCard(player: PlayMatchProfile, onOpen: (String) -> Unit, onConnect: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable { onOpen(player.userId) }, shape = RoundedCornerShape(PlayMatchDimensions.CardRadius), colors = CardDefaults.cardColors(containerColor = Color(0xFF17142F)), border = BorderStroke(1.dp, Color(0xFF30275D))) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            CircularProfileImage(imageUrl = player.avatarUrl, size = 56.dp, showBorder = true, borderColor = PlayMatchColors.Primary)
+            CircularProfileImage(imageUrl = player.avatarUrl, mediaType = player.avatarMediaType, size = 56.dp, showBorder = true, borderColor = PlayMatchColors.Primary)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) { Text(player.displayName, color = PlayMatchColors.White, fontWeight = FontWeight.Bold, fontSize = 17.sp); Text(player.games.take(2).joinToString(" / ") { it.gameName }, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color(0xFF22B8CF)); Text(listOf(player.games.firstOrNull()?.platform, player.playStyle).filterNotNull().filter(String::isNotBlank).joinToString(" · "), fontSize = 12.sp, color = PlayMatchColors.SecondaryText, maxLines = 1) }
             Button(onClick = onConnect, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6), contentColor = PlayMatchColors.White), contentPadding = PaddingValues(horizontal = 15.dp), shape = RoundedCornerShape(11.dp), modifier = Modifier.heightIn(min = 48.dp)) { Text("Conectar", fontWeight = FontWeight.Bold) }
+        }
+    }
+}
+
+@Composable
+private fun GameConversationCard(connection: PlayMatchConnection, onOpen: () -> Unit) {
+    Surface(
+        modifier = Modifier.widthIn(min = 210.dp, max = 260.dp).heightIn(min = 72.dp).clickable(role = Role.Button, onClick = onOpen),
+        color = PlayMatchColors.Card,
+        shape = RoundedCornerShape(PlayMatchDimensions.CardRadius),
+        border = BorderStroke(1.dp, PlayMatchColors.Border),
+    ) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CircularProfileImage(imageUrl = connection.otherAvatarUrl, size = 44.dp, showBorder = true, borderColor = PlayMatchColors.Accent)
+            Column(Modifier.weight(1f)) {
+                Text(connection.otherName, color = PlayMatchColors.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Chat de PlayMatch", color = PlayMatchColors.SecondaryText, fontSize = 12.sp)
+            }
+            Icon(Icons.Default.ChatBubbleOutline, "Abrir chat con ${connection.otherName}", tint = PlayMatchColors.Accent)
         }
     }
 }
@@ -715,7 +921,7 @@ private fun PlayerDetailTopBar(onBack: () -> Unit, onReport: () -> Unit, onBlock
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CircularProfileImage(imageUrl = match.player?.avatarUrl, size = 48.dp, showBorder = true, borderColor = GamingEnd)
+                CircularProfileImage(imageUrl = match.player?.avatarUrl, mediaType = match.player?.avatarMediaType, size = 48.dp, showBorder = true, borderColor = GamingEnd)
                 Column(Modifier.weight(1f)) { Text(match.player?.displayName ?: "Jugador", color = PlayMatchColors.White, fontWeight = FontWeight.Bold); Text("${match.score}% compatible", color = GamingEnd) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -807,24 +1013,109 @@ private fun CatalogSearchResultCard(game: PlayMatchGameCatalogItem, selected: Bo
 @Composable
 private fun GameArtwork(game: PlayMatchGameCatalogItem, modifier: Modifier, useCover: Boolean) {
     val url = if (useCover) game.coverUrl ?: game.logoUrl ?: game.iconUrl ?: game.imageUrl else game.logoUrl ?: game.iconUrl ?: game.coverUrl ?: game.imageUrl
-    GameArtwork(url, "playmatch-${game.id}-${if (useCover) "cover" else "icon"}", modifier)
+    val usePhotoCrop = useCover && PlayMatchUiPolicy.hasDistinctCover(game)
+    GameArtwork(
+        url = url,
+        cacheKey = "playmatch-${game.id}-${if (useCover) "cover" else "icon"}",
+        modifier = modifier,
+        fallbackLabel = game.shortName.ifBlank { game.name },
+        contentScale = if (usePhotoCrop) {
+            androidx.compose.ui.layout.ContentScale.Crop
+        } else {
+            androidx.compose.ui.layout.ContentScale.Fit
+        },
+        artworkPadding = if (usePhotoCrop) 0.dp else 12.dp,
+    )
 }
 
 @Composable
-private fun GameArtwork(url: String?, cacheKey: String, modifier: Modifier) {
+private fun GameArtwork(
+    url: String?,
+    cacheKey: String,
+    modifier: Modifier,
+    fallbackLabel: String = "Juego",
+    contentScale: androidx.compose.ui.layout.ContentScale = androidx.compose.ui.layout.ContentScale.Fit,
+    artworkPadding: Dp = 0.dp,
+) {
     val context = LocalContext.current
-    Box(modifier.clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(GamingStart.copy(alpha = .24f), GamingEnd.copy(alpha = .20f)))), contentAlignment = Alignment.Center) {
-        androidx.compose.foundation.Image(painterResource(R.drawable.ic_novvin), "Imagen de juego no disponible", Modifier.fillMaxSize(.55f))
-        if (!url.isNullOrBlank()) {
-            AsyncImage(
-                model = ImageRequest.Builder(context).data(url).memoryCacheKey(cacheKey).diskCacheKey(cacheKey).build(),
+    Box(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color(0xFF3A4162),
+                        PlayMatchColors.Card,
+                    ),
+                ),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (url.isNullOrBlank()) {
+            MissingGameArtwork(fallbackLabel)
+        } else {
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(url)
+                    .addHeader("User-Agent", "Novvin/${BuildConfig.VERSION_NAME} (Android; https://conectate.com)")
+                    .memoryCacheKey(cacheKey)
+                    .diskCacheKey(cacheKey)
+                    .build(),
                 contentDescription = null,
-                modifier = Modifier.matchParentSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.matchParentSize().padding(artworkPadding),
+                contentScale = contentScale,
+                loading = {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            color = PlayMatchColors.Accent,
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                },
+                error = {
+                    val throwable = painter.state.let { state ->
+                        (state as? coil.compose.AsyncImagePainter.State.Error)?.result?.throwable
+                    }
+                    LaunchedEffect(cacheKey, throwable) {
+                        val httpStatus = (throwable as? coil.network.HttpException)?.response?.code
+                        Log.w(
+                            "PlayMatchArtwork",
+                            "No se pudo cargar el arte de ${gameArtworkLogId(cacheKey)}: ${throwable?.javaClass?.simpleName ?: "Unknown"}${httpStatus?.let { " HTTP_$it" }.orEmpty()}",
+                        )
+                    }
+                    MissingGameArtwork(fallbackLabel)
+                },
             )
         }
     }
 }
+
+@Composable
+private fun MissingGameArtwork(gameName: String) {
+    Column(
+        modifier = Modifier.padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(
+            Icons.Default.BrokenImage,
+            contentDescription = "Arte oficial de $gameName no disponible",
+            tint = PlayMatchColors.SecondaryText,
+            modifier = Modifier.size(28.dp),
+        )
+        Text(
+            "Arte no disponible",
+            color = PlayMatchColors.SecondaryText,
+            fontSize = 9.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun gameArtworkLogId(cacheKey: String): String =
+    cacheKey.removePrefix("playmatch-").take(80).replace(Regex("[^a-zA-Z0-9._-]"), "_")
 
 @Composable private fun AvailabilityRow(slot: PlayMatchAvailability) { Surface(shape = RoundedCornerShape(50), color = PlayMatchColors.Card) { Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CalendarMonth, null, tint = GamingEnd); Spacer(Modifier.width(10.dp)); Text("${dayLabel(slot.dayOfWeek)} · ${minuteLabel(slot.startMinute)}–${minuteLabel(slot.endMinute)}", Modifier.weight(1f), color = PlayMatchColors.White); Text(slot.timezone, fontSize = 11.sp, color = PlayMatchColors.SecondaryText) } } }
 
@@ -838,7 +1129,7 @@ private fun GameArtwork(url: String?, cacheKey: String, modifier: Modifier) {
 
 @Composable private fun SettingSwitch(title: String, checked: Boolean, description: String? = null, onChecked: (Boolean) -> Unit) { Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, color = PlayMatchColors.White, fontWeight = FontWeight.Medium); description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = PlayMatchColors.SecondaryText) } }; Switch(checked, onChecked, colors = SwitchDefaults.colors(checkedThumbColor = PlayMatchColors.Background, checkedTrackColor = PlayMatchColors.Accent)) } }
 
-@Composable private fun SectionTitle(text: String, action: String? = null, onAction: (() -> Unit)? = null) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(text, Modifier.weight(1f), color = PlayMatchColors.White, fontSize = 20.sp, fontWeight = FontWeight.Black); if (action != null && onAction != null) TextButton(onAction, modifier = Modifier.heightIn(min = 48.dp), colors = ButtonDefaults.textButtonColors(contentColor = PlayMatchColors.Accent)) { Text(action) } } }
+@Composable private fun SectionTitle(text: String, action: String? = null, onAction: (() -> Unit)? = null) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(text, Modifier.weight(1f), color = PlayMatchColors.White, fontSize = 18.sp, fontWeight = FontWeight.Black); if (action != null && onAction != null) TextButton(onAction, modifier = Modifier.heightIn(min = 44.dp), colors = ButtonDefaults.textButtonColors(contentColor = PlayMatchColors.Accent)) { Text(action, fontSize = 12.sp) } } }
 
 @Composable private fun EmptyInline(text: String) { Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = PlayMatchColors.Card) { Text(text, Modifier.padding(16.dp), color = PlayMatchColors.SecondaryText) } }
 
@@ -863,7 +1154,7 @@ private fun PlayMatchFilterChip(label: String, selected: Boolean, onClick: () ->
         color = if (selected) Color(0xFF8B5CF6) else Color(0xFF17142F),
         shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, if (selected) PlayMatchColors.Accent else Color(0xFF30275D)),
-    ) { Row(Modifier.padding(horizontal = 13.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) { Text(label, color = PlayMatchColors.White, fontSize = 13.sp, maxLines = 1); Spacer(Modifier.width(5.dp)); Icon(Icons.Default.KeyboardArrowDown, null, tint = PlayMatchColors.SecondaryText, modifier = Modifier.size(16.dp)) } }
+    ) { Row(Modifier.padding(horizontal = 13.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) { Text(label, color = PlayMatchColors.White, fontSize = 13.sp, maxLines = 1) } }
 }
 
 @Composable
@@ -909,21 +1200,74 @@ private fun AddGameDashedButton(onClick: () -> Unit) {
 }
 
 @Composable
-private fun ProfilePhotoRail(photos: List<String>) {
+private fun ProfilePhotoRail(
+    photos: List<String>,
+    enabled: Boolean,
+    onAdd: () -> Unit,
+    onRemove: (String) -> Unit,
+) {
+    val visiblePhotos = photos.take(4)
     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(photos.take(2)) { url -> AsyncImage(url, null, Modifier.size(108.dp).clip(RoundedCornerShape(14.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop) }
-        items((0 until (4 - photos.take(2).size)).toList()) { index ->
-            Box(Modifier.size(108.dp).clip(RoundedCornerShape(14.dp)).background(PlayMatchColors.Card).border(1.dp, PlayMatchColors.Border, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Add, "Agregar foto ${index + 1}", tint = PlayMatchColors.SecondaryText, modifier = Modifier.size(34.dp)) }
+        items(visiblePhotos, key = { it }) { url ->
+            Box(Modifier.size(108.dp).clip(RoundedCornerShape(14.dp))) {
+                AsyncImage(url, "Captura gamer", Modifier.matchParentSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                IconButton(
+                    onClick = { onRemove(url) },
+                    enabled = enabled,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(3.dp).size(30.dp).background(Color.Black.copy(alpha = .72f), RoundedCornerShape(50)),
+                ) { Icon(Icons.Default.Close, "Eliminar captura gamer", tint = Color.White, modifier = Modifier.size(17.dp)) }
+            }
+        }
+        items((0 until (4 - visiblePhotos.size)).toList()) { index ->
+            Box(
+                Modifier.size(108.dp).clip(RoundedCornerShape(14.dp)).background(PlayMatchColors.Card)
+                    .border(1.dp, PlayMatchColors.Border, RoundedCornerShape(14.dp))
+                    .clickable(enabled = enabled, role = Role.Button, onClick = onAdd),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Default.Add, "Agregar captura gamer ${visiblePhotos.size + index + 1}", tint = if (enabled) PlayMatchColors.Accent else PlayMatchColors.SecondaryText, modifier = Modifier.size(34.dp)) }
         }
     }
 }
 
 @Composable
-private fun PlayerHeroImage(player: PlayMatchProfile) {
-    val image = player.photos.firstOrNull() ?: player.avatarUrl
-    Box(Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 320.dp).clip(RoundedCornerShape(18.dp)).background(PlayMatchColors.Card), contentAlignment = Alignment.Center) {
-        Icon(Icons.Default.SportsEsports, null, tint = PlayMatchColors.SecondaryText, modifier = Modifier.size(64.dp))
-        if (!image.isNullOrBlank()) AsyncImage(image, "Foto de ${player.displayName}", Modifier.matchParentSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+private fun PlayerIdentityHeader(player: PlayMatchProfile) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = PlayMatchColors.Card,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, PlayMatchColors.Border),
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            CircularProfileImage(
+                imageUrl = player.avatarUrl,
+                mediaType = player.avatarMediaType,
+                fallbackName = player.displayName,
+                size = 76.dp,
+                borderColor = PlayMatchColors.Accent,
+                borderWidth = 2.dp,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text(
+                    text = player.displayName,
+                    color = PlayMatchColors.White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                player.regionCode.takeIf(String::isNotBlank)?.let { region ->
+                    Text(region, color = PlayMatchColors.SecondaryText, fontSize = 14.sp)
+                }
+            }
+            player.compatibilityScore?.let { MatchPercentBadge(it) }
+        }
     }
 }
 

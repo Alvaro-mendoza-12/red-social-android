@@ -1,6 +1,8 @@
 const fs = require('fs')
 const { cert, getApps, initializeApp } = require('firebase-admin/app')
 const { getMessaging } = require('firebase-admin/messaging')
+const { stableKey } = require('./request-security')
+const { safeErrorLogDetails } = require('./request-observability')
 
 const serviceAccountFile = String(
   process.env.FIREBASE_SERVICE_ACCOUNT_FILE || '/run/secrets/firebase-service-account.json',
@@ -20,7 +22,7 @@ function initializeFirebase() {
     return firebaseApp
   } catch (error) {
     initializationError = error
-    console.error(`[push] Firebase disabled: ${error.message}`)
+    console.error('[push] Firebase disabled', safeErrorLogDetails(error))
     return null
   }
 }
@@ -30,7 +32,9 @@ function pushNotificationsStatus() {
   return {
     configured: Boolean(app),
     provider: 'firebase-cloud-messaging',
-    error: app ? null : (initializationError?.message || 'Firebase is not initialized'),
+    errorCode: app ? null : String(initializationError?.code || 'FIREBASE_NOT_INITIALIZED')
+      .replace(/[^a-z0-9_.-]/gi, '_')
+      .slice(0, 80),
   }
 }
 
@@ -159,7 +163,7 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
   if (invalidTokens.length > 0) {
     await pool.query('DELETE FROM fallback_fcm_tokens WHERE token = ANY($1::text[])', [invalidTokens])
   }
-  console.log(`[push] type=${notification.type} recipient=${notification.recipient_id} sent=${sent} failed=${failed}`)
+  console.log(`[push] type=${notification.type} recipientRef=${stableKey(notification.recipient_id)} sent=${sent} failed=${failed}`)
   return { sent, failed, removedInvalidTokens: invalidTokens.length }
 }
 

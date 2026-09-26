@@ -93,17 +93,30 @@ function testPrivateContentIsExcluded() {
   assert.equal(video.excluded, 'CONTENT_NOT_PUBLIC')
 }
 
-async function testFlagsRemainFailClosed() {
+function testTrustedVideoSoundBecomesAnAudioAffinityKey() {
+  const soundId = '5ab8436e-a457-4dd7-ae5f-14585b36be8b'
+  const video = deriveTrustedContentClassification('video', {
+    id: validPost().id,
+    user_id: validPost().user_id,
+    title: 'Video con sonido reutilizado',
+    description: 'Música para descubrir',
+    duration_seconds: 18,
+    is_public: true,
+    sound_id: soundId,
+  })
+  assert.equal(video.value.audioKey, soundId)
+}
+
+async function testCoreClassificationRemainsAvailableWithoutRolloutFlags() {
   await withAlgorithmFlags({}, async () => {
-    let queried = false
-    const result = await syncTrustedContentClassification({
-      async query() {
-        queried = true
-        throw new Error('must not query')
-      },
-    }, 'post', validPost())
-    assert.equal(result.skipped, 'USER_ALGORITHM_CLASSIFICATION_DISABLED')
-    assert.equal(queried, false)
+    const statements = []
+    const result = await syncTrustedContentClassification(
+      successfulClassificationClient(statements),
+      'post',
+      validPost(),
+    )
+    assert.ok(result.id)
+    assert.ok(statements.some((entry) => /fallback_algorithm_content_classifications/.test(entry.sql)))
   })
 }
 
@@ -207,7 +220,8 @@ function testProductionWritePathsAreWired() {
 Promise.resolve()
   .then(testServerDerivationIgnoresClientClassificationFields)
   .then(testPrivateContentIsExcluded)
-  .then(testFlagsRemainFailClosed)
+  .then(testTrustedVideoSoundBecomesAnAudioAffinityKey)
+  .then(testCoreClassificationRemainsAvailableWithoutRolloutFlags)
   .then(testTrustedUpsertBecomesAllowedOnlyAfterTopics)
   .then(testFailureDeletesClassificationWithoutLoggingContent)
   .then(testImportedReaderUsesExplicitPublicAllowList)

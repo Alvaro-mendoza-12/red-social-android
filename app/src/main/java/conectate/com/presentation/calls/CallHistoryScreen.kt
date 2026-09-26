@@ -20,11 +20,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
-import androidx.compose.material.icons.filled.CallMade
-import androidx.compose.material.icons.filled.CallMissedOutgoing
+import androidx.compose.material.icons.automirrored.filled.CallMade
+import androidx.compose.material.icons.automirrored.filled.CallMissedOutgoing
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.PhoneDisabled
@@ -178,7 +178,7 @@ fun CallHistoryScreen(
                 title = { Text("Historial de llamadas", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 actions = {
@@ -309,7 +309,7 @@ private fun CallHistoryRow(
         CallHistoryStatus.CANCELLED ->
             Icons.Default.CallEnd to Color(0xFFF57C00)
         CallHistoryStatus.NO_ANSWER ->
-            Icons.Default.CallMissedOutgoing to MaterialTheme.colorScheme.error
+            Icons.AutoMirrored.Filled.CallMissedOutgoing to MaterialTheme.colorScheme.error
     }
 
     val scopeLabel = when (entry.contextType.trim().lowercase()) {
@@ -367,7 +367,7 @@ private fun CallHistoryRow(
                 Spacer(modifier = Modifier.width(6.dp))
                 Icon(
                     imageVector = if (entry.direction == CallHistoryDirection.OUTGOING) {
-                        Icons.Default.CallMade
+                        Icons.AutoMirrored.Filled.CallMade
                     } else {
                         Icons.Default.Call
                     },

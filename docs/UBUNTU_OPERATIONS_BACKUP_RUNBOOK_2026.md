@@ -111,7 +111,7 @@ El token se solicita de forma interactiva y se guarda fuera del repositorio en `
 Iniciar un Quick Tunnel y actualizar Android/web local:
 
 ```powershell
-cd "D:\red social - copia"
+cd "D:\red social - live-gifts"
 powershell -ExecutionPolicy Bypass -File ".\scripts\start-cloudflare-quick-tunnel.ps1"
 ```
 

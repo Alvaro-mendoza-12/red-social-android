@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20.20.2-alpine
 
 WORKDIR /app
 
@@ -8,11 +8,13 @@ COPY scripts ./scripts
 COPY src ./src
 COPY tests ./tests
 
-RUN mkdir -p /data/ai && chown -R node:node /data/ai /app
+RUN apk add --no-cache su-exec && \
+    mkdir -p /data/ai && \
+    chown -R node:node /data/ai /app && \
+    chmod +x /app/scripts/start-as-node.sh
 
-# The persistent bind mount is created by Docker on the host and can be owned
-# by root. Keep this isolated service able to create its first trained model.
-USER root
+# The entrypoint fixes the small persistent model directory and immediately
+# drops privileges before Node starts.
 
 ENV NODE_ENV=production
 ENV PORT=3010
@@ -20,4 +22,5 @@ ENV AI_DATA_DIR=/data/ai
 
 EXPOSE 3010
 
+ENTRYPOINT ["/app/scripts/start-as-node.sh"]
 CMD ["node", "src/server.js"]

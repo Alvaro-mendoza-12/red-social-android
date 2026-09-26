@@ -76,7 +76,12 @@ class GroupDetailViewModel @Inject constructor(
                      _actionMessage.value = joined.exceptionOrNull()?.message ?: "La invitación no es válida"
                  }
              }
-             try { groupRepository.syncGroups() } catch (e: Exception) {}
+             try {
+                 groupRepository.syncGroups()
+             } catch (e: Exception) {
+                 if (e is kotlinx.coroutines.CancellationException) throw e
+                 android.util.Log.w("GroupDetailViewModel", "Could not refresh group details", e)
+             }
         }
 
         // 2. Observe Group

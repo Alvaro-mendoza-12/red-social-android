@@ -1,22 +1,78 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     container_name: conectate-local-fallback-db-main
     restart: unless-stopped
     environment:
       POSTGRES_DB: conectate_fallback
       POSTGRES_USER: conectate
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
       - "127.0.0.1:${FALLBACK_DB_PORT:-5433}:5432"
     volumes:
       - conectate-fallback-db:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
+    mem_limit: ${DB_MEMORY_LIMIT:-2g}
+    memswap_limit: ${DB_MEMORY_SWAP_LIMIT:-2g}
+    cpus: "${DB_CPU_LIMIT:-2.0}"
+    pids_limit: ${DB_PIDS_LIMIT:-256}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U conectate -d conectate_fallback"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  signaling-redis:
+    image: redis:7.4.8-alpine
+    container_name: conectate-local-fallback-signaling-redis-main
+    restart: unless-stopped
+    user: "999:1000"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        umask 077
+        password="$$(cat /run/secrets/signaling_redis_password)"
+        {
+          printf 'bind 0.0.0.0\n'
+          printf 'protected-mode yes\n'
+          printf 'requirepass %s\n' "$$password"
+          printf 'appendonly yes\n'
+          printf 'appendfsync everysec\n'
+          printf 'maxmemory %s\n' "${SIGNALING_REDIS_MAX_MEMORY:-256mb}"
+          printf 'maxmemory-policy noeviction\n'
+        } > /run/redis/redis.conf
+        chmod 0640 /run/redis/redis.conf
+        unset password
+        # The official image owns /data as UID 999:GID 1000. Running directly with that
+        # non-root identity avoids startup-time ownership mutations that are rejected
+        # by hardened Docker hosts while retaining persistent AOF storage.
+        exec redis-server /run/redis/redis.conf
+    secrets:
+      - signaling_redis_password
+    volumes:
+      - novvin-signaling-redis:/data
+    tmpfs:
+      - /run/redis:size=1m,mode=0750,uid=999,gid=1000
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${SIGNALING_REDIS_MEMORY_LIMIT:-512m}
+    memswap_limit: ${SIGNALING_REDIS_MEMORY_SWAP_LIMIT:-512m}
+    cpus: "${SIGNALING_REDIS_CPU_LIMIT:-0.50}"
+    pids_limit: ${SIGNALING_REDIS_PIDS_LIMIT:-64}
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$(cat /run/secrets/signaling_redis_password) redis-cli ping | grep -qx PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   api:
     build:
@@ -32,23 +88,51 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      DATABASE_URL: postgres://conectate:${POSTGRES_PASSWORD}@db:5432/conectate_fallback
+      DATABASE_URL: postgres://conectate:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/conectate_fallback
       STORAGE_ROOT: /data/storage
+      STORAGE_ACCEL_PREFIX: /_novvin_storage
+      STORAGE_SIGNING_SECRET: ${STORAGE_SIGNING_SECRET:?STORAGE_SIGNING_SECRET is required}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      MUSIC_ANTIVIRUS_REQUIRED: ${MUSIC_ANTIVIRUS_REQUIRED:-true}
+      MUSIC_ANTIVIRUS_COMMAND: ${MUSIC_ANTIVIRUS_COMMAND:-clamscan}
+      MUSIC_ANTIVIRUS_TIMEOUT_MS: ${MUSIC_ANTIVIRUS_TIMEOUT_MS:-90000}
       REALTIME_INTERNAL_URL: http://realtime-gateway:3002
+      REALTIME_INTERNAL_SECRET: ${REALTIME_INTERNAL_SECRET:?REALTIME_INTERNAL_SECRET is required}
+      LIVE_INTERNAL_EVENTS_TOKEN: ${LIVE_INTERNAL_EVENTS_TOKEN:?LIVE_INTERNAL_EVENTS_TOKEN is required}
       SIGNALING_INTERNAL_URL: http://signaling:3003
       AI_INTERNAL_URL: http://ai-chatbot:3010
       AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-3000}
       AI_CHAT_REQUEST_TIMEOUT_MS: ${AI_CHAT_REQUEST_TIMEOUT_MS:-3000}
       TRANSLATION_INTERNAL_URL: http://host.docker.internal:5000
-      FIREBASE_SERVICE_ACCOUNT_FILE: /run/secrets/firebase-service-account.json
-      GOOGLE_PLAY_SERVICE_ACCOUNT_FILE: ${GOOGLE_PLAY_SERVICE_ACCOUNT_FILE:-/run/novvin-secrets/google-play-service-account.json}
+      FIREBASE_SERVICE_ACCOUNT_SOURCE_FILE: /run/secrets/firebase-service-account.json
+      FIREBASE_SERVICE_ACCOUNT_FILE: /tmp/novvin-secrets/firebase-service-account.json
+      GOOGLE_PLAY_SERVICE_ACCOUNT_SOURCE_FILE: ${GOOGLE_PLAY_SERVICE_ACCOUNT_SOURCE_FILE:-/run/novvin-secrets/google-play-service-account.json}
+      GOOGLE_PLAY_SERVICE_ACCOUNT_FILE: /tmp/novvin-secrets/google-play-service-account.json
+      RELEASE_METADATA_SOURCE_FILE: /run/novvin-release
+      RELEASE_METADATA_FILE: /tmp/novvin-release
     volumes:
       - ./imports:/imports:ro
       - ./secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
       - ${GOOGLE_PLAY_SERVICE_ACCOUNT_DIR:-./secrets}:/run/novvin-secrets:ro
       - ./.conectate-release:/run/novvin-release:ro
       - conectate-fallback-storage:/data/storage
+      - novvin-clamav-db:/var/lib/clamav
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${API_MEMORY_LIMIT:-4g}
+    memswap_limit: ${API_MEMORY_SWAP_LIMIT:-4g}
+    cpus: "${API_CPU_LIMIT:-3.0}"
+    pids_limit: ${API_PIDS_LIMIT:-384}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -96,7 +180,19 @@ services:
       NODE_OPTIONS: --max-old-space-size=${AI_NODE_HEAP_MB:-320}
     volumes:
       - ${AI_DATA_ROOT:-./ai-chatbot-data}:/data/ai
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
     mem_limit: ${AI_MEMORY_LIMIT:-512m}
+    memswap_limit: ${AI_MEMORY_SWAP_LIMIT:-512m}
     cpus: "${AI_CPU_LIMIT:-0.75}"
     pids_limit: 64
     networks:
@@ -120,7 +216,6 @@ services:
     build:
       context: ${SIGNALING_CONTEXT:-../../signaling-server}
       network: host
-    container_name: conectate-local-fallback-signaling-main
     restart: unless-stopped
     env_file:
       - .env
@@ -128,14 +223,40 @@ services:
       NODE_ENV: production
       PORT: 3003
       LOCAL_FALLBACK_API_URL: http://conectate-local-fallback-api-main:3001
-      SIGNALING_ALLOWED_ORIGINS: ${SIGNALING_ALLOWED_ORIGINS:-*}
+      SIGNALING_ALLOWED_ORIGINS: ${SIGNALING_ALLOWED_ORIGINS:?SIGNALING_ALLOWED_ORIGINS is required}
+      SIGNALING_REDIS_URL: redis://signaling-redis:6379
+      SIGNALING_REDIS_PASSWORD_FILE: /run/secrets/signaling_redis_password
+      SIGNALING_REDIS_REQUIRED: "true"
+      SIGNALING_REDIS_STREAM_COUNT: ${SIGNALING_REDIS_STREAM_COUNT:-4}
+      SIGNALING_CONNECTION_RECOVERY_MS: ${SIGNALING_CONNECTION_RECOVERY_MS:-120000}
+      SIGNALING_CONNECTION_RECOVERY_ENABLED: ${SIGNALING_CONNECTION_RECOVERY_ENABLED:-false}
+      LIVE_INTERNAL_EVENTS_TOKEN: ${LIVE_INTERNAL_EVENTS_TOKEN:?LIVE_INTERNAL_EVENTS_TOKEN is required}
+      SIGNALING_LIVE_STATE_TTL_SECONDS: ${SIGNALING_LIVE_STATE_TTL_SECONDS:-86400}
+      SIGNALING_LIVE_HOST_LEASE_SECONDS: ${SIGNALING_LIVE_HOST_LEASE_SECONDS:-45}
+    secrets:
+      - signaling_redis_password
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${SIGNALING_MEMORY_LIMIT:-256m}
+    memswap_limit: ${SIGNALING_MEMORY_SWAP_LIMIT:-256m}
+    cpus: "${SIGNALING_CPU_LIMIT:-1.0}"
+    pids_limit: 128
     depends_on:
       api:
+        condition: service_healthy
+      signaling-redis:
         condition: service_healthy
     networks:
       default:
         aliases:
           - conectate-signaling
+    deploy:
+      replicas: ${SIGNALING_REPLICAS:-1}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
@@ -143,11 +264,12 @@ services:
       retries: 5
 
   edge:
-    image: nginx:1.27-alpine
+    image: nginx:1.27.5-alpine
     container_name: conectate-local-fallback-edge-main
     restart: unless-stopped
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - conectate-fallback-storage:/data/storage:ro
     ports:
       - "127.0.0.1:${FALLBACK_EDGE_PORT:-3080}:8080"
     depends_on:
@@ -155,6 +277,10 @@ services:
         condition: service_healthy
       signaling:
         condition: service_healthy
+    mem_limit: ${EDGE_MEMORY_LIMIT:-256m}
+    memswap_limit: ${EDGE_MEMORY_SWAP_LIMIT:-256m}
+    cpus: "${EDGE_CPU_LIMIT:-0.50}"
+    pids_limit: ${EDGE_PIDS_LIMIT:-64}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ready >/dev/null || exit 1"]
       interval: 15s
@@ -172,8 +298,20 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3002
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_ISSUER: ${JWT_ISSUER:-conectate-local-fallback}
+      REALTIME_INTERNAL_SECRET: ${REALTIME_INTERNAL_SECRET:?REALTIME_INTERNAL_SECRET is required}
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${REALTIME_MEMORY_LIMIT:-192m}
+    memswap_limit: ${REALTIME_MEMORY_SWAP_LIMIT:-192m}
+    cpus: "${REALTIME_CPU_LIMIT:-0.75}"
+    pids_limit: 128
     networks:
       default:
         aliases:
@@ -209,7 +347,7 @@ services:
       - --realm=${TURN_REALM:-conectate.local}
       - --server-name=${TURN_REALM:-conectate.local}
       - --use-auth-secret
-      - --static-auth-secret=${TURN_SECRET:-turn-not-configured}
+      - --static-auth-secret=${TURN_SECRET:?TURN_SECRET is required when the turn profile is enabled}
       - --fingerprint
       - --no-multicast-peers
       - --no-cli
@@ -217,6 +355,10 @@ services:
       - --no-dtls
       - --stale-nonce=600
       - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
+    mem_limit: ${TURN_MEMORY_LIMIT:-512m}
+    memswap_limit: ${TURN_MEMORY_SWAP_LIMIT:-512m}
+    cpus: "${TURN_CPU_LIMIT:-1.0}"
+    pids_limit: ${TURN_PIDS_LIMIT:-128}
     healthcheck:
       test: ["CMD-SHELL", "turnutils_stunclient -p ${TURN_PORT:-3478} 127.0.0.1 >/dev/null 2>&1"]
       interval: 30s
@@ -229,3 +371,11 @@ volumes:
     name: conectate-fallback-db
   conectate-fallback-storage:
     name: conectate-fallback-storage
+  novvin-clamav-db:
+    name: novvin-clamav-db
+  novvin-signaling-redis:
+    name: novvin-signaling-redis
+
+secrets:
+  signaling_redis_password:
+    file: ${SIGNALING_REDIS_PASSWORD_FILE:-./secrets/signaling-redis-password.txt}

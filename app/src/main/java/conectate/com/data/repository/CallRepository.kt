@@ -25,6 +25,7 @@ import conectate.com.data.model.CallParticipant
 import conectate.com.data.model.CallReactionEvent
 import conectate.com.data.signaling.SignalingConfig
 import conectate.com.data.signaling.attachBearerToken
+import conectate.com.data.signaling.attachSignalingAffinity
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.webrtc.WebRTCManager
@@ -68,7 +69,7 @@ import org.webrtc.PeerConnection
 
 @Singleton
 class CallRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val userRepository: UserRepository,
@@ -521,12 +522,14 @@ class CallRepository @Inject constructor(
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
 
-        var profile = loadUserProfileQuick(currentUserId)
-        var myName = profile?.displayName
-            ?: profile?.username
-            ?: authService.getCurrentUserEmail()?.substringBefore("@")
+        // Profile data is decorative for signaling. Waiting for a network
+        // lookup here delayed cold-start answers and could make the offer time
+        // out before WebRTC joined the call.
+        val myName = authService.getCurrentUserEmail()?.substringBefore("@")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
             ?: "Usuario"
-        var myAvatar = profile?.avatar_url
+        val myAvatar: String? = null
 
         _incomingInvite.value = null
         callTonePlayer.stopIncomingRingtone()
@@ -585,6 +588,22 @@ class CallRepository @Inject constructor(
         startService()
         scheduleConnectingTimeout(invite.callId)
         connectSocket(invite.callId, currentUserId, myName, myAvatar)
+        scope.launch {
+            val profile = loadUserProfileQuick(currentUserId, timeoutMs = 2_500L) ?: return@launch
+            if (!_activeCall.value?.callId.equals(invite.callId, ignoreCase = true)) return@launch
+            _participants.value = _participants.value.map { participant ->
+                if (participant.userId.equals(currentUserId, ignoreCase = true)) {
+                    participant.copy(
+                        name = profile.displayName.takeIf { it.isNotBlank() }
+                            ?: profile.username?.takeIf { it.isNotBlank() }
+                            ?: participant.name,
+                        avatarUrl = profile.avatar_url ?: participant.avatarUrl,
+                    )
+                } else {
+                    participant
+                }
+            }
+        }
         callTonePlayer.stopAll()
         Result.success(Unit)
     }
@@ -1105,6 +1124,7 @@ class CallRepository @Inject constructor(
                     io.socket.engineio.client.transports.Polling.NAME,
                     io.socket.engineio.client.transports.WebSocket.NAME
                 )
+                attachSignalingAffinity("call", callId)
                 attachBearerToken(authService.getAccessToken())
             }
             val endpointBaseUrl = conectate.com.data.localfallback.RuntimeBackendEndpoint.baseUrl
@@ -1450,7 +1470,14 @@ class CallRepository @Inject constructor(
             webRTCManager = WebRTCManager(
                 context = context,
                 signalingEvents = events,
-                accessTokenProvider = { authService.getAccessToken() }
+                accessTokenProvider = { authService.getAccessToken() },
+                failureReporter = { metric, throwable ->
+                    appMetrics.recordFailure(
+                        metric = metric,
+                        throwable = throwable.takeIf { metric == "webrtc_init" },
+                        attributes = mapOf("errorType" to throwable::class.java.simpleName)
+                    )
+                }
             )
         } else {
             webRTCManager?.hardReset()

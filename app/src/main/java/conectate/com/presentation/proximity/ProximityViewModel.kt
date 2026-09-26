@@ -9,6 +9,8 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.localfallback.AnonymousChatMessage
 import conectate.com.data.localfallback.AnonymousChatSession
 import conectate.com.data.localfallback.AnonymousMatchResult
+import conectate.com.data.localfallback.AnonymousBottle
+import conectate.com.data.localfallback.AnonymousBottleResult
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.NearbyProfile
 import conectate.com.data.repository.MessageRepository
@@ -32,7 +34,7 @@ import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class ProximityViewModel @Inject constructor(
-    @ApplicationContext private val appContext: Context,
+    @param:ApplicationContext private val appContext: Context,
     private val authService: AuthService,
     private val apiClient: LocalFallbackApiClient,
     private val userRepository: UserRepository,
@@ -66,6 +68,12 @@ class ProximityViewModel @Inject constructor(
     private val _anonymousMessages = MutableStateFlow<List<AnonymousChatMessage>>(emptyList())
     val anonymousMessages: StateFlow<List<AnonymousChatMessage>> = _anonymousMessages.asStateFlow()
 
+    private val _outgoingBottle = MutableStateFlow<AnonymousBottle?>(null)
+    val outgoingBottle: StateFlow<AnonymousBottle?> = _outgoingBottle.asStateFlow()
+
+    private val _incomingBottle = MutableStateFlow<AnonymousBottle?>(null)
+    val incomingBottle: StateFlow<AnonymousBottle?> = _incomingBottle.asStateFlow()
+
     private val _normalChatPeerBySession = MutableStateFlow<Map<String, String>>(emptyMap())
     val normalChatPeerBySession: StateFlow<Map<String, String>> = _normalChatPeerBySession.asStateFlow()
 
@@ -77,13 +85,15 @@ class ProximityViewModel @Inject constructor(
 
     private var matchPollingJob: Job? = null
     private var messagePollingJob: Job? = null
+    private var bottlePollingJob: Job? = null
+    private var bottleDeactivationJob: Job? = null
+    private val declinedBottleIds = linkedSetOf<String>()
     private val promotingSessionIds = mutableSetOf<String>()
 
     init {
         loadProfileMatchingDefaults()
         restoreNearbyStatus()
         refreshAnonymousSessions(showErrors = false)
-        refreshRandomStatus(showErrors = false, selectMatched = false)
     }
 
     private fun restoreNearbyStatus() {
@@ -203,6 +213,119 @@ class ProximityViewModel @Inject constructor(
         }
     }
 
+    fun activateBottleInbox() {
+        if (bottlePollingJob?.isActive == true) return
+        // The redesigned flow uses the queue only as recipient availability.
+        // Stop legacy auto-match polling so it can never bypass acceptance.
+        matchPollingJob?.cancel()
+        matchPollingJob = null
+        _randomStatus.value = "idle"
+        val pendingDeactivation = bottleDeactivationJob
+        bottlePollingJob = viewModelScope.launch {
+            // A quick tab exit/re-entry must not let the older DELETE arrive
+            // after the new availability POST and silently unregister us.
+            pendingDeactivation?.join()
+            if (bottleDeactivationJob === pendingDeactivation) bottleDeactivationJob = null
+            while (isActive) {
+                val token = authService.ensureValidAccessToken().getOrNull()
+                if (token != null) {
+                    apiClient.refreshAnonymousBottleAvailability(token, _gender.value, _lookingFor.value)
+                        .onSuccess { availability ->
+                            val offered = availability.bottle
+                            if (offered != null && declinedBottleIds.contains(offered.id)) {
+                                val retry = apiClient.respondToAnonymousBottle(token, offered.id, accept = false)
+                                if (retry.isSuccess || retry.exceptionOrNull()?.message == "BOTTLE_OFFER_NOT_FOUND") {
+                                    declinedBottleIds.remove(offered.id)
+                                }
+                                _incomingBottle.value = null
+                            } else {
+                                _incomingBottle.value = offered
+                            }
+                        }
+                    apiClient.loadOutgoingAnonymousBottle(token)
+                        .onSuccess(::applyBottleResult)
+                }
+                delay(2_500)
+            }
+        }
+    }
+
+    fun deactivateBottleInbox() {
+        bottlePollingJob?.cancel()
+        bottlePollingJob = null
+        _incomingBottle.value = null
+        if (bottleDeactivationJob?.isActive == true) return
+        bottleDeactivationJob = viewModelScope.launch {
+            val token = authService.ensureValidAccessToken().getOrNull() ?: return@launch
+            // The server removes availability and atomically sends any pending
+            // offer onward, including one that arrived before this client poll.
+            apiClient.disableAnonymousBottleAvailability(token)
+        }
+    }
+
+    fun sendAnonymousBottle(content: String) {
+        val cleanContent = content.trim().take(500)
+        if (cleanContent.isBlank() || _outgoingBottle.value != null) return
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            val token = accessTokenOrReport() ?: return@launch finishLoading()
+            apiClient.sendAnonymousBottle(
+                accessToken = token,
+                content = cleanContent,
+                gender = _gender.value,
+                lookingFor = _lookingFor.value,
+            ).onSuccess(::applyBottleResult)
+                .onFailure(::reportBottleFailure)
+            activateBottleInbox()
+            finishLoading()
+        }
+    }
+
+    fun acceptIncomingBottle() {
+        val bottle = _incomingBottle.value ?: return
+        viewModelScope.launch {
+            _isLoading.value = true
+            val token = accessTokenOrReport() ?: return@launch finishLoading()
+            apiClient.respondToAnonymousBottle(token, bottle.id, accept = true)
+                .onSuccess { result ->
+                    _incomingBottle.value = null
+                    applyBottleResult(result)
+                }
+                .onFailure { error ->
+                    if (error.message == "BOTTLE_OFFER_NOT_FOUND") _incomingBottle.value = null
+                    reportBottleFailure(error)
+                }
+            finishLoading()
+        }
+    }
+
+    fun declineIncomingBottle() {
+        val bottle = _incomingBottle.value ?: return
+        declinedBottleIds += bottle.id
+        _incomingBottle.value = null
+        viewModelScope.launch {
+            val token = accessTokenOrReport() ?: return@launch
+            val result = apiClient.respondToAnonymousBottle(token, bottle.id, accept = false)
+            if (result.isSuccess || result.exceptionOrNull()?.message == "BOTTLE_OFFER_NOT_FOUND") {
+                declinedBottleIds.remove(bottle.id)
+            } else {
+                reportBottleFailure(result.exceptionOrNull())
+            }
+        }
+    }
+
+    fun cancelOutgoingBottle() {
+        val bottle = _outgoingBottle.value ?: return
+        _outgoingBottle.value = null
+        _randomStatus.value = "idle"
+        viewModelScope.launch {
+            val token = accessTokenOrReport() ?: return@launch
+            apiClient.cancelAnonymousBottle(token, bottle.id)
+                .onFailure(::reportBottleFailure)
+        }
+    }
+
     fun sendAnonymousMessage(content: String) {
         val cleanContent = content.trim().take(1000)
         val session = _anonymousSession.value ?: return
@@ -318,6 +441,7 @@ class ProximityViewModel @Inject constructor(
 
     fun selectAnonymousSession(sessionId: String) {
         val session = _anonymousSessions.value.firstOrNull { it.id == sessionId } ?: return
+        deactivateBottleInbox()
         _anonymousSession.value = session
         _anonymousMessages.value = emptyList()
         startMessagePolling(session.id)
@@ -330,6 +454,7 @@ class ProximityViewModel @Inject constructor(
         _anonymousSession.value = null
         _anonymousMessages.value = emptyList()
         refreshAnonymousSessions(showErrors = false)
+        activateBottleInbox()
     }
 
     fun endAnonymousSession() {
@@ -345,6 +470,7 @@ class ProximityViewModel @Inject constructor(
             _anonymousMessages.value = emptyList()
             _normalChatPeerBySession.value = _normalChatPeerBySession.value - session.id
             refreshAnonymousSessions(showErrors = false)
+            activateBottleInbox()
         }
     }
 
@@ -394,6 +520,35 @@ class ProximityViewModel @Inject constructor(
             if (selectMatched) startMessagePolling(result.session.id)
         } else if (result.status == "waiting") {
             startMatchPolling()
+        }
+    }
+
+    private fun applyBottleResult(result: AnonymousBottleResult) {
+        _outgoingBottle.value = result.bottle?.takeIf { it.perspective == "sender" && it.status in setOf("searching", "offered") }
+        _randomStatus.value = when (result.status) {
+            "searching", "offered" -> result.status
+            else -> "idle"
+        }
+        result.session?.let { session ->
+            _outgoingBottle.value = null
+            _incomingBottle.value = null
+            updateAnonymousSession(session)
+            _anonymousSession.value = session
+            deactivateBottleInbox()
+            startMessagePolling(session.id)
+            refreshAnonymousSessions(showErrors = false)
+        }
+    }
+
+    private fun reportBottleFailure(error: Throwable?) {
+        _errorMessage.value = when (error?.message) {
+            "BOTTLE_ALREADY_SEARCHING" -> "Ya tienes una botella buscando a alguien."
+            "BOTTLE_OFFER_NOT_FOUND" -> "Esa botella ya siguió su viaje hacia otra persona."
+            "BOTTLE_MESSAGE_REQUIRED" -> "Escribe un mensaje antes de lanzar la botella."
+            "RANDOM_ACTIVE_SESSION_LIMIT" -> "Cierra algún chat anónimo antes de abrir uno nuevo."
+            "RANDOM_ALREADY_CONNECTED" -> "Ya tienes una conversación anónima activa con esa persona."
+            "NOT_FOUND" -> "El servidor activo todavía no tiene disponible Botellas anónimas. Actualiza Novvin y vuelve a intentarlo."
+            else -> error.toUserFacingMessage("No se pudo actualizar la botella anónima.")
         }
     }
 
@@ -479,8 +634,10 @@ class ProximityViewModel @Inject constructor(
     private fun cancelPolling() {
         matchPollingJob?.cancel()
         messagePollingJob?.cancel()
+        bottlePollingJob?.cancel()
         matchPollingJob = null
         messagePollingJob = null
+        bottlePollingJob = null
     }
 
     override fun onCleared() {

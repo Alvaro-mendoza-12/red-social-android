@@ -1,5 +1,10 @@
 package conectate.com.presentation.profile
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,7 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
@@ -23,6 +28,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import java.util.Locale
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,17 +46,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.core.content.ContextCompat
 import conectate.com.data.localfallback.NotificationDigestPreferences
 import java.util.TimeZone
+import kotlinx.coroutines.launch
+
+private enum class NotificationPermissionAction { MOMENTS, DIGEST }
 
 private val weekdayNames = listOf(
     "Domingo",
@@ -71,7 +83,11 @@ fun NotificationSettingsScreen(
     val state by viewModel.digestState.collectAsStateWithLifecycle()
     val saving by viewModel.digestSaving.collectAsStateWithLifecycle()
     val message by viewModel.digestMessage.collectAsStateWithLifecycle()
+    val momentNotificationsEnabled by viewModel.momentNotificationsEnabled.collectAsStateWithLifecycle()
+    val momentNotificationsSaving by viewModel.momentNotificationsSaving.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     var initializedKey by rememberSaveable { mutableStateOf<String?>(null) }
     var enabled by rememberSaveable { mutableStateOf(false) }
@@ -82,12 +98,51 @@ fun NotificationSettingsScreen(
     var includeDirectMessages by rememberSaveable { mutableStateOf(false) }
     var includeCommunityActivity by rememberSaveable { mutableStateOf(true) }
     var includeUpcomingLives by rememberSaveable { mutableStateOf(true) }
+    var pendingPermissionAction by remember { mutableStateOf<NotificationPermissionAction?>(null) }
     val timezoneOffsetMinutes = remember {
         TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
     }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val action = pendingPermissionAction
+        pendingPermissionAction = null
+        if (granted) {
+            when (action) {
+                NotificationPermissionAction.MOMENTS -> viewModel.setMomentNotificationsEnabled(true)
+                NotificationPermissionAction.DIGEST -> enabled = true
+                null -> Unit
+            }
+        } else if (action != null) {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar(
+                    "Activa las notificaciones de Novvin en Ajustes para recibir estos avisos."
+                )
+            }
+        }
+    }
+
+    fun requestNotificationsThen(action: NotificationPermissionAction) {
+        val permissionRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        val permissionGranted = !permissionRequired || ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (permissionGranted) {
+            when (action) {
+                NotificationPermissionAction.MOMENTS -> viewModel.setMomentNotificationsEnabled(true)
+                NotificationPermissionAction.DIGEST -> enabled = true
+            }
+        } else {
+            pendingPermissionAction = action
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.loadNotificationDigest()
+        viewModel.loadMomentNotificationPreferences()
     }
     LaunchedEffect(state) {
         val preferences = (state as? NotificationDigestUiState.Ready)?.overview?.preferences
@@ -119,7 +174,7 @@ fun NotificationSettingsScreen(
                 title = { Text("Resumen de notificaciones") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 }
             )
@@ -157,8 +212,23 @@ fun NotificationSettingsScreen(
             is NotificationDigestUiState.Ready -> {
                 NotificationDigestSettingsContent(
                     modifier = Modifier.padding(padding),
+                    momentNotificationsEnabled = momentNotificationsEnabled,
+                    momentNotificationsSaving = momentNotificationsSaving,
+                    onMomentNotificationsChange = { shouldEnable ->
+                        if (shouldEnable) {
+                            requestNotificationsThen(NotificationPermissionAction.MOMENTS)
+                        } else {
+                            viewModel.setMomentNotificationsEnabled(false)
+                        }
+                    },
                     enabled = enabled,
-                    onEnabledChange = { enabled = it },
+                    onEnabledChange = { shouldEnable ->
+                        if (shouldEnable) {
+                            requestNotificationsThen(NotificationPermissionAction.DIGEST)
+                        } else {
+                            enabled = false
+                        }
+                    },
                     frequency = frequency,
                     onFrequencyChange = { frequency = it },
                     deliveryHour = deliveryHour,
@@ -201,6 +271,9 @@ fun NotificationSettingsScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 private fun NotificationDigestSettingsContent(
     modifier: Modifier,
+    momentNotificationsEnabled: Boolean?,
+    momentNotificationsSaving: Boolean,
+    onMomentNotificationsChange: (Boolean) -> Unit,
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     frequency: String,
@@ -231,6 +304,12 @@ private fun NotificationDigestSettingsContent(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        SettingsSwitchRow(
+            title = "Avisos de momentos",
+            description = "Desactivados por defecto. Si los activas, recibirás avisos de momentos de personas que sigues; desaparecen al vencer el momento.",
+            checked = momentNotificationsEnabled == true,
+            onCheckedChange = { if (!momentNotificationsSaving && momentNotificationsEnabled != null) onMomentNotificationsChange(it) }
+        )
         SettingsSwitchRow(
             title = "Recibir un resumen",
             description = "Agrupa actividad no urgente para reducir interrupciones.",
@@ -401,12 +480,26 @@ private fun DigestHourPicker(
             onClick = { expanded = true },
             enabled = enabled
         ) {
-            Text(String.format("%02d:00", hour))
+            Text(
+                String.format(
+                    androidx.compose.ui.platform.LocalLocale.current.platformLocale,
+                    "%02d:00",
+                    hour,
+                )
+            )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             (0..23).forEach { candidate ->
                 DropdownMenuItem(
-                    text = { Text(String.format("%02d:00", candidate)) },
+                    text = {
+                        Text(
+                            String.format(
+                                androidx.compose.ui.platform.LocalLocale.current.platformLocale,
+                                "%02d:00",
+                                candidate,
+                            )
+                        )
+                    },
                     onClick = {
                         onHourChange(candidate)
                         expanded = false

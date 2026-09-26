@@ -4,11 +4,13 @@ import android.content.Context
 import conectate.com.data.model.LiveSfuSession
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.livekit.android.LiveKit
+import io.livekit.android.RoomOptions
 import io.livekit.android.events.collect
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.renderer.TextureViewRenderer
 import io.livekit.android.room.Room
 import io.livekit.android.room.track.VideoTrack
+import io.livekit.android.room.track.LocalAudioTrackOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,7 +34,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class LiveKitRoomBridge @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     enum class State { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 
@@ -65,7 +67,20 @@ class LiveKitRoomBridge @Inject constructor(
 
         disconnectLocked()
         _state.value = State.CONNECTING
-        val candidate = LiveKit.create(context)
+        val candidate = LiveKit.create(
+            context,
+            RoomOptions(
+                adaptiveStream = true,
+                dynacast = true,
+                audioTrackCaptureDefaults = LocalAudioTrackOptions(
+                    noiseSuppression = true,
+                    echoCancellation = true,
+                    autoGainControl = true,
+                    highPassFilter = true,
+                    typingNoiseDetection = true
+                )
+            )
+        )
         room = candidate
         eventsJob = scope.launch {
             candidate.events.collect { event ->

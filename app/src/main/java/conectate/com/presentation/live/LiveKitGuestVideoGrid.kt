@@ -5,8 +5,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,11 +34,11 @@ internal fun LiveKitGuestVideoGrid(
     videos: List<LiveKitRoomBridge.RemoteVideo>,
     onAttach: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Boolean,
     onDetach: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Unit,
+    modifier: Modifier = Modifier,
     maxSlots: Int = 4,
     showEmptySlots: Boolean = false,
     emptySlotLabel: String = "Solicitar",
     onEmptySlotClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
 ) {
     val visibleVideos = videos.take(maxSlots.coerceIn(1, 4))
     val emptyCount = if (showEmptySlots) {
@@ -45,26 +47,72 @@ internal fun LiveKitGuestVideoGrid(
         0
     }
     if (visibleVideos.isEmpty() && emptyCount == 0) return
-    val slots: List<LiveKitRoomBridge.RemoteVideo?> =
-        visibleVideos.map { it } + List(emptyCount) { null }
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        slots.chunked(2).forEach { rowVideos ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                rowVideos.forEach { video ->
-                    if (video != null) {
-                        LiveKitGuestVideo(video, onAttach, onDetach)
-                    } else {
-                        LiveKitEmptyGuestSlot(
-                            label = emptySlotLabel,
-                            onClick = onEmptySlotClick
-                        )
+    BoxWithConstraints(modifier = modifier) {
+        val slots: List<LiveKitRoomBridge.RemoteVideo?> =
+            visibleVideos.map { it } + List(emptyCount) { null }
+        val pip = visibleVideos.size == 1 && emptyCount == 0
+        if (pip) {
+            val pipWidth = (maxWidth * 0.29f).coerceIn(112.dp, 204.dp)
+            LiveKitGuestVideo(
+                video = visibleVideos.first(),
+                onAttach = onAttach,
+                onDetach = onDetach,
+                width = pipWidth,
+                height = (pipWidth * 1.52f).coerceIn(170.dp, 314.dp),
+                pictureInPicture = true,
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                slots.chunked(2).forEach { rowVideos ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rowVideos.forEach { video ->
+                            if (video != null) {
+                                LiveKitGuestVideo(video, onAttach, onDetach)
+                            } else {
+                                LiveKitEmptyGuestSlot(
+                                    label = emptySlotLabel,
+                                    onClick = onEmptySlotClick
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun LiveKitRemoteVideoSurface(
+    video: LiveKitRoomBridge.RemoteVideo,
+    onAttach: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Boolean,
+    onDetach: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = video.participantName,
+) {
+    val context = LocalContext.current
+    val renderer = remember(video.trackId) { TextureViewRenderer(context) }
+    DisposableEffect(video.trackId, renderer) {
+        onAttach(video, renderer)
+        onDispose { onDetach(video, renderer) }
+    }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.Black)
+    ) {
+        AndroidView(factory = { renderer }, modifier = Modifier.fillMaxSize())
+        Text(
+            text = label,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier
+                .align(androidx.compose.ui.Alignment.BottomStart)
+                .fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.56f))
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+        )
     }
 }
 
@@ -107,7 +155,10 @@ private fun LiveKitEmptyGuestSlot(
 private fun LiveKitGuestVideo(
     video: LiveKitRoomBridge.RemoteVideo,
     onAttach: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Boolean,
-    onDetach: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Unit
+    onDetach: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Unit,
+    width: androidx.compose.ui.unit.Dp = 132.dp,
+    height: androidx.compose.ui.unit.Dp = 154.dp,
+    pictureInPicture: Boolean = false,
 ) {
     val context = LocalContext.current
     val renderer = remember(video.trackId) { TextureViewRenderer(context) }
@@ -115,23 +166,53 @@ private fun LiveKitGuestVideo(
         onAttach(video, renderer)
         onDispose { onDetach(video, renderer) }
     }
-    Column(
-        modifier = Modifier
-            .width(132.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color.Black.copy(alpha = 0.72f))
-            .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
-    ) {
-        AndroidView(
-            factory = { renderer },
-            modifier = Modifier.fillMaxWidth().height(154.dp)
-        )
-        Text(
-            text = video.participantName,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
-        )
+    if (pictureInPicture) {
+        Box(
+            modifier = Modifier
+                .width(width)
+                .height(height)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.Black.copy(alpha = 0.68f))
+                .border(1.dp, Color.White.copy(alpha = 0.62f), RoundedCornerShape(18.dp))
+        ) {
+            AndroidView(factory = { renderer }, modifier = Modifier.fillMaxSize())
+            LiveQualityBars(
+                tint = Color(0xFF5EEAD4),
+                modifier = Modifier
+                    .align(androidx.compose.ui.Alignment.TopStart)
+                    .padding(start = 10.dp, top = 10.dp),
+            )
+            Text(
+                text = "Invitado\n${video.participantName}",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                modifier = Modifier
+                    .align(androidx.compose.ui.Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.42f))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            )
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .width(width)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.Black.copy(alpha = 0.72f))
+                .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+        ) {
+            AndroidView(
+                factory = { renderer },
+                modifier = Modifier.fillMaxWidth().height(height)
+            )
+            Text(
+                text = video.participantName,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+            )
+        }
     }
 }

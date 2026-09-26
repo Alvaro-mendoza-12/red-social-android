@@ -7,7 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,14 +41,14 @@ fun RankingScreen(
                 title = { Text("Ranking") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 }
             )
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding)) {
-            TabRow(selectedTabIndex = selectedTab) {
+            PrimaryTabRow(selectedTabIndex = selectedTab) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTab == index,
@@ -84,7 +84,7 @@ fun RankingScreen(
                                             }
                                         }
                                     )
-                                    Divider()
+                                    HorizontalDivider()
                                 }
                             }
                             1 -> { // Videos
@@ -131,16 +131,27 @@ fun RankingScreen(
                                             }
                                         }
                                     }
-                                    Divider()
+                                    HorizontalDivider()
                                 }
                             }
                             2 -> { // Posts
                                 items(posts) { post ->
                                     PostCard(
                                         post = post,
-                                        onLikeClick = { /* No-op for now in ranking specific */ },
+                                        onLikeClick = {
+                                            viewModel.setPostReaction(
+                                                post,
+                                                if (post.likedByMe) null else "LIKE",
+                                            )
+                                        },
+                                        onReactionSelect = { reaction ->
+                                            viewModel.setPostReaction(post, reaction)
+                                        },
+                                        onReactionSummaryClick = {
+                                            navController.navigate(Screen.PostDetail.createRoute(post.id))
+                                        },
                                         onCommentClick = { navController.navigate(Screen.PostDetail.createRoute(post.id)) },
-                                        onShareClick = { /* No-op */ },
+                                        onShareClick = { viewModel.togglePostShare(post) },
                                         onUserClick = { navController.navigate(Screen.UserProfile.createRoute(post.userId)) },
                                         onPostClick = { navController.navigate(Screen.PostDetail.createRoute(post.id)) }
                                     )

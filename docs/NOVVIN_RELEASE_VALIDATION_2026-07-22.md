@@ -14,9 +14,11 @@
   operar con un resumen obsoleto. Ahora abre confirmación, vuelve a consultar al
   servidor, rechaza administradores, exige suspensión previa y ejecuta el borrado
   completo solo con motivo y texto exacto.
-- **Videos y modo sin conexión:** se unificó la clave de caché, aumentó el buffer
-  útil, se conservan metadatos locales y una falla de red ya no se presenta como
-  “no hay publicaciones”.
+- **Videos y reproducción:** se unificó la clave de caché, aumentó el buffer
+  útil y una falla de red ya no se presenta como “no hay publicaciones”. La
+  aplicación no ofrece una biblioteca de videos sin conexión; la caché solo
+  acelera la reproducción y las descargas explícitas del chat siguen siendo
+  independientes.
 - **Radar:** se normalizaron los valores incompatibles `male/female` y
   `man/woman`, se limitaron los filtros visibles a Hombre/Mujer y se añadió
   barrido animado con avatares y actualización de presencia.
@@ -36,7 +38,7 @@
   `VoiceRoomActiveViewModel.kt`, servicios/fábricas de llamada.
 - Administración: `AdminPanelScreen.kt`, `AdminPanelViewModel.kt`,
   `AdminModerationPage.tsx`, `admin-moderation-routes.js`.
-- Medios/offline: `VideoRepository.kt`, `VideoPerformanceProfile.kt`,
+- Medios/reproducción: `VideoRepository.kt`, `VideoPerformanceProfile.kt`,
   `UbuntuMedia.kt`, pantallas de Video/Social y componentes de caché.
 - Radar: paquete Android `presentation/proximity`, `ProximityPage.tsx` y
   `proximity-routes.js`.

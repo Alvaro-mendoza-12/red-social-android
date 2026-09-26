@@ -34,7 +34,7 @@ class NotificationRepository @Inject constructor(
     private val localFallbackApiClient: LocalFallbackApiClient,
     private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val repositoryCallHandler: RepositoryCallHandler,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     companion object {
         private const val PREFS = "notification_repository_cache"
@@ -42,12 +42,33 @@ class NotificationRepository @Inject constructor(
     }
 
     private val scope = newSafeScope("NotificationRepository", Dispatchers.IO)
+    private var momentExpiryRefreshJob: Job? = null
     private val _unreadCount = MutableStateFlow(0)
     val unreadCount: StateFlow<Int> = _unreadCount.asStateFlow()
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
     fun clearData() {
+        momentExpiryRefreshJob?.cancel()
         _unreadCount.value = 0
+    }
+
+    private fun scheduleMomentExpiryRefresh(notifications: List<Notification>) {
+        val now = System.currentTimeMillis()
+        val nearest = notifications.asSequence()
+            .filter { it.type.equals("new_moment", ignoreCase = true) }
+            .mapNotNull { notification ->
+                notification.extraData?.get("expires_at")?.jsonPrimitive?.contentOrNull
+                    ?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
+            }
+            .filter { it > now }
+            .minOrNull()
+        momentExpiryRefreshJob?.cancel()
+        if (nearest != null) {
+            momentExpiryRefreshJob = scope.launch {
+                delay((nearest - now + 250L).coerceAtMost(7 * 24 * 60 * 60 * 1000L))
+                updateUnreadCount()
+            }
+        }
     }
 
     init {
@@ -120,6 +141,7 @@ class NotificationRepository @Inject constructor(
                 return localFallbackApiClient.loadNotifications(token)
                     .map { response ->
                         _unreadCount.value = response.unreadCount
+                        scheduleMomentExpiryRefresh(response.items)
                         response.items
                     }
             }
@@ -207,6 +229,24 @@ class NotificationRepository @Inject constructor(
         val token = authService.getAccessToken()
             ?: return Result.failure(IllegalStateException("Tu sesión expiró. Inicia sesión nuevamente."))
         return localFallbackApiClient.loadNotificationDigest(token)
+    }
+
+    suspend fun getMomentNotificationPreferences(): Result<conectate.com.data.localfallback.MomentNotificationPreferences> {
+        if (!authService.isLocalFallbackSession()) {
+            return Result.failure(IllegalStateException("Las alertas de momentos requieren el servidor actual de Novvin."))
+        }
+        val token = authService.getAccessToken()
+            ?: return Result.failure(IllegalStateException("Tu sesión expiró. Inicia sesión nuevamente."))
+        return localFallbackApiClient.loadMomentNotificationPreferences(token)
+    }
+
+    suspend fun setMomentNotificationPreferences(enabled: Boolean): Result<conectate.com.data.localfallback.MomentNotificationPreferences> {
+        if (!authService.isLocalFallbackSession()) {
+            return Result.failure(IllegalStateException("Las alertas de momentos requieren el servidor actual de Novvin."))
+        }
+        val token = authService.getAccessToken()
+            ?: return Result.failure(IllegalStateException("Tu sesión expiró. Inicia sesión nuevamente."))
+        return localFallbackApiClient.updateMomentNotificationPreferences(token, enabled)
     }
 
     suspend fun updateNotificationDigestPreferences(
@@ -381,6 +421,7 @@ class NotificationRepository @Inject constructor(
             return localFallbackApiClient.loadNotifications(token, unreadOnly = true, limit = 500)
                 .map { response ->
                     _unreadCount.value = response.unreadCount
+                    scheduleMomentExpiryRefresh(response.items)
                     response.unreadCount
                 }
         }
@@ -622,7 +663,7 @@ class NotificationRepository @Inject constructor(
 
             if (response.status.isSuccess()) {
                 prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
-                Log.d("NotificationRepository", "FCM Token unregistered for user $userId")
+                Log.d("NotificationRepository", "FCM token unregistered for current session")
                 Result.success(Unit)
             } else {
                 Log.e("NotificationRepository", "Error unregistering token: ${response.status}")

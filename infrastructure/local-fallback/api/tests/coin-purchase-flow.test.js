@@ -100,8 +100,10 @@ function createPool() {
 const pool = createPool()
 let purchaseMode = { state: 0, googleError: false }
 let consumeCalls = 0
+let lastVoidedRequestUrl = null
+let lastRefundReview = null
 
-global.fetch = async (url) => {
+global.fetch = async (url, options = {}) => {
   const target = String(url)
   if (target.includes('oauth2.googleapis.com/token')) {
     return { ok: true, json: async () => ({ access_token: 'test-access-token' }) }
@@ -112,6 +114,7 @@ global.fetch = async (url) => {
     return { ok: true, json: async () => ({}) }
   }
   if (target.includes('/purchases/voidedpurchases')) {
+    lastVoidedRequestUrl = new URL(target)
     return {
       ok: true,
       json: async () => ({
@@ -124,6 +127,13 @@ global.fetch = async (url) => {
         }],
       }),
     }
+  }
+  if (target.includes(':reviewrefund')) {
+    lastRefundReview = {
+      url: target,
+      body: JSON.parse(String(options.body || '{}')),
+    }
+    return { ok: true, json: async () => ({}) }
   }
   if (purchaseMode.googleError) {
     return { ok: false, json: async () => ({ error: {} }) }
@@ -241,6 +251,11 @@ async function run() {
   assert.equal(repeatedRefund.reversed, false)
   assert.equal(repeatedRefund.idempotent_replay, true)
   assert.equal(currentWallet().balance_diamonds, 0)
+  const reconciliationEnd = Date.now()
+  await _test.reconcileGooglePlayVoidedPurchases(pool, { endTime: reconciliationEnd })
+  const requestedStartTime = Number(lastVoidedRequestUrl?.searchParams.get('startTime'))
+  assert.ok(Number.isFinite(requestedStartTime))
+  assert.ok(reconciliationEnd - requestedStartTime <= 29 * 24 * 60 * 60 * 1000)
   await expectCode(
     () => verify('novvin_coins_70', 'purchase-token-valid'),
     'GOOGLE_PLAY_PURCHASE_REFUNDED',
@@ -291,7 +306,41 @@ async function run() {
     Object.fromEntries(catalogPurchases.map(entry => [entry.row.product_id, entry.row.coins])),
     packages,
   )
-  console.log('coin purchase flow tests passed: complete/missing catalog, all 8 credits, duplicate, pending, cancelled, unknown, google error, refund, refund replay, refund debt')
+
+  const rtdnPool = createPool()
+  purchaseMode = { state: 0, token: 'rtdn' }
+  const rtdnPurchase = await _test.processGooglePlayOneTimeProductNotification(rtdnPool, {
+    notificationType: 1,
+    productId: 'novvin_coins_70',
+    purchaseToken: 'purchase-token-rtdn',
+  })
+  assert.equal(rtdnPurchase.status, 'credited')
+  assert.equal(rtdnPurchase.credited, true)
+  const rtdnWallet = [...rtdnPool.state.compat.values()]
+    .find(entry => entry.table_name === 'wallets')?.row
+  assert.equal(rtdnWallet.balance_diamonds, 70)
+
+  const refundReview = await _test.processGooglePlayPendingRefundReview(rtdnPool, {
+    payload: {
+      pendingRefundToken: 'pending-refund-token',
+      orderId: 'order-rtdn',
+      refundReason: 7,
+      obfuscatedAccountId: accountHash,
+    },
+  }, { pendingRefundPreference: 'NEUTRAL' })
+  assert.equal(refundReview.status, 'refund_review_submitted')
+  assert.equal(refundReview.purchase_matched, true)
+  assert.equal(lastRefundReview.body.refundPreference, 'NEUTRAL')
+  assert.equal(lastRefundReview.body.consumptionPercentageMilliunits, 0)
+  assert.equal(lastRefundReview.body.pendingRefundToken, 'pending-refund-token')
+  assert.ok(lastRefundReview.url.includes(encodeURIComponent('order-rtdn')))
+  const storedReview = [...rtdnPool.state.compat.values()]
+    .find(entry => entry.table_name === 'billing_pending_refund_reviews')?.row
+  assert.equal(storedReview.status, 'submitted')
+  assert.equal(storedReview.order_id, undefined)
+  assert.equal(storedReview.pending_refund_token, undefined)
+
+  console.log('coin purchase flow tests passed: catalog, idempotency, RTDN credit, refund review, refund/debt reconciliation')
 }
 
 run().catch(error => {

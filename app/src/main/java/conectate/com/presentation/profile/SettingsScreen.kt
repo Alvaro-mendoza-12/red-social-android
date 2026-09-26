@@ -2,19 +2,23 @@ package conectate.com.presentation.profile
 
 import conectate.com.BuildConfig
 import androidx.compose.runtime.Composable
+import android.content.Intent
+import android.provider.Settings
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Groups
@@ -26,8 +30,20 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
@@ -37,6 +53,8 @@ import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.compose.ui.platform.LocalContext
 import android.util.Log
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import conectate.com.data.repository.WebLoginManagedSession
 import conectate.com.presentation.auth.AuthViewModel
 import conectate.com.presentation.navigation.Screen
@@ -67,12 +85,61 @@ fun SettingsScreen(
     val storedAccounts by authViewModel.storedAccounts.collectAsState()
     val accountSwitchMessage by authViewModel.accountSwitchMessage.collectAsState()
     val currentUserId by authViewModel.currentUserId.collectAsState()
+    val twoFactorStatus by viewModel.serverTwoFactorStatus.collectAsState()
+    val twoFactorSetup by viewModel.serverTwoFactorSetup.collectAsState()
+    val recoveryCodes by viewModel.serverRecoveryCodes.collectAsState()
+    val twoFactorBusy by viewModel.twoFactorBusy.collectAsState()
+    val twoFactorMessage by viewModel.twoFactorMessage.collectAsState()
+    val twoFactorDisabled by viewModel.twoFactorDisabled.collectAsState()
+    val passwordRecoveryRemaining by viewModel.passwordRecoveryRemaining.collectAsState()
+    val passwordRecoveryCodes by viewModel.passwordRecoveryCodes.collectAsState()
+    val passwordRecoveryBusy by viewModel.passwordRecoveryBusy.collectAsState()
+    val passwordRecoveryMessage by viewModel.passwordRecoveryMessage.collectAsState()
+    var twoFactorExpanded by rememberSaveable { mutableStateOf(false) }
+    var twoFactorPassword by remember { mutableStateOf("") }
+    var twoFactorCode by remember { mutableStateOf("") }
+    var passwordRecoveryExpanded by rememberSaveable { mutableStateOf(false) }
+    var passwordRecoveryPassword by remember { mutableStateOf("") }
+    var passwordRecoveryFactor by remember { mutableStateOf("") }
     val uriHandler = LocalUriHandler.current
     val screenContext = LocalContext.current
+    LaunchedEffect(twoFactorDisabled) {
+        if (twoFactorDisabled) onLogout()
+    }
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        if (uri != null) {
+            val accountEmail = (settingsState as? SettingsUiState.Success)?.user?.email
+            viewModel.exportSettingsBackup(uri, accountEmail).fold(
+                onSuccess = {
+                    android.widget.Toast.makeText(screenContext, "Copia de preferencias guardada.", android.widget.Toast.LENGTH_SHORT).show()
+                },
+                onFailure = {
+                    android.widget.Toast.makeText(screenContext, it.message ?: "No se pudo crear la copia.", android.widget.Toast.LENGTH_LONG).show()
+                },
+            )
+        }
+    }
+    val importBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importSettingsBackup(uri).fold(
+                onSuccess = {
+                    android.widget.Toast.makeText(screenContext, "Preferencias restauradas.", android.widget.Toast.LENGTH_SHORT).show()
+                },
+                onFailure = {
+                    android.widget.Toast.makeText(screenContext, it.message ?: "No se pudo restaurar la copia.", android.widget.Toast.LENGTH_LONG).show()
+                },
+            )
+        }
+    }
     
     // Local state for immediate UI feedback, synced with DB
     var isPrivate by remember { mutableStateOf(false) }
     var favoritesPublic by remember { mutableStateOf(false) }
+    var profileViewHistoryEnabled by remember { mutableStateOf(true) }
     var breakMode by remember { mutableStateOf("off") }
     var visibility by remember { mutableStateOf("everyone") }
     var initialized by remember { mutableStateOf(false) }
@@ -81,6 +148,9 @@ fun SettingsScreen(
     var showBreakModeDialog by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
     var adminNavigationError by remember { mutableStateOf<String?>(null) }
+    var lastBackupRequest by remember { mutableStateOf(viewModel.lastAndroidBackupRequest()) }
+    var settingsQuery by rememberSaveable { mutableStateOf("") }
+    var expandedSettingsSection by rememberSaveable { mutableStateOf<String?>("Actividad") }
 
     LaunchedEffect(accountDeleted) {
         if (accountDeleted) {
@@ -95,6 +165,7 @@ fun SettingsScreen(
             val user = (settingsState as SettingsUiState.Success).user
             isPrivate = user.is_private
             favoritesPublic = user.favorites_public
+            profileViewHistoryEnabled = user.profile_view_history_enabled
             breakMode = user.break_mode
             visibility = user.profile_visibility
             initialized = true
@@ -111,15 +182,20 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Configuración") },
+                title = { Text("Ajustes y privacidad", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atrás")
                     }
                 }
             )
         }
     ) { padding ->
+        CompositionLocalProvider(LocalSettingsDirectory provides SettingsDirectoryState(
+            query = settingsQuery,
+            expanded = expandedSettingsSection,
+            toggle = { title -> expandedSettingsSection = if (expandedSettingsSection == title) null else title },
+        )) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -127,10 +203,39 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .imePadding()
                 .navigationBarsPadding()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+                .background(MaterialTheme.colorScheme.background)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            SettingsSection(title = "Configuración por áreas") {
+            OutlinedTextField(
+                value = settingsQuery,
+                onValueChange = { settingsQuery = it.take(100) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Buscar en ajustes") },
+                placeholder = { Text("Privacidad, idioma, copia de seguridad…") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (settingsQuery.isNotEmpty()) IconButton(onClick = { settingsQuery = "" }) {
+                        Icon(Icons.Default.Close, contentDescription = "Limpiar búsqueda")
+                    }
+                },
+                singleLine = true,
+            )
+            Text(
+                "Abre una categoría para ver sus opciones.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (settingsQuery.isNotBlank() && !SettingsDirectory.hasMatches(settingsQuery, adminPanelAccess)) {
+                Text("No encontramos ese ajuste. Prueba con privacidad, idioma o cuenta.")
+            }
+            SettingsSection(title = "Actividad") {
+                SettingsAreaButton(
+                    icon = Icons.Default.Shield,
+                    title = "Preferencias de contenido",
+                    subtitle = "Contenido sensible, +18 y comentarios ofensivos",
+                    onClick = { navController.navigate(Screen.ContentSafety.route) }
+                )
                 SettingsAreaButton(
                     icon = Icons.Default.Settings,
                     title = "Mi algoritmo",
@@ -138,7 +243,7 @@ fun SettingsScreen(
                     onClick = { navController.navigate(Screen.SettingsCategory.createRoute("algorithm")) }
                 )
                 SettingsAreaButton(
-                    icon = Icons.Default.Message,
+                    icon = Icons.AutoMirrored.Filled.Message,
                     title = "Mensajes y llamadas",
                     subtitle = "Chats, sonidos, lectura, llamadas y notificaciones",
                     onClick = { navController.navigate(Screen.SettingsCategory.createRoute("messages")) }
@@ -202,7 +307,6 @@ fun SettingsScreen(
                 }
             }
 
-            Divider()
 
             // Section: Cuenta
             SettingsSection(title = "Privacidad de la Cuenta") {
@@ -261,7 +365,6 @@ fun SettingsScreen(
                 }
             }
             
-            Divider()
 
             // Section: Visibilidad
             SettingsSection(title = "Visibilidad del Perfil") {
@@ -296,7 +399,6 @@ fun SettingsScreen(
                 }
             }
 
-            Divider()
 
             // Section: Login Emails
             SettingsSection(title = "Correos de Inicio de Sesión") {
@@ -374,7 +476,6 @@ fun SettingsScreen(
                 }
             }
 
-            Divider()
 
             SettingsSection(title = "Cuenta y seguridad") {
                 FilledTonalButton(
@@ -397,19 +498,140 @@ fun SettingsScreen(
                     Text("Cambiar contraseña")
                 }
 
+                if (twoFactorStatus != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { twoFactorExpanded = !twoFactorExpanded },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Shield, contentDescription = null)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(if (twoFactorStatus?.enabled == true)
+                            "Verificación en dos pasos · Activada" else "Activar verificación en dos pasos")
+                    }
+                    if (twoFactorExpanded) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Tu autenticador protege los accesos nuevos. Guarda los códigos de respaldo fuera de este teléfono.")
+                        OutlinedTextField(
+                            value = twoFactorPassword,
+                            onValueChange = { twoFactorPassword = it },
+                            label = { Text("Contraseña actual") },
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
+                        )
+                        if (twoFactorSetup != null) {
+                            Text("Clave para tu autenticador:")
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Text(twoFactorSetup?.secret.orEmpty())
+                            }
+                        }
+                        if (twoFactorSetup != null || twoFactorStatus?.enabled == true) {
+                            OutlinedTextField(
+                                value = twoFactorCode,
+                                onValueChange = { twoFactorCode = it.take(32) },
+                                label = { Text(if (twoFactorStatus?.enabled == true)
+                                    "Código de autenticador o respaldo" else "Código de 6 dígitos") },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        when {
+                            twoFactorStatus?.enabled == true -> {
+                                Text("Códigos de respaldo disponibles: ${twoFactorStatus?.recoveryCodesRemaining ?: 0}")
+                                Button(
+                                    onClick = { viewModel.disableServerTwoFactor(twoFactorPassword, twoFactorCode) },
+                                    enabled = !twoFactorBusy && twoFactorPassword.isNotBlank() && twoFactorCode.isNotBlank()
+                                ) { Text("Desactivar y cerrar sesión") }
+                            }
+                            twoFactorSetup == null -> Button(
+                                onClick = { viewModel.setupServerTwoFactor(twoFactorPassword) },
+                                enabled = !twoFactorBusy && twoFactorPassword.isNotBlank()
+                            ) { Text("Preparar autenticador") }
+                            else -> Button(
+                                onClick = { viewModel.enableServerTwoFactor(twoFactorPassword, twoFactorCode) },
+                                enabled = !twoFactorBusy && twoFactorPassword.isNotBlank() &&
+                                    twoFactorCode.matches(Regex("[0-9]{6}"))
+                            ) { Text("Confirmar y activar") }
+                        }
+                        twoFactorMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                        if (recoveryCodes.isNotEmpty()) {
+                            Text("Guarda estos códigos de un solo uso. No volverán a mostrarse:")
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Text(recoveryCodes.joinToString("\n"))
+                            }
+                            TextButton(onClick = {
+                                viewModel.clearDisplayedRecoveryCodes()
+                                twoFactorPassword = ""
+                                twoFactorCode = ""
+                            }) { Text("Ya los guardé") }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { passwordRecoveryExpanded = !passwordRecoveryExpanded },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Lock, contentDescription = null)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Códigos para recuperar contraseña")
+                }
+                if (passwordRecoveryExpanded) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Si olvidas tu contraseña, un código guardado te permitirá crear otra sin correo. Guarda estos códigos fuera del teléfono; se muestran una sola vez.")
+                    passwordRecoveryRemaining?.let { Text("Códigos disponibles: $it") }
+                    OutlinedTextField(
+                        value = passwordRecoveryPassword,
+                        onValueChange = { passwordRecoveryPassword = it },
+                        label = { Text("Contraseña actual") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(), singleLine = true
+                    )
+                    if (twoFactorStatus?.enabled == true) {
+                        OutlinedTextField(
+                            value = passwordRecoveryFactor,
+                            onValueChange = { passwordRecoveryFactor = it.take(32) },
+                            label = { Text("Código de autenticador o respaldo") },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.rotatePasswordRecoveryCodes(
+                                passwordRecoveryPassword,
+                                passwordRecoveryFactor.takeIf(String::isNotBlank)
+                            )
+                        },
+                        enabled = !passwordRecoveryBusy && passwordRecoveryPassword.isNotBlank() &&
+                            (twoFactorStatus?.enabled != true || passwordRecoveryFactor.isNotBlank()),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (passwordRecoveryRemaining == 0) "Crear códigos" else "Reemplazar códigos") }
+                    passwordRecoveryMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                    if (passwordRecoveryCodes.isNotEmpty()) {
+                        androidx.compose.foundation.text.selection.SelectionContainer {
+                            Text(passwordRecoveryCodes.joinToString("\n"))
+                        }
+                        TextButton(onClick = {
+                            viewModel.clearDisplayedPasswordRecoveryCodes()
+                            passwordRecoveryPassword = ""
+                            passwordRecoveryFactor = ""
+                        }) { Text("Ya los guardé") }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedButton(
                     onClick = { navController.navigate(Screen.ChatSettings.route) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Message, contentDescription = null)
+                    Icon(Icons.AutoMirrored.Filled.Message, contentDescription = null)
                     Spacer(modifier = Modifier.width(10.dp))
                     Text("Preferencias de chat")
                 }
             }
 
-            Divider()
 
             SettingsSection(title = "Ambiente") {
                 FilledTonalButton(
@@ -422,26 +644,103 @@ fun SettingsScreen(
                 }
             }
 
-            Divider()
-
-            SettingsSection(title = "Contenido sin conexión") {
-                FilledTonalButton(
-                    onClick = { navController.navigate(Screen.OfflineVideos.route) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Download, contentDescription = null)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text("Videos descargados")
+            SettingsSection(title = "Copia de seguridad") {
+                val backupEmail = (settingsState as? SettingsUiState.Success)?.user?.email.orEmpty()
+                val backupFileName = remember(backupEmail) {
+                    val account = backupEmail.substringBefore('@').filter { it.isLetterOrDigit() || it in "-_" }.take(32)
+                    if (account.isBlank()) "copia-novvin.novvinbackup" else "novvin-$account.novvinbackup"
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                    ) {
+                        Icon(
+                            Icons.Default.CloudSync,
+                            contentDescription = null,
+                            modifier = Modifier.padding(10.dp).size(26.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Respaldo de Novvin", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                        Text(
+                            lastBackupRequest?.let { "Última solicitud: ${formatBackupTime(it)}" }
+                                ?: "Aún no has solicitado una copia",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                SettingsAreaButton(
+                    icon = Icons.Default.AccountCircle,
+                    title = "Cuenta del respaldo",
+                    subtitle = backupEmail.ifBlank { "Seleccionar desde Android" },
+                    onClick = {
+                        runCatching {
+                            screenContext.startActivity(Intent("android.settings.BACKUP_SETTINGS"))
+                        }.onFailure {
+                            screenContext.startActivity(Intent(Settings.ACTION_SYNC_SETTINGS))
+                        }
+                    },
+                )
+                Button(
+                    onClick = {
+                        viewModel.scheduleAndroidBackup(backupEmail).fold(
+                            onSuccess = { requestedAt ->
+                                lastBackupRequest = requestedAt
+                                android.widget.Toast.makeText(
+                                    screenContext,
+                                    "Copia solicitada. Android la completará con conexión disponible.",
+                                    android.widget.Toast.LENGTH_LONG,
+                                ).show()
+                            },
+                            onFailure = {
+                                android.widget.Toast.makeText(
+                                    screenContext,
+                                    it.message ?: "No se pudo solicitar la copia.",
+                                    android.widget.Toast.LENGTH_LONG,
+                                ).show()
+                            },
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Icon(Icons.Default.CloudUpload, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Crear copia ahora")
+                }
                 Text(
-                    "Las descargas son privadas para esta cuenta y permanecen disponibles cuando no hay internet.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    "Android protege y restaura automáticamente tema, accesibilidad, notificaciones, chat y seguridad al cambiar de dispositivo.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = { exportBackupLauncher.launch(backupFileName) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Exportar copia") }
+                    TextButton(
+                        onClick = {
+                            importBackupLauncher.launch(
+                                arrayOf("application/octet-stream", "application/json", "text/plain")
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Restaurar") }
+                }
+                Text(
+                    "La copia portátil usa el formato privado .novvinbackup; no expone un archivo JSON ni incluye contraseñas, sesiones, mensajes o archivos.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            Divider()
 
             SettingsSection(title = "Tomar un descanso") {
                 Row(
@@ -488,9 +787,33 @@ fun SettingsScreen(
                         Text("Cambiar modo")
                     }
                 }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Historial de visitas al perfil", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Activado por defecto. Muestra quién visitó tu perfil y permite que otros vean tu visita. Puedes desactivarlo cuando quieras; solo se registra si ambos lo permiten.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    Switch(
+                        checked = profileViewHistoryEnabled,
+                        onCheckedChange = {
+                            val previous = profileViewHistoryEnabled
+                            profileViewHistoryEnabled = it
+                            viewModel.updateProfileViewHistory(it) { saved ->
+                                if (!saved) profileViewHistoryEnabled = previous
+                            }
+                        }
+                    )
+                }
             }
 
-            Divider()
             
             // Section: Pantalla
             SettingsSection(title = "Pantalla") {
@@ -519,7 +842,8 @@ fun SettingsScreen(
                     Column {
                         Text("Idioma de la aplicación", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            java.util.Locale.getDefault().getDisplayLanguage(java.util.Locale.getDefault())
+                            androidx.compose.ui.platform.LocalLocale.current.platformLocale
+                                .let { locale -> locale.getDisplayLanguage(locale) }
                                 .replaceFirstChar { it.uppercase() },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
@@ -540,7 +864,6 @@ fun SettingsScreen(
                 }
             }
 
-            Divider()
 
             SettingsSection(title = "Privacidad y legales") {
                 Button(
@@ -579,7 +902,6 @@ fun SettingsScreen(
                 }
             }
 
-            Divider()
 
             // Section: Soporte y Ayuda
             SettingsSection(title = "Soporte y Ayuda") {
@@ -665,7 +987,6 @@ fun SettingsScreen(
                 }
             }
 
-            Divider()
 
             SettingsSection(title = "Novvin Web") {
                 Text(
@@ -760,15 +1081,33 @@ fun SettingsScreen(
                 )
             }
 
-            Divider()
 
             SettingsSection(title = "Cambio rápido de cuenta") {
+                Button(
+                    onClick = {
+                        authViewModel.prepareAddAccount {
+                            mainNavController.navigate(Screen.AddAccountLogin.route)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Añadir otra cuenta")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Button(
                     onClick = { authViewModel.saveCurrentAccount() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Guardar cuenta actual")
                 }
+
+                Text(
+                    "Añade otra cuenta sin cerrar esta sesión. Al cerrar sesión, la cuenta actual se quita de este dispositivo.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -830,7 +1169,6 @@ fun SettingsScreen(
                 }
             }
 
-            Divider()
 
             // Section: Admin Panel (solo visible para admins)
             if (adminPanelAccess) {
@@ -871,7 +1209,7 @@ fun SettingsScreen(
                     }
                 }
 
-                Divider()
+                HorizontalDivider()
             }
 
             SettingsSection(title = "Información de la versión") {
@@ -894,7 +1232,6 @@ fun SettingsScreen(
                 )
             }
 
-            Divider()
 
             // Section: General
             SettingsSection(title = "General") {
@@ -919,6 +1256,8 @@ fun SettingsScreen(
                 // sensible en administradores, como requiere el flujo de producción.
             }
         }
+    }
+
     }
 
     if (showBreakModeDialog) {
@@ -1108,7 +1447,7 @@ private fun WebSessionsPanel(
                         enabled = !isLoading
                     ) {
                         Icon(
-                            Icons.Default.Logout,
+                            Icons.AutoMirrored.Filled.Logout,
                             contentDescription = "Cerrar esta sesión web",
                             tint = MaterialTheme.colorScheme.error
                         )
@@ -1124,7 +1463,7 @@ private fun WebSessionsPanel(
             enabled = sessions.isNotEmpty() && !isLoading,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(Icons.Default.Logout, contentDescription = null)
+            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
             Text("Cerrar todas las sesiones web")
         }
@@ -1143,16 +1482,47 @@ private fun formatWebSessionTime(value: String?): String {
 
 @Composable
 fun SettingsSection(title: String, content: @Composable () -> Unit) {
+    val directory = LocalSettingsDirectory.current
+    if (directory != null && !SettingsDirectory.matches(title, directory.query)) return
+    val expanded = directory == null || directory.query.isNotBlank() || directory.expanded == title
     Column {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        content()
+        Surface(
+            onClick = { directory?.toggle?.invoke(title) },
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                if (directory != null) Icon(
+                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (expanded) "Contraer categoría" else "Abrir categoría",
+                )
+            }
+        }
+        if (expanded) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) { content() }
+            }
+        }
     }
 }
+
+private fun formatBackupTime(value: java.time.Instant): String =
+    DateTimeFormatter.ofPattern("dd/MM/yyyy, HH:mm")
+        .withZone(ZoneId.systemDefault())
+        .format(value)
 
 @Composable
 private fun SettingsAreaButton(
@@ -1161,24 +1531,39 @@ private fun SettingsAreaButton(
     subtitle: String,
     onClick: () -> Unit
 ) {
-    FilledTonalButton(
+    Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+        color = androidx.compose.ui.graphics.Color.Transparent
     ) {
-        Icon(icon, contentDescription = null)
-        Spacer(Modifier.width(12.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            horizontalAlignment = Alignment.Start
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 58.dp)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(title, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
-    Spacer(Modifier.height(8.dp))
 }

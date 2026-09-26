@@ -10,11 +10,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.ChatSummary
 import conectate.com.data.model.Message
-import conectate.com.data.model.ScheduledMessageJob
+import conectate.com.data.repository.message.ScheduledMessagesKey
 import conectate.com.data.model.TypingConversationScope
 import conectate.com.data.model.TypingParticipant
 import conectate.com.data.model.User
 import conectate.com.core.messaging.UnreadPolicy
+import conectate.com.core.network.InteractiveReadDeadlines
+import conectate.com.core.network.runReadWithDeadline
+import conectate.com.core.observability.AppMetrics
 import conectate.com.data.repository.AdvancedMessagingRepository
 import conectate.com.data.repository.BlockRelationship
 import conectate.com.data.repository.ChatBackgroundSettings
@@ -30,7 +33,9 @@ import conectate.com.util.encodeContactPayload
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,7 +79,8 @@ class ChatViewModel @Inject constructor(
     private val communityRepository: conectate.com.data.repository.CommunityRepository,
     private val stickerRepository: StickerRepository,
     private val voiceMessageManager: VoiceMessageManager,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
+    private val appMetrics: AppMetrics,
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
     val isSecureTranslationAvailable: Boolean
         get() = advancedMessagingRepository.isSecureTranslationAvailable()
@@ -85,6 +91,7 @@ class ChatViewModel @Inject constructor(
     private var chatId: String? = null
     private var isPlaceholder: Boolean = false
     private var resolvedTargetUserId: String? = null
+    private val ownerAccountId = authService.getCurrentUserId()?.trim()?.lowercase()
 
     // UI State
     private val _chatState = MutableStateFlow<ChatUiState>(ChatUiState.Loading)
@@ -96,8 +103,9 @@ class ChatViewModel @Inject constructor(
     private val _typingParticipants = MutableStateFlow<List<TypingParticipant>>(emptyList())
     val typingParticipants: StateFlow<List<TypingParticipant>> = _typingParticipants.asStateFlow()
 
-    private val _messageText = MutableStateFlow("")
-    val messageText: StateFlow<String> = _messageText.asStateFlow()
+    private val textComposer = QueuedMessageComposer<Message>()
+    private val _messageText = textComposer.text
+    val messageText: StateFlow<String> = _messageText
 
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
@@ -121,8 +129,8 @@ class ChatViewModel @Inject constructor(
     val isSelectionMode: StateFlow<Boolean> = _isSelectionMode.asStateFlow()
     private val _selectedMessage = MutableStateFlow<Message?>(null)
     val selectedMessage: StateFlow<Message?> = _selectedMessage.asStateFlow()
-    private val _replyToMessage = MutableStateFlow<Message?>(null)
-    val replyToMessage: StateFlow<Message?> = _replyToMessage.asStateFlow()
+    private val _replyToMessage = textComposer.reply
+    val replyToMessage: StateFlow<Message?> = _replyToMessage
     private val _editingMessage = MutableStateFlow<Message?>(null)
     val editingMessage: StateFlow<Message?> = _editingMessage.asStateFlow()
     private val _reactionPickerMessage = MutableStateFlow<Message?>(null)
@@ -137,6 +145,10 @@ class ChatViewModel @Inject constructor(
     val isForwarding: StateFlow<Boolean> = _isForwarding.asStateFlow()
     private val _currentPlayingAudioId = MutableStateFlow<String?>(null)
     val currentPlayingAudioId: StateFlow<String?> = _currentPlayingAudioId.asStateFlow()
+    private val _isAudioPlaying = MutableStateFlow(false)
+    val isAudioPlaying: StateFlow<Boolean> = _isAudioPlaying.asStateFlow()
+    private val _audioPlaybackSpeed = MutableStateFlow(1f)
+    val audioPlaybackSpeed: StateFlow<Float> = _audioPlaybackSpeed.asStateFlow()
     private val _audioProgress = MutableStateFlow(0f)
     val audioProgress: StateFlow<Float> = _audioProgress.asStateFlow()
     private val _audioDuration = MutableStateFlow(0)
@@ -157,8 +169,13 @@ class ChatViewModel @Inject constructor(
     private val _advancedMessage = MutableStateFlow<String?>(null)
     val advancedMessage: StateFlow<String?> = _advancedMessage.asStateFlow()
 
-    private val _scheduledMessages = MutableStateFlow<List<ScheduledMessageJob>>(emptyList())
-    val scheduledMessages: StateFlow<List<ScheduledMessageJob>> = _scheduledMessages.asStateFlow()
+    private val scheduledController = ScheduledMessagesController(
+        scope = viewModelScope,
+        cached = advancedMessagingRepository::getCachedScheduledJobs,
+        refresh = advancedMessagingRepository::getScheduledJobs,
+        isCurrent = { key -> key == scheduledMessagesKey() },
+    )
+    val scheduledMessagesState = scheduledController.state
 
     private val _chatSummary = MutableStateFlow<ChatSummary?>(null)
     val chatSummary: StateFlow<ChatSummary?> = _chatSummary.asStateFlow()
@@ -251,9 +268,30 @@ class ChatViewModel @Inject constructor(
     private var typingActive = false
 
     init {
-        // Initialize Voice Manager
-        voiceMessageManager.setScope(viewModelScope)
         voiceMessageManager.reset()
+        var scheduledAccount = authService.getCurrentUserId()?.trim()?.lowercase()
+        viewModelScope.launch {
+            authService.currentSession.map { authService.getCurrentUserId()?.trim()?.lowercase() }
+                .distinctUntilChanged().collect { account ->
+                    if (account != scheduledAccount) scheduledController.clear()
+                    scheduledAccount = account
+                    if (account != ownerAccountId) {
+                        _chatState.value = ChatUiState.Error("La cuenta cambió. Vuelve a abrir la conversación.")
+                        textComposer.reset()
+                        _editingMessage.value = null
+                        _selectedMessage.value = null
+                        _selectedMessages.value = emptySet()
+                        _otherUserMetadata.value = null
+                        _currentUserMetadata.value = null
+                        _isBlocked.value = true
+                        stopAudio()
+                        voiceMessageManager.reset()
+                        messageRepository.setActiveChatSession(null, false)
+                        // Cancel old account loads as well as listeners before they can republish private data.
+                        viewModelScope.coroutineContext.cancelChildren()
+                    }
+                }
+        }
         
         initializeChat()
         updateMyOnlineStatus(true)
@@ -268,10 +306,24 @@ class ChatViewModel @Inject constructor(
 
     private fun initializeChat() {
         viewModelScope.launch {
+            runReadWithDeadline(InteractiveReadDeadlines.ConversationHistoryMillis) {
+                initializeChatWithinDeadline()
+            }.onFailure { error ->
+                if (_chatState.value is ChatUiState.Loading) {
+                    android.util.Log.w("ChatViewModel", "Conversation initialization failed", error)
+                    _chatState.value = ChatUiState.Error(
+                        "No se pudo abrir esta conversación. Revisa tu conexión e inténtalo nuevamente."
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun initializeChatWithinDeadline() {
             val currentId = authService.getCurrentUserId()
             if (currentId.isNullOrBlank()) {
                 _chatState.value = ChatUiState.Error("Sesion no valida. Inicia sesion de nuevo.")
-                return@launch
+                return
             }
             val argId = otherUserId 
             
@@ -324,9 +376,6 @@ class ChatViewModel @Inject constructor(
                 val cleanChatId = chatId?.trim()?.lowercase()
                 if (isRealChat && !cleanChatId.isNullOrBlank()) {
                     messageRepository.setActiveChatSession(chatId, _isScreenActive.value)
-                    viewModelScope.launch {
-                        messageRepository.markChatAsRead(cleanChatId)
-                    }
                 }
 
                 if (!resolvedChat.is_group && !targetUserId.isNullOrBlank()) {
@@ -349,9 +398,10 @@ class ChatViewModel @Inject constructor(
                     // Start observing messages only for real chats. Placeholder chats must not touch server/Room.
                     startObservingMessages(resolvedChat.id, resolvedChat)
                     loadTranslationSettings(resolvedChat.id)
-                    refreshScheduledMessages()
+                    // Opening a conversation must not make an optional scheduled-jobs RPC.
+                    scheduledMessagesKey()?.let { scheduledController.load(it, refreshRemote = false) }
                 } else {
-                    _scheduledMessages.value = emptyList()
+                    scheduledController.clear()
                     _chatState.value = ChatUiState.Success(
                         messages = emptyList(),
                         otherUser = cachedOtherUser,
@@ -432,7 +482,6 @@ class ChatViewModel @Inject constructor(
                 }
             }
         }
-    }
 
 
     private fun startObservingMessages(id: String, initialChat: conectate.com.data.model.Chat) {
@@ -441,6 +490,16 @@ class ChatViewModel @Inject constructor(
         observeTypingForChat(initialChat)
         messageCollectionJob?.cancel()
         messageCollectionJob = viewModelScope.launch {
+            launch {
+                val reported = mutableSetOf<String>()
+                messageRepository.getMessageDeletionFailures(cleanId).collect { failures ->
+                    failures.filter { reported.add(it.revision) }.forEach { failure ->
+                        conectate.com.presentation.common.AppFeedbackBus.showError(
+                            failure.error ?: "No se pudo eliminar el mensaje"
+                        )
+                    }
+                }
+            }
             
             // Combine Metadata and Messages for a stable Success state (WhatsApp Style)
             val groupMetadataFlow = groupRepository.getGroupByIdFlow(cleanId).onStart { emit(null as conectate.com.data.local.entity.GroupEntity?) }
@@ -684,18 +743,16 @@ class ChatViewModel @Inject constructor(
     }
 
     fun updateMessageText(text: String) {
-        _messageText.value = text
+        if (ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase()) return
+        textComposer.updateText(text)
         syncTypingPresence(text)
     }
 
     fun sendTextMessage(forcedContent: String? = null) {
         if (!ensureNotBlockedForSending()) return
-        val text = forcedContent ?: _messageText.value
         if (chatId == null) return
-        if (text.isBlank()) return
-
+        val submission = textComposer.beginSend(forcedContent) ?: return
         viewModelScope.launch {
-            _isSending.value = true
             
             try {
                 // 1. Create chat if it's a placeholder
@@ -716,17 +773,25 @@ class ChatViewModel @Inject constructor(
                 }
 
                 val cid = chatId ?: return@launch
-                val outboundText = advancedMessagingRepository.applyAutoTranslation(cid, text)
-                _messageText.value = "" // Clear input
-                stopTypingPresence()
-                val replyTo = _replyToMessage.value
-                _replyToMessage.value = null
-
-                val result = messageRepository.sendMessage(chatId = cid, content = outboundText, replyToId = replyTo?.id)
-                if (result.isFailure) {
+                val outboundText = advancedMessagingRepository.applyAutoTranslation(cid, submission.text)
+                if (ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase()) return@launch
+                val result = messageRepository.sendMessage(
+                    chatId = cid,
+                    content = outboundText,
+                    replyToId = submission.replyTo?.id,
+                    onQueued = {
+                        withContext(Dispatchers.Main.immediate) {
+                            if (ownerAccountId == authService.getCurrentUserId()?.trim()?.lowercase()) {
+                                textComposer.queued(submission)
+                                if (_messageText.value.isBlank()) stopTypingPresence()
+                            } else {
+                                textComposer.finished(submission)
+                            }
+                        }
+                    }
+                )
+                if (result.isFailure && ownerAccountId == authService.getCurrentUserId()?.trim()?.lowercase()) {
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())
-                    _messageText.value = text
-                    _replyToMessage.value = replyTo
                     conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo enviar: $error")
                 }
             } catch (error: CancellationException) {
@@ -735,7 +800,7 @@ class ChatViewModel @Inject constructor(
                 android.util.Log.e("ChatViewModel", "Send error", e)
                 conectate.com.presentation.common.AppFeedbackBus.showError("Error al enviar mensaje")
             } finally {
-                _isSending.value = false
+                textComposer.finished(submission)
             }
         }
     }
@@ -1192,7 +1257,7 @@ class ChatViewModel @Inject constructor(
             )
 
             if (scheduled.isSuccess) {
-                _messageText.value = ""
+                textComposer.updateText("")
                 stopTypingPresence()
                 refreshScheduledMessages()
                 val scheduledAt = runCatching {
@@ -1209,32 +1274,40 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun refreshScheduledMessages() {
+    private fun scheduledMessagesKey(): ScheduledMessagesKey? {
         val cid = chatId?.trim()?.lowercase()
         if (cid.isNullOrBlank() || isPlaceholder || cid.startsWith("placeholder_")) {
-            _scheduledMessages.value = emptyList()
-            return
+            return null
         }
-        viewModelScope.launch {
-            val result = advancedMessagingRepository.getScheduledJobs("dm", cid)
-            if (result.isSuccess) {
-                _scheduledMessages.value = result.getOrDefault(emptyList())
-            } else {
-                _advancedMessage.value = result.exceptionOrNull()?.message
-                    ?: "No se pudieron cargar mensajes programados."
-            }
+        return ScheduledMessagesKey.create(authService.getCurrentUserId(), "dm", cid)
+    }
+
+    fun refreshScheduledMessages() {
+        val key = scheduledMessagesKey()
+        if (key == null) {
+            scheduledController.clear()
+        } else {
+            scheduledController.load(key, refreshRemote = true)
         }
     }
 
+    fun stopRefreshingScheduledMessages() = scheduledController.stop()
+
     fun cancelScheduledMessage(jobId: String) {
+        val key = scheduledMessagesKey() ?: return
+        if (!scheduledController.beginCancellation(key, jobId)) return
         viewModelScope.launch {
-            val result = advancedMessagingRepository.cancelScheduledJob(jobId)
-            if (result.isSuccess) {
-                _advancedMessage.value = "Mensaje programado cancelado."
-                refreshScheduledMessages()
-            } else {
-                _advancedMessage.value = result.exceptionOrNull()?.message
-                    ?: "No se pudo cancelar mensaje programado."
+            try {
+                val result = advancedMessagingRepository.cancelScheduledJob(jobId, key.accountId)
+                if (scheduledMessagesKey() != key) return@launch
+                if (result.isSuccess) {
+                    _advancedMessage.value = "Mensaje programado cancelado."
+                    refreshScheduledMessages()
+                } else {
+                    scheduledController.showActionError(key, "No se pudo confirmar la cancelación. Revisa tu conexión y reintenta.")
+                }
+            } finally {
+                scheduledController.finishCancellation(key, jobId)
             }
         }
     }
@@ -1317,8 +1390,12 @@ class ChatViewModel @Inject constructor(
             mediaPlayer?.let {
                 if (it.isPlaying) {
                     it.pause()
+                    _isAudioPlaying.value = false
                 } else {
+                    applyAudioPlaybackSpeed(it)
                     it.start()
+                    _isAudioPlaying.value = true
+                    startProgressTracker()
                 }
                 return
             }
@@ -1455,7 +1532,9 @@ class ChatViewModel @Inject constructor(
                 setOnPreparedListener {
                     _currentPlayingAudioId.value = id
                     _audioDuration.value = duration
+                    applyAudioPlaybackSpeed(this)
                     start()
+                    _isAudioPlaying.value = true
                     startProgressTracker()
                 }
                 setOnCompletionListener {
@@ -1468,12 +1547,16 @@ class ChatViewModel @Inject constructor(
                 if (!source.startsWith("http", ignoreCase = true)) {
                     _currentPlayingAudioId.value = id
                     _audioDuration.value = duration
+                    applyAudioPlaybackSpeed(this)
                     start()
+                    _isAudioPlaying.value = true
                     startProgressTracker()
                 }
             }
-        } catch(e: Exception) {
-            e.printStackTrace()
+        } catch (e: Exception) {
+            android.util.Log.e("ChatViewModel", "Audio message playback failed", e)
+            appMetrics.recordFailure("chat_audio_playback", e)
+            stopAudio()
         }
     }
 
@@ -1514,9 +1597,44 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun seekAudio(fraction: Float) {
+        val player = mediaPlayer ?: return
+        if (_currentPlayingAudioId.value == null || player.duration <= 0) return
+        val safeFraction = fraction.coerceIn(0f, 1f)
+        player.seekTo((player.duration * safeFraction).toInt())
+        _audioProgress.value = safeFraction
+        _audioDurationLabel.value = formatDuration(player.currentPosition.toLong())
+    }
+
+    fun cycleAudioPlaybackSpeed() {
+        val next = when (_audioPlaybackSpeed.value) {
+            1f -> 1.5f
+            1.5f -> 2f
+            else -> 1f
+        }
+        _audioPlaybackSpeed.value = next
+        mediaPlayer?.let(::applyAudioPlaybackSpeed)
+    }
+
+    private fun applyAudioPlaybackSpeed(player: android.media.MediaPlayer) {
+        runCatching {
+            player.playbackParams = player.playbackParams
+                .setSpeed(_audioPlaybackSpeed.value)
+                .setPitch(1f)
+        }
+    }
+
+    fun retryInitializeChat() {
+        if (_chatState.value !is ChatUiState.Error) return
+        isPlaceholder = false
+        _chatState.value = ChatUiState.Loading
+        initializeChat()
+    }
+
     private fun stopAudio() {
         progressJob?.cancel()
         _currentPlayingAudioId.value = null
+        _isAudioPlaying.value = false
         _audioProgress.value = 0f
         _audioDurationLabel.value = "0:00"
         mediaPlayer?.release()
@@ -1528,19 +1646,17 @@ class ChatViewModel @Inject constructor(
     }
 
     fun onScreenVisibilityChanged(isVisible: Boolean) {
+        if (ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase()) return
         _isScreenActive.value = isVisible
         if (isPlaceholder || chatId?.startsWith("placeholder_", ignoreCase = true) == true) return
         val cleanChatId = chatId?.trim()?.lowercase() ?: return
         if (cleanChatId.isBlank()) return
         if (!isVisible) {
-            messageRepository.markChatAsReadInBackground(cleanChatId)
             messageRepository.setActiveChatSession(null, false)
             return
         }
         messageRepository.setActiveChatSession(cleanChatId, true)
-        viewModelScope.launch {
-            messageRepository.markChatAsRead(cleanChatId)
-        }
+        onVisibleMessageIdsChanged(_visibleMessageIds.value)
     }
 
     fun onVisibleMessageIdsChanged(visibleMessageIds: Set<String>) {
@@ -1574,9 +1690,6 @@ class ChatViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        chatId?.trim()?.lowercase()?.takeIf {
-            it.isNotBlank() && !it.startsWith("placeholder_")
-        }?.let(messageRepository::markChatAsReadInBackground)
         stopAudio()
         stopTypingPresence()
         voiceMessageManager.reset()
@@ -1604,7 +1717,7 @@ class ChatViewModel @Inject constructor(
 
     fun onSwipeToReply(message: Message) { 
         if (message.deleted_for_all) return
-        _replyToMessage.value = message 
+        textComposer.updateReply(message)
     }
 
     fun onMessageLongClick(message: Message) {
@@ -1730,15 +1843,12 @@ class ChatViewModel @Inject constructor(
             }
 
             var successCount = 0
-            var failureCount = 0
 
             // Forward to chats
             if (chatTargets.isNotEmpty()) {
                 val result = messageRepository.forwardMessageToChats(message, chatTargets.toList())
                 if (result.isSuccess) {
                     successCount += result.getOrNull() ?: 0
-                } else {
-                    failureCount++
                 }
             }
 
@@ -1757,22 +1867,22 @@ class ChatViewModel @Inject constructor(
     }
 
     fun replyToMessage(message: Message) { 
-        _replyToMessage.value = message 
+        textComposer.updateReply(message)
         _selectedMessage.value = null
     }
 
-    fun cancelReply() { _replyToMessage.value = null }
+    fun cancelReply() { textComposer.updateReply(null) }
 
     fun onEditMessage(message: Message) {
         if (message.content_type != "text" || message.deleted_for_all) return
         _editingMessage.value = message
-        _messageText.value = message.content
+        textComposer.updateText(message.content)
         _selectedMessage.value = null
     }
 
     fun cancelEdit() {
         _editingMessage.value = null
-        _messageText.value = ""
+        textComposer.updateText("")
         stopTypingPresence()
     }
 
@@ -1824,9 +1934,11 @@ class ChatViewModel @Inject constructor(
     fun deleteSelectedMessages(forEveryone: Boolean) {
         val selected = _selectedMessages.value.toList()
         viewModelScope.launch {
+            var failed = 0
             selected.forEach { id ->
-                messageRepository.deleteMessage(id, forEveryone)
+                if (messageRepository.deleteMessage(id, forEveryone).isFailure) failed++
             }
+            if (failed > 0) conectate.com.presentation.common.AppFeedbackBus.showError("No se pudieron eliminar $failed mensajes")
             toggleSelectionMode()
         }
     }
@@ -1956,6 +2068,10 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun ensureNotBlockedForSending(): Boolean {
+        if (ownerAccountId.isNullOrBlank() || ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase()) {
+            conectate.com.presentation.common.AppFeedbackBus.showError("La cuenta cambió. Vuelve a abrir la conversación.")
+            return false
+        }
         if (!_isBlocked.value) return true
         val reason = if (_isBlockedByOther.value) {
             "No puedes enviar mensajes a este usuario."
@@ -2015,7 +2131,7 @@ class ChatViewModel @Inject constructor(
             )
 
             if (scheduled.isSuccess) {
-                _messageText.value = ""
+                textComposer.updateText("")
                 stopTypingPresence()
                 refreshScheduledMessages()
                 val scheduledAt = runCatching {

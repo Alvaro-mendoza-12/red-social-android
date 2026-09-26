@@ -13,6 +13,7 @@ import io.ktor.client.request.forms.*
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -22,15 +23,22 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.File
+import java.io.EOFException
+import java.io.IOException
+import java.io.InputStream
 import java.security.MessageDigest
 import java.net.URLDecoder
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 
 @Serializable
@@ -57,14 +65,23 @@ class StorageService @Inject constructor(
     private val localFallbackApiClient: LocalFallbackApiClient,
     private val mediaUploadGuard: MediaUploadGuard,
     private val appMetrics: AppMetrics,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
+
+    private val responseJson = Json { ignoreUnknownKeys = true }
+    private val resumableSessionPreferences by lazy {
+        context.getSharedPreferences("resumable_upload_sessions", Context.MODE_PRIVATE)
+    }
 
     private val largeUploadClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.MINUTES)
         .readTimeout(2, TimeUnit.MINUTES)
         .callTimeout(20, TimeUnit.MINUTES)
+        // Uploads are mutable PUT requests. If the response is lost after the
+        // server commits the object, an implicit retry can upload twice or
+        // turn a successful create-only upload into a misleading conflict.
+        // Retry decisions must be explicit and based on server state.
         .retryOnConnectionFailure(false)
         .build()
 
@@ -76,8 +93,9 @@ class StorageService @Inject constructor(
         allowOverwrite: Boolean = true
     ): Result<StorageResponse> {
         val startedAt = System.currentTimeMillis()
-        var normalizedPath = normalizeStoragePath(fileName)
-            ?: return Result.failure(Exception("Invalid storage path"))
+        var normalizedPath = normalizeStoragePath(fileName) ?: return Result.failure(
+            Exception("Invalid storage path")
+        )
         val canonicalContentType = normalizeContentType(contentType)
         val metricAttrs = mapOf(
             "bucket" to bucketName,
@@ -100,8 +118,9 @@ class StorageService @Inject constructor(
                 return Result.failure(Exception(validation.reason ?: "Upload blocked by media policy"))
             }
 
-            var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token available"))
+            var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(
+                Exception("No access token available")
+            )
 
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 val fileDisplayName = normalizedPath.substringAfterLast('/').ifBlank { "archivo" }
@@ -229,6 +248,7 @@ class StorageService @Inject constructor(
         onProgress: (Float) -> Unit
     ): Result<StorageResponse> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
+        val startedElapsedMs = android.os.SystemClock.elapsedRealtime()
         val normalizedPath = normalizeStoragePath(fileName)
             ?: return@withContext Result.failure(Exception("Invalid storage path"))
         val canonicalContentType = normalizeContentType(contentType)
@@ -266,7 +286,45 @@ class StorageService @Inject constructor(
         }
 
         val isLocalFallbackUpload = authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured
+        if (shouldAttemptResumableUpload(sizeBytes, isLocalFallbackUpload)) {
+            val resumableStartedAtMs = android.os.SystemClock.elapsedRealtime()
+            val resumable = uploadLocalFallbackResumable(
+                accessToken = accessToken,
+                bucketName = bucketName,
+                normalizedPath = normalizedPath,
+                sourceUri = sourceUri,
+                sizeBytes = sizeBytes,
+                contentType = canonicalContentType,
+                allowOverwrite = allowOverwrite,
+                onProgress = onProgress
+            )
+            if (resumable != null) {
+                val resumableAttrs = metricAttrs + ("backend" to "local_fallback_resumable")
+                appMetrics.recordLatency(
+                    metric = "media_upload_resumable",
+                    durationMs = android.os.SystemClock.elapsedRealtime() - resumableStartedAtMs,
+                    attributes = resumableAttrs,
+                )
+                if (resumable.isSuccess) {
+                    appMetrics.incrementCounter("media_upload_success", attributes = resumableAttrs)
+                    appMetrics.recordLatency(
+                        metric = "media_upload",
+                        durationMs = System.currentTimeMillis() - startedAt,
+                        attributes = resumableAttrs,
+                    )
+                } else {
+                    appMetrics.recordFailure(
+                        metric = "media_upload",
+                        throwable = resumable.exceptionOrNull(),
+                        attributes = resumableAttrs,
+                    )
+                }
+                return@withContext resumable
+            }
+        }
         val backendName = if (isLocalFallbackUpload) "local_fallback_stream" else "supabase_stream"
+        val requestBodyStartedAtMs = AtomicLong(0L)
+        val requestBodyFinishedAtMs = AtomicLong(0L)
         val uploadUrl = run {
             val base = if (isLocalFallbackUpload) {
                 localFallbackApiClient.baseUrl.trimEnd('/')
@@ -282,17 +340,22 @@ class StorageService @Inject constructor(
             override fun contentType() = canonicalContentType.toMediaTypeOrNull()
             override fun contentLength() = sizeBytes
             override fun writeTo(sink: BufferedSink) {
+                requestBodyStartedAtMs.compareAndSet(0L, android.os.SystemClock.elapsedRealtime())
                 val buffer = ByteArray(128 * 1024)
                 var uploaded = 0L
                 val source = context.contentResolver.openInputStream(sourceUri)
                     ?: throw java.io.IOException("Cannot open source URI")
-                source.use { stream ->
-                    var read: Int
-                    while (stream.read(buffer).also { read = it } != -1) {
-                        sink.write(buffer, 0, read)
-                        uploaded += read
-                        if (sizeBytes > 0) onProgress((uploaded.toFloat() / sizeBytes).coerceIn(0f, 1f))
+                try {
+                    source.use { stream ->
+                        var read: Int
+                        while (stream.read(buffer).also { read = it } != -1) {
+                            sink.write(buffer, 0, read)
+                            uploaded += read
+                            if (sizeBytes > 0) onProgress((uploaded.toFloat() / sizeBytes).coerceIn(0f, 1f))
+                        }
                     }
+                } finally {
+                    requestBodyFinishedAtMs.set(android.os.SystemClock.elapsedRealtime())
                 }
             }
         }
@@ -311,12 +374,30 @@ class StorageService @Inject constructor(
             largeUploadClient.newCall(request).execute().use { response ->
                 val responseText = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
+                    recordStreamUploadTiming(
+                        startedElapsedMs = startedElapsedMs,
+                        requestBodyStartedAtMs = requestBodyStartedAtMs.get(),
+                        requestBodyFinishedAtMs = requestBodyFinishedAtMs.get(),
+                        sizeBytes = sizeBytes,
+                        metricAttrs = metricAttrs,
+                        backendName = backendName,
+                        outcome = "http_${response.code}",
+                    )
                     appMetrics.recordFailure("media_upload", attributes = metricAttrs + ("http_status" to response.code.toString()))
                     return@withContext Result.failure(
                         buildSupabaseHttpException(response.code, responseText, "No se pudo subir el archivo.")
                     )
                 }
                 onProgress(1f)
+                recordStreamUploadTiming(
+                    startedElapsedMs = startedElapsedMs,
+                    requestBodyStartedAtMs = requestBodyStartedAtMs.get(),
+                    requestBodyFinishedAtMs = requestBodyFinishedAtMs.get(),
+                    sizeBytes = sizeBytes,
+                    metricAttrs = metricAttrs,
+                    backendName = backendName,
+                    outcome = "success",
+                )
                 appMetrics.incrementCounter("media_upload_success", attributes = metricAttrs + ("backend" to backendName))
                 appMetrics.recordLatency(
                     metric = "media_upload",
@@ -325,7 +406,7 @@ class StorageService @Inject constructor(
                 )
                 // Parse server response to get the real storage path (includes owner prefix)
                 val serverKey = runCatching {
-                    val json = Json { ignoreUnknownKeys = true }.parseToJsonElement(responseText)
+                    val json = responseJson.parseToJsonElement(responseText)
                     val obj = json as? JsonObject
                     val serverPath = obj?.get("path")?.jsonPrimitive?.content
                     val fullKey = obj?.get("Key")?.jsonPrimitive?.content
@@ -346,8 +427,407 @@ class StorageService @Inject constructor(
                 )
             }
         } catch (e: Exception) {
+            recordStreamUploadTiming(
+                startedElapsedMs = startedElapsedMs,
+                requestBodyStartedAtMs = requestBodyStartedAtMs.get(),
+                requestBodyFinishedAtMs = requestBodyFinishedAtMs.get(),
+                sizeBytes = sizeBytes,
+                metricAttrs = metricAttrs,
+                backendName = backendName,
+                outcome = "failure",
+            )
             appMetrics.recordFailure("media_upload", e, metricAttrs)
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Separates bytes written by OkHttp from time spent waiting for the server
+     * response. Attributes deliberately exclude object paths, user IDs and
+     * file names so upload diagnostics never add another PII data source.
+     */
+    private fun recordStreamUploadTiming(
+        startedElapsedMs: Long,
+        requestBodyStartedAtMs: Long,
+        requestBodyFinishedAtMs: Long,
+        sizeBytes: Long,
+        metricAttrs: Map<String, String>,
+        backendName: String,
+        outcome: String,
+    ) {
+        val timing = StreamUploadTimingCalculator.calculate(
+            uploadStartedElapsedMs = startedElapsedMs,
+            requestBodyStartedElapsedMs = requestBodyStartedAtMs,
+            requestBodyFinishedElapsedMs = requestBodyFinishedAtMs,
+            completedElapsedMs = android.os.SystemClock.elapsedRealtime(),
+            sizeBytes = sizeBytes,
+        )
+        val attributes = metricAttrs + mapOf(
+            "backend" to backendName,
+            "outcome" to outcome,
+            "throughput_kibps" to timing.throughputKibPerSecond.toString(),
+        )
+        appMetrics.recordLatency("media_upload_transport", timing.transportMs, attributes)
+        appMetrics.recordLatency(
+            "media_upload_response_wait",
+            timing.responseWaitMs,
+            attributes,
+        )
+    }
+
+    private data class TusUploadStatus(
+        val offset: Long,
+        val length: Long,
+        val state: String,
+        val objectPath: String?,
+    )
+
+    private data class PersistedTusUploadSession(
+        val url: HttpUrl,
+        val createdAtMs: Long,
+    )
+
+    private class TusUploadHttpException(
+        val statusCode: Int,
+        message: String,
+    ) : IOException(message)
+
+    /**
+     * Returns null only when the installed local server does not advertise
+     * TUS. That preserves compatibility during a rolling server deployment;
+     * a server that does advertise TUS must either complete or surface its
+     * concrete error instead of silently falling back to a duplicate PUT.
+     */
+    private suspend fun uploadLocalFallbackResumable(
+        accessToken: String,
+        bucketName: String,
+        normalizedPath: String,
+        sourceUri: Uri,
+        sizeBytes: Long,
+        contentType: String,
+        allowOverwrite: Boolean,
+        onProgress: (Float) -> Unit,
+    ): Result<StorageResponse>? {
+        val endpoint = "${localFallbackApiClient.baseUrl.trimEnd('/')}/storage/v1/upload/resumable"
+            .toHttpUrlOrNull()
+            ?: return null
+        if (!serverSupportsTus(endpoint, accessToken)) return null
+
+        return try {
+            val sessionKey = resumableSessionKey(
+                accountId = authService.getCurrentUserId().orEmpty(),
+                endpoint = endpoint,
+                bucketName = bucketName,
+                objectPath = normalizedPath,
+                sizeBytes = sizeBytes,
+                contentType = contentType,
+                allowOverwrite = allowOverwrite,
+            )
+            var sessionUrl = loadPersistedTusSession(sessionKey, endpoint)?.url
+            var initialStatus = sessionUrl?.let { persistedUrl ->
+                try {
+                    readTusUploadStatus(persistedUrl, accessToken)
+                } catch (error: TusUploadHttpException) {
+                    if (error.statusCode == 404 || error.statusCode == 410) {
+                        clearPersistedTusSession(sessionKey)
+                        sessionUrl = null
+                        null
+                    } else {
+                        throw error
+                    }
+                }
+            }
+            if (initialStatus != null && initialStatus.length != sizeBytes) {
+                clearPersistedTusSession(sessionKey)
+                sessionUrl = null
+                initialStatus = null
+            }
+            if (initialStatus?.state == "rejected") {
+                clearPersistedTusSession(sessionKey)
+                throw IOException("El servidor rechazó el archivo durante la validación.")
+            }
+
+            if (sessionUrl == null) {
+                val createdSessionUrl = createTusUploadSession(
+                    endpoint = endpoint,
+                    accessToken = accessToken,
+                    bucketName = bucketName,
+                    objectPath = normalizedPath,
+                    sizeBytes = sizeBytes,
+                    contentType = contentType,
+                    allowOverwrite = allowOverwrite,
+                )
+                sessionUrl = createdSessionUrl
+                persistTusSession(sessionKey, createdSessionUrl)
+                initialStatus = readTusUploadStatus(createdSessionUrl, accessToken)
+            }
+
+            val activeSessionUrl = sessionUrl
+                ?: throw IOException("No se pudo recuperar la sesión de subida reanudable.")
+            var offset = initialStatus?.offset ?: 0L
+            var recoveries = 0
+            while (offset < sizeBytes) {
+                try {
+                    val nextOffset = uploadTusChunk(
+                        sessionUrl = activeSessionUrl,
+                        accessToken = accessToken,
+                        sourceUri = sourceUri,
+                        offsetBytes = offset,
+                        totalBytes = sizeBytes,
+                        onProgress = onProgress,
+                    )
+                    if (nextOffset !in (offset + 1)..sizeBytes) {
+                        throw IOException("El servidor devolvió un offset de subida inválido.")
+                    }
+                    offset = nextOffset
+                    recoveries = 0
+                } catch (error: TusUploadHttpException) {
+                    if (error.statusCode != 409 && error.statusCode !in 500..599) throw error
+                    offset = recoverTusOffset(activeSessionUrl, accessToken, sizeBytes, recoveries++)
+                } catch (error: IOException) {
+                    if (recoveries >= 3) throw error
+                    offset = recoverTusOffset(activeSessionUrl, accessToken, sizeBytes, recoveries++)
+                }
+            }
+            val completed = awaitTusCompletion(activeSessionUrl, accessToken, sizeBytes)
+            val serverPath = completed.objectPath?.trim().takeIf { !it.isNullOrBlank() }
+                ?: throw IOException("El servidor no confirmó la ruta del archivo subido.")
+            clearPersistedTusSession(sessionKey)
+            onProgress(1f)
+            Result.success(
+                StorageResponse(
+                    Key = serverPath,
+                    Name = serverPath,
+                    BucketId = bucketName,
+                    Size = sizeBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                    ContentType = contentType,
+                ),
+            )
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    private fun resumableSessionKey(
+        accountId: String,
+        endpoint: HttpUrl,
+        bucketName: String,
+        objectPath: String,
+        sizeBytes: Long,
+        contentType: String,
+        allowOverwrite: Boolean,
+    ): String {
+        val identity = listOf(
+            accountId.trim().lowercase(),
+            endpoint.scheme,
+            endpoint.host,
+            endpoint.port.toString(),
+            bucketName.trim().lowercase(),
+            objectPath,
+            sizeBytes.toString(),
+            contentType,
+            allowOverwrite.toString(),
+        ).joinToString("\u001f")
+        return sha256Hex(identity.toByteArray(Charsets.UTF_8))
+    }
+
+    private fun loadPersistedTusSession(key: String, endpoint: HttpUrl): PersistedTusUploadSession? {
+        val url = resumableSessionPreferences.getString("$key.url", null)?.toHttpUrlOrNull()
+            ?: return null
+        val createdAtMs = resumableSessionPreferences.getLong("$key.created_at_ms", 0L)
+        if (!isReusableTusSession(endpoint, url, createdAtMs, System.currentTimeMillis())) {
+            clearPersistedTusSession(key)
+            return null
+        }
+        return PersistedTusUploadSession(url, createdAtMs)
+    }
+
+    private fun persistTusSession(key: String, sessionUrl: HttpUrl) {
+        val persisted = resumableSessionPreferences.edit()
+            .putString("$key.url", sessionUrl.toString())
+            .putLong("$key.created_at_ms", System.currentTimeMillis())
+            // The session must reach durable storage before the first PATCH;
+            // otherwise an immediate process kill can orphan uploaded bytes.
+            .commit()
+        if (!persisted) throw IOException("No se pudo conservar la sesión de subida reanudable.")
+    }
+
+    private fun clearPersistedTusSession(key: String) {
+        resumableSessionPreferences.edit()
+            .remove("$key.url")
+            .remove("$key.created_at_ms")
+            .apply()
+    }
+
+    private fun serverSupportsTus(endpoint: HttpUrl, accessToken: String): Boolean {
+        val request = Request.Builder()
+            .url(endpoint)
+            .method("OPTIONS", null)
+            .header("Authorization", "Bearer $accessToken")
+            .header("apikey", config.supabaseAnonKey)
+            .build()
+        return try {
+            largeUploadClient.newCall(request).execute().use { response ->
+                response.isSuccessful &&
+                    response.header("Tus-Resumable") == RESUMABLE_UPLOAD_PROTOCOL_VERSION
+            }
+        } catch (_: IOException) {
+            false
+        }
+    }
+
+    private fun createTusUploadSession(
+        endpoint: HttpUrl,
+        accessToken: String,
+        bucketName: String,
+        objectPath: String,
+        sizeBytes: Long,
+        contentType: String,
+        allowOverwrite: Boolean,
+    ): HttpUrl {
+        val metadata = tusMetadataHeader(
+            linkedMapOf(
+                "bucketName" to bucketName,
+                "objectName" to objectPath,
+                "contentType" to contentType,
+                "cacheControl" to "3600",
+            ),
+        )
+        val request = Request.Builder()
+            .url(endpoint)
+            .post(ByteArray(0).toRequestBody(null))
+            .header("Authorization", "Bearer $accessToken")
+            .header("apikey", config.supabaseAnonKey)
+            .header("Tus-Resumable", RESUMABLE_UPLOAD_PROTOCOL_VERSION)
+            .header("Upload-Length", sizeBytes.toString())
+            .header("Upload-Metadata", metadata)
+            .header("x-upsert", allowOverwrite.toString())
+            .build()
+        largeUploadClient.newCall(request).execute().use { response ->
+            if (response.code != 201) {
+                throw TusUploadHttpException(response.code, "No se pudo crear la sesión de subida reanudable.")
+            }
+            val location = response.header("Location")?.trim().orEmpty()
+            return location.toHttpUrlOrNull() ?: endpoint.resolve(location)
+                ?: throw IOException("El servidor devolvió una sesión de subida inválida.")
+        }
+    }
+
+    private suspend fun recoverTusOffset(
+        sessionUrl: HttpUrl,
+        accessToken: String,
+        totalBytes: Long,
+        recoveryIndex: Int,
+    ): Long {
+        if (recoveryIndex >= 3) throw IOException("La red interrumpió la subida varias veces.")
+        delay(350L * (recoveryIndex + 1))
+        val status = readTusUploadStatus(sessionUrl, accessToken)
+        if (status.state == "rejected") throw IOException("El servidor rechazó el archivo durante la validación.")
+        if (status.length != totalBytes || status.offset !in 0..totalBytes) {
+            throw IOException("El estado reanudable del servidor no coincide con el archivo.")
+        }
+        return status.offset
+    }
+
+    private suspend fun awaitTusCompletion(
+        sessionUrl: HttpUrl,
+        accessToken: String,
+        totalBytes: Long,
+    ): TusUploadStatus {
+        repeat(4) { attempt ->
+            val status = readTusUploadStatus(sessionUrl, accessToken)
+            if (status.length != totalBytes || status.offset != totalBytes) {
+                throw IOException("El servidor no completó todos los bytes del archivo.")
+            }
+            if (status.state == "completed") return status
+            if (status.state == "rejected") throw IOException("El servidor rechazó el archivo durante la validación.")
+            delay(250L * (attempt + 1))
+        }
+        throw IOException("El servidor no terminó de procesar el archivo subido.")
+    }
+
+    private fun readTusUploadStatus(sessionUrl: HttpUrl, accessToken: String): TusUploadStatus {
+        val request = Request.Builder()
+            .url(sessionUrl)
+            .head()
+            .header("Authorization", "Bearer $accessToken")
+            .header("apikey", config.supabaseAnonKey)
+            .header("Tus-Resumable", RESUMABLE_UPLOAD_PROTOCOL_VERSION)
+            .build()
+        largeUploadClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw TusUploadHttpException(response.code, "No se pudo consultar el progreso de la subida.")
+            }
+            val offset = resumableUploadOffset(response.header("Upload-Offset"))
+                ?: throw IOException("El servidor no devolvió un offset reanudable válido.")
+            val length = resumableUploadOffset(response.header("Upload-Length"))
+                ?: throw IOException("El servidor no devolvió el tamaño reanudable válido.")
+            return TusUploadStatus(
+                offset = offset,
+                length = length,
+                state = response.header("Upload-State")?.trim()?.lowercase().orEmpty(),
+                objectPath = response.header("Upload-Object-Path")?.trim(),
+            )
+        }
+    }
+
+    private fun uploadTusChunk(
+        sessionUrl: HttpUrl,
+        accessToken: String,
+        sourceUri: Uri,
+        offsetBytes: Long,
+        totalBytes: Long,
+        onProgress: (Float) -> Unit,
+    ): Long {
+        val chunkBytes = boundedResumableChunkSize(totalBytes, offsetBytes)
+        val requestBody = object : RequestBody() {
+            override fun contentType() = "application/offset+octet-stream".toMediaTypeOrNull()
+            override fun contentLength() = chunkBytes
+
+            override fun writeTo(sink: BufferedSink) {
+                context.contentResolver.openInputStream(sourceUri)?.use { source ->
+                    source.skipFully(offsetBytes)
+                    val buffer = ByteArray(128 * 1024)
+                    var remaining = chunkBytes
+                    var written = 0L
+                    while (remaining > 0L) {
+                        val read = source.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                        if (read < 0) throw EOFException("El archivo local terminó antes de lo esperado.")
+                        sink.write(buffer, 0, read)
+                        remaining -= read
+                        written += read
+                        onProgress(((offsetBytes + written).toFloat() / totalBytes).coerceIn(0f, 1f))
+                    }
+                } ?: throw IOException("No se pudo abrir el archivo seleccionado.")
+            }
+        }
+        val request = Request.Builder()
+            .url(sessionUrl)
+            .patch(requestBody)
+            .header("Authorization", "Bearer $accessToken")
+            .header("apikey", config.supabaseAnonKey)
+            .header("Tus-Resumable", RESUMABLE_UPLOAD_PROTOCOL_VERSION)
+            .header("Upload-Offset", offsetBytes.toString())
+            .build()
+        largeUploadClient.newCall(request).execute().use { response ->
+            if (response.code != 204) {
+                throw TusUploadHttpException(response.code, "No se pudo enviar un fragmento de la subida.")
+            }
+            return resumableUploadOffset(response.header("Upload-Offset"))
+                ?: throw IOException("El servidor no confirmó el fragmento subido.")
+        }
+    }
+
+    private fun InputStream.skipFully(offsetBytes: Long) {
+        var remaining = offsetBytes
+        val singleByte = ByteArray(1)
+        while (remaining > 0L) {
+            val skipped = skip(remaining)
+            when {
+                skipped > 0L -> remaining -= skipped
+                read(singleByte) >= 0 -> remaining -= 1L
+                else -> throw EOFException("El archivo local terminó antes del offset reanudable.")
+            }
         }
     }
 
@@ -516,16 +996,47 @@ class StorageService @Inject constructor(
 
     suspend fun createSignedUrl(bucketName: String, fileName: String, expiresIn: Int = 3600): Result<String> {
         return try {
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured &&
-                fileName.startsWith("http", ignoreCase = true)
-            ) {
-                return Result.success(UbuntuStorageUrl.rewrite(fileName).orEmpty())
-            }
-
-            var normalizedPath = normalizeStoragePath(fileName)
+            val localStorageMarker = listOf(
+                "/storage/v1/object/public/${bucketName.trim()}/",
+                "/storage/v1/object/sign/${bucketName.trim()}/"
+            ).firstOrNull { fileName.contains(it, ignoreCase = true) }
+            val pathCandidate = localStorageMarker
+                ?.let { marker -> fileName.substringAfter(marker, "").substringBefore('?').substringBefore('#') }
+                ?: fileName
+            var normalizedPath = normalizeStoragePath(pathCandidate)
                 ?: return Result.failure(Exception("Invalid storage path"))
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                return Result.success(localFallbackApiClient.publicObjectUrl(bucketName, normalizedPath))
+                val accessToken = authService.getAccessTokenAwait()
+                    ?: return Result.failure(Exception("No access token available"))
+                val encodedBucket = java.net.URLEncoder.encode(bucketName.trim(), "UTF-8").replace("+", "%20")
+                val encodedPath = normalizedPath.split("/")
+                    .filter(String::isNotBlank)
+                    .joinToString("/") {
+                        java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20")
+                    }
+                val response = config.httpClient.post(
+                    "${UbuntuStorageUrl.baseUrl.trimEnd('/')}/storage/v1/object/sign/$encodedBucket/$encodedPath"
+                ) {
+                    header(HttpHeaders.Authorization, "Bearer ${accessToken.trim()}")
+                    contentType(ContentType.Application.Json)
+                    setBody(buildJsonObject { put("expiresIn", expiresIn) })
+                }
+                val body = response.bodyAsText()
+                if (!response.status.isSuccess()) {
+                    return Result.failure(
+                        buildSupabaseHttpException(
+                            statusCode = response.status.value,
+                            responseBody = body,
+                            fallbackMessage = "No se pudo generar el enlace privado del archivo."
+                        )
+                    )
+                }
+                val payload = Json.parseToJsonElement(body) as? JsonObject
+                    ?: return Result.failure(Exception("Invalid signed URL response"))
+                val signedUrl = payload["signedURL"]?.jsonPrimitive?.content
+                    ?: payload["signedUrl"]?.jsonPrimitive?.content
+                    ?: return Result.failure(Exception("No signedURL in response"))
+                return Result.success(UbuntuStorageUrl.rewrite(signedUrl) ?: signedUrl)
             }
             var accessToken = authService.getAccessTokenAwait()
                 ?: return Result.failure(Exception("No access token available"))
@@ -548,8 +1059,6 @@ class StorageService @Inject constructor(
                 val responseBody: Map<String, String> = response.body()
                 val signedUrlPath = responseBody["signedURL"] ?: return Result.failure(Exception("No signedURL in response"))
                 
-                android.util.Log.e("StorageService", "Sign SUCCESS raw: $signedUrlPath")
-                
                 val finalUrl = if (signedUrlPath.startsWith("http")) {
                     signedUrlPath
                 } else {
@@ -571,7 +1080,6 @@ class StorageService @Inject constructor(
                     "$baseUrl/$prefixedPath"
                 }
                 
-                android.util.Log.e("StorageService", "Sign SUCCESS final: $finalUrl")
                 Result.success(finalUrl)
             } else {
                 var errorBody = runCatching { response.bodyAsText() }.getOrNull().orEmpty()

@@ -1,0 +1,147 @@
+name: Android Production Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-production-release
+  cancel-in-progress: false
+
+jobs:
+  signed-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install release tooling dependencies
+        run: python -m pip install -r tools/requirements.txt
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Node for private-media release gate
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify unauthenticated access to private chat media is denied
+        working-directory: infrastructure/local-fallback/api
+        shell: bash
+        run: |
+          set -o pipefail
+          npm ci --ignore-scripts
+          mkdir -p ../../../build/reports/security
+          node scripts/verify-messaging-media-privacy.js | tee ../../../build/reports/security/messaging-media-privacy.json
+
+      - name: Upload private-media access report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-media-access-report
+          path: build/reports/security/messaging-media-privacy.json
+          if-no-files-found: warn
+
+      - name: Prepare Android SDK
+        shell: bash
+        run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+
+      - name: Validate production secrets
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          CERT_SHA256: ${{ secrets.ANDROID_UPLOAD_CERT_SHA256 }}
+          FALLBACK_API_URL: ${{ secrets.ANDROID_FALLBACK_API_URL }}
+          SIGNALING_URL: ${{ secrets.ANDROID_SIGNALING_URL }}
+          BACKEND_DISCOVERY_HOST: ${{ secrets.ANDROID_BACKEND_DISCOVERY_HOST }}
+        run: |
+          for variable in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD CERT_SHA256 FALLBACK_API_URL BACKEND_DISCOVERY_HOST; do
+            if [ -z "${!variable}" ]; then
+              echo "Missing required production secret: $variable" >&2
+              exit 1
+            fi
+          done
+          if [[ "$FALLBACK_API_URL" != https://* ]] || [[ "$FALLBACK_API_URL" == *trycloudflare.com* ]]; then
+            echo "ANDROID_FALLBACK_API_URL must be a stable HTTPS endpoint, never a Quick Tunnel URL." >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/novvin-upload.jks"
+          {
+            printf 'FALLBACK_API_URL=%s\n' "$FALLBACK_API_URL"
+            printf 'SIGNALING_URL=%s\n' "$SIGNALING_URL"
+            printf 'BACKEND_DISCOVERY_HOST=%s\n' "$BACKEND_DISCOVERY_HOST"
+          } > secrets.properties
+          {
+            echo "NOVVIN_UPLOAD_STORE_FILE=$RUNNER_TEMP/novvin-upload.jks"
+            echo "NOVVIN_UPLOAD_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "NOVVIN_UPLOAD_KEY_ALIAS=$KEY_ALIAS"
+            echo "NOVVIN_UPLOAD_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "NOVVIN_UPLOAD_CERT_SHA256=$CERT_SHA256"
+          } >> "$GITHUB_ENV"
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Test release tooling
+        run: python -m unittest discover -s tools/tests -p 'test_*.py'
+
+      - name: Build signed production bundle
+        env:
+          NOVVIN_BUILD_COMMIT: ${{ github.sha }}
+        run: ./gradlew --no-daemon --stacktrace :app:qualityGateDebug :app:bundleRelease
+
+      - name: Verify R8 runtime entry points
+        run: python tools/verify_r8_release.py --report build/reports/release/r8-release-verification.md --json build/reports/release/r8-release-verification.json
+
+      - name: Verify signature and Play upload certificate
+        shell: bash
+        run: |
+          mkdir -p build/reports/release
+          set -o pipefail
+          python tools/verify_android_release.py \
+            app/build/outputs/bundle/release/app-release.aab \
+            --expected-cert-sha256 "$NOVVIN_UPLOAD_CERT_SHA256" \
+            | tee build/reports/release/signature-verification.txt
+
+      - name: Verify 16 KiB page-size compatibility
+        run: python tools/verify_android_page_size.py app/build/outputs/bundle/release/app-release.aab
+
+      - name: Check Play delivery performance budgets
+        run: python tools/performance_budget_check.py --artifacts app/build/outputs/bundle/release/app-release.aab --budgets tools/perf_budgets.json --report build/reports/perf/performance_budget_report.md --json build/reports/perf/performance_budget_report.json
+
+      - name: Upload verified production candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: novvin-production-aab-${{ github.sha }}
+          path: |
+            app/build/outputs/bundle/release/app-release.aab
+            build/reports/release/signature-verification.txt
+            build/reports/release/r8-release-verification.md
+            build/reports/release/r8-release-verification.json
+            build/reports/perf/performance_budget_report.md
+            build/reports/perf/performance_budget_report.json
+          if-no-files-found: error
+          retention-days: 14

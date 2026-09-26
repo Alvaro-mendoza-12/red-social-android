@@ -6,7 +6,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js"
+    "check": "node --check src/server.js && node --check tests/server.test.js",
+    "test": "node tests/server.test.js"
   },
   "engines": {
     "node": ">=20"

@@ -121,6 +121,43 @@ async function fetchJson(url, { timeoutMs = 55_000, userAgent, fetchImpl = fetch
   throw lastError || new Error('CATALOG_PROVIDER_UNAVAILABLE')
 }
 
+async function remoteImageAvailable(url, { timeoutMs = 12_000, userAgent, fetchImpl = fetch } = {}) {
+  const candidate = httpsUrl(url)
+  if (!candidate) return false
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetchImpl(candidate, {
+      method: 'HEAD',
+      signal: controller.signal,
+      headers: {
+        Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        'User-Agent': userAgent || 'NovvinPlayMatch/1.0 (artwork validation)',
+      },
+    })
+    return response?.ok === true
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function mapConcurrent(values, concurrency, mapper) {
+  const items = Array.isArray(values) ? values : []
+  const results = new Array(items.length)
+  let nextIndex = 0
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex
+      nextIndex += 1
+      results[index] = await mapper(items[index], index)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), items.length || 1) }, worker))
+  return results
+}
+
 async function resolveCommonsAssets(urls, options = {}) {
   const titles = unique(urls.map(commonsFileTitle).filter(Boolean), 50)
   if (!titles.length) return new Map()
@@ -217,6 +254,9 @@ class WikidataGameCatalogProvider extends GameCatalogProvider {
     this.userAgent = text(options.userAgent || process.env.PLAYMATCH_CATALOG_USER_AGENT, 240)
       || 'NovvinPlayMatch/1.0 (catalog-sync; support@conectate.com)'
     this.minimumYear = Math.max(1970, Math.min(Number(options.minimumYear || process.env.PLAYMATCH_CATALOG_MIN_RELEASE_YEAR) || 2000, 2100))
+    this.steamStoreAssetsApproved = truthy(
+      options.steamStoreAssetsApproved ?? process.env.PLAYMATCH_STEAM_STORE_ASSETS_APPROVED,
+    )
     this.fetchImpl = options.fetchImpl || fetch
   }
 
@@ -258,7 +298,7 @@ OFFSET ${offset}`
       const page = await resolveCommonsAssets(assetUrls.slice(start, start + 50), fetchOptions)
       assets = new Map([...assets, ...page])
     }
-    const items = uniqueRows.map((row) => {
+    const items = await mapConcurrent(uniqueRows, 12, async (row) => {
       const externalProviderId = entityIdFromUri(row?.game?.value)
       const entity = entities.get(externalProviderId)
       const entityUrl = externalProviderId ? `https://www.wikidata.org/wiki/${externalProviderId}` : null
@@ -267,6 +307,15 @@ OFFSET ${offset}`
       const logoSource = commonsFileUrl(entity, 'P154')
       const cover = assets.get(commonsFileTitle(coverSource)) || null
       const logo = assets.get(commonsFileTitle(logoSource)) || null
+      const steamAppId = text(claimValues(entity, 'P1733')[0], 24)
+      const approvedSteamAppId = this.steamStoreAssetsApproved && /^\d{1,12}$/.test(steamAppId) ? steamAppId : null
+      const candidateSteamCoverUrl = approvedSteamAppId
+        ? `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${approvedSteamAppId}/library_600x900.jpg`
+        : null
+      const steamCoverUrl = candidateSteamCoverUrl && await remoteImageAvailable(candidateSteamCoverUrl, fetchOptions)
+        ? candidateSteamCoverUrl
+        : null
+      const steamStoreUrl = approvedSteamAppId ? `https://store.steampowered.com/app/${approvedSteamAppId}` : null
       const platforms = unique(entityIdsFromClaims(entity, 'P400').map((id) => normalizePlatform(entityLabel(relatedEntities.get(id)))).filter(Boolean), 30)
       const genres = unique(entityIdsFromClaims(entity, 'P136').map((id) => entityLabel(relatedEntities.get(id))).filter(Boolean), 30)
       const modes = entityIdsFromClaims(entity, 'P404')
@@ -276,7 +325,7 @@ OFFSET ${offset}`
         slug: slugify(name),
         shortName: name,
         description: entityDescription(entity),
-        coverUrl: cover?.url || null,
+        coverUrl: steamCoverUrl || cover?.url || null,
         logoUrl: logo?.url || null,
         iconUrl: logo?.url || cover?.url || null,
         platforms,
@@ -291,14 +340,15 @@ OFFSET ${offset}`
         releaseDate: text(row?.releaseDate?.value, 10) || null,
         provider: this.name,
         sourceUrl: entityUrl,
-        coverLicense: cover?.license || logo?.license || null,
-        coverAttribution: cover?.attribution || logo?.attribution || null,
-        coverSourceUrl: cover?.sourceUrl || logo?.sourceUrl || null,
+        coverLicense: steamCoverUrl ? 'Publisher-supplied Steam store capsule' : cover?.license || logo?.license || null,
+        coverAttribution: steamCoverUrl ? `${name} publisher / Steam` : cover?.attribution || logo?.attribution || null,
+        coverSourceUrl: steamStoreUrl || cover?.sourceUrl || logo?.sourceUrl || null,
         supportLevel: platforms.length > 0 ? 'CATALOG_SUPPORTED' : 'UNSUPPORTED',
       }
-    }).filter((item) => item.externalProviderId && item.name)
+    })
+    const validItems = items.filter((item) => item.externalProviderId && item.name)
     return {
-      items,
+      items: validItems,
       nextCursor: rows.length === pageSize ? String(offset + pageSize) : null,
       exhausted: rows.length < pageSize,
     }
@@ -377,6 +427,7 @@ module.exports = {
   gameCatalogProvider,
   normalizePlatform,
   resolveCommonsAssets,
+  remoteImageAvailable,
   fetchWikidataEntities,
   slugify,
 }

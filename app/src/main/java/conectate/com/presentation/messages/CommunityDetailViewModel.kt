@@ -88,7 +88,12 @@ class CommunityDetailViewModel @Inject constructor(
         
         // 1. Force Sync
         viewModelScope.launch {
-             try { communityRepository.syncCommunities() } catch (e: Exception) {}
+             try {
+                 communityRepository.syncCommunities()
+             } catch (e: Exception) {
+                 if (e is kotlinx.coroutines.CancellationException) throw e
+                 android.util.Log.w("CommunityDetailViewModel", "Could not refresh community details", e)
+             }
         }
 
         // 2. Observe Community

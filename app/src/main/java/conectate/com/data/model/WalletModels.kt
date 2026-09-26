@@ -3,10 +3,12 @@ package conectate.com.data.model
 data class WalletBalance(
     val userId: String,
     val balanceDiamonds: Int = 0,
+    val balanceDebtDiamonds: Int = 0,
     val balanceCredits: Double = 0.0,
     val totalSpent: Double = 0.0
 )
 
+@kotlinx.serialization.Serializable
 data class VirtualGift(
     val id: String,
     val name: String,
@@ -30,6 +32,7 @@ data class GiftReceipt(
     val idempotentReplay: Boolean = false
 )
 
+@kotlinx.serialization.Serializable
 data class LiveGiftEvent(
     val transactionId: String,
     val liveStreamId: String,

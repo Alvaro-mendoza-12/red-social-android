@@ -11,6 +11,7 @@ import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -93,6 +94,18 @@ class AuthRepository @Inject constructor(
 
     val isUserLoggedIn: Boolean
         get() = authService.isLoggedIn()
+
+    private suspend fun restorePendingWorkAfterLogin(): Exception? = try {
+        authService.restorePendingWorkForCurrentAccount()
+        null
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        // A different account must never see a cache whose ownership could not be verified.
+        authService.forceLocalLogout()
+        android.util.Log.e("AuthRepository", "Pending work could not be safely restored", error)
+        IllegalStateException("No pudimos abrir los mensajes pendientes de esta cuenta. Inténtalo de nuevo.", error)
+    }
 
     val isInitializing: StateFlow<Boolean> = authService.isInitializing
 
@@ -251,24 +264,26 @@ class AuthRepository @Inject constructor(
         // Publishing immediately after /register allowed navigation to destroy
         // the registration ViewModel and cancel the pending image upload.
         authService.completePendingRegistration()
+        restorePendingWorkAfterLogin()?.let { return Result.failure(it) }
         return Result.success(hydratedUser)
     }
 
     suspend fun signInWithEmail(
         email: String,
-        password: String
+        password: String,
+        secondFactorCode: String? = null
     ): Result<User> {
 
         var normalizedEmail = email.trim().lowercase()
         var resolvedPrimaryEmail = normalizedEmail
-        var login = authService.signIn(normalizedEmail, password)
+        var login = authService.signIn(normalizedEmail, password, secondFactorCode)
 
         // Fallback: support additional login emails mapped to a primary profile email.
         if (login.isFailure && !authService.isLocalFallbackModeEnabled()) {
             var resolvedEmail = resolveLoginEmailAlias(normalizedEmail)
             if (!resolvedEmail.isNullOrBlank() && resolvedEmail != normalizedEmail) {
                 resolvedPrimaryEmail = resolvedEmail
-                login = authService.signIn(resolvedEmail, password)
+                login = authService.signIn(resolvedEmail, password, secondFactorCode)
             }
         }
 
@@ -277,6 +292,7 @@ class AuthRepository @Inject constructor(
         }
 
         if (authService.isLocalFallbackSession()) {
+            restorePendingWorkAfterLogin()?.let { return Result.failure(it) }
             val user = resolveLocalFallbackSessionUser(
                 fallbackEmail = resolvedPrimaryEmail
             )
@@ -327,6 +343,8 @@ class AuthRepository @Inject constructor(
             return Result.failure(suspensionCheck.exceptionOrNull() ?: Exception("Cuenta suspendida"))
         }
 
+        restorePendingWorkAfterLogin()?.let { return Result.failure(it) }
+
         accountSessionRepository.captureCurrentAccount(
             displayName = user.display_name ?: user.full_name ?: user.username,
             avatarUrl = user.avatar_url
@@ -349,12 +367,13 @@ class AuthRepository @Inject constructor(
         var normalizedEmail = email.trim().lowercase()
         
         // First, authenticate with email and password
-        var login = authService.signIn(normalizedEmail, password)
+        var login = authService.signIn(normalizedEmail, password, totpCode ?: backupCode)
         if (login.isFailure) {
             return Result.failure(login.exceptionOrNull() ?: Exception("Authentication failed"))
         }
 
         if (authService.isLocalFallbackSession()) {
+            restorePendingWorkAfterLogin()?.let { return Result.failure(it) }
             val user = resolveLocalFallbackSessionUser(fallbackEmail = normalizedEmail)
             accountSessionRepository.captureCurrentAccount(
                 displayName = user.displayName,
@@ -425,6 +444,8 @@ class AuthRepository @Inject constructor(
             return Result.failure(suspensionCheck.exceptionOrNull() ?: Exception("Cuenta suspendida"))
         }
 
+        restorePendingWorkAfterLogin()?.let { return Result.failure(it) }
+
         accountSessionRepository.captureCurrentAccount(
             displayName = user.display_name ?: user.full_name ?: user.username,
             avatarUrl = user.avatar_url
@@ -477,6 +498,21 @@ class AuthRepository @Inject constructor(
     fun isTwoFactorAuthEnabled(): Boolean {
         return twoFactorAuthManager.is2FARequired()
     }
+
+    suspend fun serverTwoFactorStatus() = authService.serverTwoFactorStatus()
+
+    suspend fun passwordRecoveryCodeStatus() = authService.passwordRecoveryCodeStatus()
+
+    suspend fun rotatePasswordRecoveryCodes(password: String, secondFactorCode: String?) =
+        authService.rotatePasswordRecoveryCodes(password, secondFactorCode)
+
+    suspend fun setupServerTwoFactor(password: String) = authService.setupServerTwoFactor(password)
+
+    suspend fun enableServerTwoFactor(password: String, code: String) =
+        authService.enableServerTwoFactor(password, code)
+
+    suspend fun disableServerTwoFactor(password: String, code: String) =
+        authService.disableServerTwoFactor(password, code)
 
     /**
      * Get 2FA status information
@@ -607,6 +643,8 @@ class AuthRepository @Inject constructor(
         runCatching { notificationRepository.unregisterFcmToken() }
             .onFailure { android.util.Log.w("AuthRepository", "Failed to unregister FCM token during signOut", it) }
 
+        accountSessionRepository.removeCurrentAccount()
+
         // Synchronous SignOut: wipes local DB and clears Supabase auth state.
         runCatching { authService.signOut() }
             .onFailure { android.util.Log.w("AuthRepository", "AuthService signOut failed", it) }
@@ -630,6 +668,10 @@ class AuthRepository @Inject constructor(
         // Capture what we can before forcing the logout gate (AuthService will stop exposing tokens/userId).
         val userIdSnapshot = runCatching { authService.getCurrentUserId()?.trim()?.lowercase() }.getOrNull()
         val accessTokenSnapshot = runCatching { authService.getAccessToken()?.trim() }.getOrNull()
+        val refreshTokenSnapshot = runCatching { authService.getRefreshToken()?.trim() }.getOrNull()
+        val wasLocalFallbackSession = authService.isLocalFallbackSession()
+
+        accountSessionRepository.removeCurrentAccount()
 
         runCatching { authService.forceLocalLogout() }
             .onFailure { android.util.Log.w("AuthRepository", "AuthService forceLocalLogout failed", it) }
@@ -638,18 +680,18 @@ class AuthRepository @Inject constructor(
 
         // Fire-and-forget full cleanup (DB wipe + Supabase SDK signOut).
         repositoryScope.launch {
-            runCatching { authService.clearLocalDataForAccountSwitch() }
+            runCatching { authService.clearLocalDataForAccountSwitch(userIdSnapshot) }
                 .onFailure { android.util.Log.w("AuthRepository", "Failed to clear local DB during forceLocalLogout", it) }
             // Mark offline best-effort before SDK signOut potentially revokes the token.
-            if (!userIdSnapshot.isNullOrBlank() && !accessTokenSnapshot.isNullOrBlank() && !authService.isLocalFallbackModeEnabled()) {
+            if (!userIdSnapshot.isNullOrBlank() && !accessTokenSnapshot.isNullOrBlank() && !wasLocalFallbackSession) {
                 runCatching {
                     userRepository.setOnlineStatusWithToken(userIdSnapshot, false, accessTokenSnapshot)
                 }.onFailure {
                     android.util.Log.w("AuthRepository", "Failed to set offline status during forceLocalLogout", it)
                 }
             }
-            runCatching { authService.signOut() }
-                .onFailure { android.util.Log.w("AuthRepository", "Background AuthService signOut failed", it) }
+            runCatching { authService.finishForcedLogout(refreshTokenSnapshot, wasLocalFallbackSession) }
+                .onFailure { android.util.Log.w("AuthRepository", "Background session revocation failed", it) }
         }
     }
 
@@ -676,6 +718,28 @@ class AuthRepository @Inject constructor(
             avatarUrl = user.avatar_url
         ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to save local fallback account after password reset", it)
+        }
+        return Result.success(user)
+    }
+
+    suspend fun confirmSavedPasswordRecoveryCode(
+        email: String,
+        recoveryCode: String,
+        newPassword: String,
+        secondFactorCode: String?
+    ): Result<User> {
+        val result = authService.confirmSavedPasswordRecoveryCode(
+            email, recoveryCode, newPassword, secondFactorCode
+        )
+        if (result.isFailure) {
+            return Result.failure(result.exceptionOrNull() ?: Exception("No se pudo recuperar la contraseña."))
+        }
+        val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }
+        accountSessionRepository.captureCurrentAccount(
+            displayName = user.displayName,
+            avatarUrl = user.avatar_url
+        ).onFailure {
+            android.util.Log.w("AuthRepository", "Failed to save account after recovery", it)
         }
         return Result.success(user)
     }
@@ -738,23 +802,19 @@ class AuthRepository @Inject constructor(
     fun getCurrentRefreshToken(): String? = authService.getRefreshToken()
 
     suspend fun rememberCurrentAccount(): Result<Unit> {
-        var userId = authService.getCurrentUserId()
-        val profile = if (!userId.isNullOrBlank()) {
-            resolveCurrentSessionUser(
-                fallbackEmail = authService.getCurrentUserEmail(),
-                fallbackDisplayName = authService.getCurrentUserProfileSeed()?.displayName,
-                fallbackAvatarUrl = authService.getCurrentUserProfileSeed()?.avatarUrl,
-                fallbackCountry = authService.getCurrentUserProfileSeed()?.country
-            ).getOrNull()
-                ?: userRepository.getUserById(userId).getOrNull()
-        } else {
-            null
+        // Saving a switchable session only needs the authenticated local tokens.
+        // A profile request here delayed opening "Add account" or failed offline.
+        val userId = authService.getCurrentUserId()?.trim()?.lowercase()
+        val email = authService.getCurrentUserEmail()?.trim()?.lowercase()
+        val existing = accountSessionRepository.accounts.value.firstOrNull {
+            (!userId.isNullOrBlank() && it.user_id == userId) ||
+                (!email.isNullOrBlank() && it.email.equals(email, ignoreCase = true))
         }
-        var result = accountSessionRepository.captureCurrentAccount(
-            displayName = profile?.display_name ?: profile?.full_name ?: profile?.username,
-            avatarUrl = profile?.avatar_url
-        )
-        return if (result.isSuccess) Result.success(Unit) else Result.failure(result.exceptionOrNull() ?: Exception("No se pudo guardar cuenta"))
+        val seed = authService.getCurrentUserProfileSeed()
+        return accountSessionRepository.captureCurrentAccount(
+            displayName = seed?.displayName ?: existing?.display_name,
+            avatarUrl = seed?.avatarUrl ?: existing?.avatar_url
+        ).map { Unit }
     }
 
     suspend fun switchAccount(accountId: String): Result<User> {
@@ -789,13 +849,15 @@ class AuthRepository @Inject constructor(
         return try {
             // Prevent data leakage/cross-account cache corruption.
             clearSessionScopedState()
-            authService.clearLocalDataForAccountSwitch()
+            authService.beginAccountSwitch()
+            authService.clearLocalDataForAccountSwitch(previousUserId)
 
             val switched = accountSessionRepository.switchAccount(accountId)
                 .getOrThrow()
 
             authService.ensureValidAccessToken()
                 .getOrThrow()
+            authService.restorePendingWorkForCurrentAccount()
 
             var userId = authService.getCurrentUserId() ?: switched.user_id
                 ?: throw IllegalStateException("No se pudo activar la sesión")
@@ -848,6 +910,7 @@ class AuthRepository @Inject constructor(
             if (!previousAccessToken.isNullOrBlank() && !previousRefreshToken.isNullOrBlank()) {
                 runCatching {
                     authService.importSession(previousAccessToken, previousRefreshToken)
+                    authService.restorePendingWorkForCurrentAccount()
                     val restoredUser = restorePreviousSessionAfterSwitchFailure(
                         previousUserId = previousUserId,
                         previousUserEmail = previousUserEmail,
@@ -1072,33 +1135,6 @@ class AuthRepository @Inject constructor(
             }
         } catch (e: Exception) {
             Result.failure(e)
-        }
-    }
-
-    private suspend fun getNextNumericId(accessToken: String): Long {
-        return try {
-            var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Authorization", "Bearer $accessToken")
-                parameter("select", "numeric_id")
-                parameter("order", "numeric_id.desc")
-                parameter("limit", "1")
-            }
-            
-            if (response.status.isSuccess()) {
-                var users = response.body<List<User>>() // This might fail if JSON structure is partial? User model expects all fields?
-                // Actually User model has default values for almost everything, so it should be fine.
-                // But safer to parse as generic JsonArray or specific simple-DTO to avoid validation errors if User strict.
-                // Given User model defaults, it should work.
-                
-                val maxId = users.firstOrNull()?.numeric_id ?: 999L
-                maxId + 1
-            } else {
-                1000L // Default start
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            1000L
         }
     }
 

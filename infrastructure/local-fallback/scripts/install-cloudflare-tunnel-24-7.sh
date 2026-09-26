@@ -62,14 +62,24 @@ update_public_base_url() {
 
 publish_duckdns_txt() {
   local url="$1"
-  local domain token
+  local domain token private_key ttl envelope
   domain="$(env_value DUCKDNS_DOMAIN)"
   token="$(env_value DUCKDNS_TOKEN)"
   [ -n "$domain" ] && [ -n "$token" ] || return 0
+  private_key="$(env_value BACKEND_DISCOVERY_PRIVATE_KEY_FILE)"
+  ttl="$(env_value BACKEND_DISCOVERY_TTL_SECONDS)"
+  ttl="${ttl:-86400}"
+  if [ -z "$private_key" ] || [ ! -r "$private_key" ]; then
+    echo 'ERROR: falta BACKEND_DISCOVERY_PRIVATE_KEY_FILE legible; no se publico un TXT inseguro' >&2
+    return 1
+  fi
+  envelope="$(node "$ROOT_DIR/scripts/backend-discovery-envelope.mjs" sign \
+    --private-key "$private_key" --url "$url" --ttl-seconds "$ttl")" || return 1
+  [[ "$envelope" == novvin1:* ]] || return 1
   domain="${domain%.duckdns.org}"
   curl -fsS --max-time 20 \
-    "https://www.duckdns.org/update?domains=${domain}&token=${token}&txt=${url}&verbose=true" \
-    | grep -q '^OK' && echo "DUCKDNS_TXT_OK=$url"
+    "https://www.duckdns.org/update?domains=${domain}&token=${token}&txt=${envelope}&verbose=true" \
+    | grep -q '^OK' && echo "DUCKDNS_SIGNED_TXT_OK=${domain}.duckdns.org"
 }
 
 wait_backend() {
@@ -177,7 +187,7 @@ while true; do
   fi
 
   update_public_base_url "$public_url"
-  publish_duckdns_txt "$public_url" || true
+  publish_duckdns_txt "$public_url" || echo 'WARN: el endpoint funciona, pero la rotacion firmada no se publico' >&2
   echo "PUBLIC_URL=$public_url"
 
   fail_streak=0

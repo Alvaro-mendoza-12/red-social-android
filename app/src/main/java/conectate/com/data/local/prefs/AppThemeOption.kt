@@ -4,7 +4,8 @@ enum class AppThemeOption(
     val storageValue: String,
     val label: String
 ) {
-    CONECTATE("conectate", "Conectate"),
+    NEUTRO("neutro", "Sin tema"),
+    CONECTATE("conectate", "Novvin clásico"),
     OCEANO("oceano", "Oceano"),
     JADE("jade", "Jade"),
     SOLAR("solar", "Solar"),
@@ -32,7 +33,7 @@ enum class AppThemeOption(
     companion object {
         fun fromStorage(raw: String?): AppThemeOption {
             val normalized = raw?.trim()?.lowercase()
-            return entries.firstOrNull { it.storageValue == normalized } ?: CONECTATE
+            return entries.firstOrNull { it.storageValue == normalized } ?: NEUTRO
         }
     }
 }

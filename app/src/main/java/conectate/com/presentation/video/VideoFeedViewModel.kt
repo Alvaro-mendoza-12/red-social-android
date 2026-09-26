@@ -7,7 +7,9 @@ import conectate.com.data.model.Post
 import conectate.com.data.model.Video
 import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.VideoRepository
+import conectate.com.data.repository.VideoFeedRealtimeEvent
 import conectate.com.data.repository.AlgorithmRepository
+import conectate.com.data.repository.ExplicitPreferenceChange
 import conectate.com.data.recommendations.OpaqueRecommendationCursor
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,13 +25,31 @@ import android.net.Uri
 import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withTimeoutOrNull
 import conectate.com.presentation.videos.editVideoCommentImmediately
 import conectate.com.presentation.videos.mergeLatestVideoComments
 import conectate.com.presentation.videos.reactToVideoCommentImmediately
 import conectate.com.presentation.videos.removeVideoCommentImmediately
 import javax.inject.Inject
+import java.util.UUID
+
+private const val VIDEO_AUTHORITATIVE_REQUEST_TIMEOUT_MS = 5_000L
+private const val VIDEO_FEED_UI_WATCHDOG_MS = 12_000L
+private const val VIDEO_ALGORITHM_UNDO_WINDOW_MS = 10_000L
+
+data class VideoAlgorithmUndoOffer(
+    val id: String,
+    val message: String,
+    val expiresAtElapsedMs: Long,
+    val change: ExplicitPreferenceChange,
+)
 
 @HiltViewModel
 class VideoFeedViewModel @Inject constructor(
@@ -42,14 +62,13 @@ class VideoFeedViewModel @Inject constructor(
     private val liveRepository: conectate.com.data.repository.LiveRepository,
     private val socializationRepository: conectate.com.data.repository.SocializationRepository,
     private val algorithmRepository: AlgorithmRepository,
-    private val offlineVideoRepository: conectate.com.data.repository.OfflineVideoRepository,
     appSettingsPreferences: conectate.com.data.local.prefs.AppSettingsPreferences,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     
     // Two separate lists to avoid reloading when switching tabs
-    private val _forYouVideos = MutableStateFlow<List<Video>>(emptyList())
-    val forYouVideos: StateFlow<List<Video>> = _forYouVideos.asStateFlow()
+    private val _forYouVideos = VideoFeedPageStore()
+    val forYouFeed: StateFlow<VideoFeedSnapshot> = _forYouVideos.snapshot
 
     private val _followingVideos = MutableStateFlow<List<Video>>(emptyList())
     val followingVideos: StateFlow<List<Video>> = _followingVideos.asStateFlow()
@@ -68,13 +87,20 @@ class VideoFeedViewModel @Inject constructor(
     val socializationCards: StateFlow<List<conectate.com.data.model.SocializationCard>> = _socializationCards.asStateFlow()
     val activeStreams = liveRepository.activeStreams
     val showLiveRecommendations = appSettingsPreferences.livesInVideoFeedEnabled
-    val offlineVideos = offlineVideoRepository.videos
-    val offlineDownloadProgress = offlineVideoRepository.downloadProgress
-    private val _downloadActionMessage = MutableStateFlow<String?>(null)
-    val downloadActionMessage: StateFlow<String?> = _downloadActionMessage.asStateFlow()
+    val dataSaverEnabled = appSettingsPreferences.dataSaverEnabled
+    val videoAutoplayOnMobile = appSettingsPreferences.videoAutoplayOnMobile
+    private val _soundVideos = MutableStateFlow<List<Video>>(emptyList())
+    val soundVideos: StateFlow<List<Video>> = _soundVideos.asStateFlow()
+    private val _isSoundVideosLoading = MutableStateFlow(false)
+    val isSoundVideosLoading: StateFlow<Boolean> = _isSoundVideosLoading.asStateFlow()
 
-    private val _isLoading = MutableStateFlow(false)
+    // Avoid rendering the empty-feed message for one frame while init starts
+    // the first network/cache request.
+    private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+    val feedError: StateFlow<String?> = videoRepository.videoFeedError
 
     private val _selectedTab = MutableStateFlow(0) // 0 = For You, 1 = Following
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
@@ -100,10 +126,18 @@ class VideoFeedViewModel @Inject constructor(
     private val pageSize = 20
     private var isLastPage = false
     private var forYouJob: Job? = null
+    private var loadMoreJob: Job? = null
+    private var followedUsersJob: Job? = null
+    private var videoFollowState = VideoFollowState()
+    private var supplementalFeedJob: Job? = null
     private var authoritativeFeedActive = false
     private var authoritativeCursor: OpaqueRecommendationCursor? = null
     private var authoritativeExplanationsEnabled = false
     private var authoritativeRankingVersion: String? = null
+    private var feedSessionId: String = UUID.randomUUID().toString()
+    private var feedWasBackgrounded = false
+    private var feedSessionStartedAtElapsedMs = 0L
+    private val feedSessionRefreshDebounceMs = 750L
     private val authoritativeExplanations = mutableMapOf<String, List<String>>()
     private val profilePageSize = ProfileVideoFeedPaging.DefaultPageSize
     private var profileFirstOffset = 0
@@ -114,17 +148,20 @@ class VideoFeedViewModel @Inject constructor(
     val profilePrependCount: StateFlow<Int> = _profilePrependCount.asStateFlow()
     private val likedDebounceJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
     private val shareRequestsInFlight = mutableSetOf<String>()
-    private val recommendationSessionSeed = java.util.UUID.randomUUID().hashCode()
     private val focusedVideoIds = mutableSetOf<String>()
     private val focusedVideosById = linkedMapOf<String, Video>()
+    private var previousInitialForYouOrder: List<String> = emptyList()
+    private var lastOrderedForYouSessionId: String? = null
 
     fun ensureVideoInFeed(videoId: String) {
         val cleanId = videoId.trim()
         if (cleanId.isBlank() || _forYouVideos.value.any { it.id == cleanId }) return
         if (!focusedVideoIds.add(cleanId)) return
+        val generation = accountGeneration
         viewModelScope.launch {
             videoRepository.getVideoById(cleanId)
                 .onSuccess { video ->
+                    if (generation != accountGeneration) return@onSuccess
                     focusedVideosById[cleanId] = video
                     _forYouVideos.value = mergeFocusedVideoPage(
                         focusedVideos = focusedVideosById.values,
@@ -132,6 +169,54 @@ class VideoFeedViewModel @Inject constructor(
                     )
                 }
                 .onFailure { focusedVideoIds.remove(cleanId) }
+        }
+    }
+
+    private fun applyRealtimeFeedEvent(event: VideoFeedRealtimeEvent) {
+        when (event.action) {
+            "deleted" -> {
+                focusedVideoIds.remove(event.videoId)
+                focusedVideosById.remove(event.videoId)
+                _forYouVideos.value = _forYouVideos.value.filterNot { it.id.equals(event.videoId, true) }
+                _followingVideos.value = _followingVideos.value.filterNot { it.id.equals(event.videoId, true) }
+                _searchResults.value = _searchResults.value.filterNot { it.id.equals(event.videoId, true) }
+                _profileVideos.value = _profileVideos.value.filterNot { it.id.equals(event.videoId, true) }
+                _soundVideos.value = _soundVideos.value.filterNot { it.id.equals(event.videoId, true) }
+                if (_selectedVideoForComments.value?.id.equals(event.videoId, true)) {
+                    _commentsSheetOpen.value = false
+                    _selectedVideoForComments.value = null
+                    _comments.value = emptyList()
+                }
+            }
+            "created" -> {
+                if (
+                    _forYouVideos.value.any { it.id.equals(event.videoId, true) } ||
+                    focusedVideosById.containsKey(event.videoId)
+                ) return
+                val generation = accountGeneration
+                viewModelScope.launch {
+                    videoRepository.getVideoById(event.videoId).onSuccess { video ->
+                        if (generation != accountGeneration || !video.isPublic) return@onSuccess
+                        if (_forYouVideos.value.none { it.id.equals(video.id, true) }) {
+                            // Append instead of moving the page under the viewer's finger.
+                            // The next feed session will place it using the full algorithm.
+                            _forYouVideos.value = _forYouVideos.value + video
+                        }
+                        if (
+                            _followedUsers.value.any { it.equals(video.userId, true) } &&
+                            _followingVideos.value.none { it.id.equals(video.id, true) }
+                        ) {
+                            _followingVideos.value = _followingVideos.value + video
+                        }
+                        if (
+                            profileFeedOwnerId?.equals(video.userId, true) == true &&
+                            _profileVideos.value.none { it.id.equals(video.id, true) }
+                        ) {
+                            _profileVideos.value = _profileVideos.value + video
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -153,6 +238,9 @@ class VideoFeedViewModel @Inject constructor(
     val reportActionMessage: StateFlow<String?> = _reportActionMessage.asStateFlow()
     private val _algorithmActionMessage = MutableStateFlow<String?>(null)
     val algorithmActionMessage: StateFlow<String?> = _algorithmActionMessage.asStateFlow()
+    private val _algorithmUndoOffer = MutableStateFlow<VideoAlgorithmUndoOffer?>(null)
+    val algorithmUndoOffer: StateFlow<VideoAlgorithmUndoOffer?> = _algorithmUndoOffer.asStateFlow()
+    private val activeAlgorithmBlocks = mutableSetOf<VideoFeedbackBlock>()
     private val reportRequestsInFlight = mutableSetOf<String>()
 
     // Audio Comment State (Delegated to VoiceMessageManager)
@@ -170,34 +258,124 @@ class VideoFeedViewModel @Inject constructor(
     private val _audioProgress = MutableStateFlow(0f)
     val audioProgress: StateFlow<Float> = _audioProgress.asStateFlow()
 
-    val currentUserId: String? = authService.getCurrentUserId()
+    private val _currentUserId = MutableStateFlow(
+        authService.getCurrentUserId()?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+    )
+    val currentUserId: StateFlow<String?> = _currentUserId.asStateFlow()
+    private var activeAccountId: String? = _currentUserId.value
+    private var accountGeneration: Long = 0L
 
     // Follow Status Tracking
     private val _followedUsers = MutableStateFlow<Set<String>>(emptySet())
     val followedUsers: StateFlow<Set<String>> = _followedUsers.asStateFlow()
+    private val _videoDownloadsInProgress = MutableStateFlow<Set<String>>(emptySet())
+    val videoDownloadsInProgress: StateFlow<Set<String>> = _videoDownloadsInProgress.asStateFlow()
 
     private var mediaPlayer: MediaPlayer? = null
     private var progressJob: Job? = null
     private var commentsJob: Job? = null
 
     init {
-        voiceMessageManager.setScope(viewModelScope)
-        offlineVideoRepository.refreshForCurrentAccount()
+        viewModelScope.launch {
+            authService.currentSession
+                .map { session ->
+                    session?.user?.id?.trim()?.lowercase() ?: authService.getCurrentUserId()
+                }
+                .distinctUntilChanged()
+                .collect { accountId ->
+                    if (accountId != activeAccountId) handleAccountChanged(accountId)
+                }
+        }
+        viewModelScope.launch {
+            videoRepository.videoFeedEvents.collect(::applyRealtimeFeedEvent)
+        }
         if (isProfileFeed) {
             loadProfileVideos(checkNotNull(profileFeedOwnerId))
         } else {
             loadForYouVideos()
+            scheduleSupplementalFeedContent()
+        }
+    }
+
+    private fun handleAccountChanged(accountId: String?) {
+        activeAccountId = accountId
+        accountGeneration++
+        _algorithmUndoOffer.value = null
+        activeAlgorithmBlocks.clear()
+        _currentUserId.value = accountId
+        forYouJob?.cancel()
+        loadMoreJob?.cancel()
+        loadMoreJob = null
+        followedUsersJob?.cancel()
+        followedUsersJob = null
+        supplementalFeedJob?.cancel()
+        supplementalFeedJob = null
+        searchJob?.cancel()
+        mentionSearchJob?.cancel()
+        commentsJob?.cancel()
+        progressJob?.cancel()
+        mediaPlayer?.release()
+        mediaPlayer = null
+        currentPage = 0
+        isLastPage = false
+        resetAuthoritativeFeedState()
+        feedSessionId = UUID.randomUUID().toString()
+        focusedVideoIds.clear()
+        focusedVideosById.clear()
+        _forYouVideos.clear()
+        _isRefreshing.value = false
+        _followingVideos.value = emptyList()
+        _socialHighlights.value = emptyList()
+        _recommendedPeople.value = emptyList()
+        _socializationCards.value = emptyList()
+        videoFollowState = VideoFollowState()
+        _followedUsers.value = emptySet()
+        _soundVideos.value = emptyList()
+        _isSoundVideosLoading.value = false
+        _searchQuery.value = ""
+        _searchResults.value = emptyList()
+        _isSearchMode.value = false
+        _isSearching.value = false
+        _commentsSheetOpen.value = false
+        _selectedVideoForComments.value = null
+        _comments.value = emptyList()
+        _mentionSuggestions.value = emptyList()
+        _currentPlayingCommentId.value = null
+        _audioProgress.value = 0f
+        _profileVideos.value = emptyList()
+        _isLoading.value = true
+        likedDebounceJobs.values.forEach { it.cancel() }
+        likedDebounceJobs.clear()
+        shareRequestsInFlight.clear()
+        if (isProfileFeed) {
+            loadProfileVideos(checkNotNull(profileFeedOwnerId))
+        } else {
+            loadForYouVideos()
+            scheduleSupplementalFeedContent()
+        }
+    }
+
+    private fun scheduleSupplementalFeedContent() {
+        supplementalFeedJob?.cancel()
+        val generation = accountGeneration
+        supplementalFeedJob = viewModelScope.launch {
+            // Give the visible video request first use of the connection and
+            // database. These cards are useful, but they must never delay the
+            // first playable frame.
+            _isLoading.filter { loading -> !loading }.first()
+            if (generation != accountGeneration) return@launch
             loadSocialHighlights()
             loadRecommendedPeople()
             loadSocializationCards()
-            loadFollowedUsers()
         }
     }
 
     private fun loadSocializationCards() {
+        val generation = accountGeneration
         viewModelScope.launch {
             socializationRepository.loadCards(surface = "video", placement = "after_12", limit = 4)
                 .onSuccess { response ->
+                    if (generation != accountGeneration) return@onSuccess
                     _socializationCards.value = if (
                         response.enabled && response.safeguards.serverFiltered &&
                         response.safeguards.consentRequired && !response.safeguards.automaticContact
@@ -206,7 +384,9 @@ class VideoFeedViewModel @Inject constructor(
                         .distinctBy { it.id }
                     else emptyList()
                 }
-                .onFailure { _socializationCards.value = emptyList() }
+                .onFailure {
+                    if (generation == accountGeneration) _socializationCards.value = emptyList()
+                }
         }
     }
 
@@ -312,11 +492,13 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     private fun loadRecommendedPeople() {
+        val generation = accountGeneration
         viewModelScope.launch {
-            val currentId = currentUserId?.trim()?.lowercase().orEmpty()
+            val currentId = _currentUserId.value?.trim()?.lowercase().orEmpty()
             if (currentId.isBlank()) return@launch
             userRepository.getUsersByFollowerThreshold(0).onSuccess { users ->
                 val followed = userRepository.getFollowedUserIds(users.map { it.id }).getOrDefault(emptySet())
+                if (generation != accountGeneration || currentId != activeAccountId) return@onSuccess
                 _recommendedPeople.value = users
                     .filter { it.id.isNotBlank() && it.id.trim().lowercase() != currentId }
                     .filterNot { it.isSuspendedNow || followed.contains(it.id.trim().lowercase()) }
@@ -336,37 +518,45 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     private fun loadSocialHighlights() {
+        val generation = accountGeneration
+        val accountId = activeAccountId
         viewModelScope.launch {
             runCatching {
                 postRepository.getGlobalPosts(limit = 8, mode = "discover").collect { posts ->
+                    if (generation != accountGeneration) return@collect
                     _socialHighlights.value = posts
-                        .filter { it.id.isNotBlank() && it.userId != currentUserId }
+                        .filter { it.id.isNotBlank() && it.userId.trim().lowercase() != accountId }
                         .distinctBy { it.id }
                         .take(8)
                 }
             }.onFailure { error ->
                 android.util.Log.w("VideoFeedVM", "Social highlights unavailable", error)
-                _socialHighlights.value = emptyList()
+                if (generation == accountGeneration) _socialHighlights.value = emptyList()
             }
         }
     }
 
     private fun loadFollowedUsers() {
-        viewModelScope.launch {
+        followedUsersJob?.cancel()
+        val generation = accountGeneration
+        val requestRevision = videoFollowState.revision
+        followedUsersJob = viewModelScope.launch {
             try {
-                // Get unique user IDs from current videos
                 val allVideos = _forYouVideos.value + _followingVideos.value + _profileVideos.value
-                val userIds = allVideos.map { it.userId }.distinct()
-                
-                // Check follow status for each user
-                val followed = mutableSetOf<String>()
-                userIds.forEach { userId ->
-                    val result = userRepository.checkIsFollowing(userId)
-                    if (result.getOrDefault(false)) {
-                        followed.add(userId)
-                    }
+                val userIds = allVideos
+                    .map { it.userId.trim().lowercase() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+
+                // One batched request replaces one network round-trip per
+                // creator. This runs after every page append, so the former
+                // N+1 loop noticeably delayed the feed on real connections.
+                val followed = userRepository.getFollowedUserIds(userIds).getOrThrow()
+                if (generation == accountGeneration) {
+                    publishFollowState(videoFollowState.reconcile(userIds, followed, requestRevision))
                 }
-                _followedUsers.value = followed
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.e("VideoFeedVM", "Error loading followed users", e)
             }
@@ -385,9 +575,39 @@ class VideoFeedViewModel @Inject constructor(
     fun refreshFeed() {
         when {
             isProfileFeed -> loadProfileVideos(checkNotNull(profileFeedOwnerId))
-            _selectedTab.value == 0 -> loadForYouVideos()
-            else -> loadFollowingVideos()
+            _selectedTab.value == 0 -> startNewForYouFeedSession()
+            else -> {
+                _isRefreshing.value = true
+                loadFollowingVideos()
+            }
         }
+    }
+
+    fun onFeedBackgrounded() {
+        if (!isProfileFeed) feedWasBackgrounded = true
+    }
+
+    fun onFeedResumed() {
+        if (!isProfileFeed && feedWasBackgrounded) {
+            feedWasBackgrounded = false
+            startNewForYouFeedSession()
+        }
+    }
+
+    private fun startNewForYouFeedSession() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - feedSessionStartedAtElapsedMs < feedSessionRefreshDebounceMs) return
+        feedSessionStartedAtElapsedMs = now
+        feedSessionId = UUID.randomUUID().toString()
+        _isRefreshing.value = true
+        focusedVideoIds.clear()
+        focusedVideosById.clear()
+        resetAuthoritativeFeedState()
+        // Keep the last playable page mounted while the new session is
+        // revalidated. Clearing it here produced a black TikTok-style feed on
+        // every resume/reselection even though a valid snapshot was available.
+        _isLoading.value = true
+        loadForYouVideos()
     }
 
     fun recoverFeedAfterAppUpdate() {
@@ -412,18 +632,20 @@ class VideoFeedViewModel @Inject constructor(
             return
         }
 
+        val generation = accountGeneration
         searchJob = viewModelScope.launch {
             delay(500) // Debounce search
             try {
                 _isSearching.value = true
                 videoRepository.searchVideos(query).onSuccess { videos ->
+                    if (generation != accountGeneration) return@onSuccess
                     _searchResults.value = videos
                     _isSearching.value = false
                 }.onFailure {
-                    _isSearching.value = false
+                    if (generation == accountGeneration) _isSearching.value = false
                 }
             } catch (e: Exception) {
-                _isSearching.value = false
+                if (generation == accountGeneration) _isSearching.value = false
             }
         }
     }
@@ -447,48 +669,113 @@ class VideoFeedViewModel @Inject constructor(
 
     private fun loadForYouVideos(forceLegacy: Boolean = false) {
         forYouJob?.cancel()
+        loadMoreJob?.cancel()
+        loadMoreJob = null
+        val generation = accountGeneration
+        val requestSessionId = feedSessionId
         forYouJob = viewModelScope.launch {
+            val uiWatchdog = launch {
+                delay(VIDEO_FEED_UI_WATCHDOG_MS)
+                if (
+                    generation == accountGeneration &&
+                    requestSessionId == feedSessionId &&
+                    _forYouVideos.value.isEmpty()
+                ) {
+                    // A broken recommendation or catalog endpoint must not
+                    // keep the first video screen in a permanent spinner.
+                    _isLoading.value = false
+                }
+            }
             try {
                 _isLoading.value = true
                 currentPage = 0
                 isLastPage = false
                 resetAuthoritativeFeedState()
-                if (!forceLegacy) {
-                    val page = algorithmRepository.loadVideoRecommendationPage(cursor = null, limit = pageSize)
-                        .getOrNull()
-                    if (page != null) {
+                val cachedVideos = videoRepository.getCachedPublicVideos(requestSessionId)
+                if (_forYouVideos.value.isEmpty() && cachedVideos.isNotEmpty() && generation == accountGeneration) {
+                    mergeInitialForYouPage(
+                        focusedVideos = focusedVideosById.values,
+                        loadedPage = cachedVideos,
+                        sessionId = requestSessionId,
+                    )
+                    isLastPage = cachedVideos.size < pageSize
+                }
+                // The public catalog is the fastest first-screen fallback.
+                // Only wait for the personalized page when cached video is
+                // already visible, so a cold install never sits on a spinner.
+                if (!forceLegacy && _forYouVideos.value.isNotEmpty()) {
+                    val page = withTimeoutOrNull(VIDEO_AUTHORITATIVE_REQUEST_TIMEOUT_MS) {
+                        algorithmRepository.loadVideoRecommendationPage(
+                            cursor = null,
+                            limit = pageSize,
+                            refreshSeed = requestSessionId,
+                        )
+                    }?.getOrNull()
+                    if (
+                        page != null &&
+                        VideoAlgorithmFeedbackPolicy.shouldUseAuthoritativeInitialPage(page.items.size)
+                    ) {
+                        if (generation != accountGeneration || requestSessionId != feedSessionId) return@launch
                         authoritativeFeedActive = true
                         authoritativeCursor = page.nextCursor
                         authoritativeExplanationsEnabled = page.explanationsEnabled
                         authoritativeRankingVersion = page.rankingVersion
                         authoritativeExplanations.putAll(page.explanationsByCandidateId)
-                        // Assignment preserves the exact server order.
-                        _forYouVideos.value = mergeFocusedVideoPage(focusedVideosById.values, page.items)
+                        mergeInitialForYouPage(
+                            focusedVideos = focusedVideosById.values,
+                            loadedPage = page.items,
+                            sessionId = requestSessionId,
+                        )
                         isLastPage = !page.hasMore
-                        _isLoading.value = false
+                        if (generation == accountGeneration && requestSessionId == feedSessionId) _isLoading.value = false
                         loadFollowedUsers()
                         return@launch
                     }
                 }
-                videoRepository.getVideos(offset = 0, limit = pageSize, random = true).collect { newVideos ->
-                    _forYouVideos.value = mergeFocusedVideoPage(
-                        focusedVideosById.values,
-                        mixVideosForSession(newVideos),
-                    )
-                    isLastPage = newVideos.size < pageSize
-                    _isLoading.value = false
+                try {
+                    videoRepository.getVideos(
+                        offset = 0,
+                        limit = pageSize,
+                        random = true,
+                        feedSessionId = requestSessionId,
+                        emitLocalSnapshotFirst = true,
+                    ).collect { newVideos ->
+                        if (generation != accountGeneration || requestSessionId != feedSessionId) return@collect
+                        // Ignore a provisional empty disk-cache emission. The
+                        // same flow will emit the network catalog next; keeping
+                        // loading active prevents the empty-state flash.
+                        if (newVideos.isEmpty()) return@collect
+                        mergeInitialForYouPage(
+                            focusedVideosById.values,
+                            newVideos,
+                            requestSessionId,
+                        )
+                        isLastPage = newVideos.size < pageSize
+                    }
+                } finally {
+                    if (generation == accountGeneration && requestSessionId == feedSessionId) _isLoading.value = false
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.e("VideoFeedVM", "Error loading for you videos", e)
-                _isLoading.value = false
+                if (generation == accountGeneration && requestSessionId == feedSessionId) _isLoading.value = false
+            } finally {
+                uiWatchdog.cancel()
+                if (generation == accountGeneration && requestSessionId == feedSessionId) {
+                    _isRefreshing.value = false
+                }
             }
         }
     }
 
     fun loadMoreVideos() {
-        if (_isLoading.value || isLastPage) return
+        if (_isLoading.value || isLastPage || loadMoreJob?.isActive == true) return
 
-        viewModelScope.launch {
+        val generation = accountGeneration
+        val requestSessionId = feedSessionId
+        loadMoreJob = viewModelScope.launch {
+            var requestedLegacyPage: Int? = null
             try {
                 _isLoading.value = true
                 if (authoritativeFeedActive) {
@@ -505,28 +792,60 @@ class VideoFeedViewModel @Inject constructor(
                             loadForYouVideos(forceLegacy = true)
                             return@launch
                         }
+                    if (generation != accountGeneration || requestSessionId != feedSessionId) return@launch
                     authoritativeCursor = page.nextCursor
                     authoritativeExplanations.putAll(page.explanationsByCandidateId)
-                    // Concatenation preserves page and item order from server.
-                    _forYouVideos.value = (_forYouVideos.value + page.items).distinctBy { it.id }
+                    val orderedPage = orderVideosForFeedSession(
+                        videos = page.items,
+                        accountId = activeAccountId,
+                        sessionId = requestSessionId,
+                        preserveSourceOrder = true,
+                    )
+                    _forYouVideos.value = filterActiveAlgorithmBlocks(
+                        (_forYouVideos.value + orderedPage).distinctBy { it.id })
                     isLastPage = !page.hasMore
                     loadFollowedUsers()
                     return@launch
                 }
                 currentPage++
+                requestedLegacyPage = currentPage
                 val offset = currentPage * pageSize
-                videoRepository.getVideos(offset = offset, limit = pageSize, random = true).collect { newVideos ->
+                videoRepository.getVideos(
+                    offset = offset,
+                    limit = pageSize,
+                    random = true,
+                    feedSessionId = requestSessionId,
+                    emitLocalSnapshotFirst = false,
+                ).collect { newVideos ->
+                    if (generation != accountGeneration || requestSessionId != feedSessionId) return@collect
                     if (newVideos.isEmpty()) {
                         isLastPage = true
                     } else {
-                        _forYouVideos.value += mixVideosForSession(newVideos)
+                        val orderedPage = orderVideosForFeedSession(
+                            videos = newVideos,
+                            accountId = activeAccountId,
+                            sessionId = requestSessionId,
+                        )
+                        _forYouVideos.value = filterActiveAlgorithmBlocks(
+                            (_forYouVideos.value + orderedPage).distinctBy { it.id })
                         if (newVideos.size < pageSize) isLastPage = true
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                requestedLegacyPage?.let { failedPage ->
+                    if (currentPage == failedPage) currentPage = (failedPage - 1).coerceAtLeast(0)
+                }
                 android.util.Log.e("VideoFeedVM", "Error loading more videos", e)
             } finally {
-                _isLoading.value = false
+                if (
+                    generation == accountGeneration &&
+                    requestSessionId == feedSessionId &&
+                    forYouJob?.isActive != true
+                ) {
+                    _isLoading.value = false
+                }
             }
         }
     }
@@ -564,14 +883,15 @@ class VideoFeedViewModel @Inject constructor(
     fun excludeVideoFormatFromAlgorithm(video: Video) = applyVideoAlgorithmRule(
         video = video,
         dimension = "format",
-        subjectKey = if (video.duration in 1..60) "short-video" else "video",
+        subjectKey = VideoAlgorithmFeedbackPolicy.formatKey(video.duration),
         subjectLabel = if (video.duration in 1..60) "Videos cortos" else "Videos largos",
         successMessage = "Este tipo de video tendrá menos prioridad.",
+        score = -30,
     )
 
     fun excludeVideoTopicFromAlgorithm(video: Video, topic: String) {
-        val normalized = topic.trim().lowercase()
-        if (normalized.length < 2) {
+        val normalized = VideoAlgorithmFeedbackPolicy.topicKey(topic)
+        if (normalized == null) {
             _algorithmActionMessage.value = "Elige un tema válido."
             return
         }
@@ -588,27 +908,66 @@ class VideoFeedViewModel @Inject constructor(
         _algorithmActionMessage.value = null
     }
 
+    fun consumeAlgorithmUndoOffer(id: String) {
+        if (_algorithmUndoOffer.value?.id == id) _algorithmUndoOffer.value = null
+    }
+
+    fun undoAlgorithmPreference(id: String) {
+        val offer = _algorithmUndoOffer.value?.takeIf { it.id == id } ?: return
+        _algorithmUndoOffer.value = null
+        if (android.os.SystemClock.elapsedRealtime() > offer.expiresAtElapsedMs) return
+        val generation = accountGeneration
+        viewModelScope.launch {
+            algorithmRepository.undoExplicitPreference(offer.change).onSuccess {
+                if (generation != accountGeneration) return@onSuccess
+                val block = VideoFeedbackBlock(offer.change.dimension, offer.change.subjectKey)
+                if (offer.change.previous?.score == -100) activeAlgorithmBlocks.add(block)
+                else activeAlgorithmBlocks.remove(block)
+                _algorithmActionMessage.value = "Preferencia revertida."
+                loadForYouVideos()
+            }.onFailure {
+                if (generation != accountGeneration) return@onFailure
+                _algorithmActionMessage.value =
+                    "No se pudo deshacer porque la preferencia cambió o no hay conexión. Revísala en Mi algoritmo."
+            }
+        }
+    }
+
     private fun applyVideoAlgorithmRule(
         video: Video,
         dimension: String,
         subjectKey: String,
         subjectLabel: String,
         successMessage: String,
+        score: Int = -100,
     ) {
+        val generation = accountGeneration
         viewModelScope.launch {
             algorithmRepository.applyExplicitPreference(
                 surface = "video",
                 dimension = dimension,
                 subjectKey = subjectKey,
                 subjectLabel = subjectLabel,
-                score = -100,
-            ).onSuccess {
+                score = score,
+            ).onSuccess { change ->
+                if (generation != accountGeneration) return@onSuccess
+                val block = VideoFeedbackBlock(change.dimension, change.subjectKey)
+                if (score == -100) activeAlgorithmBlocks.add(block)
+                else activeAlgorithmBlocks.remove(block)
                 focusedVideoIds.remove(video.id)
                 focusedVideosById.remove(video.id)
-                _forYouVideos.value = _forYouVideos.value.filterNot { it.id == video.id }
-                _algorithmActionMessage.value = successMessage
+                _forYouVideos.value = filterActiveAlgorithmBlocks(
+                    _forYouVideos.value.filterNot { it.id == video.id })
+                _algorithmUndoOffer.value = VideoAlgorithmUndoOffer(
+                    id = UUID.randomUUID().toString(),
+                    message = successMessage,
+                    expiresAtElapsedMs = android.os.SystemClock.elapsedRealtime() +
+                        VIDEO_ALGORITHM_UNDO_WINDOW_MS,
+                    change = change,
+                )
                 loadForYouVideos()
             }.onFailure {
+                if (generation != accountGeneration) return@onFailure
                 _algorithmActionMessage.value =
                     "No se pudo guardar en Mi algoritmo. Revisa tu conexión e inténtalo nuevamente."
             }
@@ -623,17 +982,57 @@ class VideoFeedViewModel @Inject constructor(
         authoritativeExplanations.clear()
     }
 
+    private fun mergeInitialForYouPage(
+        focusedVideos: Collection<Video>,
+        loadedPage: Iterable<Video>,
+        sessionId: String,
+    ) {
+        val previousOrder = if (lastOrderedForYouSessionId == sessionId) {
+            emptyList()
+        } else {
+            previousInitialForYouOrder
+        }
+        val orderedPage = orderVideosForFeedSession(
+            videos = loadedPage,
+            accountId = activeAccountId,
+            sessionId = sessionId,
+            previousOrder = previousOrder,
+            preserveSourceOrder = authoritativeFeedActive,
+        )
+        val merged = filterActiveAlgorithmBlocks(mergeFocusedVideoPage(focusedVideos, orderedPage))
+        if (lastOrderedForYouSessionId != sessionId) {
+            previousInitialForYouOrder = merged.map { it.id.trim().lowercase() }
+            lastOrderedForYouSessionId = sessionId
+        }
+        _forYouVideos.publishInitial(merged, sessionId)
+    }
+
+    private fun filterActiveAlgorithmBlocks(videos: List<Video>): List<Video> =
+        if (activeAlgorithmBlocks.isEmpty()) videos
+        else videos.filterNot { video -> activeAlgorithmBlocks.any { it.matches(video) } }
+
     private fun loadFollowingVideos() {
+        val generation = accountGeneration
         viewModelScope.launch {
+            val uiWatchdog = launch {
+                delay(VIDEO_FEED_UI_WATCHDOG_MS)
+                if (generation == accountGeneration && _followingVideos.value.isEmpty()) {
+                    _isLoading.value = false
+                }
+            }
             try {
                 _isLoading.value = true
-                videoRepository.getFollowingVideos().collect {
-                    _followingVideos.value = it
-                    _isLoading.value = false
+                videoRepository.getFollowingVideos().collect { videos ->
+                    if (generation == accountGeneration && videos.isNotEmpty()) _followingVideos.value = videos
                 }
             } catch (e: Exception) {
                 android.util.Log.e("VideoFeedVM", "Error loading following videos", e)
-                _isLoading.value = false
+            } finally {
+                uiWatchdog.cancel()
+                if (generation == accountGeneration) {
+                    _isLoading.value = false
+                    _isRefreshing.value = false
+                }
             }
         }
     }
@@ -654,7 +1053,11 @@ class VideoFeedViewModel @Inject constructor(
                         _followingVideos.value = incrementViewInList(_followingVideos.value, cleanVideoId)
                         _searchResults.value = incrementViewInList(_searchResults.value, cleanVideoId)
                         _profileVideos.value = incrementViewInList(_profileVideos.value, cleanVideoId)
-                        reloadVideo(cleanVideoId)
+                        // incrementViews() already updates the local counter. Do not
+                        // fetch the whole video again here: replacing the item with
+                        // a freshly signed media URL makes VideoFeedScreen rebuild
+                        // its playlist and seek the visible item back to 0 exactly
+                        // when the first view is recorded (~500 ms after playback).
                     }
                 }
                 .onFailure { error ->
@@ -711,7 +1114,7 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun toggleShare(video: Video) {
-        currentUserId ?: return
+        _currentUserId.value ?: return
         val videoId = video.id
         if (!shareRequestsInFlight.add(videoId)) return
 
@@ -874,7 +1277,7 @@ class VideoFeedViewModel @Inject constructor(
         mentionSearchJob = viewModelScope.launch {
             userRepository.searchMentionCandidates(
                 query = query,
-                excludeUserId = currentUserId,
+                excludeUserId = _currentUserId.value,
                 limit = 6
             ).onSuccess { users ->
                 _mentionSuggestions.value = users
@@ -890,21 +1293,6 @@ class VideoFeedViewModel @Inject constructor(
 
     fun consumeReportActionMessage() {
         _reportActionMessage.value = null
-    }
-
-    fun downloadForOffline(video: Video) {
-        if (offlineVideoRepository.downloadProgress.value.containsKey(video.id)) return
-        viewModelScope.launch {
-            offlineVideoRepository.download(video)
-                .onSuccess { _downloadActionMessage.value = "Video disponible sin conexión" }
-                .onFailure { error ->
-                    _downloadActionMessage.value = error.message ?: "No se pudo descargar el video"
-                }
-        }
-    }
-
-    fun consumeDownloadActionMessage() {
-        _downloadActionMessage.value = null
     }
 
     fun ensureVideoReportStatus(videoId: String) {
@@ -1052,9 +1440,45 @@ class VideoFeedViewModel @Inject constructor(
                     _followingVideos.value = _followingVideos.value.filterNot { it.id == video.id }
                     _searchResults.value = _searchResults.value.filterNot { it.id == video.id }
                     _profileVideos.value = _profileVideos.value.filterNot { it.id == video.id }
+                    conectate.com.presentation.common.AppFeedbackBus.showSuccess("Video eliminado")
                 }
-                .onFailure { android.util.Log.e("VideoFeedVM", "Video delete failed", it) }
+                .onFailure {
+                    android.util.Log.e("VideoFeedVM", "Video delete failed", it)
+                    conectate.com.presentation.common.AppFeedbackBus.showError(
+                        "No se pudo eliminar el video. Verifica tu conexión e inténtalo otra vez.",
+                    )
+                }
         }
+    }
+
+    fun loadSoundVideos(video: Video) {
+        val soundId = (video.soundId ?: video.id).trim()
+        if (soundId.isBlank()) {
+            _soundVideos.value = listOf(video)
+            return
+        }
+        val generation = accountGeneration
+        viewModelScope.launch {
+            if (generation != accountGeneration) return@launch
+            _isSoundVideosLoading.value = true
+            videoRepository.getVideosBySound(soundId)
+                .onSuccess { videos ->
+                    if (generation != accountGeneration) return@onSuccess
+                    _soundVideos.value = (videos + video)
+                        .distinctBy { it.id.trim().lowercase() }
+                }
+                .onFailure {
+                    if (generation != accountGeneration) return@onFailure
+                    _soundVideos.value = listOf(video)
+                    android.util.Log.w("VideoFeedVM", "Sound catalog unavailable", it)
+                }
+            if (generation == accountGeneration) _isSoundVideosLoading.value = false
+        }
+    }
+
+    fun clearSoundVideos() {
+        _soundVideos.value = emptyList()
+        _isSoundVideosLoading.value = false
     }
 
     private fun reloadVideo(videoId: String) {
@@ -1066,7 +1490,7 @@ class VideoFeedViewModel @Inject constructor(
                 fun updateList(list: List<Video>): List<Video> {
                     return list.map { current ->
                         if (current.id != videoId) current
-                        else updatedVideo.copy(
+                        else current.copy(
                             views = maxOf(current.views, updatedVideo.views),
                             likeCount = updatedVideo.likeCount.coerceAtLeast(0),
                             commentCount = updatedVideo.commentCount.coerceAtLeast(0),
@@ -1084,6 +1508,24 @@ class VideoFeedViewModel @Inject constructor(
                 android.util.Log.e("VideoFeedVM", "Failed to reload video after comment update")
             }
         }
+    }
+
+    suspend fun refreshVideoForPlayback(videoId: String): Video? {
+        val generation = accountGeneration
+        val updatedVideo = videoRepository.getVideo(videoId).getOrNull() ?: return null
+        // Recovery owns the selected source. Publishing a whole feed here
+        // races playlist reconciliation and can overwrite newer reactions.
+        return updatedVideo.takeIf { generation == accountGeneration }
+    }
+
+    fun updateVideoPlaybackSource(videoId: String, videoUrl: String) {
+        fun update(videos: List<Video>) = videos.map { current ->
+            if (current.id == videoId) current.copy(videoUrl = videoUrl) else current
+        }
+        _forYouVideos.value = update(_forYouVideos.value)
+        _followingVideos.value = update(_followingVideos.value)
+        _searchResults.value = update(_searchResults.value)
+        _profileVideos.value = update(_profileVideos.value)
     }
 
     private fun refreshCommentsAfterWrite(videoId: String) {
@@ -1236,8 +1678,12 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun followUser(userId: String) {
-        // Optimistic update - add to followed users immediately
-        _followedUsers.value = _followedUsers.value + userId
+        val normalizedUserId = userId.trim().lowercase()
+        if (normalizedUserId.isBlank() || normalizedUserId == _currentUserId.value) return
+        val next = videoFollowState.begin(normalizedUserId)
+        if (next === videoFollowState) return
+        val generation = accountGeneration
+        publishFollowState(next)
         
         viewModelScope.launch {
             try {
@@ -1245,21 +1691,61 @@ class VideoFeedViewModel @Inject constructor(
                 val result = userRepository.followUser(userId)
                 
                 result.onSuccess {
+                    if (generation != accountGeneration) return@onSuccess
                     android.util.Log.d("VideoFeedVM", "Successfully followed user: $userId")
+                    publishFollowState(videoFollowState.complete(normalizedUserId, success = true))
                     // Keep the user in followed set
                     // Optionally reload following videos if on that tab
                     if (_selectedTab.value == 1) {
                         loadFollowingVideos()
                     }
                 }.onFailure { e ->
+                    if (generation != accountGeneration) return@onFailure
                     android.util.Log.e("VideoFeedVM", "Failed to follow user: ${e.message}", e)
                     // Revert optimistic update on failure
-                    _followedUsers.value = _followedUsers.value - userId
+                    publishFollowState(videoFollowState.complete(normalizedUserId, success = false))
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
+                if (generation != accountGeneration) return@launch
                 android.util.Log.e("VideoFeedVM", "Exception in followUser", e)
                 // Revert optimistic update on exception
-                _followedUsers.value = _followedUsers.value - userId
+                publishFollowState(videoFollowState.complete(normalizedUserId, success = false))
+            }
+        }
+    }
+
+    private fun publishFollowState(state: VideoFollowState) {
+        videoFollowState = state
+        _followedUsers.value = state.followed
+    }
+
+    fun downloadVideo(video: Video) {
+        val videoId = video.id.trim().lowercase()
+        if (videoId.isBlank() || video.videoUrl.isBlank()) {
+            conectate.com.presentation.common.AppFeedbackBus.showError("Este video no se puede descargar.")
+            return
+        }
+        if (_videoDownloadsInProgress.value.contains(videoId)) return
+        _videoDownloadsInProgress.value = _videoDownloadsInProgress.value + videoId
+        conectate.com.presentation.common.AppFeedbackBus.show("Preparando video con marca de agua…")
+        viewModelScope.launch {
+            try {
+                videoRepository.downloadVideoToGallery(video)
+                    .onSuccess {
+                        conectate.com.presentation.common.AppFeedbackBus.showSuccess(
+                            "Video guardado en Películas/Novvin"
+                        )
+                    }
+                    .onFailure { error ->
+                        conectate.com.presentation.common.AppFeedbackBus.showError(
+                            error,
+                            "No se pudo descargar el video."
+                        )
+                    }
+            } finally {
+                _videoDownloadsInProgress.value = _videoDownloadsInProgress.value - videoId
             }
         }
     }
@@ -1279,17 +1765,6 @@ class VideoFeedViewModel @Inject constructor(
         if (mentionCandidate.length > 30) return null
 
         return mentionCandidate.trim()
-    }
-
-    private fun mixVideosForSession(videos: List<Video>): List<Video> {
-        val userSeed = currentUserId?.hashCode() ?: 0
-        return videos.sortedWith(
-            compareByDescending<Video> {
-                it.likeCount * 4 + it.commentCount * 6 + it.shareCount * 8 + it.favoriteCount * 3 + it.views
-            }.thenByDescending {
-                ((it.id.hashCode() xor userSeed xor recommendationSessionSeed) and 0x7fffffff) % 1000
-            }.thenByDescending { it.created_at }
-        )
     }
 
     fun getVideoStats(videoId: String) = videoRepository.getVideoStatsFlow(videoId)

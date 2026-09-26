@@ -32,6 +32,16 @@ const PREFERENCE_DIMENSIONS = Object.freeze([
 
 const PREFERENCE_DIMENSION_SET = new Set(PREFERENCE_DIMENSIONS)
 
+// These values describe the whole surface rather than a meaningful content
+// category.  Treating them as a hard negative would make a preference such as
+// "video" match every video (the legacy candidate source includes `video` as
+// a compatibility format), which can empty the entire feed.  A negative
+// preference must always identify a specific, comparable value.
+const NON_SPECIFIC_PREFERENCE_KEYS = Object.freeze({
+  topic: new Set(['all', 'any', 'general', 'unknown', 'misc', 'video-general', 'social-general']),
+  format: new Set(['all', 'any', 'general', 'unknown', 'misc', 'video', 'content']),
+})
+
 const PERMITTED_INFERENCE_SOURCES = Object.freeze([
   'likes',
   'follows',
@@ -239,6 +249,11 @@ function normalizePreference(preference, index, nowMs, surface) {
   }
 }
 
+function isSpecificPreference(preference) {
+  const blockedKeys = NON_SPECIFIC_PREFERENCE_KEYS[preference?.dimension]
+  return !blockedKeys || !blockedKeys.has(preference.subjectKey)
+}
+
 function normalizePreferences(preferences, nowMs, surface) {
   // The server stores one value per (surface, dimension, key). Keeping the
   // last supplied value makes this pure function deterministic even during a
@@ -255,6 +270,9 @@ function normalizePreferences(preferences, nowMs, surface) {
 function explicitMatches(candidate, preferences) {
   const matches = []
   for (const preference of preferences) {
+    // Keep the preference in the user's configuration for migration/UI
+    // visibility, but never let a generic legacy key become a global block.
+    if (!isSpecificPreference(preference)) continue
     if (candidateValues(candidate, preference.dimension).includes(preference.subjectKey)) {
       matches.push(preference)
     }
@@ -415,6 +433,24 @@ function explorationScore(candidate, feedMix) {
     * boundedNumber(feedMix?.exploration, 0, 100, 0)
 }
 
+function seededUnitInterval(seed, candidateId) {
+  const value = `${String(seed || '')}:${String(candidateId || '')}`
+  if (!String(seed || '').trim() || !String(candidateId || '').trim()) return 0
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0) / 0xFFFFFFFF
+}
+
+function sessionExplorationScore(candidate, feedMix, sessionSeed) {
+  const weight = boundedNumber(feedMix?.exploration, 0, 100, 0)
+  if (!weight || !String(sessionSeed || '').trim()) return 0
+  const candidateId = candidate?.id ?? candidate?.contentId ?? candidate?.content_id
+  return seededUnitInterval(sessionSeed, candidateId) * weight
+}
+
 function normalizeDiversityLimits(value) {
   const limits = isPlainObject(value) ? value : {}
   return {
@@ -518,6 +554,7 @@ function compareCandidates(left, right) {
     [left.feedMix, right.feedMix],
     [left.inferred.score, right.inferred.score],
     [left.diversity.priority, right.diversity.priority],
+    [left.sessionExploration, right.sessionExploration],
     [left.trend, right.trend],
     [left.exploration, right.exploration],
   ]
@@ -536,7 +573,7 @@ function contributionSummary(prepared) {
     permittedInference: prepared.inferred.score,
     diversity: prepared.diversity.priority,
     trends: prepared.trend,
-    exploration: prepared.exploration,
+    exploration: prepared.exploration + prepared.sessionExploration,
   }
 }
 
@@ -577,7 +614,7 @@ function buildExplanation(prepared, outcome, extra = {}) {
       reasonCode: prepared.diversity.reason,
     },
     { stage: 'trends', outcome: prepared.trend ? 'matched' : 'neutral', contribution: prepared.trend },
-    { stage: 'exploration', outcome: prepared.exploration ? 'matched' : 'neutral', contribution: prepared.exploration },
+    { stage: 'exploration', outcome: (prepared.exploration || prepared.sessionExploration) ? 'matched' : 'neutral', contribution: prepared.exploration + prepared.sessionExploration },
   ]
 
   return {
@@ -641,6 +678,7 @@ function prepareCandidate(candidate, index, context) {
     inferred: inferredScore(candidate, context.permittedInferredSources),
     trend: trendScore(candidate, context.feedMix),
     exploration: explorationScore(candidate, context.feedMix),
+    sessionExploration: sessionExplorationScore(candidate, context.feedMix, context.sessionSeed),
     permittedInferenceSources: context.permittedInferredSources.map((item) => item.source),
     ignoredInferenceSources: context.ignoredInferenceSources,
     diversity: null,
@@ -674,6 +712,7 @@ function rankAlgorithmCandidates(input = {}) {
     feedMix,
     permittedInferredSources: inference.permitted,
     ignoredInferenceSources: inference.ignoredSources,
+    sessionSeed: String(safeInput.sessionSeed || '').trim(),
   }
   const excluded = []
   const remaining = []
@@ -738,6 +777,7 @@ module.exports = {
   PERMITTED_INFERENCE_SOURCES,
   PREFERENCE_DIMENSIONS,
   RANKING_VERSION,
+  seededUnitInterval,
   rankAlgorithmCandidates,
   // Named alias makes the intended integration point obvious in route code.
   rankCandidates: rankAlgorithmCandidates,

@@ -15,7 +15,10 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.Alignment
@@ -40,6 +43,7 @@ import conectate.com.util.DateUtils
 import conectate.com.presentation.navigation.Screen
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -69,7 +73,13 @@ fun PostCard(
     showReportAction: Boolean = false
 ) {
     val context = LocalContext.current
+    val windowHeightDp = with(LocalDensity.current) {
+        LocalWindowInfo.current.containerSize.height.toDp().value.roundToInt()
+    }
+    val postOverlayClearance = tallPostOverlayClearance(windowHeightDp)
     var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
+    var contentExpanded by rememberSaveable(post.id) { mutableStateOf(false) }
+    var contentHasOverflow by remember(post.id, post.content) { mutableStateOf(false) }
     var showReactionPicker by remember(post.id) { mutableStateOf(false) }
     var showRemixDialog by remember(post.id) { mutableStateOf(false) }
     var remixComment by remember(post.id) { mutableStateOf("") }
@@ -138,7 +148,9 @@ fun PostCard(
                         )
                     }
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp, bottom = postOverlayClearance),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -414,17 +426,36 @@ fun PostCard(
                 }
             }
 
-            // Content Text
-            if (post.content.isNotBlank()) {
-                LinkText(
-                    text = post.content,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).clickable { onPostClick() },
-                    onUrlClick = onUrlClick
-                )
-            }
+            SensitiveContentGate(isSensitive = post.isSensitive) {
+                Column {
+                    // Content Text
+                    if (post.content.isNotBlank()) {
+                        LinkText(
+                            text = post.content,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            maxLines = if (contentExpanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { layout ->
+                                if (!contentExpanded) contentHasOverflow = layout.hasVisualOverflow
+                            },
+                            onUrlClick = onUrlClick,
+                            onTextClick = onPostClick,
+                        )
+                        if (contentHasOverflow || contentExpanded) {
+                            Text(
+                                text = if (contentExpanded) "Ver menos" else "Ver más",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier
+                                    .clickable { contentExpanded = !contentExpanded }
+                                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
 
-            // Content Image(s)
-            if (images.isNotEmpty()) {
+                    // Content Image(s)
+                    if (images.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 if (images.size == 1) {
                     val image = images.first()
@@ -517,6 +548,8 @@ fun PostCard(
                         }
                     }
                 }
+                    }
+                }
             }
 
             // Stats row (Likes, Comments, and Shares)
@@ -562,7 +595,7 @@ fun PostCard(
                 }
             }
 
-            Divider(modifier = Modifier.padding(horizontal = 12.dp), thickness = 0.5.dp)
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp), thickness = 0.5.dp)
 
             // Interaction Buttons
             Row(

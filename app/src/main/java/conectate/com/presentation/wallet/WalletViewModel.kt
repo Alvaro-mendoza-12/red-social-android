@@ -28,6 +28,7 @@ class WalletViewModel @Inject constructor(
     private val creatorPayoutRepository: CreatorPayoutRepository,
 ) : ViewModel() {
     val coinBalance = walletRepository.coinBalance
+    val coinDebt = walletRepository.coinDebt
     val availableGifts = walletRepository.availableGifts
     val transactions = walletRepository.transactions
     val transactionsHasMore = walletRepository.transactionsHasMore
@@ -106,19 +107,20 @@ class WalletViewModel @Inject constructor(
         gift: VirtualGift,
         isPublic: Boolean
     ) {
-        if (_sendingGiftId.value != null) return
         val limits = _billingCapabilities.value.giftLimits
-        if (gift.priceDiamonds > limits.maxCoinsPerGift) {
+        val pending = hasPendingGift(receiverId, liveStreamId, gift.id, isPublic)
+        if (gift.priceDiamonds > limits.maxCoinsPerGift && !pending) {
             _error.value = "Este regalo supera el límite permitido por el servidor."
             return
         }
-        if (coinBalance.value < gift.priceDiamonds) {
+        if (coinBalance.value < gift.priceDiamonds && !pending) {
             _error.value = "Saldo insuficiente. Recarga monedas y vuelve a confirmar el regalo."
             return
         }
         val idempotencyKey = UUID.randomUUID().toString()
+        if (!_sendingGiftId.compareAndSet(null, gift.id)) return
         viewModelScope.launch(Dispatchers.IO) {
-            _sendingGiftId.value = gift.id
+            try {
             _error.value = null
             walletRepository.sendGift(
                 receiverId = receiverId,
@@ -127,12 +129,16 @@ class WalletViewModel @Inject constructor(
                 isPublic = isPublic,
                 idempotencyKey = idempotencyKey
             ).onSuccess { receipt ->
-                _lastReceipt.value = receipt
+                if (walletRepository.currentAccountId() == receipt.senderId) _lastReceipt.value = receipt
             }.onFailure { failure ->
                 val rawMessage = failure.message.orEmpty()
                 _error.value = when {
+                    rawMessage.contains("WALLET_DEBT_OUTSTANDING", ignoreCase = true) ->
+                        "Tu cuenta tiene monedas pendientes por un reembolso. La próxima compra verificable pagará primero esa deuda."
                     rawMessage.contains("INSUFFICIENT_BALANCE", ignoreCase = true) ->
                         "Saldo insuficiente. Recarga monedas y vuelve a confirmar el regalo."
+                    rawMessage.contains("LIVE_GIFTS_DISABLED", ignoreCase = true) ->
+                        "El creador desactivó los regalos para este directo. No se descontaron monedas."
                     rawMessage.contains("GIFTS_DISABLED", ignoreCase = true) ->
                         "Los regalos están temporalmente desactivados. No se descontaron monedas."
                     rawMessage.contains("LIVE_NOT_ACTIVE", ignoreCase = true) ->
@@ -150,13 +156,18 @@ class WalletViewModel @Inject constructor(
                     rawMessage.contains("GIFT_NOT_FOUND", ignoreCase = true) ->
                         "El catálogo cambió. Actualízalo y vuelve a seleccionar el regalo."
                     rawMessage.contains("DATABASE_ERROR", ignoreCase = true) ->
-                        "No se pudo confirmar el regalo. No se descontaron monedas; vuelve a intentarlo."
-                    else -> failure.message ?: "No se pudo enviar el regalo. No se descontaron monedas."
+                        "No se pudo confirmar el regalo. Reintenta el mismo regalo para comprobar el envío sin duplicarlo."
+                    else -> "No se pudo confirmar la respuesta. Reintenta el mismo regalo; se comprobará el envío anterior sin duplicar el cargo."
                 }
             }
-            _sendingGiftId.value = null
+            } finally {
+                _sendingGiftId.value = null
+            }
         }
     }
+
+    fun hasPendingGift(receiverId: String, liveStreamId: String, giftId: String, isPublic: Boolean): Boolean =
+        walletRepository.hasPendingGift(receiverId, liveStreamId, giftId, isPublic)
 
     fun clearError() {
         _error.value = null
@@ -177,6 +188,10 @@ class WalletViewModel @Inject constructor(
                         }
                         else -> "Google Play devolvió un estado no reconocido."
                     }
+                    // A new purchase may have paid a previous refund debt;
+                    // read the authoritative wallet again instead of trusting
+                    // only the purchase response.
+                    walletRepository.fetchBalance()
                 }
                 .onFailure { failure ->
                     _billingMessage.value = failure.message ?: "No se pudo verificar la compra con Google Play."

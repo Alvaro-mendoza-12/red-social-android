@@ -10,7 +10,7 @@ import conectate.com.data.localfallback.UbuntuStorageUrl
 object UbuntuMedia {
     fun resolveUrl(url: String?): String? = UbuntuStorageUrl.rewrite(url)
 
-    fun mediaItem(url: String): MediaItem {
+    fun mediaItem(url: String, mediaId: String? = null): MediaItem {
         val resolvedUrl = resolveUrl(url) ?: url
         return MediaItem.Builder()
             .setUri(resolvedUrl)
@@ -18,6 +18,9 @@ object UbuntuMedia {
             // sea el mismo. Una clave estable permite reutilizar los bytes ya
             // descargados al abrir el video otra vez.
             .setCustomCacheKey(UbuntuStorageUrl.stableCacheKey(resolvedUrl))
+            .apply {
+                mediaId?.trim()?.takeIf { it.isNotBlank() }?.let(::setMediaId)
+            }
             .build()
     }
 

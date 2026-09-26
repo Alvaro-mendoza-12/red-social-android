@@ -41,4 +41,7 @@
     <string name="widget_action_videos">Videos</string>
     <string name="widget_action_moment">Moment</string>
     <string name="widget_action_chat">Chat</string>
+    <string name="two_factor_local_reset_title">Kontosicherheit</string>
+    <string name="two_factor_local_reset_message">Der verschlüsselte Speicher auf diesem Gerät wurde zurückgesetzt. Wenn für dein Konto die Bestätigung in zwei Schritten aktiviert ist, melde dich mit deiner Authenticator-App oder einem Ersatzcode an. Der Schutz auf dem Server bleibt aktiv.</string>
+    <string name="two_factor_local_reset_ok">Verstanden</string>
 </resources>

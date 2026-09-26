@@ -184,6 +184,38 @@ async function testOpaqueCursorBindsOwnerSurfaceProfileRevisionAndSnapshot() {
   assert.deepEqual(wrongOwner.body, { error: 'RECOMMENDATION_CURSOR_INVALID' })
 }
 
+async function testCursorKeepsTheOriginalRankingClockAcrossPages() {
+  let currentNow = NOW
+  const rankingTimes = []
+  const harness = createHarness({
+    now: () => currentNow,
+    rankAlgorithmCandidates: (input) => {
+      rankingTimes.push(input.now)
+      return {
+        ranked: input.candidates.map((entry, index) => ({
+          candidateId: entry.id,
+          sourceIndex: index,
+          explanation: [],
+        })),
+      }
+    },
+  })
+  const first = await invoke(harness, { surface: 'video', limit: 1 })
+  currentNow += 30_000
+  const next = await invoke(harness, {
+    surface: 'video',
+    limit: 1,
+    cursor: first.body.page.nextCursor,
+  })
+
+  assert.equal(next.statusCode, 200)
+  assert.deepEqual(rankingTimes, [NOW, NOW])
+  assert.equal(harness.calls[0].now, NOW)
+  assert.equal(harness.calls[1].now, NOW)
+  const decoded = decodeOpaqueCursor(next.body.page.nextCursor, CURSOR_SECRET, currentNow)
+  assert.equal(decoded.issuedAt, NOW)
+}
+
 async function testExplanationsAreStrictlyGated() {
   const harness = createHarness({
     algorithmFeatureFlags: () => ({ core: true, explanations: false }),
@@ -294,6 +326,7 @@ Promise.resolve()
   .then(testMissingCursorSecretFailsBeforeCandidateLoading)
   .then(testAuthenticatedOwnedProfileAndAuthoritativeRanking)
   .then(testOpaqueCursorBindsOwnerSurfaceProfileRevisionAndSnapshot)
+  .then(testCursorKeepsTheOriginalRankingClockAcrossPages)
   .then(testExplanationsAreStrictlyGated)
   .then(testLearningModesNeverOverrideExplicitControl)
   .then(testCursorFailsClosedWhenTheProviderSnapshotChanges)

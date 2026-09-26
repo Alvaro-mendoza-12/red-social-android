@@ -1,0 +1,21 @@
+package conectate.com.presentation.social
+
+import conectate.com.data.model.Post
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Test
+
+class SocialRefreshOrderTest {
+    @Test
+    fun refreshChangesOrderOnlyInsideRelevanceBands() {
+        val posts = (1..12).map {
+            Post(id = "post-$it", userId = "user-$it", userName = "User $it", content = "Post $it")
+        }
+        val first = diversifySocialRefresh(posts, "refresh-a", bandSize = 4)
+        val second = diversifySocialRefresh(posts, "refresh-b", bandSize = 4)
+
+        assertNotEquals(first.map(Post::id), second.map(Post::id))
+        assertEquals(posts.take(4).map(Post::id).toSet(), first.take(4).map(Post::id).toSet())
+        assertEquals(posts.drop(4).take(4).map(Post::id).toSet(), first.drop(4).take(4).map(Post::id).toSet())
+    }
+}

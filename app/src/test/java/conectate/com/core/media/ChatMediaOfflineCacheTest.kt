@@ -6,6 +6,9 @@ import java.nio.file.Files
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -157,6 +160,221 @@ class ChatMediaOfflineCacheTest {
 
             assertEquals(0, requests.get())
             assertNull(cache.resolveCachedUri("https://cdn.example.test/chat-media/photo.jpg"))
+        }
+    }
+
+    @Test
+    fun `explicitly opened media is cached even when automatic downloads are disabled`() = runBlocking {
+        withTemporaryDirectory { root ->
+            val source = "https://cdn.example.test/chat-media/photo.jpg"
+            val cache = ChatMediaOfflineCache(
+                rootDirectory = root,
+                accountIdProvider = { "viewer" },
+                automaticMediaEnabled = { false },
+                availableBytes = { Long.MAX_VALUE / 4L },
+                minFreeSpaceBytes = 0L,
+                connectionFactory = { url: URL ->
+                    object : HttpURLConnection(url) {
+                        override fun connect() = Unit
+                        override fun disconnect() = Unit
+                        override fun usingProxy() = false
+                        override fun getResponseCode() = HTTP_OK
+                        override fun getContentType() = "image/jpeg"
+                        override fun getContentLengthLong() = 4L
+                        override fun getInputStream() = ByteArrayInputStream(byteArrayOf(1, 2, 3, 4))
+                    }
+                }
+            )
+
+            cache.cacheExplicitlyOpenedMedia(source, source)
+
+            repeat(100) {
+                if (cache.resolveCachedUri(source) != null) return@repeat
+                delay(10L)
+            }
+            assertNotNull(cache.resolveCachedUri(source))
+        }
+    }
+
+    @Test
+    fun `opened prefetched media survives eviction and a new cache instance`() = runBlocking {
+        withTemporaryDirectory { root ->
+            val cache = cache(root, quotaBytes = 4L, entryBytes = 4L)
+            val source = "https://cdn.example.test/chat-media/kept.jpg"
+            cache.storeForTest(source, "image/jpeg", 4L, ByteArrayInputStream(ByteArray(4) { 1 })).getOrThrow()
+            assertNotNull(cache.resolveCachedUri(source, retain = true))
+            cache.storeForTest("chat-media/new.jpg", "image/jpeg", 4L, ByteArrayInputStream(ByteArray(4) { 2 })).getOrThrow()
+            cache.storeForTest("chat-media/newer.jpg", "image/jpeg", 4L, ByteArrayInputStream(ByteArray(4) { 3 })).getOrThrow()
+
+            val restarted = cache(root, quotaBytes = 4L, entryBytes = 4L)
+            assertNotNull(restarted.resolveCachedUri(source))
+            assertNull(restarted.resolveCachedUri("chat-media/new.jpg"))
+            assertNotNull(restarted.resolveCachedUri("chat-media/newer.jpg"))
+            val usage = restarted.currentAccountUsage()!!
+            assertEquals(4L, usage.retainedBytes)
+            assertEquals(4L, usage.prefetchedBytes)
+            assertEquals(2, usage.fileCount)
+        }
+    }
+
+    @Test
+    fun `retained file may exceed prefetch quota without deleting old copies`() = runBlocking {
+        withTemporaryDirectory { root ->
+            val cache = cache(root, quotaBytes = 3L, entryBytes = 2L)
+            cache.storeForTest("chat-media/old.jpg", "image/jpeg", 2L, ByteArrayInputStream(ByteArray(2) { 1 })).getOrThrow()
+            cache.storeForTest("chat-media/opened.mp4", "video/mp4", 5L, ByteArrayInputStream(ByteArray(5) { 2 }), retain = true).getOrThrow()
+            assertNotNull(cache.resolveCachedUri("chat-media/old.jpg"))
+            assertEquals(5L, cache.currentAccountUsage()!!.retainedBytes)
+        }
+    }
+
+    @Test
+    fun `truncated response cannot replace healthy entries or appear offline`() = runBlocking {
+        withTemporaryDirectory { root ->
+            val cache = cache(root, quotaBytes = 4L, entryBytes = 4L)
+            cache.storeForTest("chat-media/old.jpg", "image/jpeg", 4L, ByteArrayInputStream(ByteArray(4) { 1 })).getOrThrow()
+            val result = cache.storeForTest("chat-media/truncated.jpg", "image/jpeg", 4L, ByteArrayInputStream(ByteArray(2) { 2 }))
+            assertTrue(result.isFailure)
+            assertNull(cache.resolveCachedUri("chat-media/truncated.jpg"))
+            assertNotNull(cache.resolveCachedUri("chat-media/old.jpg"))
+            assertEquals(0, root.walkTopDown().count { it.name.endsWith(".part") })
+        }
+    }
+
+    @Test
+    fun `low space never discards retained media to make room`() = runBlocking {
+        withTemporaryDirectory { root ->
+            var freeBytes = 100L
+            val cache = ChatMediaOfflineCache(
+                rootDirectory = root,
+                accountIdProvider = { "viewer" },
+                automaticMediaEnabled = { true },
+                availableBytes = { freeBytes },
+                minFreeSpaceBytes = 10L
+            )
+            cache.storeForTest("chat-media/kept.jpg", "image/jpeg", 2L, ByteArrayInputStream(byteArrayOf(1, 2)), retain = true).getOrThrow()
+            freeBytes = 11L
+            assertTrue(cache.storeForTest("chat-media/new.jpg", "image/jpeg", 2L, ByteArrayInputStream(byteArrayOf(3, 4)), retain = true).isFailure)
+            assertNotNull(cache.resolveCachedUri("chat-media/kept.jpg"))
+        }
+    }
+
+    @Test
+    fun `storage confirmation cannot clear a different signed in account`() = runBlocking {
+        withTemporaryDirectory { root ->
+            val first = cache(root, accountId = "first")
+            val second = cache(root, accountId = "second")
+            second.storeForTest("chat-media/kept.jpg", "image/jpeg", 2L, ByteArrayInputStream(byteArrayOf(1, 2)), retain = true).getOrThrow()
+            val firstKey = first.currentAccountUsage()!!.accountKey
+            assertTrue(!second.clearCurrentAccount(firstKey))
+            assertNotNull(second.resolveCachedUri("chat-media/kept.jpg"))
+            assertTrue(second.clearCurrentAccount(second.currentAccountUsage()!!.accountKey))
+            assertNull(second.resolveCachedUri("chat-media/kept.jpg"))
+        }
+    }
+
+    @Test
+    fun `clear rejects an outstanding download instead of restoring deleted copies`() = runBlocking {
+        withTemporaryDirectory { root ->
+            val started = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val finished = CountDownLatch(1)
+            val source = "https://cdn.example.test/chat-media/slow.jpg"
+            val cache = ChatMediaOfflineCache(
+                rootDirectory = root,
+                accountIdProvider = { "viewer" },
+                automaticMediaEnabled = { true },
+                availableBytes = { Long.MAX_VALUE / 4L },
+                minFreeSpaceBytes = 0L,
+                connectionFactory = { url ->
+                    object : HttpURLConnection(url) {
+                        override fun connect() = Unit
+                        override fun disconnect() { finished.countDown() }
+                        override fun usingProxy() = false
+                        override fun getResponseCode(): Int {
+                            started.countDown()
+                            check(release.await(5, TimeUnit.SECONDS))
+                            return HTTP_OK
+                        }
+                        override fun getContentType() = "image/jpeg"
+                        override fun getContentLengthLong() = 2L
+                        override fun getInputStream() = ByteArrayInputStream(byteArrayOf(1, 2))
+                    }
+                }
+            )
+            try {
+                cache.cacheExplicitlyOpenedMedia(source, source)
+                assertTrue(started.await(5, TimeUnit.SECONDS))
+                assertTrue(cache.clearCurrentAccount())
+            } finally {
+                release.countDown()
+            }
+            assertTrue(finished.await(5, TimeUnit.SECONDS))
+            assertNull(cache.resolveCachedUri(source))
+        }
+    }
+
+    @Test
+    fun `resolution from an old account cannot enqueue media under the new account`() = runBlocking {
+        withTemporaryDirectory { root ->
+            val requests = AtomicInteger()
+            val cache = ChatMediaOfflineCache(
+                rootDirectory = root,
+                accountIdProvider = { "new-account" },
+                automaticMediaEnabled = { true },
+                connectionFactory = { _: URL ->
+                    requests.incrementAndGet()
+                    error("Must not download for another account")
+                }
+            )
+            cache.cacheExplicitlyOpenedMedia("chat-media/private.jpg", "https://cdn.test/private.jpg", expectedAccountId = "old-account")
+            cache.cacheOpenedMedia("chat-media/private.jpg", "https://cdn.test/private.jpg", expectedAccountId = "old-account")
+            assertEquals(0, requests.get())
+            assertEquals(0, cache.currentAccountUsage()!!.fileCount)
+        }
+    }
+
+    @Test
+    fun `opening a download already in flight promotes the completed copy`() = runBlocking {
+        withTemporaryDirectory { root ->
+            val started = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val finished = CountDownLatch(1)
+            val requests = AtomicInteger()
+            val source = "https://cdn.example.test/chat-media/slow.jpg"
+            val cache = ChatMediaOfflineCache(
+                rootDirectory = root,
+                accountIdProvider = { "viewer" },
+                automaticMediaEnabled = { true },
+                availableBytes = { Long.MAX_VALUE / 4L },
+                minFreeSpaceBytes = 0L,
+                connectionFactory = { url ->
+                    requests.incrementAndGet()
+                    object : HttpURLConnection(url) {
+                        override fun connect() = Unit
+                        override fun disconnect() { finished.countDown() }
+                        override fun usingProxy() = false
+                        override fun getResponseCode(): Int {
+                            started.countDown()
+                            check(release.await(5, TimeUnit.SECONDS))
+                            return HTTP_OK
+                        }
+                        override fun getContentType() = "image/jpeg"
+                        override fun getContentLengthLong() = 2L
+                        override fun getInputStream() = ByteArrayInputStream(byteArrayOf(1, 2))
+                    }
+                }
+            )
+            try {
+                cache.cacheOpenedMedia(source, source)
+                assertTrue(started.await(5, TimeUnit.SECONDS))
+                cache.cacheExplicitlyOpenedMedia(source, source)
+            } finally {
+                release.countDown()
+            }
+            assertTrue(finished.await(5, TimeUnit.SECONDS))
+            assertEquals(1, requests.get())
+            assertEquals(2L, cache.currentAccountUsage()!!.retainedBytes)
         }
     }
 

@@ -4,6 +4,7 @@ const {
   callAiService,
   createFixedWindowRateLimiter,
   handleAiError,
+  publicAiErrorCode,
   sanitizeContext,
   sanitizeFeedback,
 } = require('../src/ai-routes')
@@ -45,6 +46,8 @@ async function run() {
     detailLevel: 'anything-else',
   }, 'user-1')
   assert.strictEqual(standardContext.detailLevel, 'standard')
+  assert.strictEqual(publicAiErrorCode({ payload: { error: 'INVALID_AI_INPUT' } }), 'INVALID_AI_INPUT')
+  assert.strictEqual(publicAiErrorCode({ payload: { error: 'SQL failed at /run/secrets/key' } }), 'AI_SERVICE_ERROR')
 
   const feedback = sanitizeFeedback({
     message: 'm'.repeat(2000),
@@ -114,6 +117,16 @@ async function run() {
       assert.strictEqual(logged.length, 1)
       assert.strictEqual(logged[0][1].code, 'AI_SERVICE_UNAVAILABLE')
       assert.ok(!JSON.stringify(logged).includes('offline'))
+
+      handleAiError(Object.assign(new Error('private upstream failure'), {
+        status: 502,
+        payload: { error: 'private path /run/secrets/ai-key' },
+      }), response, () => assert.fail('known AI errors must not reach the generic 500 handler'))
+      assert.deepStrictEqual(sent, {
+        status: 502,
+        body: { error: 'AI_SERVICE_ERROR' },
+      })
+      assert.ok(!JSON.stringify(logged).includes('/run/secrets/ai-key'))
     } finally {
       console.error = originalConsoleError
     }

@@ -23,6 +23,8 @@ import conectate.com.data.supabase.AuthService
 import conectate.com.domain.sync.ChatSyncDataSource
 import conectate.com.domain.sync.CommunitySyncDataSource
 import conectate.com.domain.sync.GroupSyncDataSource
+import conectate.com.domain.sync.PendingSyncRetryException
+import kotlinx.coroutines.CancellationException
 import conectate.com.util.NetworkConnectivityObserver
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
@@ -49,7 +51,7 @@ class SyncManager @Inject constructor(
     private val crashReporter: CrashReporter,
     private val telemetry: AppTelemetry,
     private val appMetrics: AppMetrics,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
 
     private val scope = newSafeScope("SyncManager", dispatchers.io)
@@ -79,6 +81,10 @@ class SyncManager @Inject constructor(
             logger.d(TAG, "Skipping in-process sync request came too soon ($reason)")
             return }
 
+        // Persist the retry before checking connectivity. WorkManager will wait for a real
+        // network even if the app is closed while the message is still pending.
+        scheduleImmediateWorker(reason)
+
         if (!networkObserver.isNetworkAvailable()) {
             logger.d(TAG, "Skipping sync trigger no internet ($reason)")
             return }
@@ -90,11 +96,14 @@ class SyncManager @Inject constructor(
         }
 
         lastSyncTriggerAt.set(now)
-        scheduleImmediateWorker(reason)
-
         scope.launch {
             runCatching { syncNow(reason) }
                 .onFailure { error ->
+                    if (error is CancellationException) throw error
+                    if (error is PendingSyncRetryException) {
+                        logger.w(TAG, "Durable sync retained for retry ($reason)", error)
+                        return@onFailure
+                    }
                     logger.e(TAG, "triggerSync failed ($reason)", error)
                     crashReporter.recordException(
                         throwable = error,
@@ -135,7 +144,7 @@ class SyncManager @Inject constructor(
                 metric = "sync_cycle",
                 attributes = mapOf("reason" to "network_unavailable")
             )
-            return
+            throw PendingSyncRetryException("Network unavailable before sync")
         }
 
         var userId = authService.getCurrentUserId()
@@ -156,14 +165,19 @@ class SyncManager @Inject constructor(
             logger.i(TAG, "Sync started (reason=$reason)")
 
             val failures = mutableListOf<String>()
+            var pendingRetry: Throwable? = null
 
             var retriedMessages = chatSyncDataSource.retryPendingMessages().getOrElse { error ->
+                if (error is CancellationException) throw error
+                pendingRetry = error
                 failures += "retryPendingMessages:${error.message.orEmpty()}"
                 logger.w(TAG, "retryPendingMessages failed", error)
                 0
             }
 
             var retriedDeletes = chatSyncDataSource.retryPendingDeletes().getOrElse { error ->
+                if (error is CancellationException) throw error
+                pendingRetry = error
                 failures += "retryPendingDeletes:${error.message.orEmpty()}"
                 logger.w(TAG, "retryPendingDeletes failed", error)
                 0
@@ -219,6 +233,12 @@ class SyncManager @Inject constructor(
                         "failure_count" to failures.size.toString()
                     )
                 )
+                // A single unfinished outbox is sufficient to retain durable work;
+                // failures in unrelated read stages must not determine delivery retries.
+                pendingRetry?.let { error ->
+                    throw if (error is PendingSyncRetryException) error else
+                        PendingSyncRetryException("Pending message sync failed", error)
+                }
                 if (failures.size >= STAGE_FAILURE_THRESHOLD_FOR_THROW) {
                     val error = IllegalStateException("Critical sync failure: ${failures.joinToString()}")
                     crashReporter.recordException(

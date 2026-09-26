@@ -25,6 +25,8 @@ data class UserEntity(
     @ColumnInfo(defaultValue = "'none'")
     val profile_effect: String = "none",
     val profile_welcome: String? = null,
+    @ColumnInfo(defaultValue = "'{}'")
+    val social_links_json: String = "{}",
     @ColumnInfo(defaultValue = "0")
     val follower_count: Int = 0,
     @ColumnInfo(defaultValue = "0")
@@ -58,6 +60,7 @@ data class UserEntity(
             profile_theme = profile_theme,
             profile_effect = profile_effect,
             profile_welcome = profile_welcome,
+            social_links = decodeSocialLinks(social_links_json),
             followers_count = follower_count,
             following_count = following_count,
             is_verified = is_verified,
@@ -83,6 +86,7 @@ data class UserEntity(
                 profile_theme = user.profile_theme,
                 profile_effect = user.profile_effect,
                 profile_welcome = user.profile_welcome,
+                social_links_json = encodeSocialLinks(user.social_links),
                 follower_count = user.followers_count ?: 0,
                 following_count = user.following_count ?: 0,
                 is_verified = user.is_verified,
@@ -92,5 +96,17 @@ data class UserEntity(
                 last_seen = user.lastSeen
             )
         }
+
+        private fun encodeSocialLinks(values: Map<String, String>): String =
+            org.json.JSONObject(values).toString()
+
+        private fun decodeSocialLinks(raw: String): Map<String, String> = runCatching {
+            val json = org.json.JSONObject(raw)
+            buildMap {
+                json.keys().forEach { key ->
+                    json.optString(key).takeIf(String::isNotBlank)?.let { put(key, it) }
+                }
+            }
+        }.getOrDefault(emptyMap())
     }
 }

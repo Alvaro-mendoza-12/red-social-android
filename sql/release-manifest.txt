@@ -5,6 +5,7 @@ sql/migrations/add_presence_visibility_columns.sql
 sql/migrations/supabase_live_streaming_schema_2026.sql
 sql/migrations/supabase_live_streaming_hashtags_2026.sql
 sql/migrations/supabase_live_streaming_stats_2026.sql
+sql/migrations/20260810_live_experience_metadata.sql
 sql/migrations/supabase_phase2_feed_observability_moderation_media_2026.sql
 
 sql/hotfixes/supabase_hotfix_account_suspension_backend_gate_2026.sql
@@ -49,3 +50,16 @@ sql/security/fix_storage_policies_restrictive_2026-04-25.sql
 
 # Additional hotfixes must be listed explicitly here.
 # Wildcards break the SQL audit/deploy tooling and are intentionally disallowed.
+sql/migrations/20260811_content_safety.sql
+sql/migrations/20260812_moment_audience_reactions.sql
+sql/migrations/20260812_moment_creative_tools.sql
+sql/migrations/20260812_moment_highlight_snapshots.sql
+sql/migrations/20260813_profile_social_links.sql
+sql/migrations/20260813_profile_view_history.sql
+sql/migrations/20260814_moment_licensed_music.sql
+sql/migrations/20260814_community_music_catalog.sql
+sql/migrations/20260814_cross_live_battles.sql
+sql/migrations/20260814_legal_music_system.sql
+sql/migrations/20260815_music_composition_and_retention.sql
+sql/migrations/20260822_video_sound_identity.sql
+sql/migrations/20260824_security_definer_surface_hardening.sql

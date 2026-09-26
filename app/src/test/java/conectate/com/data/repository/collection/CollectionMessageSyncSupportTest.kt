@@ -4,6 +4,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class CollectionMessageSyncSupportTest {
+    @Test
+    fun `fresh receipt replaces stale in-memory status without duplicating messages`() {
+        val merged = CollectionMessageSyncSupport.mergeActiveMessages(
+            current = listOf("1" to "sent", "2" to "sent"),
+            incoming = listOf("1" to "read"),
+            idSelector = { it.first }, createdAtSelector = { it.first }
+        )
+        assertEquals(listOf("1" to "read", "2" to "sent"), merged)
+    }
 
     @Test
     fun `resolveLocallyReadableIds falls back to requested ids when remote confirmation is empty`() {
@@ -26,9 +35,9 @@ class CollectionMessageSyncSupportTest {
     }
 
     @Test
-    fun `resolveDisplayedUnreadCount hides badge while conversation is open`() {
+    fun `opening a conversation does not hide unseen messages`() {
         assertEquals(
-            0,
+            14,
             CollectionMessageSyncSupport.resolveDisplayedUnreadCount(
                 isConversationOpen = true,
                 exactUnread = 14

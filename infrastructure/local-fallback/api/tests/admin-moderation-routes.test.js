@@ -32,6 +32,7 @@ function poolForEmail(email, isAdmin = false) {
 }
 
 function hardDeletePool({
+  actorOwner = true,
   isAdmin = false,
   isTestAccount = true,
   isSuspended = false,
@@ -46,7 +47,14 @@ function hardDeletePool({
       statements.push(sql)
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [], rowCount: 0 }
       if (sql.includes('SELECT u.email,') && sql.includes('COALESCE(m.is_admin')) {
-        return { rows: [{ email: 'admin@example.test', is_admin: true }] }
+        return {
+          rows: [{
+            email: 'admin@example.test',
+            is_admin: true,
+            admin_access_level: 'full',
+            admin_is_owner: actorOwner,
+          }],
+        }
       }
       if (sql.startsWith('SELECT u.id::text,') && sql.includes('FOR UPDATE OF u')) {
         return {
@@ -180,6 +188,46 @@ async function testRoutePermissionsAndValidation() {
   const denied = await invokeRoute(listRoute, { query: {} })
   assert.strictEqual(denied.statusCode, 403)
   assert.deepStrictEqual(denied.body, { error: 'ADMIN_REQUIRED' })
+
+  const viewOnly = fakeApp()
+  const viewOnlyPool = {
+    async query(sql) {
+      if (String(sql).includes('SELECT u.email,')) {
+        return {
+          rows: [{
+            email: 'auditor@example.test',
+            is_admin: true,
+            admin_access_level: 'view',
+            admin_is_owner: false,
+          }],
+        }
+      }
+      throw new Error('Un auditor no debe alcanzar una mutación administrativa')
+    },
+  }
+  registerAdminModerationRoutes(viewOnly.app, {
+    pool: viewOnlyPool,
+    authRequired: (_req, _res, next) => next(),
+    getCurrentUser: async () => ({ id: ADMIN_ID }),
+    userIdentity: () => ({ localUserId: ADMIN_ID, displayUserId: ADMIN_ID }),
+  })
+  const viewAccessRoute = viewOnly.routes.find((route) =>
+    route.method === 'get' && route.path === '/v1/data/admin/access')
+  const viewAccess = await invokeRoute(viewAccessRoute, {})
+  assert.strictEqual(viewAccess.statusCode, 200)
+  assert.strictEqual(viewAccess.body.accessLevel, 'view')
+  assert.strictEqual(viewAccess.body.canWrite, false)
+  assert.strictEqual(viewAccess.body.capabilities.includes('admin.read'), true)
+  const viewPatchRoute = viewOnly.routes.find((route) => route.method === 'patch')
+  const viewMutation = await invokeRoute(viewPatchRoute, {
+    body: { verified: true },
+    params: { id: TARGET_ID },
+  })
+  assert.strictEqual(viewMutation.statusCode, 403)
+  assert.deepStrictEqual(viewMutation.body, {
+    error: 'ADMIN_CAPABILITY_REQUIRED',
+    capability: 'admin.moderation.manage',
+  })
 
   const adminPool = {
     async query(sql) {
@@ -327,6 +375,20 @@ async function testCustomBadgeDelete() {
 async function testFakeAccountHardDelete() {
   const storageRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'conectate-admin-delete-'))
   try {
+    const delegatedAdminFixture = hardDeletePool({ actorOwner: false })
+    await assert.rejects(
+      executeAdminHardDelete({
+        actorIdentity: { localUserId: ADMIN_ID, displayUserId: ADMIN_ID },
+        confirmation: `ELIMINAR ${TARGET_ID}`,
+        pool: delegatedAdminFixture.pool,
+        reason: 'Un administrador delegado no puede borrar cuentas',
+        storageRoot,
+        targetId: TARGET_ID,
+      }),
+      (error) => error.code === 'ADMIN_OWNER_REQUIRED' && error.status === 403,
+    )
+    assert.strictEqual(delegatedAdminFixture.statements.includes('ROLLBACK'), true)
+
     const objectName = `${TARGET_ID}/avatar.jpg`
     const objectPath = path.join(storageRoot, 'avatars', objectName)
     await fs.promises.mkdir(path.dirname(objectPath), { recursive: true })

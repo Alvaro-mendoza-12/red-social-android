@@ -1,11 +1,13 @@
 package conectate.com.presentation.live
 
 import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.repository.LiveRepository
 import conectate.com.data.repository.LiveChannelPointsRepository
 import conectate.com.data.repository.UserRepository
+import conectate.com.data.repository.WalletRepository
 import conectate.com.data.repository.normalizeLiveSessionId
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.model.LiveRole
@@ -20,6 +22,9 @@ import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,7 +61,8 @@ class LiveSessionViewModel @Inject constructor(
     private val liveRepository: LiveRepository,
     private val liveChannelPointsRepository: LiveChannelPointsRepository,
     private val authService: AuthService,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val walletRepository: WalletRepository
 ) : ViewModel() {
 
     val activeSession = liveRepository.activeSession
@@ -66,9 +72,19 @@ class LiveSessionViewModel @Inject constructor(
     val giftEvents = liveRepository.giftEvents
     val viewerCount = liveRepository.viewerCount
     val liveViewers = liveRepository.liveViewers
+    val guestRequests = liveRepository.guestRequests
+    val activeGuests = liveRepository.activeGuests
+    val guestAccessState = liveRepository.guestAccessState
+    val isGuestBroadcasting = liveRepository.isGuestBroadcasting
+    val isGuestMicEnabled = liveRepository.isGuestMicEnabled
+    val isGuestVideoEnabled = liveRepository.isGuestVideoEnabled
+    val battleState = liveRepository.battleState
+    val availableGifts = walletRepository.availableGifts
+    val coinBalance = walletRepository.coinBalance
     val collaborationCapabilities = liveRepository.collaborationCapabilities
     val guestInvitations = liveRepository.guestInvitations
     val activeBattle = liveRepository.activeBattle
+    val battleCandidates = liveRepository.battleCandidates
     val liveSupporters = liveRepository.liveSupporters
     val moderationState = liveRepository.moderationState
     val isMicEnabled = liveRepository.isMicEnabled
@@ -78,12 +94,14 @@ class LiveSessionViewModel @Inject constructor(
     val isMediaTransitioning = liveRepository.isMediaTransitioning
     val currentSource = liveRepository.currentSource
     val cameraFilter = liveRepository.cameraFilter
+    val creatorLayoutStyle = liveRepository.creatorLayoutStyle
     val cameraFilterPerformance = liveRepository.cameraFilterPerformance
     val eglBaseContext = liveRepository.eglBaseContext
     val localVideoTrack = liveRepository.localVideoTrack
     val remoteVideoTracks = liveRepository.remoteVideoTracks
     val liveKitState: StateFlow<LiveKitRoomBridge.State> = liveRepository.liveKitState
     val liveKitRemoteVideos = liveRepository.liveKitRemoteVideos
+    val liveMusic = liveRepository.liveMusic
 
     private val _channelPoints = MutableStateFlow(LiveChannelPointsUiState())
     val channelPoints: StateFlow<LiveChannelPointsUiState> = _channelPoints.asStateFlow()
@@ -98,6 +116,7 @@ class LiveSessionViewModel @Inject constructor(
     val hostPreparation: StateFlow<LiveHostPreparationState> = _hostPreparation.asStateFlow()
 
     private val _connectionRequest = MutableStateFlow<LiveConnectionRequest?>(null)
+    private var hostPreparationJob: Job? = null
     private var collaborationPollingJob: Job? = null
     private var collaborationPollingLiveId: String? = null
     private var channelPointsJob: Job? = null
@@ -108,6 +127,10 @@ class LiveSessionViewModel @Inject constructor(
             liveRepository.runtimeErrors.collect { message ->
                 _uiError.value = message
             }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            walletRepository.fetchAvailableGifts()
+            walletRepository.fetchBalance()
         }
     }
 
@@ -274,9 +297,14 @@ class LiveSessionViewModel @Inject constructor(
         collaborationPollingJob = viewModelScope.launch(Dispatchers.IO) {
             liveRepository.getLiveCollaborationCapabilities()
             while (true) {
+                // Room policy can change after viewers have already joined.
+                // Refresh it for everyone so guest slots/requests appear on
+                // spectator devices, not only on the host that toggled them.
+                liveRepository.refreshActiveLiveStream(normalizedId)
                 liveRepository.refreshGuestInvitations(normalizedId)
                 liveRepository.refreshActiveBattle(normalizedId)
                 liveRepository.refreshLiveSupporters(normalizedId)
+                liveRepository.refreshLiveGiftEvents(normalizedId)
                 delay(4_000L)
             }
         }
@@ -335,6 +363,48 @@ class LiveSessionViewModel @Inject constructor(
         }
     }
 
+    fun startCrossLiveBattle(liveId: String, opponentLiveId: String, opponentUserId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.startBattle(liveId, opponentUserId, opponentLiveId)
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo enviar la invitación de batalla.") }
+        }
+    }
+
+    fun refreshBattleCandidates(liveId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.refreshBattleCandidates(liveId)
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudieron cargar otros creadores en LIVE.") }
+        }
+    }
+
+    fun refreshActiveBattle(liveId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.refreshActiveBattle(liveId)
+                .onFailure { error ->
+                    android.util.Log.w("LiveBattle", "No se pudo actualizar la batalla", error)
+                }
+        }
+    }
+
+    fun respondToCrossLiveBattle(liveId: String, battleId: String, accepted: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            liveRepository.respondToCrossLiveBattle(liveId, battleId, accepted)
+                .onSuccess {
+                    if (accepted) {
+                        liveRepository.connectLiveKit(
+                            liveId = liveId,
+                            role = "host",
+                            publishAudio = true,
+                            publishCamera = isVideoEnabled.value,
+                        ).onFailure { error ->
+                            _uiError.value = error.toUserFacingMessage("La batalla inició, pero no se pudo abrir la sala compartida.")
+                        }
+                    }
+                }
+                .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo responder la batalla.") }
+        }
+    }
+
     fun endBattle(liveId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             liveRepository.endBattle(liveId)
@@ -359,6 +429,7 @@ class LiveSessionViewModel @Inject constructor(
     fun prepareHost(liveId: String) {
         val normalizedId = normalizeLiveSessionId(liveId)
         if (normalizedId == null) {
+            hostPreparationJob?.cancel()
             _hostPreparation.value = LiveHostPreparationState.Failed("El identificador del live no es válido.")
             return
         }
@@ -369,28 +440,36 @@ class LiveSessionViewModel @Inject constructor(
             else -> Unit
         }
 
+        hostPreparationJob?.cancel()
         _hostPreparation.value = LiveHostPreparationState.Loading(normalizedId)
-        viewModelScope.launch(Dispatchers.IO) {
-            val stream = liveRepository.getLiveStreamById(normalizedId).getOrElse { error ->
+        hostPreparationJob = viewModelScope.launch {
+            try {
+                val stream = withContext(Dispatchers.IO) {
+                    liveRepository.getLiveStreamById(normalizedId).getOrThrow()
+                }
+                // A previous lookup must not overwrite a newer host setup screen.
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+                if (currentUserId.isBlank() || !stream.hostUserId.equals(currentUserId, ignoreCase = true)) {
+                    _hostPreparation.value = LiveHostPreparationState.Failed("No eres el anfitrión de este live.")
+                    return@launch
+                }
+
+                _hostPreparation.value = LiveHostPreparationState.Ready(
+                    LiveHostRuntimeRequirements(
+                        liveId = normalizedId,
+                        source = liveSourceFromWire(stream.source),
+                        micEnabled = liveRepository.isMicEnabled.value,
+                        videoEnabled = liveRepository.initialHostVideoEnabled(liveSourceFromWire(stream.source))
+                    )
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
                 _hostPreparation.value = LiveHostPreparationState.Failed(
                     error.toUserFacingMessage("No se pudo preparar el live.")
                 )
-                return@launch
             }
-            val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
-            if (currentUserId.isBlank() || !stream.hostUserId.equals(currentUserId, ignoreCase = true)) {
-                _hostPreparation.value = LiveHostPreparationState.Failed("No eres el anfitrión de este live.")
-                return@launch
-            }
-
-            _hostPreparation.value = LiveHostPreparationState.Ready(
-                LiveHostRuntimeRequirements(
-                    liveId = normalizedId,
-                    source = liveSourceFromWire(stream.source),
-                    micEnabled = liveRepository.isMicEnabled.value,
-                    videoEnabled = liveSourceFromWire(stream.source) != conectate.com.data.model.LiveSource.AUDIO
-                )
-            )
         }
     }
 
@@ -436,6 +515,7 @@ class LiveSessionViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val result = start(normalizedId)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 if (result.isFailure) {
                     val fallback = if (role == LiveRole.HOST) {
                         "No se pudo iniciar el live."
@@ -444,6 +524,10 @@ class LiveSessionViewModel @Inject constructor(
                     }
                     _uiError.value = result.exceptionOrNull().toUserFacingMessage(fallback)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _uiError.value = error.toUserFacingMessage("No se pudo conectar al live. Inténtalo de nuevo.")
             } finally {
                 if (_connectionRequest.value == request) {
                     _connectionRequest.value = null
@@ -488,6 +572,24 @@ class LiveSessionViewModel @Inject constructor(
         liveRepository.toggleMic(enabled)
     }
 
+    fun prepareLiveMusic(
+        uri: Uri,
+        displayName: String,
+        startMs: Long = 0L,
+        endMs: Long? = null,
+    ) {
+        viewModelScope.launch {
+            liveRepository.prepareLiveMusic(uri, displayName, startMs, endMs)
+                .onFailure { _uiError.value = it.message ?: "No se pudo preparar la canción" }
+        }
+    }
+
+    fun setLiveMusicEnabled(enabled: Boolean) = liveRepository.setLiveMusicEnabled(enabled)
+
+    fun setLiveMusicVolume(volume: Float) = liveRepository.setLiveMusicVolume(volume)
+
+    fun clearLiveMusic() = liveRepository.clearLiveMusic()
+
     fun pauseLive() {
         liveRepository.pauseLive()
     }
@@ -512,12 +614,19 @@ class LiveSessionViewModel @Inject constructor(
 
     fun canReuseScreenShareIntent(): Boolean = liveRepository.canReuseScreenShareIntent()
 
+    fun consumeSetupScreenProjectionIntent(): Intent? =
+        liveRepository.consumeSetupScreenProjectionIntent()
+
     fun startCamera(): Boolean {
         return liveRepository.startCamera()
     }
 
     fun setCameraFilter(filter: LiveCameraFilter) {
         liveRepository.setCameraFilter(filter)
+    }
+
+    fun setCreatorLayoutStyle(style: conectate.com.data.model.LiveCreatorLayoutStyle) {
+        liveRepository.setCreatorLayoutStyle(style)
     }
 
     fun switchCamera(): Boolean = liveRepository.switchCamera()
@@ -562,6 +671,36 @@ class LiveSessionViewModel @Inject constructor(
     fun announceCommittedGift(receipt: GiftReceipt) {
         liveRepository.announceCommittedGift(receipt)
     }
+
+    fun requestGuestAccess() = liveRepository.requestGuestAccess()
+
+    fun cancelGuestAccessRequest() = liveRepository.cancelGuestAccessRequest()
+
+    fun respondToGuestRequest(socketId: String, accepted: Boolean) {
+        liveRepository.respondToGuestRequest(socketId, accepted)
+    }
+
+    fun startGuestBroadcast(videoEnabled: Boolean, micEnabled: Boolean): Boolean =
+        liveRepository.startGuestBroadcast(videoEnabled, micEnabled)
+
+    fun setGuestMicEnabled(enabled: Boolean) = liveRepository.setGuestMicEnabled(enabled)
+
+    fun setGuestVideoEnabled(enabled: Boolean): Boolean = liveRepository.setGuestVideoEnabled(enabled)
+
+    fun leaveGuestSeat() = liveRepository.leaveGuestSeat()
+
+    fun refreshGifts() {
+        viewModelScope.launch(Dispatchers.IO) {
+            walletRepository.fetchAvailableGifts()
+            walletRepository.fetchBalance()
+        }
+    }
+
+    fun startBattle(opponentSocketId: String, durationSeconds: Int) {
+        liveRepository.startBattle(opponentSocketId, durationSeconds)
+    }
+
+    fun respondToBattle(accepted: Boolean) = liveRepository.respondToBattle(accepted)
 
     fun updateModerationSettings(chatPaused: Boolean, blockedWords: List<String>) {
         liveRepository.updateLiveModerationSettings(

@@ -1,4 +1,5 @@
-const { isAppAdmin } = require('./admin-moderation-routes')
+const { appAdminHasCapability } = require('./admin-moderation-routes')
+const { ADMIN_CAPABILITY } = require('./admin-capabilities')
 const { synchronizeGameCatalog } = require('./playmatch-catalog-sync')
 const { slugify } = require('./game-catalog-providers')
 
@@ -194,6 +195,7 @@ async function searchCatalog(pool, options = {}) {
       WHERE gc.active=TRUE
         AND ($1 OR gc.support_level <> 'UNSUPPORTED')
         AND ($2='' OR lower(gc.name) LIKE '%'||$2||'%' OR lower(COALESCE(gc.slug,'')) LIKE '%'||$2||'%')
+        AND COALESCE(NULLIF(BTRIM(gc.cover_url),''),NULLIF(BTRIM(gc.logo_url),''),NULLIF(BTRIM(gc.icon_url),''),NULLIF(BTRIM(gc.image_url),'')) IS NOT NULL
       ORDER BY
         CASE WHEN $2<>'' AND lower(gc.name)= $2 THEN 0 WHEN $2<>'' AND lower(gc.name) LIKE $2||'%' THEN 1 ELSE 2 END,
         CASE WHEN $2='' THEN gc.sort_order ELSE 0 END,
@@ -220,9 +222,12 @@ async function popularCatalog(pool, limit = 12) {
        LEFT JOIN fallback_matchmaking_sessions ms
          ON ms.created_at > NOW()-INTERVAL '30 days'
         AND (COALESCE(ms.criteria->'gameIds',ms.criteria->'game_ids','[]'::jsonb) ? gc.id)
-      WHERE gc.active=TRUE AND gc.support_level <> 'UNSUPPORTED'
+      WHERE gc.active=TRUE
+        AND gc.support_level <> 'UNSUPPORTED'
+        AND COALESCE(NULLIF(BTRIM(gc.cover_url),''),NULLIF(BTRIM(gc.logo_url),''),NULLIF(BTRIM(gc.icon_url),''),NULLIF(BTRIM(gc.image_url),'')) IS NOT NULL
       GROUP BY gc.id
-      ORDER BY (COUNT(DISTINCT ug.user_id)*10 + COUNT(DISTINCT ms.id)*3) DESC,
+      ORDER BY CASE WHEN gc.support_level='FULLY_SUPPORTED' THEN 0 ELSE 1 END,
+               (COUNT(DISTINCT ug.user_id)*10 + COUNT(DISTINCT ms.id)*3) DESC,
                gc.sort_order, gc.name
       LIMIT $1`,
     [safeLimit],
@@ -230,15 +235,16 @@ async function popularCatalog(pool, limit = 12) {
   return rows.map(mapCatalogRow)
 }
 
-async function requireCatalogAdmin(pool, req, res, getCurrentUser, userIdentity) {
+async function requireCatalogAdmin(pool, req, res, getCurrentUser, userIdentity, { readOnly = false } = {}) {
   const user = await getCurrentUser(pool, req)
   if (!user) {
     res.status(404).json({ error: 'USER_NOT_FOUND' })
     return null
   }
   const identity = userIdentity(user)
-  if (!(await isAppAdmin(pool, identity))) {
-    res.status(403).json({ error: 'ADMIN_REQUIRED' })
+  const capability = readOnly ? ADMIN_CAPABILITY.READ : ADMIN_CAPABILITY.CATALOG_MANAGE
+  if (!(await appAdminHasCapability(pool, identity, capability))) {
+    res.status(403).json({ error: 'ADMIN_CAPABILITY_REQUIRED', capability })
     return null
   }
   return { user, identity }
@@ -290,7 +296,7 @@ function registerPlayMatchCatalogRoutes(app, dependencies) {
 
   app.get('/v1/data/playmatch/admin/catalog/stats', authRequired, async (req, res, next) => {
     try {
-      if (!(await requireCatalogAdmin(pool, req, res, getCurrentUser, userIdentity))) return
+      if (!(await requireCatalogAdmin(pool, req, res, getCurrentUser, userIdentity, { readOnly: true }))) return
       const { rows } = await pool.query(
         `SELECT COUNT(*)::int AS total,
                 COUNT(*) FILTER (WHERE active)::int AS active,

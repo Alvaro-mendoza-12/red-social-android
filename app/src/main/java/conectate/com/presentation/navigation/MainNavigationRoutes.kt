@@ -73,6 +73,16 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.OfflineVideos.route) {
+        conectate.com.presentation.videos.OfflineVideosScreen(navController = navController)
+    }
+
+    composable(Screen.CreatePost.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.social.CreatePostScreen(navController = navController)
+        }
+    }
+
     // Social vive dentro del HomeScreen, pero recibe el NavController raíz para
     // poder abrir perfiles, detalles y chats. Por eso el feed recomendado debe
     // estar registrado en este mismo grafo raíz y no únicamente en el NavHost
@@ -85,7 +95,10 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
             conectate.com.presentation.video.VideoFeedScreen(
                 navController = navController,
                 initialVideoId = backStackEntry.arguments?.getString("videoId"),
-                onNavigateToUpload = { navController.navigate(Screen.VideoUpload.route) },
+                onNavigateToUpload = { sound ->
+                    conectate.com.presentation.video.savePendingVideoSound(navController, sound)
+                    navController.navigate(Screen.VideoUpload.route)
+                },
                 onNavigateToSearch = { navController.navigate(Screen.SearchUsers.route) },
                 onNavigateToProfile = { userId ->
                     navController.navigate(Screen.UserProfile.createRoute(userId))
@@ -120,7 +133,10 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
             conectate.com.presentation.video.VideoFeedScreen(
                 navController = navController,
                 initialVideoId = videoId,
-                onNavigateToUpload = { navController.navigate(Screen.VideoUpload.route) },
+                onNavigateToUpload = { sound ->
+                    conectate.com.presentation.video.savePendingVideoSound(navController, sound)
+                    navController.navigate(Screen.VideoUpload.route)
+                },
                 onNavigateToSearch = { navController.navigate(Screen.SearchUsers.route) },
                 onNavigateToProfile = { userId ->
                     navController.navigate(Screen.UserProfile.createRoute(userId))
@@ -382,12 +398,6 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
-    composable(Screen.OfflineVideos.route) {
-        RequireLoggedIn(isLoggedIn, navController) {
-            conectate.com.presentation.videos.OfflineVideosScreen(navController = navController)
-        }
-    }
-
     composable(Screen.CustomizeApp.route) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.settings.CustomizeAppScreen(navController = navController)
@@ -493,14 +503,26 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
                 type = NavType.StringType
                 nullable = true
                 defaultValue = null
-            }
+            },
+            navArgument("resumeMs") {
+                type = NavType.LongType
+                defaultValue = 0L
+            },
+            navArgument("endMs") {
+                type = NavType.LongType
+                defaultValue = 0L
+            },
         )
     ) { backStackEntry ->
         val focusCommentId = backStackEntry.arguments?.getString("focusCommentId")
+        val resumeMs = backStackEntry.arguments?.getLong("resumeMs") ?: 0L
+        val endMs = backStackEntry.arguments?.getLong("endMs") ?: 0L
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.videos.VideoPlayerScreen(
                 navController = navController,
-                focusCommentId = focusCommentId
+                focusCommentId = focusCommentId,
+                initialPositionMs = resumeMs,
+                initialClipEndMs = endMs,
             )
         }
     }
@@ -593,10 +615,40 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.ContentSafety.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.ContentSafetyScreen(navController = navController)
+        }
+    }
+
+    composable(
+        route = Screen.MomentHighlightViewer.route,
+        arguments = listOf(
+            navArgument("highlightId") { type = NavType.StringType },
+            navArgument("title") {
+                type = NavType.StringType
+                defaultValue = "Momentos destacados"
+            }
+        )
+    ) { backStackEntry ->
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.social.MomentHighlightViewerScreen(
+                navController = navController,
+                highlightId = backStackEntry.arguments?.getString("highlightId").orEmpty(),
+                title = backStackEntry.arguments?.getString("title").orEmpty()
+            )
+        }
+    }
+
     composable(
         route = Screen.VideoEditor.route,
         arguments = listOf(
-            navArgument("videoUri") { type = NavType.StringType }
+            navArgument("videoUri") { type = NavType.StringType },
+            navArgument("soundUri") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
         )
     ) { backStackEntry ->
         val videoUriString = backStackEntry.arguments?.getString("videoUri") ?: ""
@@ -604,7 +656,8 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.videos.VideoEditorScreen(
                 navController = navController,
-                videoUri = videoUri
+                videoUri = videoUri,
+                initialSoundUri = backStackEntry.arguments?.getString("soundUri")?.let(Uri::parse),
             )
         }
     }

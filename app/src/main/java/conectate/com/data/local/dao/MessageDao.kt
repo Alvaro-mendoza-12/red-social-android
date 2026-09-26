@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.RawQuery
 import conectate.com.data.local.entity.MessageEntity
 import conectate.com.data.model.Message
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +36,20 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE id IN (:messageIds)")
     fun getMessagesByIdsFlow(messageIds: List<String>): Flow<List<MessageEntity>>
 
+    /** One indexed latest-row lookup per chat; no full-history hydration for the inbox. */
+    suspend fun getLatestInboxCandidates(chatIds: List<String>): List<MessageEntity> =
+        chatIds.distinct().chunked(100).flatMap { readInboxCandidates(inboxCandidateQuery(it)) }
+
+    @RawQuery
+    suspend fun readInboxCandidates(query: androidx.sqlite.db.SupportSQLiteQuery): List<MessageEntity>
+
+    @Query("""
+        SELECT * FROM messages WHERE chat_id = :chatId
+          AND (created_at < :beforeTime OR (created_at = :beforeTime AND id < :beforeId))
+        ORDER BY created_at DESC, id DESC LIMIT :limit
+    """)
+    suspend fun getOlderInboxCandidates(chatId: String, beforeTime: String, beforeId: String, limit: Int): List<MessageEntity>
+
     @Query("DELETE FROM messages WHERE id = :messageId")
     suspend fun deleteMessage(messageId: String)
 
@@ -51,8 +66,14 @@ interface MessageDao {
     }
     
     // OFFLINE SYNC QUERIES
-    @Query("SELECT * FROM messages WHERE is_synced = 0 AND pending_action = 'send' ORDER BY created_at ASC, id ASC")
+    @Query("SELECT * FROM messages WHERE is_synced = 0 AND pending_action = 'send' AND NOT EXISTS (SELECT 1 FROM message_deletions d WHERE d.message_id = messages.id AND d.actor_id = LOWER(TRIM(messages.sender_id)) AND d.for_everyone = 1 AND d.state != 'failed') ORDER BY created_at ASC, id ASC")
     suspend fun getPendingSendMessages(): List<MessageEntity>
+
+    @Query("UPDATE messages SET status = 'failed', pending_action = NULL WHERE id = :messageId AND is_synced = 0 AND pending_action = 'send'")
+    suspend fun markPendingSendFailed(messageId: String)
+
+    @Query("UPDATE messages SET status = 'failed', pending_action = NULL WHERE id = :messageId AND is_synced = 0 AND pending_action = 'send'")
+    suspend fun cancelPendingSendForDeletion(messageId: String)
     
     @Query("SELECT * FROM messages WHERE pending_action = 'delete'")
     suspend fun getPendingDeleteMessages(): List<MessageEntity>
@@ -68,9 +89,6 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE chat_id = :chatId")
     suspend fun deleteMessagesByChatId(chatId: String)
-
-    @Query("DELETE FROM messages")
-    suspend fun nukeAllMessages()
 
     @Query("SELECT * FROM messages WHERE chat_id = :chatId AND sender_id = :senderId AND content = :content LIMIT 1")
     suspend fun getSimilarMessage(chatId: String, senderId: String, content: String): MessageEntity?

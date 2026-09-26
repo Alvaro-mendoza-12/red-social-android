@@ -11,6 +11,28 @@ import org.junit.Test
 
 class PlayMatchUiPolicyTest {
     @Test
+    fun `official logo duplicated as cover is fitted instead of cropped`() {
+        val logo = "https://upload.wikimedia.org/logo.png"
+        val game = PlayMatchGameCatalogItem(
+            id = "logo-only",
+            name = "Logo only",
+            coverUrl = logo,
+            logoUrl = logo,
+        )
+        val distinctCover = game.copy(coverUrl = "https://cdn.example/real-cover.jpg")
+        val providerCover = game.copy(
+            coverUrl = "https://cdn.example/real-cover.jpg",
+            logoUrl = null,
+            iconUrl = "https://cdn.example/real-cover.jpg",
+            imageUrl = "https://cdn.example/real-cover.jpg",
+        )
+
+        assertFalse(PlayMatchUiPolicy.hasDistinctCover(game))
+        assertEquals(true, PlayMatchUiPolicy.hasDistinctCover(distinctCover))
+        assertEquals(true, PlayMatchUiPolicy.hasDistinctCover(providerCover))
+    }
+
+    @Test
     fun `responsive grid never forces two columns on 320dp`() {
         assertEquals(1, PlayMatchUiPolicy.gameGridColumns(320))
         assertEquals(2, PlayMatchUiPolicy.gameGridColumns(360))

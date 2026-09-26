@@ -1,6 +1,12 @@
 package conectate.com.presentation.profile
 
 import androidx.compose.runtime.Composable
+import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -17,8 +23,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
@@ -29,15 +37,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.imageLoader
-import coil.request.CachePolicy
-import coil.request.ImageRequest
+import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Post
 import conectate.com.data.model.Badge
+import conectate.com.data.model.User
+import conectate.com.data.model.profilePublicHandle
+import conectate.com.data.model.MomentHighlight
+import conectate.com.core.profile.ProfileSocialLinks
 import conectate.com.presentation.common.ConnectivityViewModel
 import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.components.CircularProfileImage
@@ -46,9 +57,42 @@ import conectate.com.presentation.components.VideoThumbnail
 import conectate.com.presentation.components.ProfileAmbientBackground
 import conectate.com.presentation.components.ProfileWelcomeBanner
 import conectate.com.presentation.components.CommentAudioPlayer
+import conectate.com.presentation.components.SocialBrandLogo
+import conectate.com.presentation.components.SocialPlatform
+import conectate.com.presentation.messages.CollectionShareDialog
 import conectate.com.presentation.theme.profileThemeColors
 import conectate.com.data.repository.FriendStatus
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+
+private fun profileShareLink(userId: String): String =
+    "https://conectate.com/profile/${Uri.encode(userId.trim())}"
+
+internal fun profileUserIdFromQr(raw: String?): String? {
+    val uri = runCatching { Uri.parse(raw?.trim().orEmpty()) }.getOrNull() ?: return null
+    val validWebHost = uri.scheme in setOf("https", "http") &&
+        uri.host in setOf("conectate.com", "www.conectate.com") &&
+        uri.pathSegments.firstOrNull() == "profile"
+    val validAppHost = uri.scheme == "conectate" && uri.host == "profile"
+    if (!validWebHost && !validAppHost) return null
+    return uri.pathSegments.getOrNull(if (validWebHost) 1 else 0)
+        ?.trim()
+        ?.takeIf { it.isNotBlank() && it.length <= 128 }
+}
+
+private fun profileVisitLabel(raw: String): String {
+    val instant = runCatching { java.time.Instant.parse(raw) }.getOrNull() ?: return "Recientemente"
+    val minutes = java.time.Duration.between(instant, java.time.Instant.now()).toMinutes().coerceAtLeast(0)
+    return when {
+        minutes < 1 -> "Ahora"
+        minutes < 60 -> "Hace $minutes min"
+        minutes < 1_440 -> "Hace ${minutes / 60} h"
+        else -> "Hace ${minutes / 1_440} d"
+    }
+}
 
 @Composable
 fun StatItem(number: Int, label: String, onClick: () -> Unit) {
@@ -58,6 +102,90 @@ fun StatItem(number: Int, label: String, onClick: () -> Unit) {
     ) {
         Text(text = number.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(text = label, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+    }
+}
+
+@Composable
+private fun MomentHighlightsRow(
+    highlights: List<MomentHighlight>,
+    isOwnProfile: Boolean,
+    onCreateMoment: () -> Unit,
+    onOpenHighlight: (MomentHighlight) -> Unit
+) {
+    if (!isOwnProfile && highlights.isEmpty()) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 14.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        if (isOwnProfile) {
+            Column(
+                modifier = Modifier.width(72.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(
+                    onClick = onCreateMoment,
+                    modifier = Modifier.size(68.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outline
+                    )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Crear momento",
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(5.dp))
+                Text("Nuevo", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+        }
+        highlights.forEach { highlight ->
+            Column(
+                modifier = Modifier.width(72.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(
+                    onClick = { onOpenHighlight(highlight) },
+                    modifier = Modifier.size(68.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = androidx.compose.foundation.BorderStroke(
+                        2.dp,
+                        MaterialTheme.colorScheme.outlineVariant
+                    )
+                ) {
+                    val cover = UbuntuStorageUrl.rewrite(highlight.coverMediaUrl)
+                        ?: highlight.coverMediaUrl
+                    if (!cover.isNullOrBlank()) {
+                        AsyncImage(
+                            model = cover,
+                            contentDescription = "Destacado ${highlight.title}",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Star, contentDescription = null)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    highlight.title,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
 
@@ -140,6 +268,176 @@ private fun ProfileDetailsSections(user: conectate.com.data.model.User) {
     }
 }
 
+@Composable
+private fun ProfileInfoSwitcher(
+    selected: Int,
+    onSelected: (Int) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+    ) {
+        Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf("Inicio", "Presentación").forEachIndexed { index, label ->
+                Surface(
+                    onClick = { onSelected(index) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(9.dp),
+                    color = if (selected == index) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        Color.Transparent
+                    },
+                ) {
+                    Text(
+                        text = label,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (selected == index) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontWeight = if (selected == index) FontWeight.Bold else FontWeight.Medium,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileIntroduction(user: conectate.com.data.model.User) {
+    val hasBio = !user.bio.isNullOrBlank()
+    val hasLocation = !user.city.isNullOrBlank() || !user.country.isNullOrBlank()
+    val hasSocialLinks = user.social_links.isNotEmpty()
+    if (!hasBio && !hasLocation && !hasSocialLinks) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        ) {
+            Text(
+                "Este perfil todavía no ha añadido una presentación.",
+                modifier = Modifier.padding(14.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        return
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (hasBio) {
+                Text("Descripción", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text(user.bio.orEmpty(), style = MaterialTheme.typography.bodyMedium)
+            }
+            if (hasLocation) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "Ubicación",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        listOfNotNull(user.city, user.country).joinToString(", "),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+            if (hasSocialLinks) {
+                Text("Redes", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                ProfileSocialLinks(user.social_links)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileSocialLinks(links: Map<String, String>) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val platforms = listOf(
+        SocialPlatform.INSTAGRAM,
+        SocialPlatform.FACEBOOK,
+        SocialPlatform.TIKTOK,
+        SocialPlatform.X,
+        SocialPlatform.WHATSAPP,
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        platforms.forEach { platform ->
+            val storedValue = links[platform.key]
+                ?: if (platform == SocialPlatform.X) links["twitter"] else null
+            storedValue?.takeIf(String::isNotBlank)?.let { rawValue ->
+                val url = if (platform == SocialPlatform.WHATSAPP) {
+                    "https://wa.me/${rawValue.filter(Char::isDigit)}"
+                } else {
+                    rawValue
+                }
+                Surface(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }
+                    },
+                    modifier = Modifier.widthIn(min = 152.dp, max = 220.dp),
+                    shape = RoundedCornerShape(15.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SocialBrandLogo(
+                            platform = platform,
+                            size = 40.dp,
+                            contentDescription = "Abrir ${platform.label}",
+                        )
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                platform.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                            )
+                            Text(
+                                ProfileSocialLinks.displayHandle(platform.key, rawValue)
+                                    .ifBlank { "Abrir perfil" },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(17.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ProfileScreen(
@@ -157,6 +455,8 @@ fun ProfileScreen(
     val sharedPosts by viewModel.sharedPosts.collectAsState()
     val sharedVideos by viewModel.sharedVideos.collectAsState()
     val favoriteVideos by viewModel.favoriteVideos.collectAsState()
+    val momentHighlights by viewModel.momentHighlights.collectAsState()
+    val profileViewers by viewModel.profileViewers.collectAsState()
     val isConnected by connectivityViewModel.isConnected.collectAsState()
     
     var showCreatePostDialog by remember { mutableStateOf(false) }
@@ -171,6 +471,10 @@ fun ProfileScreen(
     // Edit Post State
     var showEditPostDialog by remember { mutableStateOf(false) }
     var postToEdit by remember { mutableStateOf<Post?>(null) }
+    var profileInfoTab by rememberSaveable(userId) { mutableIntStateOf(0) }
+    var profileQrLink by remember { mutableStateOf<String?>(null) }
+    var showProfileViewers by remember { mutableStateOf(false) }
+    var identityDialogUser by remember { mutableStateOf<User?>(null) }
     
     val comments by viewModel.comments.collectAsState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -181,7 +485,121 @@ fun ProfileScreen(
     val scope = rememberCoroutineScope() // Moved scope here to survive dialog dismissal
     var isPosting by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    identityDialogUser?.let { identityUser ->
+        AlertDialog(
+            onDismissRequest = { identityDialogUser = null },
+            title = { Text("ID de Novvin") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("@${profilePublicHandle(identityUser)}")
+                    Text(
+                        text = identityUser.id,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        text = "Comparte el ID completo para que puedan encontrarte sin confundir tu perfil con otro.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("ID de Novvin", identityUser.id))
+                    identityDialogUser = null
+                }) { Text("Copiar ID") }
+            },
+            dismissButton = {
+                TextButton(onClick = { identityDialogUser = null }) { Text("Cerrar") }
+            },
+        )
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val profileQrScanner = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val scannedUserId = profileUserIdFromQr(result.contents)
+        if (!scannedUserId.isNullOrBlank()) {
+            profileQrLink = null
+            (mainNavController ?: navController).navigate(Screen.UserProfile.createRoute(scannedUserId)) {
+                launchSingleTop = true
+            }
+        } else if (!result.contents.isNullOrBlank()) {
+            android.widget.Toast.makeText(context, "Este código no corresponde a un perfil de Novvin.", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    profileQrLink?.let { link ->
+        CollectionShareDialog(
+            title = "Compartir perfil",
+            link = link,
+            onScan = {
+                profileQrScanner.launch(
+                    ScanOptions()
+                        .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                        .setPrompt("Escanea un perfil de Novvin")
+                        .setBeepEnabled(false)
+                        .setOrientationLocked(false)
+                )
+            },
+            onDismiss = { profileQrLink = null },
+        )
+    }
+
+    if (showProfileViewers) {
+        ModalBottomSheet(onDismissRequest = { showProfileViewers = false }) {
+            Text(
+                text = "Visitas recientes",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            )
+            if (profileViewers.isEmpty()) {
+                Text(
+                    text = "Todavía no hay visitas visibles. Solo aparecen cuando ambos usuarios habilitan el historial.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(20.dp)
+                )
+            } else {
+                profileViewers.forEach { visitor ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showProfileViewers = false
+                                (mainNavController ?: navController).navigate(
+                                    Screen.UserProfile.createRoute(visitor.user.id)
+                                )
+                            }
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AsyncImage(
+                            model = UbuntuStorageUrl.rewrite(visitor.user.avatar_url),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(50)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(visitor.user.displayName, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "@${profilePublicHandle(visitor.user)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            profileVisitLabel(visitor.viewedAt),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.navigationBarsPadding().height(12.dp))
+        }
+    }
 
     // ... (existing code)
 
@@ -343,7 +761,7 @@ fun ProfileScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth(),
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 4.dp
             ) {
                 Row(
@@ -357,7 +775,11 @@ fun ProfileScreen(
                 ) {
                     if (userId != null) {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.Default.ArrowBack, "Atrás", tint = Color.White)
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                "Atrás",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     } else {
                         Spacer(modifier = Modifier.width(8.dp))
@@ -366,12 +788,58 @@ fun ProfileScreen(
                     Text(
                         text = "Perfil",
                         style = MaterialTheme.typography.titleLarge,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
                     )
                     
                     if (userId == null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            val ownProfile = (profileState as? ProfileUiState.Success)?.user
+                            if (ownProfile?.profile_view_history_enabled == true) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(44.dp)
+                                        .height(40.dp)
+                                        .clickable { showProfileViewers = true },
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (profileViewers.isEmpty()) {
+                                        Icon(
+                                            Icons.Default.Visibility,
+                                            contentDescription = "Visitas al perfil",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    } else {
+                                        profileViewers.take(3).forEachIndexed { index, visitor ->
+                                            AsyncImage(
+                                                model = UbuntuStorageUrl.rewrite(visitor.user.avatar_url),
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .offset(x = (index * 10).dp)
+                                                    .size(22.dp)
+                                                    .clip(RoundedCornerShape(50)),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        }
+                                        if (profileViewers.size > 3) {
+                                            Text(
+                                                text = "+${profileViewers.size - 3}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .background(
+                                                        MaterialTheme.colorScheme.surfaceVariant,
+                                                        RoundedCornerShape(8.dp)
+                                                    )
+                                                    .padding(horizontal = 3.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             BadgedBox(
                                      badge = {
                                          if (unreadCount > 0) {
@@ -395,7 +863,7 @@ fun ProfileScreen(
                                      }
                                  ) {
                                      IconButton(onClick = { navController.navigate(Screen.Notifications.route) }) {
-                                         Icon(Icons.Default.Notifications, "Notificaciones", tint = Color.White)
+                                         Icon(Icons.Default.Notifications, "Notificaciones", tint = MaterialTheme.colorScheme.onSurface)
                                      }
                                  }
                             // Friends Icon
@@ -405,10 +873,10 @@ fun ProfileScreen(
                                 // or just navigating to FriendRequests for management
                                 navController.navigate(Screen.FollowList.createRoute(viewModel.currentUserId ?: "", "friends"))
                             }) {
-                                Icon(Icons.Default.Group, "Amigos", tint = Color.White)
+                                Icon(Icons.Default.Group, "Amigos", tint = MaterialTheme.colorScheme.onSurface)
                             }
                             IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
-                                Icon(Icons.Default.Settings, "Ajustes", tint = Color.White)
+                                Icon(Icons.Default.Settings, "Ajustes", tint = MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     } else {
@@ -424,7 +892,7 @@ fun ProfileScreen(
                 FloatingActionButton(
                     onClick = { showCreatePostDialog = true },
                     containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = Color.White
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
                     Icon(Icons.Default.Add, "Crear Publicación")
                 }
@@ -466,42 +934,16 @@ fun ProfileScreen(
                     LaunchedEffect(rewrittenAvatarUrl, rewrittenCoverUrl) {
                         val imageLoader = context.imageLoader
                         rewrittenAvatarUrl?.takeIf { it.isNotBlank() }?.let { avatarUrl ->
-                            imageLoader.enqueue(
-                                ImageRequest.Builder(context)
-                                    .data(avatarUrl)
-                                    .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.avatar_url))
-                                    .diskCacheKey(UbuntuStorageUrl.stableCacheKey(user.avatar_url))
-                                    .placeholderMemoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.avatar_url))
-                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                    .build()
-                            )
+                            MediaImageRequestFactory.fullScreen(context, avatarUrl)
+                                ?.let(imageLoader::enqueue)
                         }
                         rewrittenCoverUrl?.takeIf { it.isNotBlank() }?.let { coverUrl ->
-                            imageLoader.enqueue(
-                                ImageRequest.Builder(context)
-                                    .data(coverUrl)
-                                    .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
-                                    .diskCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
-                                    .placeholderMemoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
-                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                    .build()
-                            )
+                            MediaImageRequestFactory.fullScreen(context, coverUrl)
+                                ?.let(imageLoader::enqueue)
                         }
                     }
                     val coverRequest = remember(rewrittenCoverUrl, user.cover_url) {
-                        rewrittenCoverUrl?.let { coverUrl ->
-                            ImageRequest.Builder(context)
-                                .data(coverUrl)
-                                .memoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
-                                .diskCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
-                                .placeholderMemoryCacheKey(UbuntuStorageUrl.stableCacheKey(user.cover_url))
-                                .memoryCachePolicy(CachePolicy.ENABLED)
-                                .diskCachePolicy(CachePolicy.ENABLED)
-                                .crossfade(false)
-                                .build()
-                        }
+                        MediaImageRequestFactory.preview(context, rewrittenCoverUrl)
                     }
                     
                     androidx.compose.foundation.lazy.LazyColumn(
@@ -564,8 +1006,8 @@ fun ProfileScreen(
                                         CircularProfileImage(
                                             imageUrl = rewrittenAvatarUrl,
                                             size = 110.dp,
-                                            showBorder = true,
-                                            borderWidth = if (user.profile_frame.isBlank()) 4.dp else 6.dp,
+                                            showBorder = user.profile_frame.isNotBlank(),
+                                            borderWidth = 5.dp,
                                             borderColor = profileFrameColor,
                                             isVerified = user.is_verified,
                                             mediaType = user.avatar_media_type,
@@ -588,7 +1030,11 @@ fun ProfileScreen(
                                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                                 modifier = Modifier.weight(1f, fill = false)
                                             )
-                                            if (user.is_admin || conectate.com.presentation.components.isUserAdmin(user.username, user.email)) {
+                                            if (
+                                                user.is_admin ||
+                                                conectate.com.presentation.components.isUserAdmin(user.username, user.email) ||
+                                                (isOwnProfile && viewModel.isAdmin)
+                                            ) {
                                                 Spacer(Modifier.width(4.dp))
                                                 conectate.com.presentation.components.AdminBadge(showVerifiedLine = false)
                                             }
@@ -597,11 +1043,25 @@ fun ProfileScreen(
                                                 Icon(Icons.Default.CheckCircle, "Verificado", tint = Color(0xFF1DA1F2), modifier = Modifier.size(20.dp))
                                             }
                                         }
-                                        Text(
-                                            text = "@${user.username ?: "usuario"}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = profileColors.accent
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                        ) {
+                                            Text(
+                                                text = "@${profilePublicHandle(user)}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = profileColors.accent,
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false),
+                                            )
+                                            TextButton(
+                                                onClick = { identityDialogUser = user },
+                                                contentPadding = PaddingValues(horizontal = 4.dp),
+                                            ) {
+                                                Text("Ver ID", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
                                         
                                         Spacer(modifier = Modifier.height(8.dp))
                                         
@@ -626,8 +1086,9 @@ fun ProfileScreen(
                                     if (isOwnProfile) {
                                         OutlinedButton(
                                             onClick = { navController.navigate(Screen.EditProfile.route) },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(12.dp)
+                                            modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                         ) {
                                             Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(4.dp))
@@ -635,25 +1096,34 @@ fun ProfileScreen(
                                         }
                                         OutlinedButton(
                                             onClick = {
-                                                (mainNavController ?: navController).navigate(Screen.WebLoginScanner.createRoute()) {
-                                                    launchSingleTop = true
-                                                }
+                                                val link = profileShareLink(user.id)
+                                                context.startActivity(
+                                                    Intent.createChooser(
+                                                        Intent(Intent.ACTION_SEND).apply {
+                                                            type = "text/plain"
+                                                            putExtra(Intent.EXTRA_TEXT, "Mi usuario: @${profilePublicHandle(user)}\nID: ${user.id}\n$link")
+                                                        },
+                                                        "Compartir perfil",
+                                                    )
+                                                )
                                             },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(12.dp)
+                                            modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                         ) {
-                                            Icon(Icons.Default.QrCodeScanner, null, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text("Web QR", maxLines = 1, fontSize = 12.sp)
+                                            Text("Compartir", maxLines = 1, fontSize = 12.sp)
                                         }
                                         OutlinedButton(
-                                            onClick = { (mainNavController ?: navController).navigate(Screen.MyReports.route) },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(12.dp)
+                                            onClick = { profileQrLink = profileShareLink(user.id) },
+                                            modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                         ) {
-                                            Icon(Icons.Default.Info, null, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.QrCode2, null, modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text("Reportes", maxLines = 1, fontSize = 12.sp)
+                                            Text("Mi QR", maxLines = 1, fontSize = 12.sp)
                                         }
                                     } else {
                                         val isFollowing by viewModel.isFollowing.collectAsState()
@@ -730,50 +1200,53 @@ fun ProfileScreen(
                                     Spacer(modifier = Modifier.height(8.dp))
                                     FilledTonalButton(
                                         onClick = { navController.navigate(Screen.CustomizeApp.route) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(8.dp)
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
                                     ) {
                                         Icon(Icons.Default.Palette, contentDescription = null)
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text("Personalizar perfil")
                                     }
-                                }
-
-                                user.profile_welcome
-                                    ?.takeIf { it.isNotBlank() }
-                                    ?.let { welcome ->
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        ProfileWelcomeBanner(
-                                            message = welcome,
-                                            themeId = user.profile_theme
-                                        )
-                                    }
-                                
-                                // Bio & Stats
-                                if (!user.bio.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(text = user.bio, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-
-                                // Location (City, Country)
-                                if (!user.city.isNullOrBlank() || !user.country.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.LocationOn,
-                                            contentDescription = "Ubicación",
-                                            tint = Color.Gray,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        val location = listOfNotNull(user.city, user.country).joinToString(", ")
-                                        Text(text = location, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                    ) {
+                                        TextButton(onClick = { (mainNavController ?: navController).navigate(Screen.MyReports.route) }) {
+                                            Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(15.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Reportes", fontSize = 11.sp)
+                                        }
+                                        TextButton(
+                                            onClick = {
+                                                (mainNavController ?: navController).navigate(Screen.WebLoginScanner.createRoute()) {
+                                                    launchSingleTop = true
+                                                }
+                                            },
+                                        ) {
+                                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(15.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Vincular web", fontSize = 11.sp)
+                                        }
                                     }
                                 }
 
-                                ProfileDetailsSections(user)
-                                
-                                Spacer(modifier = Modifier.height(16.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
+                                ProfileInfoSwitcher(
+                                    selected = profileInfoTab,
+                                    onSelected = { profileInfoTab = it },
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                if (profileInfoTab == 0) {
+                                    user.profile_welcome
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?.let { welcome ->
+                                            ProfileWelcomeBanner(
+                                                message = welcome,
+                                                themeId = user.profile_theme
+                                            )
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                        }
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                     StatItem(number = userVideos.size, label = "Publicaciones") { }
                                     StatItem(number = user.followers_count ?: 0, label = "Seguidores") {
@@ -782,6 +1255,22 @@ fun ProfileScreen(
                                     StatItem(number = user.following_count ?: 0, label = "Siguiendo") {
                                         navController.navigate(Screen.FollowList.createRoute(user.id, "following"))
                                     }
+                                }
+                                MomentHighlightsRow(
+                                    highlights = momentHighlights,
+                                    isOwnProfile = isOwnProfile,
+                                    onCreateMoment = {
+                                        (mainNavController ?: navController).navigate(Screen.CreateMoment.route)
+                                    },
+                                    onOpenHighlight = { highlight ->
+                                        (mainNavController ?: navController).navigate(
+                                            Screen.MomentHighlightViewer.createRoute(highlight.id, highlight.title)
+                                        )
+                                    }
+                                )
+                                } else {
+                                    ProfileIntroduction(user)
+                                    ProfileDetailsSections(user)
                                 }
                             }
                         }
@@ -1053,8 +1542,34 @@ fun ProfileScreen(
                 }
 
                 is ProfileUiState.Error -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                        Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .padding(horizontal = 28.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PersonOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(44.dp)
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = state.message,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = { viewModel.loadUserProfile(userId, forceNetwork = true) },
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+                        ) {
+                            Text("Reintentar")
+                        }
                     }
                 }
             }
@@ -1062,15 +1577,28 @@ fun ProfileScreen(
             if (showCreatePostDialog) {
                 conectate.com.presentation.components.CreatePostDialog(
                     onDismiss = { showCreatePostDialog = false },
-                    onPostCreated = { content, uris, visibility ->
+                    onPostCreated = { content, uris, visibility, isSensitive, fromDraft, draftOwnerId ->
                         showCreatePostDialog = false
+                        if (draftOwnerId != null && draftOwnerId != viewModel.currentUserId) {
+                            android.widget.Toast.makeText(context,
+                                "La cuenta cambió. Abre tu borrador en la cuenta original.",
+                                android.widget.Toast.LENGTH_LONG).show()
+                            return@CreatePostDialog
+                        }
                         isPosting = true
                         android.widget.Toast.makeText(context, "Publicando...", android.widget.Toast.LENGTH_SHORT).show()
                         
                         scope.launch {
-                            viewModel.postRepository.createPost(content, uris, visibility)
-                                .onSuccess {
+                            viewModel.postRepository.createPost(content, uris, visibility, isSensitive = isSensitive)
+                                .onSuccess { created ->
+                                    if (fromDraft && created.userId.equals(draftOwnerId, ignoreCase = true)) {
+                                        draftOwnerId?.let { account ->
+                                            conectate.com.data.local.PostDraftStore.delete(context, account)
+                                                .onFailure { android.util.Log.w("ProfileScreen", "No se pudo limpiar el borrador publicado", it) }
+                                        }
+                                    }
                                     isPosting = false
+                                    if (draftOwnerId != null && draftOwnerId != viewModel.currentUserId) return@onSuccess
                                     android.widget.Toast.makeText(context, "Publicado con éxito", android.widget.Toast.LENGTH_SHORT).show()
                                     viewModel.loadUserProfile(userId) // Reload to see the new post
                                 }
@@ -1079,7 +1607,8 @@ fun ProfileScreen(
                                     android.widget.Toast.makeText(context, "Error al publicar: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                                 }
                         }
-                    }
+                    },
+                    ownerId = viewModel.currentUserId,
                 )
             }
 

@@ -54,7 +54,7 @@ function sendJson(res, status, payload) {
 
 function readBody(req, maximumBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
-    let body = ''
+    const chunks = []
     let bodyBytes = 0
     let settled = false
     req.on('data', (chunk) => {
@@ -68,11 +68,12 @@ function readBody(req, maximumBytes = MAX_BODY_BYTES) {
         }))
         return
       }
-      body += chunk
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
     })
     req.on('end', () => {
       if (settled) return
       settled = true
+      const body = Buffer.concat(chunks).toString('utf8')
       if (!body.trim()) return resolve({})
       try {
         resolve(JSON.parse(body))

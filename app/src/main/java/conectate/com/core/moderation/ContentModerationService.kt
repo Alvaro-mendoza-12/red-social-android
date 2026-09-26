@@ -3,6 +3,9 @@ package conectate.com.core.moderation
 import conectate.com.core.observability.AppMetrics
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 enum class ModerationContext {
     CHAT_MESSAGE,
@@ -34,8 +37,19 @@ interface ContentModerationService {
 }
 
 @Singleton
+class ModerationNoticeCenter @Inject constructor() {
+    private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val notices: SharedFlow<String> = _notices.asSharedFlow()
+
+    fun publish(message: String) {
+        _notices.tryEmit(message)
+    }
+}
+
+@Singleton
 class SimpleContentModerationService @Inject constructor(
-    private val appMetrics: AppMetrics
+    private val appMetrics: AppMetrics,
+    private val noticeCenter: ModerationNoticeCenter
 ) : ContentModerationService {
 
     private val blockedTerms = setOf(
@@ -45,7 +59,13 @@ class SimpleContentModerationService @Inject constructor(
         "cp link",
         "bomb tutorial",
         "credit card dump",
-        "ssn leak"
+        "ssn leak",
+        "mátate",
+        "matate",
+        "suicídate",
+        "suicidate",
+        "voy a matarte",
+        "pornografia infantil"
     )
 
     private val maskedTerms = setOf(
@@ -55,6 +75,14 @@ class SimpleContentModerationService @Inject constructor(
         "pendejo",
         "mierda",
         "cabron",
+        "puta",
+        "puto",
+        "maricon",
+        "estupido",
+        "idiota",
+        "malparido",
+        "hijueputa",
+        "hijo de puta",
         "wtf"
     )
 
@@ -69,6 +97,8 @@ class SimpleContentModerationService @Inject constructor(
 
     private val phoneRegex = "(?<!\\d)(\\+?\\d[\\d\\s\\-]{6,}\\d)(?!\\d)".toRegex()
     private val emailRegex = "\\b[\\w.%+-]+@[\\w.-]+\\.[A-Za-z]{2,}\\b".toRegex()
+    private val blockedPatterns = blockedTerms.map(::obfuscatedTermRegex)
+    private val maskedPatterns = maskedTerms.map(::obfuscatedTermRegex)
 
     override fun moderate(text: String, context: ModerationContext): ModerationResult {
         val normalized = stripInvisibleChars(text).trim()
@@ -80,10 +110,7 @@ class SimpleContentModerationService @Inject constructor(
             )
         }
 
-        val lower = normalized.lowercase()
-
-        val matchedBlocked = blockedTerms.firstOrNull { lower.contains(it) }
-        if (matchedBlocked != null) {
+        if (blockedPatterns.any { it.containsMatchIn(normalized) }) {
             return emitResult(
                 context = context,
                 verdict = ModerationVerdict.BLOCK,
@@ -147,8 +174,7 @@ class SimpleContentModerationService @Inject constructor(
         }
 
         var masked = sanitized
-        maskedTerms.forEach { term ->
-            val regex = "(?i)\\b${Regex.escape(term)}\\b".toRegex()
+        maskedPatterns.forEach { regex ->
             if (regex.containsMatchIn(masked)) {
                 masked = regex.replace(masked) { "***" }
                 flags += "masked_term"
@@ -210,6 +236,33 @@ class SimpleContentModerationService @Inject constructor(
             .replace("\\r\\n".toRegex(), "\n")
     }
 
+    /**
+     * Detects common evasion without treating harmless substrings as insults.
+     * It accepts repeated letters, separators and leetspeak (for example
+     * `p.u.t.4`, `pvvta` or `1mb3c1l`) while retaining word boundaries.
+     */
+    private fun obfuscatedTermRegex(term: String): Regex {
+        val canonical = java.text.Normalizer.normalize(term.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace("\\p{M}+".toRegex(), "")
+            .filter(Char::isLetterOrDigit)
+        val characters = canonical.map { character ->
+            when (character) {
+                'a' -> "[aáàäâ4@]"
+                'b' -> "[b8]"
+                'e' -> "[eéèëê3]"
+                'g' -> "[g9]"
+                'i' -> "[iíìïî1!|]"
+                'o' -> "[oóòöô0]"
+                's' -> "[s5\$]"
+                't' -> "[t7+]"
+                'u' -> "[uúùüûv]"
+                else -> Regex.escape(character.toString())
+            } + "+"
+        }
+        val body = characters.joinToString("[\\W_]*")
+        return Regex("(?<![\\p{L}\\p{N}])$body(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)
+    }
+
     private fun maskToken(token: String): String {
         if (token.length <= 4) return "***"
         val prefix = token.take(2)
@@ -240,6 +293,20 @@ class SimpleContentModerationService @Inject constructor(
                     "flags" to flags.sorted().joinToString(",")
                 )
             )
+        }
+        val isUserAuthoredPublicContent = context == ModerationContext.COMMENT_CONTENT ||
+            context == ModerationContext.POST_CONTENT ||
+            context == ModerationContext.COMMUNITY_MESSAGE
+        if (isUserAuthoredPublicContent) {
+            when (verdict) {
+                ModerationVerdict.BLOCK -> noticeCenter.publish(
+                    "No publicamos ese contenido porque incumple las normas de convivencia."
+                )
+                ModerationVerdict.SANITIZE -> noticeCenter.publish(
+                    "Ocultamos lenguaje ofensivo o datos sensibles antes de publicar."
+                )
+                ModerationVerdict.ALLOW -> Unit
+            }
         }
         return ModerationResult(
             verdict = verdict,

@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 @Singleton
 class AppSettingsPreferences @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     companion object {
         private const val PREFS_NAME = "app_settings_preferences"
@@ -20,6 +20,7 @@ class AppSettingsPreferences @Inject constructor(
         private const val KEY_LIVES_IN_VIDEO_FEED = "lives_in_video_feed_enabled"
         private const val KEY_LIVES_IN_SOCIAL = "lives_in_social_enabled"
         private const val KEY_DATA_SAVER = "data_saver_enabled"
+        private const val KEY_VIDEO_AUTOPLAY_MOBILE = "video_autoplay_mobile_enabled"
         private const val KEY_AUTO_DOWNLOAD_WIFI = "auto_download_wifi"
         private const val KEY_AUTO_DOWNLOAD_MOBILE = "auto_download_mobile"
         private const val KEY_LANGUAGE = "app_language"
@@ -69,6 +70,11 @@ class AppSettingsPreferences @Inject constructor(
         prefs.getBoolean(KEY_DATA_SAVER, false)
     )
     val dataSaverEnabled: StateFlow<Boolean> = _dataSaverEnabled
+
+    private val _videoAutoplayOnMobile = MutableStateFlow(
+        prefs.getBoolean(KEY_VIDEO_AUTOPLAY_MOBILE, true)
+    )
+    val videoAutoplayOnMobile: StateFlow<Boolean> = _videoAutoplayOnMobile
 
     private val _autoDownloadOnWifi = MutableStateFlow(
         prefs.getBoolean(KEY_AUTO_DOWNLOAD_WIFI, true)
@@ -131,6 +137,11 @@ class AppSettingsPreferences @Inject constructor(
     fun setDataSaverEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_DATA_SAVER, enabled).apply()
         _dataSaverEnabled.value = enabled
+    }
+
+    fun setVideoAutoplayOnMobile(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_VIDEO_AUTOPLAY_MOBILE, enabled).apply()
+        _videoAutoplayOnMobile.value = enabled
     }
 
     fun setAutoDownloadOnWifi(enabled: Boolean) {

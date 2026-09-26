@@ -23,6 +23,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.State
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import android.content.SharedPreferences
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -37,6 +46,10 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+internal fun shouldAnimateProfileAmbient(effectId: String, reduceMotion: Boolean, resumed: Boolean): Boolean =
+    !reduceMotion && resumed && effectId.trim().lowercase(java.util.Locale.ROOT) in
+        setOf("sparkles", "constellation", "confetti", "waves", "orbit")
+
 @Composable
 fun ProfileAmbientBackground(
     themeId: String,
@@ -46,16 +59,25 @@ fun ProfileAmbientBackground(
 ) {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val colors = profileThemeColors(themeId, dark)
-    val transition = rememberInfiniteTransition(label = "profile-ambient")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 6_000),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "profile-ambient-phase"
-    )
+    val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val prefs = remember(context) { context.getSharedPreferences("app_settings_preferences", android.content.Context.MODE_PRIVATE) }
+    val reduceMotion = remember(prefs) { mutableStateOf(prefs.getBoolean("reduce_motion_enabled", false)) }
+    val resumed = remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(prefs, lifecycle) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { shared, key ->
+            if (key == "reduce_motion_enabled") reduceMotion.value = shared.getBoolean(key, false)
+        }
+        val observer = LifecycleEventObserver { _, _ -> resumed.value = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        lifecycle.addObserver(observer)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener); lifecycle.removeObserver(observer) }
+    }
+    val phase = if (shouldAnimateProfileAmbient(effectId, reduceMotion.value, resumed.value)) {
+        val transition = rememberInfiniteTransition(label = "profile-ambient")
+        transition.animateFloat(0f, 1f,
+            infiniteRepeatable(tween(durationMillis = 6_000), RepeatMode.Restart), label = "profile-ambient-phase")
+    } else remember { mutableStateOf(0f) }
 
     Box(modifier = modifier.background(colors.background)) {
         ProfilePattern(
@@ -72,10 +94,12 @@ fun ProfileAmbientBackground(
 private fun ProfilePattern(
     effectId: String,
     colors: ProfileThemeColors,
-    phase: Float,
+    phase: State<Float>,
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
+        // Read animation state during drawing, without recomposing the profile and its content each frame.
+        val phase = phase.value
         val width = size.width
         val height = size.height
         if (width <= 0f || height <= 0f) return@Canvas

@@ -7,6 +7,8 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import conectate.com.domain.sync.shouldRetrySync
+import kotlinx.coroutines.CancellationException
 
 class SyncWorker(
     appContext: Context,
@@ -31,8 +33,10 @@ class SyncWorker(
         return try {
             syncManager.syncNow(reason = reason)
             Result.success()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
-            if (runAttemptCount < 3) {
+            if (shouldRetrySync(e, runAttemptCount)) {
                 Result.retry()
             } else {
                 Result.failure()

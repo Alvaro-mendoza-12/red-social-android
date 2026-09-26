@@ -31,9 +31,9 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,6 +65,7 @@ import kotlin.math.max
 fun VideoEditorScreen(
     navController: NavController,
     videoUri: Uri,
+    initialSoundUri: Uri? = null,
     viewModel: VideoEditorViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -78,10 +79,13 @@ fun VideoEditorScreen(
     var previewPlaybackRequested by remember(previewPlayer) {
         mutableStateOf(previewPlayer.playWhenReady)
     }
-    val configuration = LocalConfiguration.current
-    val compactHeight = configuration.screenHeightDp < 700
-    val compactWidth = configuration.screenWidthDp < 380
-    val previewHeight = (configuration.screenHeightDp.dp * if (compactHeight) 0.25f else 0.31f)
+    val editorDensity = LocalDensity.current
+    val editorWindowSize = LocalWindowInfo.current.containerSize
+    val editorHeight = with(editorDensity) { editorWindowSize.height.toDp() }
+    val editorWidth = with(editorDensity) { editorWindowSize.width.toDp() }
+    val compactHeight = editorHeight < 700.dp
+    val compactWidth = editorWidth < 380.dp
+    val previewHeight = (editorHeight * if (compactHeight) 0.25f else 0.31f)
         .coerceIn(if (compactHeight) 150.dp else 210.dp, if (compactHeight) 215.dp else 330.dp)
     val timelineHeight = if (compactHeight) 132.dp else 168.dp
     val isExporting by viewModel.isExporting.collectAsState()
@@ -137,9 +141,23 @@ fun VideoEditorScreen(
         }
     }
 
-    LaunchedEffect(videoUri) {
+    LaunchedEffect(videoUri, initialSoundUri) {
         viewModel.setInitialVideo(context, videoUri)
+        if (initialSoundUri != null && timeline.tracks.none { it.type == TrackType.AUDIO && it.clips.isNotEmpty() }) {
+            viewModel.addMusicTrack(context, initialSoundUri)
+            activeCategory = EditorCategory.AUDIO
+        }
     }
+
+    val previewMusicClip = timeline.tracks
+        .firstOrNull { it.type == TrackType.AUDIO }
+        ?.clips
+        ?.firstOrNull { it.uri != null }
+    EditorMusicPreviewPlayback(
+        clip = previewMusicClip,
+        currentTimeMs = currentTimeMs,
+        shouldPlay = lifecycleResumed && previewPlaybackRequested && !isExporting,
+    )
 
     Scaffold(
         topBar = {
@@ -202,7 +220,7 @@ fun VideoEditorScreen(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
                                 strokeWidth = 2.dp,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
                         } else {
                             Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(17.dp))
@@ -451,7 +469,7 @@ fun VideoEditorScreen(
                                 )
                                 Text(exportStage.label, color = Color.White, fontWeight = FontWeight.SemiBold)
                                 LinearProgressIndicator(
-                                    progress = exportProgress.coerceIn(0f, 1f),
+                                    progress = { exportProgress.coerceIn(0f, 1f) },
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(7.dp)
@@ -861,6 +879,69 @@ fun VideoEditorScreen(
 }
 
 @Composable
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+private fun EditorMusicPreviewPlayback(
+    clip: EditorClip?,
+    currentTimeMs: Long,
+    shouldPlay: Boolean,
+) {
+    val context = LocalContext.current
+    val uri = clip?.uri
+    val player = remember(uri) {
+        uri?.let {
+            androidx.media3.exoplayer.ExoPlayer.Builder(context.applicationContext)
+                .setMediaSourceFactory(
+                    androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                        conectate.com.util.VideoCache.getCacheDataSourceFactory(context),
+                    ),
+                )
+                .build()
+                .apply {
+                    setAudioAttributes(
+                        androidx.media3.common.AudioAttributes.Builder()
+                            .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+                            .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MUSIC)
+                            .build(),
+                        false,
+                    )
+                    setHandleAudioBecomingNoisy(true)
+                    repeatMode = Player.REPEAT_MODE_ONE
+                    trackSelectionParameters = trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_VIDEO, true)
+                        .build()
+                    setMediaItem(androidx.media3.common.MediaItem.fromUri(it))
+                    prepare()
+                }
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose { player?.release() }
+    }
+
+    LaunchedEffect(player, clip?.musicVolume) {
+        player?.volume = clip?.musicVolume?.coerceIn(0f, 1f) ?: 1f
+    }
+
+    LaunchedEffect(player, shouldPlay) {
+        if (shouldPlay) player?.play() else player?.pause()
+    }
+
+    LaunchedEffect(player, currentTimeMs / 500L, clip?.startOffsetMs, clip?.sourceDurationMs) {
+        val activeClip = clip ?: return@LaunchedEffect
+        val audioPlayer = player ?: return@LaunchedEffect
+        val sourceDuration = activeClip.sourceDurationMs.takeIf { it > 0L }
+            ?: audioPlayer.duration.takeIf { it > 0L }
+            ?: activeClip.durationMs.coerceAtLeast(1_000L)
+        val relativeTimeline = (currentTimeMs - activeClip.startMs).coerceAtLeast(0L)
+        val expected = activeClip.startOffsetMs + (relativeTimeline % sourceDuration.coerceAtLeast(1L))
+        if (kotlin.math.abs(audioPlayer.currentPosition - expected) > 650L) {
+            audioPlayer.seekTo(expected.coerceIn(0L, sourceDuration.coerceAtLeast(1L) - 1L))
+        }
+    }
+}
+
+@Composable
 fun TimelineView(
     timeline: EditorTimeline,
     currentTimeMs: Long,
@@ -941,7 +1022,7 @@ fun TimelineView(
                     fontWeight = FontWeight.Medium
                 )
             }
-            Divider(color = Color.White.copy(alpha = 0.08f))
+            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
 
             Box(
                 modifier = Modifier

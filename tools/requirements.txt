@@ -1,0 +1,2 @@
+# Dependencies for the release and security tooling unit tests.
+PyYAML==6.0.3

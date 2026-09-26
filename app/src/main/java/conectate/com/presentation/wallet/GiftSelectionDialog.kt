@@ -1,6 +1,8 @@
 package conectate.com.presentation.wallet
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -26,7 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -45,11 +47,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import conectate.com.R
 import conectate.com.data.model.GiftReceipt
 import conectate.com.data.model.GiftCategory
 import conectate.com.data.model.GiftTier
@@ -67,7 +73,8 @@ fun GiftSelectionDialog(
     onDismiss: () -> Unit,
     onRecharge: (minimumCoins: Int) -> Unit,
     onGiftSent: (GiftReceipt) -> Unit,
-    viewModel: WalletViewModel = hiltViewModel()
+    viewModel: WalletViewModel = hiltViewModel(),
+    receiverSelector: @Composable (enabled: Boolean) -> Unit = {},
 ) {
     val balance by viewModel.coinBalance.collectAsStateWithLifecycle()
     val gifts by viewModel.availableGifts.collectAsStateWithLifecycle()
@@ -91,16 +98,37 @@ fun GiftSelectionDialog(
         onDismiss()
     }
 
-    ModalBottomSheet(onDismissRequest = { if (sendingGiftId == null) onDismiss() }) {
-        Column(
+    ModalBottomSheet(
+        onDismissRequest = { if (sendingGiftId == null) onDismiss() },
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+    ) {
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.84f)
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(MaterialTheme.colorScheme.surface)
         ) {
+            Image(
+                painter = painterResource(R.drawable.gift_catalog_backdrop_v2),
+                contentDescription = null,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
+                alpha = 0.28f,
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.58f))
+            )
+            Column(
+                modifier = Modifier
+                    .matchParentSize()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -119,11 +147,13 @@ fun GiftSelectionDialog(
                 }
             }
 
+            receiverSelector(sendingGiftId == null)
+
             Button(onClick = { onRecharge(0) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Text("Recargar monedas · elegir monto")
             }
 
-            Divider()
+            HorizontalDivider()
 
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -190,10 +220,12 @@ fun GiftSelectionDialog(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            }
         }
     }
 
     confirmationGift?.let { gift ->
+        val retrying = viewModel.hasPendingGift(receiverId, liveStreamId, gift.id, isPublic)
         val isHighValue = gift.priceDiamonds >=
             billingCapabilities.giftLimits.highValueConfirmationCoins
         var highValueAcknowledged by remember(gift.id) { mutableStateOf(false) }
@@ -222,10 +254,11 @@ fun GiftSelectionDialog(
                     Text(if (isPublic) "Visible en el directo" else "Envío privado")
                     Text("Costo: ${gift.priceDiamonds} monedas")
                     Text(
-                        "Saldo después: ${(balance - gift.priceDiamonds).coerceAtLeast(0)} monedas",
+                        if (retrying) "Comprobaremos el envío anterior sin duplicar el cargo."
+                        else "Saldo después: ${(balance - gift.priceDiamonds).coerceAtLeast(0)} monedas",
                         fontWeight = FontWeight.Bold
                     )
-                    if (balance < gift.priceDiamonds) {
+                    if (balance < gift.priceDiamonds && !retrying) {
                         Text("Tu saldo no alcanza para este regalo.", color = MaterialTheme.colorScheme.error)
                     }
                     if (isHighValue) {
@@ -258,10 +291,10 @@ fun GiftSelectionDialog(
             confirmButton = {
                 Button(
                     enabled = sendingGiftId == null &&
-                        gift.priceDiamonds <= billingCapabilities.giftLimits.maxCoinsPerGift &&
+                        (retrying || gift.priceDiamonds <= billingCapabilities.giftLimits.maxCoinsPerGift) &&
                         (!isHighValue || (safetyCountdown == 0 && highValueAcknowledged)),
                     onClick = {
-                        if (balance < gift.priceDiamonds) {
+                        if (balance < gift.priceDiamonds && !retrying) {
                             onRecharge((gift.priceDiamonds - balance).coerceAtLeast(1))
                         } else {
                             viewModel.sendGift(receiverId, liveStreamId, gift, isPublic)
@@ -273,7 +306,7 @@ fun GiftSelectionDialog(
                         Spacer(Modifier.size(8.dp))
                         Text("Enviando…")
                     } else {
-                        Text(if (balance < gift.priceDiamonds) "Recargar para enviar" else "Enviar regalo")
+                        Text(if (retrying) "Comprobar envío" else if (balance < gift.priceDiamonds) "Recargar para enviar" else "Enviar regalo")
                     }
                 }
             },

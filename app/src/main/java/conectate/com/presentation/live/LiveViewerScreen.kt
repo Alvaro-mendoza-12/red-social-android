@@ -7,7 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,7 +37,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.navigation.Screen
@@ -57,7 +58,7 @@ internal class LiveViewerExitGate {
 }
 
 @Composable
-fun LiveViewerScreen(
+fun LegacyLiveViewerScreen(
     navController: NavController,
     liveId: String,
     viewModel: LiveSessionViewModel = hiltViewModel()
@@ -80,6 +81,7 @@ fun LiveViewerScreen(
     val collaborationCapabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
     val guestInvitations by viewModel.guestInvitations.collectAsStateWithLifecycle()
     val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
+    val liveKitState by viewModel.liveKitState.collectAsStateWithLifecycle()
     val activeBattle by viewModel.activeBattle.collectAsStateWithLifecycle()
     val liveSupporters by viewModel.liveSupporters.collectAsStateWithLifecycle()
     val channelPoints by viewModel.channelPoints.collectAsStateWithLifecycle()
@@ -201,9 +203,10 @@ fun LiveViewerScreen(
         viewModel.startCollaborationPolling(sessionId)
     }
 
-    LaunchedEffect(ownJoinRequest?.id, ownJoinRequest?.status, requestedCamera) {
+    LaunchedEffect(ownJoinRequest?.id, ownJoinRequest?.status, requestedCamera, liveKitState) {
         val request = ownJoinRequest ?: return@LaunchedEffect
-        if (request.status != "accepted" || connectedGuestInvitationId == request.id) return@LaunchedEffect
+        if (request.status != "accepted") return@LaunchedEffect
+        if (connectedGuestInvitationId == request.id && liveKitState != conectate.com.data.livekit.LiveKitRoomBridge.State.DISCONNECTED) return@LaunchedEffect
         viewModel.connectLiveKit(
             liveId = liveId,
             role = "guest",
@@ -464,8 +467,26 @@ fun LiveViewerScreen(
         comments = comments,
         reactions = reactions,
         supporters = liveSupporters,
+        joinedViewers = liveViewers,
         onSendComment = viewModel::sendComment,
         onSendReaction = viewModel::sendReaction,
+        onOpenGift = { showGiftSheet = true },
+        onRequestJoin = if (canRequestJoin) {
+            {
+                when (ownJoinRequest?.status) {
+                    "pending" -> AppFeedbackBus.show("Tu solicitud sigue pendiente de aprobación.")
+                    "accepted" -> AppFeedbackBus.show("Ya estás participando en este live.")
+                    else -> showJoinRequestDialog = true
+                }
+            }
+        } else {
+            null
+        },
+        joinRequestLabel = when (ownJoinRequest?.status) {
+            "pending" -> "Solicitud enviada"
+            "accepted" -> "Participando"
+            else -> "Solicitar unirme"
+        },
         commentingEnabled = !moderation.chatPaused || moderation.canModerate,
         commentingDisabledReason = "Chat pausado por moderación",
         stateOverlayText = stateOverlayText,
@@ -474,14 +495,16 @@ fun LiveViewerScreen(
             conectate.com.data.model.LiveSource.AUDIO -> "Escuchando al creador…"
             conectate.com.data.model.LiveSource.CAMERA -> "Conectando directo…"
         },
-        topStatusBannerText = activeBattle?.let {
-            "BATALLA · ${it.leftScore} – ${it.rightScore}"
+        topStatusBannerText = when (liveKitState) {
+            conectate.com.data.livekit.LiveKitRoomBridge.State.RECONNECTING -> "Reconectando…   |   Calidad media"
+            conectate.com.data.livekit.LiveKitRoomBridge.State.CONNECTING -> "Conectando…   |   Calidad media"
+            else -> activeBattle?.let { "BATALLA · ${it.leftScore} – ${it.rightScore}" }
         },
         leadingTopBarAction = {
             IconButton(onClick = ::leaveViewer) {
                 Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Volver",
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Cerrar live",
                     tint = Color.White
                 )
             }
@@ -494,10 +517,6 @@ fun LiveViewerScreen(
                     onClick = { viewModel.toggleFollow(hostUserId) }
                 )
             }
-            LiveActionChip(
-                text = "Regalar",
-                onClick = { showGiftSheet = true }
-            )
             LiveActionChip(
                 text = "Compartir",
                 onClick = {
@@ -535,9 +554,13 @@ fun LiveViewerScreen(
                         showJoinRequestDialog = true
                     }
                 },
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 118.dp, end = 12.dp)
             )
         },
-        creatorControls = {}
+        creatorControls = {},
+        isViewerLayout = true
     )
 }

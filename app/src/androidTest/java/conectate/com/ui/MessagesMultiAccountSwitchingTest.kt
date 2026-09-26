@@ -23,7 +23,7 @@ class MessagesMultiAccountSwitchingTest {
 
     private val seedRule = object : ExternalResource() {
         override fun before() {
-            TestRuntimeFixture.clear()
+            TestRuntimeFixture.begin()
             harness = TestRuntimeFixture.seedMultiAccountMessagesHarness()
         }
 
@@ -48,7 +48,7 @@ class MessagesMultiAccountSwitchingTest {
             }.getOrDefault(false)
         }
 
-        composeRule.onNodeWithContentDescription("Centro multi-cuenta").performClick()
+        composeRule.onNodeWithContentDescription("Cambiar cuenta").performClick()
 
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
@@ -68,7 +68,7 @@ class MessagesMultiAccountSwitchingTest {
             }.getOrDefault(false)
         }
 
-        composeRule.onNodeWithContentDescription("Ajustes de mensajes").assertIsDisplayed()
+        composeRule.onNodeWithText("Bandeja de entrada").assertIsDisplayed()
         composeRule.onNodeWithText("Activa: ${harness.secondaryAccount.display_name}").assertIsDisplayed()
     }
 }

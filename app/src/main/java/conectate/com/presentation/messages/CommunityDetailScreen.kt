@@ -8,8 +8,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
@@ -109,7 +109,7 @@ fun CommunityDetailScreen(
                 title = { Text(community?.name ?: "Detalles de la comunidad") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
                     }
                 },
                 actions = {
@@ -132,7 +132,7 @@ fun CommunityDetailScreen(
                                     Icon(Icons.Default.Visibility, contentDescription = null)
                                 }
                             )
-                            Divider()
+                            HorizontalDivider()
                         }
                         if (isMember) {
                             DropdownMenuItem(
@@ -145,7 +145,7 @@ fun CommunityDetailScreen(
                                     Icon(Icons.Default.Person, contentDescription = null)
                                 }
                             )
-                            Divider()
+                            HorizontalDivider()
                         }
                         if (amICreator) {
                             DropdownMenuItem(
@@ -158,7 +158,7 @@ fun CommunityDetailScreen(
                                     Icon(Icons.Default.Edit, null)
                                 }
                             )
-                            Divider()
+                            HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("Eliminar comunidad para todos") },
                                 onClick = {
@@ -254,11 +254,17 @@ fun CommunityDetailScreen(
                             }
                             
                             if (community?.category != null) {
-                                AssistChip(
-                                    onClick = { },
-                                    label = { Text(community!!.category!!) },
-                                    enabled = false
-                                )
+                                Surface(
+                                    shape = MaterialTheme.shapes.large,
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                ) {
+                                    Text(
+                                        text = community!!.category!!,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                    )
+                                }
                             }
                             
                             if (community?.only_admins_can_talk == true) {
@@ -300,7 +306,7 @@ fun CommunityDetailScreen(
                                 contentColor = MaterialTheme.colorScheme.error
                             )
                         ) {
-                            Icon(Icons.Default.ExitToApp, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("Salir de la comunidad")
                         }
@@ -911,7 +917,7 @@ private fun CommunityRolePreviewDialog(
                             Text(role.label)
                         }
                     }
-                    Divider()
+                    HorizontalDivider()
                     selected?.let { CommunityRolePermissionList(it) }
                 }
             }

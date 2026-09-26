@@ -131,11 +131,12 @@ export async function signInWithResolvedEmail(
   client: SupabaseClient | null,
   email: string,
   password: string,
+  secondFactorCode?: string,
 ): Promise<void> {
   const normalizedEmail = normalizeEmail(email)
 
   if (isFallbackAuthConfigured) {
-    await signInWithFallbackAuth(normalizedEmail, password)
+    await signInWithFallbackAuth(normalizedEmail, password, secondFactorCode)
     return
   }
 
@@ -160,7 +161,7 @@ export async function signInWithResolvedEmail(
 
   if (response.error) {
     if (isFallbackAuthConfigured && isSupabaseServiceRestrictionError(response.error)) {
-      await signInWithFallbackAuth(normalizedEmail, password)
+      await signInWithFallbackAuth(normalizedEmail, password, secondFactorCode)
       return
     }
     throw response.error

@@ -13,6 +13,14 @@ import conectate.com.data.model.ChatSummary
 import conectate.com.data.model.ChatTranslationSettings
 import conectate.com.data.model.Message
 import conectate.com.data.model.ScheduledMessageJob
+import conectate.com.data.repository.message.ScheduledMessageStore
+import conectate.com.data.repository.message.ScheduledMessagesKey
+import conectate.com.data.repository.message.ScheduledMessagesReader
+import conectate.com.data.repository.message.ScheduledMessagesSnapshot
+import conectate.com.data.repository.message.bindScheduledJobToAccount
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import conectate.com.data.sync.SyncManager
 import conectate.com.data.sync.SyncWorker
 import conectate.com.data.supabase.AuthService
@@ -56,7 +64,7 @@ import javax.inject.Singleton
 
 @Singleton
 class AdvancedMessagingRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val supabaseConfig: SupabaseConfig,
     private val authService: AuthService,
     private val messageRepository: MessageRepository,
@@ -71,7 +79,6 @@ class AdvancedMessagingRepository @Inject constructor(
     companion object {
         private const val PREFS = "advanced_messaging_prefs"
         private const val KEY_FOLDERS = "folders_json"
-        private const val KEY_SCHEDULED_LOCAL = "scheduled_local_json"
         private const val KEY_AUTODESTRUCT = "autodestruct_json"
         private const val KEY_SUMMARY = "summary_json"
         // Production hardening: do not send user message content to public translation services.
@@ -83,6 +90,28 @@ class AdvancedMessagingRepository @Inject constructor(
     private val _folders = MutableStateFlow(loadFoldersLocal())
     val folders: StateFlow<List<ChatFolder>> = _folders.asStateFlow()
     private val translationCache = linkedMapOf<String, ChatTranslationSettings>()
+    private val scheduledStore by lazy { ScheduledMessageStore(prefs) }
+    private val scheduledMutations = Mutex()
+    private val scheduledReader by lazy {
+        ScheduledMessagesReader(scheduledStore, ::scheduledAccount, { authService.getAccessTokenAwait() }, fetch = { key, token ->
+            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_get_chat_scheduled_jobs") {
+                header("Authorization", "Bearer $token")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                header("Content-Type", "application/json")
+                setBody(buildJsonObject {
+                    put("p_scope_type", key.scope)
+                    put("p_target_id", key.targetId)
+                })
+            }
+            check(response.status.isSuccess()) { "No se pudo actualizar la lista de mensajes programados." }
+            json.decodeFromString<List<ScheduledMessageJob>>(response.bodyAsText())
+        }, tokenOwner = ::decodeUserIdFromAccessToken)
+    }
+
+    private fun scheduledAccount(): String? = authService.getCurrentUserId()?.trim()?.lowercase(Locale.US)
+    private fun requireScheduledAccount(account: String) {
+        if (scheduledAccount() != account) throw CancellationException("La cuenta activa cambió")
+    }
 
     fun isSecureTranslationAvailable(): Boolean = SECURE_TRANSLATION_PROVIDER_ENABLED
 
@@ -483,7 +512,10 @@ class AdvancedMessagingRepository @Inject constructor(
 
 
     suspend fun scheduleMessageJob(scopeType: String, targetId: String, content: String, contentType: String = "text", mediaUrl: String? = null, scheduledForEpochMs: Long, translateTo: String? = null, selfDestructSeconds: Int? = null): Result<ScheduledMessageJob> = withContext(Dispatchers.IO) {
-        var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+        val key = ScheduledMessagesKey.create(scheduledAccount(), scopeType, targetId)
+            ?: return@withContext Result.failure(IllegalStateException("Abre una conversación con tu cuenta para programar un mensaje."))
+        val token = authService.getAccessTokenAwait() ?: return@withContext Result.failure(IllegalStateException("La sesión no está disponible."))
+        requireScheduledAccount(key.accountId)
         val scheduledFor = Instant.ofEpochMilli(scheduledForEpochMs.coerceAtLeast(System.currentTimeMillis() + 30_000L)).toString()
         val idempotencyKey = UUID.randomUUID().toString()
         var cleanTranslateTo = normalizeLanguageCode(translateTo)
@@ -513,10 +545,13 @@ class AdvancedMessagingRepository @Inject constructor(
                     ?: runCatching { json.decodeFromString<ScheduledMessageJob>(body) }.getOrNull()
                     ?: throw IllegalStateException("El servidor no confirmó el mensaje programado.")
             } else {
+                check(r.status.value >= 500 || r.status.value in setOf(408, 425, 429)) {
+                    "El servidor no aceptó el mensaje programado."
+                }
                 val local = ScheduledMessageJob(
                     id = "local-$idempotencyKey",
-                    scope_type = scopeType,
-                    target_id = targetId,
+                    scope_type = key.scope,
+                    target_id = key.targetId,
                     content = content,
                     content_type = contentType,
                     media_url = mediaUrl,
@@ -527,122 +562,122 @@ class AdvancedMessagingRepository @Inject constructor(
                 )
                 local
             }
-            if (scheduled.id.startsWith("local-", ignoreCase = true)) {
-                persistLocalScheduled((loadLocalScheduled() + scheduled).distinctBy { it.id })
-                enqueueScheduledSyncJob(scheduled.id, parseIso(scheduled.scheduled_for))
+            requireScheduledAccount(key.accountId)
+            val boundScheduled = bindScheduledJobToAccount(scheduled, key, decodeUserIdFromAccessToken(token))
+            if (boundScheduled.id.startsWith("local-", ignoreCase = true)) {
+                scheduledStore.putLocal(key.accountId, boundScheduled)
+                enqueueScheduledSyncJob(boundScheduled.id, parseIso(boundScheduled.scheduled_for))
+            } else {
+                scheduledStore.rememberRemote(key, boundScheduled)
             }
-            scheduled
-        }.fold(onSuccess = { Result.success(it) }, onFailure = { Result.failure(it as? Exception ?: Exception("No se pudo programar")) })
+            boundScheduled
+        }.fold(onSuccess = { Result.success(it) }, onFailure = {
+            if (it is CancellationException) throw it
+            Result.failure(IllegalStateException("No se pudo confirmar el mensaje programado. Revisa tu conexión.", it))
+        })
     }
 
 
-    suspend fun getScheduledJobs(scopeType: String, targetId: String): Result<List<ScheduledMessageJob>> = withContext(Dispatchers.IO) {
-        val cleanScope = scopeType.trim().lowercase(Locale.US)
-        val cleanTarget = targetId.trim().lowercase(Locale.US)
-        if (cleanScope.isBlank() || cleanTarget.isBlank()) return@withContext Result.success(emptyList())
-        runCatching {
-            val localJobs = loadLocalScheduled()
-                .filter {
-                    it.scope_type.trim().lowercase(Locale.US) == cleanScope &&
-                        it.target_id.trim().lowercase(Locale.US) == cleanTarget &&
-                        it.status.trim().lowercase(Locale.US) in setOf("pending", "failed")
-                }
-            val token = authService.getAccessToken()
-            val remoteJobs = if (token.isNullOrBlank()) {
-                emptyList()
-            } else {
-                val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_get_chat_scheduled_jobs") {
-                    header("Authorization", "Bearer $token")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    header("Content-Type", "application/json")
-                    setBody(buildJsonObject {
-                        put("p_scope_type", cleanScope)
-                        put("p_target_id", cleanTarget)
-                    })
-                }
-                if (response.status.isSuccess()) {
-                    runCatching { json.decodeFromString<List<ScheduledMessageJob>>(response.bodyAsText()) }
-                        .getOrDefault(emptyList())
+    suspend fun getCachedScheduledJobs(key: ScheduledMessagesKey): ScheduledMessagesSnapshot = withContext(Dispatchers.IO) {
+        requireScheduledAccount(key.accountId)
+        scheduledStore.snapshot(key)
+    }
+
+    suspend fun getScheduledJobs(key: ScheduledMessagesKey): Result<ScheduledMessagesSnapshot> =
+        withContext(Dispatchers.IO) { scheduledReader.refresh(key) }
+
+
+    suspend fun cancelScheduledJob(jobId: String, expectedAccount: String): Result<Unit> = withContext(Dispatchers.IO) {
+        scheduledMutations.withLock {
+            val account = expectedAccount
+            requireScheduledAccount(account)
+            val cleanId = jobId.trim()
+            if (cleanId.isBlank()) return@withContext Result.failure(IllegalArgumentException("Mensaje programado inválido"))
+            try {
+                if (cleanId.startsWith("local-", ignoreCase = true)) {
+                    // IDs from another account (or unowned legacy rows) must never be acted on.
+                    check(scheduledStore.pending(account).any { it.id == cleanId }) { "Mensaje programado no disponible en esta cuenta" }
                 } else {
-                    emptyList()
+                    val token = authService.getAccessTokenAwait() ?: error("Sesión no disponible")
+                    requireScheduledAccount(account)
+                    val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_cancel_scheduled_message_job") {
+                        header("Authorization", "Bearer $token")
+                        header("apikey", supabaseConfig.supabaseAnonKey)
+                        header("Content-Type", "application/json")
+                        setBody(buildJsonObject { put("p_job_id", cleanId) })
+                    }
+                    check(response.status.isSuccess()) { "No se pudo confirmar la cancelación en el servidor." }
                 }
-            }
-            (remoteJobs + localJobs).distinctBy { it.id }.sortedBy { parseIso(it.scheduled_for) }
-        }.fold(
-            onSuccess = { Result.success(it) },
-            onFailure = { Result.failure(it as? Exception ?: Exception("No se pudieron cargar mensajes programados")) }
-        )
-    }
-
-
-    suspend fun cancelScheduledJob(jobId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val cleanId = jobId.trim()
-        if (cleanId.isBlank()) return@withContext Result.failure(Exception("Mensaje programado inválido"))
-        runCatching {
-            persistLocalScheduled(loadLocalScheduled().filterNot { it.id == cleanId })
-            if (!cleanId.startsWith("local-", ignoreCase = true)) {
-                val token = authService.getAccessToken() ?: throw IllegalStateException("No token")
-                val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_cancel_scheduled_message_job") {
-                    header("Authorization", "Bearer $token")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    header("Content-Type", "application/json")
-                    setBody(buildJsonObject { put("p_job_id", cleanId) })
-                }
-                if (!response.status.isSuccess()) throw IllegalStateException("No se pudo cancelar en el servidor.")
-            }
-        }.fold(
-            onSuccess = { Result.success(Unit) },
-            onFailure = { Result.failure(it as? Exception ?: Exception("No se pudo cancelar mensaje programado")) }
-        )
-    }
-
-
-
-    suspend fun processDueScheduledJobs(maxBatch: Int = 20): Result<Int> = withContext(Dispatchers.IO) {
-        val nowMs = System.currentTimeMillis()
-        val localDue = loadLocalScheduled()
-            .filter { it.status == "pending" && parseIso(it.scheduled_for) <= nowMs }
-            .take(maxBatch)
-        if (localDue.isEmpty()) return@withContext Result.success(0)
-        val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-        var synced = 0
-        var keep = loadLocalScheduled().toMutableList()
-        localDue.forEach { job ->
-            val response = runCatching {
-                supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_schedule_message_job") {
-                    header("Authorization", "Bearer $token")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    header("Content-Type", "application/json")
-                    setBody(buildJsonObject {
-                        put("p_scope_type", job.scope_type)
-                        put("p_target_id", job.target_id)
-                        put("p_content", job.content)
-                        put("p_content_type", job.content_type)
-                        if (job.media_url.isNullOrBlank()) put("p_media_url", JsonNull) else put("p_media_url", job.media_url)
-                        put("p_scheduled_for", Instant.ofEpochMilli(System.currentTimeMillis() + 10_000L).toString())
-                        if (job.translate_to.isNullOrBlank()) put("p_translate_to", JsonNull) else put("p_translate_to", job.translate_to)
-                        if (job.self_destruct_seconds == null) put("p_self_destruct_seconds", JsonNull) else put("p_self_destruct_seconds", job.self_destruct_seconds)
-                        if (authService.isLocalFallbackSession()) put("p_idempotency_key", job.id)
-                    })
-                }
-            }.getOrNull()
-            if (response?.status?.isSuccess() == true) {
-                keep.removeAll { it.id == job.id }
-                synced += 1
-            } else {
-                val retry = job.copy(
-                    status = "pending",
-                    error_message = "Pendiente de sincronizar con el servidor"
-                )
-                keep.removeAll { it.id == job.id }
-                keep.add(retry)
-                enqueueScheduledSyncJob(job.id, System.currentTimeMillis() + 60_000L)
+                requireScheduledAccount(account)
+                scheduledStore.remove(account, cleanId)
+                Result.success(Unit)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Result.failure(IllegalStateException("No se pudo confirmar la cancelación. Revisa tu conexión y reintenta.", error))
             }
         }
-        persistLocalScheduled(keep)
-        Result.success(synced)
     }
 
+    suspend fun processDueScheduledJobs(maxBatch: Int = 20): Result<Int> = withContext(Dispatchers.IO) {
+        scheduledMutations.withLock {
+            val account = scheduledAccount() ?: return@withContext Result.success(0)
+            val nowMs = System.currentTimeMillis()
+            val localDue = scheduledStore.pending(account)
+                .filter { it.status == "pending" && parseIso(it.scheduled_for) <= nowMs }
+                .take(maxBatch.coerceAtLeast(0))
+            if (localDue.isEmpty()) return@withContext Result.success(0)
+            val token = authService.getAccessTokenAwait() ?: return@withContext Result.failure(IllegalStateException("Sesión no disponible"))
+            requireScheduledAccount(account)
+            val localFallback = authService.isLocalFallbackSession()
+            var synced = 0
+            for (job in localDue) {
+                requireScheduledAccount(account)
+                val confirmed = try {
+                    val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_schedule_message_job") {
+                        header("Authorization", "Bearer $token")
+                        header("apikey", supabaseConfig.supabaseAnonKey)
+                        header("Content-Type", "application/json")
+                        setBody(buildJsonObject {
+                            put("p_scope_type", job.scope_type)
+                            put("p_target_id", job.target_id)
+                            put("p_content", job.content)
+                            put("p_content_type", job.content_type)
+                            if (job.media_url.isNullOrBlank()) put("p_media_url", JsonNull) else put("p_media_url", job.media_url)
+                            put("p_scheduled_for", Instant.ofEpochMilli(System.currentTimeMillis() + 10_000L).toString())
+                            if (job.translate_to.isNullOrBlank()) put("p_translate_to", JsonNull) else put("p_translate_to", job.translate_to)
+                            if (job.self_destruct_seconds == null) put("p_self_destruct_seconds", JsonNull) else put("p_self_destruct_seconds", job.self_destruct_seconds)
+                            // Same key as the original attempt, including a response lost after commit.
+                            if (localFallback) put("p_idempotency_key", job.id.removePrefix("local-"))
+                        })
+                    }
+                    if (!response.status.isSuccess()) null else {
+                        val body = response.bodyAsText()
+                        runCatching { json.decodeFromString<List<ScheduledMessageJob>>(body).firstOrNull() }.getOrNull()
+                            ?: runCatching { json.decodeFromString<ScheduledMessageJob>(body) }.getOrNull()
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                requireScheduledAccount(account)
+                val key = ScheduledMessagesKey.create(account, job.scope_type, job.target_id)!!
+                val boundConfirmation = confirmed?.let {
+                    runCatching { bindScheduledJobToAccount(it, key, decodeUserIdFromAccessToken(token)) }.getOrNull()
+                }
+                if (boundConfirmation != null) {
+                    scheduledStore.rememberRemote(key, boundConfirmation)
+                    scheduledStore.remove(account, job.id)
+                    synced++
+                } else {
+                    scheduledStore.putLocal(account, job.copy(error_message = "Pendiente de sincronizar con el servidor"))
+                    enqueueScheduledSyncJob(job.id, System.currentTimeMillis() + 60_000L)
+                }
+            }
+            Result.success(synced)
+        }
+    }
 
 
     suspend fun processDueAutoDestructTasks(maxBatch: Int = 30): Result<Int> = withContext(Dispatchers.IO) {
@@ -825,11 +860,6 @@ class AdvancedMessagingRepository @Inject constructor(
         var raw = prefs.getString(KEY_FOLDERS, null) ?: return emptyList()
         return runCatching { json.decodeFromString<List<ChatFolder>>(raw) }.getOrDefault(emptyList())
     }
-    private fun loadLocalScheduled(): List<ScheduledMessageJob> {
-        var raw = prefs.getString(KEY_SCHEDULED_LOCAL, null) ?: return emptyList()
-        return runCatching { json.decodeFromString<List<ScheduledMessageJob>>(raw) }.getOrDefault(emptyList())
-    }
-    private fun persistLocalScheduled(items: List<ScheduledMessageJob>) { prefs.edit().putString(KEY_SCHEDULED_LOCAL, json.encodeToString(items)).apply() }
     private fun loadAutoDestruct(): List<AutoDestructTask> {
         var raw = prefs.getString(KEY_AUTODESTRUCT, null) ?: return emptyList()
         return runCatching { json.decodeFromString<List<AutoDestructTask>>(raw) }.getOrDefault(emptyList())

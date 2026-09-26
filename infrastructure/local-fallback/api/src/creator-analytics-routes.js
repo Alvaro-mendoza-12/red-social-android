@@ -609,7 +609,9 @@ async function loadCreatorAnalyticsContent(pool, identity, { limit = 100 } = {})
   const [videosResult, livesResult] = await Promise.all([
     pool.query(
       `/* creator_analytics:owned_videos */
-       SELECT id::text AS content_id, title, duration_seconds,
+       SELECT id::text AS content_id, title, description, video_url,
+              COALESCE(NULLIF(thumbnail_url, ''), NULLIF(cover_url, '')) AS thumbnail_url,
+              duration_seconds, views, like_count, comment_count, share_count, tags,
               created_at, updated_at, is_public
        FROM fallback_videos
        WHERE lower(user_id) = ANY($1::text[])
@@ -619,8 +621,10 @@ async function loadCreatorAnalyticsContent(pool, identity, { limit = 100 } = {})
     ),
     pool.query(
       `/* creator_analytics:owned_lives */
-       SELECT id::text AS content_id, title, source, is_active,
-              started_at, ended_at, created_at, updated_at
+       SELECT id::text AS content_id, title, source, hashtags,
+              NULLIF(replay_thumbnail_url, '') AS thumbnail_url,
+              replay_url, replay_duration_ms, viewer_count, total_reactions, total_comments,
+              is_active, started_at, ended_at, created_at, updated_at
        FROM fallback_live_streams
        WHERE lower(host_user_id) = ANY($1::text[])
        ORDER BY COALESCE(started_at, created_at) DESC, id DESC
@@ -632,17 +636,40 @@ async function loadCreatorAnalyticsContent(pool, identity, { limit = 100 } = {})
     contentType: 'video',
     contentId: row.content_id,
     title: String(row.title || '').trim(),
+    description: String(row.description || '').trim(),
+    thumbnailUrl: String(row.thumbnail_url || '').trim() || null,
+    mediaUrl: String(row.video_url || '').trim() || null,
     status: row.is_public ? 'published' : 'private',
     occurredAt: isoValue(row.created_at),
     durationSeconds: Math.max(0, numberOf(row.duration_seconds)),
+    tags: Array.isArray(row.tags) ? row.tags.map((tag) => String(tag || '').trim()).filter(Boolean) : [],
+    viewCount: Math.max(0, Math.trunc(numberOf(row.views))),
+    likeCount: Math.max(0, Math.trunc(numberOf(row.like_count))),
+    commentCount: Math.max(0, Math.trunc(numberOf(row.comment_count))),
+    shareCount: Math.max(0, Math.trunc(numberOf(row.share_count))),
   }))
   const lives = livesResult.rows.map((row) => ({
     contentType: 'live',
     contentId: row.content_id,
     title: String(row.title || '').trim(),
+    description: [
+      String(row.source || '').trim(),
+      Array.isArray(row.hashtags) ? row.hashtags.map((tag) => `#${String(tag || '').trim()}`).join(' ') : '',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    thumbnailUrl: String(row.thumbnail_url || '').trim() || null,
+    mediaUrl: String(row.replay_url || '').trim() || null,
     status: row.is_active ? 'live' : row.ended_at ? 'ended' : 'draft',
     occurredAt: isoValue(row.started_at || row.created_at),
+    durationSeconds: Math.max(0, numberOf(row.replay_duration_ms)) / 1_000,
     source: String(row.source || '').trim().toLowerCase(),
+    category: null,
+    tags: Array.isArray(row.hashtags) ? row.hashtags.map((tag) => String(tag || '').trim()).filter(Boolean) : [],
+    viewCount: Math.max(0, Math.trunc(numberOf(row.viewer_count))),
+    likeCount: Math.max(0, Math.trunc(numberOf(row.total_reactions))),
+    commentCount: Math.max(0, Math.trunc(numberOf(row.total_comments))),
+    shareCount: 0,
   }))
   return {
     version: 1,

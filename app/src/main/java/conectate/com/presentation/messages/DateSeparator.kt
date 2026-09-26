@@ -60,7 +60,7 @@ fun formatDateSeparatorLabel(iso: String?): String {
     return when (date) {
         today -> "Hoy"
         today.minusDays(1) -> "Ayer"
-        else -> date.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale("es")))
+        else -> date.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale.forLanguageTag("es")))
     }
 }
 

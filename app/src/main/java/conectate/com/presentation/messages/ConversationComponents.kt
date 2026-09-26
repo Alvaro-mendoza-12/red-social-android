@@ -23,11 +23,7 @@ import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.AdminBadge
 import conectate.com.presentation.components.isUserAdmin
 import java.util.*
-
-private val InboxRow = Color(0xFF111111)
-private val InboxText = Color(0xFFF6F6F8)
-private val InboxMuted = Color(0xFF9FA0A8)
-private val InboxRed = Color(0xFFE53935)
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 
 @Composable
 fun ConversationItem(
@@ -43,6 +39,8 @@ fun ConversationItem(
     onDelete: () -> Unit = {},
     onReport: () -> Unit = {}
 ) {
+    val colors = MaterialTheme.colorScheme
+    val inboxRed = colors.primary
     val otherUserName = if (conversation.chat.is_group) {
         conversation.chat.group_name ?: "Grupo"
     } else {
@@ -66,20 +64,20 @@ fun ConversationItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(InboxRow)
+            .background(colors.background)
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 13.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         CircularProfileImage(
             imageUrl = otherUserProfileImage,
-            size = 54.dp,
+            size = 48.dp,
             showBorder = false,
             isVerified = if (conversation.chat.is_group) false else conversation.otherUserVerified,
             fallbackName = otherUserName
         )
         
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         
         Column(modifier = Modifier.weight(1f)) {
             Row(
@@ -93,10 +91,9 @@ fun ConversationItem(
                 ) {
                     Text(
                         text = otherUserName,
-                        color = InboxText,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace,
+                        color = colors.onBackground,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -123,15 +120,14 @@ fun ConversationItem(
                             imageVector = Icons.Default.PushPin,
                             contentDescription = "Chat fijado",
                             modifier = Modifier.size(16.dp),
-                            tint = InboxRed
+                            tint = inboxRed
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     Text(
                         text = formattedTime,
                         fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (unreadCount > 0) InboxRed else InboxMuted,
+                        color = if (unreadCount > 0) inboxRed else colors.onSurfaceVariant,
                         fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal
                     )
                 }
@@ -161,7 +157,7 @@ fun ConversationItem(
                     Spacer(modifier = Modifier.width(4.dp))
                 }
                 
-                if (lastMessage?.content_type != "text" && lastMessage != null) {
+                if (lastMessage?.content_type != "text" && lastMessage != null && !lastMessage.deleted_for_all) {
                     val typeIcon = when(lastMessage.content_type) {
                         "image" -> Icons.Default.PhotoCamera
                         "video" -> Icons.Default.Videocam
@@ -173,24 +169,14 @@ fun ConversationItem(
                             imageVector = typeIcon,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = InboxMuted
+                            tint = colors.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                 }
 
-                val displayText = when(lastMessage?.content_type) {
-                    "image" -> "image.png"
-                    "video" -> "video.mp4"
-                    "audio" -> "Audio"
-                    "gif" -> "GIF"
-                    "sticker" -> "Sticker"
-                    "contact" -> "Contacto"
-                    "location" -> "Ubicación"
-                    "document", "file" -> "Archivo"
-                    else -> lastMessage?.content ?: "Sin actividad reciente"
-                }
-                val previewText = if (isFromMe && displayText.isNotBlank() && displayText != "Sin actividad reciente") {
+                val displayText = inboxMessagePreview(lastMessage)
+                val previewText = if (isFromMe && lastMessage?.deleted_for_all != true && displayText.isNotBlank() && displayText != "Sin actividad reciente") {
                     "Tú: $displayText"
                 } else {
                     displayText
@@ -198,9 +184,8 @@ fun ConversationItem(
                 
                 Text(
                     text = previewText,
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = InboxMuted,
+                    fontSize = 12.5.sp,
+                    color = colors.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -209,10 +194,10 @@ fun ConversationItem(
                 if (conversation.chat.is_muted) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
-                        imageVector = Icons.Default.VolumeOff,
+                        imageVector = Icons.AutoMirrored.Filled.VolumeOff,
                         contentDescription = "Chat silenciado",
                         modifier = Modifier.size(14.dp),
-                        tint = InboxMuted
+                        tint = colors.onSurfaceVariant
                     )
                 }
                 
@@ -238,11 +223,11 @@ fun ConversationItem(
         }
         
         Box {
-            IconButton(onClick = { showMenu = true }) {
+            IconButton(onClick = { showMenu = true }, modifier = Modifier.size(40.dp)) {
                 Icon(
                     imageVector = Icons.Default.MoreVert,
                     contentDescription = "Opciones",
-                    tint = Color(0xFFD8D8DE)
+                    tint = colors.onSurfaceVariant
                 )
             }
             DropdownMenu(
@@ -296,6 +281,22 @@ fun ConversationItem(
                         leadingIcon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) }
                     )
                 }
+                if (!conversation.chat.is_group) {
+                    DropdownMenuItem(
+                        text = { Text("Bloquear usuario") },
+                        onClick = {
+                            showMenu = false
+                            onBlock()
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Block,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text("Eliminar") },
                     onClick = { 
@@ -345,7 +346,10 @@ private fun formatTimestampSmart(isoString: String): String {
             localDateTime.toLocalDate() == now.toLocalDate() -> localDateTime.format(formatter)
             localDateTime.toLocalDate() == now.toLocalDate().minusDays(1) -> "Ayer"
             localDateTime.isAfter(now.minusDays(7)) -> {
-                val dayFormat = java.time.format.DateTimeFormatter.ofPattern("EEEE", Locale("es", "ES"))
+                val dayFormat = java.time.format.DateTimeFormatter.ofPattern(
+                    "EEEE",
+                    Locale.forLanguageTag("es-ES")
+                )
                 localDateTime.format(dayFormat).replaceFirstChar { it.uppercase() }
             }
             else -> localDateTime.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yy", Locale.getDefault()))
@@ -368,32 +372,35 @@ fun ConversationItemWithSwipe(
     onDelete: () -> Unit,
     onReport: () -> Unit
 ) {
-    val dismissState = rememberDismissState(
-        positionalThreshold = { totalDistance -> totalDistance * 0.97f },
-        confirmValueChange = { value ->
-            if (value == DismissValue.DismissedToStart) {
-                onDelete()
-                false
-            } else false
-        }
+    val dismissState = rememberSwipeToDismissBoxState(
+        positionalThreshold = { totalDistance -> totalDistance * 0.97f }
     )
-    SwipeToDismiss(
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+            onDelete()
+            // Si el repositorio rechaza o demora la eliminación, la fila vuelve
+            // a una posición interactiva en vez de quedar fuera de pantalla.
+            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+        }
+    }
+    SwipeToDismissBox(
         state = dismissState,
-        directions = setOf(DismissDirection.EndToStart),
-        background = {
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = true,
+        backgroundContent = {
             val direction = dismissState.dismissDirection
-            val isSwiping = direction != null
+            val isSwiping = direction == SwipeToDismissBoxValue.EndToStart
             val color = if (isSwiping) Color.Red else Color.Transparent
             Box(
                 modifier = Modifier.fillMaxSize().background(color).padding(horizontal = 20.dp),
-                contentAlignment = if (direction == DismissDirection.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd
+                contentAlignment = Alignment.CenterEnd
             ) {
                 if (isSwiping) {
                     Icon(imageVector = Icons.Default.Delete, contentDescription = "Eliminar", tint = Color.White)
                 }
             }
         },
-        dismissContent = {
+        content = {
            ConversationItem(
                conversation = conversation,
                currentUserId = currentUserId,

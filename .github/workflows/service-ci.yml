@@ -1,0 +1,80 @@
+name: Web and service quality
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - feature/live-gifts
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  services:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            directory: infrastructure/local-fallback/api
+          - name: signaling
+            directory: signaling-server
+          - name: realtime
+            directory: infrastructure/local-fallback/realtime-gateway
+          - name: chatbot
+            directory: infrastructure/local-fallback/ai-chatbot
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
+      - name: Install from lockfile
+        working-directory: ${{ matrix.directory }}
+        run: npm ci
+      - name: Check syntax
+        working-directory: ${{ matrix.directory }}
+        run: npm run check --if-present
+      - name: Run tests
+        working-directory: ${{ matrix.directory }}
+        run: npm test
+      - name: Audit direct and transitive dependencies
+        working-directory: ${{ matrix.directory }}
+        run: npm audit --audit-level=moderate
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: Conectate-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Conectate-web/package-lock.json
+      - name: Install from lockfile
+        run: npm ci --legacy-peer-deps
+      - name: Test
+        run: npm test -- --runInBand
+      - name: Lint
+        run: npm run lint
+      - name: Build with a non-deployed CI origin
+        env:
+          VITE_FALLBACK_API_URL: https://ci.invalid
+        run: npm run build
+      - name: Audit direct and transitive dependencies
+        run: npm audit --audit-level=moderate

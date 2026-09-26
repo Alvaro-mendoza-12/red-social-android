@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
@@ -37,7 +37,7 @@ fun FriendRequestsScreen(
                 title = { Text("Solicitudes de Amistad") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 }
             )
@@ -87,7 +87,10 @@ fun FriendRequestsScreen(
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
-                                            val date = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(acceptedTimestamp!!))
+                                            val date = java.text.SimpleDateFormat(
+                                                "dd/MM/yyyy",
+                                                androidx.compose.ui.platform.LocalLocale.current.platformLocale,
+                                            ).format(java.util.Date(acceptedTimestamp!!))
                                             Text(
                                                 text = date,
                                                 color = Color.Gray,
@@ -132,7 +135,7 @@ fun FriendRequestsScreen(
                                 }
                             )
                         }
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
             }

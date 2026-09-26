@@ -15,6 +15,7 @@ data class VoiceRoom(
     @SerialName("participant_count") val participantCount: Int = 0,
     @SerialName("max_participants") val maxParticipants: Int = 50,
     @SerialName("is_public") val isPublic: Boolean = true,
+    @SerialName("password_required") val passwordRequired: Boolean = false,
     @SerialName("is_active") val isActive: Boolean = true,
     @SerialName("agora_channel_name") val agoraChannelName: String = "",
     val password: String? = null,

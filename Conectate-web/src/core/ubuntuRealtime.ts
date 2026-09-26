@@ -1,4 +1,4 @@
-import { isFallbackAuthConfigured, readFallbackSession } from './auth/fallbackAuth'
+import { ensureFallbackAccessToken, isFallbackAuthConfigured } from './auth/fallbackAuth'
 import { getRuntimeBackendUrl, subscribeRuntimeBackend } from './runtimeBackend'
 
 export type UbuntuRealtimeEvent = {
@@ -59,9 +59,9 @@ function flushPendingSubscriptions() {
   pendingChannels.forEach((channel) => subscribeChannel(channel))
 }
 
-function ensureSocket() {
+async function ensureSocket() {
   const wsUrl = getUbuntuRealtimeWsUrl()
-  const token = readFallbackSession()?.accessToken?.trim() || ''
+  const token = await ensureFallbackAccessToken().catch(() => '')
   if (!isFallbackAuthConfigured || !wsUrl || !token) return null
 
   if (sharedSocket && sharedToken === token) {
@@ -76,18 +76,30 @@ function ensureSocket() {
   sharedSocket = null
   sharedToken = token
 
-  const socket = new WebSocket(`${wsUrl}?token=${encodeURIComponent(token)}`)
+  // Browser WebSocket APIs cannot set Authorization headers. Authenticate in
+  // the first encrypted frame so bearer tokens never appear in URLs, proxy
+  // access logs, analytics, or browser history.
+  const socket = new WebSocket(wsUrl)
   sharedSocket = socket
 
   socket.addEventListener('open', () => {
-    flushPendingSubscriptions()
+    socket.send(JSON.stringify({ type: 'authenticate', token }))
   })
 
   socket.addEventListener('message', (raw) => {
     try {
-      const parsed = JSON.parse(String(raw.data || '{}')) as UbuntuRealtimeEvent
+      const parsed = JSON.parse(String(raw.data || '{}')) as {
+        type?: string
+        channel?: string
+        payload?: Record<string, unknown>
+        ts?: string
+      }
+      if (parsed?.type === 'connected') {
+        flushPendingSubscriptions()
+        return
+      }
       if (parsed?.type === 'event' && parsed.channel) {
-        dispatchEvent(parsed)
+        dispatchEvent(parsed as UbuntuRealtimeEvent)
       }
     } catch {
       // ignore malformed payloads
@@ -99,7 +111,7 @@ function ensureSocket() {
     if (reconnectTimer) window.clearTimeout(reconnectTimer)
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = null
-      if (channelHandlers.size > 0) ensureSocket()
+      if (channelHandlers.size > 0) void ensureSocket()
     }, 2500)
   })
 
@@ -124,7 +136,7 @@ export function subscribeUbuntuRealtime(input: {
   }
   handlers.add(input.onEvent)
   pendingChannels.add(channel)
-  ensureSocket()
+  void ensureSocket()
 
   return () => {
     const current = channelHandlers.get(channel)

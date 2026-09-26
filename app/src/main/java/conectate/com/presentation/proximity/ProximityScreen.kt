@@ -26,7 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Cancel
@@ -35,10 +35,8 @@ import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,8 +44,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -58,10 +57,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import conectate.com.presentation.components.rememberRealtimeProgress
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -87,6 +87,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import conectate.com.data.localfallback.AnonymousChatMessage
 import conectate.com.data.localfallback.AnonymousChatSession
+import conectate.com.data.localfallback.AnonymousBottle
 import conectate.com.data.localfallback.NearbyProfile
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.CommentAudioPlayer
@@ -114,10 +115,11 @@ fun ProximityScreen(
     val radiusKm by viewModel.radiusKm.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
-    val randomStatus by viewModel.randomStatus.collectAsState()
     val session by viewModel.anonymousSession.collectAsState()
     val sessions by viewModel.anonymousSessions.collectAsState()
     val messages by viewModel.anonymousMessages.collectAsState()
+    val outgoingBottle by viewModel.outgoingBottle.collectAsState()
+    val incomingBottle by viewModel.incomingBottle.collectAsState()
     val normalChatPeerBySession by viewModel.normalChatPeerBySession.collectAsState()
     val gender by viewModel.gender.collectAsState()
     val lookingFor by viewModel.lookingFor.collectAsState()
@@ -184,20 +186,27 @@ fun ProximityScreen(
         }
     }
 
+    DisposableEffect(selectedTab) {
+        if (selectedTab == 1) viewModel.activateBottleInbox()
+        onDispose {
+            if (selectedTab == 1) viewModel.deactivateBottleInbox()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Personas cerca") },
+                title = { Text("Conectar") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 }
             )
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            TabRow(selectedTabIndex = selectedTab) {
+            PrimaryTabRow(selectedTabIndex = selectedTab) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
@@ -207,8 +216,8 @@ fun ProximityScreen(
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("Aleatorio") },
-                    icon = { Icon(Icons.Default.Shuffle, contentDescription = null) }
+                    text = { Text("Anónimo") },
+                    icon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) }
                 )
             }
             if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -229,18 +238,19 @@ fun ProximityScreen(
                     onOpenProfile = { navController.navigate(Screen.UserProfile.createRoute(it)) }
                 )
                 else -> AnonymousTab(
-                    status = randomStatus,
                     session = session,
                     sessions = sessions,
                     messages = messages,
+                    outgoingBottle = outgoingBottle,
+                    incomingBottle = incomingBottle,
                     gender = gender,
                     lookingFor = lookingFor,
                     onGenderChange = viewModel::setGender,
                     onLookingForChange = viewModel::setLookingFor,
-                    // Random chat is global; it must not ask for radar
-                    // permission or narrow the queue to the current zone.
-                    onStart = { viewModel.startAnonymousMatch(gender, lookingFor) },
-                    onCancel = viewModel::cancelAnonymousMatch,
+                    onLaunchBottle = viewModel::sendAnonymousBottle,
+                    onCancelBottle = viewModel::cancelOutgoingBottle,
+                    onAcceptBottle = viewModel::acceptIncomingBottle,
+                    onDeclineBottle = viewModel::declineIncomingBottle,
                     onSend = viewModel::sendAnonymousMessage,
                     onSendSticker = viewModel::sendAnonymousSticker,
                     onSendMedia = viewModel::sendAnonymousMedia,
@@ -322,7 +332,7 @@ private fun NearbyTab(
         }
         items(profiles, key = { it.userId }) { profile ->
             NearbyProfileRow(profile = profile, onClick = { onOpenProfile(profile.userId) })
-            Divider()
+            HorizontalDivider()
         }
     }
 }
@@ -519,16 +529,19 @@ private fun NearbyProfileRow(profile: NearbyProfile, onClick: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AnonymousTab(
-    status: String,
     session: AnonymousChatSession?,
     sessions: List<AnonymousChatSession>,
     messages: List<AnonymousChatMessage>,
+    outgoingBottle: AnonymousBottle?,
+    incomingBottle: AnonymousBottle?,
     gender: String,
     lookingFor: String,
     onGenderChange: (String) -> Unit,
     onLookingForChange: (String) -> Unit,
-    onStart: () -> Unit,
-    onCancel: () -> Unit,
+    onLaunchBottle: (String) -> Unit,
+    onCancelBottle: () -> Unit,
+    onAcceptBottle: () -> Unit,
+    onDeclineBottle: () -> Unit,
     onSend: (String) -> Unit,
     onSendSticker: (String?, String) -> Unit,
     onSendMedia: (android.net.Uri, String) -> Unit,
@@ -539,6 +552,11 @@ private fun AnonymousTab(
     onOpenProfile: (String) -> Unit,
     onOpenNormalChat: (String) -> Unit,
 ) {
+    var bottleMessage by remember { mutableStateOf("") }
+    LaunchedEffect(outgoingBottle?.id) {
+        if (outgoingBottle != null) bottleMessage = ""
+    }
+
     if (session != null) {
         AnonymousConversation(
             session = session,
@@ -563,56 +581,176 @@ private fun AnonymousTab(
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.primaryContainer,
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
-                    Icon(Icons.Default.Shuffle, contentDescription = null)
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Conversación anónima",
+                        "Una botella al mar",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "Conoce personas de cualquier lugar sin mostrar tu identidad. Las opciones se desbloquean automáticamente mientras conversan.",
+                        "Escribe un mensaje anónimo. Viajará de persona en persona hasta que alguien quiera responderte y abrir una conversación.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
         }
+
+        if (incomingBottle != null) {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            "Te llegó una botella",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            incomingBottle.content,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            "Si la aceptas, se abrirá un chat anónimo. Si pasas, desaparecerá y continuará buscando a otra persona.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(
+                                onClick = onDeclineBottle,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Icon(Icons.Default.Cancel, contentDescription = null)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Pasar")
+                            }
+                            Button(
+                                onClick = onAcceptBottle,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Responder")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (outgoingBottle != null) {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 4.dp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    if (outgoingBottle.status == "offered") "Esperando una respuesta" else "Tu botella está viajando",
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    if (outgoingBottle.status == "offered") {
+                                        "Alguien la está leyendo. Si no la acepta, seguirá automáticamente."
+                                    } else {
+                                        "Buscando una persona compatible…"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                        Text(
+                            "“${outgoingBottle.content}”",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        if (outgoingBottle.attemptCount > 0) {
+                            Text(
+                                "Ha continuado su viaje ${outgoingBottle.attemptCount} ${if (outgoingBottle.attemptCount == 1) "vez" else "veces"}.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = onCancelBottle,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Icon(Icons.Default.Cancel, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Retirar botella")
+                        }
+                    }
+                }
+            }
+        } else if (incomingBottle == null) {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text("Tu mensaje", fontWeight = FontWeight.Bold)
+                        OutlinedTextField(
+                            value = bottleMessage,
+                            onValueChange = { bottleMessage = it.take(500) },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Algo que te gustaría decirle a alguien…") },
+                            supportingText = { Text("${bottleMessage.length}/500") },
+                            minLines = 3,
+                            maxLines = 6,
+                        )
+                        Button(
+                            onClick = { onLaunchBottle(bottleMessage) },
+                            enabled = bottleMessage.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Lanzar botella")
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    "Alcance global: no usamos tu ubicación para emparejarte. Puedes mantener varios chats anónimos a la vez.",
+                    "La búsqueda es global y no comparte tu ubicación ni tu identidad. Cada persona recibe una sola oportunidad para aceptar o pasar.",
                     modifier = Modifier.padding(14.dp),
                     style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-        if (sessions.isNotEmpty()) {
-            item {
-                Text(
-            "Tus chats anónimos",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            items(sessions, key = { it.id }) { anonymousSession ->
-                AnonymousSessionRow(
-                    session = anonymousSession,
-                    onClick = { onSelectSession(anonymousSession.id) },
-                )
-            }
-            item {
-                Text(
-                    "Puedes mantener varias conversaciones y buscar otra persona sin cerrar las anteriores.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -636,47 +774,24 @@ private fun AnonymousTab(
             ),
             onValueChange = onLookingForChange
         ) }
-        item { when (status) {
-            "waiting" -> {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Spacer(Modifier.height(22.dp))
-                        CircularProgressIndicator(modifier = Modifier.size(54.dp), strokeWidth = 5.dp)
-                        Spacer(Modifier.height(12.dp))
-                        Text("Buscando conexión compatible…", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Puedes permanecer aquí; la búsqueda se actualiza automáticamente.",
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
-                            textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedButton(onClick = onCancel, shape = RoundedCornerShape(8.dp)) {
-                            Icon(Icons.Default.Cancel, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Cancelar")
-                        }
-                        Spacer(Modifier.height(18.dp))
-                    }
-                }
+        if (sessions.isNotEmpty()) {
+            item {
+                Text(
+                    "Tus chats anónimos",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
             }
-            else -> Button(
-                onClick = onStart,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(Icons.Default.PersonSearch, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Buscar chat aleatorio")
+            items(sessions, key = { it.id }) { anonymousSession ->
+                AnonymousSessionRow(
+                    session = anonymousSession,
+                    onClick = { onSelectSession(anonymousSession.id) },
+                )
             }
-        } }
+        }
         item {
             Text(
-                "Seguridad: tu identidad se revela por etapas según la conversación; no puedes saltarte el progreso.",
+                "Al aceptar una botella empieza el chat anónimo. La identidad se revela gradualmente según la confianza de la conversación.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -716,7 +831,7 @@ private fun AnonymousSessionRow(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(session.peer.displayName, fontWeight = FontWeight.Bold)
                 LinearProgressIndicator(
-                    progress = session.friendshipPercent / 100f,
+                    progress = { session.friendshipPercent / 100f },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
@@ -769,7 +884,9 @@ private fun PreferenceSelector(
             readOnly = true,
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth()
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { option ->
@@ -825,7 +942,7 @@ private fun AnonymousConversation(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Volver a chats anónimos")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver a chats anónimos")
             }
             if (session.peer.avatarUrl != null) {
                 CircularProfileImage(imageUrl = session.peer.avatarUrl, size = 44.dp, showBorder = true)
@@ -847,7 +964,7 @@ private fun AnonymousConversation(
             }
         }
         LinearProgressIndicator(
-            progress = session.friendshipPercent / 100f,
+            progress = { session.friendshipPercent / 100f },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
         )
             Text(
@@ -869,7 +986,18 @@ private fun AnonymousConversation(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 (session.peer.interests + session.peer.hobbies).take(3).forEach { item ->
-                    AssistChip(onClick = {}, label = { Text(item, maxLines = 1) })
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ) {
+                        Text(
+                            text = item,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    }
                 }
             }
         }
@@ -950,7 +1078,7 @@ private fun AnonymousConversation(
                     onSend(content)
                 }
             ) {
-                Icon(Icons.Default.Send, contentDescription = "Enviar")
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
             }
         }
     }

@@ -31,6 +31,8 @@ import conectate.com.util.VideoUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
@@ -118,7 +120,7 @@ fun CreateGroupScreen(
                             viewModel.previousStep()
                         }
                     }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -154,7 +156,7 @@ fun CreateGroupScreen(
                     } else {
                         Icon(
                             imageVector = if (currentStep == GroupCreationStep.SELECT_MEMBERS) {
-                                Icons.Default.ArrowForward
+                                Icons.AutoMirrored.Filled.ArrowForward
                             } else {
                                 Icons.Default.Check
                             },
@@ -246,7 +248,7 @@ fun CreateGroupScreen(
                                     }
                                 }
                             }
-                            Divider()
+                            HorizontalDivider()
                         }
 
                         LazyColumn(modifier = Modifier.weight(1f)) {

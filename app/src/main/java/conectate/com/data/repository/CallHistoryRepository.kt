@@ -18,7 +18,7 @@ private val Context.callHistoryDataStore by preferencesDataStore(name = "call_hi
 
 @Singleton
 class CallHistoryRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     private val json = Json {
         ignoreUnknownKeys = true

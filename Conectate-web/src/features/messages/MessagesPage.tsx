@@ -1115,7 +1115,7 @@ export function MessagesPage() {
     const client = supabase
 
     if (!isBrowserOnline()) {
-      enqueueDeferredMutation('chat_mark_read', { chatId: cleanChatId })
+      enqueueDeferredMutation('chat_mark_read', { chatId: cleanChatId }, user.id)
       return
     }
 
@@ -1133,7 +1133,7 @@ export function MessagesPage() {
       )
     } catch (caught) {
       if (isLikelyTransientError(caught)) {
-        enqueueDeferredMutation('chat_mark_read', { chatId: cleanChatId })
+        enqueueDeferredMutation('chat_mark_read', { chatId: cleanChatId }, user.id)
       }
     }
   }

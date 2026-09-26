@@ -1,29 +1,20 @@
-# Keep Kotlin metadata used by reflection-adjacent libraries and tooling.
+# Preserve only metadata consumed at runtime. Kotlin serialization, Compose,
+# Room, Hilt, Media3, Coil, Ktor and OkHttp ship their own consumer rules; broad
+# package keeps here defeat R8 shrinking and noticeably increase startup I/O.
 -keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod, RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
--keep class kotlin.Metadata { *; }
 
-# Keep generated serialization companions when referenced by name.
--keepclassmembers class **$$serializer { *; }
--keepclassmembers class kotlinx.serialization.internal.** { *; }
--keep @kotlinx.serialization.Serializable class ** { *; }
+# Generated serializers are referenced by generated code. Allow their names and
+# implementation to be optimized while retaining members that a serializer
+# lookup can access.
+-keepclassmembers,allowoptimization,allowobfuscation class **$$serializer { *; }
 -keepclassmembers class ** {
     @kotlinx.serialization.SerialName <fields>;
 }
 
-# Keep app network/data contracts. Release builds are minified, but these classes are
-# consumed by kotlinx.serialization, Ktor/Supabase compatibility routes and runtime JSON.
--keep class conectate.com.data.model.** { *; }
--keep class conectate.com.data.localfallback.** { *; }
--keep class conectate.com.data.repository.** { *; }
--keep class conectate.com.data.supabase.** { *; }
--keep class conectate.com.data.signaling.** { *; }
--keep class conectate.com.data.webrtc.** { *; }
--keep class conectate.com.core.** { *; }
--keep class conectate.com.di.** { *; }
--keep class conectate.com.util.** { *; }
--keep class conectate.com.presentation.** { *; }
+# App contracts use generated kotlinx serializers and generated Room/Hilt code;
+# no application package needs a blanket keep. Android manifest components and
+# WorkManager workers are retained by Android/AndroidX rules below.
 -keepclassmembers enum * { *; }
--keep class conectate.com.util.ConversationBackgroundCodec** { *; }
 
 # Hilt / Dagger
 -keep class dagger.hilt.** { *; }
@@ -53,10 +44,11 @@
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
 
-# Supabase / Ktor / Realtime
--keep class io.github.jan.supabase.** { *; }
--keep class io.ktor.** { *; }
+# Supabase / Ktor / Realtime provide consumer rules (including Ktor engine
+# ServiceLoader entries and atomicfu fields). Keep only optional-dependency
+# warnings here instead of retaining both libraries wholesale.
 -dontwarn io.ktor.**
+-dontwarn io.github.jan.supabase.**
 
 # WebRTC / Socket.IO
 -keep class org.webrtc.** { *; }
@@ -78,24 +70,10 @@
     @org.webrtc.CalledByNativeUnchecked <methods>;
     @org.webrtc.CalledByNativeUnchecked <fields>;
 }
--keep class io.socket.** { *; }
 -dontwarn org.webrtc.**
 
-# Ktor & Supabase (Fix localhost URL bug in R8 full mode)
--keep class io.ktor.** { *; }
--keep class io.github.jan.supabase.** { *; }
--keepclassmembers class io.ktor.** { *; }
--keepclassmembers class io.github.jan.supabase.** { *; }
--dontwarn io.ktor.**
--dontwarn io.github.jan.supabase.**
-
-# Compose / Navigation (release obfuscation can break reflection in some tooling paths)
--keep class androidx.compose.** { *; }
--dontwarn androidx.compose.**
-
-# Coil / Media3
--keep class coil.** { *; }
--keep class androidx.media3.** { *; }
+# Compose, Navigation, Coil and Media3 are intentionally governed by their
+# published consumer rules. Do not add blanket keeps for these packages.
 
 # Supabase / Realtime transitively references SLF4J binder implementations that are absent on Android.
 -dontwarn org.slf4j.impl.StaticLoggerBinder
@@ -112,7 +90,28 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
 
-# OkHttp
+# OkHttp publishes its own R8 rules. Optional platform providers are absent on
+# some Android devices and are already covered above.
 -dontwarn okhttp3.internal.platform.**
--keep class okhttp3.** { *; }
--keepclassmembers class okhttp3.** { *; }
+
+# Production privacy/performance: debug builds retain their diagnostic detail,
+# while the minified Play artifact removes direct logcat calls. Several legacy
+# flows include user/chat/message identifiers in diagnostic strings; production
+# observability must use the already configured structured Crashlytics/backend
+# channels instead of exposing those values through the device log buffer.
+-assumenosideeffects class android.util.Log {
+    public static int v(java.lang.String, java.lang.String);
+    public static int v(java.lang.String, java.lang.String, java.lang.Throwable);
+    public static int d(java.lang.String, java.lang.String);
+    public static int d(java.lang.String, java.lang.String, java.lang.Throwable);
+    public static int i(java.lang.String, java.lang.String);
+    public static int i(java.lang.String, java.lang.String, java.lang.Throwable);
+    public static int w(java.lang.String, java.lang.String);
+    public static int w(java.lang.String, java.lang.String, java.lang.Throwable);
+    public static int w(java.lang.String, java.lang.Throwable);
+    public static int e(java.lang.String, java.lang.String);
+    public static int e(java.lang.String, java.lang.String, java.lang.Throwable);
+    public static int wtf(java.lang.String, java.lang.String);
+    public static int wtf(java.lang.String, java.lang.String, java.lang.Throwable);
+    public static int println(int, java.lang.String, java.lang.String);
+}

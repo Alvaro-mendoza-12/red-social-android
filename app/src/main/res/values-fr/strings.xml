@@ -41,4 +41,7 @@
     <string name="widget_action_videos">Vidéos</string>
     <string name="widget_action_moment">Moment</string>
     <string name="widget_action_chat">Chat</string>
+    <string name="two_factor_local_reset_title">Sécurité du compte</string>
+    <string name="two_factor_local_reset_message">Le stockage chiffré de cet appareil a été réinitialisé. Si votre compte utilise la vérification en deux étapes, connectez-vous avec votre application de codes ou un code de secours. La protection du serveur reste active.</string>
+    <string name="two_factor_local_reset_ok">Compris</string>
 </resources>

@@ -13,10 +13,19 @@ data class CreatorAnalyticsContent(
     val contentType: String,
     val contentId: String,
     val title: String = "",
+    val description: String = "",
+    val thumbnailUrl: String? = null,
+    val mediaUrl: String? = null,
     val status: String = "",
     val occurredAt: String? = null,
     val durationSeconds: Double? = null,
     val source: String? = null,
+    val category: String? = null,
+    val tags: List<String> = emptyList(),
+    val viewCount: Long = 0,
+    val likeCount: Long = 0,
+    val commentCount: Long = 0,
+    val shareCount: Long = 0,
 ) {
     val isVideo: Boolean get() = contentType.equals("video", ignoreCase = true)
     val isLive: Boolean get() = contentType.equals("live", ignoreCase = true)

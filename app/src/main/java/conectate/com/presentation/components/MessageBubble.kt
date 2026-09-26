@@ -16,9 +16,11 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Slider
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.runtime.Composable
@@ -26,8 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -40,6 +44,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -62,7 +67,7 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.ui.input.pointer.pointerInput
@@ -74,21 +79,19 @@ import coil.request.videoFrameMillis
 import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.util.VideoCache
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 @Composable
 private fun ChatVideoPreview(
     url: String?,
+    modifier: Modifier = Modifier,
     thumbnailUrl: String? = null,
-    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     LaunchedEffect(url) {
         val source = url?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        withContext(Dispatchers.IO) {
-            runCatching { VideoCache.preloadStart(context.applicationContext, source) }
-        }
+        runCatching { VideoCache.preloadStart(context.applicationContext, source) }
     }
     val posterSource = thumbnailUrl?.takeIf(String::isNotBlank)
     val resolvedPoster = UbuntuStorageUrl.thumbnail(posterSource, width = 720)
@@ -139,6 +142,52 @@ private fun ChatVideoPreview(
 }
 
 @Composable
+private fun AudioWaveform(
+    active: Boolean,
+    progress: Float,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    var frame by remember { mutableIntStateOf(0) }
+    LaunchedEffect(active) {
+        if (!active) {
+            frame = 0
+            return@LaunchedEffect
+        }
+        while (true) {
+            frame = (frame + 1) % 24
+            delay(90)
+        }
+    }
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        repeat(18) { index ->
+            val normalizedIndex = index / 17f
+            val played = normalizedIndex <= progress.coerceIn(0f, 1f)
+            val animatedStep = if (active) (index * 5 + frame * 3) % 11 else (index * 7) % 9
+            val barHeight = (7 + animatedStep * 1.35f).dp
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(barHeight)
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(color.copy(alpha = if (played || active) 0.95f else 0.38f)),
+            )
+        }
+    }
+}
+
+private fun formatPlaybackSpeed(speed: Float): String = when (speed) {
+    1f -> "1×"
+    1.5f -> "1.5×"
+    2f -> "2×"
+    else -> "${speed}×"
+}
+
+@Composable
 @androidx.compose.foundation.ExperimentalFoundationApi
 fun ImageMessageBubble(
     message: Message,
@@ -148,6 +197,7 @@ fun ImageMessageBubble(
     onResolveUrl: suspend (String) -> String? = { it }
 ) {
     val context = LocalContext.current
+    val chatAccentColors = currentChatAccentColors()
     var resolvedUrl by remember(message.media_url) { mutableStateOf<String?>(null) }
     
     LaunchedEffect(message.media_url) {
@@ -166,7 +216,7 @@ fun ImageMessageBubble(
             modifier = Modifier
                 .widthIn(max = 280.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(if (isFromCurrentUser) MessageSentBackground else MessageReceivedBackground)
+                .background(if (isFromCurrentUser) chatAccentColors.sentBackground else MessageReceivedBackground)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
         ) {
                 if (message.deleted_for_all) {
@@ -356,8 +406,12 @@ fun MessageBubble(
     onPlayAudio: (Message) -> Unit = {},
     modifier: Modifier = Modifier,
     isPlaying: Boolean = false,
+    isAudioActive: Boolean = false,
     progress: Float = 0f,
     duration: String = "0:00",
+    playbackSpeed: Float = 1f,
+    onSeekAudio: (Message, Float) -> Unit = { _, _ -> },
+    onChangeAudioSpeed: (Message) -> Unit = {},
     onResolveUrl: suspend (String) -> String? = { it },
     senderName: String? = null,
     senderEmail: String? = null,
@@ -374,6 +428,15 @@ fun MessageBubble(
     onAddToDeviceContacts: (ChatContactPayload) -> Unit = {}
 ) {
     val context = LocalContext.current
+    var showDocument by remember(message.id, message.media_url) { mutableStateOf(false) }
+    if (showDocument && !message.deleted_for_all && !message.media_url.isNullOrBlank()) {
+        conectate.com.presentation.documents.InternalDocumentDialog(
+            source = android.net.Uri.parse(message.media_url),
+            suggestedName = message.content,
+            resolveSource = onResolveUrl,
+            onDismiss = { showDocument = false },
+        )
+    }
     var offsetX by remember { mutableStateOf(0f) }
     val replyThreshold = 100f
     
@@ -385,11 +448,12 @@ fun MessageBubble(
         }
     }
 
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val isStickerMessage = message.content_type == "sticker" && !message.deleted_for_all
+    val chatAccentColors = currentChatAccentColors()
     
     // Theme-aware colors
-    val sentBgColor = if (isDark) MessageSentBackgroundDark else MessageSentBackground
+    val sentBgColor = chatAccentColors.sentBackground
     val receivedBgColor = if (isDark) MessageReceivedBackgroundDark else MessageReceivedBackground
     val receivedTextColor = if (isDark) MessageReceivedTextColorDark else MessageReceivedTextColorLight
     
@@ -411,21 +475,29 @@ fun MessageBubble(
             .fillMaxWidth()
             .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
             .padding(horizontal = 8.dp, vertical = 1.dp)
-            .offset(x = (offsetX / 3).dp) // Visual feedback
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        if (kotlin.math.abs(offsetX) > replyThreshold) {
-                            onSwipeReply(message)
-                        }
-                        offsetX = 0f
-                    },
-                    onHorizontalDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: Float ->
-                        change.consume()
-                        offsetX += dragAmount
+            .offset { IntOffset(x = (offsetX / 3f).roundToInt(), y = 0) }
+            .then(
+                if (message.isAudio) {
+                    // The horizontal gesture belongs to the seek bar. Audio messages can
+                    // still be replied to from the long-press actions menu.
+                    Modifier
+                } else {
+                    Modifier.pointerInput(message.id) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                if (kotlin.math.abs(offsetX) > replyThreshold) {
+                                    onSwipeReply(message)
+                                }
+                                offsetX = 0f
+                            },
+                            onHorizontalDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: Float ->
+                                change.consume()
+                                offsetX += dragAmount
+                            }
+                        )
                     }
-                )
-            },
+                }
+            ),
         horizontalArrangement = if (isFromCurrentUser) Arrangement.End else Arrangement.Start
     ) {
         Box(
@@ -445,6 +517,7 @@ fun MessageBubble(
                         when {
                             message.isAudio -> onPlayAudio(message)
                             isStickerMessage -> onLongClick()
+                            message.content_type in listOf("document", "file") && !message.deleted_for_all -> showDocument = true
                             else -> {
                                 // Pass the resolved URL back (useful for fullscreen dialogs)
                                 onClick(resolvedUrl ?: message.media_url)
@@ -574,7 +647,7 @@ fun MessageBubble(
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 2,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                color = if (isFromCurrentUser) MessageSentTextColor.copy(alpha = 0.7f) else receivedTextColor.copy(alpha = 0.7f)
+                                color = if (isFromCurrentUser) chatAccentColors.sentContent.copy(alpha = 0.7f) else receivedTextColor.copy(alpha = 0.7f)
                             )
                         }
                     }
@@ -585,7 +658,7 @@ fun MessageBubble(
                         text = "Reenviado",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (isFromCurrentUser) {
-                            MessageSentTextColor.copy(alpha = 0.75f)
+                            chatAccentColors.sentContent.copy(alpha = 0.75f)
                         } else {
                             receivedTextColor.copy(alpha = 0.75f)
                         },
@@ -603,12 +676,12 @@ fun MessageBubble(
                          Icon(
                             imageVector = Icons.Default.Block,
                             contentDescription = null,
-                            tint = if (isFromCurrentUser) MessageSentTextColor.copy(alpha=0.6f) else receivedTextColor.copy(alpha=0.6f),
+                            tint = if (isFromCurrentUser) chatAccentColors.sentContent.copy(alpha=0.6f) else receivedTextColor.copy(alpha=0.6f),
                             modifier = Modifier.size(16.dp).padding(end = 4.dp)
                          )
                          Text(
                              text = deletedText,
-                             color = if (isFromCurrentUser) MessageSentTextColor.copy(alpha=0.6f) else receivedTextColor.copy(alpha=0.6f),
+                             color = if (isFromCurrentUser) chatAccentColors.sentContent.copy(alpha=0.6f) else receivedTextColor.copy(alpha=0.6f),
                              style = MaterialTheme.typography.bodyMedium.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
                          )
                     }
@@ -636,18 +709,18 @@ fun MessageBubble(
                             Icon(
                                 imageVector = Icons.Default.Visibility,
                                 contentDescription = null,
-                                tint = if (isFromCurrentUser) MessageSentTextColor else MaterialTheme.colorScheme.primary
+                                tint = if (isFromCurrentUser) chatAccentColors.sentContent else MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
                                     text = if (message.content_type == "view_once_video") "Video ver una vez" else "Foto ver una vez",
-                                    color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor,
+                                    color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
                                 )
                                 Text(
                                     text = "Se abrirá solo una vez",
-                                    color = if (isFromCurrentUser) MessageSentTextColor.copy(alpha = 0.75f) else receivedTextColor.copy(alpha = 0.75f),
+                                    color = if (isFromCurrentUser) chatAccentColors.sentContent.copy(alpha = 0.75f) else receivedTextColor.copy(alpha = 0.75f),
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
@@ -656,7 +729,7 @@ fun MessageBubble(
                     "text" -> {
                         LinkText(
                             text = message.content,
-                            color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor,
+                            color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                             fontSize = 15.sp,
                             onUrlClick = onUrlClick
                         )
@@ -766,36 +839,70 @@ fun MessageBubble(
                     }
 
                     "audio" -> {
-                        // REMOVED internal MediaPlayer - Relying on ChatViewModel
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                        Column(
                             modifier = Modifier
-                                .width(200.dp)
+                                .width(232.dp)
                                 .combinedClickable(
                                     onClick = { onPlayAudio(message) },
                                     onLongClick = onLongClick
                                 )
                         ) {
-                            Icon(
-                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isPlaying) "Pausar" else "Reproducir",
-                                tint = if (isFromCurrentUser) MessageSentTextColor else MaterialTheme.colorScheme.primary
+                            val audioTint = if (isFromCurrentUser) {
+                                chatAccentColors.sentContent
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = { onPlayAudio(message) },
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = if (isPlaying) "Pausar audio" else "Reproducir audio",
+                                        tint = audioTint,
+                                    )
+                                }
+                                AudioWaveform(
+                                    active = isPlaying,
+                                    progress = if (isAudioActive) progress else 0f,
+                                    color = audioTint,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(28.dp),
+                                )
+                                Text(
+                                    text = formatPlaybackSpeed(playbackSpeed),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = audioTint,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { onChangeAudioSpeed(message) }
+                                        .padding(horizontal = 7.dp, vertical = 5.dp),
+                                )
+                            }
+                            Slider(
+                                value = if (isAudioActive) progress.coerceIn(0f, 1f) else 0f,
+                                onValueChange = { value -> onSeekAudio(message, value) },
+                                enabled = isAudioActive,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(24.dp),
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            
-                            androidx.compose.material3.LinearProgressIndicator(
-                                progress = progress,
-                                modifier = Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)),
-                                color = if (isFromCurrentUser) MessageSentTextColor else MaterialTheme.colorScheme.primary,
-                                trackColor = if (isFromCurrentUser) MessageSentTextColor.copy(alpha=0.3f) else MaterialTheme.colorScheme.primary.copy(alpha=0.2f)
-                            )
-                            
-                             Spacer(modifier = Modifier.width(8.dp))
-                             Text(
-                                text = if (isPlaying && duration != "0:00") duration else (message.content.ifBlank { "Audio" }),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor
-                            )
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = if (isAudioActive && duration != "0:00") duration else "0:00",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
+                                )
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    text = message.content.ifBlank { "Audio" },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
+                                    maxLines = 1,
+                                )
+                            }
                         }
                     }
                     "document", "file" -> {
@@ -806,14 +913,14 @@ fun MessageBubble(
                                 .widthIn(max = 280.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.InsertDriveFile,
+                                imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
                                 contentDescription = null,
-                                tint = if (isFromCurrentUser) MessageSentTextColor else MaterialTheme.colorScheme.primary
+                                tint = if (isFromCurrentUser) chatAccentColors.sentContent else MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = message.content.ifBlank { "Archivo adjunto" },
-                                color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor,
+                                color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
@@ -830,12 +937,12 @@ fun MessageBubble(
                                 Icon(
                                     imageVector = Icons.Default.Person,
                                     contentDescription = null,
-                                    tint = if (isFromCurrentUser) MessageSentTextColor else MaterialTheme.colorScheme.primary
+                                    tint = if (isFromCurrentUser) chatAccentColors.sentContent else MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = message.content.ifBlank { "Contacto" },
-                                    color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor,
+                                    color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
@@ -850,26 +957,26 @@ fun MessageBubble(
                                     Icon(
                                         imageVector = Icons.Default.Person,
                                         contentDescription = null,
-                                        tint = if (isFromCurrentUser) MessageSentTextColor else MaterialTheme.colorScheme.primary
+                                        tint = if (isFromCurrentUser) chatAccentColors.sentContent else MaterialTheme.colorScheme.primary
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = payload.normalizedName.ifBlank { "Contacto" },
-                                        color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor,
+                                        color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
                                     )
                                 }
                                 payload.normalizedPhone?.let { phone ->
                                     Text(
                                         text = "📞 $phone",
-                                        color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor,
+                                        color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
                                 payload.normalizedEmail?.let { email ->
                                     Text(
                                         text = "✉️ $email",
-                                        color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor,
+                                        color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
@@ -913,12 +1020,12 @@ fun MessageBubble(
                                 Icon(
                                     imageVector = Icons.Default.LocationOn,
                                     contentDescription = null,
-                                    tint = if (isFromCurrentUser) MessageSentTextColor else MaterialTheme.colorScheme.primary
+                                    tint = if (isFromCurrentUser) chatAccentColors.sentContent else MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Ubicación",
-                                    color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor,
+                                    color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
                                 )
                             }
@@ -933,7 +1040,7 @@ fun MessageBubble(
                                 } else {
                                     message.content.ifBlank { "Ubicación compartida" }
                                 },
-                                color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor,
+                                color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                 fontSize = 15.sp,
                                 onUrlClick = onUrlClick
                             )
@@ -942,7 +1049,7 @@ fun MessageBubble(
                     else -> {
                         Text(
                             text = message.content,
-                            color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor
+                            color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor
                         )
                     }
                     }
@@ -951,7 +1058,7 @@ fun MessageBubble(
                 if (shouldShowMediaCaption(message)) {
                     Text(
                         text = message.content.trim(),
-                        color = if (isFromCurrentUser) MessageSentTextColor else receivedTextColor,
+                        color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 6.dp)
                     )
@@ -1019,7 +1126,7 @@ fun MessageBubble(
                     val metadataColor = if (isStickerMessage) {
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f)
                     } else if (isFromCurrentUser) {
-                        MessageSentTextColor.copy(alpha = 0.7f)
+                        chatAccentColors.sentContent.copy(alpha = 0.7f)
                     } else {
                         receivedTextColor.copy(alpha = 0.6f)
                     }

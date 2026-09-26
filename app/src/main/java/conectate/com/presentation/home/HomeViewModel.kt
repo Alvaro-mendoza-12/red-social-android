@@ -11,6 +11,8 @@ import conectate.com.presentation.messages.normalizedVisibleConversations
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -52,8 +54,16 @@ class HomeViewModel @Inject constructor(
         dms + groups + communities
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    private var avatarJob: Job? = null
+    private var avatarOwner: String? = null
+    private var avatarGeneration = 0L
+
     init {
-        loadCurrentUserAvatar()
+        viewModelScope.launch {
+            authService.currentSession.map { authService.getCurrentUserId() }.distinctUntilChanged().collect {
+                loadCurrentUserAvatar()
+            }
+        }
     }
 
     fun refreshShellUserData() {
@@ -61,14 +71,24 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun loadCurrentUserAvatar() {
-        viewModelScope.launch {
-            val userId = authService.getCurrentUserId() ?: run {
-                _currentUserAvatarUrl.value = null
-                return@launch
-            }
-
-            val result = userRepository.getUserById(userId)
-            _currentUserAvatarUrl.value = result.getOrNull()?.profileImage?.ifBlank { null }
+        val userId = authService.getCurrentUserId()
+        if (avatarOwner == userId && avatarJob?.isActive == true) return
+        val generation = ++avatarGeneration
+        avatarJob?.cancel()
+        if (avatarOwner != userId) _currentUserAvatarUrl.value = null
+        avatarOwner = userId
+        if (userId.isNullOrBlank()) return
+        avatarJob = viewModelScope.launch {
+            fun isCurrent() = generation == avatarGeneration && userId == authService.getCurrentUserId()
+            try {
+                val cached = userRepository.getCachedUserById(userId)
+                if (isCurrent() && cached != null) _currentUserAvatarUrl.value = cached.profileImage.ifBlank { null }
+                val result = userRepository.getUserById(userId)
+                if (isCurrent() && result.isSuccess) {
+                    _currentUserAvatarUrl.value = result.getOrNull()?.profileImage?.ifBlank { null }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Keep the already loaded local avatar during network failures. */ }
         }
     }
 }

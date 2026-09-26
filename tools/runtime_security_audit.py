@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runtime security audit for Android + signaling server assets.
+"""Runtime security audit for Android, backend and signaling assets.
 
 Checks for:
 - tracked secret-like files committed to git
@@ -7,6 +7,7 @@ Checks for:
 - accidental exposure of privileged keys in Android BuildConfig/example files
 - sensitive shared prefs leaking through Android backup/data extraction rules
 - signaling-server auth/cors/rate-limit hardening markers
+- fail-closed authentication and PII-safe logging in the legacy push webhook
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ SENSITIVE_PREFS = {
     "account_switch_secure_prefs.xml",
     "notification_repository_cache.xml",
     "privacy_policy_cache.xml",
+    "resumable_upload_sessions.xml",
     "user_cache.xml",
 }
 
@@ -49,6 +51,9 @@ SAFE_PREF_ALLOWLIST = {
     "theme_prefs.xml",
     "messages_preferences.xml",
     "app_prefs.xml",
+    # Contains only UX moderation choices (blur/show/warnings) and no account,
+    # token, profile, or server state. It is safe to restore across devices.
+    "content_safety_prefs.xml",
 }
 
 
@@ -258,9 +263,16 @@ def scan_runtime_security(root: Path) -> list[Finding]:
         ("SIGNALING_SOCKET_AUTH_LIVE", "liveIo.use(authenticateSocketConnection);"),
         ("SIGNALING_REQUIRE_SOCKET_USER", "function requireSocketUser"),
         ("SIGNALING_REQUIRE_JOINED_SCOPE", "function requireJoinedScope"),
-        ("SIGNALING_SHARED_TARGET_GUARD", "function sharesScopeWithTarget"),
+        # Cross-replica authorization now lives in distributed-scope.js and is
+        # invoked from the root signaling server. Guard the active call site;
+        # the old local-only sharesScopeWithTarget helper was intentionally
+        # removed when Redis Streams support was introduced.
+        ("SIGNALING_SHARED_TARGET_GUARD", "sharesNamespaceScope("),
         ("SIGNALING_HTTP_RATE_LIMIT", "function enforceHttpRateLimit"),
         ("SIGNALING_ALLOWED_ORIGINS", "function parseAllowedOrigins"),
+        ("SIGNALING_PACKET_RATE_LIMIT", "function installSocketPacketGuard"),
+        ("SIGNALING_BOUNDED_PAYLOAD", "normalizeSignalPayload"),
+        ("SIGNALING_MAX_HTTP_BUFFER", "maxHttpBufferSize: 256 * 1024"),
     ]
     for rule, marker in signaling_expectations:
         if marker not in signaling_text:
@@ -285,13 +297,34 @@ def scan_runtime_security(root: Path) -> list[Finding]:
             )
         )
 
+    sensitive_log_markers = (
+        "| email=${",
+        "| ip=${",
+        "SDP: ${",
+        "canonicalUserId=${",
+        "claimedUserId=${",
+    )
+    for marker in sensitive_log_markers:
+        if marker in signaling_text:
+            findings.append(
+                make_finding(
+                    severity="HIGH",
+                    rule="SIGNALING_SENSITIVE_DIAGNOSTIC_LOG",
+                    subject=marker,
+                    message="Signaling logs expose a direct identity, network address, or SDP fragment.",
+                    file_path="signaling-server/index.js",
+                )
+            )
+
     env_example = root / "signaling-server/.env.example"
     env_example_text = env_example.read_text(encoding="utf-8", errors="ignore") if env_example.exists() else ""
     for required_env in (
-        "SUPABASE_SERVICE_ROLE_KEY=",
+        "FALLBACK_API_URL=",
         "SIGNALING_ALLOWED_ORIGINS=",
         "HTTP_RATE_LIMIT_PER_MINUTE=",
         "SOCKET_RATE_LIMIT_PER_MINUTE=",
+        "SOCKET_EVENT_RATE_LIMIT_PER_MINUTE=",
+        "TURN_HOST=",
         "TURN_SECRET=",
     ):
         if required_env not in env_example_text:
@@ -304,6 +337,173 @@ def scan_runtime_security(root: Path) -> list[Finding]:
                     file_path="signaling-server/.env.example",
                 )
             )
+
+    legacy_pairing = root / "supabase/functions/web-login-pairing/index.ts"
+    legacy_pairing_text = (
+        legacy_pairing.read_text(encoding="utf-8", errors="ignore")
+        if legacy_pairing.exists()
+        else ""
+    )
+    legacy_pairing_forbidden = (
+        "serviceClient = null",
+        "session_payload",
+        "192.168.",
+        "10.0.",
+        "172.16.",
+    )
+    for marker in legacy_pairing_forbidden:
+        if marker in legacy_pairing_text:
+            findings.append(
+                make_finding(
+                    severity="HIGH",
+                    rule="LEGACY_PAIRING_CREDENTIAL_PATH",
+                    subject=marker,
+                    message="Retired Supabase pairing function contains credential handling or a private backend address.",
+                    file_path="supabase/functions/web-login-pairing/index.ts",
+                )
+            )
+
+    legacy_pairing_required = (
+        "UBUNTU_BACKEND_REQUIRED",
+        "status: 410",
+        "Cache-Control': 'no-store",
+    )
+    if legacy_pairing.exists() and not all(
+        marker in legacy_pairing_text for marker in legacy_pairing_required
+    ):
+        findings.append(
+            make_finding(
+                severity="HIGH",
+                rule="LEGACY_PAIRING_TOMBSTONE_MISSING",
+                subject="web-login-pairing",
+                message="Retired Supabase pairing endpoint must fail closed and direct clients to the Ubuntu backend.",
+                file_path="supabase/functions/web-login-pairing/index.ts",
+            )
+        )
+
+    push_edge = root / "supabase/functions/push-notification/index.ts"
+    push_edge_text = push_edge.read_text(encoding="utf-8", errors="ignore") if push_edge.exists() else ""
+    if push_edge.exists():
+        for marker in (
+            "PUSH_WEBHOOK_SECRET",
+            "constantTimeEquals",
+            "SUPABASE_SERVICE_ROLE_KEY",
+            "persistSession: false",
+            "PAYLOAD_TOO_LARGE",
+        ):
+            if marker not in push_edge_text:
+                findings.append(
+                    make_finding(
+                        severity="HIGH",
+                        rule="PUSH_WEBHOOK_HARDENING_MISSING",
+                        subject=marker,
+                        message="Legacy push webhook is missing a fail-closed security marker.",
+                        file_path="supabase/functions/push-notification/index.ts",
+                    )
+                )
+        for marker in (
+            "192.168.",
+            "Notification Payload Received",
+            "body: responseText",
+            "slice(0, 12)",
+        ):
+            if marker in push_edge_text:
+                findings.append(
+                    make_finding(
+                        severity="HIGH",
+                        rule="PUSH_WEBHOOK_PRIVATE_DATA_OR_ADDRESS",
+                        subject=marker,
+                        message="Push webhook contains a private address or logs provider/user data.",
+                        file_path="supabase/functions/push-notification/index.ts",
+                    )
+                )
+
+    backend_trust_expectations = {
+        "app/src/main/java/conectate/com/core/network/BackendTrustPolicy.kt": (
+            "SHA256withECDSA",
+            "verifyDiscoveryEnvelope",
+            "MAX_DISCOVERY_TTL_SECONDS",
+        ),
+        "app/src/main/java/conectate/com/data/localfallback/RuntimeBackendEndpoint.kt": (
+            "BACKEND_DISCOVERY_PUBLIC_KEY",
+            "trustCandidate",
+            "discovery_envelope",
+        ),
+        "Conectate-web/src/core/backendTrust.ts": (
+            "verifyBackendDiscoveryEnvelope",
+            "ECDSA",
+            "MAX_DISCOVERY_TTL_SECONDS",
+        ),
+        "Conectate-web/src/core/runtimeBackend.ts": (
+            "VITE_BACKEND_DISCOVERY_PUBLIC_KEY",
+            "trustCandidate",
+            "requiredCapabilities",
+        ),
+        "tools/backend-discovery-envelope.mjs": (
+            "prime256v1",
+            "MAX_TTL_SECONDS",
+            "commandVerify",
+        ),
+    }
+    for relative_path, required_markers in backend_trust_expectations.items():
+        source_path = root / relative_path
+        source_text = source_path.read_text(encoding="utf-8", errors="ignore") if source_path.exists() else ""
+        for marker in required_markers:
+            if marker not in source_text:
+                findings.append(
+                    make_finding(
+                        severity="HIGH",
+                        rule="BACKEND_DISCOVERY_TRUST_MARKER_MISSING",
+                        subject=marker,
+                        message="Signed backend discovery trust policy is missing a required marker.",
+                        file_path=relative_path,
+                    )
+                )
+
+    tunnel_scripts = (
+        "infrastructure/local-fallback/scripts/conectate-cloudflare-tunnel.sh",
+        "infrastructure/local-fallback/scripts/install-cloudflare-tunnel-24-7.sh",
+    )
+    for relative_path in tunnel_scripts:
+        script_path = root / relative_path
+        script_text = script_path.read_text(encoding="utf-8", errors="ignore") if script_path.exists() else ""
+        if "txt=${url}" in script_text or "txt=$url" in script_text:
+            findings.append(
+                make_finding(
+                    severity="HIGH",
+                    rule="UNSIGNED_BACKEND_DISCOVERY_PUBLISH",
+                    subject="DuckDNS TXT",
+                    message="Tunnel script publishes a plaintext backend URL instead of an expiring signed envelope.",
+                    file_path=relative_path,
+                )
+            )
+        if "backend-discovery-envelope.mjs" not in script_text or "novvin1:" not in script_text:
+            findings.append(
+                make_finding(
+                    severity="HIGH",
+                    rule="SIGNED_BACKEND_DISCOVERY_PUBLISHER_MISSING",
+                    subject="novvin1",
+                    message="Tunnel script does not enforce the signed backend discovery publisher.",
+                    file_path=relative_path,
+                )
+            )
+
+    public_backend_config = root / "Conectate-web/public/backend-config.json"
+    public_backend_config_text = (
+        public_backend_config.read_text(encoding="utf-8", errors="ignore")
+        if public_backend_config.exists()
+        else ""
+    )
+    if ".trycloudflare.com" in public_backend_config_text and "\"discoveryEnvelope\"" not in public_backend_config_text:
+        findings.append(
+            make_finding(
+                severity="HIGH",
+                rule="UNSIGNED_PUBLIC_BACKEND_CONFIG",
+                subject="trycloudflare.com",
+                message="Public web config contains an unsigned temporary backend origin.",
+                file_path="Conectate-web/public/backend-config.json",
+            )
+        )
 
     return findings
 

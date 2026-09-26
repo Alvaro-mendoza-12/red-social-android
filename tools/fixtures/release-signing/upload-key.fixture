@@ -1,0 +1,2 @@
+NON-SECRET TEST FIXTURE. This is not a keystore and must never sign an APK/AAB.
+It tests only file existence in the configuration guard; AGP validates real keys.

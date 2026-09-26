@@ -9,7 +9,7 @@ import javax.inject.Singleton
 
 @Singleton
 class ThemePreferences @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     private val prefs = context.getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
 
@@ -19,7 +19,7 @@ class ThemePreferences @Inject constructor(
 
     private val _appTheme = MutableStateFlow(
         AppThemeOption.fromStorage(
-            prefs.getString("app_theme", AppThemeOption.CONECTATE.storageValue)
+            prefs.getString("app_theme", AppThemeOption.NEUTRO.storageValue)
         )
     )
     val appTheme: StateFlow<AppThemeOption> = _appTheme

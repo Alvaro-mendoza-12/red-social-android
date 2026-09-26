@@ -4,6 +4,10 @@ const { publishRealtimeEvent } = require('./realtime-publish')
 const ALLOWED_GENDERS = new Set(['unspecified', 'woman', 'man'])
 const ALLOWED_LOOKING_FOR = new Set(['any', 'woman', 'man'])
 const RANDOM_MESSAGE_TYPES = new Set(['text', 'sticker', 'audio', 'image'])
+const ACTIVE_BOTTLE_STATUSES = new Set(['searching', 'offered'])
+const BOTTLE_OFFER_TIMEOUT_SECONDS = 45
+const BOTTLE_AVAILABILITY_TTL_SECONDS = 15
+const MAX_ACTIVE_RANDOM_SESSIONS = 20
 
 function normalizeId(value) {
   return String(value || '').trim().toLowerCase()
@@ -106,6 +110,19 @@ async function ensureProximityTables(pool) {
     ON fallback_random_chat_queue(updated_at)
   `)
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_random_bottle_availability (
+      user_id TEXT PRIMARY KEY,
+      gender TEXT NOT NULL DEFAULT 'unspecified',
+      looking_for TEXT NOT NULL DEFAULT 'any',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_bottle_availability_updated
+    ON fallback_random_bottle_availability(updated_at)
+  `)
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_random_chat_sessions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_a TEXT NOT NULL,
@@ -157,6 +174,32 @@ async function ensureProximityTables(pool) {
     `ALTER TABLE fallback_random_chat_messages
      ADD COLUMN IF NOT EXISTS media_url TEXT`,
   )
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fallback_random_chat_bottles (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      sender_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      sender_gender TEXT NOT NULL DEFAULT 'unspecified',
+      looking_for TEXT NOT NULL DEFAULT 'any',
+      status TEXT NOT NULL DEFAULT 'searching'
+        CHECK (status IN ('searching', 'offered', 'accepted', 'cancelled', 'expired')),
+      current_recipient_id TEXT,
+      attempted_recipient_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+      session_id UUID REFERENCES fallback_random_chat_sessions(id) ON DELETE SET NULL,
+      offer_started_at TIMESTAMPTZ,
+      expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '24 hours',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_random_bottles_sender
+    ON fallback_random_chat_bottles(lower(sender_id::text), status, updated_at DESC)
+  `)
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_random_bottles_recipient
+    ON fallback_random_chat_bottles(lower(current_recipient_id::text), status, offer_started_at)
+  `)
 }
 
 async function profileById(pool, userId) {
@@ -318,6 +361,182 @@ async function advanceAnonymousProgress(db, sessionId) {
     [sessionId, level],
   )
   return rows[0] || null
+}
+
+function bottleCandidateAllowed({
+  senderId,
+  candidate,
+  attemptedIds,
+  blockedIds: blocked,
+  existingPeerIds,
+  busyRecipientIds,
+  saturatedUserIds = new Set(),
+}) {
+  const candidateId = normalizeId(candidate?.user_id)
+  if (!candidateId || candidateId === normalizeId(senderId)) return false
+  if (attemptedIds.has(candidateId) || blocked.has(candidateId)) return false
+  if (existingPeerIds.has(candidateId) || busyRecipientIds.has(candidateId) || saturatedUserIds.has(candidateId)) return false
+  return mutuallyCompatible(
+    { gender: normalizeGender(candidate?.sender_gender), looking_for: normalizeLookingFor(candidate?.sender_looking_for) },
+    candidate,
+  )
+}
+
+function bottleOfferRespondable(bottle, identityIds, nowMs = Date.now()) {
+  if (!bottle || bottle.status !== 'offered') return false
+  if (!identityIds?.has(normalizeId(bottle.current_recipient_id))) return false
+  const offerStartedMs = new Date(bottle.offer_started_at).getTime()
+  const bottleExpiresMs = new Date(bottle.expires_at).getTime()
+  if (!Number.isFinite(offerStartedMs) || !Number.isFinite(bottleExpiresMs)) return false
+  return bottleExpiresMs > nowMs && nowMs - offerStartedMs < BOTTLE_OFFER_TIMEOUT_SECONDS * 1000
+}
+
+function bottlePayload(row, perspective = 'sender') {
+  if (!row) return null
+  const attempted = Array.isArray(row.attempted_recipient_ids) ? row.attempted_recipient_ids : []
+  return {
+    id: String(row.id),
+    content: String(row.content || ''),
+    status: String(row.status || 'searching'),
+    perspective,
+    attempt_count: attempted.length,
+    offered_at: row.offer_started_at || null,
+    expires_at: row.expires_at || null,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null,
+  }
+}
+
+async function bottleById(db, bottleId, lock = false) {
+  const { rows } = await db.query(
+    `SELECT id::text, sender_id, content, sender_gender, looking_for, status,
+            current_recipient_id, attempted_recipient_ids, session_id::text,
+            offer_started_at, expires_at, created_at, updated_at
+       FROM fallback_random_chat_bottles
+      WHERE id=$1::uuid
+      LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
+    [bottleId],
+  )
+  return rows[0] || null
+}
+
+async function assignBottleRecipient(db, bottle) {
+  if (!bottle || bottle.status !== 'searching') return bottle
+  const senderId = normalizeId(bottle.sender_id)
+  const attemptedIds = new Set((bottle.attempted_recipient_ids || []).map(normalizeId).filter(Boolean))
+  const senderSessions = await activeSessionsForUser(db, senderId)
+  const existingPeerIds = new Set(senderSessions.map((session) => (
+    normalizeId(session.user_a) === senderId ? normalizeId(session.user_b) : normalizeId(session.user_a)
+  )))
+  const blocked = await blockedIds(db, { ids: new Set([senderId]) })
+  const { rows: busyRows } = await db.query(
+    `SELECT current_recipient_id
+       FROM fallback_random_chat_bottles
+      WHERE status='offered' AND current_recipient_id IS NOT NULL AND id<>$1::uuid`,
+    [bottle.id],
+  )
+  const busyRecipientIds = new Set(busyRows.map((row) => normalizeId(row.current_recipient_id)).filter(Boolean))
+  const { rows: saturatedRows } = await db.query(
+    `SELECT participant_id
+       FROM (
+         SELECT lower(user_a::text) AS participant_id FROM fallback_random_chat_sessions WHERE status='active'
+         UNION ALL
+         SELECT lower(user_b::text) AS participant_id FROM fallback_random_chat_sessions WHERE status='active'
+       ) participants
+      GROUP BY participant_id
+     HAVING COUNT(*) >= $1`,
+    [MAX_ACTIVE_RANDOM_SESSIONS],
+  )
+  const saturatedUserIds = new Set(saturatedRows.map((row) => normalizeId(row.participant_id)).filter(Boolean))
+  const { rows: candidates } = await db.query(
+    `SELECT user_id, gender, looking_for, created_at
+       FROM fallback_random_bottle_availability
+      WHERE updated_at > NOW() - INTERVAL '${BOTTLE_AVAILABILITY_TTL_SECONDS} seconds'
+      ORDER BY created_at
+      FOR UPDATE SKIP LOCKED`,
+  )
+  const candidate = candidates
+    .map((entry) => ({
+      ...entry,
+      sender_gender: bottle.sender_gender,
+      sender_looking_for: bottle.looking_for,
+    }))
+    .find((entry) => bottleCandidateAllowed({
+      senderId,
+      candidate: entry,
+      attemptedIds,
+      blockedIds: blocked,
+      existingPeerIds,
+      busyRecipientIds,
+      saturatedUserIds,
+    }))
+  if (!candidate) return bottle
+
+  const { rows } = await db.query(
+    `UPDATE fallback_random_chat_bottles
+        SET status='offered', current_recipient_id=$2, offer_started_at=NOW(), updated_at=NOW()
+      WHERE id=$1::uuid AND status='searching'
+      RETURNING id::text, sender_id, content, sender_gender, looking_for, status,
+                current_recipient_id, attempted_recipient_ids, session_id::text,
+                offer_started_at, expires_at, created_at, updated_at`,
+    [bottle.id, normalizeId(candidate.user_id)],
+  )
+  return rows[0] || bottle
+}
+
+async function advanceBottle(db, bottleId) {
+  let bottle = await bottleById(db, bottleId, true)
+  if (!bottle) return null
+  if (ACTIVE_BOTTLE_STATUSES.has(bottle.status) && new Date(bottle.expires_at).getTime() <= Date.now()) {
+    const { rows } = await db.query(
+      `UPDATE fallback_random_chat_bottles
+          SET status='expired', current_recipient_id=NULL, offer_started_at=NULL, updated_at=NOW()
+        WHERE id=$1::uuid
+        RETURNING id::text, sender_id, content, sender_gender, looking_for, status,
+                  current_recipient_id, attempted_recipient_ids, session_id::text,
+                  offer_started_at, expires_at, created_at, updated_at`,
+      [bottle.id],
+    )
+    return rows[0] || bottle
+  }
+  const offerExpired = bottle.status === 'offered' && bottle.offer_started_at &&
+    (Date.now() - new Date(bottle.offer_started_at).getTime()) >= BOTTLE_OFFER_TIMEOUT_SECONDS * 1000
+  if (offerExpired) {
+    const attempted = Array.from(new Set([
+      ...(bottle.attempted_recipient_ids || []).map(normalizeId),
+      normalizeId(bottle.current_recipient_id),
+    ].filter(Boolean)))
+    const { rows } = await db.query(
+      `UPDATE fallback_random_chat_bottles
+          SET status='searching', current_recipient_id=NULL, offer_started_at=NULL,
+              attempted_recipient_ids=$2::jsonb, updated_at=NOW()
+        WHERE id=$1::uuid
+        RETURNING id::text, sender_id, content, sender_gender, looking_for, status,
+                  current_recipient_id, attempted_recipient_ids, session_id::text,
+                  offer_started_at, expires_at, created_at, updated_at`,
+      [bottle.id, JSON.stringify(attempted)],
+    )
+    bottle = rows[0] || bottle
+  }
+  return bottle.status === 'searching' ? assignBottleRecipient(db, bottle) : bottle
+}
+
+async function releaseBottleRecipient(db, bottle) {
+  const attempted = Array.from(new Set([
+    ...(bottle?.attempted_recipient_ids || []).map(normalizeId),
+    normalizeId(bottle?.current_recipient_id),
+  ].filter(Boolean)))
+  const { rows } = await db.query(
+    `UPDATE fallback_random_chat_bottles
+        SET status='searching',current_recipient_id=NULL,offer_started_at=NULL,
+            attempted_recipient_ids=$2::jsonb,updated_at=NOW()
+      WHERE id=$1::uuid AND status='offered'
+      RETURNING id::text, sender_id, content, sender_gender, looking_for, status,
+                current_recipient_id, attempted_recipient_ids, session_id::text,
+                offer_started_at, expires_at, created_at, updated_at`,
+    [bottle.id, JSON.stringify(attempted)],
+  )
+  return rows[0] ? assignBottleRecipient(db, rows[0]) : bottle
 }
 
 function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, userIdentity }) {
@@ -571,6 +790,333 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
     }
   })
 
+  app.post('/v1/data/proximity/random/availability', authRequired, async (req, res, next) => {
+    const client = await pool.connect()
+    try {
+      const user = await getCurrentUser(client, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const userId = normalizeId(identity.displayUserId)
+      const gender = normalizeGender(req.body?.gender)
+      const lookingFor = normalizeLookingFor(req.body?.lookingFor ?? req.body?.looking_for)
+      await client.query('BEGIN')
+      await client.query('SELECT pg_advisory_xact_lock($1)', [728145])
+      await client.query(`DELETE FROM fallback_random_bottle_availability WHERE updated_at < NOW() - INTERVAL '1 minute'`)
+      const activeSessions = await activeSessionsForUser(client, userId)
+      if (activeSessions.length >= MAX_ACTIVE_RANDOM_SESSIONS) {
+        await client.query(
+          `DELETE FROM fallback_random_bottle_availability WHERE lower(user_id::text)=ANY($1::text[])`,
+          [identity.values],
+        )
+        await client.query('COMMIT')
+        return res.status(409).json({ error: 'RANDOM_ACTIVE_SESSION_LIMIT' })
+      }
+      await client.query(
+        `INSERT INTO fallback_random_bottle_availability(user_id, gender, looking_for, created_at, updated_at)
+         VALUES($1,$2,$3,NOW(),NOW())
+         ON CONFLICT(user_id) DO UPDATE SET gender=EXCLUDED.gender,looking_for=EXCLUDED.looking_for,updated_at=NOW()`,
+        [userId, gender, lookingFor],
+      )
+      const pending = await client.query(
+        `SELECT id::text FROM fallback_random_chat_bottles
+          WHERE status IN ('searching','offered') AND expires_at>NOW()
+          ORDER BY created_at LIMIT 25`,
+      )
+      for (const row of pending.rows) await advanceBottle(client, row.id)
+      const incoming = await client.query(
+        `SELECT id::text, sender_id, content, sender_gender, looking_for, status,
+                current_recipient_id, attempted_recipient_ids, session_id::text,
+                offer_started_at, expires_at, created_at, updated_at
+           FROM fallback_random_chat_bottles
+          WHERE status='offered' AND lower(current_recipient_id::text)=ANY($1::text[])
+            AND offer_started_at > NOW() - INTERVAL '${BOTTLE_OFFER_TIMEOUT_SECONDS} seconds'
+          ORDER BY offer_started_at LIMIT 1`,
+        [identity.values],
+      )
+      await client.query('COMMIT')
+      const bottle = incoming.rows[0] || null
+      res.json({ status: bottle ? 'offered' : 'available', bottle: bottlePayload(bottle, 'recipient') })
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      next(error)
+    } finally {
+      client.release()
+    }
+  })
+
+  app.delete('/v1/data/proximity/random/availability', authRequired, async (req, res, next) => {
+    const client = await pool.connect()
+    try {
+      const user = await getCurrentUser(client, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      await client.query('BEGIN')
+      await client.query('SELECT pg_advisory_xact_lock($1)', [728145])
+      const offered = await client.query(
+        `SELECT id::text, sender_id, content, sender_gender, looking_for, status,
+                current_recipient_id, attempted_recipient_ids, session_id::text,
+                offer_started_at, expires_at, created_at, updated_at
+           FROM fallback_random_chat_bottles
+          WHERE status='offered' AND lower(current_recipient_id::text)=ANY($1::text[])
+          FOR UPDATE`,
+        [identity.values],
+      )
+      for (const bottle of offered.rows) await releaseBottleRecipient(client, bottle)
+      await client.query(
+        `DELETE FROM fallback_random_bottle_availability WHERE lower(user_id::text)=ANY($1::text[])`,
+        [identity.values],
+      )
+      await client.query('COMMIT')
+      res.json({ status: 'idle' })
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      next(error)
+    } finally {
+      client.release()
+    }
+  })
+
+  app.post('/v1/data/proximity/random/bottles', authRequired, async (req, res, next) => {
+    const client = await pool.connect()
+    try {
+      const user = await getCurrentUser(client, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const userId = normalizeId(identity.displayUserId)
+      const content = cleanText(req.body?.content, 500)
+      if (!content) return res.status(400).json({ error: 'BOTTLE_MESSAGE_REQUIRED' })
+      await client.query('BEGIN')
+      await client.query('SELECT pg_advisory_xact_lock($1)', [728145])
+      await client.query(
+        `UPDATE fallback_random_chat_bottles
+            SET status='expired',current_recipient_id=NULL,offer_started_at=NULL,updated_at=NOW()
+          WHERE lower(sender_id::text)=ANY($1::text[])
+            AND status IN ('searching','offered') AND expires_at<=NOW()`,
+        [identity.values],
+      )
+      const activeSessions = await activeSessionsForUser(client, userId)
+      if (activeSessions.length >= MAX_ACTIVE_RANDOM_SESSIONS) {
+        await client.query('ROLLBACK')
+        return res.status(409).json({ error: 'RANDOM_ACTIVE_SESSION_LIMIT' })
+      }
+      const existing = await client.query(
+        `SELECT id::text FROM fallback_random_chat_bottles
+          WHERE lower(sender_id::text)=ANY($1::text[]) AND status IN ('searching','offered')
+          ORDER BY created_at DESC LIMIT 1`,
+        [identity.values],
+      )
+      if (existing.rows[0]) {
+        await client.query('ROLLBACK')
+        return res.status(409).json({ error: 'BOTTLE_ALREADY_SEARCHING', bottleId: existing.rows[0].id })
+      }
+      const inserted = await client.query(
+        `INSERT INTO fallback_random_chat_bottles(sender_id,content,sender_gender,looking_for)
+         VALUES($1,$2,$3,$4)
+         RETURNING id::text, sender_id, content, sender_gender, looking_for, status,
+                   current_recipient_id, attempted_recipient_ids, session_id::text,
+                   offer_started_at, expires_at, created_at, updated_at`,
+        [userId, content, normalizeGender(req.body?.gender), normalizeLookingFor(req.body?.lookingFor ?? req.body?.looking_for)],
+      )
+      const bottle = await assignBottleRecipient(client, inserted.rows[0])
+      await client.query('COMMIT')
+      if (bottle?.current_recipient_id) {
+        void publishRealtimeEvent(`random-chat-user:${normalizeId(bottle.current_recipient_id)}`, {
+          event: 'anonymous_bottle_offered', bottleId: bottle.id,
+        })
+      }
+      res.status(201).json({ status: bottle?.status || 'searching', bottle: bottlePayload(bottle, 'sender') })
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      next(error)
+    } finally {
+      client.release()
+    }
+  })
+
+  app.get('/v1/data/proximity/random/bottles/outgoing', authRequired, async (req, res, next) => {
+    const client = await pool.connect()
+    try {
+      const user = await getCurrentUser(client, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      await client.query('BEGIN')
+      await client.query('SELECT pg_advisory_xact_lock($1)', [728145])
+      const found = await client.query(
+        `SELECT id::text FROM fallback_random_chat_bottles
+          WHERE lower(sender_id::text)=ANY($1::text[])
+            AND (status IN ('searching','offered') OR (status='accepted' AND updated_at>NOW()-INTERVAL '5 minutes'))
+          ORDER BY created_at DESC LIMIT 1`,
+        [identity.values],
+      )
+      const bottle = found.rows[0] ? await advanceBottle(client, found.rows[0].id) : null
+      const session = bottle?.status === 'accepted' && bottle.session_id
+        ? await sessionById(client, bottle.session_id)
+        : null
+      const responseSession = session ? await sessionPayload(client, session, identity) : null
+      await client.query('COMMIT')
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({ status: bottle?.status || 'idle', bottle: bottlePayload(bottle, 'sender'), session: responseSession })
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      next(error)
+    } finally {
+      client.release()
+    }
+  })
+
+  app.get('/v1/data/proximity/random/bottles/incoming', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const { rows } = await pool.query(
+        `SELECT id::text, sender_id, content, sender_gender, looking_for, status,
+                current_recipient_id, attempted_recipient_ids, session_id::text,
+                offer_started_at, expires_at, created_at, updated_at
+           FROM fallback_random_chat_bottles
+          WHERE status='offered' AND lower(current_recipient_id::text)=ANY($1::text[])
+            AND offer_started_at > NOW() - INTERVAL '${BOTTLE_OFFER_TIMEOUT_SECONDS} seconds'
+          ORDER BY offer_started_at LIMIT 1`,
+        [identity.values],
+      )
+      const bottle = rows[0] || null
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({ status: bottle ? 'offered' : 'idle', bottle: bottlePayload(bottle, 'recipient') })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  app.post('/v1/data/proximity/random/bottles/:bottleId/respond', authRequired, async (req, res, next) => {
+    const client = await pool.connect()
+    try {
+      const user = await getCurrentUser(client, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const bottleId = validUuid(req.params.bottleId)
+      if (!bottleId) return res.status(400).json({ error: 'BOTTLE_ID_INVALID' })
+      const action = normalizeId(req.body?.action)
+      if (!['accept', 'decline'].includes(action)) return res.status(400).json({ error: 'BOTTLE_RESPONSE_INVALID' })
+      await client.query('BEGIN')
+      await client.query('SELECT pg_advisory_xact_lock($1)', [728145])
+      const bottle = await advanceBottle(client, bottleId)
+      if (!bottleOfferRespondable(bottle, identity.ids)) {
+        // advanceBottle may have just expired and reassigned this offer. Keep that
+        // transition even though the former recipient can no longer respond.
+        await client.query('COMMIT')
+        return res.status(404).json({ error: 'BOTTLE_OFFER_NOT_FOUND' })
+      }
+      if (action === 'decline') {
+        const reassigned = await releaseBottleRecipient(client, bottle)
+        await client.query('COMMIT')
+        void publishRealtimeEvent(`random-chat-user:${normalizeId(bottle.sender_id)}`, {
+          event: 'anonymous_bottle_reassigned', bottleId: bottle.id,
+        })
+        if (reassigned?.current_recipient_id) {
+          void publishRealtimeEvent(`random-chat-user:${normalizeId(reassigned.current_recipient_id)}`, {
+            event: 'anonymous_bottle_offered', bottleId: reassigned.id,
+          })
+        }
+        return res.json({ status: 'declined' })
+      }
+
+      const recipientId = normalizeId(identity.displayUserId)
+      const senderId = normalizeId(bottle.sender_id)
+      const senderSessions = await activeSessionsForUser(client, senderId)
+      const recipientSessions = await activeSessionsForUser(client, recipientId)
+      const alreadyConnected = senderSessions.some((session) => (
+        [normalizeId(session.user_a), normalizeId(session.user_b)].includes(recipientId)
+      ))
+      if (senderSessions.length >= MAX_ACTIVE_RANDOM_SESSIONS ||
+          recipientSessions.length >= MAX_ACTIVE_RANDOM_SESSIONS ||
+          alreadyConnected) {
+        let reassigned = null
+        if (senderSessions.length >= MAX_ACTIVE_RANDOM_SESSIONS) {
+          await client.query(
+            `UPDATE fallback_random_chat_bottles
+                SET status='cancelled',current_recipient_id=NULL,offer_started_at=NULL,updated_at=NOW()
+              WHERE id=$1::uuid`,
+            [bottle.id],
+          )
+        } else {
+          reassigned = await releaseBottleRecipient(client, bottle)
+        }
+        await client.query('COMMIT')
+        if (reassigned?.current_recipient_id) {
+          void publishRealtimeEvent(`random-chat-user:${normalizeId(reassigned.current_recipient_id)}`, {
+            event: 'anonymous_bottle_offered', bottleId: reassigned.id,
+          })
+        }
+        return res.status(409).json({
+          error: alreadyConnected ? 'RANDOM_ALREADY_CONNECTED' : 'RANDOM_ACTIVE_SESSION_LIMIT',
+        })
+      }
+      const sessions = await client.query(
+        `INSERT INTO fallback_random_chat_sessions(user_a,user_b,status,created_at,updated_at)
+         VALUES($1,$2,'active',NOW(),NOW())
+         RETURNING id::text,user_a,user_b,status,user_a_reveal,user_b_reveal,created_at,updated_at`,
+        [senderId, recipientId],
+      )
+      const session = sessions.rows[0]
+      await client.query(
+        `INSERT INTO fallback_random_chat_messages(session_id,sender_id,client_message_id,content,content_type)
+         VALUES($1::uuid,$2,$3,$4,'text')
+         ON CONFLICT(session_id,sender_id,client_message_id) DO NOTHING`,
+        [session.id, senderId, bottle.id, bottle.content],
+      )
+      await client.query(
+        `UPDATE fallback_random_chat_sessions SET updated_at=NOW() WHERE id=$1::uuid`,
+        [session.id],
+      )
+      await client.query(
+        `UPDATE fallback_random_chat_bottles
+            SET status='accepted',session_id=$2::uuid,updated_at=NOW()
+          WHERE id=$1::uuid`,
+        [bottle.id, session.id],
+      )
+      await client.query(
+        `DELETE FROM fallback_random_bottle_availability WHERE lower(user_id::text)=ANY($1::text[])`,
+        [[senderId, recipientId]],
+      )
+      const payload = await sessionPayload(client, session, identity)
+      await client.query('COMMIT')
+      void publishRealtimeEvent(`random-chat-user:${senderId}`, {
+        event: 'anonymous_bottle_accepted', bottleId: bottle.id, sessionId: session.id,
+      })
+      void publishRealtimeEvent(`random-chat:${session.id}`, {
+        event: 'random_message_created', sessionId: session.id,
+      })
+      res.json({ status: 'accepted', session: payload })
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      next(error)
+    } finally {
+      client.release()
+    }
+  })
+
+  app.delete('/v1/data/proximity/random/bottles/:bottleId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const bottleId = validUuid(req.params.bottleId)
+      if (!bottleId) return res.status(400).json({ error: 'BOTTLE_ID_INVALID' })
+      const { rows } = await pool.query(
+        `UPDATE fallback_random_chat_bottles
+            SET status='cancelled',current_recipient_id=NULL,offer_started_at=NULL,updated_at=NOW()
+          WHERE id=$1::uuid AND lower(sender_id::text)=ANY($2::text[])
+            AND status IN ('searching','offered')
+          RETURNING id::text`,
+        [bottleId, identity.values],
+      )
+      if (!rows[0]) return res.status(404).json({ error: 'BOTTLE_NOT_FOUND' })
+      res.json({ status: 'cancelled' })
+    } catch (error) {
+      next(error)
+    }
+  })
+
   app.get('/v1/data/proximity/random/sessions/:sessionId', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -733,6 +1279,8 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
 
 module.exports = {
   approximateDistanceKm,
+  bottleCandidateAllowed,
+  bottleOfferRespondable,
   ensureProximityTables,
   haversineKm,
   mutuallyCompatible,

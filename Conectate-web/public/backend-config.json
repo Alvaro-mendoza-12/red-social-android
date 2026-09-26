@@ -1,6 +1,7 @@
-﻿{
-    "schemaVersion":  1,
-    "environment":  "beta",
-    "backendUrl":  "https://genres-twice-trainer-stamps.trycloudflare.com",
-    "updatedAt":  "2026-07-28T12:06:37Z"
+{
+  "schemaVersion": 2,
+  "environment": "beta",
+  "backendUrl": "https://conectate.tail9b267c.ts.net:8443",
+  "discoveryEnvelope": "",
+  "updatedAt": "2026-09-26T20:25:00Z"
 }

@@ -40,7 +40,7 @@ data class OfflineVideoEntry(
 @Singleton
 class OfflineVideoRepository @Inject constructor(
     private val authService: AuthService,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val json = Json {

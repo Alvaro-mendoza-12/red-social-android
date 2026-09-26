@@ -1,5 +1,6 @@
 package conectate.com.data.repository
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Base64
@@ -31,7 +32,7 @@ import javax.inject.Singleton
 
 @Singleton
 class AccountSessionRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val authService: AuthService
 ) {
     private data class ActiveSessionSnapshot(
@@ -280,6 +281,7 @@ class AccountSessionRepository @Inject constructor(
         return sanitized
     }
 
+    @SuppressLint("ApplySharedPref")
     private fun persist(list: List<StoredAccountSession>) {
         var sanitized = sanitizeAccounts(list)
         if (TestRuntimeOverrides.isEnabled(context)) {
@@ -433,6 +435,7 @@ class AccountSessionRepository @Inject constructor(
         }.getOrNull()
     }
 
+    @SuppressLint("ApplySharedPref") // Credential deletion must finish before secure-store initialization returns.
     private fun createSecurePrefsState(): SecurePrefsState = try {
         val key = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -444,15 +447,23 @@ class AccountSessionRepository @Inject constructor(
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
+        // Older builds could persist refresh credentials here without
+        // encryption when Keystore initialization failed. Never migrate that
+        // material; remove it once a secure store is available.
+        context.getSharedPreferences("account_switch_fallback", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
         SecurePrefsState(prefs = prefs, initializationError = null)
     } catch (error: Throwable) {
-        android.util.Log.e("AccountSessionRepository", "Secure storage failed, falling back to insecure storage", error)
-        try {
-            val fallbackPrefs = context.getSharedPreferences("account_switch_fallback", Context.MODE_PRIVATE)
-            SecurePrefsState(prefs = fallbackPrefs, initializationError = error)
-        } catch (e: Throwable) {
-            SecurePrefsState(prefs = null, initializationError = e)
+        android.util.Log.e("AccountSessionRepository", "Secure account storage is unavailable; quick switching is disabled", error)
+        runCatching {
+            context.getSharedPreferences("account_switch_fallback", Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .commit()
         }
+        SecurePrefsState(prefs = null, initializationError = error)
     }
 }
 

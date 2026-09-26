@@ -6,6 +6,12 @@ import java.time.LocalDateTime
 import java.util.UUID
 
 @Serializable
+data class VideoChapter(
+    @SerialName("start_ms") val startMs: Long,
+    val title: String,
+)
+
+@Serializable
 data class Video(
     @SerialName("id") val id: String = UUID.randomUUID().toString(),
     @SerialName("user_id") val userId: String = "",
@@ -32,5 +38,17 @@ data class Video(
     @SerialName("shared_by_me") val sharedByMe: Boolean = false,
     @SerialName("favorite_count") val favoriteCount: Int = 0,
     @SerialName("favorited_by_me") val favoritedByMe: Boolean = false,
-    @SerialName("is_verified") val isVerified: Boolean = false
-)
+    @SerialName("is_verified") val isVerified: Boolean = false,
+    @SerialName("sound_id") val soundId: String? = null,
+    @SerialName("sound_source_video_id") val soundSourceVideoId: String? = null,
+    @SerialName("sound_title") val soundTitle: String? = null,
+    @SerialName("sound_artist") val soundArtist: String? = null,
+    @SerialName("sound_url") val soundUrl: String? = null,
+    @SerialName("chapters") val chapters: List<VideoChapter> = emptyList(),
+    @SerialName("allow_clip_sharing") val allowClipSharing: Boolean = true,
+    @SerialName("owned_by_me") val ownedByMe: Boolean = false
+) {
+    // Kept outside the primary constructor to preserve the stable Video ABI.
+    @SerialName("is_sensitive")
+    var isSensitive: Boolean = false
+}

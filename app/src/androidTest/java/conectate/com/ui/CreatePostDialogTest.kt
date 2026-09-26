@@ -32,7 +32,7 @@ class CreatePostDialogTest {
             MaterialTheme {
                 CreatePostDialog(
                     onDismiss = {},
-                    onPostCreated = { text, _, visibility ->
+                    onPostCreated = { text, _, visibility, _, _, _ ->
                         publishedText = text
                         publishedVisibility = visibility
                     }
@@ -43,6 +43,9 @@ class CreatePostDialogTest {
         composeRule.onNodeWithText("Publicar").assertIsNotEnabled()
         composeRule.onNode(hasSetTextAction()).performTextInput("Hola comunidad")
         composeRule.onNodeWithText("Privado").performClick()
+        composeRule.onNodeWithText("Vista previa para solo ti").performClick()
+        composeRule.onNodeWithText("Privada · solo tú podrás verla").assertExists()
+        composeRule.onNodeWithText("Volver a editar").performClick()
         composeRule.onNodeWithText("Publicar").assertIsEnabled().performClick()
 
         composeRule.runOnIdle {

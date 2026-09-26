@@ -96,6 +96,13 @@ const contextualFromPriorHistory = bot.answer('¿y la portada?', {
 assert.strictEqual(contextualFromPriorHistory.intent, 'perfil_portada')
 assert.strictEqual(contextualFromPriorHistory.contextual, true)
 
+const knowledgeFollowUp = bot.answer('explícame más', {
+  history: 'Usuario: por que el cielo es azul\nNovvin: Es dispersión de luz.\nUsuario: explícame más',
+  detailLevel: 'expanded',
+})
+assert.strictEqual(knowledgeFollowUp.knowledgeId, 'cielo_azul')
+assert.strictEqual(knowledgeFollowUp.contextual, true)
+
 const fallback = bot.answer('xyzzy qqq zzzz')
 assert.strictEqual(fallback.intent, 'fallback')
 assert.strictEqual(fallback.confidence, 0)

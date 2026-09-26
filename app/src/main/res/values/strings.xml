@@ -59,4 +59,7 @@
     <string name="widget_action_videos">Videos</string>
     <string name="widget_action_moment" tools:ignore="Typos">Momento</string>
     <string name="widget_action_chat">Chat</string>
+    <string name="two_factor_local_reset_title">Seguridad de tu cuenta</string>
+    <string name="two_factor_local_reset_message">Se restableció el almacenamiento cifrado de este dispositivo. Si tu cuenta usa verificación en dos pasos, inicia sesión con tu autenticador o un código de respaldo. La protección del servidor sigue activa.</string>
+    <string name="two_factor_local_reset_ok">Entendido</string>
 </resources>

@@ -43,7 +43,8 @@ data class ScheduledMessageJob(
     val status: String,
     val error_message: String? = null,
     val created_at: String? = null,
-    val updated_at: String? = null
+    val updated_at: String? = null,
+    val owner_id: String? = null
 )
 
 @Serializable

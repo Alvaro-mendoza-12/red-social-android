@@ -11,14 +11,25 @@ object DatabaseMigrations {
             object : Migration(fromVersion, APP_DATABASE_VERSION) {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     Log.i("DatabaseMigrations", "Normalizing schema $fromVersion->$APP_DATABASE_VERSION")
-                    LatestSchemaNormalizer.migrate(db)
+                    if (fromVersion == 54) {
+                        LatestSchemaNormalizer.addMessageDeletions(db)
+                    } else {
+                        LatestSchemaNormalizer.migrate(db)
+                    }
+                    LegacyMessageDeletionMigration.import(db)
                 }
             }
         }
         .toTypedArray()
 }
 
-private object LatestSchemaNormalizer {
+internal data class MigrationSchemaPlanSnapshot(
+    val tableName: String,
+    val createSql: String,
+    val indexSql: List<String>
+)
+
+internal object LatestSchemaNormalizer {
     private const val TAG = "LatestSchemaNormalizer"
 
     private data class ColumnSpec(
@@ -37,7 +48,7 @@ private object LatestSchemaNormalizer {
 
     private val usersPlan = TablePlan(
         name = "users",
-        createSql = "CREATE TABLE IF NOT EXISTS `users` (`id` TEXT NOT NULL, `username` TEXT NOT NULL, `full_name` TEXT NOT NULL, `avatar_url` TEXT, `cover_url` TEXT, `avatar_media_type` TEXT, `avatar_video_muted` INTEGER NOT NULL DEFAULT 1, `avatar_duration_ms` INTEGER, `bio` TEXT, `profile_theme` TEXT NOT NULL DEFAULT 'conectate', `profile_effect` TEXT NOT NULL DEFAULT 'none', `profile_welcome` TEXT, `follower_count` INTEGER NOT NULL DEFAULT 0, `following_count` INTEGER NOT NULL DEFAULT 0, `is_verified` INTEGER NOT NULL DEFAULT 0, `is_admin` INTEGER NOT NULL DEFAULT 0, `voice_access_granted` INTEGER NOT NULL DEFAULT 0, `is_online` INTEGER NOT NULL DEFAULT 0, `last_seen` TEXT, `updated_at` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
+        createSql = "CREATE TABLE IF NOT EXISTS `users` (`id` TEXT NOT NULL, `username` TEXT NOT NULL, `full_name` TEXT NOT NULL, `avatar_url` TEXT, `cover_url` TEXT, `avatar_media_type` TEXT, `avatar_video_muted` INTEGER NOT NULL DEFAULT 1, `avatar_duration_ms` INTEGER, `bio` TEXT, `profile_theme` TEXT NOT NULL DEFAULT 'conectate', `profile_effect` TEXT NOT NULL DEFAULT 'none', `profile_welcome` TEXT, `social_links_json` TEXT NOT NULL DEFAULT '{}', `follower_count` INTEGER NOT NULL DEFAULT 0, `following_count` INTEGER NOT NULL DEFAULT 0, `is_verified` INTEGER NOT NULL DEFAULT 0, `is_admin` INTEGER NOT NULL DEFAULT 0, `voice_access_granted` INTEGER NOT NULL DEFAULT 0, `is_online` INTEGER NOT NULL DEFAULT 0, `last_seen` TEXT, `updated_at` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
         columns = listOf(
             ColumnSpec("id"),
             ColumnSpec("username", "''"),
@@ -51,6 +62,7 @@ private object LatestSchemaNormalizer {
             ColumnSpec("profile_theme", "'conectate'"),
             ColumnSpec("profile_effect", "'none'"),
             ColumnSpec("profile_welcome", "NULL", coalesceNulls = false),
+            ColumnSpec("social_links_json", "'{}'"),
             ColumnSpec("follower_count", "0"),
             ColumnSpec("following_count", "0"),
             ColumnSpec("is_verified", "0"),
@@ -407,11 +419,26 @@ private object LatestSchemaNormalizer {
         )
     )
 
+    private val messageDeletionsPlan = TablePlan(
+        name = "message_deletions",
+        createSql = "CREATE TABLE IF NOT EXISTS `message_deletions` (`message_id` TEXT NOT NULL, `actor_id` TEXT NOT NULL, `for_everyone` INTEGER NOT NULL, `chat_id` TEXT NOT NULL, `revision` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `state` TEXT NOT NULL, `error` TEXT, PRIMARY KEY(`message_id`, `actor_id`, `for_everyone`))",
+        columns = listOf(
+            ColumnSpec("message_id"), ColumnSpec("actor_id"), ColumnSpec("for_everyone", "0"),
+            ColumnSpec("chat_id"), ColumnSpec("revision"), ColumnSpec("created_at", "0"),
+            ColumnSpec("state", "'pending'"), ColumnSpec("error", "NULL", coalesceNulls = false)
+        ),
+        indexSql = listOf(
+            "CREATE INDEX IF NOT EXISTS `index_message_deletions_actor_id_state_created_at` ON `message_deletions` (`actor_id`, `state`, `created_at`)",
+            "CREATE INDEX IF NOT EXISTS `index_message_deletions_chat_id` ON `message_deletions` (`chat_id`)"
+        )
+    )
+
     private val latestPlans = listOf(
         usersPlan,
         chatsPlan,
         chatSettingsPlan,
         messagesPlan,
+        messageDeletionsPlan,
         videoStatsPlan,
         videoCommentsPlan,
         groupsPlan,
@@ -426,6 +453,20 @@ private object LatestSchemaNormalizer {
         followsPlan,
         deviceTokensPlan
     )
+
+    internal fun schemaPlansForVerification(): List<MigrationSchemaPlanSnapshot> =
+        latestPlans.map { plan ->
+            MigrationSchemaPlanSnapshot(
+                tableName = plan.name,
+                createSql = plan.createSql,
+                indexSql = plan.indexSql
+            )
+        }
+
+    fun addMessageDeletions(db: SupportSQLiteDatabase) {
+        db.execSQL(messageDeletionsPlan.createSql)
+        messageDeletionsPlan.indexSql.forEach(db::execSQL)
+    }
 
     fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("PRAGMA foreign_keys=OFF")

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { readFallbackSession } from '../../core/auth/fallbackAuth'
+import { ensureFallbackAccessToken } from '../../core/auth/fallbackAuth'
 import { supabase } from '../../core/supabase'
 import { sendCallInvite, sendCallResponse } from './callRealtime'
 import WebCallManager, { type CallState, type CallParticipant } from './WebCallManager'
@@ -33,6 +33,7 @@ export function CallInterface({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fallbackAccessToken, setFallbackAccessToken] = useState('')
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
@@ -45,9 +46,25 @@ export function CallInterface({
   const avatarUrl = String(user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? '').trim()
   const signalingBaseUrl = String(import.meta.env.VITE_CALL_SIGNALING_URL ?? import.meta.env.VITE_SIGNALING_URL ?? '').trim()
 
-  const accessToken = isFallbackSession
-    ? readFallbackSession()?.accessToken?.trim() ?? ''
-    : session?.access_token ?? ''
+  useEffect(() => {
+    if (!isFallbackSession) {
+      queueMicrotask(() => setFallbackAccessToken(''))
+      return
+    }
+    let cancelled = false
+    void ensureFallbackAccessToken()
+      .then((token) => {
+        if (!cancelled) setFallbackAccessToken(token)
+      })
+      .catch(() => {
+        if (!cancelled) setFallbackAccessToken('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isFallbackSession])
+
+  const accessToken = isFallbackSession ? fallbackAccessToken : session?.access_token ?? ''
 
   useEffect(() => {
     if (!user || !accessToken) return

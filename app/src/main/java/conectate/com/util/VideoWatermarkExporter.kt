@@ -13,13 +13,12 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
-import androidx.media3.effect.OverlaySettings
+import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextureOverlay
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
-import androidx.media3.transformer.TransformationRequest
 import androidx.media3.transformer.Transformer
 import conectate.com.R
 import kotlinx.coroutines.CompletableDeferred
@@ -47,7 +46,7 @@ object VideoWatermarkExporter {
             val watermarkBitmap = withContext(Dispatchers.Default) {
                 createWatermarkBitmap(context, userName)
             }
-            val settings = OverlaySettings.Builder()
+            val settings = StaticOverlaySettings.Builder()
                 .setOverlayFrameAnchor(-1f, -1f)
                 .setBackgroundFrameAnchor(-0.94f, -0.90f)
                 .setScale(0.86f, 0.86f)
@@ -63,16 +62,12 @@ object VideoWatermarkExporter {
                 )
                 .build()
 
-            val request = TransformationRequest.Builder()
-                .setVideoMimeType(MimeTypes.VIDEO_H264)
-                .setAudioMimeType(MimeTypes.AUDIO_AAC)
-                .build()
-
             val finished = CompletableDeferred<Unit>()
             var failure: Throwable? = null
             withContext(Dispatchers.Main.immediate) {
                 val transformer = Transformer.Builder(context)
-                    .setTransformationRequest(request)
+                    .setVideoMimeType(MimeTypes.VIDEO_H264)
+                    .setAudioMimeType(MimeTypes.AUDIO_AAC)
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(
                             composition: androidx.media3.transformer.Composition,
@@ -154,7 +149,7 @@ object VideoWatermarkExporter {
         }
 
         val textStartX = padding + iconSize + (8f * density)
-        canvas.drawText("Novvin", textStartX, 24f * density, titlePaint)
+        canvas.drawText("NOVVIN", textStartX, 24f * density, titlePaint)
         canvas.drawText("@${sanitizeUserName(userName)}", textStartX, 42f * density, userPaint)
 
         return bitmap

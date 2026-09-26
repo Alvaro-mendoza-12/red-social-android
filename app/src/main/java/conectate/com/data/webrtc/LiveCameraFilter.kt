@@ -26,24 +26,64 @@ enum class LiveCameraFilter(val wireValue: String) {
     }
 }
 
+data class LiveCameraAdjustments(
+    val enabled: Boolean = false,
+    val smooth: Float = 0.35f,
+    val brightness: Float = 0.45f,
+    val warmth: Float = 0.50f,
+) {
+    fun normalized(): LiveCameraAdjustments = copy(
+        smooth = smooth.coerceIn(0f, 1f),
+        brightness = brightness.coerceIn(0f, 1f),
+        warmth = warmth.coerceIn(0f, 1f),
+    )
+
+    val hasVisibleEffect: Boolean
+        get() = enabled && (
+            smooth > 0.01f ||
+                kotlin.math.abs(brightness - 0.5f) > 0.01f ||
+                kotlin.math.abs(warmth - 0.5f) > 0.01f
+            )
+}
+
 internal object LiveCameraFilterColorMath {
-    fun luma(value: Int, filter: LiveCameraFilter): Int = when (filter) {
+    fun luma(
+        value: Int,
+        filter: LiveCameraFilter,
+        adjustments: LiveCameraAdjustments = LiveCameraAdjustments(enabled = false),
+    ): Int {
+        val filtered = when (filter) {
         LiveCameraFilter.WARM -> value + 3
         LiveCameraFilter.COOL -> value
         LiveCameraFilter.VIVID -> contrast(value, 1.14f, 3)
         LiveCameraFilter.SOFT -> contrast(value, 0.90f, 8)
         LiveCameraFilter.MONO,
         LiveCameraFilter.NONE -> value
-    }.coerceIn(0, 255)
+        }
+        if (!adjustments.enabled) return filtered.coerceIn(0, 255)
+        val smoothMultiplier = 1f - (adjustments.smooth.coerceIn(0f, 1f) * 0.12f)
+        val brightnessLift = ((adjustments.brightness.coerceIn(0f, 1f) - 0.5f) * 48f).roundToInt()
+        return contrast(filtered, smoothMultiplier, brightnessLift).coerceIn(0, 255)
+    }
 
-    fun chroma(value: Int, filter: LiveCameraFilter, isUPlane: Boolean): Int = when (filter) {
+    fun chroma(
+        value: Int,
+        filter: LiveCameraFilter,
+        isUPlane: Boolean,
+        adjustments: LiveCameraAdjustments = LiveCameraAdjustments(enabled = false),
+    ): Int {
+        val filtered = when (filter) {
         LiveCameraFilter.WARM -> value + if (isUPlane) -12 else 18
         LiveCameraFilter.COOL -> value + if (isUPlane) 18 else -10
         LiveCameraFilter.VIVID -> scaleChroma(value, 1.22f)
         LiveCameraFilter.SOFT -> scaleChroma(value, 0.88f)
         LiveCameraFilter.MONO -> 128
         LiveCameraFilter.NONE -> value
-    }.coerceIn(0, 255)
+        }
+        if (!adjustments.enabled || filter == LiveCameraFilter.MONO) return filtered.coerceIn(0, 255)
+        val warmthOffset = ((adjustments.warmth.coerceIn(0f, 1f) - 0.5f) * 28f).roundToInt()
+        return (filtered + if (isUPlane) -warmthOffset else warmthOffset).coerceIn(0, 255)
+    }
 
     private fun contrast(value: Int, multiplier: Float, lift: Int): Int =
         ((value - 128) * multiplier + 128 + lift).roundToInt()
@@ -72,11 +112,13 @@ enum class LiveFilterPerformanceState {
  */
 class LiveCameraFilterProcessor(
     initialFilter: LiveCameraFilter = LiveCameraFilter.NONE,
+    initialAdjustments: LiveCameraAdjustments = LiveCameraAdjustments(),
     private val nanoTime: () -> Long = System::nanoTime,
     private val onPerformanceStateChanged: (LiveFilterPerformanceState) -> Unit = {}
 ) : VideoProcessor {
 
     private val selected = AtomicReference(initialFilter)
+    private val adjustments = AtomicReference(initialAdjustments.normalized())
 
     @Volatile
     private var sink: VideoSink? = null
@@ -88,7 +130,7 @@ class LiveCameraFilterProcessor(
     private var bypassUntilNs = 0L
 
     @Volatile
-    private var performanceState = initialFilter.performanceState()
+    private var performanceState = (initialFilter to initialAdjustments.normalized()).performanceState()
 
     @Volatile
     private var reducedFrameToggle = false
@@ -112,7 +154,15 @@ class LiveCameraFilterProcessor(
         bypassUntilNs = 0L
         reducedFrameToggle = false
         fastRecoveryStreak = 0
-        updatePerformanceState(filter.performanceState())
+        updatePerformanceState((filter to adjustments.get()).performanceState())
+    }
+
+    fun selectAdjustments(next: LiveCameraAdjustments) {
+        adjustments.set(next.normalized())
+        slowFrameStreak = 0
+        bypassUntilNs = 0L
+        fastRecoveryStreak = 0
+        updatePerformanceState((selected.get() to adjustments.get()).performanceState())
     }
 
     override fun setSink(sink: VideoSink?) {
@@ -126,8 +176,9 @@ class LiveCameraFilterProcessor(
     override fun onFrameCaptured(frame: VideoFrame) {
         val target = sink ?: return
         val activeFilter = selected.get()
+        val activeAdjustments = adjustments.get()
         val startedAt = nanoTime()
-        if (activeFilter == LiveCameraFilter.NONE) {
+        if (activeFilter == LiveCameraFilter.NONE && !activeAdjustments.hasVisibleEffect) {
             updatePerformanceState(LiveFilterPerformanceState.NATURAL)
             target.onFrame(frame)
             return
@@ -147,17 +198,15 @@ class LiveCameraFilterProcessor(
             fastRecoveryStreak = 0
         }
 
-        if (performanceState == LiveFilterPerformanceState.REDUCED) {
-            reducedFrameToggle = !reducedFrameToggle
-            if (!reducedFrameToggle) {
-                // Preserve the selected look while halving CPU work on slow
-                // devices. The UI explicitly reports this reduced state.
-                target.onFrame(frame)
-                return
-            }
-        }
+        // Do not alternate filtered and unfiltered frames in REDUCED mode.
+        // That old optimisation looked like the selected filter was switching
+        // itself off every other frame. WebRTC can naturally drop late video
+        // frames while audio keeps flowing; keeping a stable look is less
+        // disruptive than visibly flashing between two colour profiles.
 
-        val filteredFrame = runCatching { createFilteredFrame(frame, activeFilter) }.getOrNull()
+        val filteredFrame = runCatching {
+            createFilteredFrame(frame, activeFilter, activeAdjustments)
+        }.getOrNull()
         if (filteredFrame == null) {
             target.onFrame(frame)
             return
@@ -210,7 +259,8 @@ class LiveCameraFilterProcessor(
 
     private fun createFilteredFrame(
         frame: VideoFrame,
-        filter: LiveCameraFilter
+        filter: LiveCameraFilter,
+        adjustments: LiveCameraAdjustments,
     ): VideoFrame? {
         val input = frame.buffer.toI420() ?: return null
         return try {
@@ -223,7 +273,8 @@ class LiveCameraFilterProcessor(
                     targetStride = output.strideY,
                     width = input.width,
                     height = input.height,
-                    filter = filter
+                    filter = filter,
+                    adjustments = adjustments,
                 )
                 val chromaWidth = (input.width + 1) / 2
                 val chromaHeight = (input.height + 1) / 2
@@ -235,7 +286,8 @@ class LiveCameraFilterProcessor(
                     width = chromaWidth,
                     height = chromaHeight,
                     filter = filter,
-                    isUPlane = true
+                    isUPlane = true,
+                    adjustments = adjustments,
                 )
                 transformChroma(
                     source = input.dataV,
@@ -245,7 +297,8 @@ class LiveCameraFilterProcessor(
                     width = chromaWidth,
                     height = chromaHeight,
                     filter = filter,
-                    isUPlane = false
+                    isUPlane = false,
+                    adjustments = adjustments,
                 )
                 VideoFrame(output, frame.rotation, frame.timestampNs)
             } catch (failure: Throwable) {
@@ -264,14 +317,15 @@ class LiveCameraFilterProcessor(
         targetStride: Int,
         width: Int,
         height: Int,
-        filter: LiveCameraFilter
+        filter: LiveCameraFilter,
+        adjustments: LiveCameraAdjustments,
     ) {
         for (row in 0 until height) {
             val sourceRow = row * sourceStride
             val targetRow = row * targetStride
             for (column in 0 until width) {
                 val original = source.get(sourceRow + column).unsigned()
-                val adjusted = LiveCameraFilterColorMath.luma(original, filter)
+                val adjusted = LiveCameraFilterColorMath.luma(original, filter, adjustments)
                 target.put(targetRow + column, adjusted.toByte())
             }
         }
@@ -285,14 +339,15 @@ class LiveCameraFilterProcessor(
         width: Int,
         height: Int,
         filter: LiveCameraFilter,
-        isUPlane: Boolean
+        isUPlane: Boolean,
+        adjustments: LiveCameraAdjustments,
     ) {
         for (row in 0 until height) {
             val sourceRow = row * sourceStride
             val targetRow = row * targetStride
             for (column in 0 until width) {
                 val original = source.get(sourceRow + column).unsigned()
-                val adjusted = LiveCameraFilterColorMath.chroma(original, filter, isUPlane)
+                val adjusted = LiveCameraFilterColorMath.chroma(original, filter, isUPlane, adjustments)
                 target.put(targetRow + column, adjusted.toByte())
             }
         }
@@ -301,17 +356,28 @@ class LiveCameraFilterProcessor(
     private fun Byte.unsigned(): Int = toInt() and 0xFF
 
     private companion object {
-        const val PROCESSING_BUDGET_MS = 24L
-        const val REDUCED_SLOW_FRAMES = 2
-        const val MAX_SLOW_FRAMES = 3
-        const val FAST_RECOVERY_FRAMES = 6
-        const val THERMAL_BYPASS_MS = 2_000L
+        // A 24 ms budget and a three-frame cutoff disabled effects in roughly
+        // one tenth of a second on entry-level phones. These thresholds require
+        // sustained pressure before a short thermal recovery window, while the
+        // selected filter remains active during ordinary frame-time spikes.
+        const val PROCESSING_BUDGET_MS = 40L
+        const val REDUCED_SLOW_FRAMES = 12
+        const val MAX_SLOW_FRAMES = 90
+        const val FAST_RECOVERY_FRAMES = 12
+        const val THERMAL_BYPASS_MS = 750L
         const val NANOS_PER_MILLISECOND = 1_000_000L
     }
 }
 
 private fun LiveCameraFilter.performanceState(): LiveFilterPerformanceState =
     if (this == LiveCameraFilter.NONE) {
+        LiveFilterPerformanceState.NATURAL
+    } else {
+        LiveFilterPerformanceState.FULL
+    }
+
+private fun Pair<LiveCameraFilter, LiveCameraAdjustments>.performanceState(): LiveFilterPerformanceState =
+    if (first == LiveCameraFilter.NONE && !second.hasVisibleEffect) {
         LiveFilterPerformanceState.NATURAL
     } else {
         LiveFilterPerformanceState.FULL

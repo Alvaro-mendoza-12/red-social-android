@@ -43,13 +43,17 @@ class ShareRepository @Inject constructor(
             android.util.Log.d("ShareRepository", "shareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
-            if (shouldUseUbuntuBackend() && contentType == "video") {
-                return@withContext localFallbackApiClient.shareVideo(accessToken, targetId).map { Unit }
+            if (shouldUseUbuntuBackend()) {
+                return@withContext when (contentType.trim().lowercase()) {
+                    "post" -> localFallbackApiClient.sharePost(accessToken, targetId).map { Unit }
+                    "video" -> localFallbackApiClient.shareVideo(accessToken, targetId).map { Unit }
+                    else -> Result.failure(Exception("Tipo de contenido no compatible para compartir."))
+                }
             }
             
             val shareData = buildJsonObject {
                 put("user_id", userId)
-                if (contentType == "post") put("post_id", targetId)
+            if (contentType.trim().lowercase() == "post") put("post_id", targetId)
                 else put("video_id", targetId)
             }
             
@@ -86,15 +90,19 @@ class ShareRepository @Inject constructor(
             android.util.Log.d("ShareRepository", "unshareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
-            if (shouldUseUbuntuBackend() && contentType == "video") {
-                return@withContext localFallbackApiClient.unshareVideo(accessToken, targetId).map { Unit }
+            if (shouldUseUbuntuBackend()) {
+                return@withContext when (contentType.trim().lowercase()) {
+                    "post" -> localFallbackApiClient.unsharePost(accessToken, targetId).map { Unit }
+                    "video" -> localFallbackApiClient.unshareVideo(accessToken, targetId).map { Unit }
+                    else -> Result.failure(Exception("Tipo de contenido no compatible para dejar de compartir."))
+                }
             }
             
             var response = supabase.httpClient.delete("${supabase.supabaseUrl}/rest/v1/shares") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabase.supabaseAnonKey)
                 parameter("user_id", "eq.$userId")
-                if (contentType == "post") parameter("post_id", "eq.$targetId")
+                if (contentType.trim().lowercase() == "post") parameter("post_id", "eq.$targetId")
                 else parameter("video_id", "eq.$targetId")
             }
             

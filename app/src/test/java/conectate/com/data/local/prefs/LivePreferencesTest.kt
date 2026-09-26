@@ -1,6 +1,7 @@
 package conectate.com.data.local.prefs
 
 import conectate.com.data.webrtc.LiveCameraFilter
+import conectate.com.data.model.LiveCreatorLayoutStyle
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -32,5 +33,16 @@ class LivePreferencesTest {
         storage.putString("camera_filter", "future_filter")
 
         assertEquals(LiveCameraFilter.NONE, LivePreferences(storage).cameraFilter)
+    }
+
+    @Test
+    fun `creator layout survives recreation and unknown value falls back to fusion`() {
+        val storage = InMemoryStorage()
+        LivePreferences(storage).setCreatorLayoutStyle(LiveCreatorLayoutStyle.ROOM)
+
+        assertEquals(LiveCreatorLayoutStyle.ROOM, LivePreferences(storage).creatorLayoutStyle)
+
+        storage.putString("creator_layout", "future-layout")
+        assertEquals(LiveCreatorLayoutStyle.FUSION, LivePreferences(storage).creatorLayoutStyle)
     }
 }

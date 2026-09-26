@@ -26,10 +26,14 @@ class ProductionReadyOptimizer(private val context: Context) {
     }
 
     fun onTrimMemory(level: Int) {
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
-            trimTransientCaches()
-            lastStatus.set(captureStatus())
-        }
+        // Android 14 dejó de emitir los antiguos niveles RUNNING_* y Android 15
+        // los deprecó. UI_HIDDEN/BACKGROUND siguen siendo señales estables y,
+        // además, evitan desalojar recursos mientras el usuario reproduce video.
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) trimForMemoryPressure()
+    }
+
+    fun onLowMemory() {
+        trimForMemoryPressure()
     }
 
     fun getProductionStatus(): ProductionStatus {
@@ -56,6 +60,11 @@ class ProductionReadyOptimizer(private val context: Context) {
                 .listFiles()
                 ?.forEach { file -> file.takeIf { it.isFile }?.delete() }
         }
+    }
+
+    private fun trimForMemoryPressure() {
+        trimTransientCaches()
+        lastStatus.set(captureStatus())
     }
 
     private fun captureStatus(): ProductionStatus {

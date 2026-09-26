@@ -5,6 +5,8 @@ import { StatusView } from '../../components/StatusView'
 import {
   completeMigratedPasswordReset,
   confirmFallbackPasswordReset,
+  FallbackPasswordChangedNeedsTwoFactorError,
+  FallbackTwoFactorRequiredError,
   isFallbackAuthConfigured,
   isMigratedAccountPasswordSetupRequired,
   isMigratedPasswordResetRequired,
@@ -58,6 +60,8 @@ export function LoginPage() {
   const initialEmail = useMemo(() => searchParams.get('email')?.trim() ?? '', [searchParams])
   const [email, setEmail] = useState(initialEmail)
   const [password, setPassword] = useState('')
+  const [needsTwoFactor, setNeedsTwoFactor] = useState(false)
+  const [secondFactorCode, setSecondFactorCode] = useState('')
   const [migrationSetupEmail, setMigrationSetupEmail] = useState('')
   const [migrationSetupToken, setMigrationSetupToken] = useState('')
   const [legacyResetEmail, setLegacyResetEmail] = useState('')
@@ -238,10 +242,16 @@ export function LoginPage() {
     setInfo(null)
     setLegacyResetEmail('')
     try {
-      await signInWithResolvedEmail(client, email, password)
+      await signInWithResolvedEmail(client, email, password, secondFactorCode)
       setMigratedPasswordReset(null)
       navigate(nextPath, { replace: true })
     } catch (caught) {
+      if (caught instanceof FallbackTwoFactorRequiredError) {
+        setNeedsTwoFactor(true)
+        setSecondFactorCode('')
+        setError(caught.message)
+        return
+      }
       if (isMigratedAccountPasswordSetupRequired(caught)) {
         const migratedEmail = normalizeEmail(caught.email || email)
         setFallbackResetPassword('')
@@ -327,6 +337,15 @@ export function LoginPage() {
       setMigratedConfirmPassword('')
       navigate(nextPath, { replace: true })
     } catch (caught) {
+      if (caught instanceof FallbackPasswordChangedNeedsTwoFactorError) {
+        setEmail(migratedPasswordReset.email)
+        setPassword(nextPassword)
+        setNeedsTwoFactor(true)
+        setSecondFactorCode('')
+        setMigratedPasswordReset(null)
+        setInfo(caught.message)
+        return
+      }
       setError(friendlyError(caught, 'No se pudo activar la contraseña local'))
     } finally {
       setActivatingMigratedPassword(false)
@@ -416,6 +435,15 @@ export function LoginPage() {
 
       throw new Error('El cambio de contraseña necesita el servidor Ubuntu configurado.')
     } catch (caught) {
+      if (caught instanceof FallbackPasswordChangedNeedsTwoFactorError) {
+        setEmail(migrationSetupEmail || email)
+        setPassword(fallbackResetPassword.trim())
+        setNeedsTwoFactor(true)
+        setSecondFactorCode('')
+        setMigrationSetupEmail('')
+        setInfo(caught.message)
+        return
+      }
       setError(friendlyError(caught, 'No se pudo cambiar la contraseña en Ubuntu'))
     } finally {
       setConfirmingMigrationReset(false)
@@ -506,6 +534,8 @@ export function LoginPage() {
                   autoComplete="email"
                   onChange={(event) => {
                     setEmail(event.target.value)
+                    setNeedsTwoFactor(false)
+                    setSecondFactorCode('')
                     setMigratedPasswordReset(null)
                     setLegacyResetEmail('')
                   }}
@@ -518,9 +548,26 @@ export function LoginPage() {
                   required
                   value={password}
                   autoComplete="current-password"
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => {
+                    setPassword(event.target.value)
+                    setNeedsTwoFactor(false)
+                    setSecondFactorCode('')
+                  }}
                 />
               </label>
+              {needsTwoFactor ? (
+                <label>
+                  Código de verificación o recuperación
+                  <input
+                    type="text"
+                    required
+                    value={secondFactorCode}
+                    autoComplete="one-time-code"
+                    inputMode="text"
+                    onChange={(event) => setSecondFactorCode(event.target.value)}
+                  />
+                </label>
+              ) : null}
               <button className="primary-btn" disabled={loading} type="submit">
                 {loading ? 'Entrando...' : 'Iniciar sesión'}
               </button>

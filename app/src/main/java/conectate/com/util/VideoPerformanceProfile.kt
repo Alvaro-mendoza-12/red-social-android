@@ -39,7 +39,7 @@ object VideoPerformanceProfiles {
                 editorOverlayLimit = 4,
                 editorPixelsPerSecond = 14f,
                 autoExportHeight = 720,
-                autoExportBitrate = 2_600_000,
+                autoExportBitrate = 1_800_000,
                 editorMaxSpeed = 2.0f,
                 enableRealtimeEffectsPreview = false,
                 label = "Rendimiento"
@@ -56,7 +56,7 @@ object VideoPerformanceProfiles {
                 editorOverlayLimit = 16,
                 editorPixelsPerSecond = 28f,
                 autoExportHeight = 1080,
-                autoExportBitrate = 8_000_000,
+                autoExportBitrate = 3_600_000,
                 editorMaxSpeed = 4.0f,
                 enableRealtimeEffectsPreview = true,
                 label = "Alta calidad"
@@ -73,7 +73,7 @@ object VideoPerformanceProfiles {
                 editorOverlayLimit = 8,
                 editorPixelsPerSecond = 20f,
                 autoExportHeight = 1080,
-                autoExportBitrate = 4_600_000,
+                autoExportBitrate = 2_800_000,
                 editorMaxSpeed = 3.0f,
                 enableRealtimeEffectsPreview = true,
                 label = "Equilibrado"

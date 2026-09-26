@@ -9,8 +9,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -26,8 +26,11 @@ import kotlin.math.max
  */
 @SuppressLint("DiscouragedApi", "InternalInsetResource")
 @Composable
-fun rememberReliableBottomSafePadding(minimum: Dp = 28.dp): Dp {
-    val context = LocalContext.current
+fun rememberReliableBottomSafePadding(
+    minimum: Dp = 28.dp,
+    contentClearance: Dp = 0.dp,
+): Dp {
+    val resources = LocalResources.current
     val view = LocalView.current
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
@@ -41,24 +44,24 @@ fun rememberReliableBottomSafePadding(minimum: Dp = 28.dp): Dp {
             )
             ?.bottom
             ?: 0
-        val resourceId = context.resources.getIdentifier(
+        val resourceId = resources.getIdentifier(
             "navigation_bar_height",
             "dimen",
             "android"
         )
         val resourceBottom = if (resourceId != 0) {
-            runCatching { context.resources.getDimensionPixelSize(resourceId) }.getOrDefault(0)
+            runCatching { resources.getDimensionPixelSize(resourceId) }.getOrDefault(0)
         } else {
             0
         }
         return max(systemBottom, resourceBottom)
     }
 
-    var bottomInsetPx by remember(view, configuration) {
+    var bottomInsetPx by remember(view, configuration, resources) {
         mutableIntStateOf(resolveBottomInsetPx())
     }
 
-    DisposableEffect(view, configuration) {
+    DisposableEffect(view, configuration, resources) {
         val listener = ViewTreeObserver.OnGlobalLayoutListener {
             bottomInsetPx = resolveBottomInsetPx()
         }
@@ -73,5 +76,28 @@ fun rememberReliableBottomSafePadding(minimum: Dp = 28.dp): Dp {
     }
 
     val measured = with(density) { bottomInsetPx.toDp() }
-    return maxOf(minimum, measured)
+    return reliableBottomSafePadding(measured, minimum, contentClearance)
+}
+
+/**
+ * Reserva el inset real y, cuando la pantalla lo necesita, una separación visual
+ * adicional. La separación se suma al inset medido en lugar de depender de la
+ * altura del teléfono, por lo que funciona igual con gestos y navegación de tres
+ * botones sin introducir offsets específicos por modelo.
+ */
+internal fun reliableBottomSafePadding(
+    measuredInset: Dp,
+    minimum: Dp,
+    contentClearance: Dp,
+): Dp = maxOf(minimum, measuredInset.coerceAtLeast(0.dp)) + contentClearance.coerceAtLeast(0.dp)
+
+/**
+ * En ventanas especialmente altas la franja de gestos queda visualmente más
+ * próxima a la última línea del post aunque el inset técnico sea idéntico. Esta
+ * compensación depende del viewport, no de la marca o el modelo del teléfono.
+ */
+internal fun tallPostOverlayClearance(screenHeightDp: Int): Dp = when {
+    screenHeightDp >= 860 -> 24.dp
+    screenHeightDp >= 820 -> 12.dp
+    else -> 0.dp
 }

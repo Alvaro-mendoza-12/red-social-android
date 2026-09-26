@@ -1,30 +1,60 @@
-const storageKey = 'conectate:runtime-backend-url'
+import {
+  canonicalBackendBaseUrl,
+  isExplicitlyTrustedBackend,
+  verifyBackendDiscoveryEnvelope,
+} from './backendTrust'
 
-function normalize(value: unknown): string {
-  return String(value ?? '').trim().replace(/\/+$/, '')
+const storageKey = 'conectate:runtime-backend-url:v2'
+const legacyStorageKey = 'conectate:runtime-backend-url'
+const allowedClockSkewSeconds = 5 * 60
+const requiredCapabilities = new Set([
+  'anonymous_bottles_v1',
+  'community_music_v1',
+  'moment_music_v1',
+  'moment_music_aac_lc_v1',
+  'image_moments_exact_6s_v1',
+  'video_sound_identity_v1',
+  'video_feed_session_v1',
+  'video_feed_live_v1',
+])
+
+type StoredBackend = {
+  schemaVersion: 2
+  url: string
+  discoveryEnvelope?: string
+  expiresAtEpochSeconds?: number
 }
 
-function isAllowed(value: string): boolean {
-  if (value.startsWith('https://')) return true
-  return import.meta.env.DEV && value.startsWith('http://')
+type TrustedCandidate = {
+  url: string
+  discoveryEnvelope: string
+  expiresAtEpochSeconds: number | null
 }
 
-function readStoredUrl(): string {
-  if (typeof window === 'undefined') return ''
-  try {
-    return normalize(window.localStorage.getItem(storageKey))
-  } catch {
-    return ''
-  }
-}
-
-const storedUrl = readStoredUrl()
-const configuredUrl = normalize(import.meta.env.VITE_FALLBACK_API_URL)
-let currentUrl = [storedUrl, configuredUrl].find(isAllowed) || ''
+const allowHttp = import.meta.env.DEV
+const configuredUrl = canonicalBackendBaseUrl(import.meta.env.VITE_FALLBACK_API_URL, allowHttp)
+const discoveryPublicKey = String(import.meta.env.VITE_BACKEND_DISCOVERY_PUBLIC_KEY || '').trim()
+let currentUrl = configuredUrl
+let currentExpiresAtEpochSeconds: number | null = null
 const listeners = new Set<(url: string) => void>()
 
-export function getRuntimeBackendUrl(): string {
+function nowEpochSeconds(): number {
+  return Math.floor(Date.now() / 1000)
+}
+
+function activeUrl(): string {
+  if (
+    currentExpiresAtEpochSeconds !== null &&
+    currentExpiresAtEpochSeconds <= nowEpochSeconds() - allowedClockSkewSeconds
+  ) {
+    currentUrl = configuredUrl
+    currentExpiresAtEpochSeconds = null
+  }
   return currentUrl
+}
+
+export function getRuntimeBackendUrl(): string {
+  return activeUrl()
 }
 
 export function rewriteRuntimeStorageUrl(value: string): string {
@@ -68,16 +98,67 @@ export function subscribeRuntimeBackend(listener: (url: string) => void): () => 
   return () => listeners.delete(listener)
 }
 
-function updateRuntimeBackend(url: string) {
-  const normalized = normalize(url)
-  if (!isAllowed(normalized) || normalized === currentUrl) return
-  currentUrl = normalized
-  try {
-    window.localStorage.setItem(storageKey, normalized)
-  } catch {
-    // Runtime discovery still works when storage is unavailable.
+function persistCandidate(candidate: TrustedCandidate) {
+  if (typeof window === 'undefined') return
+  const payload: StoredBackend = {
+    schemaVersion: 2,
+    url: candidate.url,
+    discoveryEnvelope: candidate.discoveryEnvelope || undefined,
+    expiresAtEpochSeconds: candidate.expiresAtEpochSeconds ?? undefined,
   }
-  listeners.forEach((listener) => listener(normalized))
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(payload))
+    window.localStorage.removeItem(legacyStorageKey)
+  } catch {
+    // Runtime discovery remains usable when storage is unavailable.
+  }
+}
+
+function updateRuntimeBackend(candidate: TrustedCandidate) {
+  const changed = candidate.url !== currentUrl
+  currentUrl = candidate.url
+  currentExpiresAtEpochSeconds = candidate.expiresAtEpochSeconds
+  persistCandidate(candidate)
+  if (changed) listeners.forEach((listener) => listener(candidate.url))
+}
+
+async function trustCandidate(
+  candidateValue: unknown,
+  discoveryEnvelope: unknown = '',
+): Promise<TrustedCandidate | null> {
+  const candidate = canonicalBackendBaseUrl(candidateValue, allowHttp)
+  if (!candidate) return null
+  if (isExplicitlyTrustedBackend(candidate, configuredUrl, allowHttp)) {
+    return { url: candidate, discoveryEnvelope: '', expiresAtEpochSeconds: null }
+  }
+  if (allowHttp || !discoveryPublicKey) return null
+  const verified = await verifyBackendDiscoveryEnvelope(discoveryEnvelope, discoveryPublicKey)
+  if (!verified || verified.url !== candidate) return null
+  return {
+    url: verified.url,
+    discoveryEnvelope: verified.envelope,
+    expiresAtEpochSeconds: verified.expiresAtEpochSeconds,
+  }
+}
+
+async function restoreStoredCandidate(): Promise<TrustedCandidate | null> {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(storageKey)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<StoredBackend>
+      if (parsed.schemaVersion === 2) {
+        return await trustCandidate(parsed.url, parsed.discoveryEnvelope)
+      }
+    }
+    const legacy = window.localStorage.getItem(legacyStorageKey)
+    if (legacy && isExplicitlyTrustedBackend(legacy, configuredUrl, allowHttp)) {
+      return await trustCandidate(legacy)
+    }
+  } catch {
+    return null
+  }
+  return null
 }
 
 async function probeBackend(url: string): Promise<boolean> {
@@ -85,56 +166,126 @@ async function probeBackend(url: string): Promise<boolean> {
     const response = await fetch(`${url}/ready`, {
       cache: 'no-store',
       headers: { 'ngrok-skip-browser-warning': 'true' },
+      signal: AbortSignal.timeout(5_000),
     })
-    return response.ok
+    if (!response.ok) return false
+    const payload = (await response.json()) as { ok?: boolean; capabilities?: unknown }
+    if (payload.ok !== true || !Array.isArray(payload.capabilities)) return false
+    const advertised = new Set(
+      payload.capabilities.map((value) => String(value ?? '').trim()).filter(Boolean),
+    )
+    return [...requiredCapabilities].every((capability) => advertised.has(capability))
   } catch {
     return false
   }
 }
 
-async function readDnsEndpoint(): Promise<string> {
+function unwrapDnsTxt(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/^"|"$/g, '')
+    .replace(/"\s+"/g, '')
+}
+
+async function readDnsCandidate(): Promise<TrustedCandidate | null> {
   try {
-    const host = String(import.meta.env.VITE_BACKEND_DISCOVERY_HOST || 'conectate-alvaro.duckdns.org').trim()
-    if (!host) return ''
+    const host = String(
+      import.meta.env.VITE_BACKEND_DISCOVERY_HOST || 'conectate-alvaro.duckdns.org',
+    ).trim()
+    if (!host || !discoveryPublicKey) return null
     const response = await fetch(
       `https://dns.google/resolve?name=${encodeURIComponent(host)}&type=TXT`,
-      { cache: 'no-store' },
+      { cache: 'no-store', signal: AbortSignal.timeout(5_000) },
     )
-    if (!response.ok) return ''
+    if (!response.ok) return null
     const payload = (await response.json()) as { Answer?: Array<{ data?: string }> }
-    return normalize(
-      payload.Answer?.map((answer) => String(answer.data || '').replace(/^"|"$/g, ''))
-        .find((value) => isAllowed(normalize(value))) || '',
+    for (const answer of payload.Answer ?? []) {
+      const envelope = unwrapDnsTxt(answer.data)
+      const verified = await verifyBackendDiscoveryEnvelope(envelope, discoveryPublicKey)
+      if (verified) {
+        return {
+          url: verified.url,
+          discoveryEnvelope: verified.envelope,
+          expiresAtEpochSeconds: verified.expiresAtEpochSeconds,
+        }
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+async function readConfigCandidate(): Promise<TrustedCandidate | null> {
+  try {
+    const response = await fetch('/backend-config.json', {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(5_000),
+    })
+    if (!response.ok) return null
+    const payload = (await response.json()) as {
+      backendUrl?: string
+      apiUrl?: string
+      discoveryEnvelope?: string
+    }
+    return await trustCandidate(
+      payload.backendUrl || payload.apiUrl,
+      payload.discoveryEnvelope,
     )
   } catch {
-    return ''
+    return null
   }
+}
+
+async function selectReachableCandidate(
+  candidates: Array<TrustedCandidate | null>,
+  skippedUrl = '',
+) {
+  const visited = new Set<string>()
+  for (const candidate of candidates) {
+    if (
+      candidate &&
+      candidate.url !== skippedUrl &&
+      !visited.has(candidate.url) &&
+      (await probeBackend(candidate.url))
+    ) {
+      return candidate
+    }
+    if (candidate) visited.add(candidate.url)
+  }
+  return null
+}
+
+async function resolveRuntimeBackend(skippedUrl = ''): Promise<TrustedCandidate | null> {
+  // The configured/cached endpoint is tried first. DNS-over-HTTPS and the
+  // config document stay off the hot startup path while the active origin is healthy.
+  const localCandidate = await selectReachableCandidate([
+    await restoreStoredCandidate(),
+    await trustCandidate(configuredUrl),
+  ], skippedUrl)
+  if (localCandidate) return localCandidate
+
+  const [dnsCandidate, configCandidate] = await Promise.all([
+    readDnsCandidate(),
+    readConfigCandidate(),
+  ])
+  return await selectReachableCandidate([dnsCandidate, configCandidate], skippedUrl)
 }
 
 export async function initializeRuntimeBackend(): Promise<string> {
-  const dnsEndpoint = await readDnsEndpoint()
-  if (isAllowed(dnsEndpoint) && (await probeBackend(dnsEndpoint))) {
-    updateRuntimeBackend(dnsEndpoint)
-    return currentUrl
-  }
-  try {
-    const response = await fetch('/backend-config.json', { cache: 'no-store' })
-    if (!response.ok) return currentUrl
-    const payload = (await response.json()) as { backendUrl?: string; apiUrl?: string }
-    const candidate = normalize(payload.backendUrl || payload.apiUrl)
-    if (isAllowed(candidate) && (await probeBackend(candidate))) {
-      updateRuntimeBackend(candidate)
-    }
-  } catch (error) {
-    console.warn('[runtime-backend] se conserva el ultimo endpoint valido', error)
-  }
-  return currentUrl
+  const candidate = await resolveRuntimeBackend()
+  if (candidate) updateRuntimeBackend(candidate)
+  return getRuntimeBackendUrl()
 }
 
-/** Re-resolves a rotated tunnel after a request fails and returns only a new URL. */
+/** Re-resolves a rotated endpoint and returns only a newly trusted URL. */
 export async function refreshRuntimeBackend(failedUrl = ''): Promise<string> {
-  const before = currentUrl
-  if (failedUrl && before && !normalize(failedUrl).startsWith(before)) return ''
-  await initializeRuntimeBackend()
-  return currentUrl && currentUrl !== before ? currentUrl : ''
+  const before = getRuntimeBackendUrl()
+  if (failedUrl && before && !String(failedUrl).trim().startsWith(before)) return ''
+  const candidate = await resolveRuntimeBackend(before)
+  if (candidate) updateRuntimeBackend(candidate)
+  const after = getRuntimeBackendUrl()
+  return after && after !== before ? after : ''
 }
+
+export const backendDiscoveryTrustConfigured = discoveryPublicKey.length > 0

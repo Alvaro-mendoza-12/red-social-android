@@ -54,7 +54,10 @@ object TimeUtils {
                 val today = java.time.LocalDate.now(ZoneId.systemDefault())
                 var lastSeenDate = zonedDateTime.toLocalDate()
 
-                val timeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale("es", "ES"))
+                val timeFormatter = DateTimeFormatter.ofPattern(
+                    "h:mm a",
+                    Locale.forLanguageTag("es-ES")
+                )
                 val timeString = zonedDateTime.format(timeFormatter)
                     .replace("AM", "a. m.")
                     .replace("PM", "p. m.")

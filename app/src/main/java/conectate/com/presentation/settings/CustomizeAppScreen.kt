@@ -24,7 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ConfirmationNumber
@@ -37,7 +37,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -49,7 +49,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -126,7 +126,7 @@ fun CustomizeAppScreen(
     val context = LocalContext.current
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    var profileTheme by rememberSaveable { mutableStateOf(AppThemeOption.CONECTATE) }
+    var profileTheme by rememberSaveable { mutableStateOf(AppThemeOption.NEUTRO) }
     var profileEffect by rememberSaveable { mutableStateOf("none") }
     var profileWelcome by rememberSaveable { mutableStateOf("") }
     var interestsText by rememberSaveable { mutableStateOf("") }
@@ -217,7 +217,7 @@ fun CustomizeAppScreen(
                 title = { Text("Ambiente") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 }
             )
@@ -231,7 +231,7 @@ fun CustomizeAppScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
+            PrimaryTabRow(selectedTabIndex = selectedTab) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
@@ -266,7 +266,7 @@ fun CustomizeAppScreen(
                             showHeader = false
                         )
                     }
-                    item { Divider() }
+                    item { HorizontalDivider() }
                     item {
                         SectionTitle("Temas (${AppThemeOption.entries.size})")
                         Spacer(modifier = Modifier.height(10.dp))
@@ -329,7 +329,12 @@ fun CustomizeAppScreen(
                         ThemeCatalog(
                             selected = profileTheme,
                             dark = isDarkMode,
-                            onSelected = { profileTheme = it }
+                            onSelected = {
+                                profileTheme = it
+                                // El color elegido para el perfil también gobierna toda la app.
+                                // Así evitamos mezclar una superficie negra con un perfil de otro tema.
+                                viewModel.setAppTheme(it)
+                            }
                         )
                     }
                     item {
@@ -463,7 +468,7 @@ fun CustomizeAppScreen(
                                 onValueChange = { favoriteMusicUrl = it.take(700) },
                                 modifier = Modifier.fillMaxWidth(),
                                 label = { Text("Enlace de música") },
-                                placeholder = { Text("YouTube o enlace directo") },
+                                placeholder = { Text("Enlace HTTPS directo a un audio") },
                                 singleLine = true
                             )
                             OutlinedButton(
@@ -502,7 +507,7 @@ fun CustomizeAppScreen(
                             }
                             if (profileMusicUploading) {
                                 LinearProgressIndicator(
-                                    progress = profileMusicUploadProgress.coerceIn(0f, 1f),
+                                    progress = { profileMusicUploadProgress.coerceIn(0f, 1f) },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }

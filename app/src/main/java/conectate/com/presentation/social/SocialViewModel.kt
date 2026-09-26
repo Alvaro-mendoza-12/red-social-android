@@ -22,9 +22,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
+import java.util.UUID
+
+private const val SOCIAL_AUTHORITATIVE_REQUEST_TIMEOUT_MS = 5_000L
+private const val SOCIAL_FEED_UI_WATCHDOG_MS = 12_000L
 
 @HiltViewModel
 class SocialViewModel @Inject constructor(
@@ -44,11 +55,10 @@ class SocialViewModel @Inject constructor(
     private val friendRepository: conectate.com.data.repository.FriendRepository,
     val userRepository: conectate.com.data.repository.UserRepository,
     val voiceMessageManager: conectate.com.presentation.messages.VoiceMessageManager,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
     
     init {
-        voiceMessageManager.setScope(viewModelScope)
         viewModelScope.launch {
             postRepository.mutationEvents.collect { event ->
                 _posts.value = when (event) {
@@ -90,8 +100,12 @@ class SocialViewModel @Inject constructor(
     val activeStreams = liveRepository.activeStreams
     val showLiveCarousel = appSettingsPreferences.livesInSocialEnabled
 
-    private val _isRefreshing = MutableStateFlow(false)
+    // Start in a loading state so the empty-feed copy never flashes during
+    // the first frame before init launches the initial recommendation query.
+    private val _isRefreshing = MutableStateFlow(true)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+    private val _isUserRefreshing = MutableStateFlow(false)
+    val isUserRefreshing: StateFlow<Boolean> = _isUserRefreshing.asStateFlow()
 
     private val _friends = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
     val friends: StateFlow<List<conectate.com.data.model.User>> = _friends.asStateFlow()
@@ -116,6 +130,15 @@ class SocialViewModel @Inject constructor(
     private val likeRequestsInFlight = mutableSetOf<String>()
     private val shareRequestsInFlight = mutableSetOf<String>()
     private var postsJob: Job? = null
+    private var morePostsJob: Job? = null
+    private val authorHydrator = SocialAuthorHydrator(viewModelScope) { ids -> userRepository.getUsersByIds(ids) }
+    private var postsGeneration: Long = 0L
+    private var supplementalContentJob: Job? = null
+    private var activeAccountId: String? = authService.getCurrentUserId()
+        ?.trim()
+        ?.lowercase()
+        ?.takeIf { it.isNotBlank() }
+    private var accountGeneration: Long = 0L
     private var authoritativeCursor: OpaqueRecommendationCursor? = null
     private var authoritativeFeedActive = false
     private var authoritativePageRequestInFlight = false
@@ -138,18 +161,71 @@ class SocialViewModel @Inject constructor(
         get() = authService.getCurrentUserId()
 
     init {
+        viewModelScope.launch {
+            authService.currentSession
+                .map { session ->
+                    session?.user?.id?.trim()?.lowercase()
+                        ?: authService.getCurrentUserId()?.trim()?.lowercase()
+                }
+                .distinctUntilChanged()
+                .collect { accountId ->
+                    if (accountId != activeAccountId) handleAccountChanged(accountId)
+                }
+        }
         loadPosts()
-        loadCurrentUser()
-        loadFriends()
-        loadRecommendedPeople()
-        loadRecommendedVideos()
-        loadSocializationCards()
+        scheduleSupplementalContent()
+    }
+
+    private fun handleAccountChanged(accountId: String?) {
+        activeAccountId = accountId
+        accountGeneration++
+        postsGeneration++
+        postsJob?.cancel()
+        morePostsJob?.cancel()
+        authorHydrator.cancel()
+        supplementalContentJob?.cancel()
+        resetAuthoritativeFeedState()
+        _currentUser.value = null
+        _posts.value = emptyList()
+        _friends.value = emptyList()
+        _recommendedPeople.value = emptyList()
+        _recommendedVideos.value = emptyList()
+        _socializationCards.value = emptyList()
+        _reactionUsers.value = emptyList()
+        _savedLibrary.value = SavedLibraryResponse()
+        _isRefreshing.value = true
+        _isUserRefreshing.value = false
+        likeRequestsInFlight.clear()
+        shareRequestsInFlight.clear()
+        if (accountId.isNullOrBlank()) {
+            _isRefreshing.value = false
+            return
+        }
+        loadPosts()
+        scheduleSupplementalContent()
+    }
+
+    private fun scheduleSupplementalContent() {
+        supplementalContentJob?.cancel()
+        supplementalContentJob = viewModelScope.launch {
+            // The primary Social page owns the first network/database slot.
+            // Recommendation rails must not compete with its TTFB or make the
+            // user stare at a global loading state on a constrained server.
+            _isRefreshing.filter { refreshing -> !refreshing }.first()
+            loadCurrentUser()
+            loadFriends()
+            delay(250L)
+            loadRecommendedVideos()
+            loadSocializationCards()
+        }
     }
 
     fun loadSocializationCards() {
+        val generation = accountGeneration
         viewModelScope.launch {
             socializationRepository.loadCards(surface = "social", placement = "after_12", limit = 4)
                 .onSuccess { response ->
+                    if (generation != accountGeneration) return@onSuccess
                     _socializationCards.value = if (
                         response.enabled &&
                         response.safeguards.consentRequired &&
@@ -161,6 +237,7 @@ class SocialViewModel @Inject constructor(
                     else emptyList()
                 }
                 .onFailure { error ->
+                    if (generation != accountGeneration) return@onFailure
                     val expectedDisabled = (error as? conectate.com.data.socialization.SocializationApiException)
                         ?.code in setOf("SOCIALIZATION_DISABLED", "SOCIALIZATION_CARDS_DISABLED")
                     if (!expectedDisabled) android.util.Log.w("SocialViewModel", "Socialization cards unavailable")
@@ -174,11 +251,13 @@ class SocialViewModel @Inject constructor(
     }
 
     private fun loadRecommendedVideos() {
+        val generation = accountGeneration
         viewModelScope.launch {
             // The flow can emit the disk cache first. Use its final emission so
             // recommendations also reflect the configured backend catalog.
             runCatching { videoRepository.getVideos(offset = 0, limit = 24, random = true).last() }
                 .onSuccess { videos ->
+                    if (generation != accountGeneration) return@onSuccess
                     _recommendedVideos.value = videos
                         .filter { it.isPublic && it.id.isNotBlank() && it.videoUrl.isNotBlank() }
                         .distinctBy { it.id }
@@ -188,6 +267,7 @@ class SocialViewModel @Inject constructor(
     }
 
     private fun loadRecommendedPeople() {
+        val generation = accountGeneration
         viewModelScope.launch {
             val currentId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
             if (currentId.isBlank()) return@launch
@@ -199,8 +279,10 @@ class SocialViewModel @Inject constructor(
             }
             result
                 .onSuccess { candidates ->
+                    if (generation != accountGeneration) return@onSuccess
                     val candidateIds = candidates.map { it.id }.filter { it.isNotBlank() }
                     val followedIds = userRepository.getFollowedUserIds(candidateIds).getOrDefault(emptySet())
+                    if (generation != accountGeneration) return@onSuccess
                     val friendIds = _friends.value.map { it.id.trim().lowercase() }.toSet()
                     _recommendedPeople.value = candidates
                         .filter { it.id.trim().lowercase() != currentId }
@@ -226,75 +308,145 @@ class SocialViewModel @Inject constructor(
     }
 
     private fun loadCurrentUser() {
+        val generation = accountGeneration
         viewModelScope.launch {
             val userId = authService.getCurrentUserId() ?: return@launch
             userRepository.getUserById(userId).onSuccess {
+                if (generation != accountGeneration) return@onSuccess
                 _currentUser.value = it
-                if (_posts.value.isNotEmpty() && !authoritativeFeedActive) {
-                    _posts.value = rankPosts(_posts.value)
-                }
+                // New interests inform the next explicit refresh, not a
+                // second reshuffle after the user has started reading.
             }
         }
     }
 
     private fun loadFriends() {
+        val generation = accountGeneration
         viewModelScope.launch {
             val userId = authService.getCurrentUserId() ?: return@launch
             friendRepository.getFriends(userId).onSuccess {
+                if (generation != accountGeneration) return@onSuccess
                 _friends.value = it
                 loadRecommendedPeople()
-                if (_posts.value.isNotEmpty() && !authoritativeFeedActive) {
-                    _posts.value = rankPosts(_posts.value)
-                }
+            }.onFailure {
+                if (generation != accountGeneration) return@onFailure
+                // People suggestions do not require the friend rail to be
+                // available; the server/follow filters still protect output.
+                loadRecommendedPeople()
             }
         }
     }
 
-    fun loadPosts() = loadPosts(forceLegacy = false)
+    fun loadPosts() = loadPosts(forceLegacy = false, refreshSeed = UUID.randomUUID().toString())
 
-    private fun loadPosts(forceLegacy: Boolean) {
+    fun refreshDiscovery() {
+        loadPosts(forceLegacy = false, replaceOrder = true, userInitiated = true)
+        scheduleSupplementalContent()
+    }
+
+    private fun loadPosts(
+        forceLegacy: Boolean,
+        refreshSeed: String = UUID.randomUUID().toString(),
+        replaceOrder: Boolean = false,
+        userInitiated: Boolean = false,
+    ) {
+        val generation = ++postsGeneration
         postsJob?.cancel()
+        morePostsJob?.cancel()
+        authorHydrator.cancel()
+        // Set this before launching so the supplemental scheduler cannot see
+        // a stale false value and race the primary request during refresh.
+        _isRefreshing.value = true
+        _isUserRefreshing.value = userInitiated
         postsJob = viewModelScope.launch {
             val startedAt = System.currentTimeMillis()
-            _isRefreshing.value = true
+            val uiWatchdog = launch {
+                delay(SOCIAL_FEED_UI_WATCHDOG_MS)
+                if (generation == postsGeneration && _posts.value.isEmpty()) {
+                    // A stalled recommendation/fallback request must never
+                    // leave the Social screen blank forever. The request keeps
+                    // running and can still populate the feed later.
+                    _isRefreshing.value = false
+                    _isUserRefreshing.value = false
+                }
+            }
             try {
                 val selectedMode = feedMode.value
                 resetAuthoritativeFeedState()
-                if (!forceLegacy && selectedMode == SocialFeedMode.DISCOVER) {
-                    val authoritativePage = algorithmRepository
-                        .loadSocialRecommendationPage(cursor = null, limit = 60)
-                        .getOrNull()
+                // Do not roll an already visible/edited feed back to disk on
+                // each refresh. Cache is only the first-paint fallback.
+                val cachedPosts = if (_posts.value.isEmpty()) {
+                    postRepository.getCachedGlobalPosts(selectedMode.apiValue)
+                } else emptyList()
+                if (cachedPosts.isNotEmpty() && generation == postsGeneration) {
+                    val visibleCachedPosts = applyFeedControls(cachedPosts)
+                    if (visibleCachedPosts.isNotEmpty()) {
+                        _posts.value = visibleCachedPosts
+                        recordFeedLoaded(startedAt, visibleCachedPosts.size, "local-cache", generation)
+                    }
+                }
+                // With no visible snapshot, do not spend five seconds on the
+                // personalized endpoint before requesting the public feed.
+                // Personalization is still used for refreshes where the user
+                // already has content on screen.
+                val canWaitForPersonalization = _posts.value.isNotEmpty()
+                if (!forceLegacy && selectedMode == SocialFeedMode.DISCOVER && canWaitForPersonalization) {
+                    val authoritativePage = withTimeoutOrNull(SOCIAL_AUTHORITATIVE_REQUEST_TIMEOUT_MS) {
+                        algorithmRepository
+                            .loadSocialRecommendationPage(cursor = null, limit = 60, refreshSeed = refreshSeed)
+                            .getOrNull()
+                    }
+                    if (generation != postsGeneration) return@launch
                     if (authoritativePage != null) {
-                        authoritativeFeedActive = true
-                        authoritativeCursor = authoritativePage.nextCursor
-                        _authoritativeHasMore.value = authoritativePage.hasMore
-                        authoritativeRankingVersion = authoritativePage.rankingVersion
-                        authoritativeExplanationsEnabled = authoritativePage.explanationsEnabled
-                        authoritativeExplanations.putAll(authoritativePage.explanationsByCandidateId)
                         val visiblePosts = applyFeedControls(authoritativePage.items)
-                        _posts.value = visiblePosts
-                        recordFeedLoaded(startedAt, visiblePosts.size, "authoritative")
-                        return@launch
+                        if (visiblePosts.isNotEmpty()) {
+                            authoritativeFeedActive = true
+                            authoritativeCursor = authoritativePage.nextCursor
+                            _authoritativeHasMore.value = authoritativePage.hasMore
+                            authoritativeRankingVersion = authoritativePage.rankingVersion
+                            authoritativeExplanationsEnabled = authoritativePage.explanationsEnabled
+                            authoritativeExplanations.putAll(authoritativePage.explanationsByCandidateId)
+                            _posts.value = reconcileSocialFeed(_posts.value, visiblePosts, !replaceOrder)
+                            recordFeedLoaded(startedAt, visiblePosts.size, "authoritative", generation)
+                            refreshVisibleAuthors(generation)
+                            return@launch
+                        }
+                        // Recover from an empty personalized first page using
+                        // the public feed. Do not expose recommendation rails
+                        // as a temporary first screen while posts are loading.
+                        resetAuthoritativeFeedState()
                     }
                 }
                 postRepository.getGlobalPosts(
                     limit = 60,
-                    mode = selectedMode.apiValue
-                ).collect { globalPosts ->
+                    mode = selectedMode.apiValue,
+                    emitCachedSnapshots = false,
+                ).distinctUntilChanged().collect { globalPosts ->
+                    if (generation != postsGeneration) return@collect
                     val visiblePosts = applyFeedControls(globalPosts)
                     val ranked = if (selectedMode == SocialFeedMode.DISCOVER) {
-                        rankPosts(visiblePosts)
+                        rankPosts(visiblePosts, refreshSeed)
                     } else {
                         visiblePosts.sortedByDescending { it.createdAt }
                     }
-                    _posts.value = ranked
-                    recordFeedLoaded(startedAt, ranked.size, selectedMode.apiValue)
+                    // Keep cached content on a failed request, but honor an
+                    // authoritative empty result (e.g. removed/private posts).
+                    if (ranked.isEmpty() && postRepository.globalFeedError.value != null) return@collect
+                    _posts.value = reconcileSocialFeed(_posts.value, ranked, !replaceOrder)
+                    recordFeedLoaded(startedAt, ranked.size, selectedMode.apiValue, generation)
+                    refreshVisibleAuthors(generation)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "Error loading posts", e)
                 appMetrics.recordFailure("feed_load", e)
             } finally {
-                _isRefreshing.value = false
+                uiWatchdog.cancel()
+                if (generation == postsGeneration) {
+                    _isRefreshing.value = false
+                    _isUserRefreshing.value = false
+                }
             }
         }
     }
@@ -302,24 +454,28 @@ class SocialViewModel @Inject constructor(
     fun loadMorePosts() {
         val cursor = authoritativeCursor ?: return
         if (!authoritativeFeedActive || !_authoritativeHasMore.value || authoritativePageRequestInFlight) return
+        val generation = postsGeneration
         authoritativePageRequestInFlight = true
-        viewModelScope.launch {
+        morePostsJob = viewModelScope.launch {
             try {
                 val page = algorithmRepository.loadSocialRecommendationPage(cursor = cursor, limit = 60)
                     .getOrElse {
+                        if (generation != postsGeneration) return@launch
                         // Never mix a failed authoritative continuation with a
                         // differently ranked legacy page. Replace the feed with
                         // one coherent legacy feed instead.
-                        loadPosts(forceLegacy = true)
+                        loadPosts(forceLegacy = true, replaceOrder = true)
                         return@launch
                     }
+                if (generation != postsGeneration) return@launch
                 authoritativeCursor = page.nextCursor
                 _authoritativeHasMore.value = page.hasMore
                 authoritativeExplanations.putAll(page.explanationsByCandidateId)
                 // Concatenation preserves the server page and item sequence.
-                _posts.value = _posts.value + applyFeedControls(page.items)
+                _posts.value = (_posts.value + applyFeedControls(page.items)).distinctBy { it.id }
+                refreshVisibleAuthors(generation)
             } finally {
-                authoritativePageRequestInFlight = false
+                if (generation == postsGeneration) authoritativePageRequestInFlight = false
             }
         }
     }
@@ -334,8 +490,10 @@ class SocialViewModel @Inject constructor(
         _authoritativeHasMore.value = false
     }
 
-    private fun recordFeedLoaded(startedAt: Long, count: Int, mode: String) {
+    private fun recordFeedLoaded(startedAt: Long, count: Int, mode: String, generation: Long) {
+        if (generation != postsGeneration) return
         _isRefreshing.value = false
+        _isUserRefreshing.value = false
         val attributes = mapOf("count" to count.toString(), "mode" to mode)
         appMetrics.incrementCounter(metric = "feed_load_success", attributes = attributes)
         appMetrics.recordLatency(
@@ -363,7 +521,7 @@ class SocialViewModel @Inject constructor(
         }
     }
 
-    private fun rankPosts(posts: List<Post>): List<Post> {
+    private fun rankPosts(posts: List<Post>, refreshSeed: String? = null): List<Post> {
         val friendIds = _friends.value.map { it.id }.toSet()
         val ranked = feedRankingEngine.rankPosts(
             posts = posts,
@@ -372,7 +530,7 @@ class SocialViewModel @Inject constructor(
             signalSnapshot = feedSignalTracker.snapshot(),
             interestTerms = profileInterestTerms()
         )
-        return ranked
+        return diversifySocialRefresh(ranked, refreshSeed)
     }
 
     private fun profileInterestTerms(): Set<String> {
@@ -395,6 +553,7 @@ class SocialViewModel @Inject constructor(
 
     fun selectFeedMode(mode: SocialFeedMode) {
         if (feedMode.value == mode) return
+        _posts.value = emptyList()
         feedPreferences.setMode(mode)
         loadPosts()
     }
@@ -603,6 +762,14 @@ class SocialViewModel @Inject constructor(
         }
     }
 
+    private fun refreshVisibleAuthors(generation: Long) {
+        authorHydrator.refresh(_posts.value) { profiles ->
+            if (generation == postsGeneration) {
+                _posts.value = applyCanonicalPostAuthors(_posts.value, profiles)
+            }
+        }
+    }
+
     fun recordPostOpen(post: Post) {
         feedSignalTracker.recordInteraction(post, FeedInteractionAction.OPEN)
     }
@@ -749,16 +916,36 @@ class SocialViewModel @Inject constructor(
             }
         }
     }
-    fun createPost(content: String, uris: List<android.net.Uri>, visibility: String = "public") {
+    fun createPost(
+        content: String,
+        uris: List<android.net.Uri>,
+        visibility: String = "public",
+        isSensitive: Boolean = false,
+        fromDraft: Boolean = false,
+        draftOwnerId: String? = null,
+    ) {
         viewModelScope.launch {
             try {
+                if (draftOwnerId != null && currentUserId != draftOwnerId) {
+                    android.widget.Toast.makeText(context, "La cuenta cambió. Abre tu borrador en la cuenta original.",
+                        android.widget.Toast.LENGTH_LONG).show()
+                    return@launch
+                }
                 val result = postRepository.createPost(
                     content = content,
                     mediaUris = uris,
-                    visibility = visibility
+                    visibility = visibility,
+                    isSensitive = isSensitive
                 )
                 if (result.isSuccess) {
                     val created = result.getOrThrow()
+                    if (fromDraft && created.userId.equals(draftOwnerId, ignoreCase = true)) {
+                        draftOwnerId?.let { account ->
+                            conectate.com.data.local.PostDraftStore.delete(context, account)
+                                .onFailure { android.util.Log.w("SocialViewModel", "No se pudo limpiar el borrador publicado", it) }
+                        }
+                    }
+                    if (draftOwnerId != null && currentUserId != draftOwnerId) return@launch
                     _posts.value = listOf(created) + _posts.value.filterNot { it.id == created.id }
                     feedSignalTracker.recordInteraction(created, FeedInteractionAction.IMPRESSION)
                     android.widget.Toast.makeText(context, "Publicación creada", android.widget.Toast.LENGTH_SHORT).show()

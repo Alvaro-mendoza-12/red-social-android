@@ -27,6 +27,7 @@ import conectate.com.data.model.User
 fun UserItem(
     user: User,
     onClick: () -> Unit,
+    showPublicId: Boolean = false,
     trailingContent: @Composable (RowScope.() -> Unit)? = null
 ) {
     Row(
@@ -81,7 +82,11 @@ fun UserItem(
             }
             
             Text(
-                text = handle,
+                text = if (showPublicId) {
+                    val publicId = user.numeric_id?.toString()?.takeIf { it.isNotBlank() }
+                        ?: user.id.take(8)
+                    "$handle · ID $publicId"
+                } else handle,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 maxLines = 1,

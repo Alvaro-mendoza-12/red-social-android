@@ -18,25 +18,29 @@ esta apagado por defecto. El servidor puede arrancar con
 - `db`: Postgres privado en `127.0.0.1:5433`
 - `storage`: volumen local Docker `conectate-fallback-storage` montado en `/data/storage`
 - `signaling`: Socket.IO para voz, llamadas y lives, autenticado contra la API Ubuntu
-- `edge`: proxy local en `http://127.0.0.1:3080` para exponer API, storage y Socket.IO con una sola URL de ngrok
+- `signaling-redis`: Redis Streams privado para difusión de Socket.IO,
+  presencia entre procesos y futura recuperación controlada; no publica puerto
+  al host y persiste AOF en `novvin-signaling-redis`
+- `edge`: proxy local en `http://127.0.0.1:3080` para exponer API, storage y Socket.IO mediante un único origen HTTPS estable
 
 ## Modo backend principal
 
 Para web, configura solo:
 
 ```env
-VITE_FALLBACK_API_URL=https://tu-url-ngrok.ngrok-free.dev
+VITE_FALLBACK_API_URL=https://api.novvin.example
 ```
 
 Para Android, en `secrets.properties`:
 
 ```properties
-FALLBACK_API_URL=https://tu-url-ngrok.ngrok-free.dev
+FALLBACK_API_URL=https://api.novvin.example
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 ```
 
-Voz, llamadas y audio usan la misma URL cuando ngrok apunta al puerto `3080`.
+Voz, llamadas y audio usan el mismo origen HTTPS cuando el Cloudflare Tunnel
+nombrado apunta al puerto `3080`.
 
 ## Copiar desde Windows a la VM
 
@@ -78,19 +82,32 @@ Dentro del SSH de Ubuntu:
 ```bash
 cd ~/conectate-local-fallback
 bash scripts/sync-env-from-example.sh
-PUBLIC_BASE_URL=https://tu-dominio.ngrok-free.dev bash scripts/repair-ubuntu-primary.sh
+PUBLIC_BASE_URL=https://api.novvin.example bash scripts/repair-ubuntu-primary.sh
 ```
 
-Si todavia no tienes dominio fijo, ejecuta:
-
-```bash
-cd ~/conectate-local-fallback
-bash scripts/sync-env-from-example.sh
-bash scripts/repair-ubuntu-primary.sh
-```
+Si todavía no tienes dominio HTTPS estable, no ejecutes un despliegue de
+producción. Configura primero el Cloudflare Tunnel nombrado siguiendo
+[`docs/NAMED_CLOUDFLARE_TUNNEL_RUNBOOK_2026.md`](../../docs/NAMED_CLOUDFLARE_TUNNEL_RUNBOOK_2026.md).
 
 `sync-env-from-example.sh` agrega claves nuevas de `config.example` a `.env`
 sin borrar tus valores actuales, contrasenas ni tokens.
+
+`deploy-stack-safely.sh` crea, si falta, el secreto dedicado de Redis en
+`secrets/signaling-redis-password.txt` con permisos `600`; no lo imprime ni lo
+guarda en `.env`. Signaling falla cerrado en producción si Redis no puede
+conectarse. Verifica el bus sin exponer credenciales:
+
+```bash
+curl -fsS http://127.0.0.1:3080/health | jq '.realtimeBus,.stateConsistency'
+docker compose exec -T signaling-redis sh -ec \
+  'REDISCLI_AUTH="$(cat /run/secrets/signaling_redis_password)" redis-cli ping'
+```
+
+Mantén `SIGNALING_REPLICAS=1`. Redis, DNS dinámico y afinidad ya están
+preparados, pero el estado avanzado de Live (batallas, invitados y timers)
+todavía requiere una prueba de rehidratación/failover antes de autorizar más de
+una réplica. `SIGNALING_CONNECTION_RECOVERY_ENABLED=false` es deliberado por la
+misma razón.
 
 Si `api` queda en `unhealthy` o `Restarting`, ejecuta el diagnostico:
 
@@ -112,7 +129,7 @@ de humo completa:
 cd ~/conectate-local-fallback
 API_URL="http://127.0.0.1:3080" bash scripts/verify-ubuntu-modules.sh
 API_URL="http://127.0.0.1:3080" STRICT_PRODUCTION=true bash scripts/verify-ubuntu-production.sh
-PUBLIC_BASE_URL="https://tu-dominio.ngrok-free.dev" bash scripts/verify-ubuntu-storage.sh
+PUBLIC_BASE_URL="https://api.novvin.example" bash scripts/verify-ubuntu-storage.sh
 docker compose ps
 docker compose logs --tail=120 api edge signaling realtime-gateway
 ```
@@ -186,13 +203,19 @@ nano ~/conectate-local-fallback/.env
 docker compose up -d --build
 ```
 
-Cambia `POSTGRES_PASSWORD`, `JWT_SECRET`, `ADMIN_SYNC_TOKEN` y
+Cambia `POSTGRES_PASSWORD`, `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`, `ADMIN_SYNC_TOKEN` y
 `PUBLIC_BASE_URL`. El resultado esperado es que `docker compose ps` muestre los
 servicios estables y `GET /ready` responda correctamente:
 
 ```bash
 curl -sS http://127.0.0.1:3080/ready
 ```
+
+`TOTP_ENCRYPTION_KEY` debe generarse de forma independiente y conservarse en las
+copias de seguridad de secretos. Cambiarla después de activar 2FA dejaría los
+autenticadores existentes sin posibilidad de validación. El backend usa
+`JWT_SECRET` como compatibilidad temporal si la variable falta; configura la
+clave estable antes de que se active la primera cuenta.
 
 ## Probar login local
 
@@ -206,29 +229,16 @@ curl -sS -X POST http://127.0.0.1:3001/v1/auth/login \
   -d '{"email":"alvaro@example.local","password":"Conectate123!"}'
 ```
 
-## Exponer con ngrok
+## Exponer el backend de producción
 
-Instalacion oficial via apt:
+Usa un **Cloudflare Tunnel nombrado** con un hostname propio, por ejemplo
+`https://api.novvin.example`, dirigido al puerto `3080`. No uses ngrok ni
+Quick Tunnels de Cloudflare en producción: los hostnames son efímeros, no
+ofrecen el contrato operativo requerido y pueden cortar multimedia/Socket.IO.
 
-```bash
-curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
-  | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
-  && echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" \
-  | sudo tee /etc/apt/sources.list.d/ngrok.list \
-  && sudo apt update \
-  && sudo apt install -y ngrok
-```
-
-Luego agrega tu token de ngrok:
-
-```bash
-ngrok config add-authtoken "TU_TOKEN_DE_NGROK"
-ngrok http 3080
-```
-
-La URL HTTPS que te entregue ngrok sera la `FALLBACK_API_URL` para web y Android.
-Debe apuntar al puerto `3080`, no al `3001`, para que tambien funcionen voz,
-llamadas, audio y WebSocket.
+El procedimiento, manejo del token, unidad systemd, verificación y rollback
+están documentados en
+[`docs/NAMED_CLOUDFLARE_TUNNEL_RUNBOOK_2026.md`](../../docs/NAMED_CLOUDFLARE_TUNNEL_RUNBOOK_2026.md).
 
 ## Conectar sincronizacion con Supabase
 
@@ -367,8 +377,15 @@ Notas:
 
 ## Recuperacion de contrasena local
 
-Por defecto `PASSWORD_RESET_DELIVERY=console`: el token se imprime en logs de la
-API para uso manual durante la migracion.
+En producción el modo predeterminado es `disabled`, que impide prometer un correo
+que el servidor no puede enviar. Para activar la recuperación, configura en el
+`.env` privado `PASSWORD_RESET_DELIVERY=smtp`, `SMTP_HOST`, `SMTP_PORT` (587 con
+STARTTLS o 465 con TLS directo), `SMTP_FROM`, `SMTP_USER` y `SMTP_PASS`. El
+servidor envía el código al correo registrado; la respuesta pública nunca
+incluye el código. No registres credenciales ni tokens en Git.
+
+En desarrollo, `PASSWORD_RESET_DELIVERY=console` imprime el token en logs de la
+API para pruebas manuales:
 
 ```bash
 docker compose logs -f api

@@ -148,7 +148,7 @@ metadatos y esa evidencia.
 - Android compila con `NovvinChatScreen`, `NovvinChatViewModel` y
   `LocalFallbackApiClient`; el contrato exige la fuente v5 y el QA de produccion
   valida sus endpoints. Se instalo exactamente
-  `D:\red social - copia\app\build\outputs\apk\debug\app-debug.apk`
+  `D:\red social - live-gifts\app\build\outputs\apk\debug\app-debug.apk`
   (205.427.450 bytes, SHA-256
   `A71A375201E463DEAADC1B00B51C99CED2AFFF70E8AB5CF481ED98DA732DAD5F`)
   en el AVD local `Medium_Phone_API_36.1`, Android 16, `emulator-5554`; no se uso
@@ -159,7 +159,7 @@ metadatos y esa evidencia.
   devolvio una respuesta fundamentada con la ruta Perfil > Editar perfil,
   pasos para modificar y guardar los datos, y sugerencias relacionadas. La
   captura de evidencia quedo en
-  `D:\red social - copia\tmp\novvin-android-production.png`.
+  `D:\red social - live-gifts\tmp\novvin-android-production.png`.
 - Esta prueba valida el APK debug instalado contra produccion; no equivale a
   publicar una nueva APK en la tienda. Tras forzar el cierre y relanzar la app,
   la consulta y la respuesta completas reaparecieron al abrir Novvin. No hubo

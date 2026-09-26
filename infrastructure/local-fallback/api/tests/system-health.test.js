@@ -12,17 +12,18 @@ async function run() {
   assert.equal(normalizedBaseUrl(' https://api.example.test/// '), 'https://api.example.test')
   assert.equal(normalizedBaseUrl('not-a-url'), '')
   assert.deepEqual(
-    releaseMetadataFromText('release=novvin-42\ncommit=abc123\ndeployed_at_utc=2026-07-26T00:00:00Z\n'),
+    releaseMetadataFromText('release=novvin-42\ncommit=abc123\nsource_digest=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\ndeployed_at_utc=2026-07-26T00:00:00Z\n'),
     {
       release: 'novvin-42',
       commit: 'abc123',
+      source_digest: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       deployed_at_utc: '2026-07-26T00:00:00Z',
     },
   )
 
   const storageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'novvin-health-'))
   const metadataPath = path.join(storageRoot, 'release')
-  fs.writeFileSync(metadataPath, 'release=novvin-test\ncommit=2b2c81d\n')
+  fs.writeFileSync(metadataPath, 'release=novvin-test\ncommit=2b2c81d\nsource_digest=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n')
   const fetchImpl = async (url) => ({
     ok: true,
     status: 200,
@@ -52,6 +53,7 @@ async function run() {
     assert.equal(healthy.status, 'operational')
     assert.equal(healthy.release.release, 'novvin-test')
     assert.equal(healthy.release.commit, '2b2c81d')
+    assert.equal(healthy.release.sourceDigest, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')
     assert.deepEqual(Object.keys(healthy.components), [
       'api',
       'database',

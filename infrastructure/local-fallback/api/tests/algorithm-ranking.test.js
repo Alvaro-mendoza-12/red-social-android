@@ -2,6 +2,7 @@ const assert = require('assert')
 const {
   FORBIDDEN_RANKING_INPUTS,
   rankAlgorithmCandidates,
+  seededUnitInterval,
 } = require('../src/algorithm-ranking')
 
 function candidate(id, overrides = {}) {
@@ -86,6 +87,7 @@ function testExplicitDolphinBlockDefeatsCreatorAndFollow() {
 function testExplicitCreatorPreferenceRanksAboveFollowOnlyCandidate() {
   const result = rank({
     surface: 'video',
+    diversityLimits: { maxPerCreator: 20, maxPerSubtopic: 20, maxPerDuplicate: 20 },
     candidates: [
       candidate('followed', {
         creatorId: 'creator-followed',
@@ -208,6 +210,25 @@ function testZeroTrendAndExplorationWeightsAreRespected() {
   assert.equal(result.ranked[1].score.exploration, 0)
 }
 
+function testRefreshSeedOnlyAffectsEnabledExploration() {
+  assert.notEqual(seededUnitInterval('refresh-a', 'post-1'), seededUnitInterval('refresh-b', 'post-1'))
+  const base = {
+    surface: 'social',
+    feedMix: { following: 0, interests: 0, communities: 0, newContent: 0, trends: 0, exploration: 100 },
+    diversityLimits: { maxPerCreator: 20, maxPerSubtopic: 20, maxPerDuplicate: 20 },
+    candidates: [candidate('one'), candidate('two'), candidate('three'), candidate('four')],
+  }
+  const first = rank({ ...base, sessionSeed: 'refresh-a' })
+  const second = rank({ ...base, sessionSeed: 'refresh-b' })
+  assert.notDeepEqual(rankedIds(first), rankedIds(second))
+  const disabled = rank({
+    ...base,
+    sessionSeed: 'refresh-a',
+    feedMix: { following: 100, interests: 0, communities: 0, newContent: 0, trends: 0, exploration: 0 },
+  })
+  assert.deepEqual(rankedIds(disabled), ['one', 'two', 'three', 'four'])
+}
+
 function testPrivateDataFieldsNeverAffectResult() {
   const base = {
     surface: 'video',
@@ -307,6 +328,85 @@ function testStructuredExplanationIsTruthfulAndDoesNotInventSignals() {
   assert.ok(explanation.privacy.neverUsed.includes('private_messages'))
 }
 
+function testGenericVideoFormatCannotEmptyTheFeed() {
+  const result = rank({
+    surface: 'video',
+    candidates: [
+      candidate('long-a', { formats: ['video', 'long-video'], topics: ['technology'] }),
+      candidate('short-a', { formats: ['video', 'short-video'], topics: ['games'] }),
+    ],
+    preferences: [{ surface: 'video', dimension: 'format', subjectKey: 'video', score: -100 }],
+  })
+
+  // `video` is a legacy whole-surface marker, not a content subset.
+  assert.deepStrictEqual(rankedIds(result), ['long-a', 'short-a'])
+  assert.strictEqual(result.excluded.length, 0)
+}
+
+function testSpecificFormatBlockKeepsOtherFormats() {
+  const result = rank({
+    surface: 'video',
+    candidates: [
+      candidate('long-a', { formats: ['video', 'long-video'], topics: ['technology'] }),
+      candidate('short-a', { formats: ['video', 'short-video'], topics: ['games'] }),
+      candidate('unknown-format', { formats: [], topics: [] }),
+    ],
+    preferences: [{ surface: 'video', dimension: 'format', subjectKey: 'long-video', score: -100 }],
+  })
+
+  assert.deepStrictEqual(rankedIds(result), ['short-a', 'unknown-format'])
+  assert.equal(result.excluded.find((entry) => entry.candidateId === 'long-a')?.reasonCode, 'EXPLICIT_PREFERENCE_BLOCKED')
+}
+
+function testSoftFormatFeedbackKeepsShortVideosAvailable() {
+  const result = rank({
+    surface: 'video',
+    candidates: [
+      candidate('short-a', { formats: ['short-video'] }),
+      candidate('short-b', { formats: ['short-video'] }),
+    ],
+    preferences: [{ surface: 'video', dimension: 'format', subjectKey: 'short-video', score: -30 }],
+  })
+  assert.deepStrictEqual(new Set(rankedIds(result)), new Set(['short-a', 'short-b']))
+  assert.strictEqual(result.excluded.length, 0)
+}
+
+function testGenericTopicBlockCannotEmptyTheFeed() {
+  const result = rank({
+    surface: 'video',
+    diversityLimits: { maxPerCreator: 20, maxPerSubtopic: 20, maxPerDuplicate: 20 },
+    candidates: [
+      candidate('one', { topics: ['video-general'] }),
+      candidate('two', { topics: ['technology'] }),
+      candidate('without-metadata', { topics: [] }),
+    ],
+    preferences: [{ surface: 'video', dimension: 'topic', subjectKey: 'video-general', score: -100 }],
+  })
+
+  assert.deepStrictEqual(rankedIds(result), ['one', 'two', 'without-metadata'])
+  assert.strictEqual(result.excluded.length, 0)
+}
+
+function testExplicitFeedbackFiltersTheNextTwentyRecommendations() {
+  const candidates = Array.from({ length: 30 }, (_, index) =>
+    candidate(`video-${index}`, {
+      creatorId: index < 10 ? 'creator-muted' : `creator-${index}`,
+      topics: index < 10 ? ['tema-oculto'] : ['tema-visible'],
+    }))
+  const result = rank({
+    surface: 'video',
+    candidates,
+    diversityLimits: { maxPerCreator: 20, maxPerSubtopic: 20, maxPerDuplicate: 20 },
+    preferences: [
+      { surface: 'video', dimension: 'creator', subjectKey: 'creator-muted', score: -100 },
+    ],
+  })
+  assert.strictEqual(result.ranked.length, 20)
+  assert.ok(result.ranked.every((entry) => !entry.candidateId.match(/^video-[0-9]$/)))
+  assert.strictEqual(result.excluded.filter((entry) =>
+    entry.reasonCode === 'EXPLICIT_PREFERENCE_BLOCKED').length, 10)
+}
+
 Promise.resolve()
   .then(testSafetyPrecedesEveryOtherSignal)
   .then(testExplicitDolphinBlockDefeatsCreatorAndFollow)
@@ -315,10 +415,16 @@ Promise.resolve()
   .then(testApiFeedMixAliasesControlRanking)
   .then(testApiPermissionAliasesPermitOnlyTheirOptedInSource)
   .then(testZeroTrendAndExplorationWeightsAreRespected)
+  .then(testRefreshSeedOnlyAffectsEnabledExploration)
   .then(testPrivateDataFieldsNeverAffectResult)
   .then(testDiversityLimitsCreatorSubtopicAndDuplicate)
   .then(testExplicitPreferencePrecedesCreatorDiversityLimit)
   .then(testStructuredExplanationIsTruthfulAndDoesNotInventSignals)
+  .then(testGenericVideoFormatCannotEmptyTheFeed)
+  .then(testSpecificFormatBlockKeepsOtherFormats)
+  .then(testSoftFormatFeedbackKeepsShortVideosAvailable)
+  .then(testGenericTopicBlockCannotEmptyTheFeed)
+  .then(testExplicitFeedbackFiltersTheNextTwentyRecommendations)
   .then(() => console.log('algorithm ranking tests passed'))
   .catch((error) => {
     console.error(error)

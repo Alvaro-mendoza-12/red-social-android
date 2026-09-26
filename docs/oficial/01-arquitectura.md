@@ -1,6 +1,8 @@
 # 01 — Arquitectura general
 
-Conéctate está compuesto por varios clientes y un backend propio. La arquitectura actual favorece independencia del proveedor, operación casera con mini PC y mecanismos de discovery para sobrevivir a CGNAT.
+Conéctate/NOVVIN está compuesto por varios clientes y un backend propio. La
+arquitectura objetivo favorece independencia del proveedor, operación en mini PC
+y un origen HTTPS estable aun detrás de CGNAT.
 
 ## Vista general
 
@@ -9,10 +11,10 @@ Usuarios Android
     |
     | HTTPS / WebSocket / WebRTC signaling
     v
-DuckDNS TXT discovery
+Hostname HTTPS estable (api.novvin.example)
     |
     v
-Cloudflare Quick Tunnel URL actual
+Cloudflare Tunnel nombrado
     |
     v
 Nginx edge en mini PC
@@ -110,6 +112,21 @@ Responsabilidades:
 - integración con API Ubuntu;
 - control de rate limit y orígenes.
 
+### Política WebRTC del cliente web
+
+`WebRtcPeerSession.ts` concentra la máquina de estado por peer para llamada
+privada, sala de voz y LIVE. El transporte Socket.IO permanece fuera del módulo:
+la sesión sólo coordina SDP/ICE y entrega ofertas al consumidor correspondiente.
+
+Invariantes:
+
+- negociación perfecta con rol `polite/impolite`, rollback e `ignoreOffer`;
+- una sola operación SDP activa por peer;
+- `onnegotiationneeded` obligatorio cuando se añade cámara o pantalla;
+- ICE restart después de `failed` o de un `disconnected` sostenido;
+- máximo tres intentos con backoff, cancelados al volver a `connected`;
+- cierre y salida de participante cancelan timers y descartan estado pendiente.
+
 ## Base de datos
 
 PostgreSQL vive en Docker y debe quedarse en SSD.
@@ -148,19 +165,21 @@ BACKUP_ROOT=/mnt/conectate-backup/conectate-backups
 
 No usar rutas absolutas hardcodeadas en el código. Toda ruta debe salir de variables de entorno o configuración.
 
-## Discovery público
+## Origen público y descubrimiento
 
-La app no debe depender de una URL fija `trycloudflare.com`.
+La ruta primaria de producción es un hostname HTTPS fijo —por ejemplo
+`https://api.novvin.example`— conectado a un **Cloudflare Tunnel nombrado**. El
+token del túnel sólo reside en Ubuntu, en un archivo de permisos `0600`, y
+systemd lo inicia y supervisa.
 
-Modelo correcto:
+El descubrimiento por DuckDNS TXT firmado (`novvin1`) sigue soportado sólo para
+una transición controlada o recuperación. En ese modo Android/web verifican
+firma ECDSA P-256, expiración, URL raíz HTTPS y capacidades de `/ready` antes de
+usar una ruta dinámica. Una URL plana o sin firma válida se rechaza siempre.
 
-1. El servidor levanta Cloudflare Quick Tunnel.
-2. El túnel genera una URL temporal.
-3. Un script publica esa URL en DuckDNS TXT.
-4. La app resuelve `BACKEND_DISCOVERY_HOST`.
-5. La app usa la URL activa.
-
-Esto es necesario por CGNAT.
+El `FALLBACK_API_URL` empaquetado es confianza explícita. No se debe cambiar a
+una URL temporal `trycloudflare.com`, ni hacer que el discovery dinámico sea el
+camino normal de login, multimedia o WebSocket.
 
 ## Separación de módulos
 
@@ -183,16 +202,32 @@ El sistema debe mantenerse modular:
 
 Regla: una falla en llamadas no debe tumbar mensajes; una falla en storage no debe tumbar login; una falla del discovery no debe borrar configuración local.
 
+### Plano administrativo
+
+La autorización administrativa es un módulo independiente de UI y de insignias de
+perfil. `admin-capabilities.js` traduce `none/view/write/full` más la marca de
+propietario a capacidades nominales. Las rutas de moderación, contenido compatible,
+música, catálogo PlayMatch, pagos y salud del sistema consultan esas capacidades en
+la API. Android y web consumen el mismo contrato mediante
+`GET /v1/data/admin/access`, pero nunca son la barrera de seguridad.
+
+El token operativo `x-admin-token` pertenece al plano de sincronización del servidor;
+no equivale a un rol humano. La matriz y el proceso de alta/baja están en
+`docs/empresa/06-roles-y-capacidades-administrativas.md`.
+
 ## Zonas de riesgo técnico
 
-1. **URL pública dinámica**
-   - Si la app conserva URL antigua, falla todo.
+1. **Origen público sin terminar de migrar**
+   - Si el servidor sigue en un Quick Tunnel, una rotación de URL puede
+     interrumpir API, sesiones y multimedia. La mitigación obligatoria es el
+     túnel nombrado con hostname estable.
 
 2. **CGNAT**
    - Afecta WebRTC y acceso remoto.
 
-3. **Quick Tunnel**
-   - Útil y gratis, pero no equivalente a dominio/túnel permanente con SLA.
+3. **Tunnel/edge**
+   - El túnel nombrado cubre HTTPS y WebSocket, pero no sustituye TURN público
+     para media WebRTC entre redes distintas.
 
 4. **TURN gratis**
    - Puede tener límites o variabilidad.

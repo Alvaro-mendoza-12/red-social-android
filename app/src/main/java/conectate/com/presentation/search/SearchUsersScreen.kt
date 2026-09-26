@@ -8,7 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MyLocation
@@ -44,6 +44,7 @@ fun SearchUsersScreen(
     val contentResults by viewModel.contentResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val userErrorMessage by viewModel.userErrorMessage.collectAsState()
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
     Scaffold(
@@ -52,7 +53,7 @@ fun SearchUsersScreen(
                 title = { Text("Buscar en Novvin") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 }
             )
@@ -70,9 +71,9 @@ fun SearchUsersScreen(
                 trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
                 modifier = Modifier.clickable { navController.navigate(Screen.Proximity.route) }
             )
-            Divider()
+            HorizontalDivider()
 
-            TabRow(selectedTabIndex = selectedTab) {
+            PrimaryTabRow(selectedTabIndex = selectedTab) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
@@ -90,11 +91,7 @@ fun SearchUsersScreen(
                 value = searchQuery,
                 onValueChange = { 
                     searchQuery = it
-                    if (it.length > 1) { // Prevent searching single characters if needed, or just normal search
-                         viewModel.searchUsers(it)
-                    } else if (it.isEmpty()) {
-                        viewModel.clearSearch()
-                    }
+                    viewModel.searchUsers(it)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -122,12 +119,22 @@ fun SearchUsersScreen(
                 }
             }
 
-            errorMessage?.takeIf { selectedTab == 1 }?.let { message ->
+            (if (selectedTab == 0) userErrorMessage else errorMessage)?.let { message ->
                 Text(
                     text = message,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
+            if (!isLoading && searchResults.isEmpty() && selectedTab == 0 && userErrorMessage == null) {
+                Text(
+                    if (searchQuery.trim().removePrefix("@").trim().length < 2)
+                        "Escribe al menos dos caracteres del nombre o @usuario."
+                    else "No encontramos personas. Prueba con otro nombre o @usuario.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
 
@@ -139,11 +146,12 @@ fun SearchUsersScreen(
                     items(searchResults, key = { it.id }) { user ->
                         UserItem(
                             user = user,
+                            showPublicId = true,
                             onClick = {
                                 navController.navigate(Screen.Chat.createRoute(user.id))
                             }
                         )
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
             } else {

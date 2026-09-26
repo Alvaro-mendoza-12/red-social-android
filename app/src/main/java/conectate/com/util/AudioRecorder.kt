@@ -5,6 +5,8 @@ import android.media.*
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
+import android.util.Log
+import conectate.com.core.observability.AppMetrics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -16,7 +18,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 
 @Singleton
 class AudioRecorder @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val appMetrics: AppMetrics
 ) {
     // --- Configuration ---
     // Using 44.1kHz for maximum compatibility across all Android devices
@@ -113,7 +116,7 @@ class AudioRecorder @Inject constructor(
             
             return pcmFile
         } catch (e: Exception) {
-            e.printStackTrace()
+            appMetrics.recordFailure("voice_note_record_start", e)
             stop() // Clean up
             return null
         }
@@ -125,7 +128,7 @@ class AudioRecorder @Inject constructor(
         try {
             audioRecord?.stop()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("AudioRecorder", "Could not pause AudioRecord cleanly", e)
         }
     }
 
@@ -138,7 +141,7 @@ class AudioRecorder @Inject constructor(
             
             startWriterThread()
         } catch (e: Exception) {
-            e.printStackTrace()
+            appMetrics.recordFailure("voice_note_record_resume", e)
         }
     }
 
@@ -156,7 +159,7 @@ class AudioRecorder @Inject constructor(
             noiseSuppressor?.release()
             automaticGainControl?.release()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("AudioRecorder", "Could not release the recording session cleanly", e)
         } finally {
             audioRecord = null
             noiseSuppressor = null
@@ -183,7 +186,7 @@ class AudioRecorder @Inject constructor(
             noiseSuppressor?.release()
             automaticGainControl?.release()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w("AudioRecorder", "Could not cancel the recording session cleanly", e)
         }
         audioRecord = null
         pcmFile = null
@@ -241,7 +244,7 @@ class AudioRecorder @Inject constructor(
             }
             android.util.Log.d("AudioRecorder", "Finished writing PCM. Total bytes: $totalBytesRead")
         } catch (e: Exception) {
-            e.printStackTrace()
+            appMetrics.recordFailure("voice_note_pcm_write", e)
         }
     }
     

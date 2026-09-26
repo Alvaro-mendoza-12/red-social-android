@@ -14,14 +14,26 @@ class PlayMatchRepository @Inject constructor(
     private val api: PlayMatchApiClient,
 ) {
     private data class CachedCatalogPage(val savedAt: Long, val response: PlayMatchCatalogPageResponse)
+    private data class CachedPopularGames(val savedAt: Long, val response: PlayMatchCatalogResponse)
     private val catalogCache = object : LinkedHashMap<String, CachedCatalogPage>(24, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedCatalogPage>?): Boolean = size > 24
     }
     private val catalogCacheTtlMs = 5 * 60_000L
+    @Volatile private var popularGamesCache: CachedPopularGames? = null
 
     suspend fun capabilities() = withToken(api::capabilities)
     suspend fun catalog(query: String = "") = withToken { api.catalog(it, query) }
-    suspend fun popularGames() = withToken { api.popularGames(it) }
+    suspend fun popularGames(force: Boolean = false): Result<PlayMatchCatalogResponse> {
+        val cached = popularGamesCache
+        if (!force && cached != null && System.currentTimeMillis() - cached.savedAt < catalogCacheTtlMs) {
+            return Result.success(cached.response)
+        }
+        val result = withToken { api.popularGames(it) }
+        result.onSuccess { popularGamesCache = CachedPopularGames(System.currentTimeMillis(), it) }
+        return result.recoverCatching { error ->
+            cached?.response ?: throw error
+        }
+    }
     suspend fun searchGames(query: String, cursor: String? = null, force: Boolean = false): Result<PlayMatchCatalogPageResponse> {
         val key = "${query.trim().lowercase()}|${cursor.orEmpty()}"
         synchronized(catalogCache) {
@@ -41,8 +53,8 @@ class PlayMatchRepository @Inject constructor(
     suspend fun deleteGame(id: String) = withToken { api.deleteGame(it, id) }
     suspend fun saveAvailability(entries: List<PlayMatchAvailability>) = withToken { api.saveAvailability(it, SavePlayMatchAvailabilityRequest(entries)) }
     suspend fun savePreferences(body: SavePlayMatchPreferencesRequest) = withToken { api.savePreferences(it, body) }
-    suspend fun players(query: String = "", gameId: String? = null, platform: String? = null, region: String? = null, cursor: String? = null) =
-        withToken { api.players(it, query, gameId, platform, region, cursor) }
+    suspend fun players(query: String = "", gameId: String? = null, platform: String? = null, region: String? = null, cursor: String? = null, availableNow: Boolean = false) =
+        withToken { api.players(it, query, gameId, platform, region, cursor, availableNow) }
     suspend fun player(id: String) = withToken { api.player(it, id) }
     suspend fun connections() = withToken(api::connections)
     suspend fun connect(playerId: String, message: String = "") = withToken {

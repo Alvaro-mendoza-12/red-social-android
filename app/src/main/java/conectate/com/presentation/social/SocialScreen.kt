@@ -1,5 +1,7 @@
 package conectate.com.presentation.social
 
+import conectate.com.core.media.ShareableMediaFileStore
+
 import androidx.compose.runtime.Composable
 
 import conectate.com.presentation.social.ChallengeViewModel
@@ -16,7 +18,6 @@ import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
@@ -58,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Brush
@@ -78,10 +80,15 @@ import androidx.compose.material.icons.filled.WifiOff
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import conectate.com.data.model.Post
+import conectate.com.data.model.Moment
+import conectate.com.data.model.User
 import conectate.com.data.local.prefs.SocialFeedMode
 import conectate.com.presentation.common.ConnectivityViewModel
+import conectate.com.presentation.common.FeedRecoveryPolicy
 import conectate.com.presentation.components.OfflineNoticeBar
 import conectate.com.presentation.components.PostCard
+import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.LoopingVideoPreview
 import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.profile.NotificationViewModel
 import conectate.com.presentation.components.MomentGrid
@@ -94,6 +101,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.draw.blur
 import coil.compose.rememberAsyncImagePainter
+import coil.compose.AsyncImage
 import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -102,7 +110,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.viewinterop.AndroidView
@@ -180,6 +188,7 @@ fun SocialScreen(
     val activeStreams by viewModel.activeStreams.collectAsState()
     val showLiveCarousel by viewModel.showLiveCarousel.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val isUserRefreshing by viewModel.isUserRefreshing.collectAsState()
     val authoritativeHasMore by viewModel.authoritativeHasMore.collectAsState()
     val unreadCount by notificationViewModel.unreadCount.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
@@ -205,10 +214,9 @@ fun SocialScreen(
     val friendRequests by friendViewModel.requests.collectAsState()
     val pendingRequestCount = friendRequests.size
     
-    val pullRefreshState = rememberPullRefreshState(isRefreshing, { 
-        viewModel.loadPosts()
+    val pullRefreshState = rememberPullRefreshState(isUserRefreshing, {
+        viewModel.refreshDiscovery()
         viewModel.refreshLives()
-        viewModel.loadSocializationCards()
         momentViewModel.refreshMoments()
         challengeViewModel.refreshChallengeData()
     })
@@ -217,6 +225,7 @@ fun SocialScreen(
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { tabs.size })
     val coroutineScope = rememberCoroutineScope()
     val socialListState = rememberLazyListState()
+    var automaticFeedRecoveryAttempts by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         notificationViewModel.updateUnreadCount()
@@ -277,11 +286,6 @@ fun SocialScreen(
         }
     }
 
-    // Picker Launchers (Old simple one - we'll keep it for backup or remove if handled by picker)
-    val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: android.net.Uri? ->
-        uri?.let { challengeViewModel.submitChallengeMediaFromUri(it) }
-    }
-
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -308,8 +312,23 @@ fun SocialScreen(
         }
     }
 
-    LaunchedEffect(isConnected) {
-        if (isConnected && posts.isEmpty()) {
+    LaunchedEffect(posts.isNotEmpty(), isConnected, feedMode) {
+        if (posts.isNotEmpty() || !isConnected) automaticFeedRecoveryAttempts = 0
+    }
+
+    LaunchedEffect(isConnected, posts.isEmpty(), isRefreshing, feedError, feedMode) {
+        if (
+            FeedRecoveryPolicy.shouldRetry(
+                isConnected = isConnected,
+                hasContent = posts.isNotEmpty(),
+                isLoading = isRefreshing,
+                hasError = feedError != null,
+                attempts = automaticFeedRecoveryAttempts,
+            )
+        ) {
+            val attempt = automaticFeedRecoveryAttempts
+            delay(FeedRecoveryPolicy.delayMillis(attempt))
+            automaticFeedRecoveryAttempts = attempt + 1
             viewModel.recoverFeedAfterAppUpdate()
         }
     }
@@ -324,8 +343,7 @@ fun SocialScreen(
     LaunchedEffect(socialListState, posts) {
         snapshotFlow {
             socialListState.layoutInfo.visibleItemsInfo
-                .mapNotNull { it.key as? String }
-                .filterNot { it == "active-lives" || it == "feed-modes" }
+                .mapNotNull { socialPostIdFromListKey(it.key) }
                 .toSet()
         }
             .distinctUntilChanged()
@@ -334,6 +352,16 @@ fun SocialScreen(
                     posts.firstOrNull { it.id == id }?.let(viewModel::recordPostImpression)
                 }
             }
+    }
+
+    // A failed refresh can replace a long list with only the feed selector and
+    // an error/empty state. Reset the list position in that transition so the
+    // selector is not stranded below a stale scroll offset, which otherwise
+    // renders a large blank region like a partially broken Social screen.
+    LaunchedEffect(feedMode, posts.isEmpty(), isRefreshing, feedError) {
+        if (posts.isEmpty()) {
+            socialListState.scrollToItem(0)
+        }
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -362,12 +390,14 @@ fun SocialScreen(
     if (showCreatePostDialog) {
         conectate.com.presentation.components.CreatePostDialog(
             onDismiss = { showCreatePostDialog = false },
-            onPostCreated = { content, uris, visibility ->
-                viewModel.createPost(content, uris, visibility)
+            onPostCreated = { content, uris, visibility, isSensitive, fromDraft, draftOwnerId ->
+                viewModel.createPost(content, uris, visibility, isSensitive, fromDraft,
+                    draftOwnerId = draftOwnerId)
                 showCreatePostDialog = false
             },
             initialText = sharedText,
-            initialUri = if (sharedUri != null) android.net.Uri.parse(sharedUri) else null
+            initialUri = if (sharedUri != null) android.net.Uri.parse(sharedUri) else null,
+            ownerId = viewModel.currentUserId,
         )
     }
 
@@ -1216,7 +1246,7 @@ fun SocialScreen(
                                         Spacer(Modifier.width(12.dp))
                                         Column(Modifier.weight(1f)) {
                                             Text(challenge.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                            if (challenge.description != null) {
+                                            if (challenge.description.isNotBlank()) {
                                                 Text(challenge.description, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                             }
                                         }
@@ -1671,13 +1701,13 @@ fun SocialScreen(
                     }
                 }
 
-                TabRow(
+                PrimaryTabRow(
                     selectedTabIndex = pagerState.currentPage,
                     containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary,
-                    indicator = { tabPositions ->
-                        TabRowDefaults.Indicator(
-                            Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
+                    indicator = {
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(pagerState.currentPage),
                             height = 3.dp,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1713,10 +1743,9 @@ fun SocialScreen(
                     when (pageIndex) {
                         0 -> {
                             if (
+                                feedMode == SocialFeedMode.FOLLOWING &&
                                 posts.isEmpty() &&
                                 activeStreams.isEmpty() &&
-                                recommendedPeople.isEmpty() &&
-                                recommendedVideos.isEmpty() &&
                                 !isRefreshing
                             ) {
                                 Column(modifier = Modifier.fillMaxSize()) {
@@ -1739,7 +1768,7 @@ fun SocialScreen(
                                                 modifier = Modifier.padding(horizontal = 32.dp)
                                             ) {
                                                 Text(
-                                                    feedError ?: "No se pudo cargar el feed público.",
+                                                    socialFeedErrorMessage(feedError),
                                                     color = MaterialTheme.colorScheme.error,
                                                     textAlign = TextAlign.Center,
                                                     fontWeight = FontWeight.SemiBold
@@ -1783,8 +1812,14 @@ fun SocialScreen(
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize(),
                                     state = socialListState,
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    contentPadding = if (feedMode == SocialFeedMode.DISCOVER) {
+                                        PaddingValues(0.dp)
+                                    } else {
+                                        PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                                    },
+                                    verticalArrangement = Arrangement.spacedBy(
+                                        if (feedMode == SocialFeedMode.DISCOVER) 0.dp else 8.dp
+                                    )
                                 ) {
                                     item(key = "feed-modes") {
                                         SocialFeedModeSelector(
@@ -1795,6 +1830,79 @@ fun SocialScreen(
                                             },
                                             onOpenSettings = { showFeedPreferences = true }
                                         )
+                                    }
+                                    item(key = "reading-tools") {
+                                        SocialReadingTools(posts) { postId ->
+                                            navController.navigate(Screen.PostDetail.createRoute(postId))
+                                        }
+                                    }
+                                    if (feedMode == SocialFeedMode.DISCOVER) {
+                                        item(key = "facebook-composer") {
+                                            FacebookDiscoverComposer(
+                                                currentUser = currentUser,
+                                                onCreatePost = { showCreatePostDialog = true },
+                                            )
+                                        }
+                                        item(key = "facebook-stories") {
+                                            FacebookMomentRail(
+                                                currentUser = currentUser,
+                                                moments = moments,
+                                                // The card is explicitly labelled "Crear momento". Opening
+                                                // the last existing Moment here made the primary creation
+                                                // affordance appear broken whenever the user already had one.
+                                                onAddMoment = { navController.navigate(Screen.CreateMoment.route) },
+                                                onOpenMoment = { moment ->
+                                                    navController.navigate(Screen.MomentViewer.createRoute(moment.id))
+                                                },
+                                            )
+                                        }
+                                        item(key = "facebook-feed-divider") { FacebookFeedDivider() }
+                                    }
+                                    if (posts.isEmpty() && isRefreshing && isConnected) {
+                                        item(key = "feed-loading") {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(96.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(32.dp),
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (posts.isEmpty() && !isRefreshing && feedMode == SocialFeedMode.DISCOVER) {
+                                        item(key = "discover-empty-state") {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 32.dp, vertical = 36.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                            ) {
+                                                if (feedError != null) {
+                                                    Text(
+                                                        socialFeedErrorMessage(feedError),
+                                                        color = MaterialTheme.colorScheme.error,
+                                                        textAlign = TextAlign.Center,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                    )
+                                                    Button(onClick = { viewModel.loadPosts() }) {
+                                                        Icon(Icons.Default.Refresh, contentDescription = null)
+                                                        Spacer(Modifier.width(8.dp))
+                                                        Text("Reintentar")
+                                                    }
+                                                } else {
+                                                    Text(
+                                                        "No hay publicaciones recientes para descubrir.",
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        textAlign = TextAlign.Center,
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                     if (showLiveCarousel && activeStreams.isNotEmpty()) {
                                         item(key = "active-lives") {
@@ -1808,36 +1916,8 @@ fun SocialScreen(
                                                 }
                                             )
                                         }
-                                    }
-                                    if (
-                                        feedMode == SocialFeedMode.DISCOVER &&
-                                        posts.isEmpty() &&
-                                        recommendedPeople.isNotEmpty()
-                                    ) {
-                                        item(key = "recommended-people-empty-feed") {
-                                            RecommendedPeopleRail(
-                                                users = recommendedPeople,
-                                                onOpenProfile = { userId ->
-                                                    if (userId != viewModel.currentUserId) {
-                                                        navController.navigate(Screen.UserProfile.createRoute(userId))
-                                                    }
-                                                },
-                                                onFollow = viewModel::followRecommendedUser
-                                            )
-                                        }
-                                    }
-                                    if (
-                                        feedMode == SocialFeedMode.DISCOVER &&
-                                        posts.isEmpty() &&
-                                        recommendedVideos.isNotEmpty()
-                                    ) {
-                                        item(key = "recommended-videos-empty-feed") {
-                                            RecommendedVideosRail(
-                                                videos = recommendedVideos,
-                                                onOpenVideo = { videoId ->
-                                                    navController.openRecommendedVideo(videoId)
-                                                }
-                                            )
+                                        if (feedMode == SocialFeedMode.DISCOVER) {
+                                            item(key = "active-lives-divider") { FacebookFeedDivider() }
                                         }
                                     }
                                     posts.forEachIndexed { index, post ->
@@ -1878,6 +1958,9 @@ fun SocialScreen(
                                                 navController.navigate(Screen.PostDetail.createRoute(originalPostId))
                                             }
                                         )
+                                        }
+                                        if (feedMode == SocialFeedMode.DISCOVER) {
+                                            item(key = "post-divider:${post.id}") { FacebookFeedDivider() }
                                         }
                                         if (
                                             feedMode == SocialFeedMode.DISCOVER &&
@@ -1984,11 +2067,7 @@ fun SocialScreen(
                                 MomentGrid(
                                     moments = moments,
                                     currentUser = currentUser,
-                                    onAddMomentClick = {
-                                        val myMoments = moments.filter { it.userId == viewModel.currentUserId }
-                                        if (myMoments.isNotEmpty()) navController.navigate(Screen.MomentViewer.createRoute(myMoments.first().id))
-                                        else navController.navigate(Screen.CreateMoment.route)
-                                    },
+                                    onAddMomentClick = { navController.navigate(Screen.CreateMoment.route) },
                                     onMomentClick = { moment -> navController.navigate(Screen.MomentViewer.createRoute(moment.id)) },
                                     bottomContent = {
                                         val myMoments = moments.filter { it.userId == viewModel.currentUserId }
@@ -2033,7 +2112,7 @@ fun SocialScreen(
                 }
 
                 PullRefreshIndicator(
-                    refreshing = isRefreshing,
+                    refreshing = isUserRefreshing,
                     state = pullRefreshState,
                     modifier = Modifier.align(Alignment.TopCenter)
                 )
@@ -2059,7 +2138,11 @@ fun SocialScreen(
             },
             onTakePhoto = {
                 try {
-                    val file = java.io.File.createTempFile("challenge_", ".jpg", context.cacheDir)
+                    val file = java.io.File.createTempFile(
+                        "challenge_",
+                        ".jpg",
+                        ShareableMediaFileStore.challenges(context)
+                    )
                     val uri = androidx.core.content.FileProvider.getUriForFile(
                         context, "${context.packageName}.provider", file
                     )
@@ -2071,7 +2154,11 @@ fun SocialScreen(
             },
             onRecordVideo = {
                 try {
-                    val file = java.io.File.createTempFile("challenge_", ".mp4", context.cacheDir)
+                    val file = java.io.File.createTempFile(
+                        "challenge_",
+                        ".mp4",
+                        ShareableMediaFileStore.challenges(context)
+                    )
                     val uri = androidx.core.content.FileProvider.getUriForFile(
                         context, "${context.packageName}.provider", file
                     )
@@ -2190,20 +2277,18 @@ private fun RecommendedPeopleRail(
                                     .background(MaterialTheme.colorScheme.primaryContainer),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (user.safeProfileImage != null) {
-                                    Image(
-                                        painter = rememberAsyncImagePainter(user.safeProfileImage),
-                                        contentDescription = "Foto de ${user.displayName}",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Text(
-                                        user.displayName.take(1).uppercase(),
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        fontWeight = FontWeight.Black
-                                    )
-                                }
+                                // Keep this rail on the same durable avatar
+                                // path as the feed/profile surfaces. A plain
+                                // Coil painter here used to show only the
+                                // initial after a slow endpoint or process
+                                // recreation, even when the avatar had been
+                                // cached successfully elsewhere.
+                                CircularProfileImage(
+                                    imageUrl = user.avatar_url,
+                                    size = 58.dp,
+                                    mediaType = user.avatar_media_type,
+                                    fallbackName = user.displayName,
+                                )
                             }
                             Text(
                                 user.displayName,
@@ -2232,6 +2317,7 @@ private fun RecommendedPeopleRail(
         }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2396,6 +2482,222 @@ private fun RecommendedVideosRail(
     }
 }
 
+@Composable
+private fun FacebookDiscoverComposer(
+    currentUser: User?,
+    onCreatePost: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProfileImage(
+                imageUrl = currentUser?.avatar_url,
+                size = 42.dp,
+                showBorder = false,
+                mediaType = currentUser?.avatar_media_type,
+                fallbackName = currentUser?.displayName ?: "Novvin",
+            )
+            Spacer(Modifier.width(10.dp))
+            Surface(
+                onClick = onCreatePost,
+                modifier = Modifier.weight(1f).heightIn(min = 42.dp),
+                shape = RoundedCornerShape(999.dp),
+                color = Color.Transparent,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Box(
+                    modifier = Modifier.padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Text(
+                        "¿Qué estás pensando?",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                    )
+                }
+            }
+            IconButton(onClick = onCreatePost) {
+                Icon(
+                    Icons.Default.AddPhotoAlternate,
+                    contentDescription = "Añadir foto",
+                    tint = Color(0xFF38A169),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FacebookMomentRail(
+    currentUser: User?,
+    moments: List<Moment>,
+    onAddMoment: () -> Unit,
+    onOpenMoment: (Moment) -> Unit,
+) {
+    val visibleMoments = remember(moments) {
+        moments.distinctBy { it.userId }.take(12)
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            item(key = "create-moment") {
+                Box(
+                    modifier = Modifier
+                        .width(92.dp)
+                        .height(138.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(9.dp))
+                        .clickable(onClick = onAddMoment),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(94.dp)
+                            .align(Alignment.TopCenter)
+                            .background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        val avatarUrl = currentUser?.avatar_url
+                        if (!avatarUrl.isNullOrBlank() && currentUser?.isProfileAvatarVideo == true) {
+                            LoopingVideoPreview(
+                                url = avatarUrl,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            AsyncImage(
+                                model = avatarUrl ?: conectate.com.R.mipmap.ic_launcher,
+                                contentDescription = "Crear momento",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(y = 79.dp)
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                            .border(2.dp, MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
+                    }
+                    Text(
+                        "Crear",
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(start = 5.dp, end = 5.dp, bottom = 8.dp),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                    )
+                }
+            }
+            items(visibleMoments, key = { "moment:${it.id}" }) { moment ->
+                Box(
+                    modifier = Modifier
+                        .width(92.dp)
+                        .height(138.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .clickable { onOpenMoment(moment) },
+                ) {
+                    val momentUrl = UbuntuMedia.resolveUrl(moment.mediaUrl) ?: moment.mediaUrl
+                    val momentIsVideo = remember(moment.mediaType, moment.mediaUrl) {
+                        val type = moment.mediaType.trim().lowercase()
+                        val cleanUrl = moment.mediaUrl.substringBefore('?').lowercase()
+                        type == "video" || type.startsWith("video/") ||
+                            cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".m4v") || cleanUrl.endsWith(".mov")
+                    }
+                    if (momentIsVideo) {
+                        LoopingVideoPreview(
+                            url = momentUrl,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        Image(
+                            painter = rememberAsyncImagePainter(
+                                UbuntuMedia.resolveUrl(moment.thumbnailUrl ?: moment.mediaUrl)
+                                    ?: moment.thumbnailUrl
+                                    ?: moment.mediaUrl
+                            ),
+                            contentDescription = "Momento de ${moment.userDisplayName ?: moment.username ?: "usuario"}",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.08f),
+                                0.55f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.72f),
+                            )
+                        )
+                    )
+                    CircularProfileImage(
+                        imageUrl = moment.userAvatarUrl,
+                        modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                        size = 34.dp,
+                        showBorder = !moment.isViewed,
+                        borderColor = MaterialTheme.colorScheme.primary,
+                        fallbackName = moment.userDisplayName ?: moment.username,
+                    )
+                    Text(
+                        moment.userDisplayName ?: moment.username ?: "Momento",
+                        modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        lineHeight = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FacebookFeedDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(8.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
+    )
+}
+
+private fun socialFeedErrorMessage(rawError: String?): String {
+    val normalized = rawError.orEmpty().trim()
+    if (normalized.isBlank()) return "No se pudo cargar el feed público."
+    return if (
+        normalized.equals("INTERNAL_ERROR", ignoreCase = true) ||
+        normalized.contains("internal error", ignoreCase = true)
+    ) {
+        "El servidor no pudo cargar las publicaciones. Reintenta en unos segundos."
+    } else {
+        normalized
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SocialFeedModeSelector(
@@ -2403,32 +2705,45 @@ private fun SocialFeedModeSelector(
     onSelected: (SocialFeedMode) -> Unit,
     onOpenSettings: () -> Unit = {}
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    Surface(
+        modifier = Modifier.fillMaxWidth().height(52.dp),
+        color = MaterialTheme.colorScheme.surface,
     ) {
-        FilterChip(
-            selected = selected == SocialFeedMode.DISCOVER,
-            onClick = { onSelected(SocialFeedMode.DISCOVER) },
-            label = { Text("Descubrir") },
-            leadingIcon = if (selected == SocialFeedMode.DISCOVER) {
-                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-            } else null,
-            modifier = Modifier.weight(1f)
-        )
-        FilterChip(
-            selected = selected == SocialFeedMode.FOLLOWING,
-            onClick = { onSelected(SocialFeedMode.FOLLOWING) },
-            label = { Text("Seguidos") },
-            leadingIcon = if (selected == SocialFeedMode.FOLLOWING) {
-                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-            } else null,
-            modifier = Modifier.weight(1f)
-        )
-        IconButton(onClick = onOpenSettings) {
-            Icon(Icons.Default.Settings, contentDescription = "Preferencias del feed")
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            listOf(
+                SocialFeedMode.DISCOVER to "Descubrir",
+                SocialFeedMode.FOLLOWING to "Seguidos",
+            ).forEach { (mode, label) ->
+                val active = selected == mode
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp)
+                        .clickable { onSelected(mode) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Bottom,
+                ) {
+                    Text(
+                        label,
+                        modifier = Modifier.weight(1f).wrapContentHeight(Alignment.CenterVertically),
+                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    )
+                }
+            }
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Default.Settings, contentDescription = "Preferencias del feed")
+            }
         }
     }
 }
@@ -2511,7 +2826,7 @@ fun ChallengeSection(
                     ) {
                         Text(
                             "$winnersCountdown",
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold
@@ -2717,19 +3032,44 @@ fun ChallengeSection(
 @Composable
 fun ChallengeAudioPlayer(url: String) {
     val context = LocalContext.current
-    var isPlaying by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
-    var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
-    var progress by remember { mutableStateOf(0f) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isPlaying by remember(context, url) { mutableStateOf(false) }
+    var isLoading by remember(context, url) { mutableStateOf(false) }
+    var playOnPrepared by remember(context, url) { mutableStateOf(false) }
+    var mediaPlayer by remember(context, url) { mutableStateOf<android.media.MediaPlayer?>(null) }
+    var progress by remember(context, url) { mutableStateOf(0f) }
 
-    DisposableEffect(url) {
+    fun releaseAudio() {
+        val player = mediaPlayer
+        mediaPlayer = null
+        player?.setOnPreparedListener(null)
+        player?.setOnCompletionListener(null)
+        player?.setOnErrorListener(null)
+        player?.release()
+        isPlaying = false
+        isLoading = false
+        playOnPrepared = false
+    }
+
+    DisposableEffect(context, url) {
+        onDispose { releaseAudio() }
+    }
+
+    DisposableEffect(context, url, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                playOnPrepared = false
+                if (isPlaying) mediaPlayer?.pause()
+                isPlaying = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            mediaPlayer?.release()
-            mediaPlayer = null
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
-    LaunchedEffect(isPlaying) {
+    LaunchedEffect(context, url, isPlaying) {
         if (isPlaying) {
             while (isPlaying) {
                 mediaPlayer?.let { mp ->
@@ -2749,48 +3089,56 @@ fun ChallengeAudioPlayer(url: String) {
             .fillMaxWidth()
             .padding(16.dp)
             .background(color, RoundedCornerShape(12.dp))
-            .clickable {
+            .clickable(enabled = !isLoading) {
+                if (isLoading) return@clickable
                 try {
-                     if (mediaPlayer == null) {
-                         isLoading = true
-                         mediaPlayer = android.media.MediaPlayer().apply {
-                             setAudioAttributes(
-                                 android.media.AudioAttributes.Builder()
-                                     .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                                     .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
-                                     .build()
-                             )
-                             // Use context and Uri to avoid error -38
-                             UbuntuMedia.setDataSource(context, this, url)
-                             prepareAsync()
-                             setOnPreparedListener { 
-                                 isLoading = false
-                                 start()
-                                 isPlaying = true
-                             }
-                             setOnCompletionListener { 
-                                 isPlaying = false 
-                                 progress = 0f
-                             }
-                             setOnErrorListener { _, what, extra ->
-                                 isLoading = false
-                                 isPlaying = false
-                                 android.util.Log.e("ChallengeAudio", "MediaPlayer error: $what, $extra")
-                                 android.widget.Toast.makeText(context, "Error al reproducir audio: $what, $extra", android.widget.Toast.LENGTH_SHORT).show()
-                                 true
-                             }
-                         }
-                     } else {
-                        if (mediaPlayer!!.isPlaying) {
-                            mediaPlayer!!.pause()
+                    val currentPlayer = mediaPlayer
+                    if (currentPlayer == null) {
+                        isLoading = true
+                        playOnPrepared = true
+                        val newPlayer = android.media.MediaPlayer()
+                        mediaPlayer = newPlayer
+                        newPlayer.apply {
+                            setAudioAttributes(
+                                android.media.AudioAttributes.Builder()
+                                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                                    .build()
+                            )
+                            setOnPreparedListener { preparedPlayer ->
+                                if (mediaPlayer === preparedPlayer) {
+                                    isLoading = false
+                                    if (playOnPrepared && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                                        preparedPlayer.start()
+                                        isPlaying = true
+                                    }
+                                }
+                            }
+                            setOnCompletionListener {
+                                isPlaying = false
+                                progress = 0f
+                            }
+                            setOnErrorListener { failedPlayer, what, extra ->
+                                if (mediaPlayer === failedPlayer) releaseAudio()
+                                android.util.Log.e("ChallengeAudio", "MediaPlayer error: $what, $extra")
+                                android.widget.Toast.makeText(context, "Error al reproducir audio: $what, $extra", android.widget.Toast.LENGTH_SHORT).show()
+                                true
+                            }
+                            // Register callbacks before prepareAsync so fast local sources cannot race them.
+                            UbuntuMedia.setDataSource(context, this, url)
+                            prepareAsync()
+                        }
+                    } else {
+                        if (currentPlayer.isPlaying) {
+                            currentPlayer.pause()
                             isPlaying = false
                         } else {
-                            mediaPlayer!!.start()
+                            currentPlayer.start()
                             isPlaying = true
                         }
                     }
                 } catch (e: Exception) {
-                    isLoading = false
+                    releaseAudio()
                     android.util.Log.e("ChallengeAudio", "Error setup player", e)
                     android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                 }
@@ -2820,7 +3168,7 @@ fun ChallengeAudioPlayer(url: String) {
         if (isPlaying || progress > 0f) {
             Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(
-                progress = progress,
+                progress = { progress },
                 modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
                 color = Color.White,
                 trackColor = Color.White.copy(alpha = 0.3f)
@@ -2833,16 +3181,38 @@ fun ChallengeAudioPlayer(url: String) {
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 fun ChallengeVideoPlayer(url: String) {
     val context = LocalContext.current
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(UbuntuMedia.mediaItem(url))
-            prepare()
-            repeatMode = Player.REPEAT_MODE_ONE
-        }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val exoPlayer = remember(context, url) {
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    conectate.com.util.VideoCache.getCacheDataSourceFactory(context),
+                ),
+            )
+            .build().apply {
+                setAudioAttributes(
+                    androidx.media3.common.AudioAttributes.Builder()
+                        .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+                        .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
+                        .build(),
+                    true,
+                )
+                setMediaItem(UbuntuMedia.mediaItem(url))
+                prepare()
+                repeatMode = Player.REPEAT_MODE_ONE
+            }
     }
 
-    DisposableEffect(url) {
+    DisposableEffect(exoPlayer) {
         onDispose { exoPlayer.release() }
+    }
+
+    DisposableEffect(exoPlayer, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) exoPlayer.pause()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     AndroidView(
@@ -2857,7 +3227,11 @@ fun ChallengeVideoPlayer(url: String) {
             .fillMaxWidth()
             .height(250.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.Black)
+            .background(Color.Black),
+        update = { view ->
+            if (view.player !== exoPlayer) view.player = exoPlayer
+        },
+        onRelease = { view -> view.player = null },
     )
 }
 
@@ -3416,7 +3790,7 @@ fun AudioSubmissionDialog(
                             },
                             modifier = Modifier.size(80.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
                         ) {
-                            Icon(Icons.Filled.Mic, null, tint = Color.White, modifier = Modifier.size(40.dp))
+                            Icon(Icons.Filled.Mic, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp))
                         }
                         Text("Toca para empezar", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))
                     }
@@ -3447,7 +3821,7 @@ fun AudioSubmissionDialog(
                                 onClick = { voiceManager.resumeRecording() },
                                 modifier = Modifier.size(80.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
                             ) {
-                                Icon(Icons.Filled.Mic, null, tint = Color.White, modifier = Modifier.size(40.dp))
+                                Icon(Icons.Filled.Mic, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp))
                             }
                             
                             // Stop button (Finish)
@@ -3485,7 +3859,7 @@ fun AudioSubmissionDialog(
                                     },
                                     modifier = Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
                                 ) {
-                                    Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(32.dp))
+                                    Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(32.dp))
                                 }
                                 
                                 // Resume recording from review (Continue singing)
@@ -3499,7 +3873,6 @@ fun AudioSubmissionDialog(
                             Text("Revisa tu grabación", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))
                         }
                     }
-                    else -> {}
                 }
             }
         },

@@ -106,7 +106,7 @@ fun EphemeralTimer(
     ) {
         // Background circle
         CircularProgressIndicator(
-            progress = 1f,
+            progress = { 1f },
             modifier = Modifier.fillMaxSize(),
             strokeWidth = 2.dp,
             color = MaterialTheme.colorScheme.surfaceVariant
@@ -114,7 +114,7 @@ fun EphemeralTimer(
         
         // Progress circle
         CircularProgressIndicator(
-            progress = progress,
+            progress = { progress },
             modifier = Modifier.fillMaxSize(),
             strokeWidth = 2.dp,
             color = when {

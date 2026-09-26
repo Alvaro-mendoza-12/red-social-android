@@ -6,6 +6,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import conectate.com.presentation.auth.LoginScreen
+import conectate.com.presentation.auth.NovvinAuthTheme
 import conectate.com.presentation.auth.RegisterScreen
 import conectate.com.presentation.auth.WebLoginScannerScreen
 import conectate.com.presentation.legal.PrivacyPolicyScreen
@@ -58,11 +59,11 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                 }
             }
         } else {
-            LoginScreen(navController = navController)
+            NovvinAuthTheme { LoginScreen(navController = navController) }
         }
     }
 
-    composable(Screen.Register.route) {
+    composable(Screen.Register.route) { registerEntry ->
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
                 navController.navigate(Screen.Home.createRoute()) {
@@ -71,7 +72,12 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                 }
             }
         } else {
-            RegisterScreen(navController = navController)
+            NovvinAuthTheme {
+                RegisterScreen(
+                    navController = navController,
+                    registerBackStackEntry = registerEntry,
+                )
+            }
         }
     }
 
@@ -84,10 +90,12 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
     }
 
     composable(Screen.AddAccountLogin.route) {
-        LoginScreen(
-            navController = navController,
-            isAddAccountMode = true
-        )
+        NovvinAuthTheme {
+            LoginScreen(
+                navController = navController,
+                isAddAccountMode = true
+            )
+        }
     }
 
     composable(

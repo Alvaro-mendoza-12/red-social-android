@@ -20,7 +20,7 @@ internal object PlayMatchColors {
 
 internal object PlayMatchDimensions {
     val ScreenPadding = 16.dp
-    val SectionGap = 18.dp
+    val SectionGap = 14.dp
     val CardRadius = 16.dp
     val CompactRadius = 12.dp
     val MinimumTouchTarget = 48.dp

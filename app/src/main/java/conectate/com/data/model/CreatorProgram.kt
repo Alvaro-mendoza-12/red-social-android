@@ -33,7 +33,13 @@ data class CreatorEarningSummary(
     val reservedCredits: BigDecimal = BigDecimal.ZERO,
     val paidCredits: BigDecimal = BigDecimal.ZERO,
     val refundedCredits: BigDecimal = BigDecimal.ZERO,
-    val totalCredits: BigDecimal = BigDecimal.ZERO
+    val totalCredits: BigDecimal = BigDecimal.ZERO,
+    /** Raw purchased coins received as gifts; kept separate from fiat credits. */
+    val pendingCoins: Int = 0,
+    val availableCoins: Int = 0,
+    val heldCoins: Int = 0,
+    val paidCoins: Int = 0,
+    val totalCoins: Int = 0,
 )
 
 data class CreatorEarningActivity(

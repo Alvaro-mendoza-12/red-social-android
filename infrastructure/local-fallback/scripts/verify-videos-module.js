@@ -8,6 +8,9 @@ const runId = Date.now().toString()
 const password = 'Conectate123!'
 const mediaTestImage = process.env.MEDIA_TEST_IMAGE
 const mediaTestVideo = process.env.MEDIA_TEST_VIDEO
+let cleanupOwnerToken = null
+let cleanupViewerToken = null
+const cleanupSockets = new Set()
 
 async function request(path, { token, method = 'GET', body, expected = 200 } = {}) {
   const response = await fetch(`${apiUrl}${path}`, {
@@ -87,13 +90,6 @@ async function uploadOwnedSticker(token) {
   return payload
 }
 
-async function deleteOwnedVideo(token, storedObject) {
-  await request(`/v1/storage/objects/videos/${encodedObjectPath(storedObject.path)}`, {
-    token,
-    method: 'DELETE',
-  })
-}
-
 async function deleteOwnedSticker(token, storedObject) {
   await request(`/v1/storage/objects/chat-media/${encodedObjectPath(storedObject.path)}`, {
     token,
@@ -101,8 +97,44 @@ async function deleteOwnedSticker(token, storedObject) {
   })
 }
 
+function canonicalObjectUrl(value) {
+  const parsed = new URL(String(value || ''))
+  parsed.search = ''
+  parsed.hash = ''
+  return parsed.toString()
+}
+
+async function deleteOwnAccount(token, label) {
+  if (!token) return
+  await request('/rest/v1/rpc/delete_own_account', {
+    token,
+    method: 'POST',
+    body: {},
+  }).catch((error) => {
+    console.error(`VIDEO_MODULE_CLEANUP_FAILED_${label}=${error.message}`)
+  })
+}
+
+async function assertVideoStorageDeleted(token, storedObject) {
+  const listing = await request(
+    `/v1/storage/objects?bucket=videos&prefix=${encodeURIComponent(storedObject.path)}`,
+    { token },
+  )
+  assert.equal(
+    listing.objects.some((item) => item.name === storedObject.path),
+    false,
+    `deleted video storage row still exists: ${storedObject.path}`,
+  )
+  const response = await fetch(canonicalObjectUrl(storedObject.publicUrl), {
+    headers: { 'cache-control': 'no-cache' },
+  })
+  assert.equal(response.status, 404, `deleted video file is still public: ${storedObject.path}`)
+}
+
 function subscribe(token, channel) {
-  const socket = new WebSocket(`${apiUrl.replace(/^http/, 'ws')}/realtime/?token=${encodeURIComponent(token)}`)
+  const socket = new WebSocket(`${apiUrl.replace(/^http/, 'ws')}/realtime/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`Subscription timeout: ${channel}`)), 12_000)
     socket.on('open', () => socket.send(JSON.stringify({ type: 'subscribe', channel })))
@@ -110,6 +142,7 @@ function subscribe(token, channel) {
       const message = JSON.parse(raw.toString())
       if (message.type === 'subscribed' && message.channel === channel) {
         clearTimeout(timeout)
+        cleanupSockets.add(socket)
         resolve(socket)
       }
     })
@@ -117,12 +150,17 @@ function subscribe(token, channel) {
   })
 }
 
-function waitForEvent(socket, channel, eventName) {
+function waitForEvent(socket, channel, eventName, predicate = () => true) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`Event timeout: ${eventName}`)), 10_000)
     const listener = (raw) => {
       const message = JSON.parse(raw.toString())
-      if (message.type === 'event' && message.channel === channel && message.payload?.event === eventName) {
+      if (
+        message.type === 'event' &&
+        message.channel === channel &&
+        message.payload?.event === eventName &&
+        predicate(message.payload)
+      ) {
         clearTimeout(timeout)
         socket.off('message', listener)
         resolve(message.payload)
@@ -135,11 +173,22 @@ function waitForEvent(socket, channel, eventName) {
 async function main() {
   const owner = await register('owner')
   const viewer = await register('viewer')
+  cleanupOwnerToken = owner.token
+  cleanupViewerToken = viewer.token
+  const feedChannel = 'feed:live'
+  const feedSocket = await subscribe(viewer.token, feedChannel)
   const publicVideoObject = await uploadOwnedVideo(owner.token, 'public')
+  const reusedSoundVideoObject = await uploadOwnedVideo(owner.token, 'reused-sound')
   const privateVideoObject = await uploadOwnedVideo(owner.token, 'private')
   const personalizedVideoObject = await uploadOwnedVideo(owner.token, 'personalized')
   const stickerObject = await uploadOwnedSticker(owner.token)
   const personalizedInterest = `astrocodex${runId}`
+  const publicVideoCreatedEvent = waitForEvent(
+    feedSocket,
+    feedChannel,
+    'video_feed',
+    (payload) => payload.action === 'created',
+  )
   const created = await request('/v1/data/videos', {
     token: owner.token,
     method: 'POST',
@@ -154,9 +203,47 @@ async function main() {
     },
   })
   const videoId = created.video.id
+  const createdFeedPayload = await publicVideoCreatedEvent
+  assert.equal(createdFeedPayload.videoId, videoId)
   assert.ok(videoId)
   assert.ok(created.video.created_at)
   assert.equal(created.video.description, 'Descripción visible debajo del usuario')
+  assert.equal(created.video.sound_id, videoId)
+  assert.equal(created.video.sound_source_video_id, videoId)
+  assert.equal(canonicalObjectUrl(created.video.sound_url), canonicalObjectUrl(publicVideoObject.publicUrl))
+  assert.equal(created.video.owned_by_me, true)
+
+  const reusedSoundVideo = await request('/v1/data/videos', {
+    token: owner.token,
+    method: 'POST',
+    expected: 201,
+    body: {
+      title: `Reused sound ${runId}`,
+      description: 'Video que conserva el audio y su atribución canónica',
+      videoUrl: reusedSoundVideoObject.publicUrl,
+      durationSeconds: 12,
+      isPublic: true,
+      soundId: created.video.sound_id,
+      soundSourceVideoId: created.video.sound_source_video_id,
+    },
+  })
+  assert.equal(reusedSoundVideo.video.sound_id, created.video.sound_id)
+  assert.equal(reusedSoundVideo.video.sound_source_video_id, videoId)
+  assert.equal(reusedSoundVideo.video.sound_title, created.video.sound_title)
+  assert.equal(reusedSoundVideo.video.sound_artist, created.video.sound_artist)
+  assert.equal(
+    canonicalObjectUrl(reusedSoundVideo.video.sound_url),
+    canonicalObjectUrl(created.video.sound_url),
+  )
+
+  const videosUsingSound = await request(
+    `/v1/data/videos?soundId=${encodeURIComponent(created.video.sound_id)}&limit=20`,
+    { token: viewer.token },
+  )
+  const soundVideoIds = new Set(videosUsingSound.items.map((item) => item.id))
+  assert.equal(soundVideoIds.has(videoId), true)
+  assert.equal(soundVideoIds.has(reusedSoundVideo.video.id), true)
+  await request(`/v1/data/videos/${videoId}`, { token: viewer.token, method: 'DELETE', expected: 403 })
 
   const privateVideo = await request('/v1/data/videos', {
     token: owner.token,
@@ -193,6 +280,7 @@ async function main() {
     expected: 404,
   })
   await request(`/v1/data/videos/${privateVideo.video.id}`, { token: owner.token, method: 'DELETE' })
+  await assertVideoStorageDeleted(owner.token, privateVideoObject)
 
   await request(`/v1/data/videos/${videoId}/favorite`, { token: viewer.token, method: 'POST' })
   let detail = await request(`/v1/data/videos/${videoId}`, { token: viewer.token })
@@ -281,10 +369,18 @@ async function main() {
   assert.ok(baselineIndex >= 0, 'baseline video must be present in recommendations')
   assert.ok(personalizedIndex < baselineIndex, 'profile interest must promote the matching video')
   await request(`/v1/data/videos/${personalizedVideo.video.id}`, { token: owner.token, method: 'DELETE' })
+  await assertVideoStorageDeleted(owner.token, personalizedVideoObject)
+  await request(`/v1/data/videos/${reusedSoundVideo.video.id}`, { token: owner.token, method: 'DELETE' })
+  await assertVideoStorageDeleted(owner.token, reusedSoundVideoObject)
+  const publicVideoDeletedEvent = waitForEvent(
+    feedSocket,
+    feedChannel,
+    'video_feed',
+    (payload) => payload.action === 'deleted' && payload.videoId === videoId,
+  )
   await request(`/v1/data/videos/${videoId}`, { token: owner.token, method: 'DELETE' })
-  await deleteOwnedVideo(owner.token, privateVideoObject)
-  await deleteOwnedVideo(owner.token, publicVideoObject)
-  await deleteOwnedVideo(owner.token, personalizedVideoObject)
+  await publicVideoDeletedEvent
+  await assertVideoStorageDeleted(owner.token, publicVideoObject)
   await deleteOwnedSticker(owner.token, stickerObject)
   socket.close()
 
@@ -292,6 +388,8 @@ async function main() {
     ok: true,
     favoriteIndependent: true,
     commentRealtime: true,
+    feedCreateRealtime: true,
+    feedDeleteRealtime: true,
     reactions: true,
     editWindow: true,
     reports: true,
@@ -300,10 +398,21 @@ async function main() {
     recommendationsStable: true,
     profileInterestsAffectRecommendations: true,
     privateVideoProtected: true,
+    originalSoundIdentityPersisted: true,
+    reusedSoundIdentityPersisted: true,
+    videosBySound: true,
+    deleteOwnershipEnforced: true,
+    deletedVideoStoragePurged: true,
   }))
 }
 
-main().catch((error) => {
-  console.error(error)
-  process.exit(1)
-})
+main()
+  .catch((error) => {
+    console.error(error)
+    process.exitCode = 1
+  })
+  .finally(async () => {
+    cleanupSockets.forEach((socket) => socket.close())
+    await deleteOwnAccount(cleanupViewerToken, 'viewer')
+    await deleteOwnAccount(cleanupOwnerToken, 'owner')
+  })

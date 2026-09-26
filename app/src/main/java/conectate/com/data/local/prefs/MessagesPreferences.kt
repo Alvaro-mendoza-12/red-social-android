@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 @Singleton
 class MessagesPreferences @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     companion object {
         private const val PREFS_NAME = "messages_preferences"

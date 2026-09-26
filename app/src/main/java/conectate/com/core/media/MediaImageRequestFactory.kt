@@ -7,10 +7,45 @@ import conectate.com.data.localfallback.UbuntuStorageUrl
 
 object MediaImageRequestFactory {
     const val DEFAULT_PREVIEW_WIDTH = 1080
+    const val AVATAR_PREVIEW_WIDTH = 384
+    const val AVATAR_PREVIEW_QUALITY = 84
+    const val MAX_FULLSCREEN_IMAGE_DIMENSION_PX = 4096
 
-    fun previewUrl(url: String?): String? =
-        UbuntuStorageUrl.thumbnail(url, width = DEFAULT_PREVIEW_WIDTH)
+    fun avatarUrl(url: String?): String? {
+        val original = UbuntuStorageUrl.originalObjectUrl(url)
             ?: UbuntuStorageUrl.rewrite(url)
+        return UbuntuStorageUrl.thumbnail(
+            original,
+            width = AVATAR_PREVIEW_WIDTH,
+            quality = AVATAR_PREVIEW_QUALITY,
+        ) ?: original
+    }
+
+    fun avatarCacheKey(url: String?): String? =
+        UbuntuStorageUrl.stableCacheKey(avatarUrl(url))
+
+    fun avatar(context: Context, url: String?): ImageRequest? {
+        val data = avatarUrl(url) ?: return null
+        val cacheKey = UbuntuStorageUrl.stableCacheKey(data)
+        return ImageRequest.Builder(context)
+            .data(data)
+            .size(AVATAR_PREVIEW_WIDTH, AVATAR_PREVIEW_WIDTH)
+            .memoryCacheKey(cacheKey)
+            .diskCacheKey(cacheKey)
+            .placeholderMemoryCacheKey(cacheKey)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .networkCachePolicy(CachePolicy.ENABLED)
+            .crossfade(false)
+            .build()
+    }
+
+    fun previewUrl(url: String?): String? {
+        val original = UbuntuStorageUrl.originalObjectUrl(url)
+            ?: UbuntuStorageUrl.rewrite(url)
+        return UbuntuStorageUrl.thumbnail(original, width = DEFAULT_PREVIEW_WIDTH)
+            ?: original
+    }
 
     fun previewCacheKey(url: String?): String? =
         UbuntuStorageUrl.stableCacheKey(previewUrl(url))
@@ -49,11 +84,14 @@ object MediaImageRequestFactory {
     }
 
     fun fullScreen(context: Context, url: String?): ImageRequest? {
-        val data = UbuntuStorageUrl.rewrite(url) ?: return null
+        val data = UbuntuStorageUrl.originalObjectUrl(url) ?: return null
         val sourceKey = UbuntuStorageUrl.stableCacheKey(data)
         val previewKey = previewCacheKey(data)
         return ImageRequest.Builder(context)
             .data(data)
+            // Enough source pixels for a 3x zoom on common phone displays without
+            // decoding an untrusted 50 MP upload into hundreds of megabytes of RAM.
+            .size(MAX_FULLSCREEN_IMAGE_DIMENSION_PX, MAX_FULLSCREEN_IMAGE_DIMENSION_PX)
             .memoryCacheKey(sourceKey?.let { "$it#fullscreen" })
             .diskCacheKey(sourceKey)
             .placeholderMemoryCacheKey(previewKey)

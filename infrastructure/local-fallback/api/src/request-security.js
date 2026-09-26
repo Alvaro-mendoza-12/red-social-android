@@ -32,6 +32,48 @@ function stableKey(value) {
   return crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 24)
 }
 
+function constantTimeSecretEqual(left, right) {
+  const leftText = String(left || '')
+  const rightText = String(right || '')
+  if (!leftText || !rightText) return false
+  const leftDigest = crypto.createHash('sha256').update(leftText).digest()
+  const rightDigest = crypto.createHash('sha256').update(rightText).digest()
+  return crypto.timingSafeEqual(leftDigest, rightDigest)
+}
+
+function parseCorsOrigins(value, { production = false } = {}) {
+  const raw = String(value || '').trim()
+  if (raw === '*') {
+    if (production) throw new Error('CORS_ORIGIN must be an explicit trusted HTTPS origin in production')
+    return '*'
+  }
+  const values = Array.from(new Set(raw.split(',').map((entry) => entry.trim()).filter(Boolean)))
+  if (values.length === 0) {
+    throw new Error('CORS_ORIGIN must contain at least one trusted origin')
+  }
+  return values.map((entry) => {
+    let parsed
+    try {
+      parsed = new URL(entry)
+    } catch {
+      throw new Error(`CORS_ORIGIN contains an invalid origin: ${entry}`)
+    }
+    const isOriginOnly = parsed.origin === entry.replace(/\/$/, '')
+      && !parsed.username
+      && !parsed.password
+      && !parsed.search
+      && !parsed.hash
+      && (parsed.pathname === '/' || parsed.pathname === '')
+    if (!isOriginOnly || !['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error(`CORS_ORIGIN contains an invalid origin: ${entry}`)
+    }
+    if (production && parsed.protocol !== 'https:') {
+      throw new Error('CORS_ORIGIN must be an explicit trusted HTTPS origin in production')
+    }
+    return parsed.origin
+  })
+}
+
 function createFixedWindowRateLimiter({ limit, windowMs, now = Date.now, maxEntries = 50_000 }) {
   const windows = new Map()
   let lastSweepAt = 0
@@ -93,10 +135,12 @@ function createRateLimitMiddleware({
 
 module.exports = {
   boundedInteger,
+  constantTimeSecretEqual,
   createFixedWindowRateLimiter,
   createRateLimitMiddleware,
   isTrustedProxyAddress,
   normalizeIpAddress,
+  parseCorsOrigins,
   requestIpAddress,
   stableKey,
 }

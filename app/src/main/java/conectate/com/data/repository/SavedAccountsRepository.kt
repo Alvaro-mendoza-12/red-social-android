@@ -28,7 +28,7 @@ private val Context.savedAccountsDataStore by preferencesDataStore(name = "saved
 
 @Singleton
 class SavedAccountsRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val encryptionManager: EncryptionManager
 ) {
     private val scope = newSafeScope("SavedAccountsRepository", Dispatchers.IO)

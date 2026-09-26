@@ -1,16 +1,15 @@
 [versions]
 # Core
-agp = "8.7.3"
-kotlin = "1.9.22"
+agp = "8.13.2"
+kotlin = "2.2.10"
 coreKtx = "1.12.0"
 lifecycleRuntimeKtx = "2.6.2"
 activityCompose = "1.8.1"
 material = "1.11.0"
 
 # Compose
-composeBom = "2023.10.01"
+composeBom = "2026.06.00"
 navigationCompose = "2.7.5"
-composeCompiler = "1.5.8"
 
 # Supabase
 supabaseRealtime = "2.0.4"
@@ -29,18 +28,19 @@ firebaseCrashlyticsKtx = "18.4.0"
 googleServices = "4.4.0"
 
 # DI
-hilt = "2.51"
+hilt = "2.57.2"
 hiltNavigationCompose = "1.1.0"
 hiltWork = "1.1.0"
 
 # Image & Video
 coil = "2.5.0"
-media3 = "1.5.1"
+media3 = "1.11.0"
+exifinterface = "1.4.2"
 
 # Utils
 accompanistPermissions = "0.32.0"
 mlkitSegmentation = "16.0.0-beta6"
-mlkitTextRecognition = "16.0.1"
+playServicesMlkitTextRecognition = "19.0.1"
 zxingAndroid = "4.3.0"
 zxingCore = "3.5.3"
 webrtc = "137.7151.05"
@@ -56,13 +56,13 @@ desugarJdkLibs = "2.1.5"
 playBilling = "9.1.0"
 
 # Room
-room = "2.6.1"
+room = "2.8.4"
 
 # WorkManager
 workRuntime = "2.9.0"
 
 # KSP
-ksp = "1.9.22-1.0.17"
+ksp = "2.2.10-2.0.2"
 # Testing
 junit = "4.13.2"
 testExtJunit = "1.1.5"
@@ -127,11 +127,12 @@ media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasourc
 media3-transformer = { group = "androidx.media3", name = "media3-transformer", version.ref = "media3" }
 media3-effect = { group = "androidx.media3", name = "media3-effect", version.ref = "media3" }
 media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
+androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
 
 # Utils
 accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version.ref = "accompanistPermissions" }
 mlkit-segmentation-selfie = { group = "com.google.mlkit", name = "segmentation-selfie", version.ref = "mlkitSegmentation" }
-mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
+mlkit-text-recognition = { group = "com.google.android.gms", name = "play-services-mlkit-text-recognition", version.ref = "playServicesMlkitTextRecognition" }
 zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxingAndroid" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxingCore" }
 webrtc = { group = "io.github.webrtc-sdk", name = "android", version.ref = "webrtc" }
@@ -169,6 +170,7 @@ androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

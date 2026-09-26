@@ -36,7 +36,7 @@ sealed class NotificationDigestUiState {
 class NotificationViewModel @Inject constructor(
     private val notificationRepository: NotificationRepository,
     private val authService: AuthService,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val notificationHelper = LocalNotificationHelper(context)
@@ -45,6 +45,11 @@ class NotificationViewModel @Inject constructor(
     val notificationsState: StateFlow<NotificationsUiState> = _notificationsState.asStateFlow()
 
     val unreadCount: StateFlow<Int> = notificationRepository.unreadCount
+
+    private val _momentNotificationsEnabled = MutableStateFlow<Boolean?>(null)
+    val momentNotificationsEnabled: StateFlow<Boolean?> = _momentNotificationsEnabled.asStateFlow()
+    private val _momentNotificationsSaving = MutableStateFlow(false)
+    val momentNotificationsSaving: StateFlow<Boolean> = _momentNotificationsSaving.asStateFlow()
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -117,7 +122,8 @@ class NotificationViewModel @Inject constructor(
                             senderId = notification.actorId,
                             senderAvatar = notification.actorAvatarUrl,
                             targetType = notification.targetType,
-                            extraData = notification.extraData
+                            extraData = notification.extraData,
+                            notificationId = notification.id
                         )
                     }
                 } catch (e: Exception) {
@@ -235,6 +241,30 @@ class NotificationViewModel @Inject constructor(
         }
     }
 
+    fun loadMomentNotificationPreferences() {
+        viewModelScope.launch {
+            notificationRepository.getMomentNotificationPreferences()
+                .onSuccess { _momentNotificationsEnabled.value = it.enabled }
+                .onFailure { _digestMessage.value = digestErrorMessage(it) }
+        }
+    }
+
+    fun setMomentNotificationsEnabled(enabled: Boolean) {
+        if (_momentNotificationsSaving.value) return
+        viewModelScope.launch {
+            _momentNotificationsSaving.value = true
+            notificationRepository.setMomentNotificationPreferences(enabled)
+                .onSuccess {
+                    _momentNotificationsEnabled.value = it.enabled
+                    _digestMessage.value = if (it.enabled)
+                        "Avisos de momentos activados para las personas que sigues."
+                    else "Avisos de momentos desactivados."
+                }
+                .onFailure { _digestMessage.value = digestErrorMessage(it) }
+            _momentNotificationsSaving.value = false
+        }
+    }
+
     fun saveNotificationDigestPreferences(preferences: NotificationDigestPreferences) {
         viewModelScope.launch {
             _digestSaving.value = true
@@ -277,7 +307,8 @@ class NotificationViewModel @Inject constructor(
 
     fun markAsRead(notificationId: String) {
         viewModelScope.launch {
-            notificationRepository.markAsRead(notificationId)
+            if (notificationRepository.markAsRead(notificationId).isFailure) return@launch
+            notificationHelper.clearSocialNotification(notificationId)
             updateUnreadCount()
             // Optionally update the local list state without full reload
             val currentState = _notificationsState.value
@@ -292,7 +323,8 @@ class NotificationViewModel @Inject constructor(
 
     fun markAllAsRead() {
         viewModelScope.launch {
-            notificationRepository.markAllAsRead()
+            if (notificationRepository.markAllAsRead().isFailure) return@launch
+            notificationHelper.clearAllSocialNotifications()
             updateUnreadCount()
             loadNotifications()
         }
@@ -302,6 +334,7 @@ class NotificationViewModel @Inject constructor(
         viewModelScope.launch {
             val result = notificationRepository.deleteNotification(notificationId)
             if (result.isSuccess) {
+                notificationHelper.clearSocialNotification(notificationId)
                 val currentState = _notificationsState.value
                 if (currentState is NotificationsUiState.Success) {
                     val updatedList = currentState.notifications.filter { it.id != notificationId }
@@ -316,6 +349,7 @@ class NotificationViewModel @Inject constructor(
         viewModelScope.launch {
             val result = notificationRepository.deleteAllNotifications()
             if (result.isSuccess) {
+                notificationHelper.clearAllSocialNotifications()
                 _notificationsState.value = NotificationsUiState.Success(emptyList())
                 updateUnreadCount()
             }

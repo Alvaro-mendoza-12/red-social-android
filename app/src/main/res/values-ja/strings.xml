@@ -41,4 +41,7 @@
     <string name="widget_action_videos">動画</string>
     <string name="widget_action_moment">モーメント</string>
     <string name="widget_action_chat">チャット</string>
+    <string name="two_factor_local_reset_title">アカウントのセキュリティ</string>
+    <string name="two_factor_local_reset_message">この端末の暗号化された保存領域がリセットされました。アカウントで二段階認証を使用している場合は、認証アプリまたはバックアップコードでログインしてください。サーバー側の保護は引き続き有効です。</string>
+    <string name="two_factor_local_reset_ok">了解</string>
 </resources>

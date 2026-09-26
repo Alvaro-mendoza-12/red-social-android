@@ -11,7 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ColorLens
-import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -63,7 +63,7 @@ fun DrawingCanvas(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 IconButton(onClick = { if (lines.isNotEmpty()) lines.removeAt(lines.size - 1) }) {
-                    Icon(Icons.Default.Undo, contentDescription = "Deshacer", tint = Color.DarkGray)
+                    Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Deshacer", tint = Color.DarkGray)
                 }
                 IconButton(onClick = { lines.clear() }) {
                     Icon(Icons.Default.Clear, contentDescription = "Limpiar", tint = Color.DarkGray)
@@ -88,7 +88,7 @@ fun DrawingCanvas(
             }
         }
 
-        Divider(color = Color.LightGray, thickness = 0.5.dp)
+        HorizontalDivider(color = Color.LightGray, thickness = 0.5.dp)
 
         // El lienzo de dibujo
         Canvas(

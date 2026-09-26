@@ -31,8 +31,10 @@ async function main() {
   )
 
   const entityValue = (id) => ({ mainsnak: { datavalue: { value: { id } } } })
-  const fakeWikidataFetch = async (input) => {
+  const stringValue = (value) => ({ mainsnak: { datavalue: { value } } })
+  const fakeWikidataFetch = async (input, options = {}) => {
     const url = new URL(String(input))
+    if (options.method === 'HEAD') return { ok: true }
     if (url.hostname === 'query.wikidata.org') {
       return {
         ok: true,
@@ -62,18 +64,31 @@ async function main() {
             P400: [entityValue('Q1406')],
             P136: [entityValue('Q744038')],
             P404: [entityValue('Q3297989')],
+            P1733: [stringValue('123456')],
           },
         },
       } }),
     }
   }
-  const wikidataPage = await new WikidataGameCatalogProvider({ fetchImpl: fakeWikidataFetch }).fetchPage(null, 25)
+  const wikidataPage = await new WikidataGameCatalogProvider({ fetchImpl: fakeWikidataFetch, steamStoreAssetsApproved: true }).fetchPage(null, 25)
   assert.equal(wikidataPage.items.length, 1)
   assert.equal(wikidataPage.items[0].externalProviderId, 'Q42')
   assert.deepEqual(wikidataPage.items[0].platforms, ['PC'])
   assert.deepEqual(wikidataPage.items[0].genres, ['juego de disparos'])
   assert.equal(wikidataPage.items[0].onlineSupported, true)
   assert.equal(wikidataPage.items[0].supportLevel, 'CATALOG_SUPPORTED')
+  assert.equal(wikidataPage.items[0].coverUrl, 'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/123456/library_600x900.jpg')
+  assert.equal(wikidataPage.items[0].coverSourceUrl, 'https://store.steampowered.com/app/123456')
+
+  const unavailableSteamFetch = async (input, options = {}) => {
+    if (options.method === 'HEAD') return { ok: false, status: 404 }
+    return fakeWikidataFetch(input, options)
+  }
+  const pageWithoutBrokenSteamArt = await new WikidataGameCatalogProvider({
+    fetchImpl: unavailableSteamFetch,
+    steamStoreAssetsApproved: true,
+  }).fetchPage(null, 25)
+  assert.equal(pageWithoutBrokenSteamArt.items[0].coverUrl, null, 'una cápsula Steam 404 no se publica como arte')
 
   const mapped = mapCatalogRow({
     id: 'game-1', name: 'Game', cover_url: 'https://cdn.example/cover.jpg', logo_url: null,
@@ -82,6 +97,11 @@ async function main() {
   assert.equal(mapped.iconUrl, 'https://cdn.example/cover.jpg', 'logo faltante cae a portada')
   assert.equal(mapped.supportLevel, 'CATALOG_SUPPORTED')
   assert.deepEqual(mapped.platforms, ['PC'])
+
+  const catalogSource = fs.readFileSync(path.resolve(__dirname, '../src/playmatch-catalog.js'), 'utf8')
+  const artworkFilters = catalogSource.match(/AND COALESCE\(NULLIF\(BTRIM\(gc\.cover_url\)/g) || []
+  assert(artworkFilters.length >= 2, 'búsqueda y carrusel deben excluir entradas sin arte verificado')
+  assert(/CASE WHEN gc\.support_level='FULLY_SUPPORTED' THEN 0 ELSE 1 END/.test(catalogSource), 'los juegos principales deben encabezar el carrusel')
 
   const insertedQueries = []
   const insertClient = {
@@ -137,6 +157,12 @@ async function main() {
   assert(/ON DELETE RESTRICT/i.test(fs.readFileSync(path.resolve(__dirname, '../../db/migrations/012_playmatch_games_v1.sql'), 'utf8')), 'los juegos usados no deben borrarse en cascada')
   const metricsMigration = fs.readFileSync(path.resolve(__dirname, '../../db/migrations/014_playmatch_catalog_sync_metrics.sql'), 'utf8')
   assert(metricsMigration.includes('pages_count'), 'las métricas deben registrar páginas procesadas')
+  const artworkMigration = fs.readFileSync(path.resolve(__dirname, '../../db/migrations/015_playmatch_official_game_logos.sql'), 'utf8')
+  for (const curatedGame of ['valorant', 'league-of-legends', 'fortnite', 'minecraft', 'warzone', 'mobile-legends', 'free-fire', 'rocket-league']) {
+    assert(artworkMigration.includes(`'${curatedGame}'`), `falta arte oficial para ${curatedGame}`)
+  }
+  assert(/cover_url\s*=\s*NULL/i.test(artworkMigration), 'los logos no deben fingirse como portadas recortables')
+  assert(artworkMigration.includes('cover_source_url'), 'cada asset debe conservar procedencia auditable')
 
   console.log('playmatch catalog tests passed')
 }

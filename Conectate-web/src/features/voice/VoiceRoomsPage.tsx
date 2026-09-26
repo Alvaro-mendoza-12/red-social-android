@@ -27,8 +27,11 @@ type VoiceRoom = {
   updatedAt: string
 }
 
-const joinedRoomStorageKey = 'conectate-web-voice-joined-room'
-const roomsCacheKey = 'voice:rooms:list'
+const joinedRoomStoragePrefix = 'conectate-web-voice-joined-room:'
+
+function joinedRoomStorageKey(accountId?: string): string {
+  return `${joinedRoomStoragePrefix}${encodeURIComponent(accountId?.trim().toLowerCase() || 'signed-out')}`
+}
 
 function profilePathFor(profileId: string, currentUserId?: string): string {
   const clean = profileId.trim()
@@ -47,20 +50,22 @@ function initialsOf(name: string): string {
     .join('') || 'S'
 }
 
-function readJoinedRoomFromStorage(): string | null {
+function readJoinedRoomFromStorage(accountId?: string): string | null {
   if (typeof window === 'undefined') return null
-  const value = window.localStorage.getItem(joinedRoomStorageKey)
+  window.localStorage.removeItem('conectate-web-voice-joined-room')
+  const value = window.localStorage.getItem(joinedRoomStorageKey(accountId))
   const clean = (value ?? '').trim()
   return clean.length > 0 ? clean : null
 }
 
-function writeJoinedRoomToStorage(roomId: string | null) {
+function writeJoinedRoomToStorage(accountId: string | undefined, roomId: string | null) {
   if (typeof window === 'undefined') return
+  const key = joinedRoomStorageKey(accountId)
   if (roomId) {
-    window.localStorage.setItem(joinedRoomStorageKey, roomId)
+    window.localStorage.setItem(key, roomId)
     return
   }
-  window.localStorage.removeItem(joinedRoomStorageKey)
+  window.localStorage.removeItem(key)
 }
 
 function resolveParticipantCount(row: GenericRow): number {
@@ -89,11 +94,14 @@ function mapRoom(row: GenericRow): VoiceRoom {
 export function VoiceRoomsPage() {
   const { user, isFallbackSession } = useAuth()
   const useUbuntuVoice = shouldUseUbuntuBackend(isFallbackSession)
+  const roomsCacheKey = `voice:rooms:list:${user?.id ?? 'signed-out'}`
   const [rooms, setRooms] = useState<VoiceRoom[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [joinedRoomId, setJoinedRoomId] = useState<string | null>(() => readJoinedRoomFromStorage())
+  const [joinedRoomId, setJoinedRoomId] = useState<string | null>(
+    () => readJoinedRoomFromStorage(user?.id),
+  )
 
   const joinedRoom = useMemo(
     () => rooms.find((room) => room.id === joinedRoomId) ?? null,
@@ -184,7 +192,7 @@ export function VoiceRoomsPage() {
       setLoading(false)
       setSyncing(false)
     }
-  }, [useUbuntuVoice])
+  }, [roomsCacheKey, useUbuntuVoice])
 
   useEffect(() => {
     const cached = readCachedValue<VoiceRoom[]>(roomsCacheKey, 1000 * 60 * 60 * 8)
@@ -195,11 +203,11 @@ export function VoiceRoomsPage() {
       return
     }
     void loadRooms({ silent: false })
-  }, [loadRooms])
+  }, [loadRooms, roomsCacheKey])
 
   useEffect(() => {
-    writeJoinedRoomToStorage(joinedRoomId)
-  }, [joinedRoomId])
+    setJoinedRoomId(readJoinedRoomFromStorage(user?.id))
+  }, [user?.id])
 
   useEffect(() => {
     const client = supabase
@@ -283,7 +291,10 @@ export function VoiceRoomsPage() {
             <Link className="primary-btn" to={`/app/voice/${joinedRoom.id}`}>
               Continuar
             </Link>
-            <button className="ghost-btn" type="button" onClick={() => setJoinedRoomId(null)}>
+            <button className="ghost-btn" type="button" onClick={() => {
+              setJoinedRoomId(null)
+              writeJoinedRoomToStorage(user?.id, null)
+            }}>
               Limpiar
             </button>
           </div>
@@ -341,7 +352,10 @@ export function VoiceRoomsPage() {
                   <Link
                     className={joined ? 'primary-btn' : 'ghost-btn'}
                     to={`/app/voice/${room.id}`}
-                    onClick={() => setJoinedRoomId(room.id)}
+                    onClick={() => {
+                      setJoinedRoomId(room.id)
+                      writeJoinedRoomToStorage(user?.id, room.id)
+                    }}
                   >
                     {joined ? 'Entrar' : 'Unirse'}
                   </Link>

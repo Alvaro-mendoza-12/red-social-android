@@ -61,6 +61,15 @@ type AdminBadge = {
 
 type AdminFrame = { id: string; name: string }
 
+type AdminAccess = {
+  accessLevel: string
+  capabilities: string[]
+  canDeleteUsers: boolean
+  canWrite: boolean
+  isAdmin: boolean
+  isOwner: boolean
+}
+
 type AdminUser = {
   id: string
   local_id: string
@@ -215,6 +224,7 @@ export function AdminModerationPage() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [adminAccess, setAdminAccess] = useState<AdminAccess | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
   const [adminUsersTotal, setAdminUsersTotal] = useState(0)
@@ -371,8 +381,9 @@ export function AdminModerationPage() {
     setError(null)
     try {
       if (isUbuntuPrimary) {
-        await fallbackApiJson<{ isAdmin: true }>('/v1/data/admin/access')
-        setIsAdmin(true)
+        const access = await fallbackApiJson<AdminAccess>('/v1/data/admin/access')
+        setAdminAccess(access)
+        setIsAdmin(access.isAdmin)
         return
       }
       const client = getDataClient()
@@ -380,8 +391,26 @@ export function AdminModerationPage() {
       const { data, error: rpcError } = await client.rpc('is_current_user_admin', { p_user_id: user.id })
       if (rpcError) throw rpcError
       setIsAdmin(Boolean(data))
+      setAdminAccess(data ? {
+        accessLevel: 'legacy',
+        capabilities: [
+          'admin.read',
+          'admin.content.manage',
+          'admin.moderation.manage',
+          'admin.catalog.manage',
+          'admin.finance.manage',
+          'admin.system.read',
+          'admin.access.manage',
+          'admin.users.delete',
+        ],
+        canDeleteUsers: true,
+        canWrite: true,
+        isAdmin: true,
+        isOwner: true,
+      } : null)
     } catch (caught) {
       setIsAdmin(false)
+      setAdminAccess(null)
       setError(friendlyError(caught, 'No se pudo validar admin'))
     } finally {
       setLoading(false)
@@ -609,6 +638,12 @@ export function AdminModerationPage() {
     })
   }, [filteredUserReports])
 
+  function requireWriteAccess(): boolean {
+    if (adminAccess?.canWrite) return true
+    setError('Tu rol administrativo es de solo lectura. Esta operación requiere admin.moderation.manage.')
+    return false
+  }
+
   async function suspendUserAdvanced(
     targetUserId: string,
     options?: {
@@ -618,6 +653,7 @@ export function AdminModerationPage() {
       reason?: string | null
     },
   ) {
+    if (!requireWriteAccess()) throw new Error('ADMIN_CAPABILITY_REQUIRED')
     const client = getDataClient()
     if (!client) return
     const userId = targetUserId.trim()
@@ -673,6 +709,7 @@ export function AdminModerationPage() {
   }
 
   async function updateVideoReport(reportId: string) {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client) return
     setVideoActionLoading((current) => ({ ...current, [reportId]: true }))
@@ -693,6 +730,7 @@ export function AdminModerationPage() {
   }
 
   async function warnVideoOwner(reportId: string) {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client) return
     setVideoActionLoading((current) => ({ ...current, [reportId]: true }))
@@ -712,6 +750,7 @@ export function AdminModerationPage() {
   }
 
   async function deleteVideoReportContent(reportId: string) {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client) return
     setVideoActionLoading((current) => ({ ...current, [reportId]: true }))
@@ -777,6 +816,7 @@ export function AdminModerationPage() {
   }
 
   async function removeSuspension(userId = suspendUserId) {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client || !userId.trim()) return
     setSuspending(true)
@@ -809,6 +849,7 @@ export function AdminModerationPage() {
     target: AdminUser,
     next: { verified?: boolean; badgeIds?: string[]; profileFrame?: string },
   ) {
+    if (!requireWriteAccess()) return
     setAdminMutationUserId(target.id)
     setError(null)
     try {
@@ -833,6 +874,10 @@ export function AdminModerationPage() {
   }
 
   async function hardDeleteUser() {
+    if (!adminAccess?.canDeleteUsers) {
+      setError('Sólo el propietario empresarial puede eliminar cuentas definitivamente.')
+      return
+    }
     const target = deleteAdminUser
     if (!target || target.is_admin || (!target.is_test_account && !target.is_suspended) || !deleteAdminReason.trim()) return
     const expected = target.is_test_account
@@ -869,6 +914,7 @@ export function AdminModerationPage() {
   }
 
   async function updateUserReport(reportId: string) {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client) return
     setUserActionLoading((current) => ({ ...current, [reportId]: true }))
@@ -888,6 +934,7 @@ export function AdminModerationPage() {
   }
 
   async function deleteUserReport(reportId: string) {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client) return
     setUserActionLoading((current) => ({ ...current, [reportId]: true }))
@@ -995,6 +1042,7 @@ export function AdminModerationPage() {
   }
 
   async function applyBulkVideoStatus() {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client || selectedVideoIds.length === 0 || videoBulkLoading) return
     setVideoBulkLoading(true)
@@ -1037,6 +1085,7 @@ export function AdminModerationPage() {
   }
 
   async function warnSelectedVideoReports() {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client || selectedVideoIds.length === 0 || videoBulkWarning) return
     setVideoBulkWarning(true)
@@ -1077,6 +1126,7 @@ export function AdminModerationPage() {
   }
 
   async function deleteSelectedReportedVideos() {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client || selectedVideoIds.length === 0 || videoBulkDeleting) return
     setVideoBulkDeleting(true)
@@ -1117,6 +1167,7 @@ export function AdminModerationPage() {
   }
 
   async function applyBulkUserStatus() {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client || selectedUserIds.length === 0 || userBulkLoading) return
     setUserBulkLoading(true)
@@ -1141,6 +1192,7 @@ export function AdminModerationPage() {
   }
 
   async function deleteBulkUserReports() {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client || selectedUserIds.length === 0 || userBulkDeleting) return
     setUserBulkDeleting(true)
@@ -1162,6 +1214,7 @@ export function AdminModerationPage() {
   }
 
   async function suspendSelectedVideoOwners() {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client || selectedVideoOwnerIds.length === 0 || videoBulkSuspending) return
     setVideoBulkSuspending(true)
@@ -1196,6 +1249,7 @@ export function AdminModerationPage() {
   }
 
   async function suspendSelectedReportedUsers() {
+    if (!requireWriteAccess()) return
     const client = getDataClient()
     if (!client || selectedReportedUserIds.length === 0 || userBulkSuspending) return
     setUserBulkSuspending(true)
@@ -1248,12 +1302,20 @@ export function AdminModerationPage() {
       </header>
 
       <div className="row-actions">
+        <span className="folder-tag">Nivel: {adminAccess?.isOwner ? 'owner' : (adminAccess?.accessLevel || 'none')}</span>
         <span className="folder-tag">Usuarios: {adminUsersTotal}</span>
         <span className="folder-tag">Video: {videoReports.length}</span>
         <span className="folder-tag">Reportes usuario: {userReports.length}</span>
         <span className="folder-tag">Suspendidos: {suspendedProfiles.length}</span>
         <span className="folder-tag">Eventos: {events.length}</span>
       </div>
+
+      {adminAccess && !adminAccess.canWrite ? (
+        <StatusView
+          title="Modo auditor · solo lectura"
+          description="Puedes revisar usuarios, reportes y eventos. Las mutaciones permanecen bloqueadas por la API."
+        />
+      ) : null}
 
       {error ? <StatusView title="Error" description={error} /> : null}
       {bulkSummaryText ? (
@@ -1403,7 +1465,7 @@ export function AdminModerationPage() {
                             Preparar suspensión
                           </button>
                         ) : null}
-                        {!target.is_admin && (target.is_test_account || target.is_suspended) ? (
+                        {adminAccess?.canDeleteUsers && !target.is_admin && (target.is_test_account || target.is_suspended) ? (
                           <button
                             className="danger-btn"
                             type="button"
