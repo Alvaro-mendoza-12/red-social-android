@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -28,16 +30,18 @@ import kotlinx.serialization.json.jsonPrimitive
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import conectate.com.data.local.AppDatabase
+import conectate.com.data.local.AccountOutboxVault
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.gotrue.user.UserSession
 import io.github.jan.supabase.gotrue.providers.builtin.Email
@@ -97,8 +101,8 @@ data class CurrentUserProfileSeed(
 class AuthService @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
     private val localFallbackApiClient: LocalFallbackApiClient,
-    private val database: AppDatabase,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
+    private val accountOutboxVault: AccountOutboxVault,
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) {
     private data class SecurePrefsState(
         val prefs: SharedPreferences?,
@@ -119,6 +123,7 @@ class AuthService @Inject constructor(
         private const val KEY_LOCAL_FALLBACK_AVATAR_URL = "local_fallback_avatar_url"
         private const val KEY_LOCAL_FALLBACK_COUNTRY = "local_fallback_country"
         private const val KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT = "local_fallback_account_created_at"
+        private const val KEY_PENDING_LOGOUT_REFRESHES = "pending_logout_refreshes"
     }
 
     // Using SharedPreferences just to track "if logged in" for simple checks if needed,
@@ -138,6 +143,8 @@ class AuthService @Inject constructor(
         }
     )
     private val localSessionRefreshMutex = Mutex()
+    private val logoutRevocationMutex = Mutex()
+    private val logoutQueueLock = Any()
     @Volatile
     private var registrationInProgress: Boolean = false
     @Volatile
@@ -258,6 +265,13 @@ class AuthService @Inject constructor(
      * Prevents the app from treating an old SDK session as logged-in (even if signOut() fails).
      */
     fun forceLocalLogout() {
+        val wasLocalFallbackSession = isLocalFallbackSession()
+        if (wasLocalFallbackSession) {
+            val refreshToken = getRefreshToken()?.trim().orEmpty()
+            if (refreshToken.isNotBlank() && !queueLogoutRevocation(refreshToken)) {
+                Log.e("AuthService", "Could not persist pending server logout")
+            }
+        }
         registrationInProgress = false
         pendingRegistrationSession = null
         if (TestRuntimeOverrides.isEnabled(context)) {
@@ -278,9 +292,9 @@ class AuthService @Inject constructor(
             ?.remove(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT)
             ?.apply()
         _currentSession.value = null
-        if (isLocalFallbackModeEnabled()) {
+        if (wasLocalFallbackSession) {
             authScope.launch {
-                runCatching { supabaseConfig.client.auth.clearSession() }
+                runCatching { if (isForcedLogout()) supabaseConfig.client.auth.clearSession() }
                     .onFailure { Log.w("AuthService", "Could not clear compatibility session", it) }
             }
         }
@@ -366,43 +380,54 @@ class AuthService @Inject constructor(
     init {
         // Ubuntu owns authentication, but the legacy PostgREST SDK facade still needs the JWT.
         if (isLocalFallbackModeEnabled()) {
-            val localSession = recoverPersistedLocalFallbackSession()
-            if (localSession != null) {
-                // Publish the durable session immediately. A Play Store update can restart the
-                // process while the network tunnel/backend is still reconnecting; withholding
-                // this session made every feed perform its first request as an anonymous user.
-                _currentSession.value = localSession
-                _isInitializing.value = false
-                authScope.launch {
-                    val refreshedToken = refreshPersistedLocalFallbackSessionIfNeeded(force = true)
-                        .getOrElse { error ->
-                            Log.w("AuthService", "Ubuntu session could not be renewed at startup", error)
-                            if (isForcedLogout()) {
-                                _currentSession.value = null
-                            }
-                            return@launch
-                        }
-                    try {
-                        val restored = recoverPersistedLocalFallbackSession()
-                        if (
-                            restored != null &&
-                            !isTokenExpiredOrExpiringSoon(refreshedToken, withinSeconds = 0L)
-                        ) {
-                            _currentSession.value = restored
-                            syncLocalFallbackCompatibilitySession(refreshedToken)
-                        }
-                    } catch (error: Exception) {
-                        // Keep the locally authenticated account on transient startup failures.
-                        // Subsequent foreground/feed requests renew the token automatically.
-                        Log.w("AuthService", "Ubuntu compatibility session sync deferred", error)
+            // EncryptedSharedPreferences may initialize Android Keystore on first use.
+            // Keep that disk/crypto work off the main thread so Activity creation can draw.
+            authScope.launch {
+                try {
+                    val localSession = withContext(Dispatchers.IO) {
+                        recoverPersistedLocalFallbackSession()
                     }
+                    if (localSession == null) {
+                        _currentSession.value = null
+                        withContext(Dispatchers.IO) { clearPersistedSessionSnapshot() }
+                        _isInitializing.value = false
+                        Log.d("AuthService", "Ubuntu backend: No local session, ready for login")
+                        return@launch
+                    }
+
+                    // Publish the durable session as soon as secure local storage is read. A Play
+                    // Store update can restart the process while the backend is reconnecting.
+                    _currentSession.value = localSession
+                    _isInitializing.value = false
+                    authScope.launch {
+                        val refreshedToken = refreshPersistedLocalFallbackSessionIfNeeded(force = true)
+                            .getOrElse { error ->
+                                Log.w("AuthService", "Ubuntu session could not be renewed at startup", error)
+                                if (isForcedLogout()) _currentSession.value = null
+                                return@launch
+                            }
+                        try {
+                            val restored = withContext(Dispatchers.IO) {
+                                recoverPersistedLocalFallbackSession()
+                            }
+                            if (
+                                restored != null &&
+                                !isTokenExpiredOrExpiringSoon(refreshedToken, withinSeconds = 0L)
+                            ) {
+                                _currentSession.value = restored
+                                syncLocalFallbackCompatibilitySession(refreshedToken)
+                            }
+                        } catch (error: Exception) {
+                            // Keep the locally authenticated account on transient startup failures.
+                            Log.w("AuthService", "Ubuntu compatibility session sync deferred", error)
+                        }
+                    }
+                    Log.d("AuthService", "Ubuntu backend: saved session restored; validation continues in background")
+                } catch (error: Exception) {
+                    Log.e("AuthService", "Ubuntu local session recovery failed", error)
+                    _currentSession.value = null
+                    _isInitializing.value = false
                 }
-                Log.d("AuthService", "Ubuntu backend: saved session restored; validation continues in background")
-            } else {
-                _currentSession.value = null
-                clearPersistedSessionSnapshot()
-                _isInitializing.value = false
-                Log.d("AuthService", "Ubuntu backend: No local session, ready for login")
             }
             Log.d("AuthService", "Ubuntu backend: Auth initialization started")
         } else {
@@ -412,56 +437,67 @@ class AuthService @Inject constructor(
                 _currentSession.value = runtimeSessionOverride.toAuthResponse()
                 _isInitializing.value = false
                 Log.d("AuthService", "Auth runtime override enabled for instrumentation tests")
-            } else if (isForcedLogout()) {
-                // User explicitly logged out: do not auto-recover SDK sessions.
-                _currentSession.value = null
-                clearPersistedSessionSnapshot()
-                _isInitializing.value = false
-                Log.w("AuthService", "Forced logout flag set: skipping session recovery")
             } else {
-                val localSession = recoverPersistedLocalFallbackSession()
-                if (localSession != null) {
-                    _currentSession.value = localSession
-                    _isInitializing.value = false
-                    Log.d("AuthService", "Local fallback session recovered at startup")
-                } else {
-                    // IMPORTANT: avoid blocking the app startup thread. Do session recovery on IO scope.
-                    authScope.launch {
-                        try {
-                            // Fast-path recovery from SDK cache first.
-                            var bootSession = runCatching { supabaseConfig.client.auth.currentSessionOrNull() }.getOrNull()
-                            if (!isUsableSession(bootSession)) {
-                                bootSession = null
-                            }
+                authScope.launch {
+                    try {
+                        val forcedLogout = withContext(Dispatchers.IO) { isForcedLogout() }
+                        if (forcedLogout) {
+                            // User explicitly logged out: do not auto-recover SDK sessions.
+                            _currentSession.value = null
+                            withContext(Dispatchers.IO) { clearPersistedSessionSnapshot() }
+                            _isInitializing.value = false
+                            Log.w("AuthService", "Forced logout flag set: skipping session recovery")
+                            return@launch
+                        }
 
-                            // Fallback recovery from lightweight local cache (covers slow/offline edge cases).
-                            if (bootSession == null) {
-                                bootSession = recoverPersistedSessionFromSnapshot()
-                            }
+                        val localSession = withContext(Dispatchers.IO) {
+                            recoverPersistedLocalFallbackSession()
+                        }
+                        if (localSession != null) {
+                            _currentSession.value = localSession
+                            _isInitializing.value = false
+                            Log.d("AuthService", "Local fallback session recovered at startup")
+                            return@launch
+                        }
 
-                            bootSession?.let { cachedSession ->
-                                _currentSession.value = mapSession(cachedSession)
-                                persistSessionSnapshot(cachedSession)
-                                _isInitializing.value = false
-                                Log.d("AuthService", "Cached session recovered at startup")
+                        // Fast-path recovery from SDK cache, then the encrypted snapshot.
+                        var bootSession = runCatching {
+                            supabaseConfig.client.auth.currentSessionOrNull()
+                        }.getOrNull()
+                        if (!isUsableSession(bootSession)) bootSession = null
+                        if (bootSession == null) bootSession = recoverPersistedSessionFromSnapshot()
 
-                                // PROACTIVE REFRESH: If session is old, trigger background refresh immediately
-                                launch {
-                                    try {
-                                        var token = cachedSession.accessToken
-                                        val exp = extractJwtClaim(token, "exp")?.toLongOrNull() ?: 0L
-                                        if (exp < (System.currentTimeMillis() / 1000) + 600) { // If less than 10 mins left
-                                            Log.i("AuthService", "Proactive background refresh triggered for recovered session")
-                                            supabaseConfig.client.auth.refreshCurrentSession()
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e("AuthService", "Proactive refresh failed", e)
+                        val cachedSession = bootSession
+                        if (cachedSession != null) {
+                            _currentSession.value = mapSession(cachedSession)
+                            withContext(Dispatchers.IO) { persistSessionSnapshot(cachedSession) }
+                            _isInitializing.value = false
+                            Log.d("AuthService", "Cached session recovered at startup")
+
+                            // Refresh older cached sessions in the background.
+                            launch {
+                                try {
+                                    val expiration = extractJwtClaim(cachedSession.accessToken, "exp")
+                                        ?.toLongOrNull() ?: 0L
+                                    if (expiration < System.currentTimeMillis() / 1000 + 600) {
+                                        supabaseConfig.client.auth.refreshCurrentSession()
                                     }
+                                } catch (error: Exception) {
+                                    Log.e("AuthService", "Proactive refresh failed", error)
                                 }
                             }
-                        } catch (e: Exception) {
-                            Log.e("AuthService", "Startup session recovery failed", e)
+                        } else {
+                            // A missing cached session is a valid state; do not wait for the SDK
+                            // observer timeout before making sign-in and registration available.
+                            _currentSession.value = null
+                            _isInitializing.value = false
+                            Log.d("AuthService", "No cached session; login is available")
                         }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.e("AuthService", "Startup session recovery failed", error)
+                        _isInitializing.value = false
                     }
                 }
             }
@@ -543,15 +579,18 @@ class AuthService @Inject constructor(
                 }
             }
 
-            // TIMEOUT SAFEGUARD: keep as a final fallback only.
-            // If Supabase client takes too long to emit first status (e.g. network hang), force finish init
-            authScope.launch {
-                kotlinx.coroutines.delay(20000) // allow slower mobile-data startup before forcing login route
-                if (_isInitializing.value) {
-                    Log.w("AuthService", "WARNING: Auth initialization timed out. Forcing completion.")
-                    _isInitializing.value = false
-                }
+        }
+        // A slow keystore or SDK observer must not keep the app at the logo indefinitely.
+        // Recovery and sessionStatus continue in the background after the entry UI is shown.
+        authScope.launch {
+            kotlinx.coroutines.delay(4_000)
+            if (_isInitializing.value) {
+                Log.w("AuthService", "Auth state is still restoring; showing the entry screen while recovery continues.")
+                _isInitializing.value = false
             }
+        }
+        if (isLocalFallbackModeEnabled()) {
+            authScope.launch { retryPendingLogoutRevocations() }
         }
     }
 
@@ -675,11 +714,11 @@ class AuthService @Inject constructor(
         }
     }
 
-    suspend fun signIn(email: String, password: String): Result<Unit> {
+    suspend fun signIn(email: String, password: String, secondFactorCode: String? = null): Result<Unit> {
         return try {
             ensureSecureStorageAvailable().getOrThrow()
             if (localFallbackApiClient.isConfigured) {
-                val localResult = localFallbackApiClient.login(email, password)
+                val localResult = localFallbackApiClient.login(email, password, secondFactorCode)
                 val localSession = localResult.getOrElse { return Result.failure(it) }
                 persistLocalFallbackSession(localSession)
                 return Result.success(Unit)
@@ -721,26 +760,132 @@ class AuthService @Inject constructor(
     }
 
     suspend fun signOut() {
+        val outgoingAccountId = getCurrentUserId()
+        val outgoingRefreshToken = getRefreshToken()
+        val outgoingWasLocalFallback = isLocalFallbackSession()
         // Gate logout immediately so navigation/login flow doesn't bounce back due to stale SDK session.
         forceLocalLogout()
         withContext(Dispatchers.IO) {
             try {
-                // Nuclear Clean: Wipe local database for privacy between accounts
-                Log.w("AuthService", "NUCLEAR CLEAR: Wiping all local data for privacy...")
-                database.clearAllTables()
-                
-                if (isLocalFallbackModeEnabled()) {
-                    supabaseConfig.client.auth.clearSession()
-                } else {
+                accountOutboxVault.preserveAndClear(outgoingAccountId)
+                Log.d("AuthService", "Account cache cleared and pending work saved")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                Log.e("AuthService", "Could not archive pending work during signOut", e)
+            }
+            try {
+                if (outgoingWasLocalFallback) {
+                    if (!outgoingRefreshToken.isNullOrBlank()) {
+                        revokeCapturedSession(outgoingRefreshToken)
+                    }
+                } else if (isForcedLogout()) {
                     supabaseConfig.client.auth.signOut()
                 }
-                Log.d("AuthService", "SignOut successful and local data purged")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
-                Log.e("AuthService", "SignOut error", e)
+                Log.e("AuthService", "Server signOut failed", e)
             } finally {
-                _currentSession.value = null
-                clearPersistedSessionSnapshot()
+                if (isForcedLogout()) {
+                    _currentSession.value = null
+                    clearPersistedSessionSnapshot()
+                }
             }
+        }
+    }
+
+    suspend fun serverTwoFactorStatus(): Result<conectate.com.data.localfallback.ServerTwoFactorStatus> {
+        val token = getAccessTokenAwait()
+            ?: return Result.failure(IllegalStateException("Inicia sesión para consultar la verificación."))
+        return localFallbackApiClient.twoFactorStatus(token)
+    }
+
+    suspend fun passwordRecoveryCodeStatus(): Result<conectate.com.data.localfallback.PasswordRecoveryCodeStatus> {
+        val token = getAccessTokenAwait()
+            ?: return Result.failure(IllegalStateException("Inicia sesión para consultar tus códigos de recuperación."))
+        return localFallbackApiClient.passwordRecoveryCodeStatus(token)
+    }
+
+    suspend fun rotatePasswordRecoveryCodes(password: String, secondFactorCode: String?): Result<List<String>> {
+        val token = getAccessTokenAwait()
+            ?: return Result.failure(IllegalStateException("Inicia sesión para crear códigos de recuperación."))
+        return localFallbackApiClient.rotatePasswordRecoveryCodes(token, password, secondFactorCode)
+    }
+
+    suspend fun setupServerTwoFactor(password: String): Result<conectate.com.data.localfallback.ServerTwoFactorSetup> {
+        val token = getAccessTokenAwait()
+            ?: return Result.failure(IllegalStateException("Inicia sesión para activar la verificación."))
+        return localFallbackApiClient.setupTwoFactor(token, password)
+    }
+
+    suspend fun enableServerTwoFactor(password: String, code: String): Result<List<String>> {
+        val token = getAccessTokenAwait()
+            ?: return Result.failure(IllegalStateException("Inicia sesión para activar la verificación."))
+        val enabled = localFallbackApiClient.enableTwoFactor(token, password, code)
+            .getOrElse { return Result.failure(it) }
+        return try {
+            persistLocalFallbackSession(enabled.session)
+            Result.success(enabled.recoveryCodes)
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun disableServerTwoFactor(password: String, code: String): Result<Unit> {
+        val token = getAccessTokenAwait()
+            ?: return Result.failure(IllegalStateException("Inicia sesión para desactivar la verificación."))
+        val result = localFallbackApiClient.disableTwoFactor(token, password, code)
+        if (result.isSuccess) signOut()
+        return result
+    }
+
+    private fun pendingLogoutRevocations(): List<String> {
+        val raw = authPrefsOrNull?.getString(KEY_PENDING_LOGOUT_REFRESHES, null) ?: return emptyList()
+        return runCatching { json.decodeFromString<List<String>>(raw) }
+            .onFailure { Log.e("AuthService", "Could not read pending server logouts", it) }
+            .getOrDefault(emptyList())
+    }
+
+    private fun queueLogoutRevocation(refreshToken: String): Boolean = synchronized(logoutQueueLock) {
+        val prefs = authPrefsOrNull ?: return@synchronized false
+        val pending = (pendingLogoutRevocations() + refreshToken).distinct()
+        prefs.edit().putString(KEY_PENDING_LOGOUT_REFRESHES, json.encodeToString(pending)).commit()
+    }
+
+    private fun finishLogoutRevocation(refreshToken: String) = synchronized(logoutQueueLock) {
+        val prefs = authPrefsOrNull ?: return@synchronized
+        val remaining = pendingLogoutRevocations().filterNot { it == refreshToken }
+        val edit = prefs.edit()
+        if (remaining.isEmpty()) edit.remove(KEY_PENDING_LOGOUT_REFRESHES)
+        else edit.putString(KEY_PENDING_LOGOUT_REFRESHES, json.encodeToString(remaining))
+        if (!edit.commit()) Log.e("AuthService", "Could not persist server logout acknowledgement")
+    }
+
+    private suspend fun revokeCapturedSession(refreshToken: String) {
+        val result = withTimeoutOrNull(3_000L) { localFallbackApiClient.revokeSession(refreshToken) }
+        if (result?.isSuccess == true) {
+            finishLogoutRevocation(refreshToken)
+        } else {
+            result?.onFailure { Log.w("AuthService", "Server logout will retry later", it) }
+                ?: Log.w("AuthService", "Server logout timed out; will retry later")
+        }
+    }
+
+    private suspend fun retryPendingLogoutRevocations() {
+        if (!isLocalFallbackModeEnabled()) return
+        logoutRevocationMutex.withLock {
+            for (token in pendingLogoutRevocations()) revokeCapturedSession(token)
+        }
+    }
+
+    /** Completes an immediate UI logout without clearing a newly signed-in session. */
+    suspend fun finishForcedLogout(outgoingRefreshToken: String?, outgoingWasLocalFallback: Boolean) {
+        if (outgoingWasLocalFallback) {
+            val token = outgoingRefreshToken?.trim().orEmpty()
+            if (token.isNotBlank()) revokeCapturedSession(token)
+        } else if (isForcedLogout()) {
+            supabaseConfig.client.auth.signOut()
         }
     }
 
@@ -753,11 +898,7 @@ class AuthService @Inject constructor(
                 )
             }
 
-            supabaseConfig.client.auth.resetPasswordForEmail(
-                email = email,
-                redirectUrl = "conectate://recovery"
-            )
-            Result.success(Unit)
+            Result.failure(IllegalStateException("El servidor de recuperación no está configurado."))
         } catch (e: Exception) {
             Log.e("AuthService", "Reset password error", e)
             Result.failure(e)
@@ -780,6 +921,19 @@ class AuthService @Inject constructor(
         }
         val localSession = localFallbackApiClient.confirmPasswordReset(resetToken, newPassword)
             .getOrElse { return Result.failure(it) }
+        persistLocalFallbackSession(localSession)
+        return Result.success(Unit)
+    }
+
+    suspend fun confirmSavedPasswordRecoveryCode(
+        email: String,
+        recoveryCode: String,
+        newPassword: String,
+        secondFactorCode: String?
+    ): Result<Unit> {
+        val localSession = localFallbackApiClient.confirmSavedPasswordRecoveryCode(
+            email, recoveryCode, newPassword, secondFactorCode
+        ).getOrElse { return Result.failure(it) }
         persistLocalFallbackSession(localSession)
         return Result.success(Unit)
     }
@@ -1207,10 +1361,21 @@ class AuthService @Inject constructor(
 
     fun observeSession(): StateFlow<AuthResponse?> = currentSession
 
-    suspend fun clearLocalDataForAccountSwitch() {
-        withContext(Dispatchers.IO) {
-            runCatching { database.clearAllTables() }
-        }
+    suspend fun clearLocalDataForAccountSwitch(accountId: String? = getCurrentUserId()) {
+        accountOutboxVault.preserveAndClear(accountId)
+    }
+
+    /** Stops writes from the outgoing identity while its outbox is being archived. */
+    fun beginAccountSwitch() {
+        if (TestRuntimeOverrides.isEnabled(context)) TestRuntimeOverrides.clearSession(context)
+        setForcedLogout(true)
+        _currentSession.value = null
+    }
+
+    suspend fun restorePendingWorkForCurrentAccount() {
+        val accountId = getCurrentUserId()?.trim()?.lowercase()
+            ?: throw IllegalStateException("No se pudo identificar la cuenta para restaurar mensajes")
+        accountOutboxVault.restore(accountId)
     }
 
     private fun readPersistedSessionSnapshot(): UserSession? {
@@ -1385,6 +1550,8 @@ class AuthService @Inject constructor(
         val email = user.email.trim().lowercase()
         if (accessToken.isBlank() || localUserId.isBlank() || displayUserId.isBlank() || email.isBlank()) return
 
+        accountOutboxVault.requireCompatibleAccount(displayUserId)
+
         val prefs = authPrefsOrNull
             ?: throw IllegalStateException("El almacenamiento seguro no está disponible.")
         val stored = withContext(Dispatchers.IO) {
@@ -1410,6 +1577,7 @@ class AuthService @Inject constructor(
             _currentSession.value = mapLocalFallbackSession(response)
         }
         syncLocalFallbackCompatibilitySession(accessToken)
+        authScope.launch { retryPendingLogoutRevocations() }
     }
 
     private suspend fun syncLocalFallbackCompatibilitySession(accessToken: String) {

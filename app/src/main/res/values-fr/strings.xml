@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="language_settings_title">Langue de l\'application</string>
+    <string name="language_settings_description">Le changement s\'applique immédiatement et se synchronise avec les paramètres de langue Android compatibles.</string>
+    <string name="language_system">Automatique</string>
+    <string name="language_system_detail">Utiliser la langue de l\'appareil</string>
+    <string name="language_back">Retour</string>
+    <string name="sign_in_email">Se connecter par e-mail</string>
+    <string name="email">E-mail</string>
+    <string name="password">Mot de passe</string>
+    <string name="login">Se connecter</string>
+    <string name="dont_have_account">Vous n\'avez pas de compte ?</string>
+    <string name="register">S\'inscrire</string>
+    <string name="name">Nom</string>
+    <string name="country">Pays</string>
+    <string name="already_have_account">Vous avez déjà un compte ?</string>
+    <string name="live_notification_channel_name">Directs</string>
+    <string name="live_notification_channel_description">Alertes lorsqu\'une personne que vous suivez lance un direct</string>
+    <string name="live_notification_summary_title">Directs des personnes que vous suivez</string>
+    <string name="live_notification_summary_body">De nouveaux directs sont à regarder</string>
+    <string name="live_overlay_title">Chat en direct</string>
+    <string name="live_overlay_title_default">Direct en cours</string>
+    <string name="live_overlay_subtitle">Chat flottant en direct</string>
+    <plurals name="live_overlay_status"><item quantity="one">LIVE • %1$d spectateur</item><item quantity="other">LIVE • %1$d spectateurs</item></plurals>
+    <string name="live_overlay_bubble_description">Ouvrir le chat flottant du direct</string>
+    <string name="live_overlay_minimize">Réduire le chat flottant</string>
+    <string name="live_overlay_close">Fermer le chat flottant</string>
+    <string name="live_overlay_empty">Aucun message pour le moment</string>
+    <string name="live_overlay_user_fallback">Utilisateur</string>
+    <string name="widget_novvin_description">Ouvrez Vidéos, Moments et Messages depuis l\'écran d\'accueil.</string>
+    <string name="widget_chat_title">Messages</string>
+    <string name="widget_chat_subtitle">Ouvrez vos conversations Novvin</string>
+    <string name="widget_chat_description">Raccourci vers les messages Novvin.</string>
+    <string name="widget_videos_title">Vidéos</string>
+    <string name="widget_videos_subtitle">Ouvrir le fil de vidéos</string>
+    <string name="widget_videos_description">Raccourci vers le fil de vidéos Novvin.</string>
+    <string name="widget_moments_title">Créer un moment</string>
+    <string name="widget_moments_subtitle">Partager une photo ou une vidéo</string>
+    <string name="widget_moments_description">Raccourci pour créer un Moment Novvin.</string>
+    <string name="widget_quick_actions_subtitle">Actions rapides</string>
+    <string name="widget_action_videos">Vidéos</string>
+    <string name="widget_action_moment">Moment</string>
+    <string name="widget_action_chat">Chat</string>
+</resources>

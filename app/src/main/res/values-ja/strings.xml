@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="language_settings_title">アプリの言語</string>
+    <string name="language_settings_description">変更はすぐに反映され、対応する Android の言語設定にも同期されます。</string>
+    <string name="language_system">自動</string>
+    <string name="language_system_detail">端末の言語を使用</string>
+    <string name="language_back">戻る</string>
+    <string name="sign_in_email">メールでログイン</string>
+    <string name="email">メール</string>
+    <string name="password">パスワード</string>
+    <string name="login">ログイン</string>
+    <string name="dont_have_account">アカウントをお持ちでないですか？</string>
+    <string name="register">登録</string>
+    <string name="name">名前</string>
+    <string name="country">国</string>
+    <string name="already_have_account">アカウントをお持ちですか？</string>
+    <string name="live_notification_channel_name">ライブ配信</string>
+    <string name="live_notification_channel_description">フォロー中のユーザーが配信を始めたときに通知</string>
+    <string name="live_notification_summary_title">フォロー中のライブ配信</string>
+    <string name="live_notification_summary_body">新しいライブ配信があります</string>
+    <string name="live_overlay_title">ライブチャット</string>
+    <string name="live_overlay_title_default">ライブ配信中</string>
+    <string name="live_overlay_subtitle">フローティングライブチャット</string>
+    <plurals name="live_overlay_status"><item quantity="other">LIVE • 視聴者 %1$d 人</item></plurals>
+    <string name="live_overlay_bubble_description">フローティングライブチャットを開く</string>
+    <string name="live_overlay_minimize">フローティングチャットを最小化</string>
+    <string name="live_overlay_close">フローティングチャットを閉じる</string>
+    <string name="live_overlay_empty">メッセージはまだありません</string>
+    <string name="live_overlay_user_fallback">ユーザー</string>
+    <string name="widget_novvin_description">ホーム画面から動画、モーメント、メッセージを開きます。</string>
+    <string name="widget_chat_title">メッセージ</string>
+    <string name="widget_chat_subtitle">Novvin の会話を開く</string>
+    <string name="widget_chat_description">Novvin のメッセージへのショートカット。</string>
+    <string name="widget_videos_title">動画</string>
+    <string name="widget_videos_subtitle">動画フィードを開く</string>
+    <string name="widget_videos_description">Novvin の動画フィードへのショートカット。</string>
+    <string name="widget_moments_title">モーメントを作成</string>
+    <string name="widget_moments_subtitle">写真や動画を共有</string>
+    <string name="widget_moments_description">Novvin のモーメント作成へのショートカット。</string>
+    <string name="widget_quick_actions_subtitle">クイック操作</string>
+    <string name="widget_action_videos">動画</string>
+    <string name="widget_action_moment">モーメント</string>
+    <string name="widget_action_chat">チャット</string>
+</resources>

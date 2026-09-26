@@ -4,25 +4,37 @@ import android.content.Intent
 import android.net.Uri
 import androidx.navigation.NavHostController
 import conectate.com.data.repository.AuthRepository
+import conectate.com.data.repository.NotificationRepository
 import conectate.com.presentation.messages.hasCapturedIncomingShare
 import conectate.com.presentation.messages.incomingShareText
 import conectate.com.presentation.messages.incomingShareUris
+import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.util.notificationAccountTargetFromIntent
 import conectate.com.util.resolveStoredAccountForTarget
 import conectate.com.util.storedAccountDisplayLabel
 import conectate.com.util.TrustedNavigationIntents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+
+internal fun videoResumeMsFromLink(uri: Uri): Long = uri.getQueryParameter("resumeMs")
+    ?.toLongOrNull()?.takeIf { it in 0L..86_400_000L } ?: 0L
+
+internal fun videoClipEndMsFromLink(uri: Uri): Long {
+    val start = videoResumeMsFromLink(uri)
+    val end = uri.getQueryParameter("endMs")?.toLongOrNull() ?: return 0L
+    return end.takeIf { it > start && end <= 86_400_000L &&
+        end - start in 5_000L..60_000L } ?: 0L
+}
 
 object IntentRouter {
 
     fun hasPendingNavigationIntent(pendingIntent: Intent?): Boolean {
         pendingIntent ?: return false
         val data = pendingIntent.data
-        val isRecovery = (data?.scheme == "conectate" && data.host == "recovery") ||
-            (data?.getQueryParameter("type") == "recovery") ||
-            (data?.fragment?.contains("type=recovery") == true)
-        val isDeepLink = data?.scheme in setOf("https", "http", "conectate")
+        val isRecovery = isTrustedRecoveryOrigin(data?.scheme, data?.host)
+        val isDeepLink = data != null && isTrustedExternalDeepLinkOrigin(data.scheme, data.host)
         val isShareAction = pendingIntent.action == Intent.ACTION_SEND ||
             pendingIntent.action == Intent.ACTION_SEND_MULTIPLE
         val isShare = isShareAction && (
@@ -38,11 +50,29 @@ object IntentRouter {
         incomingIntent: Intent,
         navController: NavHostController,
         authRepository: AuthRepository,
+        notificationRepository: NotificationRepository,
         activityScope: CoroutineScope,
         clearIntent: () -> Unit
     ): Boolean {
-        if (handleNotificationIntent(incomingIntent, navController, authRepository, clearIntent)) return true
-        if (handleUriIntent(incomingIntent, navController, authRepository, activityScope, clearIntent)) return true
+        if (handleNotificationIntent(incomingIntent, navController, authRepository, clearIntent)) {
+            val notificationId = incomingIntent.getStringExtra("notification_id")?.trim().orEmpty()
+            if (notificationId.isNotBlank() &&
+                TrustedNavigationIntents.isTrusted(navController.context.applicationContext, incomingIntent)) {
+                val target = notificationAccountTargetFromIntent(incomingIntent)
+                activityScope.launch {
+                    val matchingSession = withTimeoutOrNull(120_000L) {
+                        authRepository.getAuthStateFlow().first { session ->
+                            val user = session?.user
+                            user?.id?.isNotBlank() == true &&
+                                (target == null || target.matches(user.id, user.email))
+                        }
+                    }
+                    if (matchingSession != null) notificationRepository.markAsRead(notificationId)
+                }
+            }
+            return true
+        }
+        if (handleUriIntent(incomingIntent, navController, clearIntent)) return true
         if (handleIncomingShareIntent(incomingIntent, navController, clearIntent)) return true
         return false
     }
@@ -385,13 +415,20 @@ object IntentRouter {
     private fun handleUriIntent(
         incomingIntent: Intent,
         navController: NavHostController,
-        authRepository: AuthRepository,
-        activityScope: CoroutineScope,
         clearIntent: () -> Unit
     ): Boolean {
         val uri = incomingIntent.data ?: return false
-        android.util.Log.d("MainActivity", "Handling Deep Link: $uri")
-        android.util.Log.d("MainActivity", "Scheme: ${uri.scheme}, Host: ${uri.host}, Fragment: ${uri.fragment}")
+        if (!isTrustedExternalDeepLinkOrigin(uri.scheme, uri.host)) {
+            android.util.Log.w("IntentRouter", "Rejected untrusted deep-link origin")
+            clearIntent()
+            return true
+        }
+        // Never log the full URI: recovery links carry access and refresh
+        // credentials in their fragment.
+        android.util.Log.d(
+            "IntentRouter",
+            "Handling deep link scheme=${uri.scheme} host=${uri.host} path=${uri.path.orEmpty().take(120)}"
+        )
 
         val isWebLoginQr =
             (uri.scheme == "conectate" && uri.host == "web-login") ||
@@ -401,8 +438,8 @@ object IntentRouter {
                         uri.pathSegments.firstOrNull() == "web-login"
                     )
         if (isWebLoginQr) {
-            val pairId = uri.getQueryParameter("pairId")
-            val nonce = uri.getQueryParameter("nonce")
+            val pairId = safeExternalRouteValue(uri.getQueryParameter("pairId"), 160)
+            val nonce = safeExternalRouteValue(uri.getQueryParameter("nonce"), 512)
             navController.navigate(Screen.WebLoginScanner.createRoute(pairId = pairId, nonce = nonce))
             clearIntent()
             return true
@@ -413,32 +450,47 @@ object IntentRouter {
             if (pathSegments.isNotEmpty()) {
                 when (pathSegments[0]) {
                     "post" -> {
-                        val postId = pathSegments.getOrNull(1)
-                        if (!postId.isNullOrBlank()) {
+                        val postId = safeExternalRouteValue(pathSegments.getOrNull(1))
+                        if (postId != null) {
                             navController.navigate(Screen.PostDetail.createRoute(postId))
                             clearIntent()
                             return true
                         }
                     }
                     "video" -> {
-                        val videoId = pathSegments.getOrNull(1)
-                        if (!videoId.isNullOrBlank()) {
-                            navController.navigate(Screen.VideoPlayer.createRoute(videoId))
+                        val videoId = safeExternalRouteValue(pathSegments.getOrNull(1))
+                        if (videoId != null) {
+                            navController.navigate(Screen.VideoPlayer.createRoute(
+                                videoId, resumeMs = videoResumeMsFromLink(uri),
+                                endMs = videoClipEndMsFromLink(uri)))
+                            clearIntent()
+                            return true
+                        }
+                    }
+                    "profile", "u" -> {
+                        val userId = safeExternalRouteValue(pathSegments.getOrNull(1))
+                        if (userId != null) {
+                            navController.navigate(Screen.UserProfile.createRoute(userId))
                             clearIntent()
                             return true
                         }
                     }
                     "group" -> {
-                        val groupId = pathSegments.getOrNull(1)
-                        if (!groupId.isNullOrBlank()) {
-                            navController.navigate(Screen.GroupDetail.createRoute(groupId, uri.getQueryParameter("invite")))
+                        val groupId = safeExternalRouteValue(pathSegments.getOrNull(1))
+                        if (groupId != null) {
+                            navController.navigate(
+                                Screen.GroupDetail.createRoute(
+                                    groupId,
+                                    safeExternalRouteValue(uri.getQueryParameter("invite"), 256)
+                                )
+                            )
                             clearIntent()
                             return true
                         }
                     }
                     "community" -> {
-                        val communityId = pathSegments.getOrNull(1)
-                        if (!communityId.isNullOrBlank()) {
+                        val communityId = safeExternalRouteValue(pathSegments.getOrNull(1))
+                        if (communityId != null) {
                             navController.navigate(Screen.CommunityDetail.createRoute(communityId))
                             clearIntent()
                             return true
@@ -448,29 +500,63 @@ object IntentRouter {
             }
         } else if (uri.scheme == "conectate") {
             when (uri.host) {
+                "videos" -> {
+                    navController.navigate(Screen.Home.createRoute(startTab = Screen.Videos.route))
+                    clearIntent()
+                    return true
+                }
+                "social" -> {
+                    navController.navigate(Screen.Home.createRoute(startTab = Screen.Social.route))
+                    clearIntent()
+                    return true
+                }
+                "messages" -> {
+                    navController.navigate(Screen.Home.createRoute(startTab = Screen.Messages.route))
+                    clearIntent()
+                    return true
+                }
+                "create-moment" -> {
+                    navController.navigate(Screen.CreateMoment.route)
+                    clearIntent()
+                    return true
+                }
                 "post" -> {
-                    uri.pathSegments.firstOrNull()?.let { id ->
+                    safeExternalRouteValue(uri.pathSegments.firstOrNull())?.let { id ->
                         navController.navigate(Screen.PostDetail.createRoute(id))
                         clearIntent()
                         return true
                     }
                 }
                 "video" -> {
-                    uri.pathSegments.firstOrNull()?.let { id ->
-                        navController.navigate(Screen.VideoPlayer.createRoute(id))
+                    safeExternalRouteValue(uri.pathSegments.firstOrNull())?.let { id ->
+                        navController.navigate(Screen.VideoPlayer.createRoute(
+                            id, resumeMs = videoResumeMsFromLink(uri),
+                            endMs = videoClipEndMsFromLink(uri)))
+                        clearIntent()
+                        return true
+                    }
+                }
+                "profile" -> {
+                    safeExternalRouteValue(uri.pathSegments.firstOrNull())?.let { id ->
+                        navController.navigate(Screen.UserProfile.createRoute(id))
                         clearIntent()
                         return true
                     }
                 }
                 "group" -> {
-                    uri.pathSegments.firstOrNull()?.let { id ->
-                        navController.navigate(Screen.GroupDetail.createRoute(id, uri.getQueryParameter("invite")))
+                    safeExternalRouteValue(uri.pathSegments.firstOrNull())?.let { id ->
+                        navController.navigate(
+                            Screen.GroupDetail.createRoute(
+                                id,
+                                safeExternalRouteValue(uri.getQueryParameter("invite"), 256)
+                            )
+                        )
                         clearIntent()
                         return true
                     }
                 }
                 "community" -> {
-                    uri.pathSegments.firstOrNull()?.let { id ->
+                    safeExternalRouteValue(uri.pathSegments.firstOrNull())?.let { id ->
                         navController.navigate(Screen.CommunityDetail.createRoute(id))
                         clearIntent()
                         return true
@@ -479,40 +565,15 @@ object IntentRouter {
             }
         }
 
-        val fragmentData = uri.fragment.orEmpty()
-        val isRecovery = (uri.scheme == "conectate" && uri.host == "recovery") ||
-            (uri.getQueryParameter("type") == "recovery") ||
-            fragmentData.contains("type=recovery")
+        val isRecovery = isTrustedRecoveryOrigin(uri.scheme, uri.host)
         if (!isRecovery) return false
 
-        android.util.Log.d("MainActivity", "Recovery link detected, navigating to ChangePassword")
+        // Old custom-scheme recovery links can be intercepted by another app.
+        // Never import access or refresh tokens delivered through this route.
+        android.util.Log.d("MainActivity", "Legacy recovery link received")
         clearIntent()
-
-        val recoveryFragment = uri.fragment
-        if (!recoveryFragment.isNullOrBlank()) {
-            val params = recoveryFragment.split("&").mapNotNull { param ->
-                val separator = param.indexOf('=')
-                if (separator <= 0) null
-                else param.substring(0, separator) to param.substring(separator + 1)
-            }.toMap()
-            val accessToken = params["access_token"]
-            val refreshToken = params["refresh_token"]
-
-            if (!accessToken.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
-                activityScope.launch {
-                    try {
-                        authRepository.importSession(accessToken, refreshToken)
-                    } catch (e: Exception) {
-                        android.util.Log.e("MainActivity", "Failed to import session", e)
-                    } finally {
-                        navController.navigate(Screen.ChangePassword.route)
-                    }
-                }
-                return true
-            }
-        }
-
-        navController.navigate(Screen.ChangePassword.route)
+        AppFeedbackBus.show("Solicita un código nuevo desde Recuperar cuenta.")
+        navController.navigate(Screen.Login.route)
         return true
     }
 
@@ -557,4 +618,37 @@ internal fun resolveLiveStartedRoute(liveId: String?): String? {
     val normalizedLiveId = liveId?.trim().orEmpty()
     if (normalizedLiveId.isBlank()) return null
     return Screen.LiveViewer.createRoute(normalizedLiveId)
+}
+
+internal fun isTrustedRecoveryOrigin(scheme: String?, host: String?): Boolean =
+    scheme.equals("conectate", ignoreCase = true) && host.equals("recovery", ignoreCase = true)
+
+internal fun isTrustedExternalDeepLinkOrigin(scheme: String?, host: String?): Boolean {
+    val normalizedScheme = scheme?.trim()?.lowercase().orEmpty()
+    val normalizedHost = host?.trim()?.lowercase().orEmpty()
+    if (normalizedScheme == "https" || normalizedScheme == "http") {
+        return normalizedHost == "conectate.com" || normalizedHost == "www.conectate.com"
+    }
+    if (normalizedScheme != "conectate") return false
+    return normalizedHost in setOf(
+        "videos",
+        "social",
+        "messages",
+        "create-moment",
+        "post",
+        "video",
+        "profile",
+        "group",
+        "community",
+        "web-login",
+        "recovery",
+    )
+}
+
+internal fun safeExternalRouteValue(value: String?, maxLength: Int = 160): String? {
+    if (maxLength !in 1..2_048) return null
+    val normalized = value?.trim().orEmpty()
+    return normalized.takeIf {
+        it.isNotEmpty() && it.length <= maxLength && it.none(Char::isISOControl)
+    }
 }

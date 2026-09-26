@@ -13,7 +13,7 @@ object AppLocalePreferences {
     private const val PREFS_NAME = "app_settings_preferences"
     private const val KEY_LANGUAGE = "app_language"
     const val SYSTEM = "system"
-    val supportedTags = setOf(SYSTEM, "es", "en", "pt")
+    val supportedTags = setOf(SYSTEM, "es", "en", "pt", "fr", "de", "ja", "zh-Hans", "zh-Hant")
 
     fun selected(context: Context): String = context
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

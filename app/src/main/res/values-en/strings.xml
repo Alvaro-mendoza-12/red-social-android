@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="language_settings_title">App language</string>
+    <string name="language_settings_description">The change takes effect immediately and syncs with supported Android language settings.</string>
+    <string name="language_system">Automatic</string>
+    <string name="language_system_detail">Use device language</string>
+    <string name="language_back">Back</string>
+    <string name="sign_in_email">Sign in with email</string>
+    <string name="email">Email</string>
+    <string name="password">Password</string>
+    <string name="login">Sign in</string>
+    <string name="dont_have_account">Don’t have an account?</string>
+    <string name="register">Sign up</string>
+    <string name="name">Name</string>
+    <string name="country">Country</string>
+    <string name="already_have_account">Already have an account?</string>
+    <string name="live_notification_channel_name">Live streams</string>
+    <string name="live_notification_channel_description">Alerts when someone you follow starts a live stream</string>
+    <string name="live_notification_summary_title">Live streams from people you follow</string>
+    <string name="live_notification_summary_body">New live streams are ready to watch</string>
+    <string name="live_overlay_title">Live chat</string>
+    <string name="live_overlay_title_default">Live stream active</string>
+    <string name="live_overlay_subtitle">Floating live chat</string>
+    <plurals name="live_overlay_status"><item quantity="one">LIVE • %1$d viewer</item><item quantity="other">LIVE • %1$d viewers</item></plurals>
+    <string name="live_overlay_bubble_description">Open floating live chat</string>
+    <string name="live_overlay_minimize">Minimize floating chat</string>
+    <string name="live_overlay_close">Close floating chat</string>
+    <string name="live_overlay_empty">No messages yet</string>
+    <string name="live_overlay_user_fallback">User</string>
+    <string name="widget_novvin_description">Open Videos, Moments, and Messages from the home screen.</string>
+    <string name="widget_chat_title">Messages</string>
+    <string name="widget_chat_subtitle">Open your Novvin conversations</string>
+    <string name="widget_chat_description">Shortcut to Novvin messages.</string>
+    <string name="widget_videos_title">Videos</string>
+    <string name="widget_videos_subtitle">Open the video feed</string>
+    <string name="widget_videos_description">Shortcut to the Novvin video feed.</string>
+    <string name="widget_moments_title">Create a moment</string>
+    <string name="widget_moments_subtitle">Share a photo or video</string>
+    <string name="widget_moments_description">Shortcut to create a Novvin Moment.</string>
+    <string name="widget_quick_actions_subtitle">Quick actions</string>
+    <string name="widget_action_videos">Videos</string>
+    <string name="widget_action_moment">Moment</string>
+    <string name="widget_action_chat">Chat</string>
+</resources>

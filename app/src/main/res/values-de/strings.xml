@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="language_settings_title">App-Sprache</string>
+    <string name="language_settings_description">Die Änderung wird sofort angewendet und mit unterstützten Android-Spracheinstellungen synchronisiert.</string>
+    <string name="language_system">Automatisch</string>
+    <string name="language_system_detail">Gerätesprache verwenden</string>
+    <string name="language_back">Zurück</string>
+    <string name="sign_in_email">Mit E-Mail anmelden</string>
+    <string name="email">E-Mail</string>
+    <string name="password">Passwort</string>
+    <string name="login">Anmelden</string>
+    <string name="dont_have_account">Noch kein Konto?</string>
+    <string name="register">Registrieren</string>
+    <string name="name">Name</string>
+    <string name="country">Land</string>
+    <string name="already_have_account">Schon ein Konto?</string>
+    <string name="live_notification_channel_name">Livestreams</string>
+    <string name="live_notification_channel_description">Hinweise, wenn jemand, dem du folgst, einen Livestream startet</string>
+    <string name="live_notification_summary_title">Livestreams von Personen, denen du folgst</string>
+    <string name="live_notification_summary_body">Neue Livestreams sind verfügbar</string>
+    <string name="live_overlay_title">Livechat</string>
+    <string name="live_overlay_title_default">Livestream aktiv</string>
+    <string name="live_overlay_subtitle">Schwebender Livechat</string>
+    <plurals name="live_overlay_status"><item quantity="one">LIVE • %1$d Zuschauer</item><item quantity="other">LIVE • %1$d Zuschauer</item></plurals>
+    <string name="live_overlay_bubble_description">Schwebenden Livechat öffnen</string>
+    <string name="live_overlay_minimize">Schwebenden Chat minimieren</string>
+    <string name="live_overlay_close">Schwebenden Chat schließen</string>
+    <string name="live_overlay_empty">Noch keine Nachrichten</string>
+    <string name="live_overlay_user_fallback">Nutzer</string>
+    <string name="widget_novvin_description">Videos, Momente und Nachrichten vom Startbildschirm öffnen.</string>
+    <string name="widget_chat_title">Nachrichten</string>
+    <string name="widget_chat_subtitle">Deine Novvin-Unterhaltungen öffnen</string>
+    <string name="widget_chat_description">Schnellzugriff auf Novvin-Nachrichten.</string>
+    <string name="widget_videos_title">Videos</string>
+    <string name="widget_videos_subtitle">Videofeed öffnen</string>
+    <string name="widget_videos_description">Schnellzugriff auf den Novvin-Videofeed.</string>
+    <string name="widget_moments_title">Moment erstellen</string>
+    <string name="widget_moments_subtitle">Foto oder Video teilen</string>
+    <string name="widget_moments_description">Schnellzugriff zum Erstellen eines Novvin-Moments.</string>
+    <string name="widget_quick_actions_subtitle">Schnellaktionen</string>
+    <string name="widget_action_videos">Videos</string>
+    <string name="widget_action_moment">Moment</string>
+    <string name="widget_action_chat">Chat</string>
+</resources>

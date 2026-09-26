@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="language_settings_title">Idioma do aplicativo</string>
+    <string name="language_settings_description">A mudança é aplicada imediatamente e sincronizada com as configurações de idioma compatíveis do Android.</string>
+    <string name="language_system">Automático</string>
+    <string name="language_system_detail">Usar o idioma do dispositivo</string>
+    <string name="language_back">Voltar</string>
+    <string name="sign_in_email">Entrar com e-mail</string>
+    <string name="email">E-mail</string>
+    <string name="password">Senha</string>
+    <string name="login">Entrar</string>
+    <string name="dont_have_account">Não tem uma conta?</string>
+    <string name="register">Cadastre-se</string>
+    <string name="name">Nome</string>
+    <string name="country">País</string>
+    <string name="already_have_account">Já tem uma conta?</string>
+    <string name="live_notification_channel_name">Transmissões ao vivo</string>
+    <string name="live_notification_channel_description">Avisos quando alguém que você segue inicia uma transmissão</string>
+    <string name="live_notification_summary_title">Transmissões de pessoas que você segue</string>
+    <string name="live_notification_summary_body">Há novas transmissões para assistir</string>
+    <string name="live_overlay_title">Chat ao vivo</string>
+    <string name="live_overlay_title_default">Transmissão ativa</string>
+    <string name="live_overlay_subtitle">Chat flutuante ao vivo</string>
+    <plurals name="live_overlay_status"><item quantity="one">LIVE • %1$d espectador</item><item quantity="other">LIVE • %1$d espectadores</item></plurals>
+    <string name="live_overlay_bubble_description">Abrir chat flutuante da transmissão</string>
+    <string name="live_overlay_minimize">Minimizar chat flutuante</string>
+    <string name="live_overlay_close">Fechar chat flutuante</string>
+    <string name="live_overlay_empty">Ainda não há mensagens</string>
+    <string name="live_overlay_user_fallback">Usuário</string>
+    <string name="widget_novvin_description">Abra Vídeos, Momentos e Mensagens na tela inicial.</string>
+    <string name="widget_chat_title">Mensagens</string>
+    <string name="widget_chat_subtitle">Abra suas conversas no Novvin</string>
+    <string name="widget_chat_description">Atalho para as mensagens do Novvin.</string>
+    <string name="widget_videos_title">Vídeos</string>
+    <string name="widget_videos_subtitle">Abra o feed de vídeos</string>
+    <string name="widget_videos_description">Atalho para o feed de vídeos do Novvin.</string>
+    <string name="widget_moments_title">Criar momento</string>
+    <string name="widget_moments_subtitle">Compartilhe uma foto ou um vídeo</string>
+    <string name="widget_moments_description">Atalho para criar um Momento no Novvin.</string>
+    <string name="widget_quick_actions_subtitle">Ações rápidas</string>
+    <string name="widget_action_videos">Vídeos</string>
+    <string name="widget_action_moment">Momento</string>
+    <string name="widget_action_chat">Chat</string>
+</resources>

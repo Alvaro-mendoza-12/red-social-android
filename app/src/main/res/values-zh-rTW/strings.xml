@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="language_settings_title">應用程式語言</string>
+    <string name="language_settings_description">變更會立即生效，並與相容的 Android 語言設定同步。</string>
+    <string name="language_system">自動</string>
+    <string name="language_system_detail">使用裝置語言</string>
+    <string name="language_back">返回</string>
+    <string name="sign_in_email">使用電子郵件登入</string>
+    <string name="email">電子郵件</string>
+    <string name="password">密碼</string>
+    <string name="login">登入</string>
+    <string name="dont_have_account">還沒有帳號？</string>
+    <string name="register">註冊</string>
+    <string name="name">姓名</string>
+    <string name="country">國家或地區</string>
+    <string name="already_have_account">已有帳號？</string>
+    <string name="live_notification_channel_name">直播</string>
+    <string name="live_notification_channel_description">追蹤的人開始直播時通知</string>
+    <string name="live_notification_summary_title">追蹤對象的直播</string>
+    <string name="live_notification_summary_body">有新的直播可以觀看</string>
+    <string name="live_overlay_title">直播聊天</string>
+    <string name="live_overlay_title_default">直播進行中</string>
+    <string name="live_overlay_subtitle">浮動直播聊天</string>
+    <plurals name="live_overlay_status"><item quantity="other">直播 • %1$d 位觀眾</item></plurals>
+    <string name="live_overlay_bubble_description">開啟浮動直播聊天</string>
+    <string name="live_overlay_minimize">縮小浮動聊天</string>
+    <string name="live_overlay_close">關閉浮動聊天</string>
+    <string name="live_overlay_empty">目前沒有訊息</string>
+    <string name="live_overlay_user_fallback">使用者</string>
+    <string name="widget_novvin_description">從主畫面開啟影片、動態和訊息。</string>
+    <string name="widget_chat_title">訊息</string>
+    <string name="widget_chat_subtitle">開啟 Novvin 對話</string>
+    <string name="widget_chat_description">開啟 Novvin 訊息的捷徑。</string>
+    <string name="widget_videos_title">影片</string>
+    <string name="widget_videos_subtitle">開啟影片動態</string>
+    <string name="widget_videos_description">開啟 Novvin 影片動態的捷徑。</string>
+    <string name="widget_moments_title">建立動態</string>
+    <string name="widget_moments_subtitle">分享相片或影片</string>
+    <string name="widget_moments_description">建立 Novvin 動態的捷徑。</string>
+    <string name="widget_quick_actions_subtitle">快速操作</string>
+    <string name="widget_action_videos">影片</string>
+    <string name="widget_action_moment">動態</string>
+    <string name="widget_action_chat">聊天</string>
+</resources>
