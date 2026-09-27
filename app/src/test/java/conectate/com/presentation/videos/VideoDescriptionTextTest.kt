@@ -9,4 +9,10 @@ class VideoDescriptionTextTest {
         val matches = videoDescriptionMentions("Con @ana.lopez y @juan-p, no correo@dominio.com")
         assertEquals(listOf("ana.lopez", "juan-p"), matches.map { it.username })
     }
+
+    @Test
+    fun findsUnicodeHandles() {
+        val matches = videoDescriptionMentions("Hola @山田_太郎 y @a")
+        assertEquals(listOf("山田_太郎", "a"), matches.map { it.username })
+    }
 }

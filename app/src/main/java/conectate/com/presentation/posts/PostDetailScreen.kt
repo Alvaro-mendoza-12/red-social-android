@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -257,9 +259,9 @@ fun PostDetailScreen(
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                                     tonalElevation = 2.dp
                                 ) {
-                                    Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                                    Column(modifier = Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
                                         mentionSuggestions.forEach { user ->
-                                            val username = user.username ?: return@forEach
+                                            val username = conectate.com.data.model.profilePublicHandle(user)
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -301,7 +303,8 @@ fun PostDetailScreen(
                                         focusedIndicatorColor = Color.Transparent,
                                         unfocusedIndicatorColor = Color.Transparent
                                     ),
-                                    maxLines = 4
+                                    maxLines = 4,
+                                    visualTransformation = conectate.com.presentation.components.mentionInputTransformation,
                                 )
                                 IconButton(onClick = { showStickerPicker = true }) {
                                     Icon(
@@ -532,9 +535,16 @@ fun PostDetailScreen(
                                 onProfileClick = {
                                     navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(comment.userId))
                                 },
+                                onMentionClick = { handle ->
+                                    viewModel.resolvePublicMention(handle) { userId ->
+                                        if (userId != null) {
+                                            navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
+                                        } else AppFeedbackBus.showError("No se pudo identificar esta mención.")
+                                    }
+                                },
                                 onReplyClick = {
                                     replyingTo = comment
-                                    commentText = "@${comment.userName} "
+                                    commentText = ""
                                 },
                                 onLikeClick = { viewModel.toggleCommentReaction(comment, "LIKE") },
                                 onDislikeClick = { viewModel.toggleCommentReaction(comment, "DISLIKE") },

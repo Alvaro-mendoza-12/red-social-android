@@ -3183,46 +3183,102 @@ async function createLocalNotificationBestEffort(pool, input) {
   }
 }
 
-async function notifyVideoDescriptionMentions(pool, { description, videoId, actor, identity }) {
-  const handles = [...new Set(
-    [...String(description || '').matchAll(/(^|[^A-Za-z0-9_])@([A-Za-z0-9_.-]{3,24})/g)]
-      .map((match) => normalizeId(match[2])),
-  )].slice(0, 8)
-  if (handles.length === 0) return
+function publicMentionHandle(displayName) {
+  const name = String(displayName || '').trim()
+  if (!name || name.includes('@')) return ''
+  return name.normalize('NFD')
+    .replace(/(\p{Script=Latin})\p{M}+/gu, '$1')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}_.-]+/gu, '_')
+    .replace(/^[_\-.]+|[_\-.]+$/g, '')
+    .slice(0, 24)
+    .replace(/^[_\-.]+|[_\-.]+$/g, '')
+}
 
-  const [profiles, localMatches] = await Promise.all([
-    publicProfilesByIds(pool, handles),
-    pool.query(
-      `SELECT u.id::text AS id,
-              COALESCE(o.profile->>'username', split_part(u.email, '@', 1)) AS username
-       FROM fallback_users u
-       LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
-       WHERE lower(COALESCE(o.profile->>'username', split_part(u.email, '@', 1))) = ANY($1::text[])
-       LIMIT 8`,
-      [handles],
-    ),
-  ])
-  const candidates = [...profiles, ...localMatches.rows]
+function publicNotificationName(user) {
+  const name = cleanText(user?.display_name, 160)
+  return name && !name.includes('@') ? name : 'Usuario'
+}
+
+function publicMentionHandles(content) {
+  return [...new Set(
+    [...String(content || '').matchAll(/(^|[^\p{L}\p{N}_.-])@([\p{L}\p{N}](?:[\p{L}\p{N}\p{M}_.-]{0,22}[\p{L}\p{N}\p{M}])?)/gu)]
+      .map((match) => publicMentionHandle(match[2]))
+  )].slice(0, 8)
+}
+
+async function findUniquePublicMention(pool, handle) {
+  const firstPart = handle.split(/[_.-]/)[0]
+  if (!firstPart) return null
+  const { rows } = await pool.query(
+    `SELECT u.id::text AS id, u.supabase_user_id::text AS supabase_user_id,
+            COALESCE(NULLIF(o.profile->>'display_name', ''),
+                     NULLIF(o.profile->>'full_name', ''), u.display_name) AS display_name
+     FROM fallback_users u
+     LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+     WHERE translate(lower(concat_ws(' ',
+       o.profile->>'display_name', o.profile->>'full_name', u.display_name
+     )), 'áàâäãåéèêëíìîïóòôöõúùûüñç', 'aaaaaaeeeeiiiiooooouuuunc') LIKE $1
+     LIMIT 101`,
+    [`%${firstPart.replace(/[\\%_]/g, '\\$&')}%`],
+  )
+  if (rows.length > 100) return null
+  const matches = new Map()
+  rows.filter((item) => publicMentionHandle(item.display_name) === handle)
+    .forEach((item) => matches.set(normalizeId(item.supabase_user_id || item.id), item))
+  if (await tableExists(pool, 'profiles')) {
+    const { rows: imported } = await pool.query(
+      `SELECT to_jsonb(t) AS row FROM supabase_import.profiles AS t
+       WHERE translate(lower(concat_ws(' ',
+         to_jsonb(t)->>'display_name', to_jsonb(t)->>'full_name'
+       )), 'áàâäãåéèêëíìîïóòôöõúùûüñç', 'aaaaaaeeeeiiiiooooouuuunc') LIKE $1
+       LIMIT 101`,
+      [`%${firstPart.replace(/[\\%_]/g, '\\$&')}%`],
+    )
+    if (imported.length > 100) return null
+    imported.forEach((entry) => {
+      const profile = normalizeImportedRow(entry.row)
+      const id = textOf(profile, ['id', 'user_id', 'supabase_user_id'], '')
+      const displayName = textOf(profile, ['display_name', 'full_name'], '')
+      const key = normalizeId(id)
+      if (key && publicMentionHandle(displayName) === handle && !matches.has(key)) {
+        matches.set(key, { id, display_name: displayName })
+      }
+    })
+  }
+  return matches.size === 1 ? [...matches.values()][0] : null
+}
+
+async function notifyPublicMentions(pool, { content, targetId, commentId, actor, identity, type }) {
+  const handles = publicMentionHandles(content)
   const delivered = new Set()
   for (const handle of handles) {
-    const profile = candidates.find((item) => normalizeId(item.username) === handle)
+    const profile = await findUniquePublicMention(pool, handle)
     const recipientId = normalizeId(profile?.id)
     if (!recipientId || identity.ids.has(recipientId) || delivered.has(recipientId)) continue
-    if (['suspended', 'banned', 'deleted', 'disabled'].includes(normalizeId(profile.status))) continue
     if ((await blockRelationshipForPair(pool, identity, recipientId)).isBlocked) continue
     delivered.add(recipientId)
     await createLocalNotificationBestEffort(pool, {
       recipientId,
       actorId: identity.displayUserId,
-      actorName: actor.display_name || actor.email || 'Usuario',
+      actorName: publicNotificationName(actor),
       actorAvatarUrl: actor.avatar_url || '',
-      type: 'mention_video_description',
-      targetId: videoId,
-      targetType: 'video',
-      content: `Te mencionó en la descripción de un video.`,
-      extraData: { video_id: videoId, mention_handle: handle },
+      type,
+      targetId,
+      targetType: type.includes('video') ? 'video' : 'post',
+      content: type === 'mention_video_description'
+        ? 'Te mencionó en la descripción de un video.'
+        : type === 'mention_video' ? 'Te mencionó en un comentario de video.' : 'Te mencionó en un comentario.',
+      extraData: { ...(commentId ? { comment_id: commentId } : {}), mention_handle: handle },
     })
   }
+}
+
+async function notifyVideoDescriptionMentions(pool, { description, videoId, actor, identity }) {
+  return notifyPublicMentions(pool, {
+    content: description, targetId: videoId, actor, identity, type: 'mention_video_description',
+  })
 }
 
 async function localProfileOverride(pool, userId) {
@@ -3387,6 +3443,10 @@ async function publicProfileSearchCandidates(pool, rawQuery, limit = 250) {
          COALESCE(to_jsonb(t)->>'full_name', ''),
          COALESCE(to_jsonb(t)->>'bio', '')
        )) LIKE $2
+       OR replace(translate(lower(concat_ws(' ',
+         COALESCE(to_jsonb(t)->>'display_name', ''),
+         COALESCE(to_jsonb(t)->>'full_name', '')
+       )), 'áàâäãåéèêëíìîïóòôöõúùûüñç', 'aaaaaaeeeeiiiiooooouuuunc'), ' ', '_') LIKE $2
        ORDER BY COALESCE(
          NULLIF(to_jsonb(t)->>'updated_at', ''),
          NULLIF(to_jsonb(t)->>'created_at', ''),
@@ -3413,6 +3473,11 @@ async function publicProfileSearchCandidates(pool, rawQuery, limit = 250) {
        COALESCE(o.profile->>'full_name', ''),
        COALESCE(o.profile->>'bio', '')
      )) LIKE $2
+     OR replace(translate(lower(concat_ws(' ',
+       COALESCE(o.profile->>'display_name', ''),
+       COALESCE(o.profile->>'full_name', ''),
+       COALESCE(u.display_name, '')
+     )), 'áàâäãåéèêëíìîïóòôöõúùûüñç', 'aaaaaaeeeeiiiiooooouuuunc'), ' ', '_') LIKE $2
      ORDER BY COALESCE(o.updated_at, u.updated_at, u.created_at) DESC
      LIMIT $3`,
     [query, pattern, safeLimit],
@@ -3438,7 +3503,8 @@ function profileMatchesQuery(profile, query) {
     profile.username,
     profile.bio,
   ].map((entry) => String(entry || '').toLowerCase()).join(' ')
-  return haystack.includes(query)
+  return haystack.includes(query) ||
+    publicMentionHandle(profile.display_name || profile.full_name).includes(query)
 }
 
 function followMatches(row, followerIds, followingIds) {
@@ -7345,12 +7411,12 @@ function registerDataRoutes(app, {
       await createLocalNotificationBestEffort(pool, {
         recipientId: profileId,
         actorId: identity.displayUserId,
-        actorName: user.display_name || user.email || 'Usuario',
+        actorName: publicNotificationName(user),
         actorAvatarUrl: user.avatar_url || '',
         type: 'follow',
         targetId: identity.displayUserId,
         targetType: 'profile',
-        content: `${user.display_name || user.email || 'Alguien'} empezó a seguirte.`,
+        content: `${publicNotificationName(user)} empezó a seguirte.`,
       })
       if (autoVerified) {
         void publishRealtimeEvent(`user:${profileId}`, {
@@ -8681,7 +8747,7 @@ function registerDataRoutes(app, {
       await createLocalNotificationBestEffort(pool, {
         recipientId: normalizeId(textOf(existing.post, ['user_id', 'owner_id', 'author_id', 'creator_id'], '')),
         actorId: identity.displayUserId,
-        actorName: user.display_name || user.email || 'Usuario',
+        actorName: publicNotificationName(user),
         actorAvatarUrl: user.avatar_url || '',
         type: 'comment_post',
         targetId: postId,
@@ -8689,6 +8755,10 @@ function registerDataRoutes(app, {
         content: content || 'Comentó tu publicación.',
         extraData: { post_id: postId, comment_id: textOf(rows[0], ['id'], '') },
       })
+      await notifyPublicMentions(pool, {
+        content, targetId: postId, commentId: rows[0]?.id,
+        actor: user, identity, type: 'mention_post',
+      }).catch((error) => console.error('Post mention notification failed', safeErrorLogDetails(error)))
       res.status(201).json({
         comment: enrichPostComment(normalizeImportedRow(rows[0]), profilesById, identity),
         moderation_warning: moderation.verdict === 'sanitize'
@@ -10963,7 +11033,7 @@ function registerDataRoutes(app, {
         await createLocalNotificationBestEffort(pool, {
           recipientId: targetUserId,
           actorId: identity.displayUserId,
-          actorName: user.display_name || user.email || 'Usuario',
+          actorName: publicNotificationName(user),
           actorAvatarUrl: user.avatar_url || '',
           type: `${config.kind}_member_added`,
           targetId: roomId,
@@ -13091,7 +13161,7 @@ function registerDataRoutes(app, {
         await createLocalNotificationBestEffort(pool, {
           recipientId,
           actorId: identity.displayUserId,
-          actorName: user.display_name || user.email || 'Usuario',
+          actorName: publicNotificationName(user),
           actorAvatarUrl: user.avatar_url || '',
           type: 'comment_video',
           targetId: cleanId,
@@ -13100,6 +13170,10 @@ function registerDataRoutes(app, {
           extraData: { video_id: cleanId, comment_id: rows[0]?.id },
         })
       }
+      await notifyPublicMentions(pool, {
+        content, targetId: cleanId, commentId: rows[0]?.id,
+        actor: user, identity, type: 'mention_video',
+      }).catch((error) => console.error('Video mention notification failed', safeErrorLogDetails(error)))
       const profilesById = indexProfiles(await publicProfilesByIds(pool, identity.values))
       const commentCount = await syncLocalVideoCommentCount(pool, cleanId)
       void publishRealtimeEvent(`video-comments:${cleanId}`, {
@@ -14619,6 +14693,10 @@ async function processBirthdayNotifications(
 }
 
 module.exports = {
+  findUniquePublicMention,
+  profileMatchesQuery,
+  publicMentionHandle,
+  publicMentionHandles,
   buildPublicSemanticSearchCorpus,
   buildProfileForUser,
   birthdayDateParts,

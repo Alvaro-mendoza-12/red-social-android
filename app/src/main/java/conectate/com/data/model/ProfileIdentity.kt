@@ -3,21 +3,26 @@ package conectate.com.data.model
 import java.text.Normalizer
 import java.util.Locale
 
+val publicMentionPattern = Regex("(?<![\\p{L}\\p{N}_.-])@([\\p{L}\\p{N}](?:[\\p{L}\\p{N}\\p{M}_.-]{0,22}[\\p{L}\\p{N}\\p{M}])?)")
+
 /** Public label comes from the chosen display name, never from an email-derived username. */
 fun profilePublicHandle(user: User): String {
     val displayName = sequenceOf(user.display_name, user.full_name)
         .map { it.orEmpty().trim() }
         .firstOrNull { it.isNotBlank() && '@' !in it }
         ?: "usuario"
-    return Normalizer.normalize(displayName, Normalizer.Form.NFD)
+    return normalizedPublicMentionHandle(displayName).ifBlank { "usuario" }
+}
+
+fun normalizedPublicMentionHandle(value: String): String =
+    Normalizer.normalize(value.trim().removePrefix("@"), Normalizer.Form.NFD)
         .replace(Regex("(\\p{IsLatin})\\p{M}+"), "$1")
         .let { Normalizer.normalize(it, Normalizer.Form.NFC) }
         .lowercase(Locale.ROOT)
         .replace(Regex("[^\\p{L}\\p{N}\\p{M}_.-]+"), "_")
         .trim('_', '.', '-')
         .take(24)
-        .ifBlank { "usuario" }
-}
+        .trim('_', '.', '-')
 
 /** Five-digit visual reference. It is not a unique account key; the UUID remains canonical. */
 fun profileShortId(user: User): String {

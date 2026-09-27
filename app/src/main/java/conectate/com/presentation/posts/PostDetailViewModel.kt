@@ -55,6 +55,10 @@ class PostDetailViewModel @Inject constructor(
     private val _mentionSuggestions = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
     val mentionSuggestions: StateFlow<List<conectate.com.data.model.User>> = _mentionSuggestions.asStateFlow()
 
+    fun resolvePublicMention(handle: String, onResolved: (String?) -> Unit) {
+        viewModelScope.launch { onResolved(userRepository.resolvePublicMention(handle)?.id) }
+    }
+
     val currentUserId: String?
         get() = authService.getCurrentUserId()
 

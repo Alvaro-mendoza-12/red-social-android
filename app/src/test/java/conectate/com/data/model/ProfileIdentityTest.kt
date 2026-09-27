@@ -54,4 +54,13 @@ class ProfileIdentityTest {
         assertEquals(5, profileShortId(user).length)
         assertEquals("1234", profileShortId(user.copy(numeric_id = 1234)))
     }
+
+    @Test
+    fun publicMentionPatternDoesNotTreatEmailAsMention() {
+        assertEquals("keiber_joya", publicMentionPattern.find("Hola @keiber_joya, mira esto")?.groupValues?.get(1))
+        assertEquals("keiber", publicMentionPattern.find("Mira @keiber.")?.groupValues?.get(1))
+        assertEquals("李", publicMentionPattern.find("Hola @李!")?.groupValues?.get(1))
+        assertEquals(null, publicMentionPattern.find("keiber@example.com"))
+        assertEquals("keiber_joya", normalizedPublicMentionHandle("@Keibér_Joya"))
+    }
 }

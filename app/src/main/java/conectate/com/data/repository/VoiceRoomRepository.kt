@@ -145,6 +145,7 @@ class VoiceRoomRepository @Inject constructor(
     val currentRoom = _currentRoom.asStateFlow()
 
     private val _currentParticipants = MutableStateFlow<List<VoiceParticipant>>(emptyList())
+    @Volatile private var desiredSelfMuted = false
     val currentParticipants = _currentParticipants.asStateFlow()
 
     private val _remoteVideoTracks = MutableStateFlow<Map<String, VideoTrack>>(emptyMap())
@@ -383,10 +384,10 @@ class VoiceRoomRepository @Inject constructor(
 
     private fun isSelfMuted(participants: List<VoiceParticipant> = _currentParticipants.value): Boolean {
         var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
-        if (currentUserId.isBlank()) return false
-        return participants.any { participant ->
-            participant.id.trim().lowercase() == currentUserId && participant.isMuted
-        }
+        if (currentUserId.isBlank()) return desiredSelfMuted
+        val self = participants.firstOrNull { it.id.trim().lowercase() == currentUserId }
+        // A delayed server snapshot must never turn a locally muted mic back on.
+        return desiredSelfMuted || self?.isMuted == true
     }
 
     private fun canCurrentUserPublishMedia(
@@ -641,10 +642,10 @@ class VoiceRoomRepository @Inject constructor(
             var lastFailure: Throwable? = null
             for (index in 0 until attempts.coerceAtLeast(1)) {
                 runCatching {
-                    prepareVoiceAudioSession(forceMicUnmute = true)
+                    prepareVoiceAudioSession(forceMicUnmute = !isSelfMuted() && canCurrentUserPublishMedia())
                     webRTCManager?.ensureLocalTracks()
                     webRTCManager?.setRemoteAudioPlaybackEnabled(true)
-                    webRTCManager?.setAudioEnabled(!isSelfMuted())
+                    webRTCManager?.setAudioEnabled(!isSelfMuted() && canCurrentUserPublishMedia())
                     if (socket?.connected() == true) {
                         emitCurrentMediaState()
                         flushPendingRoomSocketEvents()
@@ -1267,6 +1268,7 @@ class VoiceRoomRepository @Inject constructor(
         var isSocketConnected = socket?.connected() == true
         val isWebResHealthy = webRTCManager?.isHealthy() == true
         val isReentry = (activeRoomId == signalRoom && isSocketConnected && isWebResHealthy)
+        val joinMuted = startMuted || (activeRoomId == signalRoom && isSelfMuted())
         if (!activeRoomId.equals(signalRoom, ignoreCase = true)) {
             disableCaptionsInternal(announce = true)
             _captionConsentUserIds.value = emptySet()
@@ -1285,7 +1287,7 @@ class VoiceRoomRepository @Inject constructor(
                 id = userId,
                 name = displayName,
                 avatarUrl = avatarUrl,
-                isMuted = startMuted,
+                isMuted = isSelfMuted(),
                 socketId = socket?.id() ?: userId
             )
             if (_currentParticipants.value.none { it.id == userId }) {
@@ -1299,16 +1301,16 @@ class VoiceRoomRepository @Inject constructor(
                         userName = displayName,
                         userAvatarUrl = avatarUrl,
                         socketId = socket?.id() ?: userId,
-                        isMuted = startMuted,
+                        isMuted = isSelfMuted(),
                         password = activeRoomPassword
                     )
                 }
             }
             
-            prepareVoiceAudioSession(forceMicUnmute = !startMuted)
+            prepareVoiceAudioSession(forceMicUnmute = !isSelfMuted() && canCurrentUserPublishMedia())
             webRTCManager?.ensureLocalTracks()
             webRTCManager?.setRemoteAudioPlaybackEnabled(true)
-            webRTCManager?.setAudioEnabled(!startMuted && !isSelfMuted())
+            webRTCManager?.setAudioEnabled(!isSelfMuted() && canCurrentUserPublishMedia())
             emitCurrentMediaState()
             flushPendingRoomSocketEvents(signalRoom)
             updateConnectionState(VoiceConnectionState.CONNECTED)
@@ -1328,16 +1330,6 @@ class VoiceRoomRepository @Inject constructor(
              kotlinx.coroutines.delay(200)
         }
         
-        activeRoomId = signalRoom
-        activeRoomPassword = roomPassword?.takeIf { it.isNotBlank() }
-        
-        // Sync currentRoom object for UI tracking
-        scope.launch {
-            getRoomById(roomLookupId).getOrNull()?.let { room ->
-                _currentRoom.value = normalizeRoomForUi(room)
-            }
-        }
-
         try {
             if (roomChannel != null) {
                 android.util.Log.d("VoiceRoomRepository", "Cleaning up previous room channel...")
@@ -1351,6 +1343,13 @@ class VoiceRoomRepository @Inject constructor(
                         extra = currentMetricAttributes(roomId = roomId)
                     )
                 }
+            }
+
+            activeRoomId = signalRoom
+            activeRoomPassword = roomPassword?.takeIf { it.isNotBlank() }
+            desiredSelfMuted = joinMuted
+            getRoomById(roomLookupId).getOrNull()?.let { room ->
+                _currentRoom.value = normalizeRoomForUi(room)
             }
 
             // v21.0: Reverting seamless re-entry due to "Zombie Session" issues (Audio/Chat loss).
@@ -1372,8 +1371,8 @@ class VoiceRoomRepository @Inject constructor(
                 webRTCManager?.setRemoteAudioPlaybackEnabled(true)
                 // Removed setCurrentUser with empty socketId to avoid race condition with isPolite
 
-                prepareVoiceAudioSession(forceMicUnmute = !startMuted)
-                webRTCManager?.setAudioEnabled(!startMuted)
+                prepareVoiceAudioSession(forceMicUnmute = !joinMuted && canCurrentUserPublishMedia())
+                webRTCManager?.setAudioEnabled(!joinMuted && canCurrentUserPublishMedia())
                 android.util.Log.d("VoiceRoomRepository", "✅ Audio mode set to COMM + Focus Requested")
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomRepository", "❌ WebRTC Re-init failed: ${e.message}")
@@ -1393,7 +1392,7 @@ class VoiceRoomRepository @Inject constructor(
                 id = userId,
                 name = displayName,
                 avatarUrl = avatarUrl,
-                isMuted = startMuted,
+                isMuted = joinMuted,
                 socketId = userId
             )
             _currentParticipants.value = listOf(self)
@@ -1411,7 +1410,7 @@ class VoiceRoomRepository @Inject constructor(
                         userName = displayName,
                         userAvatarUrl = avatarUrl,
                         socketId = socket?.id() ?: userId,
-                        isMuted = startMuted,
+                        isMuted = joinMuted,
                         password = activeRoomPassword
                     ).onSuccess { participants ->
                         if (participants.isNotEmpty()) {
@@ -1519,6 +1518,7 @@ class VoiceRoomRepository @Inject constructor(
                     put("userId", userId.trim())
                     put("name", name)
                     put("avatarUrl", avatarUrl ?: "")
+                    put("isMuted", isSelfMuted())
                     activeRoomPassword?.let { put("password", it) }
                 })
                 android.util.Log.i("VoiceRoomRepository", "📤 join-room EMITTED for room=$roomId sid=$sid")
@@ -1529,7 +1529,9 @@ class VoiceRoomRepository @Inject constructor(
                     webRTCManager?.refreshManagedIceServers(force = true)
                     webRTCManager?.ensureLocalTracks()
                     webRTCManager?.setRemoteAudioPlaybackEnabled(true)
-                    prepareVoiceAudioSession(forceMicUnmute = true)
+                    val muted = isSelfMuted()
+                    prepareVoiceAudioSession(forceMicUnmute = !muted && canCurrentUserPublishMedia())
+                    webRTCManager?.setAudioEnabled(!muted && canCurrentUserPublishMedia())
                 } catch (e: Exception) {
                     android.util.Log.e("VoiceRoomRepository", "❌ WebRTC/audio setup failed AFTER join-room was sent", e)
                     crashReporter.recordException(
@@ -1553,7 +1555,7 @@ class VoiceRoomRepository @Inject constructor(
                                 userName = name,
                                 userAvatarUrl = avatarUrl,
                                 socketId = sid.ifBlank { userId },
-                                isMuted = false,
+                                isMuted = isSelfMuted(),
                                 password = activeRoomPassword
                             ).onSuccess { participants ->
                                 if (participants.isNotEmpty()) {
@@ -2261,10 +2263,10 @@ class VoiceRoomRepository @Inject constructor(
             metric = "voice_video_transition",
             attributes = currentMetricAttributes(reason = "screen_share_start") + ("targetMode" to "screen")
         )
-        prepareVoiceAudioSession(forceMicUnmute = true)
+        prepareVoiceAudioSession(forceMicUnmute = !isSelfMuted() && canCurrentUserPublishMedia())
         updateVoiceForegroundService("screen")
         webRTCManager?.ensureLocalTracks()
-        webRTCManager?.setAudioEnabled(!isSelfMuted())
+        webRTCManager?.setAudioEnabled(!isSelfMuted() && canCurrentUserPublishMedia())
         webRTCManager?.startVideo(
             isScreen = true,
             intent = intent,
@@ -2319,10 +2321,10 @@ class VoiceRoomRepository @Inject constructor(
             metric = "voice_video_transition",
             attributes = currentMetricAttributes(reason = "camera_start") + ("targetMode" to "camera")
         )
-        prepareVoiceAudioSession(forceMicUnmute = true)
+        prepareVoiceAudioSession(forceMicUnmute = !isSelfMuted() && canCurrentUserPublishMedia())
         updateVoiceForegroundService("camera")
         webRTCManager?.ensureLocalTracks()
-        webRTCManager?.setAudioEnabled(!isSelfMuted())
+        webRTCManager?.setAudioEnabled(!isSelfMuted() && canCurrentUserPublishMedia())
         webRTCManager?.startVideo(
             isScreen = false,
             isFront = isFront,
@@ -2403,6 +2405,7 @@ class VoiceRoomRepository @Inject constructor(
 
             // 3. Reset UI State
             _currentParticipants.value = emptyList()
+            desiredSelfMuted = false
             _remoteVideoTracks.value = emptyMap()
             _peerConnectionStates.value = emptyMap()
             _signalingStates.value = emptyMap()
@@ -2447,6 +2450,7 @@ class VoiceRoomRepository @Inject constructor(
 
     fun toggleMute(isMuted: Boolean) {
         if (!isMuted && !canCurrentUserPublishMedia()) {
+            desiredSelfMuted = true
             _currentParticipants.value = _currentParticipants.value.map {
                 if (it.id == authService.getCurrentUserId()) it.copy(isMuted = true) else it
             }
@@ -2456,6 +2460,7 @@ class VoiceRoomRepository @Inject constructor(
             return
         }
         android.util.Log.d("VoiceRoomRepository", "🎤 NUCLEAR MUTE: $isMuted")
+        desiredSelfMuted = isMuted
         
         // 1. Update Participants UI
         _currentParticipants.value = _currentParticipants.value.map { 

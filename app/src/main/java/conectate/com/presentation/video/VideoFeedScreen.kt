@@ -1306,6 +1306,15 @@ fun VideoFeedScreen(
                 setSidePanelIndex(2)
                 onNavigateToProfile(userId)
             },
+            onMentionClick = { handle ->
+                navScope.launch {
+                    val user = viewModel.userRepository.resolvePublicMention(handle)
+                    if (user != null) {
+                        setSidePanelIndex(2)
+                        onNavigateToProfile(user.id)
+                    } else conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo identificar esta mención.")
+                }
+            },
             onSwipeForward = { onHorizontalSwipe(videoForComments, forward = true) },
             onSwipeBackward = { onHorizontalSwipe(videoForComments, forward = false) },
             videoCreatorId = videoForComments.userId,
@@ -1984,13 +1993,9 @@ fun VideoFeedScreen(
                                 setSidePanelIndex(2)
                                 onNavigateToProfile(userId)
                             },
-                            onMentionClick = { username ->
+                            onMentionClick = { handle ->
                                 navScope.launch {
-                                    val user = viewModel.userRepository.searchMentionCandidates(
-                                        username, excludeUserId = null, limit = 12,
-                                    ).getOrNull()?.firstOrNull {
-                                        it.username.equals(username, ignoreCase = true)
-                                    }
+                                    val user = viewModel.userRepository.resolvePublicMention(handle)
                                     if (user != null) onNavigateToProfile(user.id)
                                     else conectate.com.presentation.common.AppFeedbackBus.showError(
                                         "Este perfil ya no está disponible."

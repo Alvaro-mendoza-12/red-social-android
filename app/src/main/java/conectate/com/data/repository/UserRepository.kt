@@ -2668,14 +2668,35 @@ class UserRepository @Inject constructor(
     }
 
     fun isMentionableUser(user: User): Boolean {
-        val username = user.username?.trim().orEmpty()
-        if (username.isBlank()) return false
+        if (sequenceOf(user.display_name, user.full_name).none {
+                !it.isNullOrBlank() && '@' !in it
+            }) return false
         if (user.is_suspended || user.isSuspendedNow) return false
 
         var status = user.status?.trim()?.lowercase().orEmpty()
         if (status in NON_MENTIONABLE_STATUSES) return false
 
         return true
+    }
+
+    /** A public name can repeat. Never guess which account a mention targets. */
+    suspend fun resolvePublicMention(handle: String): User? {
+        val clean = conectate.com.data.model.normalizedPublicMentionHandle(handle)
+        if (clean.isBlank()) return null
+        val matches = linkedMapOf<String, User>()
+        if (shouldUseUbuntuBackend()) {
+            val token = authService.getAccessTokenAwait() ?: return null
+            localFallbackApiClient.searchProfileUsers(token, clean, limit = 250).getOrNull().orEmpty()
+                .filter { isMentionableUser(it) && conectate.com.data.model.profilePublicHandle(it) == clean }
+                .forEach { matches[it.id.lowercase()] = it }
+            return matches.values.singleOrNull()
+        }
+        for (query in listOf(clean.replace('_', ' '), clean).distinct()) {
+            searchUsers(query).getOrNull().orEmpty()
+                .filter { isMentionableUser(it) && conectate.com.data.model.profilePublicHandle(it) == clean }
+                .forEach { matches[it.id.lowercase()] = it }
+        }
+        return matches.values.singleOrNull()
     }
 
     suspend fun getUsersByFollowerThreshold(threshold: Int): Result<List<User>> {

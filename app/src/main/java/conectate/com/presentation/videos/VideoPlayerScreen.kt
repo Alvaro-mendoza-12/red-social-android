@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -1380,13 +1382,9 @@ fun VideoPlayerScreen(
                                         VideoDescriptionText(
                                             text = state.video.description,
                                             style = MaterialTheme.typography.bodyMedium,
-                                            onMentionClick = { username ->
+                                            onMentionClick = { handle ->
                                                 mentionNavigationScope.launch {
-                                                    val user = viewModel.userRepo.searchMentionCandidates(
-                                                        username, excludeUserId = null, limit = 12,
-                                                    ).getOrNull()?.firstOrNull {
-                                                        it.username.equals(username, ignoreCase = true)
-                                                    }
+                                                    val user = viewModel.userRepo.resolvePublicMention(handle)
                                                     if (user != null) {
                                                         navController.navigate(
                                                             conectate.com.presentation.navigation.Screen.UserProfile.createRoute(user.id)
@@ -1543,6 +1541,14 @@ fun VideoPlayerScreen(
                                     onDeleteComment = { viewModel.deleteComment(it) },
                                     onProfileClick = { userId ->
                                         navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
+                                    },
+                                    onMentionClick = { handle ->
+                                        mentionNavigationScope.launch {
+                                            val user = viewModel.userRepo.resolvePublicMention(handle)
+                                            if (user != null) {
+                                                navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(user.id))
+                                            } else conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo identificar esta mención.")
+                                        }
                                     },
                                     videoCreatorId = state.video.userId,
                                     onReplyClick = { target -> viewModel.onReplyClick(target) },
@@ -1701,9 +1707,9 @@ fun VideoPlayerScreen(
                                             shape = RoundedCornerShape(12.dp),
                                             tonalElevation = 2.dp
                                         ) {
-                                            Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                                            Column(modifier = Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
                                                 mentionSuggestions.forEach { user ->
-                                                    val username = user.username ?: return@forEach
+                                                    val username = conectate.com.data.model.profilePublicHandle(user)
                                                     Row(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
@@ -1747,6 +1753,7 @@ fun VideoPlayerScreen(
                                                 Text(if (replyingTo != null) "Escribe una respuesta..." else "Escribe un comentario...")
                                             },
                                             maxLines = 3,
+                                            visualTransformation = conectate.com.presentation.components.mentionInputTransformation,
                                             shape = CircleShape
                                         )
 

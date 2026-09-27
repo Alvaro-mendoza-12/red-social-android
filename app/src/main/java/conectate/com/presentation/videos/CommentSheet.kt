@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -82,6 +83,7 @@ fun CommentSheet(
     currentUserId: String? = null,
     onDeleteComment: (VideoComment) -> Unit = {},
     onProfileClick: (String) -> Unit = {},
+    onMentionClick: (String) -> Unit = {},
     onSwipeForward: () -> Unit = {},
     onSwipeBackward: () -> Unit = {},
     videoCreatorId: String? = null,
@@ -200,6 +202,7 @@ fun CommentSheet(
                             currentUserId = currentUserId,
                             onDeleteComment = onDeleteComment,
                             onProfileClick = onProfileClick,
+                            onMentionClick = onMentionClick,
                             videoCreatorId = videoCreatorId,
                             onReplyClick = onReplyClick,
                             onReactComment = onReactComment,
@@ -300,9 +303,9 @@ fun CommentSheet(
                                     shape = RoundedCornerShape(12.dp),
                                     tonalElevation = 2.dp
                                 ) {
-                                    Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                                    Column(modifier = Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
                                         mentionSuggestions.forEach { user ->
-                                            val username = user.username ?: return@forEach
+                                            val username = conectate.com.data.model.profilePublicHandle(user)
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -339,7 +342,8 @@ fun CommentSheet(
                                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                                     unfocusedBorderColor = MaterialTheme.colorScheme.outline
                                 ),
-                                maxLines = 3
+                                maxLines = 3,
+                                visualTransformation = conectate.com.presentation.components.mentionInputTransformation,
                             )
                         }
                     }
@@ -466,6 +470,7 @@ fun CommentThreadItem(
     currentUserId: String?,
     onDeleteComment: (VideoComment) -> Unit,
     onProfileClick: (String) -> Unit,
+    onMentionClick: (String) -> Unit,
     videoCreatorId: String?,
     onReplyClick: (VideoComment) -> Unit,
     onReactComment: (VideoComment, String?) -> Unit = { _, _ -> },
@@ -490,6 +495,7 @@ fun CommentThreadItem(
             canDelete = canDeleteParent,
             onDelete = { onDeleteComment(comment) },
             onProfileClick = { onProfileClick(comment.userId) },
+            onMentionClick = onMentionClick,
             isCreator = comment.userId == videoCreatorId,
             onReplyClick = { onReplyClick(comment) },
             onReaction = { reaction -> onReactComment(comment, reaction) },
@@ -539,6 +545,7 @@ fun CommentThreadItem(
                         canDelete = canDeleteReply,
                         onDelete = { onDeleteComment(reply) },
                         onProfileClick = { onProfileClick(reply.userId) },
+                        onMentionClick = onMentionClick,
                         isCreator = reply.userId == videoCreatorId,
                         onReplyClick = { onReplyClick(reply) }, // Reply to reply? Usually replies to original parent or flat structure. Let's keep it simple.
                         isReply = true,
@@ -563,6 +570,7 @@ fun VideoCommentItem(
     canDelete: Boolean = false,
     onDelete: () -> Unit = {},
     onProfileClick: () -> Unit = {},
+    onMentionClick: (String) -> Unit = {},
     isCreator: Boolean = false,
     onReplyClick: () -> Unit = {},
     isReply: Boolean = false,
@@ -633,11 +641,7 @@ fun VideoCommentItem(
                              modifier = Modifier.size(112.dp)
                          )
                      } else {
-                         Text(
-                            text = comment.content,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                         )
+                         conectate.com.presentation.components.MentionText(comment.content, onMentionClick)
                      }
                  }
              }

@@ -302,7 +302,7 @@ class VideoUploadViewModel @Inject constructor(
         val clean = value.take(1_000)
         _description.value = clean
         mentionSearchJob?.cancel()
-        val query = Regex("(?:^|\\s)@([A-Za-z0-9_.-]{2,24})$")
+        val query = Regex("(?:^|\\s)@([\\p{L}\\p{N}\\p{M}_.-]{1,24})$")
             .find(clean)?.groupValues?.get(1)
         if (query == null) {
             _mentionSuggestions.value = emptyList()
@@ -316,9 +316,9 @@ class VideoUploadViewModel @Inject constructor(
         }
     }
     fun addDescriptionMention(user: conectate.com.data.model.User) {
-        val username = user.username?.trim()?.takeIf { it.isNotBlank() } ?: return
+        val username = conectate.com.data.model.profilePublicHandle(user)
         val current = _description.value
-        val match = Regex("(?:^|\\s)@([A-Za-z0-9_.-]{2,24})$").find(current) ?: return
+        val match = Regex("(?:^|\\s)@([\\p{L}\\p{N}\\p{M}_.-]{1,24})$").find(current) ?: return
         _description.value = current.replaceRange(match.range.last - match.groupValues[1].length,
             current.length, "@$username ").take(1_000)
         mentionSearchJob?.cancel()

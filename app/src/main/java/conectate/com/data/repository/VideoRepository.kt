@@ -3291,14 +3291,7 @@ class VideoRepository @Inject constructor(
     private suspend fun resolveMentionUsers(mentionUsernames: Set<String>): List<conectate.com.data.model.User> {
         val resolved = mutableListOf<conectate.com.data.model.User>()
         mentionUsernames.take(8).forEach { username ->
-            userRepository.searchUsers(username).onSuccess { users ->
-                val exact = users.firstOrNull {
-                    !it.username.isNullOrBlank() && it.username.equals(username, ignoreCase = true)
-                }
-                if (exact != null && userRepository.isMentionableUser(exact)) {
-                    resolved += exact
-                }
-            }
+            userRepository.resolvePublicMention(username)?.let(resolved::add)
         }
         return resolved.distinctBy { it.id }
     }
@@ -3334,7 +3327,7 @@ class VideoRepository @Inject constructor(
     }
 
     private fun extractMentionUsernames(content: String): Set<String> {
-        val mentionRegex = Regex("(?<![A-Za-z0-9_])@([A-Za-z0-9._]{2,30})")
+        val mentionRegex = conectate.com.data.model.publicMentionPattern
         return mentionRegex.findAll(content)
             .map { it.groupValues[1].trim().lowercase() }
             .filter { it.isNotBlank() }

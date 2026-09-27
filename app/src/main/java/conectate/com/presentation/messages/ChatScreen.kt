@@ -1308,9 +1308,10 @@ fun ChatScreen(
                                         if (url.contains("conectate.com/post/")) {
                                             val postId = url.substringAfter("post/")
                                             navController.navigate(conectate.com.presentation.navigation.Screen.PostDetail.createRoute(postId))
-                                        } else if (url.contains("conectate.com/video/")) {
-                                            val videoId = url.substringAfter("video/")
-                                            navController.navigate(conectate.com.presentation.navigation.Screen.VideoPlayer.createRoute(videoId))
+                                        } else {
+                                            conectate.com.data.model.videoIdFromSharedLink(url)?.let { videoId ->
+                                                navController.navigate(conectate.com.presentation.navigation.Screen.VideoPlayer.createRoute(videoId))
+                                            }
                                         }
                                     },
                                     currentUserId = currentUserId,

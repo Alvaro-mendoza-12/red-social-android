@@ -19,6 +19,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.TextUnit
 import androidx.core.net.toUri
+import conectate.com.data.model.videoIdFromSharedLink
 
 @Composable
 fun LinkText(
@@ -38,7 +39,7 @@ fun LinkText(
             val url = (annotation as? LinkAnnotation.Url)?.url
             if (url != null) {
                 if (onUrlClick != null &&
-                    (url.contains("conectate.com/post/") || url.contains("conectate.com/video/"))
+                    (url.contains("conectate.com/post/") || videoIdFromSharedLink(url) != null)
                 ) {
                     onUrlClick(url)
                 } else {

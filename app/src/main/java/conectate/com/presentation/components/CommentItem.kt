@@ -16,13 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.LinkInteractionListener
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import conectate.com.data.model.Comment
 
@@ -36,6 +30,7 @@ fun CommentItem(
     onDeleteClick: () -> Unit = {},
     onEditClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
+    onMentionClick: (String) -> Unit = {},
     onLikeClick: () -> Unit = {},
     onDislikeClick: () -> Unit = {},
     onReportClick: () -> Unit = {},
@@ -74,41 +69,8 @@ fun CommentItem(
                         modifier = Modifier.clickable { onProfileClick() }
                     )
                     
-                    val mentionClickListener = remember(onProfileClick) {
-                        LinkInteractionListener { onProfileClick() }
-                    }
-                    val annotatedContent = remember(comment.content, mentionClickListener) {
-                        buildAnnotatedString {
-                            val words = comment.content.split(" ")
-                            words.forEachIndexed { index, word ->
-                                if (word.startsWith("@") && word.length > 1) {
-                                    withLink(
-                                        LinkAnnotation.Clickable(
-                                            tag = word,
-                                            styles = TextLinkStyles(
-                                                style = SpanStyle(
-                                                    color = Color(0xFF2196F3),
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            ),
-                                            linkInteractionListener = mentionClickListener
-                                        )
-                                    ) {
-                                        append(word)
-                                    }
-                                } else {
-                                    append(word)
-                                }
-                                if (index < words.size - 1) append(" ")
-                            }
-                        }
-                    }
-
                     if (comment.mediaType != "sticker" && (comment.audioUrl.isNullOrEmpty() || comment.content != "[Audio]")) {
-                        Text(
-                            text = annotatedContent,
-                            style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface)
-                        )
+                        MentionText(comment.content, onMentionClick)
                     }
                     
                     // Audio Player for Comments

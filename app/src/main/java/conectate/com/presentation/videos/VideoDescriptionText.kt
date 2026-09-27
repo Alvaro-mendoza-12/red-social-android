@@ -18,11 +18,12 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
+import conectate.com.data.model.publicMentionPattern
 
 internal data class VideoMention(val username: String, val start: Int, val end: Int)
 
 internal fun videoDescriptionMentions(text: String): List<VideoMention> =
-    Regex("(?<![A-Za-z0-9_])@([A-Za-z0-9_.-]{3,24})")
+    publicMentionPattern
         .findAll(text)
         .map { match ->
             VideoMention(match.groupValues[1], match.range.first, match.range.last + 1)
