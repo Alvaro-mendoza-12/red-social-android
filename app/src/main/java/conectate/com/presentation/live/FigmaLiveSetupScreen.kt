@@ -191,6 +191,7 @@ fun LiveSetupScreen(
     val previewBusy by viewModel.previewBusy.collectAsStateWithLifecycle()
     val screenPermissionReady by viewModel.screenPermissionReady.collectAsStateWithLifecycle()
     val localVideoTrack by viewModel.localVideoTrack.collectAsStateWithLifecycle()
+    val isFrontCamera by viewModel.isFrontCamera.collectAsStateWithLifecycle()
     val eglBaseContext by viewModel.eglBaseContext.collectAsStateWithLifecycle()
     val liveMusic by viewModel.liveMusic.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -314,6 +315,7 @@ fun LiveSetupScreen(
             displayName = displayName,
             avatarUrl = avatarUrl,
             localVideoTrack = localVideoTrack,
+            isFrontCamera = isFrontCamera,
             eglBaseContext = eglBaseContext,
             filter = cameraFilter,
             micEnabled = micEnabled,
@@ -343,6 +345,7 @@ fun LiveSetupScreen(
             CreatorBackground(
                 mode = mode,
                 localVideoTrack = localVideoTrack,
+                isFrontCamera = isFrontCamera,
                 eglBaseContext = eglBaseContext,
                 cameraBusy = previewBusy,
                 onRetryCamera = ::ensureCameraPreview,
@@ -509,6 +512,7 @@ fun LiveSetupScreen(
 private fun BoxScope.CreatorBackground(
     mode: CreatorEntryMode,
     localVideoTrack: org.webrtc.VideoTrack?,
+    isFrontCamera: Boolean,
     eglBaseContext: org.webrtc.EglBase.Context?,
     cameraBusy: Boolean,
     onRetryCamera: () -> Unit,
@@ -517,7 +521,7 @@ private fun BoxScope.CreatorBackground(
         WebRtcVideoView(
             videoTrack = localVideoTrack,
             sharedEglContext = eglBaseContext,
-            mirror = true,
+            mirror = isFrontCamera,
             scalingType = RendererCommon.ScalingType.SCALE_ASPECT_FILL,
             modifier = Modifier.fillMaxSize(),
         )
@@ -1021,6 +1025,7 @@ private fun PracticeLiveScreen(
     displayName: String,
     avatarUrl: String?,
     localVideoTrack: org.webrtc.VideoTrack?,
+    isFrontCamera: Boolean,
     eglBaseContext: org.webrtc.EglBase.Context?,
     filter: LiveCameraFilter,
     micEnabled: Boolean,
@@ -1040,7 +1045,7 @@ private fun PracticeLiveScreen(
             WebRtcVideoView(
                 videoTrack = localVideoTrack,
                 sharedEglContext = eglBaseContext,
-                mirror = true,
+                mirror = isFrontCamera,
                 scalingType = RendererCommon.ScalingType.SCALE_ASPECT_FILL,
                 modifier = Modifier.fillMaxSize(),
             )

@@ -3183,6 +3183,48 @@ async function createLocalNotificationBestEffort(pool, input) {
   }
 }
 
+async function notifyVideoDescriptionMentions(pool, { description, videoId, actor, identity }) {
+  const handles = [...new Set(
+    [...String(description || '').matchAll(/(^|[^A-Za-z0-9_])@([A-Za-z0-9_.-]{3,24})/g)]
+      .map((match) => normalizeId(match[2])),
+  )].slice(0, 8)
+  if (handles.length === 0) return
+
+  const [profiles, localMatches] = await Promise.all([
+    publicProfilesByIds(pool, handles),
+    pool.query(
+      `SELECT u.id::text AS id,
+              COALESCE(o.profile->>'username', split_part(u.email, '@', 1)) AS username
+       FROM fallback_users u
+       LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+       WHERE lower(COALESCE(o.profile->>'username', split_part(u.email, '@', 1))) = ANY($1::text[])
+       LIMIT 8`,
+      [handles],
+    ),
+  ])
+  const candidates = [...profiles, ...localMatches.rows]
+  const delivered = new Set()
+  for (const handle of handles) {
+    const profile = candidates.find((item) => normalizeId(item.username) === handle)
+    const recipientId = normalizeId(profile?.id)
+    if (!recipientId || identity.ids.has(recipientId) || delivered.has(recipientId)) continue
+    if (['suspended', 'banned', 'deleted', 'disabled'].includes(normalizeId(profile.status))) continue
+    if ((await blockRelationshipForPair(pool, identity, recipientId)).isBlocked) continue
+    delivered.add(recipientId)
+    await createLocalNotificationBestEffort(pool, {
+      recipientId,
+      actorId: identity.displayUserId,
+      actorName: actor.display_name || actor.email || 'Usuario',
+      actorAvatarUrl: actor.avatar_url || '',
+      type: 'mention_video_description',
+      targetId: videoId,
+      targetType: 'video',
+      content: `Te mencionó en la descripción de un video.`,
+      extraData: { video_id: videoId, mention_handle: handle },
+    })
+  }
+}
+
 async function localProfileOverride(pool, userId) {
   const { rows } = await pool.query(
     `SELECT profile
@@ -12589,6 +12631,15 @@ function registerDataRoutes(app, {
       const profilesById = indexProfiles(await publicProfilesByIds(pool, identity.values))
       const storedVideo = normalizeImportedRow(rows[0])
       await ingestTrustedContentClassification(pool, 'video', storedVideo)
+      if (isPublic !== false) {
+        try {
+          await notifyVideoDescriptionMentions(pool, {
+            description, videoId: newVideoId, actor: user, identity,
+          })
+        } catch (error) {
+          console.error('[video] description mention delivery failed', safeErrorLogDetails(error))
+        }
+      }
       const feedEvent = { event: 'video_feed', action: 'created', videoId: newVideoId }
       if (isPublic !== false) void publishRealtimeEvent('feed:live', feedEvent)
       void publishRealtimeEvent(`user:${identity.displayUserId}`, { ...feedEvent, scope: 'owner' })

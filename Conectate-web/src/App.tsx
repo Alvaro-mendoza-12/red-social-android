@@ -59,6 +59,21 @@ const LiveSessionPage = lazy(() =>
 const ProximityPage = lazy(() =>
   import('./features/proximity/ProximityPage').then((module) => ({ default: module.ProximityPage })),
 )
+const GamesPage = lazy(() =>
+  import('./features/games/GamesPage').then((module) => ({ default: module.GamesPage })),
+)
+const PlayerDetailPage = lazy(() =>
+  import('./features/games/PlayerDetailPage').then((module) => ({ default: module.PlayerDetailPage })),
+)
+const MyReportsPage = lazy(() =>
+  import('./features/reports/MyReportsPage').then((module) => ({ default: module.MyReportsPage })),
+)
+const HelpPage = lazy(() =>
+  import('./features/help/HelpPage').then((module) => ({ default: module.HelpPage })),
+)
+const CreateSpacePage = lazy(() =>
+  import('./features/spaces/CreateSpacePage').then((module) => ({ default: module.CreateSpacePage })),
+)
 const CallsPage = lazy(() =>
   import('./features/calls/CallsPage').then((module) => ({ default: module.CallsPage })),
 )
@@ -322,6 +337,46 @@ function AppRouter() {
             element={
               <RouteSuspense>
                 <ProximityPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="games"
+            element={
+              <RouteSuspense>
+                <GamesPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="games/player/:playerId"
+            element={
+              <RouteSuspense>
+                <PlayerDetailPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="reports"
+            element={
+              <RouteSuspense>
+                <MyReportsPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="help"
+            element={
+              <RouteSuspense>
+                <HelpPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="create-space"
+            element={
+              <RouteSuspense>
+                <CreateSpacePage />
               </RouteSuspense>
             }
           />

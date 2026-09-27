@@ -403,7 +403,7 @@ private fun notificationEventStyle(type: String): Pair<ImageVector, Color> = whe
     "like", "like_post", "like_video" -> Icons.Default.Favorite to Color(0xFFF44336)
     "comment", "comment_post", "comment_video", "reply_post", "reply_video" ->
         Icons.Default.ChatBubble to Color(0xFF1687F8)
-    "mention", "mention_post", "mention_video" ->
+    "mention", "mention_post", "mention_video", "mention_video_description" ->
         Icons.Default.AlternateEmail to Color(0xFF1687F8)
     "follow", "friend_request", "friend_request_accepted" ->
         Icons.Default.PersonAdd to Color(0xFF18A66A)
@@ -482,6 +482,7 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
         "reply_video" -> " respondió a tu comentario en un video"
         "mention" -> " te mencionó en un comentario"
         "mention_video" -> " te mencionó en un comentario de video"
+        "mention_video_description" -> " te mencionó en la descripción de un video"
         "share_video" -> " compartió tu video"
         "like_post" -> " le dio like a tu publicación"
         "comment_post" -> " comentó tu publicación"
@@ -622,7 +623,7 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
                 }
             }
         }
-        "like_video", "comment_video", "reply_video", "new_video", "mention_video", "share_video", "admin_warning_video" -> {
+        "like_video", "comment_video", "reply_video", "new_video", "mention_video", "mention_video_description", "share_video", "admin_warning_video" -> {
             resolvedVideoId?.let { navController.navigate(Screen.VideoPlayer.createRoute(it, focusCommentId = commentId)) }
         }
         "like_post", "comment_post", "reply_post", "new_post", "share_post", "mention_post" -> {

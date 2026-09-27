@@ -66,6 +66,7 @@ class LiveSessionViewModel @Inject constructor(
 ) : ViewModel() {
 
     val activeSession = liveRepository.activeSession
+    val isFrontCamera = liveRepository.isFrontCamera
     val comments = liveRepository.comments
     val reactions = liveRepository.reactions
     val reactionCount = liveRepository.reactionCount
@@ -477,6 +478,10 @@ class LiveSessionViewModel @Inject constructor(
         startSession(liveId = liveId, role = LiveRole.HOST) { id ->
             liveRepository.hostLive(id)
         }
+    }
+
+    fun releaseUnusedSetupPreview() {
+        liveRepository.stopSetupCameraPreviewAsync()
     }
 
     fun joinAsViewer(liveId: String) {

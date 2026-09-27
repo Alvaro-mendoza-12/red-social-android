@@ -46,6 +46,7 @@ fun ChangePasswordScreen(
         if (authState is AuthState.PasswordChanged) {
             // Ubuntu entrega un token renovado y AuthService ya lo persiste.
             // Mantener la sesión evita expulsar al usuario después de un cambio válido.
+            AppFeedbackBus.show("Contraseña actualizada. Puedes seguir usando tu cuenta.")
             navController.popBackStack()
         } else if (authState is AuthState.Error) {
             AppFeedbackBus.showError((authState as AuthState.Error).message)
@@ -178,6 +179,13 @@ fun ChangePasswordScreen(
                 } else {
                     Text("Cambiar contraseña", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
+            }
+            if (authState is AuthState.Loading) {
+                Text(
+                    "Guardando el cambio en el servidor…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             
             TextButton(

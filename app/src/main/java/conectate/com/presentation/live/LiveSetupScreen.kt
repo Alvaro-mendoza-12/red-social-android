@@ -187,8 +187,10 @@ class LiveSetupViewModel @Inject constructor(
     val screenPermissionReady: StateFlow<Boolean> = _screenPermissionReady.asStateFlow()
 
     val localVideoTrack = liveRepository.localVideoTrack
+    val isFrontCamera = liveRepository.isFrontCamera
     val eglBaseContext = liveRepository.eglBaseContext
     val liveMusic = liveRepository.liveMusic
+    private var openingLiveHost = false
 
     init {
         viewModelScope.launch {
@@ -365,12 +367,12 @@ class LiveSetupViewModel @Inject constructor(
                 liveRepository.setInitialHostVideoEnabled(
                     _source.value != LiveSource.AUDIO && localVideoTrack.value != null,
                 )
-                liveRepository.stopSetupCameraPreview()
                 val tags = parseLiveHashtags(_hashtags.value, _category.value)
                 val result = liveRepository.createLiveStream(
                     title = _title.value.trim(),
                     source = _source.value,
                     hashtags = tags,
+                    category = _category.value,
                     giftsEnabled = _giftsEnabled.value,
                 )
                 result.onSuccess { stream ->
@@ -380,11 +382,13 @@ class LiveSetupViewModel @Inject constructor(
                     if (_allowGuestRequests.value) {
                         liveRepository.setGuestRequestsAllowed(stream.id, true)
                     }
+                    openingLiveHost = true
                     onStarted(stream.id)
                 }.onFailure { throwable ->
                     _error.value = sanitizeUiError(throwable.message)
                 }
             } catch (error: Exception) {
+                openingLiveHost = false
                 _error.value = sanitizeUiError(error.message)
             } finally {
                 _isStarting.value = false
@@ -393,7 +397,7 @@ class LiveSetupViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        liveRepository.stopSetupCameraPreviewAsync()
+        if (!openingLiveHost) liveRepository.stopSetupCameraPreviewAsync()
         super.onCleared()
     }
 

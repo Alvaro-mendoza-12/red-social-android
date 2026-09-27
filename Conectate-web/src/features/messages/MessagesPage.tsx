@@ -1509,10 +1509,14 @@ export function MessagesPage() {
                       : 'icon-btn-sm header-icon-btn'
                   }
                   type="button"
-                  title={activeTab === 'chats' ? 'Alternar no leídos' : 'Más opciones'}
+                  title={activeTab === 'chats' ? 'Alternar no leídos' : activeTab === 'groups' ? 'Crear grupo' : activeTab === 'communities' ? 'Crear comunidad' : 'Crear sala de voz'}
+                  aria-label={activeTab === 'chats' ? 'Alternar no leídos' : activeTab === 'groups' ? 'Crear grupo' : activeTab === 'communities' ? 'Crear comunidad' : 'Crear sala de voz'}
                   onClick={() => {
                     if (activeTab === 'chats') {
                       setShowUnreadOnly((current) => !current)
+                    } else {
+                      const type = activeTab === 'groups' ? 'group' : activeTab === 'communities' ? 'community' : 'voice'
+                      navigate(`/app/create-space?type=${type}`)
                     }
                   }}
                 >

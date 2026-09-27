@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, Plus, Settings, Trophy, Users } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -40,12 +40,26 @@ type NavIconName =
   | 'notifications'
   | 'monetization'
   | 'settings'
+  | 'games'
 
 const primaryNavItems = [
   { to: '/app/messages', label: 'Mensajes', icon: 'messages' as NavIconName },
   { to: '/app/videos', label: 'Videos', icon: 'videos' as NavIconName },
   { to: '/app/social', label: 'Social', icon: 'social' as NavIconName },
+  { to: '/app/games', label: 'Juegos', icon: 'games' as NavIconName },
   { to: '/app/profile', label: 'Perfil', icon: 'profile' as NavIconName },
+]
+const secondaryNavItems = [
+  { to: '/app/search', label: 'Buscar', icon: 'search' as NavIconName },
+  { to: '/app/notifications', label: 'Notificaciones', icon: 'notifications' as NavIconName },
+  { to: '/app/calls', label: 'Llamadas', icon: 'calls' as NavIconName },
+  { to: '/app/voice', label: 'Salas de voz', icon: 'voice' as NavIconName },
+  { to: '/app/create-space', label: 'Crear espacio', icon: 'voice' as NavIconName },
+  { to: '/app/live', label: 'En vivo', icon: 'videos' as NavIconName },
+  { to: '/app/proximity', label: 'Personas cerca', icon: 'social' as NavIconName },
+  { to: '/app/settings', label: 'Ajustes', icon: 'settings' as NavIconName },
+  { to: '/app/reports', label: 'Mis reportes', icon: 'notifications' as NavIconName },
+  { to: '/app/help', label: 'Ayuda', icon: 'settings' as NavIconName },
 ]
 
 const localReadStorageKey = 'conectate-web-chat-last-read'
@@ -124,6 +138,42 @@ const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta:
       kicker: 'Proximidad',
       title: 'Personas cerca',
       subtitle: 'Radar privado y conexiones aleatorias con revelado gradual.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/games'),
+    meta: {
+      kicker: 'Juegos',
+      title: 'Encuentra con quién jugar',
+      subtitle: 'Configura tu perfil, descubre jugadores y administra tus conexiones.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/reports'),
+    meta: {
+      kicker: 'Seguridad',
+      title: 'Mis reportes',
+      subtitle: 'Consulta el estado de los reportes que enviaste a moderación.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/help'),
+    meta: {
+      kicker: 'Soporte',
+      title: 'Centro de ayuda',
+      subtitle: 'Respuestas breves y accesos directos a las funciones de Novvin.',
+      layout: 'wide',
+    },
+  },
+  {
+    match: (pathname) => pathname.startsWith('/app/create-space'),
+    meta: {
+      kicker: 'Comunidad',
+      title: 'Crear un espacio',
+      subtitle: 'Abre un grupo, una comunidad o una sala de voz.',
       layout: 'wide',
     },
   },
@@ -236,6 +286,13 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
 }
 
 function ShellIcon({ name }: { name: NavIconName }) {
+  if (name === 'games') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 9h10a4 4 0 013.9 3.1l1 4.4a2 2 0 01-3.2 2L16 16H8l-2.7 2.5a2 2 0 01-3.2-2l1-4.4A4 4 0 017 9zM7 12v4M5 14h4M16 13h.01M19 15h.01" />
+      </svg>
+    )
+  }
   if (name === 'videos') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -321,6 +378,9 @@ export function AppLayout() {
     getDeferredMutationCount(user?.id ?? 'signed-out'),
   )
   const [isNavCollapsed, setIsNavCollapsed] = useState(() => readNavCollapsedPreference())
+  const [isMobileExploreOpen, setIsMobileExploreOpen] = useState(false)
+  const mobileExploreButtonRef = useRef<HTMLButtonElement | null>(null)
+  const mobileExploreCloseRef = useRef<HTMLButtonElement | null>(null)
   const [supabaseRestriction, setSupabaseRestriction] = useState(() => getSupabaseRestrictionSnapshot())
   const [incomingCall, setIncomingCall] = useState<IncomingCallInvite | null>(null)
   const [migrationPasswordOpen, setMigrationPasswordOpen] = useState(false)
@@ -797,6 +857,20 @@ export function AppLayout() {
     '/app/notifications': notificationUnreadCount,
   }
 
+  useEffect(() => { setIsMobileExploreOpen(false) }, [location.pathname])
+  useEffect(() => {
+    if (!isMobileExploreOpen) return
+    mobileExploreCloseRef.current?.focus()
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMobileExploreOpen(false)
+        mobileExploreButtonRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onEscape)
+    return () => window.removeEventListener('keydown', onEscape)
+  }, [isMobileExploreOpen])
+
   return (
     <div
       className={[
@@ -857,13 +931,14 @@ export function AppLayout() {
             ) : null}
           </Link>
         </div>
-        <nav>
+        <nav aria-label="Navegación principal">
           {primaryNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
               title={isNavCollapsed ? item.label : undefined}
+              aria-label={isNavCollapsed ? item.label : undefined}
             >
               <span className="nav-item-inner">
                 <span className="nav-item-label">
@@ -881,12 +956,19 @@ export function AppLayout() {
             </NavLink>
           ))}
         </nav>
+        <nav className="secondary-nav" aria-label="Explorar más funciones">
+          {!isNavCollapsed && <span className="nav-section-label">Explorar</span>}
+          {secondaryNavItems.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'} title={isNavCollapsed ? item.label : undefined} aria-label={isNavCollapsed ? item.label : undefined}>
+            <span className="nav-item-inner"><span className="nav-item-label"><span className="nav-icon"><ShellIcon name={item.icon} /></span>{!isNavCollapsed && <span>{item.label}</span>}</span>{!isNavCollapsed && (navBadgeByPath[item.to] || 0) > 0 && <span className="nav-counter">{navBadgeByPath[item.to]}</span>}</span>
+          </NavLink>)}
+        </nav>
         <div className="left-nav-footer">
           <button
             className="rail-logout-btn"
             type="button"
             onClick={() => void signOut()}
             title="Cerrar sesión"
+            aria-label="Cerrar sesión"
           >
             <span className="nav-icon">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1052,7 +1134,16 @@ export function AppLayout() {
               </span>
             </NavLink>
           ))}
+          <button ref={mobileExploreButtonRef} type="button" className={isMobileExploreOpen ? 'mobile-item active' : 'mobile-item'} aria-expanded={isMobileExploreOpen} aria-controls="mobile-explore-menu" onClick={() => setIsMobileExploreOpen((current) => !current)}>
+            <span className="mobile-item-inner"><span className="mobile-nav-icon" aria-hidden="true">⋯</span><span className="mobile-item-label">Más</span></span>
+          </button>
         </nav>
+        {isMobileExploreOpen && <div className="mobile-explore-backdrop" onClick={() => { setIsMobileExploreOpen(false); mobileExploreButtonRef.current?.focus() }}>
+          <nav id="mobile-explore-menu" className="mobile-explore-menu" aria-label="Más funciones" onClick={(event) => event.stopPropagation()}>
+            <div className="mobile-explore-heading"><strong>Explorar</strong><button ref={mobileExploreCloseRef} type="button" aria-label="Cerrar menú" onClick={() => { setIsMobileExploreOpen(false); mobileExploreButtonRef.current?.focus() }}>Cerrar</button></div>
+            {secondaryNavItems.map((item) => <NavLink key={item.to} to={item.to} className="mobile-explore-link" onClick={() => setIsMobileExploreOpen(false)}><span className="nav-icon"><ShellIcon name={item.icon} /></span>{item.label}</NavLink>)}
+          </nav>
+        </div>}
       </section>
     </div>
   )

@@ -9,7 +9,8 @@ internal enum class VideoPreparationReason {
     TOO_LONG,
     HIGH_RESOLUTION,
     HIGH_FRAME_RATE,
-    HIGH_BITRATE
+    HIGH_BITRATE,
+    UNSUPPORTED_FORMAT
 }
 
 internal data class VideoPreparationDecision(
@@ -22,7 +23,8 @@ internal fun evaluateVideoPreparation(
     width: Int,
     height: Int,
     fps: Float,
-    fileSizeBytes: Long
+    fileSizeBytes: Long,
+    formatCompatible: Boolean = true,
 ): VideoPreparationDecision {
     val exceeds1080p = width > 0 && height > 0 && (
         maxOf(width, height) > 1920 ||
@@ -38,6 +40,7 @@ internal fun evaluateVideoPreparation(
     val reason = when {
         durationMs <= 0L -> VideoPreparationReason.UNKNOWN_DURATION
         durationMs > MAX_VIDEO_UPLOAD_DURATION_MS -> VideoPreparationReason.TOO_LONG
+        !formatCompatible -> VideoPreparationReason.UNSUPPORTED_FORMAT
         exceeds1080p -> VideoPreparationReason.HIGH_RESOLUTION
         fps > 31f -> VideoPreparationReason.HIGH_FRAME_RATE
         estimatedAverageBitrateBps > MAX_VIDEO_DELIVERY_BITRATE_BPS -> VideoPreparationReason.HIGH_BITRATE

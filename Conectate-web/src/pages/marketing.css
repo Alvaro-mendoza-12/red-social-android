@@ -77,8 +77,8 @@
   .marketing-page { padding-left: 16px; padding-right: 16px; }
   .marketing-nav { padding-top: 16px; }
   .marketing-nav-actions { gap: 8px; }
-  .marketing-text-link { display: none; }
-  .marketing-outline-btn { padding: 10px 14px; font-size: .88rem; }
+  .marketing-text-link { display: inline-flex; align-items: center; min-height: 44px; font-size: .83rem; white-space: nowrap; }
+  .marketing-outline-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 12px; font-size: .83rem; white-space: nowrap; }
   .marketing-hero { padding-top: 52px; }
   .marketing-phone-card { transform: none; padding: 20px; }
   .marketing-hero-card { min-height: 370px; }

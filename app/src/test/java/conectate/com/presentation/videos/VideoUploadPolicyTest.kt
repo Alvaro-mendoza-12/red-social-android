@@ -48,4 +48,19 @@ class VideoUploadPolicyTest {
         assertTrue(decision.requiresEditor)
         assertEquals(VideoPreparationReason.HIGH_BITRATE, decision.reason)
     }
+
+    @Test
+    fun incompatibleContainerOrCodec_requiresConversion() {
+        val decision = evaluateVideoPreparation(
+            durationMs = 16_000L,
+            width = 720,
+            height = 1280,
+            fps = 30f,
+            fileSizeBytes = 3L * 1024L * 1024L,
+            formatCompatible = false,
+        )
+
+        assertTrue(decision.requiresEditor)
+        assertEquals(VideoPreparationReason.UNSUPPORTED_FORMAT, decision.reason)
+    }
 }

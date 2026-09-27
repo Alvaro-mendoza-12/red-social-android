@@ -1,6 +1,9 @@
 package conectate.com.presentation.auth
 
 import android.util.Patterns
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.background
@@ -9,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.PersonAdd
@@ -80,6 +84,16 @@ fun LoginScreen(
     var recoveryCodeRequired by rememberSaveable { mutableStateOf(false) }
     var migrationInfo by rememberSaveable { mutableStateOf("") }
     var passwordFlowMode by rememberSaveable { mutableStateOf("migration") }
+    var assistedIdentifier by rememberSaveable { mutableStateOf("") }
+    var assistedContact by rememberSaveable { mutableStateOf("") }
+    var assistedContactType by rememberSaveable { mutableStateOf("whatsapp") }
+    var assistedProfileHint by rememberSaveable { mutableStateOf("") }
+    var assistedDescription by rememberSaveable { mutableStateOf("") }
+    var assistedConfirmCaseId by rememberSaveable { mutableStateOf("") }
+    var assistedContactCode by rememberSaveable { mutableStateOf("") }
+    var assistedEnterExistingCase by rememberSaveable { mutableStateOf(false) }
+    var assistedCodeStage by rememberSaveable { mutableStateOf(false) }
+    var assistedCaseCopied by rememberSaveable { mutableStateOf(false) }
     var showSuspendedDialog by rememberSaveable { mutableStateOf(false) }
     var showAppealForm by rememberSaveable { mutableStateOf(false) }
     var appealStatement by rememberSaveable { mutableStateOf("") }
@@ -90,10 +104,22 @@ fun LoginScreen(
     val accountSwitchMessage by viewModel.accountSwitchMessage.collectAsStateWithLifecycle()
     val appealSubmitting by viewModel.appealSubmitting.collectAsStateWithLifecycle()
     val appealMessage by viewModel.appealMessage.collectAsStateWithLifecycle()
+    val assistedRecoverySubmitting by viewModel.assistedRecoverySubmitting.collectAsStateWithLifecycle()
+    val assistedRecoveryMessage by viewModel.assistedRecoveryMessage.collectAsStateWithLifecycle()
+    val assistedRecoveryCaseId by viewModel.assistedRecoveryCaseId.collectAsStateWithLifecycle()
+    LaunchedEffect(assistedRecoveryCaseId) {
+        if (assistedConfirmCaseId.isBlank()) assistedConfirmCaseId = assistedRecoveryCaseId.orEmpty()
+    }
+    LaunchedEffect(assistedRecoveryCaseId) { assistedCaseCopied = false }
     val currentUserId by viewModel.currentUserId.collectAsStateWithLifecycle()
     val suspendedState = authState as? AuthState.Suspended
     val authErrorText = (authState as? AuthState.Error)?.message.orEmpty()
     val emailIsValid = email.isBlank() || Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
+    val assistedContactValid = if (assistedContactType == "email") {
+        Patterns.EMAIL_ADDRESS.matcher(assistedContact.trim()).matches()
+    } else {
+        Regex("^\\+?[0-9 ()-]{8,25}$").matches(assistedContact.trim())
+    }
     val suspensionEndDate = suspendedState?.suspensionEndDate
     val isSuspensionError = suspendedState != null ||
         authErrorText.contains("suspendida", ignoreCase = true) ||
@@ -356,13 +382,15 @@ fun LoginScreen(
         AuthBrandHeader(
             title = when {
                 isAddAccountMode -> "Agrega otra cuenta"
-                loginType == "recovery" -> "Recupera tu cuenta"
+                loginType == "recovery" -> stringResource(R.string.auth_recovery_title)
+                loginType == "assisted" -> "Recuperación con ayuda"
                 loginType == "email" -> "Qué bueno verte"
                 else -> "Tu mundo empieza aquí"
             },
             subtitle = when {
                 isAddAccountMode -> "Entra con la cuenta que quieres sumar. Podrás alternar entre ellas después."
-                loginType == "recovery" -> "Te ayudaremos a volver a entrar de forma segura."
+                loginType == "recovery" -> stringResource(R.string.auth_recovery_subtitle)
+                loginType == "assisted" -> "Un administrador verificará que la cuenta te pertenece."
                 loginType == "email" -> "Entra para seguir donde dejaste tus conversaciones y momentos."
                 else -> "Mensajes, videos y momentos con tu gente en un solo lugar."
             },
@@ -373,7 +401,7 @@ fun LoginScreen(
             onBack = if (loginType != null || isAddAccountMode) {
                 {
                     if (isAddAccountMode) navController.popBackStack()
-                    else if (loginType == "recovery") {
+                    else if (loginType == "recovery" || loginType == "assisted") {
                         loginType = "email"
                         migrationEmail = ""
                         migrationToken = ""
@@ -547,12 +575,186 @@ fun LoginScreen(
                 }
             }
 
+        } else if (loginType == "assisted") {
+            Text(
+                "Si no puedes entrar y no tienes un código guardado, solicita una revisión. " +
+                    "No escribas contraseñas ni adjuntes documentos.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            if (!assistedCodeStage) {
+                OutlinedTextField(
+                    value = assistedIdentifier,
+                    onValueChange = { assistedIdentifier = it.take(160) },
+                    label = { Text("Correo, usuario o dato que recuerdes") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = assistedProfileHint,
+                    onValueChange = { assistedProfileHint = it.take(160) },
+                    label = { Text("Nombre o enlace del perfil que recuerdes (opcional)") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
+                )
+                Text("Contacto nuevo para recibir los códigos")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FilterChip(
+                        selected = assistedContactType == "whatsapp",
+                        onClick = { assistedContactType = "whatsapp" }, label = { Text("WhatsApp") },
+                    )
+                    FilterChip(
+                        selected = assistedContactType == "email",
+                        onClick = { assistedContactType = "email" }, label = { Text("Correo") },
+                    )
+                }
+                OutlinedTextField(
+                    value = assistedContact,
+                    onValueChange = { assistedContact = it.take(240) },
+                    label = { Text(if (assistedContactType == "email") "Correo nuevo" else "Número de WhatsApp con prefijo del país") },
+                    supportingText = { Text(if (assistedContactType == "email") "Escribe un correo nuevo válido al que puedas entrar." else "Incluye el prefijo del país y usa un número de WhatsApp activo.") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = assistedDescription,
+                    onValueChange = { assistedDescription = it.take(1000) },
+                    label = { Text("Qué acceso perdiste") },
+                    supportingText = {
+                        Text("Explica qué pasó en al menos 20 caracteres (${assistedDescription.trim().length}/20). No incluyas contraseñas ni documentos.")
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 5,
+                )
+                if (assistedDescription.trim().length < 20) {
+                    Text(
+                        "Completa la explicación para habilitar la solicitud. El nombre del perfil es opcional.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Button(
+                    onClick = {
+                        viewModel.requestAssistedRecovery(
+                            assistedIdentifier, assistedContact, assistedDescription,
+                            assistedContactType, assistedProfileHint,
+                        )
+                    },
+                    enabled = assistedRecoveryCaseId.isNullOrBlank() && !assistedRecoverySubmitting && assistedIdentifier.trim().length >= 3 &&
+                        assistedContactValid && assistedDescription.trim().length >= 20,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (assistedRecoverySubmitting) CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp,
+                    )
+                    else Text("Solicitar revisión")
+                }
+                assistedRecoveryMessage?.let { message ->
+                    Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                assistedRecoveryCaseId?.let { caseId ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text("Número de solicitud", style = MaterialTheme.typography.titleSmall)
+                            Text("Ya recibimos esta solicitud. Espera el código de contacto del administrador; no necesitas enviarla de nuevo.")
+                            SelectionContainer {
+                                Text(caseId, style = MaterialTheme.typography.bodyMedium)
+                            }
+                            TextButton(onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                    as? ClipboardManager
+                                clipboard?.setPrimaryClip(
+                                    ClipData.newPlainText("Número de solicitud Novvin", caseId)
+                                )
+                                assistedCaseCopied = clipboard != null
+                            }) {
+                                Text(if (assistedCaseCopied) "Número copiado" else "Copiar número")
+                            }
+                            TextButton(onClick = {
+                                viewModel.startNewAssistedRecoveryRequest()
+                                assistedConfirmCaseId = ""
+                                assistedContactCode = ""
+                            }) { Text("Empezar otra solicitud") }
+                        }
+                    }
+                }
+                if (assistedRecoveryCaseId.isNullOrBlank() && !assistedEnterExistingCase) {
+                    TextButton(onClick = { assistedEnterExistingCase = true }) {
+                        Text("Ya tengo un número de solicitud y código de contacto")
+                    }
+                }
+                if (!assistedRecoveryCaseId.isNullOrBlank() || assistedEnterExistingCase) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("Paso 2 de 3 · Confirma tu contacto", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Un administrador enviará manualmente un código de 6 dígitos al WhatsApp o correo nuevo que indicaste. " +
+                            "No se envía automáticamente al solicitar la revisión. Tu número de solicitud ya está guardado aquí.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = assistedConfirmCaseId, onValueChange = { assistedConfirmCaseId = it.take(36) },
+                        label = { Text("Número de solicitud") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = assistedContactCode, onValueChange = { assistedContactCode = it.filter(Char::isDigit).take(6) },
+                        label = { Text("Código de 6 dígitos enviado por el administrador") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    OutlinedButton(
+                        onClick = { viewModel.confirmAssistedContact(assistedConfirmCaseId, assistedContactCode) },
+                        enabled = !assistedRecoverySubmitting && assistedConfirmCaseId.length == 36 && assistedContactCode.length == 6,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Confirmar contacto nuevo") }
+                    Text(
+                        "Paso 3: después de verificar que la cuenta es tuya, el administrador te entregará un código temporal para crear una contraseña nueva y entrar.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                MigratedPasswordSetupCard(
+                    email = "",
+                    displayName = "",
+                    newPassword = migrationNewPassword,
+                    confirmPassword = migrationConfirmPassword,
+                    recoveryCodeRequired = true,
+                    recoveryCode = migrationToken,
+                    recoveryCodeHint = "Escribe el código temporal que te entregó el administrador tras verificar tu cuenta.",
+                    info = "Elige una contraseña nueva para recuperar el acceso.",
+                    isLoading = authState is AuthState.Loading,
+                    onNewPasswordChange = { migrationNewPassword = it },
+                    onConfirmPasswordChange = { migrationConfirmPassword = it },
+                    onRecoveryCodeChange = { migrationToken = it.trim() },
+                    canSubmit = migrationToken.isNotBlank(),
+                    submitLabel = "Guardar contraseña y entrar",
+                    onSubmit = {
+                        if (migrationNewPassword.length < 8) {
+                            viewModel.setAuthError("La nueva contraseña debe tener al menos 8 caracteres.")
+                        } else if (migrationNewPassword != migrationConfirmPassword) {
+                            viewModel.setAuthError("La confirmación no coincide con la contraseña nueva.")
+                        } else {
+                            viewModel.confirmMigratedPasswordCode(migrationToken, migrationNewPassword)
+                        }
+                    },
+                )
+            }
+            TextButton(
+                onClick = { assistedCodeStage = !assistedCodeStage },
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text(if (assistedCodeStage) "Solicitar revisión" else "Ya tengo un código del administrador")
+            }
         } else if (loginType == "email" || loginType == "recovery") {
             val recovering = loginType == "recovery"
             // Email Login Form
             if (recovering) {
                 Text(
-                    text = "Escribe el correo vinculado a tu cuenta.",
+                    text = stringResource(R.string.auth_recovery_intro),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 20.dp),
@@ -577,14 +779,19 @@ fun LoginScreen(
                     }
                     if (authState is AuthState.Error) viewModel.resetAuthState()
                 },
-                label = { Text("Correo de tu cuenta") },
+                label = {
+                    Text(
+                        if (recovering) stringResource(R.string.auth_recovery_saved_code_email_label)
+                        else stringResource(R.string.auth_account_email)
+                    )
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 singleLine = true,
                 isError = !emailIsValid,
                 supportingText = {
-                    if (!emailIsValid) Text("Escribe un correo válido")
+                    if (!emailIsValid) Text(stringResource(R.string.auth_invalid_email))
                 },
                 leadingIcon = {
                     Icon(
@@ -606,7 +813,7 @@ fun LoginScreen(
                     secondFactorCode = ""
                     if (authState is AuthState.Error) viewModel.resetAuthState()
                 },
-                label = { Text("Tu contraseña") },
+                label = { Text(stringResource(R.string.auth_your_password)) },
                 visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
@@ -619,7 +826,9 @@ fun LoginScreen(
                         Icons.Filled.VisibilityOff
 
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(imageVector = image, contentDescription = if (passwordVisible) "Ocultar contraseña" else "Ver contraseña")
+                        Icon(imageVector = image, contentDescription = stringResource(
+                            if (passwordVisible) R.string.auth_hide_password else R.string.auth_show_password
+                        ))
                     }
                 }
             )
@@ -631,10 +840,10 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = secondFactorCode,
                     onValueChange = { secondFactorCode = it.take(32) },
-                    label = { Text("Código de verificación o respaldo") },
+                    label = { Text(stringResource(R.string.auth_second_factor_code)) },
                     supportingText = {
                         Text((authState as? AuthState.TwoFactorRequired)?.message
-                            ?: "Abre tu autenticador. También puedes usar un código de respaldo sin utilizar.")
+                            ?: stringResource(R.string.auth_second_factor_hint))
                     },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
@@ -680,26 +889,12 @@ fun LoginScreen(
 
             if (recovering) {
                 if (migrationEmail.isBlank()) {
+                    Text(
+                        stringResource(R.string.auth_recovery_email_unavailable),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
                     Button(
-                        onClick = {
-                            passwordFlowMode = "reset"
-                            viewModel.requestMigratedPasswordCode(email.trim().lowercase())
-                        },
-                        enabled = authState !is AuthState.Loading && email.isNotBlank() && emailIsValid,
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                        shape = RoundedCornerShape(18.dp),
-                    ) {
-                        if (authState is AuthState.Loading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            Text("Continuar con recuperación")
-                        }
-                    }
-                    TextButton(
                         onClick = {
                             viewModel.resetAuthState()
                             passwordFlowMode = "saved_code"
@@ -712,15 +907,27 @@ fun LoginScreen(
                             migrationInfo = "Usa un código que guardaste fuera del teléfono anterior. Cada código funciona una sola vez."
                         },
                         enabled = authState !is AuthState.Loading && email.isNotBlank() && emailIsValid,
-                        modifier = Modifier.align(Alignment.End)
-                    ) { Text("Tengo un código guardado") }
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        shape = RoundedCornerShape(18.dp),
+                    ) {
+                        Text(stringResource(R.string.auth_saved_code))
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            assistedIdentifier = email.trim()
+                            loginType = "assisted"
+                        },
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        shape = RoundedCornerShape(18.dp),
+                    ) { Text(stringResource(R.string.auth_assisted_recovery_button)) }
                 }
             } else {
                 TextButton(
                     onClick = { loginType = "recovery" },
                     modifier = Modifier.align(Alignment.End),
                 ) {
-                    Text("¿Olvidaste tu contraseña?")
+                    Text(stringResource(R.string.auth_forgot_password))
                 }
             }
 
@@ -874,7 +1081,7 @@ private fun MigratedPasswordSetupCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Cambia tu contraseña",
+                text = stringResource(R.string.auth_change_password),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -883,7 +1090,7 @@ private fun MigratedPasswordSetupCard(
                 text = buildString {
                     if (displayName.isNotBlank()) append("$displayName, ")
                     append(info.ifBlank { "Tu cuenta necesita una contraseña nueva en Ubuntu." })
-                    append("\nCuenta: $email")
+                    if (email.isNotBlank()) append("\nCuenta: $email")
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -893,7 +1100,7 @@ private fun MigratedPasswordSetupCard(
                 OutlinedTextField(
                     value = recoveryCode,
                     onValueChange = onRecoveryCodeChange,
-                    label = { Text("Código de recuperación") },
+                    label = { Text(stringResource(R.string.auth_recovery_code)) },
                     supportingText = { Text(recoveryCodeHint) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -904,7 +1111,7 @@ private fun MigratedPasswordSetupCard(
             OutlinedTextField(
                 value = newPassword,
                 onValueChange = onNewPasswordChange,
-                label = { Text("Nueva contraseña") },
+                label = { Text(stringResource(R.string.auth_new_password)) },
                 visualTransformation = if (newPasswordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
@@ -914,7 +1121,9 @@ private fun MigratedPasswordSetupCard(
                     IconButton(onClick = { newPasswordVisible = !newPasswordVisible }) {
                         Icon(
                             imageVector = if (newPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                            contentDescription = if (newPasswordVisible) "Ocultar nueva contraseña" else "Ver nueva contraseña",
+                            contentDescription = stringResource(
+                                if (newPasswordVisible) R.string.auth_hide_new_password else R.string.auth_show_new_password
+                            ),
                         )
                     }
                 },
@@ -923,7 +1132,7 @@ private fun MigratedPasswordSetupCard(
             OutlinedTextField(
                 value = confirmPassword,
                 onValueChange = onConfirmPasswordChange,
-                label = { Text("Repetir nueva contraseña") },
+                label = { Text(stringResource(R.string.auth_repeat_new_password)) },
                 visualTransformation = if (confirmPasswordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
@@ -933,7 +1142,9 @@ private fun MigratedPasswordSetupCard(
                     IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
                         Icon(
                             imageVector = if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                            contentDescription = if (confirmPasswordVisible) "Ocultar confirmación" else "Ver confirmación",
+                            contentDescription = stringResource(
+                                if (confirmPasswordVisible) R.string.auth_hide_confirmation else R.string.auth_show_confirmation
+                            ),
                         )
                     }
                 },
@@ -1024,7 +1235,7 @@ private fun SavedAccountsSection(
                         OutlinedButton(
                             onClick = { onRemoveAccount(account) },
                             modifier = Modifier.weight(1f),
-                        ) { Text("Quitar") }
+                        ) { Text(stringResource(R.string.auth_remove_account)) }
                         Button(
                             onClick = { onUseAccount(account) },
                             enabled = switchingAccountId != account.id,
@@ -1037,7 +1248,7 @@ private fun SavedAccountsSection(
                                     color = MaterialTheme.colorScheme.onPrimary
                                 )
                             } else {
-                                Text("Entrar")
+                                Text(stringResource(R.string.login))
                             }
                         }
                     }

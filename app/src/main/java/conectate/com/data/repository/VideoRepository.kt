@@ -67,6 +67,7 @@ import conectate.com.data.local.dao.VideoStatsDao
 import conectate.com.util.VideoUtils
 import conectate.com.util.VideoWatermarkExporter
 import conectate.com.util.VideoWatermarkDetector
+import conectate.com.util.isDirectlyPublishableMp4
 import conectate.com.data.local.dao.VideoCommentDao
 import conectate.com.data.local.entity.VideoStatsEntity
 import conectate.com.data.local.entity.VideoCommentEntity
@@ -80,6 +81,8 @@ import io.github.jan.supabase.realtime.postgresChangeFlow
 
 // Type alias to avoid conflict if any (just standard Uri)
 typealias VideoUriType = android.net.Uri
+
+data class VideoViewIncrement(val recorded: Boolean, val totalViews: Int?)
 
 internal fun stableAccountVideoOrder(accountId: String, videoId: String): Int {
     val account = accountId.trim().lowercase().ifBlank { "guest" }
@@ -314,6 +317,11 @@ class VideoRepository @Inject constructor(
 
         if (fileSizeBytes <= 0L) {
             return@withContext Result.failure(Exception("No se pudo validar el tamaño del video."))
+        }
+        if (!isDirectlyPublishableMp4(context, videoUri)) {
+            return@withContext Result.failure(Exception(
+                "Este video necesita convertirse a MP4 compatible en el editor antes de publicarlo."
+            ))
         }
 
         val retriever = MediaMetadataRetriever()
@@ -1285,7 +1293,7 @@ class VideoRepository @Inject constructor(
      * @return true when this call performed the remote increment, false when the session had
      * already recorded (or is currently recording) the same video.
      */
-    suspend fun incrementViews(videoId: String): Result<Boolean> {
+    suspend fun incrementViews(videoId: String): Result<VideoViewIncrement> {
         val cleanVideoId = canonicalVideoId(videoId)
         if (cleanVideoId.isBlank()) {
             return Result.failure(IllegalArgumentException("Video id is blank"))
@@ -1298,20 +1306,20 @@ class VideoRepository @Inject constructor(
             ?: VideoViewSessionRegistry.ANONYMOUS_ACCOUNT
 
         if (!viewSessionRegistry.tryStart(accountId, cleanVideoId)) {
-            return Result.success(false)
+            return Result.success(VideoViewIncrement(recorded = false, totalViews = null))
         }
 
         return try {
             val result = incrementViewsRemotely(cleanVideoId)
             viewSessionRegistry.finish(accountId, cleanVideoId, result.isSuccess)
-            result.map { true }
+            result.map { total -> VideoViewIncrement(recorded = true, totalViews = total) }
         } catch (cancelled: CancellationException) {
             viewSessionRegistry.finish(accountId, cleanVideoId, succeeded = false)
             throw cancelled
         }
     }
 
-    private suspend fun incrementViewsRemotely(videoId: String): Result<Unit> {
+    private suspend fun incrementViewsRemotely(videoId: String): Result<Int?> {
         return try {
             val accessToken = authService.getAccessTokenAwait()
             if (shouldUseUbuntuBackend()) {
@@ -1325,7 +1333,7 @@ class VideoRepository @Inject constructor(
                         updateLocalVideoViewCount(videoId, 1)
                     }
                 }
-                return result.map { Unit }
+                return result
             }
 
             // Use RPC to bypass RLS UPDATE restriction for views.
@@ -1341,7 +1349,7 @@ class VideoRepository @Inject constructor(
             if (response.status.isSuccess()) {
                 android.util.Log.d("VideoRepository", "incrementViews SUCCESS for $videoId")
                 updateLocalVideoViewCount(videoId, 1)
-                Result.success(Unit)
+                Result.success(null)
             } else {
                 val errBody = try { response.body<String>() } catch (_: Exception) { "no body" }
                 android.util.Log.e(

@@ -255,7 +255,7 @@ internal fun LiveCreatorPreviewStage(
                             Box(Modifier.size(8.dp).background(Color(0xFF38DC7A), CircleShape))
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                if (networkAvailable) "Prueba técnica: Todo listo" else "Revisa tu conexión",
+                                if (networkAvailable) "Red detectada · transmisión sin verificar" else "Revisa tu conexión",
                                 color = if (networkAvailable) Color(0xFF55E58C) else NovvinLiveColors.Warning,
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -263,7 +263,7 @@ internal fun LiveCreatorPreviewStage(
                     }
                 }
                 LiveTechnicalPill(
-                    if (networkAvailable) "Red estable" else "Sin red",
+                    if (networkAvailable) "Red detectada" else "Sin red",
                     if (networkAvailable) Color(0xFF27E38C) else NovvinLiveColors.Warning,
                     modifier = Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 14.dp),
                 )

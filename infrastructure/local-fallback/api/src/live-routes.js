@@ -4,6 +4,7 @@ const { publishRealtimeEvent } = require('./realtime-publish')
 const { drawGuessEnabled } = require('./live-draw-guess-routes')
 const { netWithdrawableGiftAmount } = require('./economic-provenance')
 const { constantTimeSecretEqual } = require('./request-security')
+const { createDistributedRateLimitMiddleware } = require('./distributed-rate-limit')
 const { safeErrorLogDetails } = require('./request-observability')
 const {
   muteLiveKitParticipantAudio,
@@ -470,6 +471,15 @@ function ownsStream(stream, identity) {
 async function canViewStream(pool, stream, identity) {
   if (!stream) return false
   if (ownsStream(stream, identity)) return true
+  if (await isLiveBanned(pool, stream.id, identity)) return false
+  const { rowCount: blocked } = await pool.query(
+    `SELECT 1 FROM fallback_user_blocks
+     WHERE (lower(blocker_id) = lower($1) AND lower(blocked_id) = ANY($2::text[]))
+        OR (lower(blocked_id) = lower($1) AND lower(blocker_id) = ANY($2::text[]))
+     LIMIT 1`,
+    [String(stream.host_user_id || ''), identity.values],
+  )
+  if (blocked > 0) return false
   const visibility = normalizeId(stream.visibility || 'public')
   if (visibility === 'public') return true
   if (visibility !== 'followers') return false
@@ -747,6 +757,15 @@ async function moderationState(pool, stream, identity) {
 }
 
 function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdentity }) {
+  const limitLiveComments = createDistributedRateLimitMiddleware({
+    pool,
+    scope: 'live:comments',
+    limit: 30,
+    windowMs: 60_000,
+    code: 'LIVE_COMMENT_RATE_LIMITED',
+    key: (req) => `${req.auth?.sub || 'unknown'}:${req.params.liveId || 'unknown'}`,
+    methods: ['POST'],
+  })
   require('./live-gift-events').registerLiveGiftRoutes(app, {
     pool, authRequired, getCurrentUser, userIdentity, validUuid, streamById, canViewStream, ownsStream,
   })
@@ -789,10 +808,18 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!['host', 'guest', 'viewer'].includes(requestedRole)) {
         return res.status(400).json({ error: 'LIVE_SFU_ROLE_INVALID' })
       }
+      // A media token is an access grant. Apply the same visibility policy as
+      // GET /live/:id before issuing it, including private and follower rooms.
+      if (requestedRole === 'viewer' && !(await canViewStream(pool, stream, identity))) {
+        return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      }
       if (requestedRole === 'host' && !ownsStream(stream, identity)) {
         return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
       }
       if (requestedRole === 'guest') {
+        if (await isLiveBanned(pool, liveId, identity)) {
+          return res.status(403).json({ error: 'LIVE_BANNED' })
+        }
         const invitation = await invitationForUser(pool, liveId, identity.displayUserId)
         if (!invitation || invitation.status !== 'accepted') {
           return res.status(403).json({ error: 'LIVE_GUEST_INVITATION_REQUIRED' })
@@ -1629,6 +1656,18 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
                 started_at, ended_at, created_at, updated_at
          FROM fallback_live_streams
          WHERE is_active = TRUE
+           AND NOT EXISTS (
+             SELECT 1 FROM fallback_live_bans ban
+             WHERE ban.live_id = fallback_live_streams.id
+               AND lower(ban.user_id) = ANY($1::text[])
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM fallback_user_blocks block
+             WHERE (lower(block.blocker_id) = lower(fallback_live_streams.host_user_id)
+                    AND lower(block.blocked_id) = ANY($1::text[]))
+                OR (lower(block.blocked_id) = lower(fallback_live_streams.host_user_id)
+                    AND lower(block.blocker_id) = ANY($1::text[]))
+           )
            AND (
              visibility = 'public'
              OR lower(host_user_id) = ANY($1::text[])
@@ -1780,6 +1819,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
   })
 
   app.post('/v1/data/live', authRequired, async (req, res, next) => {
+    let client
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
@@ -1797,7 +1837,17 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const battlesEnabled = req.body?.battlesEnabled ?? req.body?.battles_enabled ?? true
       const liveId = validUuid(req.body?.id) || crypto.randomUUID()
 
-      await pool.query(
+      client = await pool.connect()
+      await client.query('BEGIN')
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`live-create:${identity.displayUserId}`])
+      const existing = await streamById(client, liveId)
+      if (existing) {
+        await client.query('ROLLBACK')
+        if (ownsStream(existing, identity)) return res.status(200).json({ stream: existing })
+        return res.status(409).json({ error: 'LIVE_ALREADY_EXISTS' })
+      }
+      await client.query(
         `UPDATE fallback_live_streams
          SET is_active = FALSE,
              viewer_count = 0,
@@ -1807,7 +1857,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
            AND is_active = TRUE`,
         [identity.values],
       )
-      const { rows } = await pool.query(
+      const { rows } = await client.query(
         `INSERT INTO fallback_live_streams(
             id, host_user_id, host_name, host_avatar_url, title, source, hashtags,
             cover_url, game_name, category, visibility, gifts_enabled, battles_enabled,
@@ -1836,10 +1886,14 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
           Boolean(battlesEnabled),
         ],
       )
+      await client.query('COMMIT')
       res.status(201).json({ stream: rows[0] })
     } catch (error) {
+      if (client) await client.query('ROLLBACK').catch(() => {})
       if (error?.code === '23505') return res.status(409).json({ error: 'LIVE_ALREADY_EXISTS' })
       next(error)
+    } finally {
+      client?.release()
     }
   })
 
@@ -2135,7 +2189,11 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
       const stream = await streamById(pool, liveId)
       if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
-      const state = await moderationState(pool, stream, userIdentity(user))
+      const identity = userIdentity(user)
+      if (!(await canViewStream(pool, stream, identity))) {
+        return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      }
+      const state = await moderationState(pool, stream, identity)
       res.setHeader('Cache-Control', 'private, no-store')
       res.json({ moderation: state })
     } catch (error) {
@@ -2354,7 +2412,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
     }
   })
 
-  app.post('/v1/data/live/:liveId/comments', authRequired, async (req, res, next) => {
+  app.post('/v1/data/live/:liveId/comments', authRequired, limitLiveComments, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
@@ -2380,21 +2438,26 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       }
       const profile = await resolvedProfile(pool, user)
       const { rows } = await pool.query(
-        `INSERT INTO fallback_live_comments(live_id, user_id, user_name, avatar_url, content)
-         VALUES ($1::uuid, $2, $3, $4, $5)
-         RETURNING id::text, live_id::text, user_id, user_name, avatar_url, content, created_at`,
+        `WITH inserted AS (
+           INSERT INTO fallback_live_comments(live_id, user_id, user_name, avatar_url, content)
+           VALUES ($1::uuid, $2, $3, $4, $5)
+           RETURNING id::text, live_id::text, user_id, user_name, avatar_url, content, created_at
+         ), counted AS (
+           UPDATE fallback_live_streams
+           SET total_comments = total_comments + 1, updated_at = NOW()
+           WHERE id = $1::uuid AND EXISTS (SELECT 1 FROM inserted)
+           RETURNING id
+         )
+         SELECT inserted.* FROM inserted JOIN counted ON counted.id::text = inserted.live_id`,
         [liveId, identity.displayUserId, profile.name, profile.avatarUrl, content],
       )
-      await pool.query(
-        `UPDATE fallback_live_streams
-         SET total_comments = total_comments + 1, updated_at = NOW()
-         WHERE id = $1::uuid`,
-        [liveId],
-      )
+      if (!rows[0]) return res.status(409).json({ error: 'LIVE_NOT_ACTIVE' })
       await publishRealtimeEvent(`live-comments:${liveId}`, {
         event: 'live_comment_created',
         liveId,
         commentId: rows[0].id,
+      }).catch((error) => {
+        console.error('[live] Comment saved but realtime notification failed', error)
       })
       res.status(201).json({ comment: rows[0] })
     } catch (error) {

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -32,10 +33,46 @@ import conectate.com.data.localfallback.AdminCatalog
 import conectate.com.data.localfallback.AdminBadgeOption
 import conectate.com.data.localfallback.AdminModerationAppeal
 import conectate.com.data.localfallback.AdminUser
+import conectate.com.data.localfallback.AdminRecoveryCase
+import conectate.com.data.localfallback.AdminRecoveryAccount
 import conectate.com.data.localfallback.SystemHealthResponse
 import conectate.com.presentation.components.FullScreenImageDialog
 import coil.compose.AsyncImage
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import conectate.com.presentation.common.AppFeedbackBus
+
+private fun recoveryDeliveryMessage(caseId: String, secret: String, contactCode: Boolean): String =
+    if (contactCode) {
+        "Novvin: para confirmar tu contacto nuevo en la solicitud $caseId, escribe este código de 6 dígitos en la app: $secret. " +
+            "Caduca en 30 minutos. Este código no cambia tu contraseña. No respondas con claves ni documentos."
+    } else {
+        "Novvin: completamos la revisión de la solicitud $caseId. Usa este código temporal en «Ya tengo un código del administrador» " +
+            "para crear una contraseña nueva y entrar: $secret. No lo compartas con nadie más."
+    }
+
+private fun openRecoveryMessage(context: Context, contactType: String, contact: String, message: String) {
+    val intent = if (contactType == "whatsapp") {
+        val digits = contact.filter(Char::isDigit)
+        Intent(Intent.ACTION_VIEW, Uri.parse("whatsapp://send?phone=$digits&text=${Uri.encode(message)}"))
+            .setPackage("com.whatsapp")
+    } else {
+        Intent(Intent.ACTION_SENDTO, Uri.fromParts("mailto", contact, null)).apply {
+            putExtra(Intent.EXTRA_SUBJECT, "Novvin · recuperación de cuenta")
+            putExtra(Intent.EXTRA_TEXT, message)
+        }
+    }
+    runCatching { context.startActivity(intent) }
+        .recoverCatching {
+            if (contactType != "whatsapp") throw it
+            context.startActivity(intent.setPackage("com.whatsapp.w4b"))
+        }
+        .onFailure { AppFeedbackBus.showError("No se pudo abrir el contacto. Copia el mensaje y envíalo manualmente.") }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +80,7 @@ fun AdminPanelScreen(
     navController: NavController,
     viewModel: AdminPanelViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val isAdmin by viewModel.isAdmin.collectAsState()
     val adminAccess by viewModel.adminAccess.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -51,6 +89,13 @@ fun AdminPanelScreen(
     
     val suspendedProfiles by viewModel.suspendedProfiles.collectAsState()
     val moderationAppeals by viewModel.moderationAppeals.collectAsState()
+    val recoveryCases by viewModel.recoveryCases.collectAsState()
+    val recoveryAccounts by viewModel.recoveryAccounts.collectAsState()
+    val recoverySecret by viewModel.recoverySecret.collectAsState()
+    val recoverySecretCaseId by viewModel.recoverySecretCaseId.collectAsState()
+    val recoverySecretAction by viewModel.recoverySecretAction.collectAsState()
+    val recoveryBusy by viewModel.recoveryBusy.collectAsState()
+    var expandedRecoveryCaseId by remember { mutableStateOf<String?>(null) }
     val userReports by viewModel.userReports.collectAsState()
     val videoReports by viewModel.videoReports.collectAsState()
     val stats by viewModel.stats.collectAsState()
@@ -628,6 +673,7 @@ fun AdminPanelScreen(
                 Tab(selected = selectedTabIndex == 3, onClick = { selectedTabIndex = 3 }, text = { Text("Reportes") })
                 Tab(selected = selectedTabIndex == 4, onClick = { selectedTabIndex = 4 }, text = { Text("Videos") })
                 Tab(selected = selectedTabIndex == 5, onClick = { selectedTabIndex = 5 }, text = { Text("Apelaciones") })
+                Tab(selected = selectedTabIndex == 6, onClick = { selectedTabIndex = 6; viewModel.refreshRecoveryCases() }, text = { Text("Recuperaciones (${recoveryCases.count { it.status == "pending" }})") })
             }
 
             if (!errorMessage.isNullOrBlank()) {
@@ -770,10 +816,181 @@ fun AdminPanelScreen(
                             )
                         }
                     }
+                    6 -> {
+                        item(key = "recovery-guide") {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Recuperación de cuentas", style = MaterialTheme.typography.titleLarge)
+                                Text("Confirma el contacto nuevo con un código y verifica por separado la propiedad de la cuenta. El contacto nuevo por sí solo no demuestra que la cuenta le pertenece.")
+                                OutlinedButton(onClick = viewModel::refreshRecoveryCases) { Text("Actualizar solicitudes") }
+                                recoverySecret?.let { secret ->
+                                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text(
+                                                if (recoverySecretAction == "contact-code") "Código para confirmar el contacto"
+                                                else "Código temporal para crear contraseña",
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                            Text("Solicitud: ${recoverySecretCaseId.orEmpty()}")
+                                            val matched = recoveryCases.firstOrNull { it.id == recoverySecretCaseId }
+                                            matched?.let {
+                                                Text("Contacto: ${matched.alternateContact}")
+                                            }
+                                            androidx.compose.foundation.text.selection.SelectionContainer { Text(secret) }
+                                            Text("Visible una sola vez. Comprueba el destinatario antes de abrir el mensaje. El envío lo realiza el administrador.")
+                                            val message = recoveryDeliveryMessage(
+                                                recoverySecretCaseId.orEmpty(), secret,
+                                                recoverySecretAction == "contact-code",
+                                            )
+                                            OutlinedButton(onClick = {
+                                                (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+                                                    ?.setPrimaryClip(ClipData.newPlainText("Mensaje de recuperación Novvin", message))
+                                            }) { Text("Copiar mensaje completo") }
+                                            matched?.let { destination ->
+                                                OutlinedButton(onClick = {
+                                                    openRecoveryMessage(context, destination.contactType, destination.alternateContact, message)
+                                                }) {
+                                                    Text(if (destination.contactType == "whatsapp") "Abrir WhatsApp con mensaje" else "Preparar correo con mensaje")
+                                                }
+                                            }
+                                            OutlinedButton(onClick = {
+                                                (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+                                                    ?.setPrimaryClip(ClipData.newPlainText("Código de recuperación Novvin", secret))
+                                            }) { Text("Copiar código") }
+                                            TextButton(onClick = viewModel::clearRecoverySecret) { Text("Cerrar código") }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (recoveryCases.isEmpty()) item(key = "recovery-empty") { Text("No hay solicitudes de recuperación.") }
+                        items(recoveryCases, key = { "recovery:${it.id}" }) { recovery ->
+                            AdminRecoveryCard(
+                                recovery, recoveryAccounts, adminAccess.isOwner, recoveryBusy,
+                                expanded = expandedRecoveryCaseId == recovery.id,
+                                onToggle = {
+                                    expandedRecoveryCaseId = if (expandedRecoveryCaseId == recovery.id) null else recovery.id
+                                    viewModel.clearRecoveryAccounts()
+                                    if (expandedRecoveryCaseId == recovery.id && recovery.identifier.trim().length >= 3) {
+                                        viewModel.findRecoveryAccounts(recovery.identifier)
+                                    }
+                                },
+                                onSearch = viewModel::findRecoveryAccounts,
+                                onAction = { action, account, evidence, resetTwoFactor ->
+                                    viewModel.recoveryAction(recovery.id, action, account, evidence, resetTwoFactor)
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
     }
+    }
+}
+
+@Composable
+private fun AdminRecoveryCard(
+    recovery: AdminRecoveryCase,
+    accounts: List<AdminRecoveryAccount>,
+    canReview: Boolean,
+    busy: Boolean,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onSearch: (String) -> Unit,
+    onAction: (String, String, String, Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    var accountQuery by remember(recovery.id) { mutableStateOf(recovery.identifier) }
+    var accountId by remember(recovery.id) { mutableStateOf(recovery.candidateUserId) }
+    var evidence by remember(recovery.id) { mutableStateOf("") }
+    var resetTwoFactor by remember(recovery.id) { mutableStateOf(false) }
+    var confirmIssue by remember(recovery.id) { mutableStateOf(false) }
+    if (confirmIssue) {
+        AlertDialog(
+            onDismissRequest = { confirmIssue = false },
+            title = { Text("Confirmar recuperación") },
+            text = { Text("Cuenta: $accountId\nContacto: ${recovery.alternateContact}\nAl emitir el código se cerrarán todas las sesiones y se invalidará la contraseña anterior.${if (resetTwoFactor) " También se restablecerá el segundo factor al canjearlo." else ""} Confirma que ya verificaste la propiedad de la cuenta y puedes entregar el código al titular.") },
+            confirmButton = {
+                Button(onClick = {
+                    confirmIssue = false
+                    onAction("issue-code", accountId.trim(), evidence.trim(), resetTwoFactor)
+                }) { Text("Emitir código") }
+            },
+            dismissButton = { TextButton(onClick = { confirmIssue = false }) { Text("Cancelar") } },
+        )
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            val statusLabel = when (recovery.status) {
+                "pending" -> "Pendiente"
+                "issued" -> "Código emitido"
+                "completed" -> "Completada"
+                "rejected" -> "Rechazada"
+                else -> recovery.status
+            }
+            Text("$statusLabel · ${recovery.identifier}", style = MaterialTheme.typography.titleMedium)
+            Text("Solicitud ${recovery.id}", style = MaterialTheme.typography.bodySmall)
+            if (recovery.candidateUserId.isNotBlank()) {
+                Text("Coincidencia sugerida: ${recovery.candidateName} @${recovery.candidateUsername} · ${recovery.candidateEmail}")
+                Text("ID: ${recovery.candidateUserId}", style = MaterialTheme.typography.bodySmall)
+            } else Text("Sin coincidencia única. Busca la cuenta antes de aprobar.", color = MaterialTheme.colorScheme.error)
+            Text("Paso 1: confirmar el contacto. Paso 2: verificar la cuenta y las pruebas. Paso 3: entregar un código temporal para cambiar la contraseña.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            androidx.compose.foundation.text.selection.SelectionContainer {
+                Text("Contacto nuevo (${recovery.contactType}): ${recovery.alternateContact}")
+            }
+            Text(if (recovery.contactVerified) "Contacto confirmado" else "Contacto sin confirmar")
+            TextButton(onClick = onToggle) { Text(if (expanded) "Ocultar detalles" else "Revisar solicitud") }
+            if (expanded) {
+                OutlinedButton(onClick = {
+                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+                        ?.setPrimaryClip(ClipData.newPlainText("Contacto recuperación Novvin", recovery.alternateContact))
+                }) { Text("Copiar contacto") }
+                if (recovery.profileHint.isNotBlank()) Text("Perfil recordado: ${recovery.profileHint}")
+                Text("Relato: ${recovery.description}")
+                if (recovery.status == "pending" && canReview) {
+                    OutlinedButton(onClick = { onAction("contact-code", "", "", false) }, enabled = !busy) {
+                        Text("Generar código para confirmar contacto")
+                    }
+                    Text("Envíalo al WhatsApp o correo indicado. El solicitante lo escribe en la app. Esto solo comprueba el contacto nuevo.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = accountQuery, onValueChange = { accountQuery = it },
+                        label = { Text("Buscar cuenta por usuario, correo o ID") },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    )
+                    OutlinedButton(onClick = { onSearch(accountQuery) }, enabled = accountQuery.trim().length >= 3) { Text("Buscar") }
+                    if (accounts.isEmpty()) Text("Sin resultados cargados. Busca por correo, usuario o ID.", style = MaterialTheme.typography.bodySmall)
+                    accounts.forEach { account ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = accountId == account.id, onClick = { accountId = account.id })
+                            Text("${account.displayName} @${account.username} · ${account.email}", modifier = Modifier.weight(1f))
+                        }
+                    }
+                    OutlinedTextField(
+                        value = accountId, onValueChange = { accountId = it },
+                        label = { Text("ID de la cuenta verificada") }, modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = evidence, onValueChange = { evidence = it.take(240) },
+                        label = { Text("Referencia de prueba de propiedad") },
+                        supportingText = { Text("Anota cómo verificaste la propiedad; mínimo 8 caracteres. No escribas contraseñas ni documentos.") },
+                        modifier = Modifier.fillMaxWidth(), minLines = 2,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = resetTwoFactor, onCheckedChange = { resetTwoFactor = it })
+                        Text("Restablecer también el segundo factor")
+                    }
+                    Button(
+                        onClick = { confirmIssue = true },
+                        enabled = !busy && recovery.contactVerified && accountId.trim().length == 36 && evidence.trim().length >= 8,
+                    ) { Text("Aprobar y generar código temporal") }
+                    OutlinedButton(
+                        onClick = { onAction("reject", "", evidence.trim(), false) },
+                        enabled = !busy && evidence.trim().length >= 8,
+                    ) { Text("Rechazar con motivo") }
+                }
+            }
+        }
     }
 }
 

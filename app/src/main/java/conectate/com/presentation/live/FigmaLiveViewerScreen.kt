@@ -207,7 +207,7 @@ fun LiveViewerScreen(
             viewers = liveViewers,
             onDismiss = { showModerationDialog = false },
             onSaveSettings = { chatPaused, _ -> viewModel.updateModerationPause(chatPaused) },
-            onSetModerator = { _, _ -> },
+            onSetModerator = viewModel::setModerator,
             onKick = { viewModel.moderateViewer(it, false) },
             onBan = { viewModel.moderateViewer(it, true) }
         )

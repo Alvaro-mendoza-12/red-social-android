@@ -66,6 +66,17 @@ object RuntimeBackendEndpoint {
         BuildConfig.FALLBACK_API_URL,
         allowHttp
     ).orEmpty()
+    private val stableConfiguredUrl = configuredUrl.takeIf { url ->
+        url.startsWith("https://") &&
+            runCatching {
+                val host = URI(url).host.orEmpty()
+                host.isNotBlank() &&
+                    !host.endsWith(".trycloudflare.com") &&
+                    !host.endsWith(".ngrok-free.app") &&
+                    !host.endsWith(".ngrok.io")
+            }
+                .getOrDefault(false)
+    }
     private val discoveryPublicKey = BuildConfig.BACKEND_DISCOVERY_PUBLIC_KEY.trim()
     private val _baseUrl = MutableStateFlow(configuredUrl)
     private val refreshGate = EndpointRefreshGate(android.os.SystemClock::elapsedRealtime)
@@ -87,6 +98,12 @@ object RuntimeBackendEndpoint {
 
     fun initialize(context: Context) {
         appContext = context.applicationContext
+        if (stableConfiguredUrl != null) {
+            // An older installation may have cached a signed temporary tunnel.
+            // The pinned stable origin in the installed build takes precedence.
+            applyCandidate(TrustedCandidate(stableConfiguredUrl), context = context)
+            return
+        }
         val prefs = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
         val cachedUrl = prefs.getString(KEY_BASE_URL, null).orEmpty()
         val cachedEnvelope = prefs.getString(KEY_DISCOVERY_ENVELOPE, null).orEmpty()
@@ -125,6 +142,9 @@ object RuntimeBackendEndpoint {
     /** Returns only an explicitly configured or cryptographically verified backend. */
     suspend fun ensureFreshEndpoint(): String? {
         val current = baseUrl
+        // A build-pinned stable HTTPS origin is already trusted. Its /ready
+        // probe is diagnostic, not a prerequisite for every app operation.
+        if (current == stableConfiguredUrl) return current
         if (isCurrentTrusted(current) && isValidationFresh(current)) return current
         val context = appContext ?: return current.takeIf(::isCurrentTrusted)
 
@@ -134,7 +154,15 @@ object RuntimeBackendEndpoint {
         refreshGate.refresh(skip = { isCurrentTrusted(baseUrl) && isValidationFresh(baseUrl) }) {
             refreshUnlocked(context.applicationContext)
         }
-        return baseUrl.takeIf(::isCurrentTrusted)
+        return baseUrl.takeIf { isCurrentTrusted(it) && isValidationFresh(it) }
+    }
+
+    /** Authentication can contact a stable, build-pinned HTTPS origin directly.
+     * A failed /ready probe must not block sign-in or recovery on a slow mobile
+     * network. Temporary tunnels still require signed discovery and liveness.
+     */
+    suspend fun authenticationEndpoint(): String? {
+        return stableConfiguredUrl ?: ensureFreshEndpoint()
     }
 
     suspend fun refresh(context: Context): Boolean {
@@ -150,6 +178,9 @@ object RuntimeBackendEndpoint {
         skippedUrl: String = ""
     ): Boolean = withContext(Dispatchers.IO) {
         val before = baseUrl
+        val probedUrls = mutableSetOf<String>()
+        fun probeOnce(url: String): Boolean =
+            probedUrls.add(url) && runCatching { probe(url) }.getOrDefault(false)
         val localCandidates = listOfNotNull(
             trustCandidate(before, currentDiscoveryEnvelope),
             trustCandidate(configuredUrl),
@@ -157,13 +188,13 @@ object RuntimeBackendEndpoint {
         // A packaged Quick Tunnel URL may already be gone on a fresh install.
         // Discover the signed current origin before spending a full probe
         // timeout on that temporary build-time hostname.
-        val preferDiscovery = before == configuredUrl &&
-            currentDiscoveryEnvelope.isBlank() &&
+        val preferDiscovery =
             BuildConfig.BACKEND_DISCOVERY_HOST.isNotBlank() &&
-            runCatching { URI(configuredUrl).host?.endsWith(".trycloudflare.com") == true }
+            discoveryPublicKey.isNotBlank() &&
+            runCatching { URI(before).host?.endsWith(".trycloudflare.com") == true }
                 .getOrDefault(false)
         val local = if (preferDiscovery) null else localCandidates.firstOrNull { candidate ->
-            candidate.url != skippedUrl && runCatching { probe(candidate.url) }.getOrDefault(false)
+            candidate.url != skippedUrl && probeOnce(candidate.url)
         }
         if (local != null) {
             currentCoroutineContext().ensureActive()
@@ -177,12 +208,12 @@ object RuntimeBackendEndpoint {
             val config = async { fetchConfigCandidate() }
             listOfNotNull(dns.await(), config.await()).distinctBy(TrustedCandidate::url)
         }.firstOrNull { candidate ->
-            candidate.url != skippedUrl && runCatching { probe(candidate.url) }.getOrDefault(false)
+            candidate.url != skippedUrl && probeOnce(candidate.url)
         }
 
         if (discovered == null && preferDiscovery) {
             val fallback = localCandidates.firstOrNull { candidate ->
-                candidate.url != skippedUrl && runCatching { probe(candidate.url) }.getOrDefault(false)
+                candidate.url != skippedUrl && probeOnce(candidate.url)
             }
             if (fallback != null) {
                 currentCoroutineContext().ensureActive()

@@ -252,6 +252,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [title, setTitle] = useState(scope === 'group' ? 'Grupo' : 'Comunidad')
   const [messages, setMessages] = useState<RoomMessage[]>([])
   const [draft, setDraft] = useState('')
+  const draftRevisionRef = useRef(0)
+  const sendInFlightRef = useRef(false)
   const [replyToId, setReplyToId] = useState<string | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [pollQuestion, setPollQuestion] = useState('')
@@ -904,10 +906,16 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!user || !cleanRoomId || (!useUbuntu && !supabase)) {
+      setError('No hay una sesión activa para enviar el mensaje')
+      return
+    }
     const text = draft.trim()
-    if ((!text && pendingAttachments.length === 0) || sending || uploading) return
+    if ((!text && pendingAttachments.length === 0) || sending || uploading || sendInFlightRef.current) return
     const submittedDraft = draft
+    const draftRevisionAtSend = draftRevisionRef.current
     const sendingTextOnly = !editingMessageId && pendingAttachments.length === 0
+    sendInFlightRef.current = true
     if (sendingTextOnly) setDraft('')
     setSending(true)
     try {
@@ -940,9 +948,12 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         setReplyToId(null)
       }
     } catch (caught) {
-      if (sendingTextOnly) setDraft((current) => current || submittedDraft)
+      if (sendingTextOnly && draftRevisionRef.current === draftRevisionAtSend) {
+        setDraft(submittedDraft)
+      }
       setError(friendlyError(caught, 'No se pudo enviar mensaje'))
     } finally {
+      sendInFlightRef.current = false
       setSending(false)
     }
   }
@@ -1455,6 +1466,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                     {mine && message.contentType === 'text' ? (
                       <button className="mini-action-btn" type="button" onClick={() => {
                         setEditingMessageId(message.id)
+                        draftRevisionRef.current += 1
                         setDraft(message.content)
                       }}>
                         Editar
@@ -1515,6 +1527,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           <small>Editando mensaje</small>
           <button className="mini-action-btn" type="button" onClick={() => {
             setEditingMessageId(null)
+            draftRevisionRef.current += 1
             setDraft('')
           }}>
             Cancelar
@@ -1641,7 +1654,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           className="text-input chat-input-field"
           placeholder={`Escribe en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            draftRevisionRef.current += 1
+            setDraft(event.target.value)
+          }}
         />
 
         <button className="primary-btn circle-btn" type="submit" disabled={sending || uploading}>

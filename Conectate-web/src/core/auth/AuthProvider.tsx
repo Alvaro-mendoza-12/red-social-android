@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import type { Session, User } from '@supabase/supabase-js'
 import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { isSupabaseConfigured, supabase } from '../../core/supabase'
 import { textOf, type GenericRow } from '../../core/utils'
@@ -19,6 +19,7 @@ import {
   upgradeFallbackWebSession,
 } from './fallbackAuth'
 import { bootstrapSessionProfile } from './sessionBootstrap'
+import { loginReturnPath } from './loginReturnPath'
 
 type SuspensionState = {
   isSuspended: boolean
@@ -278,6 +279,7 @@ export function useAuth() {
 }
 
 export function RequireAuth({ children }: PropsWithChildren) {
+  const location = useLocation()
   const { configured, loading, user, suspension, suspensionLoading, signOut } = useAuth()
   if (!configured) {
     return (
@@ -291,7 +293,7 @@ export function RequireAuth({ children }: PropsWithChildren) {
     return <StatusView title="Cargando sesión" description="Espera un momento..." />
   }
   if (!user) {
-    return <Navigate to="/login" replace />
+    return <Navigate to={loginReturnPath(location.pathname, location.search, location.hash)} replace />
   }
   if (suspensionLoading) {
     return <StatusView title="Verificando estado de cuenta" description="Espera un momento..." />

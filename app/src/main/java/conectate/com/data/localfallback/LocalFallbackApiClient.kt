@@ -161,6 +161,29 @@ data class AdminUserPage(
     val total: Int = 0
 )
 
+data class AdminRecoveryCase(
+    val id: String,
+    val identifier: String,
+    val alternateContact: String,
+    val contactType: String,
+    val profileHint: String,
+    val description: String,
+    val status: String,
+    val candidateUserId: String,
+    val candidateName: String,
+    val candidateUsername: String,
+    val candidateEmail: String,
+    val contactVerified: Boolean,
+    val createdAt: String,
+)
+
+data class AdminRecoveryAccount(
+    val id: String,
+    val email: String,
+    val displayName: String,
+    val username: String,
+)
+
 data class NearbyProfile(
     val userId: String,
     val displayName: String,
@@ -749,6 +772,24 @@ private data class LocalFallbackChangePasswordRequest(
 @Serializable
 private data class LocalFallbackPasswordResetRequest(
     val email: String
+)
+
+@Serializable
+private data class LocalFallbackAssistedRecoveryRequest(
+    val identifier: String,
+    val alternateContact: String,
+    val description: String,
+    val contactType: String = "other",
+    val profileHint: String = "",
+)
+
+@Serializable
+private data class LocalFallbackContactCodeRequest(val code: String)
+
+@Serializable
+data class LocalFallbackAssistedRecoveryResponse(
+    val ok: Boolean = false,
+    val caseId: String = ""
 )
 
 @Serializable
@@ -1568,10 +1609,11 @@ class LocalFallbackApiClient @Inject constructor(
         secondFactorCode: String? = null
     ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("El servidor de Novvin no está disponible en este momento. Inténtalo de nuevo más tarde."))
         val normalizedEmail = email.trim().lowercase()
         return try {
-            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/login") {
+            val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/login") {
                 localHeaders()
                 contentType(ContentType.Application.Json)
                 val code = secondFactorCode?.trim()?.takeIf(String::isNotBlank)
@@ -1599,9 +1641,10 @@ class LocalFallbackApiClient @Inject constructor(
         displayName: String?
     ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("El servidor de Novvin no está disponible en este momento. Inténtalo de nuevo más tarde."))
         return try {
-            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/register") {
+            val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/register") {
                 localHeaders()
                 contentType(ContentType.Application.Json)
                 setBody(
@@ -1629,9 +1672,10 @@ class LocalFallbackApiClient @Inject constructor(
         newPassword: String
     ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("El servidor de Novvin no está disponible en este momento. Inténtalo de nuevo más tarde."))
         return try {
-            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/change-password") {
+            val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/change-password") {
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
                 setBody(LocalFallbackChangePasswordRequest(currentPassword, newPassword))
@@ -1649,9 +1693,10 @@ class LocalFallbackApiClient @Inject constructor(
 
     suspend fun requestPasswordReset(email: String): Result<LocalFallbackPasswordResetResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("El servidor de Novvin no está disponible en este momento. Inténtalo de nuevo más tarde."))
         return try {
-            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/password-reset/request") {
+            val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/password-reset/request") {
                 localHeaders()
                 contentType(ContentType.Application.Json)
                 setBody(LocalFallbackPasswordResetRequest(email.trim().lowercase()))
@@ -1667,14 +1712,54 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun requestAssistedRecovery(
+        identifier: String,
+        alternateContact: String,
+        description: String,
+        contactType: String = "other",
+        profileHint: String = "",
+    ): Result<LocalFallbackAssistedRecoveryResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Novvin no configurado."))
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("El servidor de Novvin no está disponible en este momento. Inténtalo de nuevo más tarde."))
+        return try {
+            val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/account-recovery/cases") {
+                localHeaders()
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackAssistedRecoveryRequest(identifier, alternateContact, description, contactType, profileHint))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<LocalFallbackAssistedRecoveryResponse>(body))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
+    suspend fun confirmAssistedRecoveryContact(caseId: String, code: String): Result<Unit> = runCatching {
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: error("El servidor de Novvin no está disponible.")
+        val id = URLEncoder.encode(caseId, Charsets.UTF_8.name())
+        val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/account-recovery/cases/$id/confirm-contact") {
+            localHeaders()
+            contentType(ContentType.Application.Json)
+            setBody(LocalFallbackContactCodeRequest(code))
+        }
+        if (!response.status.isSuccess()) throw toException(response, decodeError(response.bodyAsText()))
+    }
+
     suspend fun confirmPasswordReset(
         resetToken: String,
         newPassword: String
     ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("El servidor de Novvin no está disponible en este momento. Inténtalo de nuevo más tarde."))
         return try {
-            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/password-reset/confirm") {
+            val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/password-reset/confirm") {
                 localHeaders()
                 contentType(ContentType.Application.Json)
                 setBody(LocalFallbackPasswordResetConfirmRequest(resetToken.trim(), newPassword))
@@ -1764,10 +1849,11 @@ class LocalFallbackApiClient @Inject constructor(
         secondFactorCode: String?
     ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("El servidor de Novvin no está disponible en este momento. Inténtalo de nuevo más tarde."))
         return try {
             val code = secondFactorCode?.trim().orEmpty()
-            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/password-recovery-codes/confirm") {
+            val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/password-recovery-codes/confirm") {
                 localHeaders()
                 contentType(ContentType.Application.Json)
                 setBody(mapOf(
@@ -2071,9 +2157,10 @@ class LocalFallbackApiClient @Inject constructor(
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         val token = refreshToken.trim()
         if (token.isBlank()) return Result.failure(Exception("No hay una sesión que renovar."))
-        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("El servidor de Novvin no está disponible en este momento. Inténtalo de nuevo más tarde."))
         return try {
-            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/refresh") {
+            val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/refresh") {
                 localHeaders()
                 contentType(ContentType.Application.Json)
                 setBody(
@@ -5097,7 +5184,9 @@ class LocalFallbackApiClient @Inject constructor(
         forwardedFromMessageId: String? = null,
         forwardedFromUserId: String? = null
     ): Result<Message> {
-        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        if (RuntimeBackendEndpoint.ensureFreshEndpoint() == null) {
+            return Result.failure(Exception("Servidor temporalmente no disponible. El mensaje se enviará al recuperar la conexión."))
+        }
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         val request = LocalFallbackSendMessageRequest(
             id = messageId,
@@ -6141,9 +6230,10 @@ class LocalFallbackApiClient @Inject constructor(
         newPassword: String
     ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        RuntimeBackendEndpoint.ensureFreshEndpoint()
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("El servidor de Novvin no está disponible en este momento. Inténtalo de nuevo más tarde."))
         return try {
-            val response = supabaseConfig.httpClient.post("$baseUrl/v1/auth/complete-migrated-password-reset") {
+            val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/complete-migrated-password-reset") {
                 localHeaders()
                 contentType(ContentType.Application.Json)
                 setBody(LocalFallbackCompleteMigrationRequest(migrationToken, newPassword))
@@ -6163,6 +6253,9 @@ class LocalFallbackApiClient @Inject constructor(
     }
 
     private suspend inline fun <reified T> requestJson(url: String, accessToken: String): Result<T> {
+        if (RuntimeBackendEndpoint.ensureFreshEndpoint() == null) {
+            return Result.failure(Exception("Servidor temporalmente no disponible. Inténtalo de nuevo cuando vuelva la conexión."))
+        }
         return try {
             // The URL is assembled by callers before the suspending read. A
             // rotating Quick Tunnel can change during that small window, so
@@ -6256,6 +6349,18 @@ class LocalFallbackApiClient @Inject constructor(
                 Exception("Este video ya no está disponible o no tienes acceso.")
             "INVALID_RECOVERY_CODE" ->
                 Exception("El código de recuperación no coincide o ya fue utilizado.")
+            "RECOVERY_CASE_DETAILS_REQUIRED" ->
+                Exception("Completa el dato de la cuenta, un contacto válido y una explicación de al menos 20 caracteres.")
+            "RECOVERY_CONTACT_INVALID" ->
+                Exception("Revisa el correo o número de WhatsApp nuevo e inténtalo otra vez.")
+            "INVALID_OR_EXPIRED_CONTACT_CODE" ->
+                Exception("El código de contacto no coincide, venció o agotó los intentos. Pide otro al administrador.")
+            "ACCOUNT_RECOVERY_RATE_LIMITED", "ACCOUNT_RECOVERY_CONTACT_RATE_LIMITED" ->
+                Exception("Demasiados intentos de recuperación. Espera un momento antes de volver a intentarlo.")
+            "RECOVERY_CONTACT_NOT_VERIFIED" ->
+                Exception("El solicitante aún no confirmó el contacto nuevo.")
+            "RECOVERY_CASE_ACCOUNT_MISMATCH" ->
+                Exception("El caso ya está asociado a otra cuenta. Revisa la selección.")
             "RECOVERY_CODE_AND_PASSWORD_REQUIRED" ->
                 Exception("Escribe un código de recuperación válido y una contraseña de al menos 8 caracteres.")
             "TWO_FACTOR_REQUIRED", "TWO_FACTOR_INVALID", "TWO_FACTOR_LOCKED" ->
@@ -7616,6 +7721,52 @@ class LocalFallbackApiClient @Inject constructor(
                 total = intOf(payload, "total")
             )
         }
+    }
+
+    suspend fun adminGetRecoveryCases(accessToken: String): Result<List<AdminRecoveryCase>> = runCatching {
+        val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/account-recovery/cases") {
+            localHeaders(accessToken)
+        }
+        if (!response.status.isSuccess()) throw toException(response, decodeError(response.bodyAsText()))
+        json.parseToJsonElement(response.bodyAsText()).jsonObject["cases"]?.jsonArray?.map { element ->
+            val row = element.jsonObject
+            AdminRecoveryCase(
+                id = textOf(row, "id"), identifier = textOf(row, "identifier"),
+                alternateContact = textOf(row, "alternate_contact"),
+                contactType = textOf(row, "contact_type"), profileHint = textOf(row, "profile_hint"),
+                description = textOf(row, "description"), status = textOf(row, "status"),
+                candidateUserId = textOf(row, "user_id").ifBlank { textOf(row, "candidate_user_id") },
+                candidateName = textOf(row, "candidate_name"),
+                candidateUsername = textOf(row, "candidate_username"),
+                candidateEmail = textOf(row, "candidate_email"),
+                contactVerified = textOf(row, "contact_verified_at").isNotBlank(),
+                createdAt = textOf(row, "created_at"),
+            )
+        }.orEmpty()
+    }
+
+    suspend fun adminFindRecoveryAccounts(accessToken: String, query: String): Result<List<AdminRecoveryAccount>> = runCatching {
+        val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/account-recovery/accounts") {
+            localHeaders(accessToken)
+            parameter("q", query)
+        }
+        if (!response.status.isSuccess()) throw toException(response, decodeError(response.bodyAsText()))
+        json.parseToJsonElement(response.bodyAsText()).jsonObject["accounts"]?.jsonArray?.map { element ->
+            val row = element.jsonObject
+            AdminRecoveryAccount(textOf(row, "id"), textOf(row, "email"), textOf(row, "display_name"), textOf(row, "username"))
+        }.orEmpty()
+    }
+
+    suspend fun adminRecoveryAction(accessToken: String, caseId: String, action: String, payload: JsonObject): Result<JsonObject> = runCatching {
+        require(action in setOf("contact-code", "issue-code", "reject"))
+        val id = URLEncoder.encode(caseId, Charsets.UTF_8.name())
+        val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/admin/account-recovery/cases/$id/$action") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(payload)
+        }
+        if (!response.status.isSuccess()) throw toException(response, decodeError(response.bodyAsText()))
+        json.parseToJsonElement(response.bodyAsText()).jsonObject
     }
 
     suspend fun adminGetUser(accessToken: String, userId: String): Result<AdminUser> {

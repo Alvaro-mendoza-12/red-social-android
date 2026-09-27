@@ -162,6 +162,8 @@ class LiveRepository @Inject constructor(
     private var pendingSetupProjectionIntent: Intent? = null
     @Volatile
     private var setupCameraPreviewActive = false
+    private val _isFrontCamera = MutableStateFlow(true)
+    val isFrontCamera: StateFlow<Boolean> = _isFrontCamera.asStateFlow()
     private val projectionState = LiveProjectionStateCoordinator()
     private val sourcePersistenceMutex = Mutex()
     private val sessionStartupMutex = Mutex()
@@ -1127,6 +1129,7 @@ class LiveRepository @Inject constructor(
             webRTCManager?.ensureLocalTracks()
             webRTCManager?.let { applyHostOutgoingAudio(it, _isMicEnabled.value) }
             _activeSession.value = ActiveLiveSession(stream = stream, role = LiveRole.HOST, viewerCount = stream.viewerCount)
+            setupCameraPreviewActive = false
             pendingInitialHostVideoEnabled = null
             hostSessionStartedElapsedMs = SystemClock.elapsedRealtime()
             startAdaptiveQualityMonitor()
@@ -1339,7 +1342,7 @@ class LiveRepository @Inject constructor(
         val started = manager.startVideoAwait(
             isScreen = false,
             intent = null,
-            isFront = true,
+            isFront = _isFrontCamera.value,
             targetWidth = 640,
             targetHeight = 480,
             targetFps = 20
@@ -1385,7 +1388,9 @@ class LiveRepository @Inject constructor(
     fun switchSetupCameraPreview(): Boolean {
         if (!setupCameraPreviewActive || _activeSession.value != null) return false
         return runCatching {
-            webRTCManager?.switchCamera() ?: false
+            webRTCManager?.switchCamera { succeeded ->
+                if (succeeded) _isFrontCamera.value = !_isFrontCamera.value
+            } ?: false
         }.getOrDefault(false)
     }
 
@@ -1426,7 +1431,9 @@ class LiveRepository @Inject constructor(
         val manager = webRTCManager ?: return false
         return runCatching {
             manager.switchCamera { succeeded ->
-                if (!succeeded) {
+                if (succeeded) {
+                    _isFrontCamera.value = !_isFrontCamera.value
+                } else {
                     _runtimeErrors.tryEmit("No se pudo cambiar de cámara. Inténtalo nuevamente.")
                 }
             }
@@ -1472,7 +1479,7 @@ class LiveRepository @Inject constructor(
                 val started = manager.startVideoAwait(
                     isScreen = false,
                     intent = null,
-                    isFront = true,
+                    isFront = _isFrontCamera.value,
                     targetWidth = quality.width,
                     targetHeight = quality.height,
                     targetFps = 24
@@ -3342,7 +3349,13 @@ class LiveRepository @Inject constructor(
                 manager.setCameraFilterPerformanceListener { state ->
                     onCameraFilterPerformanceChanged(state)
                 }
-                manager.hardResetAwait()
+                // The creator already chose a camera in the private preview.
+                // Keep its capturer and track so the first broadcast frame uses
+                // that lens without another camera open/close cycle.
+                val reuseSetupCamera = setupCameraPreviewActive &&
+                    _currentSource.value == LiveSource.CAMERA &&
+                    manager.hasLocalVideoTrack()
+                if (!reuseSetupCamera) manager.hardResetAwait()
                 manager.setCurrentUser(userId, "")
                 manager.setCameraFilter(_cameraFilter.value)
                 manager.setCameraAdjustments(_cameraAdjustments.value)

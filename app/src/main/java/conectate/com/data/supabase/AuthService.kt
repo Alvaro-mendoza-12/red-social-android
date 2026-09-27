@@ -893,7 +893,15 @@ class AuthService @Inject constructor(
         return try {
             if (localFallbackApiClient.isConfigured) {
                 return localFallbackApiClient.requestPasswordReset(email).fold(
-                    onSuccess = { Result.success(Unit) },
+                    onSuccess = { response ->
+                        if (response.delivery == "disabled") {
+                            Result.failure(IllegalStateException(
+                                "La recuperación por correo no está disponible. Usa un código de recuperación guardado."
+                            ))
+                        } else {
+                            Result.success(Unit)
+                        }
+                    },
                     onFailure = { Result.failure(it) }
                 )
             }

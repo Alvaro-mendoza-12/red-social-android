@@ -38,7 +38,7 @@ internal fun Throwable?.toUserFacingMessage(
             throwable is SocketTimeoutException ||
             rawMessage.contains("timeout", ignoreCase = true) ||
             rawMessage.contains("timed out", ignoreCase = true) ->
-            "La solicitud tardó demasiado. Revisa tu conexión e inténtalo otra vez."
+            "El servidor de Novvin no respondió a tiempo. Inténtalo de nuevo en unos momentos."
 
         throwable is IOException ||
             rawMessage.contains("network", ignoreCase = true) ||
@@ -47,7 +47,7 @@ internal fun Throwable?.toUserFacingMessage(
             rawMessage.contains("connection reset", ignoreCase = true) ||
             rawMessage.contains("software caused connection abort", ignoreCase = true) ||
             rawMessage.contains("no route to host", ignoreCase = true) ->
-            "No pudimos conectarnos con el servidor. Revisa tu internet e inténtalo otra vez."
+            "No pudimos llegar al servidor de Novvin desde este dispositivo. Inténtalo otra vez en unos momentos."
 
         rawMessage.contains("invalid login credentials", ignoreCase = true) ->
             "Correo o contraseña incorrectos."
@@ -73,6 +73,9 @@ internal fun Throwable?.toUserFacingMessage(
 
         rawMessage.contains("LIVE_COMMENT_BLOCKED", ignoreCase = true) ->
             "Ese comentario contiene una palabra que el equipo del directo bloqueó."
+
+        rawMessage.contains("LIVE_COMMENT_RATE_LIMITED", ignoreCase = true) ->
+            "Estás comentando muy rápido. Espera un momento para volver a escribir."
 
         rawMessage.contains("LIVE_BANNED", ignoreCase = true) ->
             "El equipo de moderación restringió tu acceso a este directo."

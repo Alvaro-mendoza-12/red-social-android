@@ -280,7 +280,7 @@ function ReelFeedCard({
             </div>
           ) : null}
         </div>
-        <Link to={`/app/reels/${item.id}`} aria-label="Más opciones" title="Más opciones">
+        <Link to={`/app/reels/${item.id}`} aria-label="Ver detalles del video" title="Ver detalles del video">
           <MoreHorizontal aria-hidden="true" />
         </Link>
       </div>

@@ -8,6 +8,8 @@ import conectate.com.data.localfallback.AdminAccessInfo
 import conectate.com.data.localfallback.AdminCatalog
 import conectate.com.data.localfallback.AdminUser
 import conectate.com.data.localfallback.AdminModerationAppeal
+import conectate.com.data.localfallback.AdminRecoveryCase
+import conectate.com.data.localfallback.AdminRecoveryAccount
 import conectate.com.data.localfallback.SystemHealthResponse
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,6 +38,14 @@ class AdminPanelViewModel @Inject constructor(
         val raw = error?.message.orEmpty().trim()
         val normalized = raw.lowercase()
         return when {
+            normalized.contains("recovery_contact_not_verified") || normalized.contains("aún no confirmó el contacto") ->
+                "El contacto nuevo aún no confirmó su código. Pide al solicitante que lo escriba en la app."
+            normalized.contains("recovery_case_account_mismatch") || normalized.contains("asociado a otra cuenta") ->
+                "El caso ya está asociado a otra cuenta. Vuelve a revisar la identidad."
+            normalized.contains("open_recovery_case_not_found") || normalized.contains("pending_recovery_case_not_found") ->
+                "La solicitud ya no está abierta. Actualiza la lista."
+            normalized.contains("reviewer_and_verification_reference_required") ->
+                "Registra una referencia concreta de la verificación de propiedad."
             normalized.contains("account_must_be_suspended") ->
                 "La cuenta debe permanecer suspendida antes de eliminarla."
             normalized.contains("admin_cannot_be_deleted") ||
@@ -80,6 +90,18 @@ class AdminPanelViewModel @Inject constructor(
     val suspendedProfiles: StateFlow<List<SuspendedProfile>> = _suspendedProfiles.asStateFlow()
     private val _moderationAppeals = MutableStateFlow<List<AdminModerationAppeal>>(emptyList())
     val moderationAppeals: StateFlow<List<AdminModerationAppeal>> = _moderationAppeals.asStateFlow()
+    private val _recoveryCases = MutableStateFlow<List<AdminRecoveryCase>>(emptyList())
+    val recoveryCases: StateFlow<List<AdminRecoveryCase>> = _recoveryCases.asStateFlow()
+    private val _recoveryAccounts = MutableStateFlow<List<AdminRecoveryAccount>>(emptyList())
+    val recoveryAccounts: StateFlow<List<AdminRecoveryAccount>> = _recoveryAccounts.asStateFlow()
+    private val _recoverySecret = MutableStateFlow<String?>(null)
+    val recoverySecret: StateFlow<String?> = _recoverySecret.asStateFlow()
+    private val _recoverySecretCaseId = MutableStateFlow<String?>(null)
+    val recoverySecretCaseId: StateFlow<String?> = _recoverySecretCaseId.asStateFlow()
+    private val _recoverySecretAction = MutableStateFlow<String?>(null)
+    val recoverySecretAction: StateFlow<String?> = _recoverySecretAction.asStateFlow()
+    private val _recoveryBusy = MutableStateFlow(false)
+    val recoveryBusy: StateFlow<Boolean> = _recoveryBusy.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -145,6 +167,7 @@ class AdminPanelViewModel @Inject constructor(
                     loadUsers(token, _userSearch.value)
                     loadSuspendedProfiles(token)
                     loadModerationAppeals(token)
+                    loadRecoveryCases(token)
                     loadReports(token)
                     loadSystemHealth(token)
                 } else {
@@ -358,6 +381,69 @@ class AdminPanelViewModel @Inject constructor(
                 Log.w(TAG, "No se pudieron cargar apelaciones", it)
                 _moderationAppeals.value = emptyList()
             }
+    }
+
+    fun refreshRecoveryCases() {
+        viewModelScope.launch {
+            authService.ensureValidAccessToken().onSuccess { loadRecoveryCases(it) }
+        }
+    }
+
+    private suspend fun loadRecoveryCases(token: String) {
+        localFallbackApiClient.adminGetRecoveryCases(token)
+            .onSuccess { _recoveryCases.value = it }
+            .onFailure { _errorMessage.value = adminError(it, "No se pudieron cargar las recuperaciones.") }
+    }
+
+    fun findRecoveryAccounts(query: String) {
+        if (query.trim().length < 3) return
+        viewModelScope.launch {
+            authService.ensureValidAccessToken().onSuccess { token ->
+                localFallbackApiClient.adminFindRecoveryAccounts(token, query.trim())
+                    .onSuccess { _recoveryAccounts.value = it }
+                    .onFailure { _errorMessage.value = adminError(it, "No se encontraron cuentas.") }
+            }
+        }
+    }
+
+    fun clearRecoverySecret() {
+        _recoverySecret.value = null
+        _recoverySecretCaseId.value = null
+        _recoverySecretAction.value = null
+    }
+    fun clearRecoveryAccounts() { _recoveryAccounts.value = emptyList() }
+
+    fun recoveryAction(caseId: String, action: String, userId: String = "", evidence: String = "", resetTwoFactor: Boolean = false) {
+        if (_recoveryBusy.value) return
+        viewModelScope.launch {
+            _recoveryBusy.value = true
+            clearRecoverySecret()
+            try {
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                val body = buildJsonObject {
+                    put("userId", userId)
+                    put("reviewedBy", authService.getCurrentUserId().orEmpty())
+                    put("verificationRef", evidence)
+                    put("resetTwoFactor", resetTwoFactor)
+                }
+                localFallbackApiClient.adminRecoveryAction(token, caseId, action, body)
+                    .onSuccess { response ->
+                        _recoverySecret.value = response["code"]?.jsonPrimitive?.contentOrNull
+                            ?: response["resetToken"]?.jsonPrimitive?.contentOrNull
+                        _recoverySecretCaseId.value = if (_recoverySecret.value != null) caseId else null
+                        _recoverySecretAction.value = if (_recoverySecret.value != null) action else null
+                        _statusMessage.value = when (action) {
+                            "contact-code" -> "Código de contacto generado. Envíalo manualmente al contacto indicado."
+                            "issue-code" -> "Código temporal emitido. Compártelo solo con el titular verificado."
+                            else -> "Solicitud rechazada."
+                        }
+                        loadRecoveryCases(token)
+                    }
+                    .onFailure { _errorMessage.value = adminError(it, "No se pudo completar la revisión.") }
+            } catch (error: Exception) {
+                _errorMessage.value = adminError(error, "No se pudo validar la sesión administrativa.")
+            } finally { _recoveryBusy.value = false }
+        }
     }
 
     private suspend fun loadSystemHealth(token: String) {

@@ -691,6 +691,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const [title, setTitle] = useState('Chat')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
+  const draftRevisionRef = useRef(0)
+  const sendInFlightRef = useRef(false)
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
@@ -1577,11 +1579,16 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!supabase && !useUbuntu) return
+    if (!user || !cleanChatId || (!supabase && !useUbuntu)) {
+      setError('No hay una sesión activa para enviar el mensaje')
+      return
+    }
     const text = (editingMessageId ? editingDraft : draft).trim()
-    if ((!text && pendingAttachments.length === 0) || sending || uploading) return
+    if ((!text && pendingAttachments.length === 0) || sending || uploading || sendInFlightRef.current) return
     const submittedDraft = draft
+    const draftRevisionAtSend = draftRevisionRef.current
     const sendingTextOnly = !editingMessageId && pendingAttachments.length === 0
+    sendInFlightRef.current = true
     if (sendingTextOnly) setDraft('')
     setSending(true)
     try {
@@ -1620,9 +1627,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         setReplyToId(null)
       }
     } catch (caught) {
-      if (sendingTextOnly) setDraft((current) => current || submittedDraft)
+      if (sendingTextOnly && draftRevisionRef.current === draftRevisionAtSend) {
+        setDraft(submittedDraft)
+      }
       setError(friendlyError(caught, 'No se pudo enviar el mensaje'))
     } finally {
+      sendInFlightRef.current = false
       setSending(false)
     }
   }
@@ -2671,7 +2681,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           className="text-input chat-input-field"
           placeholder={editingMessageId ? 'Edita tu mensaje...' : 'Escribe un mensaje...'}
           value={composerText}
-          onChange={(event) => (editingMessageId ? setEditingDraft(event.target.value) : setDraft(event.target.value))}
+          onChange={(event) => {
+            if (editingMessageId) setEditingDraft(event.target.value)
+            else {
+              draftRevisionRef.current += 1
+              setDraft(event.target.value)
+            }
+          }}
         />
 
         <button className="primary-btn circle-btn" type="submit" disabled={sending || uploading}>

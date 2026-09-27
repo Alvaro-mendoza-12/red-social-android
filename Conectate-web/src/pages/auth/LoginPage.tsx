@@ -697,7 +697,7 @@ export function LoginPage() {
                 ) : (
                   <StatusView
                     title="QR no disponible"
-                    description="El servidor Ubuntu no pudo preparar el QR todavía. Revisa que Ngrok y la API estén encendidos."
+                    description="No se pudo generar el código. Revisa tu conexión y vuelve a intentarlo."
                   />
                 )}
               </div>
@@ -721,7 +721,9 @@ export function LoginPage() {
                         ? 'Rechazado desde el móvil.'
                         : qrPairing?.status === 'expired'
                           ? 'Expirado. Necesitas generar otro QR.'
-                          : 'Esperando aprobación desde el móvil.'}
+                          : qrPairing?.qrUrl
+                            ? 'Esperando aprobación desde el móvil.'
+                            : 'No se pudo iniciar el acceso con QR.'}
                 </p>
                 <p>{qrPairing?.deviceLabel || 'Este navegador'}</p>
               </div>

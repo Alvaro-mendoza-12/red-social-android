@@ -94,6 +94,7 @@ fun LiveHostScreen(
     val reactions by viewModel.reactions.collectAsStateWithLifecycle()
     val reactionCount by viewModel.reactionCount.collectAsStateWithLifecycle()
     val localVideoTrack by viewModel.localVideoTrack.collectAsStateWithLifecycle()
+    val isFrontCamera by viewModel.isFrontCamera.collectAsStateWithLifecycle()
     val eglBaseContext by viewModel.eglBaseContext.collectAsStateWithLifecycle()
     val micEnabled by viewModel.isMicEnabled.collectAsStateWithLifecycle()
     val isMediaReady by viewModel.isMediaReady.collectAsStateWithLifecycle()
@@ -250,6 +251,7 @@ fun LiveHostScreen(
         if (action == null) return@rememberLauncherForActivityResult
 
         if (missingPermissions(context, action.permissions).isNotEmpty()) {
+            if (action is FigmaHostPermissionAction.Start) viewModel.releaseUnusedSetupPreview()
             deniedPermissionAction = action
             showPermissionDeniedDialog = true
         } else {
@@ -282,6 +284,7 @@ fun LiveHostScreen(
     LaunchedEffect(hostPreparation, session?.stream?.id, session?.role, permissionCheckEpoch) {
         when (val preparation = hostPreparation) {
             is LiveHostPreparationState.Failed -> {
+                viewModel.releaseUnusedSetupPreview()
                 AppFeedbackBus.showError(preparation.message)
                 navController.popBackStack()
             }
@@ -328,7 +331,7 @@ fun LiveHostScreen(
         }
     }
 
-    LaunchedEffect(session?.stream?.id, autoStarted, currentSource, isVideoEnabled, isMediaReady) {
+    LaunchedEffect(session?.stream?.id, autoStarted, currentSource, isVideoEnabled, isMediaReady, localVideoTrack) {
         val activeSession = session ?: return@LaunchedEffect
         if (autoStarted || !isMediaReady) return@LaunchedEffect
         if (activeSession.role != LiveRole.HOST) return@LaunchedEffect
@@ -339,7 +342,9 @@ fun LiveHostScreen(
 
         when (currentSource) {
             LiveSource.CAMERA -> {
-                autoStarted = viewModel.startCamera()
+                // The setup preview already owns the selected camera track.
+                // Reopening it here used to switch a rear-camera LIVE back to front.
+                autoStarted = localVideoTrack != null || viewModel.startCamera()
             }
             LiveSource.SCREEN -> {
                 if (viewModel.canReuseScreenShareIntent()) {
@@ -371,6 +376,7 @@ fun LiveHostScreen(
         val error = uiError ?: return@LaunchedEffect
         AppFeedbackBus.showError(error)
         if (session == null) {
+            viewModel.releaseUnusedSetupPreview()
             navController.popBackStack()
         }
         viewModel.clearError()
@@ -677,6 +683,7 @@ fun LiveHostScreen(
         source = currentSource,
         paused = isPaused,
         videoEnabled = isVideoEnabled,
+        isFrontCamera = isFrontCamera,
         micEnabled = micEnabled,
         musicState = liveMusic,
         comments = comments,
@@ -687,6 +694,9 @@ fun LiveHostScreen(
         commentingEnabled = !moderation.chatPaused || moderation.canModerate,
         onComment = viewModel::sendComment,
         onRespondGuest = viewModel::respondToGuestRequest,
+        onGuestRequestsAllowed = { viewModel.setGuestRequestsAllowed(liveId, it) },
+        onMuteGuest = { viewModel.muteGuest(liveId, it) },
+        onRemoveGuest = { viewModel.removeGuest(liveId, it) },
         onPauseResume = pauseOrResume,
         onMic = viewModel::toggleMic,
         onPickMusic = { showMusicPicker = true },

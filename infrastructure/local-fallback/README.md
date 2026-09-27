@@ -304,7 +304,79 @@ curl -sS http://127.0.0.1:3001/v1/admin/sync/status \
   -H "x-admin-token: $ADMIN_SYNC_TOKEN"
 ```
 
-Activar password local manualmente para un usuario importado:
+La ruta heredada `set-local-password` queda reservada para mantenimiento de importaciones.
+Para recuperar una cuenta sin contraseña, correo, teléfono ni códigos, el usuario
+abre una solicitud desde «Olvidé mi contraseña» → «Perdí también el correo,
+teléfono y códigos». Recibe un identificador de caso. El formulario solo toma
+un medio de contacto alternativo, su tipo, una pista opcional del perfil y una
+descripción; nunca contraseñas ni documentos. La API sugiere una cuenta solo
+cuando el correo, usuario o ID tiene una coincidencia exacta y única. La
+sugerencia se muestra únicamente a administradores.
+
+La pestaña «Recuperaciones» del panel Android muestra la cola, la sugerencia,
+el contacto y el relato. La sesión de administrador da lectura; emitir códigos,
+aprobar o rechazar requiere ser propietario administrativo. Las rutas
+`/v1/data/admin/account-recovery/...` usan esa sesión; las rutas técnicas
+`/v1/admin/account-recovery/...` conservan `ADMIN_SYNC_TOKEN` para operación
+desde la mini PC.
+
+El administrador consulta la cola y busca la cuenta probable:
+
+```bash
+curl -sS http://127.0.0.1:3001/v1/admin/account-recovery/cases \
+  -H "x-admin-token: $ADMIN_SYNC_TOKEN"
+curl -sS 'http://127.0.0.1:3001/v1/admin/account-recovery/accounts?q=usuario' \
+  -H "x-admin-token: $ADMIN_SYNC_TOKEN"
+```
+
+Antes de aprobar, comprueba la propiedad con señales independientes ligadas a
+la cuenta y registra la referencia de la revisión. Conocer solo el correo,
+nombre de usuario o datos públicos no basta. Si no hay pruebas suficientes,
+rechaza el caso. Nunca envíes el código de restablecimiento al contacto alternativo sin verificar
+que pertenece al titular. Si el teléfono con el autenticador se perdió,
+indica `resetTwoFactor: true` tras verificarlo también.
+
+Primero, genera un código para confirmar el contacto nuevo y compártelo
+manualmente por WhatsApp o correo indicado. El solicitante introduce el número
+de caso y el código en la APK. El código vence en 30 minutos y admite hasta
+cinco intentos. Esto solo demuestra que controla el contacto nuevo; la prueba
+de propiedad de la cuenta debe verificarse aparte.
+
+```bash
+curl -sS -X POST http://127.0.0.1:3001/v1/admin/account-recovery/cases/ID_DEL_CASO/contact-code \
+  -H "x-admin-token: $ADMIN_SYNC_TOKEN"
+```
+
+Tras la revisión, emite un código de un solo uso:
+
+```bash
+curl -sS -X POST http://127.0.0.1:3001/v1/admin/account-recovery/cases/ID_DEL_CASO/issue-code \
+  -H 'Content-Type: application/json' \
+  -H "x-admin-token: $ADMIN_SYNC_TOKEN" \
+  -d '{"userId":"ID_DE_LA_CUENTA","reviewedBy":"operador","verificationRef":"referencia-interna-de-revision","resetTwoFactor":true}'
+```
+
+La respuesta muestra `resetToken` una sola vez; entrégalo por el canal ya
+verificado. Expira según `PASSWORD_RESET_TOKEN_TTL_MINUTES` (30 minutos por
+defecto). La emisión invalida la contraseña anterior y todas las sesiones.
+No se asigna una contraseña que el administrador conozca; el titular elige
+la suya al canjear el código. No hay entrega automática porque no hay proveedor
+de correo o WhatsApp configurado.
+Si expira, la misma ruta puede emitir otro código para ese caso abierto. El
+titular usa «Ya tengo un código del administrador» y escoge una contraseña
+nueva. El autenticador se restablece al canjear el código solo si la revisión
+lo autorizó. Sin pruebas verificables, la cuenta no debe transferirse.
+
+Para rechazar una solicitud sin pruebas suficientes:
+
+```bash
+curl -sS -X POST http://127.0.0.1:3001/v1/admin/account-recovery/cases/ID_DEL_CASO/reject \
+  -H 'Content-Type: application/json' \
+  -H "x-admin-token: $ADMIN_SYNC_TOKEN" \
+  -d '{"reviewedBy":"operador","verificationRef":"motivo-interno-del-rechazo"}'
+```
+
+Activar password local manualmente para un usuario importado (mantenimiento):
 
 ```bash
 curl -sS -X POST http://127.0.0.1:3001/v1/admin/users/set-local-password \

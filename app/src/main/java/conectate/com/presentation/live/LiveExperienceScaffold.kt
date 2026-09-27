@@ -43,6 +43,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -329,6 +330,7 @@ internal fun NovvinLiveHostExperience(
     source: LiveSource,
     paused: Boolean,
     videoEnabled: Boolean,
+    isFrontCamera: Boolean,
     micEnabled: Boolean,
     musicState: LiveMusicPlaybackState,
     comments: List<LiveComment>,
@@ -339,6 +341,9 @@ internal fun NovvinLiveHostExperience(
     commentingEnabled: Boolean,
     onComment: (String) -> Unit,
     onRespondGuest: (String, Boolean) -> Unit,
+    onGuestRequestsAllowed: (Boolean) -> Unit,
+    onMuteGuest: (String) -> Unit,
+    onRemoveGuest: (String) -> Unit,
     onPauseResume: () -> Unit,
     onMic: (Boolean) -> Unit,
     onPickMusic: () -> Unit,
@@ -373,7 +378,7 @@ internal fun NovvinLiveHostExperience(
         primaryTrack = if (!paused && videoEnabled) localTrack else null,
         primaryName = stream?.hostName?.ifBlank { "Tú" } ?: "Tú",
         primaryAvatar = stream?.hostAvatarUrl,
-        primaryMirror = source == LiveSource.CAMERA,
+        primaryMirror = source == LiveSource.CAMERA && isFrontCamera,
         remoteTracks = remoteTracks,
         liveKitVideos = liveKitVideos,
         onAttachLiveKit = onAttachLiveKit,
@@ -391,7 +396,6 @@ internal fun NovvinLiveHostExperience(
                 metrics = metrics,
                 requestCount = requests.size,
                 onRequests = { panel = HostPanel.REQUESTS },
-                onNotifications = { panel = HostPanel.NOTIFICATIONS },
                 onEnd = onEnd
             )
         },
@@ -415,9 +419,13 @@ internal fun NovvinLiveHostExperience(
                 metrics = metrics,
                 paused = paused,
                 micEnabled = micEnabled,
+                source = source,
+                videoEnabled = videoEnabled,
                 battleActive = battle.status == LiveBattleStatus.ACTIVE,
                 onPauseResume = onPauseResume,
                 onMic = { onMic(!micEnabled) },
+                onCameraToggle = onCameraToggle,
+                onSwitchCamera = onSwitchCamera,
                 onBattle = {
                     onRefreshBattleCandidates()
                     panel = HostPanel.BATTLE
@@ -447,7 +455,16 @@ internal fun NovvinLiveHostExperience(
     )
 
     when (panel) {
-        HostPanel.REQUESTS -> GuestRequestsSheet(requests, activeGuests, { panel = null }, onRespondGuest)
+        HostPanel.REQUESTS -> GuestRequestsSheet(
+            requests = requests,
+            activeGuests = activeGuests,
+            requestsAllowed = stream?.allowGuestRequests == true,
+            onRequestsAllowed = onGuestRequestsAllowed,
+            onMuteGuest = onMuteGuest,
+            onRemoveGuest = onRemoveGuest,
+            onDismiss = { panel = null },
+            onRespond = onRespondGuest
+        )
         HostPanel.GIFTS -> FigmaReceivedGiftsScreen(giftsReceived) { panel = null }
         HostPanel.NOTIFICATIONS -> FigmaLiveNotificationsScreen(
             comments = comments,
@@ -485,6 +502,7 @@ internal fun NovvinLiveHostExperience(
             onEffects = { panel = null; onEffects() },
             onMusic = { panel = HostPanel.MUSIC },
             onFloating = { panel = null; onFloatingChat() },
+            onNotifications = { panel = HostPanel.NOTIFICATIONS },
             onEnd = { panel = null; onEnd() },
             onDismiss = { panel = null }
         )
@@ -846,35 +864,41 @@ private fun LiveExperienceFrame(
                 )
             }
             Box(Modifier.align(Alignment.Center)) { center() }
-            val composerOffset = if (hostComposer == null) 0.dp else 62.dp
-            val bottomOffset = metrics.composerHeight + composerOffset + 16.dp
-            CompactChat(
-                comments,
-                metrics.chatHeight,
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = metrics.horizontalPadding, bottom = bottomOffset)
-                    .fillMaxWidth(if (hostComposer == null) 0.72f else 0.90f)
-            )
-            Box(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = metrics.horizontalPadding, bottom = bottomOffset)
-            ) { actions(metrics) }
             if (hostComposer != null) {
-                Box(
+                Column(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .imePadding()
-                        .padding(
-                            start = metrics.horizontalPadding,
-                            end = metrics.horizontalPadding,
-                            bottom = metrics.composerHeight + 12.dp,
-                        )
-                ) { hostComposer() }
+                        .imePadding(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CompactChat(
+                        comments,
+                        metrics.chatHeight,
+                        Modifier.padding(horizontal = metrics.horizontalPadding).fillMaxWidth(0.90f)
+                    )
+                    Box(Modifier.fillMaxWidth().padding(horizontal = metrics.horizontalPadding)) {
+                        hostComposer()
+                    }
+                    bottom(metrics)
+                }
+            } else {
+                val bottomOffset = metrics.composerHeight + 16.dp
+                CompactChat(
+                    comments,
+                    metrics.chatHeight,
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = metrics.horizontalPadding, bottom = bottomOffset)
+                        .fillMaxWidth(0.72f)
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = metrics.horizontalPadding, bottom = bottomOffset)
+                ) { actions(metrics) }
+                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { bottom(metrics) }
             }
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { bottom(metrics) }
         }
     }
 }
@@ -1814,7 +1838,6 @@ private fun HostTopBar(
     metrics: LiveResponsiveMetrics,
     requestCount: Int,
     onRequests: () -> Unit,
-    onNotifications: () -> Unit,
     onEnd: () -> Unit
 ) {
     val elapsedSeconds by produceState(
@@ -1851,16 +1874,16 @@ private fun HostTopBar(
         )
         LivePill(text = formatDuration(elapsedSeconds))
         Spacer(Modifier.weight(1f))
-        if (requestCount > 0) {
-            Box {
-                LiveRoundIconButton(
-                    Icons.Filled.PersonAdd,
-                    "Solicitudes",
-                    onRequests,
-                    size = if (metrics.compact) 31.dp else 34.dp,
-                    tint = LivePalette.Cyan,
-                    containerColor = Color.Black.copy(alpha = 0.55f)
-                )
+        Box {
+            LiveRoundIconButton(
+                Icons.Filled.PersonAdd,
+                "Invitados y solicitudes",
+                onRequests,
+                size = if (metrics.compact) 31.dp else 34.dp,
+                tint = if (requestCount > 0) LivePalette.Cyan else Color.White,
+                containerColor = Color.Black.copy(alpha = 0.55f)
+            )
+            if (requestCount > 0) {
                 Box(
                     Modifier
                         .align(Alignment.TopEnd)
@@ -1878,15 +1901,6 @@ private fun HostTopBar(
                 }
             }
         }
-        LiveRoundIconButton(
-            Icons.Filled.Notifications,
-            "Notificaciones en vivo",
-            onNotifications,
-            size = if (metrics.compact) 31.dp else 34.dp,
-            tint = if (requestCount > 0) LivePalette.Cyan else Color.White,
-            containerColor = Color.Black.copy(alpha = 0.55f),
-            borderColor = Color.White.copy(alpha = 0.14f)
-        )
         LiveRoundIconButton(
             Icons.Filled.Close,
             "Finalizar",
@@ -1946,57 +1960,75 @@ private fun HostControlBar(
     metrics: LiveResponsiveMetrics,
     paused: Boolean,
     micEnabled: Boolean,
+    source: LiveSource,
+    videoEnabled: Boolean,
     battleActive: Boolean,
     onPauseResume: () -> Unit,
     onMic: () -> Unit,
+    onCameraToggle: () -> Unit,
+    onSwitchCamera: () -> Unit,
     onBattle: () -> Unit,
     onGifts: () -> Unit,
     onMore: () -> Unit
 ) {
-    Row(
+    LazyRow(
         Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .background(Color.Black.copy(alpha = 0.72f))
-            .padding(horizontal = metrics.horizontalPadding, vertical = if (metrics.compact) 6.dp else 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(vertical = if (metrics.compact) 6.dp else 8.dp),
+        contentPadding = PaddingValues(horizontal = metrics.horizontalPadding),
+        horizontalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        HostControl(
+        item { HostControl(
             icon = if (paused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
             label = if (paused) "Reanudar" else "Pausa",
             active = paused,
             compact = metrics.compact,
             onClick = onPauseResume
-        )
-        HostControl(
+        ) }
+        item { HostControl(
             icon = if (micEnabled) Icons.Filled.Mic else Icons.Filled.MicOff,
             label = "Micrófono",
             active = !micEnabled,
             compact = metrics.compact,
             onClick = onMic
-        )
-        HostControl(
+        ) }
+        item { HostControl(
+            icon = if (videoEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
+            label = if (source == LiveSource.SCREEN) "Pantalla" else "Cámara",
+            active = !videoEnabled,
+            compact = metrics.compact,
+            onClick = onCameraToggle
+        ) }
+        if (source == LiveSource.CAMERA && videoEnabled) item { HostControl(
+            icon = Icons.Filled.Cameraswitch,
+            label = "Girar",
+            active = false,
+            compact = metrics.compact,
+            onClick = onSwitchCamera
+        ) }
+        item { HostControl(
             icon = Icons.Filled.SportsEsports,
             label = if (battleActive) "Batalla" else "PK",
             active = battleActive,
             compact = metrics.compact,
             onClick = onBattle
-        )
-        HostControl(
+        ) }
+        item { HostControl(
             icon = Icons.Filled.CardGiftcard,
             label = "Regalos",
             active = false,
             compact = metrics.compact,
             onClick = onGifts
-        )
-        HostControl(
+        ) }
+        item { HostControl(
             icon = Icons.Filled.MoreHoriz,
             label = "Más",
             active = false,
             compact = metrics.compact,
             onClick = onMore
-        )
+        ) }
     }
 }
 
@@ -2076,6 +2108,10 @@ private fun MiniComposer(
 private fun GuestRequestsSheet(
     requests: List<LiveGuestRequest>,
     activeGuests: List<LiveGuestParticipant>,
+    requestsAllowed: Boolean,
+    onRequestsAllowed: (Boolean) -> Unit,
+    onMuteGuest: (String) -> Unit,
+    onRemoveGuest: (String) -> Unit,
     onDismiss: () -> Unit,
     onRespond: (String, Boolean) -> Unit
 ) {
@@ -2086,7 +2122,7 @@ private fun GuestRequestsSheet(
         dragHandle = { LiveSheetHandle() }
     ) {
         Column(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 18.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             LiveSheetHeader(
@@ -2095,6 +2131,33 @@ private fun GuestRequestsSheet(
                 Icons.Filled.Groups,
                 onDismiss
             )
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Permitir invitados", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (requestsAllowed) "Pueden solicitar unirse" else "Nuevas solicitudes cerradas",
+                        color = LivePalette.Muted,
+                        fontSize = 11.sp
+                    )
+                }
+                Switch(checked = requestsAllowed, onCheckedChange = onRequestsAllowed)
+            }
+            activeGuests.forEach { guest ->
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(guest.name, color = Color.White, modifier = Modifier.weight(1f), maxLines = 1)
+                    LiveRoundIconButton(Icons.Filled.MicOff, "Silenciar a ${guest.name}",
+                        { onMuteGuest(guest.userId) }, size = 32.dp)
+                    LiveRoundIconButton(Icons.Filled.Close, "Retirar a ${guest.name}",
+                        { onRemoveGuest(guest.userId) }, size = 32.dp, tint = LivePalette.Red)
+                }
+            }
             if (requests.isEmpty()) {
                 Column(
                     Modifier.fillMaxWidth().padding(vertical = 26.dp),
@@ -2373,6 +2436,7 @@ private fun HostToolsSheet(
     onEffects: () -> Unit,
     onMusic: () -> Unit,
     onFloating: () -> Unit,
+    onNotifications: () -> Unit,
     onEnd: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -2383,7 +2447,7 @@ private fun HostToolsSheet(
         dragHandle = { LiveSheetHandle() }
     ) {
         Column(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 18.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             LiveSheetHeader("Herramientas LIVE", "Control de transmisión", Icons.Filled.MoreHoriz, onDismiss)
@@ -2411,6 +2475,7 @@ private fun HostToolsSheet(
             SheetActionRow(Icons.Filled.Shield, "Moderación", "Comentarios, palabras y moderadores", onModeration)
             SheetActionRow(Icons.Filled.Star, "Guardar momento", "Marca un instante destacado", onMoment)
             SheetActionRow(Icons.AutoMirrored.Filled.Chat, "Chat flotante", "Muestra el chat sobre otras apps", onFloating)
+            SheetActionRow(Icons.Filled.Notifications, "Notificaciones", "Eventos del directo", onNotifications)
             SheetActionRow(Icons.Filled.CallEnd, "Finalizar directo", "Cierra la transmisión para todos", onEnd, LivePalette.Red)
         }
     }

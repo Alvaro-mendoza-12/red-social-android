@@ -7,12 +7,15 @@ import conectate.com.data.localfallback.LocalFallbackMigratedPasswordResetRequir
 import conectate.com.data.localfallback.LocalFallbackMigratedPasswordSetupRequiredException
 import conectate.com.data.localfallback.LocalFallbackTwoFactorRequiredException
 import conectate.com.data.localfallback.LocalFallbackPasswordChangedNeedsTwoFactorException
+import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.model.User
 import conectate.com.data.repository.AuthRepository
 import conectate.com.presentation.common.looksLikeStoredAccountSessionIssue
 import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,7 +60,9 @@ sealed class AuthState {
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val localFallbackApiClient: LocalFallbackApiClient,
+    @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
@@ -79,6 +84,14 @@ class AuthViewModel @Inject constructor(
     val appealSubmitting: StateFlow<Boolean> = _appealSubmitting.asStateFlow()
     private val _appealMessage = MutableStateFlow<String?>(null)
     val appealMessage: StateFlow<String?> = _appealMessage.asStateFlow()
+    private val _assistedRecoverySubmitting = MutableStateFlow(false)
+    val assistedRecoverySubmitting: StateFlow<Boolean> = _assistedRecoverySubmitting.asStateFlow()
+    private val _assistedRecoveryMessage = MutableStateFlow<String?>(null)
+    val assistedRecoveryMessage: StateFlow<String?> = _assistedRecoveryMessage.asStateFlow()
+    private val _assistedRecoveryCaseId = MutableStateFlow<String?>(
+        context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE).getString("case_id", null)
+    )
+    val assistedRecoveryCaseId: StateFlow<String?> = _assistedRecoveryCaseId.asStateFlow()
 
     private fun suspendedState(error: AccountSuspendedException) = AuthState.Suspended(
         suspensionEndDate = error.suspensionEndDate,
@@ -176,6 +189,9 @@ class AuthViewModel @Inject constructor(
                 onSuccess = {
                     _isUserLoggedIn.value = true
                     _currentUserId.value = it.id
+                    _assistedRecoveryCaseId.value = null
+                    context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE)
+                        .edit().remove("case_id").apply()
                     AuthState.Success(it)
                 },
                 onFailure = {
@@ -388,6 +404,39 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun requestAssistedRecovery(identifier: String, alternateContact: String, description: String, contactType: String, profileHint: String) {
+        if (_assistedRecoverySubmitting.value) return
+        viewModelScope.launch {
+            _assistedRecoverySubmitting.value = true
+            _assistedRecoveryMessage.value = null
+            val result = localFallbackApiClient.requestAssistedRecovery(
+                identifier.trim(), alternateContact.trim(), description.trim(), contactType, profileHint.trim()
+            )
+            _assistedRecoveryMessage.value = result.fold(
+                onSuccess = {
+                    _assistedRecoveryCaseId.value = it.caseId
+                    context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE)
+                        .edit().putString("case_id", it.caseId).apply()
+                    "Solicitud recibida. Guarda el número de solicitud. Un administrador enviará primero un código de 6 dígitos para confirmar tu contacto nuevo; después revisará si la cuenta te pertenece."
+                },
+                onFailure = { mapAuthError(it) }
+            )
+            _assistedRecoverySubmitting.value = false
+        }
+    }
+
+    fun confirmAssistedContact(caseId: String, code: String) {
+        if (_assistedRecoverySubmitting.value) return
+        viewModelScope.launch {
+            _assistedRecoverySubmitting.value = true
+            _assistedRecoveryMessage.value = localFallbackApiClient.confirmAssistedRecoveryContact(caseId.trim(), code.trim()).fold(
+                onSuccess = { "Contacto confirmado. Un administrador revisará ahora las pruebas de propiedad de tu cuenta." },
+                onFailure = { mapAuthError(it) },
+            )
+            _assistedRecoverySubmitting.value = false
+        }
+    }
+
     fun confirmMigratedPasswordCode(resetToken: String, newPassword: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
@@ -396,6 +445,9 @@ class AuthViewModel @Inject constructor(
                 onSuccess = {
                     _isUserLoggedIn.value = true
                     _currentUserId.value = it.id
+                    _assistedRecoveryCaseId.value = null
+                    context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE)
+                        .edit().remove("case_id").apply()
                     AuthState.Success(it)
                 },
                 onFailure = {
@@ -405,6 +457,13 @@ class AuthViewModel @Inject constructor(
                 }
             )
         }
+    }
+
+    fun startNewAssistedRecoveryRequest() {
+        _assistedRecoveryCaseId.value = null
+        _assistedRecoveryMessage.value = null
+        context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE)
+            .edit().remove("case_id").apply()
     }
 
     fun confirmSavedPasswordRecoveryCode(
@@ -548,8 +607,8 @@ class AuthViewModel @Inject constructor(
 
     fun changePassword(currentPassword: String, newPassword: String) {
         viewModelScope.launch {
-            val current = currentPassword.trim()
-            val next = newPassword.trim()
+            val current = currentPassword
+            val next = newPassword
             passwordChangeValidationError(current, next)?.let { validationError ->
                 _authState.value = AuthState.Error(validationError)
                 return@launch

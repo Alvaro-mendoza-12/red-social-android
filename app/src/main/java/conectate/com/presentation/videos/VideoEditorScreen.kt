@@ -227,7 +227,7 @@ fun VideoEditorScreen(
                         }
                         Spacer(Modifier.width(5.dp))
                         if (!compactWidth || isExporting) {
-                            Text(if (isExporting) "Procesando" else "Guardar", color = Color.White)
+                            Text(if (isExporting) "Procesando" else "Guardar")
                         }
                     }
                 },
@@ -407,7 +407,7 @@ fun VideoEditorScreen(
                                             MaterialTheme.colorScheme.primary,
                                             RoundedCornerShape(4.dp)
                                         )
-                                        .clickable { viewModel.selectClip(clip.id) }
+                                        .clickable { viewModel.selectClip(context, clip.id) }
                                 ) {
                                     Text(
                                         text = clip.text ?: "",
@@ -426,7 +426,7 @@ fun VideoEditorScreen(
                                                 viewModel.updateClipPosition(clip.id, clip.x + dragAmount.x, clip.y + dragAmount.y)
                                             }
                                         }
-                                        .clickable { viewModel.selectClip(clip.id) }
+                                        .clickable { viewModel.selectClip(context, clip.id) }
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Face,
@@ -501,7 +501,7 @@ fun VideoEditorScreen(
                     isPreparingThumbnails = isPreparingTimeline,
                     pixelsPerSecond = performanceProfile?.editorPixelsPerSecond ?: 20f,
                     onSeek = { viewModel.updateCurrentTime(it) },
-                    onSelectClip = { viewModel.selectClip(it) },
+                    onSelectClip = { viewModel.selectClip(context, it) },
                     onTrimChange = { clipId, startMs, endMs ->
                         viewModel.updateClipTrim(context, clipId, startMs, endMs)
                     }
@@ -1244,6 +1244,7 @@ private fun TimelineTrackRow(
                     if (track.type == TrackType.VIDEO) {
                         TimelineThumbnailStrip(
                             thumbnails = thumbnails,
+                            sourceUri = clip.uri?.toString(),
                             sourceStartMs = clip.startOffsetMs,
                             sourceEndMs = sourceEndMs,
                             modifier = Modifier.fillMaxSize()
@@ -1349,15 +1350,17 @@ private fun TimelineTrackRow(
 @Composable
 private fun TimelineThumbnailStrip(
     thumbnails: List<TimelineThumbnail>,
+    sourceUri: String?,
     sourceStartMs: Long,
     sourceEndMs: Long,
     modifier: Modifier = Modifier
 ) {
-    val inRange = remember(thumbnails, sourceStartMs, sourceEndMs) {
-        thumbnails.filter { it.timeMs in sourceStartMs..sourceEndMs }
+    val inRange = remember(thumbnails, sourceUri, sourceStartMs, sourceEndMs) {
+        val sourceFrames = thumbnails.filter { it.sourceUri == sourceUri }
+        sourceFrames.filter { it.timeMs in sourceStartMs..sourceEndMs }
             .ifEmpty {
                 val center = sourceStartMs + (sourceEndMs - sourceStartMs) / 2L
-                thumbnails.minByOrNull { abs(it.timeMs - center) }?.let(::listOf).orEmpty()
+                sourceFrames.minByOrNull { abs(it.timeMs - center) }?.let(::listOf).orEmpty()
             }
     }
     Row(modifier) {

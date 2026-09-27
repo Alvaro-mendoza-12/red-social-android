@@ -271,6 +271,8 @@ export function VoiceRoomsPage() {
         </div>
       </header>
 
+      <div className="row-actions"><Link className="primary-btn" to="/app/create-space?type=voice">Crear sala de voz</Link></div>
+
       {error ? (
         <article className="voice-room-alert" role="status">
           {error}

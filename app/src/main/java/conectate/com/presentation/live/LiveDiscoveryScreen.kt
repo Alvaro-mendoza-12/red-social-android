@@ -221,9 +221,9 @@ fun LiveStreamItem(
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Preview (using host avatar or a placeholder)
+            // Prefer the creator's selected cover; keep the avatar as fallback.
             AsyncImage(
-                model = stream.hostAvatarUrl,
+                model = stream.coverUrl?.takeIf(String::isNotBlank) ?: stream.hostAvatarUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

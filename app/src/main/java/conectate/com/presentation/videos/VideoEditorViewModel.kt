@@ -45,6 +45,7 @@ import androidx.media3.transformer.VideoEncoderSettings
 import conectate.com.util.VideoDeviceTier
 import conectate.com.util.VideoPerformanceProfile
 import conectate.com.util.VideoPerformanceProfiles
+import conectate.com.util.isDirectlyPublishableMp4
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -178,7 +179,9 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         return try {
             retriever.setDataSource(context, uri)
             val raw = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            raw?.toLongOrNull()?.coerceIn(1_000L, 180_000L) ?: 30_000L
+            // A source can be much longer than the 45-second export. The trim
+            // controls must be able to reach later portions of that source.
+            raw?.toLongOrNull()?.coerceIn(1_000L, 12L * 60L * 60L * 1_000L) ?: 30_000L
         } catch (_: Exception) {
             30_000L
         } finally {
@@ -218,7 +221,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
         getPlayer(context).setPlaybackSpeed(1f)
         syncTimelineWithPlayer()
-        loadTimelineThumbnails(context.applicationContext, uri, durationMs, profile)
+        loadTimelineThumbnails(context.applicationContext, uri, 0L, initialDurationMs, profile)
         _editorHint.value = "Modo ${profile.label}"
     }
 
@@ -260,6 +263,15 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             _editorHint.value = "No se pudieron añadir esos clips a la vista previa."
             return
         }
+        updated.tracks.firstOrNull { it.type == TrackType.VIDEO }
+            ?.clips?.lastOrNull()?.let { selected ->
+                selected.uri?.let { selectedUri ->
+                    loadTimelineThumbnails(
+                        context.applicationContext, selectedUri,
+                        selected.startOffsetMs, selected.durationMs, getOrInitProfile(context),
+                    )
+                }
+            }
 
         val previousCount = current.tracks.firstOrNull { it.type == TrackType.VIDEO }?.clips?.size ?: 0
         val currentCount = updated.tracks.firstOrNull { it.type == TrackType.VIDEO }?.clips?.size ?: 0
@@ -274,7 +286,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     private fun loadTimelineThumbnails(
         context: Context,
         uri: Uri,
-        durationMs: Long,
+        sourceStartMs: Long,
+        selectedDurationMs: Long,
         profile: VideoPerformanceProfile
     ) {
         thumbnailJob?.cancel()
@@ -290,7 +303,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             val frames = mutableListOf<TimelineThumbnail>()
             try {
                 retriever.setDataSource(context, uri)
-                calculateTimelineThumbnailTimes(durationMs, frameCount).forEach { timeMs ->
+                calculateTimelineThumbnailTimes(selectedDurationMs, frameCount).forEach { relativeTimeMs ->
+                    val timeMs = sourceStartMs + relativeTimeMs
                     val source = retriever.getFrameAtTime(
                         timeMs * 1_000L,
                         MediaMetadataRetriever.OPTION_CLOSEST_SYNC
@@ -301,7 +315,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                         .coerceIn(72, 160)
                     val scaled = Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
                     if (scaled !== source) source.recycle()
-                    frames += TimelineThumbnail(timeMs = timeMs, bitmap = scaled)
+                    frames += TimelineThumbnail(timeMs = timeMs, bitmap = scaled, sourceUri = uri.toString())
                 }
                 if (requestId == thumbnailRequestId) {
                     replaceTimelineThumbnails(frames)
@@ -432,8 +446,16 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         }
     }
 
-    fun selectClip(id: Long?) {
+    fun selectClip(context: Context, id: Long?) {
         _selectedClipId.value = id
+        id?.let(::findClipById)?.takeIf { it.type == ClipType.VIDEO }?.let { selected ->
+            selected.uri?.let { uri ->
+                loadTimelineThumbnails(
+                    context.applicationContext, uri,
+                    selected.startOffsetMs, selected.durationMs, getOrInitProfile(context),
+                )
+            }
+        }
         val player = exoPlayer ?: return
         val maxSpeed = (_performanceProfile.value?.editorMaxSpeed ?: 3f).coerceAtLeast(1f)
         val speed = id?.let { findClipById(it)?.speed }?.coerceIn(0.5f, maxSpeed) ?: 1f
@@ -553,6 +575,12 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         }.reflowVideoTracks()
         _currentTimeMs.value = clip.startMs
         syncTimelineWithPlayer()
+        clip.uri?.let { uri ->
+            loadTimelineThumbnails(
+                context.applicationContext, uri,
+                safeRange.first, safeRange.last - safeRange.first, getOrInitProfile(context),
+            )
+        }
     }
 
     private fun canAddOverlay(): Boolean {
@@ -826,6 +854,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
     private fun isLosslessRemuxSourceCompatible(context: Context, clip: EditorClip): Boolean {
         val sourceUri = clip.uri ?: return false
+        if (!isDirectlyPublishableMp4(context, sourceUri)) return false
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, sourceUri)
@@ -1385,7 +1414,8 @@ enum class EditorExportStage(val label: String) {
 
 data class TimelineThumbnail(
     val timeMs: Long,
-    val bitmap: Bitmap
+    val bitmap: Bitmap,
+    val sourceUri: String,
 )
 
 internal fun calculateTimelineThumbnailTimes(durationMs: Long, requestedCount: Int): List<Long> {

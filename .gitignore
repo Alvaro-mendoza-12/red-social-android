@@ -107,6 +107,7 @@ temp_*.json
 /backups/
 /app_backup_before_restore/
 /.codex-backups/
+/.codex-remote-backup/
 /.codex-worktrees/
 /.worktrees/
 /.kilo/

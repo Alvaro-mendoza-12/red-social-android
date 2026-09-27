@@ -52,6 +52,7 @@ import conectate.com.data.model.videoChapterTimeLabel
 import conectate.com.data.model.parseVideoChapterTime
 import conectate.com.data.model.validVideoClipRange
 import conectate.com.data.model.videoClipLink
+import conectate.com.data.model.videoWebLink
 import conectate.com.data.repository.VideoRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.repository.ShareRepository
@@ -118,6 +119,8 @@ class VideoPlayerViewModel @Inject constructor(
 
     private val _commentText = MutableStateFlow("")
     val commentText: StateFlow<String> = _commentText.asStateFlow()
+    private val _commentPosting = MutableStateFlow(false)
+    val commentPosting: StateFlow<Boolean> = _commentPosting.asStateFlow()
     private val _replyingTo = MutableStateFlow<VideoComment?>(null)
     val replyingTo: StateFlow<VideoComment?> = _replyingTo.asStateFlow()
     private val _mentionSuggestions = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
@@ -179,6 +182,7 @@ class VideoPlayerViewModel @Inject constructor(
                         // Comments are optional for playback. Publish the
                         // media immediately before their independent lookup.
                         _uiState.value = VideoPlayerUiState.Success(video, emptyList(), video.likedByMe)
+                        _viewCount.value = maxOf(_viewCount.value, video.views)
                         // Counts are handled by observeStats() to ensure single source of truth (Room + Realtime)
                         // _likeCount.value = video.likeCount
                         // _commentCount.value = video.commentCount
@@ -227,7 +231,7 @@ class VideoPlayerViewModel @Inject constructor(
                 if (stats != null) {
                     _likeCount.value = stats.likeCount
                     _commentCount.value = stats.commentCount
-                    _viewCount.value = stats.viewCount
+                    _viewCount.value = maxOf(_viewCount.value, stats.viewCount)
                     _shareCount.value = stats.shareCount
                 }
             }
@@ -240,10 +244,11 @@ class VideoPlayerViewModel @Inject constructor(
             likeRequestInFlight.value = true
             try {
                 val currentlyLiked = _isLiked.value
+                val previousCount = _likeCount.value
 
                 // Optimistic Update
                 _isLiked.value = !currentlyLiked
-                _likeCount.value += if (currentlyLiked) -1 else 1
+                _likeCount.value = (previousCount + if (currentlyLiked) -1 else 1).coerceAtLeast(0)
 
                 val result = if (currentlyLiked) {
                     videoRepository.unlikeVideo(videoId)
@@ -252,7 +257,8 @@ class VideoPlayerViewModel @Inject constructor(
                 }
                 if (result.isFailure) {
                     _isLiked.value = currentlyLiked
-                    _likeCount.value += if (currentlyLiked) 1 else -1
+                    _likeCount.value = previousCount
+                    AppFeedbackBus.showError(result.exceptionOrNull().toUserFacingMessage("No se pudo actualizar el me gusta."))
                 }
             } finally {
                 likeRequestInFlight.value = false
@@ -267,30 +273,27 @@ class VideoPlayerViewModel @Inject constructor(
 
     fun postComment() {
         val text = _commentText.value.trim()
-        android.util.Log.d("VideoPlayerVM", "postComment called with text: '$text'")
         val parentId = _replyingTo.value?.id
-        
-        if (text.isEmpty()) {
-            android.util.Log.w("VideoPlayerVM", "Text is empty, returning")
-            return
-        }
-
-        android.util.Log.d("VideoPlayerVM", "Launching coroutine to add comment for videoId: $videoId, parentId: $parentId")
+        if (text.isEmpty() || _commentPosting.value) return
+        _commentPosting.value = true
         viewModelScope.launch {
-            videoRepository.addComment(videoId, text, parentId = parentId).onSuccess { insertedComment ->
-                android.util.Log.d("VideoPlayerVM", "Comment added successfully, clearing text")
-                val currentState = _uiState.value
-                if (currentState is VideoPlayerUiState.Success) {
-                    val nextComments = mergeComments(currentState.comments, listOf(insertedComment))
-                    _uiState.value = currentState.copy(comments = nextComments)
-                    _commentCount.value = nextComments.size
+            try {
+                videoRepository.addComment(videoId, text, parentId = parentId).onSuccess { insertedComment ->
+                    val currentState = _uiState.value
+                    if (currentState is VideoPlayerUiState.Success) {
+                        val nextComments = mergeComments(currentState.comments, listOf(insertedComment))
+                        _uiState.value = currentState.copy(comments = nextComments)
+                        _commentCount.value = nextComments.size
+                    }
+                    _commentText.value = ""
+                    _replyingTo.value = null
+                    clearMentionSuggestions()
+                    refreshCommentsAfterWrite()
+                }.onFailure { error ->
+                    AppFeedbackBus.showError(error.toUserFacingMessage("No se pudo enviar el comentario."))
                 }
-                _commentText.value = ""
-                _replyingTo.value = null
-                clearMentionSuggestions()
-                refreshCommentsAfterWrite()
-            }.onFailure { e ->
-                android.util.Log.e("VideoPlayerVM", "Error sending comment", e)
+            } finally {
+                _commentPosting.value = false
             }
         }
     }
@@ -324,8 +327,7 @@ class VideoPlayerViewModel @Inject constructor(
             .onFailure { error ->
                 android.util.Log.e("VideoPlayerVM", "Failed to refresh comments", error)
             }
-            .getOrNull()
-            ?: emptyList()
+            .getOrNull() ?: return
         if (!isCurrentPlaybackAccount()) return
         val currentState = _uiState.value
         val nextComments = loaded
@@ -377,6 +379,7 @@ class VideoPlayerViewModel @Inject constructor(
 
         mentionSearchJob?.cancel()
         mentionSearchJob = viewModelScope.launch {
+            delay(180)
             userRepository.searchMentionCandidates(
                 query = query,
                 excludeUserId = currentUserId,
@@ -497,8 +500,13 @@ class VideoPlayerViewModel @Inject constructor(
             val file = voiceMessageManager.getRecordedFile()
             if (file != null && file.exists()) {
                 videoRepository.sendAudioComment(videoId, file)
-                    .onSuccess { refreshCommentsAfterWrite() }
-                voiceMessageManager.clearRecording()
+                    .onSuccess {
+                        voiceMessageManager.clearRecording()
+                        refreshCommentsAfterWrite()
+                    }
+                    .onFailure { error ->
+                        AppFeedbackBus.showError(error.toUserFacingMessage("No se pudo enviar el audio. Puedes reintentarlo."))
+                    }
             }
         }
     }
@@ -721,9 +729,11 @@ fun VideoPlayerScreen(
     viewModel: VideoPlayerViewModel = hiltViewModel(),
     connectivityViewModel: ConnectivityViewModel = hiltViewModel()
 ) {
+    val mentionNavigationScope = rememberCoroutineScope()
     val historyViewModel: VideoHistoryViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsState()
     val commentText by viewModel.commentText.collectAsState()
+    val commentPosting by viewModel.commentPosting.collectAsState()
     val replyingTo by viewModel.replyingTo.collectAsState()
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsState()
     val reportedVideoIds by viewModel.reportedVideoIds.collectAsState()
@@ -1003,6 +1013,7 @@ fun VideoPlayerScreen(
     }
 
     Scaffold(
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text("Video") },
@@ -1125,7 +1136,7 @@ fun VideoPlayerScreen(
                     onDismiss = { showInternalShareDialog = false },
                     onShareWithUser = { user ->
                         showInternalShareDialog = false
-                        val videoLink = "https://conectate.com/video/${currentState.video.id}"
+                        val videoLink = videoWebLink(currentState.video.id)
                         val route = Screen.Chat.createRoute(
                             user.id,
                             initialMessage = "¡Mira este video!\n$videoLink\n\n${currentState.video.title}"
@@ -1278,7 +1289,7 @@ fun VideoPlayerScreen(
                                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
                                         )
                                         Text(
-                                            text = state.video.created_at,
+                                            text = videoPublishedDateLabel(state.video.created_at),
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
                                         )
@@ -1336,7 +1347,7 @@ fun VideoPlayerScreen(
                                                     onExternalShare = {
                                                         val sendIntent = android.content.Intent().apply {
                                                             action = android.content.Intent.ACTION_SEND
-                                                            putExtra(android.content.Intent.EXTRA_TEXT, "¡Mira este video en Novvin!\nhttps://conectate.com/video/${state.video.id}\n\nO abre directamente en la app:\nconectate://video/${state.video.id}\n\n${state.video.title}")
+                                                            putExtra(android.content.Intent.EXTRA_TEXT, "¡Mira este video en Novvin!\n${videoWebLink(state.video.id)}\n\nO abre directamente en la app:\nconectate://video/${state.video.id}\n\n${state.video.title}")
                                                             type = "text/plain"
                                                         }
                                                         val shareIntent = android.content.Intent.createChooser(sendIntent, "Compartir video")
@@ -1345,7 +1356,14 @@ fun VideoPlayerScreen(
                                                     onToggleProfileShare = {
                                                         viewModel.toggleShare()
                                                     },
-                                                    isSharedToProfile = state.video.sharedByMe
+                                                    isSharedToProfile = state.video.sharedByMe,
+                                                    onReportVideo = if (viewModel.isOwner(state.video.userId)) null else {
+                                                        {
+                                                            viewModel.ensureVideoReportStatus(state.video.id)
+                                                            showReportDialog = true
+                                                        }
+                                                    },
+                                                    isReported = reportedVideoIds.contains(state.video.id),
                                                 )
                                             }
                                         }
@@ -1359,9 +1377,27 @@ fun VideoPlayerScreen(
 
                                     if (state.video.description.isNotEmpty()) {
                                         Spacer(modifier = Modifier.height(12.dp))
-                                        Text(
+                                        VideoDescriptionText(
                                             text = state.video.description,
-                                            style = MaterialTheme.typography.bodyMedium
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            onMentionClick = { username ->
+                                                mentionNavigationScope.launch {
+                                                    val user = viewModel.userRepo.searchMentionCandidates(
+                                                        username, excludeUserId = null, limit = 12,
+                                                    ).getOrNull()?.firstOrNull {
+                                                        it.username.equals(username, ignoreCase = true)
+                                                    }
+                                                    if (user != null) {
+                                                        navController.navigate(
+                                                            conectate.com.presentation.navigation.Screen.UserProfile.createRoute(user.id)
+                                                        )
+                                                    } else {
+                                                        conectate.com.presentation.common.AppFeedbackBus.showError(
+                                                            "Este perfil ya no está disponible."
+                                                        )
+                                                    }
+                                                }
+                                            },
                                         )
                                     }
                                     
@@ -1455,7 +1491,7 @@ fun VideoPlayerScreen(
                                                         maxLines = 2)
                                                 }
                                                 IconButton(onClick = {
-                                                    val link = "https://conectate.com/video/${state.video.id}?resumeMs=${chapter.startMs}"
+                                                    val link = "${videoWebLink(state.video.id)}?resumeMs=${chapter.startMs}"
                                                     val appLink = "conectate://video/${state.video.id}?resumeMs=${chapter.startMs}"
                                                     val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                                                         type = "text/plain"
@@ -1734,7 +1770,7 @@ fun VideoPlayerScreen(
                                         } else {
                                             IconButton(
                                                 onClick = { viewModel.postComment() },
-                                                enabled = commentText.isNotBlank(),
+                                                enabled = commentText.isNotBlank() && !commentPosting,
                                                 colors = IconButtonDefaults.iconButtonColors(
                                                     containerColor = MaterialTheme.colorScheme.primary,
                                                     contentColor = MaterialTheme.colorScheme.onPrimary
@@ -1873,6 +1909,21 @@ private fun formatDate(date: Date?): String {
         diff < 604800000 -> SimpleDateFormat("EEE", Locale.getDefault()).format(date)
         else -> SimpleDateFormat("dd MMM", Locale.getDefault()).format(date)
     }
+}
+
+private fun videoPublishedDateLabel(rawDate: String): String {
+    val parsed = listOf(
+        "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+        "yyyy-MM-dd'T'HH:mm:ssX",
+    ).firstNotNullOfOrNull { pattern ->
+        runCatching {
+            SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }.parse(rawDate)
+        }.getOrNull()
+    } ?: runCatching {
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
+            .parse(rawDate.take(10))
+    }.getOrNull() ?: return rawDate.take(10)
+    return SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)
 }
 
 private fun replaceActiveMention(currentText: String, username: String): String {

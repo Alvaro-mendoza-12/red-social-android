@@ -7,6 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +35,7 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import coil.compose.AsyncImage
 import conectate.com.data.repository.VideoRepository
+import conectate.com.data.repository.UserRepository
 import conectate.com.data.model.VideoChapter
 import conectate.com.data.model.parseVideoChapterTime
 import conectate.com.data.model.validVideoChapters
@@ -40,12 +43,15 @@ import conectate.com.data.model.videoChapterTimeLabel
 import conectate.com.data.supabase.AuthService
 import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.common.toUserFacingMessage
+import conectate.com.util.isDirectlyPublishableMp4
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collect
@@ -62,6 +68,7 @@ import androidx.media3.ui.PlayerView
 @HiltViewModel
 class VideoUploadViewModel @Inject constructor(
     private val videoRepository: VideoRepository,
+    private val userRepository: UserRepository,
     private val authService: AuthService,
     private val draftStore: VideoUploadDraftStore,
 ) : ViewModel() {
@@ -196,6 +203,7 @@ class VideoUploadViewModel @Inject constructor(
                         _videoDurationMs.value = info.durationMs
                         _requiresEditing.value = evaluateVideoPreparation(
                             info.durationMs, info.width, info.height, info.fps, info.fileSizeBytes,
+                            formatCompatible = info.formatCompatible,
                         ).requiresEditor
                     }
                 }
@@ -239,6 +247,9 @@ class VideoUploadViewModel @Inject constructor(
 
     private val _description = MutableStateFlow("")
     val description: StateFlow<String> = _description.asStateFlow()
+    private val _mentionSuggestions = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
+    val mentionSuggestions: StateFlow<List<conectate.com.data.model.User>> = _mentionSuggestions.asStateFlow()
+    private var mentionSearchJob: Job? = null
 
     private val _isPublic = MutableStateFlow(true)
     val isPublic: StateFlow<Boolean> = _isPublic.asStateFlow()
@@ -287,7 +298,32 @@ class VideoUploadViewModel @Inject constructor(
     val soundCompositionReady: StateFlow<Boolean> = _soundCompositionReady.asStateFlow()
 
     fun updateTitle(value: String) { _title.value = value.take(120) }
-    fun updateDescription(value: String) { _description.value = value.take(1_000) }
+    fun updateDescription(value: String) {
+        val clean = value.take(1_000)
+        _description.value = clean
+        mentionSearchJob?.cancel()
+        val query = Regex("(?:^|\\s)@([A-Za-z0-9_.-]{2,24})$")
+            .find(clean)?.groupValues?.get(1)
+        if (query == null) {
+            _mentionSuggestions.value = emptyList()
+            return
+        }
+        mentionSearchJob = viewModelScope.launch {
+            delay(180)
+            userRepository.searchMentionCandidates(query).onSuccess { users ->
+                _mentionSuggestions.value = users
+            }.onFailure { _mentionSuggestions.value = emptyList() }
+        }
+    }
+    fun addDescriptionMention(user: conectate.com.data.model.User) {
+        val username = user.username?.trim()?.takeIf { it.isNotBlank() } ?: return
+        val current = _description.value
+        val match = Regex("(?:^|\\s)@([A-Za-z0-9_.-]{2,24})$").find(current) ?: return
+        _description.value = current.replaceRange(match.range.last - match.groupValues[1].length,
+            current.length, "@$username ").take(1_000)
+        mentionSearchJob?.cancel()
+        _mentionSuggestions.value = emptyList()
+    }
     fun updateIsPublic(value: Boolean) { _isPublic.value = value }
     fun updateAllowClipSharing(value: Boolean) { _allowClipSharing.value = value }
     fun updateIsSensitive(value: Boolean) { _isSensitive.value = value }
@@ -354,7 +390,8 @@ class VideoUploadViewModel @Inject constructor(
                 width = info.width,
                 height = info.height,
                 fps = info.fps,
-                fileSizeBytes = info.fileSizeBytes
+                fileSizeBytes = info.fileSizeBytes,
+                formatCompatible = info.formatCompatible,
             )
 
             val nextOwnedExport = resolveOwnedEditorExportFile(context, uri)
@@ -387,6 +424,8 @@ class VideoUploadViewModel @Inject constructor(
                     "Novvin adaptará la fluidez del video antes de publicarlo."
                 VideoPreparationReason.HIGH_BITRATE ->
                     "Novvin optimizará el video para que se reproduzca sin pausas antes de publicarlo."
+                VideoPreparationReason.UNSUPPORTED_FORMAT ->
+                    "Este formato necesita convertirse a MP4 compatible en el editor antes de publicarlo."
                 VideoPreparationReason.READY -> null
             }
             return decision.requiresEditor
@@ -402,7 +441,8 @@ class VideoUploadViewModel @Inject constructor(
         val width: Int = 0,
         val height: Int = 0,
         val fps: Float = 0f,
-        val fileSizeBytes: Long = -1L
+        val fileSizeBytes: Long = -1L,
+        val formatCompatible: Boolean = false,
     )
 
     private fun readVideoInfo(uri: Uri, context: android.content.Context): VideoPickInfo {
@@ -431,7 +471,8 @@ class VideoUploadViewModel @Inject constructor(
                     width = width,
                     height = height,
                     fps = fps,
-                    fileSizeBytes = fileSizeBytes
+                    fileSizeBytes = fileSizeBytes,
+                    formatCompatible = isDirectlyPublishableMp4(context, uri),
                 )
             } finally {
                 runCatching { retriever.release() }
@@ -501,7 +542,12 @@ class VideoUploadViewModel @Inject constructor(
                         _uploadProgress.value = 1.0f
                         _isUploading.value = false
                         cleanupOwnedEditorExport()
-                        draftStore.delete(account, savedDraft.id)
+                        runCatching { draftStore.delete(account, savedDraft.id) }
+                            .onFailure { cleanupError ->
+                                android.util.Log.w(
+                                    "VideoUpload", "El video se publicó, pero no se pudo limpiar el borrador local", cleanupError,
+                                )
+                            }
                         _draftId.value = java.util.UUID.randomUUID().toString()
                         refreshDrafts()
                         onComplete(true)
@@ -525,6 +571,8 @@ class VideoUploadViewModel @Inject constructor(
     }
 
     fun resetState() {
+        mentionSearchJob?.cancel()
+        _mentionSuggestions.value = emptyList()
         cleanupOwnedEditorExport()
         _draftId.value = java.util.UUID.randomUUID().toString()
         _title.value = ""
@@ -564,6 +612,14 @@ fun VideoUploadScreen(
 ) {
     val title by viewModel.title.collectAsState()
     val description by viewModel.description.collectAsState()
+    val mentionSuggestions by viewModel.mentionSuggestions.collectAsState()
+    val mentionSuggestionsRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(mentionSuggestions) {
+        if (mentionSuggestions.isNotEmpty()) {
+            delay(120)
+            mentionSuggestionsRequester.bringIntoView()
+        }
+    }
     val isPublic by viewModel.isPublic.collectAsState()
     val allowClipSharing by viewModel.allowClipSharing.collectAsState()
     val isSensitive by viewModel.isSensitive.collectAsState()
@@ -1054,6 +1110,26 @@ fun VideoUploadScreen(
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3
                 )
+                if (mentionSuggestions.isNotEmpty()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth()
+                            .bringIntoViewRequester(mentionSuggestionsRequester),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                    ) {
+                        Column(Modifier.padding(8.dp)) {
+                            Text("Mencionar usuario", style = MaterialTheme.typography.labelMedium)
+                            mentionSuggestions.forEach { user ->
+                                TextButton(
+                                    onClick = { viewModel.addDescriptionMention(user) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("@${user.username}", modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                        }
+                    }
+                }
                 
                  OutlinedTextField(
                     value = tags,

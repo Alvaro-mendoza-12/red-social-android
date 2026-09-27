@@ -93,6 +93,10 @@ class VideoFeedViewModel @Inject constructor(
     val soundVideos: StateFlow<List<Video>> = _soundVideos.asStateFlow()
     private val _isSoundVideosLoading = MutableStateFlow(false)
     val isSoundVideosLoading: StateFlow<Boolean> = _isSoundVideosLoading.asStateFlow()
+    private val _soundVideosError = MutableStateFlow<String?>(null)
+    val soundVideosError: StateFlow<String?> = _soundVideosError.asStateFlow()
+    private var soundVideosRequest: Job? = null
+    private var soundVideosRequestId = 0L
 
     // Avoid rendering the empty-feed message for one frame while init starts
     // the first network/cache request.
@@ -330,8 +334,7 @@ class VideoFeedViewModel @Inject constructor(
         _socializationCards.value = emptyList()
         videoFollowState = VideoFollowState()
         _followedUsers.value = emptySet()
-        _soundVideos.value = emptyList()
-        _isSoundVideosLoading.value = false
+        clearSoundVideos()
         _searchQuery.value = ""
         _searchResults.value = emptyList()
         _isSearchMode.value = false
@@ -1047,12 +1050,12 @@ class VideoFeedViewModel @Inject constructor(
 
         viewModelScope.launch {
             videoRepository.incrementViews(cleanVideoId)
-                .onSuccess { incremented ->
-                    if (incremented) {
-                        _forYouVideos.value = incrementViewInList(_forYouVideos.value, cleanVideoId)
-                        _followingVideos.value = incrementViewInList(_followingVideos.value, cleanVideoId)
-                        _searchResults.value = incrementViewInList(_searchResults.value, cleanVideoId)
-                        _profileVideos.value = incrementViewInList(_profileVideos.value, cleanVideoId)
+                .onSuccess { increment ->
+                    if (increment.recorded) {
+                        _forYouVideos.value = incrementViewInList(_forYouVideos.value, cleanVideoId, increment.totalViews)
+                        _followingVideos.value = incrementViewInList(_followingVideos.value, cleanVideoId, increment.totalViews)
+                        _searchResults.value = incrementViewInList(_searchResults.value, cleanVideoId, increment.totalViews)
+                        _profileVideos.value = incrementViewInList(_profileVideos.value, cleanVideoId, increment.totalViews)
                         // incrementViews() already updates the local counter. Do not
                         // fetch the whole video again here: replacing the item with
                         // a freshly signed media URL makes VideoFeedScreen rebuild
@@ -1188,9 +1191,9 @@ class VideoFeedViewModel @Inject constructor(
         }
     }
 
-    private fun incrementViewInList(list: List<Video>, videoId: String): List<Video> {
+    private fun incrementViewInList(list: List<Video>, videoId: String, serverTotal: Int?): List<Video> {
         return list.map { item ->
-            if (item.id == videoId) item.copy(views = item.views + 1) else item
+            if (item.id == videoId) item.copy(views = maxOf(item.views + 1, serverTotal ?: 0)) else item
         }
     }
     
@@ -1453,32 +1456,44 @@ class VideoFeedViewModel @Inject constructor(
 
     fun loadSoundVideos(video: Video) {
         val soundId = (video.soundId ?: video.id).trim()
+        soundVideosRequest?.cancel()
+        val requestId = ++soundVideosRequestId
+        val generation = accountGeneration
+        _soundVideos.value = listOf(video)
+        _soundVideosError.value = null
         if (soundId.isBlank()) {
-            _soundVideos.value = listOf(video)
+            _isSoundVideosLoading.value = false
             return
         }
-        val generation = accountGeneration
-        viewModelScope.launch {
-            if (generation != accountGeneration) return@launch
-            _isSoundVideosLoading.value = true
-            videoRepository.getVideosBySound(soundId)
-                .onSuccess { videos ->
-                    if (generation != accountGeneration) return@onSuccess
-                    _soundVideos.value = (videos + video)
-                        .distinctBy { it.id.trim().lowercase() }
+        _isSoundVideosLoading.value = true
+        soundVideosRequest = viewModelScope.launch {
+            try {
+                videoRepository.getVideosBySound(soundId)
+                    .onSuccess { videos ->
+                        if (generation != accountGeneration || requestId != soundVideosRequestId) return@onSuccess
+                        _soundVideos.value = (videos + video)
+                            .distinctBy { it.id.trim().lowercase() }
+                    }
+                    .onFailure { error ->
+                        if (generation != accountGeneration || requestId != soundVideosRequestId) return@onFailure
+                        _soundVideosError.value = "No se pudieron cargar los videos de este sonido."
+                        android.util.Log.w("VideoFeedVM", "Sound catalog unavailable", error)
+                    }
+            } finally {
+                if (generation == accountGeneration && requestId == soundVideosRequestId) {
+                    _isSoundVideosLoading.value = false
                 }
-                .onFailure {
-                    if (generation != accountGeneration) return@onFailure
-                    _soundVideos.value = listOf(video)
-                    android.util.Log.w("VideoFeedVM", "Sound catalog unavailable", it)
-                }
-            if (generation == accountGeneration) _isSoundVideosLoading.value = false
+            }
         }
     }
 
     fun clearSoundVideos() {
+        soundVideosRequest?.cancel()
+        soundVideosRequest = null
+        soundVideosRequestId++
         _soundVideos.value = emptyList()
         _isSoundVideosLoading.value = false
+        _soundVideosError.value = null
     }
 
     private fun reloadVideo(videoId: String) {

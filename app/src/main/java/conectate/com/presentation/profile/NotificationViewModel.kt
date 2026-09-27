@@ -103,6 +103,7 @@ class NotificationViewModel @Inject constructor(
                             "comment_video" -> "Comentó tu video"
                             "reply_video" -> "Respondió a tu comentario en video"
                             "mention_video" -> "Te mencionó en un comentario de video"
+                            "mention_video_description" -> "Te mencionó en la descripción de un video"
                             "share_video" -> "Compartió tu video"
                             "admin_warning_video" -> "Tu video recibió una advertencia"
                             "account_suspended" -> "Tu cuenta fue suspendida"

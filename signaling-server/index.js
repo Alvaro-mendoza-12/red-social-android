@@ -2173,6 +2173,15 @@ liveIo.on('connection', (socket) => {
             socket.emit('live-ended');
             return;
         }
+        // Existing in-memory rooms must not bypass the API's visibility and
+        // ban checks. GET /live/:id uses the viewer's own bearer token.
+        if (role === 'viewer') {
+            const viewerMeta = await getLiveStreamMeta(liveId, getSocketAuthToken(socket));
+            if (!viewerMeta.exists || !viewerMeta.isActive) {
+                socket.emit('live-ended');
+                return;
+            }
+        }
         ensureLiveInteractionState(sessionReference);
         let requestedModeration;
         try {

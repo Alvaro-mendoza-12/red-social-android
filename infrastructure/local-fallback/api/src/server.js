@@ -289,6 +289,24 @@ app.use('/v1/auth/password-reset/request', createDistributedRateLimitMiddleware(
   key: authCredentialKey,
   methods: ['POST'],
 }))
+app.post('/v1/auth/account-recovery/cases', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:assisted-recovery-request',
+  limit: 3,
+  windowMs: 60 * 60_000,
+  code: 'ACCOUNT_RECOVERY_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['POST'],
+}))
+app.post('/v1/auth/account-recovery/cases/:id/confirm-contact', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:assisted-recovery-contact',
+  limit: 10,
+  windowMs: 60 * 60_000,
+  code: 'ACCOUNT_RECOVERY_CONTACT_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['POST'],
+}))
 app.use([
   '/v1/auth/password-reset/confirm',
   '/v1/auth/password-recovery-codes/confirm',
@@ -1311,6 +1329,40 @@ async function ensureAuthMetadataColumns(executor = pool) {
     WHERE consumed_at IS NULL
   `)
   await executor.query(`
+    CREATE TABLE IF NOT EXISTS fallback_account_recovery_cases (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      identifier TEXT NOT NULL,
+      alternate_contact TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      user_id UUID REFERENCES fallback_users(id) ON DELETE SET NULL,
+      reviewed_by TEXT,
+      verification_ref TEXT,
+      two_factor_reset BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ
+    )
+  `)
+  await executor.query(`
+    ALTER TABLE fallback_account_recovery_cases
+      ADD COLUMN IF NOT EXISTS contact_type TEXT NOT NULL DEFAULT 'other',
+      ADD COLUMN IF NOT EXISTS profile_hint TEXT,
+      ADD COLUMN IF NOT EXISTS candidate_user_id UUID REFERENCES fallback_users(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS contact_code_hash TEXT,
+      ADD COLUMN IF NOT EXISTS contact_code_expires_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS contact_code_attempts INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS contact_verified_at TIMESTAMPTZ
+  `)
+  await executor.query(`
+    CREATE INDEX IF NOT EXISTS idx_fallback_account_recovery_cases_pending
+    ON fallback_account_recovery_cases(created_at DESC) WHERE status = 'pending'
+  `)
+  await executor.query(`
+    ALTER TABLE fallback_password_reset_tokens
+    ADD COLUMN IF NOT EXISTS recovery_case_id UUID
+    REFERENCES fallback_account_recovery_cases(id) ON DELETE SET NULL
+  `)
+  await executor.query(`
     CREATE TABLE IF NOT EXISTS fallback_auth_sessions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES fallback_users(id) ON DELETE CASCADE,
@@ -1834,6 +1886,7 @@ app.post('/v1/admin/sync/import-supabase-users', adminRequired, async (_req, res
 })
 
 app.post('/v1/admin/users/set-local-password', adminRequired, async (req, res, next) => {
+  let client
   try {
     const email = normalizeEmail(req.body?.email)
     const password = String(req.body?.password || '')
@@ -1842,8 +1895,19 @@ app.post('/v1/admin/users/set-local-password', adminRequired, async (req, res, n
       return res.status(400).json({ error: 'EMAIL_AND_STRONG_PASSWORD_REQUIRED' })
     }
 
+    client = await pool.connect()
+    await client.query('BEGIN')
+    const account = await client.query(
+      `SELECT id FROM fallback_users WHERE email = $1 FOR UPDATE`,
+      [email],
+    )
+    if (!account.rows[0]) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'USER_NOT_FOUND' })
+    }
+
     const passwordHash = await bcrypt.hash(password, 12)
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       `UPDATE fallback_users
        SET password_hash = $2,
            password_enabled = TRUE,
@@ -1863,16 +1927,288 @@ app.post('/v1/admin/users/set-local-password', adminRequired, async (req, res, n
       [email, passwordHash],
     )
 
-    if (!rows[0]) {
-      return res.status(404).json({ error: 'USER_NOT_FOUND' })
-    }
+    await client.query(
+      `UPDATE fallback_password_reset_tokens SET consumed_at = NOW()
+       WHERE user_id = $1 AND consumed_at IS NULL`,
+      [account.rows[0].id],
+    )
+    await revokeAllUserSessions(account.rows[0].id, client)
+    await client.query('COMMIT')
+    client.release()
+    client = null
 
     const user = sanitizeUser(await hydrateUserRow(rows[0]))
     await recordAudit('admin_set_local_password', user.id, { email })
+      .catch((error) => console.error('[auth] admin password audit failed', error))
     return res.json({ ok: true, user })
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
+    return next(error)
+  } finally {
+    client?.release()
+  }
+})
+
+async function recoveryAdminRequired(req, res, next) {
+  if (req.headers['x-admin-token']) return adminRequired(req, res, next)
+  try {
+    req.auth = await authenticateClientRequest(req)
+    if (await findActiveSuspension(pool, req.auth.sub)) {
+      return res.status(403).json({ error: 'ACCOUNT_SUSPENDED' })
+    }
+    const capability = req.method === 'GET'
+      ? ADMIN_CAPABILITY.READ : ADMIN_CAPABILITY.ACCESS_MANAGE
+    if (!(await authenticatedUserHasAdminCapability(req, capability))) {
+      return res.status(403).json({ error: 'ADMIN_CAPABILITY_REQUIRED', capability })
+    }
+    return next()
+  } catch (error) {
+    if (isPublicAuthError(error)) return res.status(error.status).json({ error: error.code })
+    return next(error)
+  }
+}
+
+app.get(['/v1/admin/account-recovery/cases', '/v1/data/admin/account-recovery/cases'], recoveryAdminRequired, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT c.id, c.identifier, c.alternate_contact, c.description, c.status, c.user_id,
+              c.reviewed_by, c.verification_ref, c.two_factor_reset, c.created_at, c.reviewed_at,
+              c.contact_type, c.profile_hint, c.candidate_user_id, c.contact_verified_at,
+              u.email AS candidate_email, u.display_name AS candidate_name,
+              o.profile->>'username' AS candidate_username
+       FROM fallback_account_recovery_cases c
+       LEFT JOIN fallback_users u ON u.id = COALESCE(c.user_id, c.candidate_user_id)
+       LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+       ORDER BY CASE WHEN c.status = 'pending' THEN 0 ELSE 1 END, c.created_at DESC
+       LIMIT 100`,
+    )
+    res.set('Cache-Control', 'no-store')
+    return res.json({ cases: rows })
   } catch (error) {
     return next(error)
   }
+})
+
+app.get(['/v1/admin/account-recovery/accounts', '/v1/data/admin/account-recovery/accounts'], recoveryAdminRequired, async (req, res, next) => {
+  try {
+    const query = cleanText(req.query?.q, 120)
+    if (query.length < 3) {
+      return res.status(400).json({ error: 'SEARCH_QUERY_REQUIRED' })
+    }
+    const { rows } = await pool.query(
+      `SELECT u.id, u.email, u.display_name, o.profile->>'username' AS username, u.created_at
+       FROM fallback_users u
+       LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+       WHERE u.email ILIKE $1 OR u.display_name ILIKE $1
+          OR o.profile->>'username' ILIKE $1 OR u.id::text = $2
+       ORDER BY u.created_at DESC LIMIT 20`,
+      [`%${query.replace(/[\\%_]/g, '\\$&')}%`, query],
+    )
+    res.set('Cache-Control', 'no-store')
+    return res.json({ accounts: rows })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.post(['/v1/admin/account-recovery/cases/:id/contact-code', '/v1/data/admin/account-recovery/cases/:id/contact-code'], recoveryAdminRequired, async (req, res, next) => {
+  try {
+    if (!isUuidText(req.params.id)) return res.status(400).json({ error: 'CASE_REQUIRED' })
+    const code = String(crypto.randomInt(100000, 1000000))
+    const { rows } = await pool.query(
+      `UPDATE fallback_account_recovery_cases
+       SET contact_code_hash = $2, contact_code_expires_at = NOW() + INTERVAL '30 minutes',
+           contact_code_attempts = 0, contact_verified_at = NULL
+       WHERE id = $1 AND status = 'pending'
+       RETURNING id`,
+      [req.params.id, hashPasswordResetToken(code)],
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'PENDING_RECOVERY_CASE_NOT_FOUND' })
+    res.set('Cache-Control', 'no-store')
+    return res.json({ ok: true, code, expiresInMinutes: 30 })
+  } catch (error) { return next(error) }
+})
+
+app.post(['/v1/admin/account-recovery/cases/:id/issue-code', '/v1/data/admin/account-recovery/cases/:id/issue-code'], recoveryAdminRequired, async (req, res, next) => {
+  let client
+  try {
+    if (!isUuidText(req.params.id) || !isUuidText(req.body?.userId)) {
+      return res.status(400).json({ error: 'CASE_AND_USER_REQUIRED' })
+    }
+    const reviewedBy = cleanText(req.body?.reviewedBy, 120)
+    const verificationRef = cleanText(req.body?.verificationRef, 240)
+    const resetTwoFactor = req.body?.resetTwoFactor === true
+    if (reviewedBy.length < 3 || verificationRef.length < 8) {
+      return res.status(400).json({ error: 'REVIEWER_AND_VERIFICATION_REFERENCE_REQUIRED' })
+    }
+
+    client = await pool.connect()
+    await client.query('BEGIN')
+    const account = await client.query(
+      `SELECT id FROM fallback_users WHERE id = $1 FOR UPDATE`,
+      [req.body.userId],
+    )
+    if (!account.rows[0]) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'USER_NOT_FOUND' })
+    }
+    const recoveryCase = await client.query(
+      `SELECT id, user_id, contact_verified_at FROM fallback_account_recovery_cases
+       WHERE id = $1 AND status IN ('pending', 'issued') FOR UPDATE`,
+      [req.params.id],
+    )
+    if (!recoveryCase.rows[0]) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'OPEN_RECOVERY_CASE_NOT_FOUND' })
+    }
+    if (!recoveryCase.rows[0].contact_verified_at) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({ error: 'RECOVERY_CONTACT_NOT_VERIFIED' })
+    }
+    if (recoveryCase.rows[0].user_id && recoveryCase.rows[0].user_id !== account.rows[0].id) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({ error: 'RECOVERY_CASE_ACCOUNT_MISMATCH' })
+    }
+
+    const resetToken = createPasswordResetToken()
+    await client.query(
+      `UPDATE fallback_password_reset_tokens SET consumed_at = NOW()
+       WHERE user_id = $1 AND consumed_at IS NULL`,
+      [account.rows[0].id],
+    )
+    await client.query(
+      `INSERT INTO fallback_password_reset_tokens(user_id, token_hash, expires_at, recovery_case_id)
+       VALUES ($1, $2, NOW() + ($3::text || ' minutes')::interval, $4)`,
+      [account.rows[0].id, hashPasswordResetToken(resetToken), passwordResetTokenTtlMinutes, req.params.id],
+    )
+    const blockedPasswordHash = await bcrypt.hash(crypto.randomBytes(48).toString('base64url'), 12)
+    await client.query(
+      `UPDATE fallback_users SET password_hash = $2, password_enabled = TRUE WHERE id = $1`,
+      [account.rows[0].id, blockedPasswordHash],
+    )
+    await revokeAllUserSessions(account.rows[0].id, client)
+    await client.query(
+      `UPDATE fallback_account_recovery_cases
+       SET status = 'issued', user_id = $2, reviewed_by = $3,
+           verification_ref = $4, two_factor_reset = $5, reviewed_at = NOW()
+       WHERE id = $1`,
+      [req.params.id, account.rows[0].id, reviewedBy, verificationRef, resetTwoFactor],
+    )
+    await client.query(
+      `INSERT INTO fallback_audit_events(event_name, user_id, metadata)
+       VALUES ($1, $2, $3)`,
+      ['admin_account_recovery_code_issued', account.rows[0].id, {
+        caseId: req.params.id, reviewedBy, verificationRef, resetTwoFactor,
+      }],
+    )
+    await client.query('COMMIT')
+    client.release()
+    client = null
+
+    res.set('Cache-Control', 'no-store')
+    return res.json({ ok: true, resetToken, expiresInMinutes: passwordResetTokenTtlMinutes })
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
+    return next(error)
+  } finally {
+    client?.release()
+  }
+})
+
+app.post(['/v1/admin/account-recovery/cases/:id/reject', '/v1/data/admin/account-recovery/cases/:id/reject'], recoveryAdminRequired, async (req, res, next) => {
+  try {
+    if (!isUuidText(req.params.id)) {
+      return res.status(400).json({ error: 'CASE_REQUIRED' })
+    }
+    const reviewedBy = cleanText(req.body?.reviewedBy, 120)
+    const verificationRef = cleanText(req.body?.verificationRef, 240)
+    if (reviewedBy.length < 3 || verificationRef.length < 8) {
+      return res.status(400).json({ error: 'REVIEWER_AND_REASON_REQUIRED' })
+    }
+    const { rows } = await pool.query(
+      `UPDATE fallback_account_recovery_cases
+       SET status = 'rejected', reviewed_by = $2, verification_ref = $3, reviewed_at = NOW()
+       WHERE id = $1 AND status = 'pending' RETURNING id`,
+      [req.params.id, reviewedBy, verificationRef],
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'PENDING_RECOVERY_CASE_NOT_FOUND' })
+    await recordAudit('admin_account_recovery_case_rejected', null, {
+      caseId: req.params.id, reviewedBy, verificationRef,
+    })
+    res.set('Cache-Control', 'no-store')
+    return res.json({ ok: true })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.post('/v1/auth/account-recovery/cases', async (req, res, next) => {
+  try {
+    const identifier = cleanText(req.body?.identifier, 160)
+    const alternateContact = cleanText(req.body?.alternateContact, 240)
+    const description = cleanText(req.body?.description, 1000)
+    const profileHint = cleanText(req.body?.profileHint, 160)
+    const contactType = ['email', 'whatsapp'].includes(req.body?.contactType)
+      ? req.body.contactType : 'other'
+    if (identifier.length < 3 || alternateContact.length < 5 || description.length < 20) {
+      return res.status(400).json({ error: 'RECOVERY_CASE_DETAILS_REQUIRED' })
+    }
+    if (contactType === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(alternateContact)) {
+      return res.status(400).json({ error: 'RECOVERY_CONTACT_INVALID' })
+    }
+    if (contactType === 'whatsapp' && !/^\+?[0-9 ()-]{8,25}$/.test(alternateContact)) {
+      return res.status(400).json({ error: 'RECOVERY_CONTACT_INVALID' })
+    }
+    const normalizedIdentifier = identifier.replace(/^@/, '').toLowerCase()
+    const candidates = await pool.query(
+      `SELECT DISTINCT u.id FROM fallback_users u
+       LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+       LEFT JOIN fallback_profile_login_emails e ON e.user_id = u.id
+       WHERE lower(u.email) = $1 OR lower(o.profile->>'username') = $1
+          OR lower(e.email) = $1 OR u.id::text = $1
+       LIMIT 2`,
+      [normalizedIdentifier],
+    )
+    const candidateUserId = candidates.rows.length === 1 ? candidates.rows[0].id : null
+    const { rows } = await pool.query(
+      `INSERT INTO fallback_account_recovery_cases
+         (identifier, alternate_contact, description, contact_type, profile_hint, candidate_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [identifier, alternateContact, description, contactType, profileHint || null, candidateUserId],
+    )
+    res.set('Cache-Control', 'no-store')
+    return res.status(202).json({ ok: true, caseId: rows[0].id })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.post('/v1/auth/account-recovery/cases/:id/confirm-contact', async (req, res, next) => {
+  try {
+    if (!isUuidText(req.params.id) || !/^\d{6}$/.test(String(req.body?.code || ''))) {
+      return res.status(400).json({ error: 'RECOVERY_CONTACT_CODE_REQUIRED' })
+    }
+    const { rows } = await pool.query(
+      `UPDATE fallback_account_recovery_cases
+       SET contact_verified_at = NOW(), contact_code_hash = NULL, contact_code_expires_at = NULL
+       WHERE id = $1 AND status = 'pending' AND contact_code_hash = $2
+         AND contact_code_expires_at > NOW() AND contact_code_attempts < 5
+       RETURNING id`,
+      [req.params.id, hashPasswordResetToken(req.body.code)],
+    )
+    if (!rows[0]) {
+      await pool.query(
+        `UPDATE fallback_account_recovery_cases
+         SET contact_code_attempts = contact_code_attempts + 1
+         WHERE id = $1 AND status = 'pending' AND contact_code_hash IS NOT NULL
+           AND contact_code_attempts < 5`,
+        [req.params.id],
+      )
+      return res.status(401).json({ error: 'INVALID_OR_EXPIRED_CONTACT_CODE' })
+    }
+    res.set('Cache-Control', 'no-store')
+    return res.json({ ok: true })
+  } catch (error) { return next(error) }
 })
 
 app.post('/v1/auth/register', async (req, res, next) => {
@@ -2322,6 +2658,7 @@ app.post('/v1/auth/2fa/disable', authRequired, async (req, res, next) => {
 })
 
 app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
+  let client
   try {
     const currentPassword = String(req.body?.currentPassword || '')
     const newPassword = String(req.body?.newPassword || '')
@@ -2333,19 +2670,23 @@ app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
       return res.status(400).json({ error: 'NEW_PASSWORD_MUST_BE_DIFFERENT' })
     }
 
-    const { rows } = await pool.query(
+    client = await pool.connect()
+    await client.query('BEGIN')
+    const { rows } = await client.query(
       `SELECT ${userSelectColumns}
        FROM fallback_users
        WHERE id = $1
-       LIMIT 1`,
+       LIMIT 1 FOR UPDATE`,
       [req.auth.sub],
     )
 
     const row = rows[0]
     if (!row) {
+      await client.query('ROLLBACK')
       return res.status(404).json({ error: 'USER_NOT_FOUND' })
     }
     if (!row.password_enabled || !row.password_hash || !(await bcrypt.compare(currentPassword, row.password_hash))) {
+      await client.query('ROLLBACK')
       return res.status(401).json({
         error: 'INVALID_PASSWORD',
         message: 'La contraseña actual es incorrecta.',
@@ -2353,7 +2694,7 @@ app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 12)
-    const updated = await pool.query(
+    const updated = await client.query(
       `UPDATE fallback_users
        SET password_hash = $2,
            password_enabled = TRUE,
@@ -2372,13 +2713,20 @@ app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
        RETURNING ${userSelectColumns}`,
       [row.id, passwordHash],
     )
+    await revokeAllUserSessions(row.id, client)
+    await client.query('COMMIT')
+    client.release()
+    client = null
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_change_password', user.id, { email: user.email })
-    await revokeAllUserSessions(user.id)
+      .catch((error) => console.error('[auth] password change audit failed', error))
     return res.json({ ok: true, ...(await issueSessionForRequest(user, req, res)) })
   } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
     return next(error)
+  } finally {
+    client?.release()
   }
 })
 
@@ -2447,6 +2795,7 @@ app.post('/v1/auth/password-reset/request', async (req, res, next) => {
 })
 
 app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
+  let client
   try {
     if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const resetToken = String(req.body?.resetToken || req.body?.token || '').trim()
@@ -2457,8 +2806,10 @@ app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
     }
 
     const tokenHash = hashPasswordResetToken(resetToken)
-    const { rows } = await pool.query(
-      `SELECT token.id AS token_id, token.user_id, ${userSelectColumns
+    client = await pool.connect()
+    await client.query('BEGIN')
+    const { rows } = await client.query(
+      `SELECT token.id AS token_id, token.user_id, token.recovery_case_id, ${userSelectColumns
         .split(',')
         .map((column) => `fallback_users.${column.trim()}`)
         .join(', ')}
@@ -2467,23 +2818,25 @@ app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
        WHERE token.token_hash = $1
          AND token.consumed_at IS NULL
          AND token.expires_at > NOW()
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE OF token, fallback_users`,
       [tokenHash],
     )
 
     const row = rows[0]
     if (!row) {
+      await client.query('ROLLBACK')
       return res.status(401).json({ error: 'INVALID_OR_EXPIRED_RESET_TOKEN' })
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 12)
-    await pool.query(
+    await client.query(
       `UPDATE fallback_password_reset_tokens
        SET consumed_at = NOW()
-       WHERE id = $1`,
-      [row.token_id],
+       WHERE user_id = $1 AND consumed_at IS NULL`,
+      [row.user_id],
     )
-    const updated = await pool.query(
+    const updated = await client.query(
       `UPDATE fallback_users
        SET password_hash = $2,
            password_enabled = TRUE,
@@ -2503,16 +2856,41 @@ app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
        RETURNING ${userSelectColumns}`,
       [row.user_id, passwordHash],
     )
+    await revokeAllUserSessions(row.user_id, client)
+    if (row.recovery_case_id) {
+      const reviewedCase = await client.query(
+        `SELECT two_factor_reset FROM fallback_account_recovery_cases
+         WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+        [row.recovery_case_id, row.user_id],
+      )
+      if (!reviewedCase.rows[0]) {
+        throw new Error('ASSISTED_RECOVERY_CASE_MISSING')
+      }
+      if (reviewedCase.rows[0].two_factor_reset) {
+        await client.query('DELETE FROM fallback_totp_recovery_codes WHERE user_id = $1', [row.user_id])
+        await client.query('DELETE FROM fallback_totp_factors WHERE user_id = $1', [row.user_id])
+      }
+      await client.query(
+        `UPDATE fallback_account_recovery_cases SET status = 'completed' WHERE id = $1`,
+        [row.recovery_case_id],
+      )
+    }
+    await client.query('COMMIT')
+    client.release()
+    client = null
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_password_reset_completed', user.id, { email: user.email })
-    await revokeAllUserSessions(user.id)
+      .catch((error) => console.error('[auth] password reset audit failed', error))
     if (await hasEnabledSecondFactor(user.id)) {
       return res.json({ ok: true, requiresTwoFactor: true })
     }
     return res.json({ ok: true, ...(await issueSessionForRequest(user, req, res)) })
   } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
     return next(error)
+  } finally {
+    client?.release()
   }
 })
 

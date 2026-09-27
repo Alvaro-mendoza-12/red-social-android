@@ -71,6 +71,7 @@ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import conectate.com.data.model.Video
+import conectate.com.data.model.videoWebLink
 import conectate.com.data.model.Post
 import conectate.com.data.localfallback.RuntimeBackendEndpoint
 import conectate.com.data.repository.VideoRepository
@@ -128,6 +129,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import conectate.com.presentation.videos.VideoReportDialog
 import androidx.compose.material.icons.filled.PlayArrow as PlayArrowIcon
 import conectate.com.util.VideoPerformanceProfiles
+import conectate.com.presentation.videos.VideoDescriptionText
 
 private enum class VideoSidePanel {
     VIDEO,
@@ -246,6 +248,102 @@ private fun VideoSearchPreview(
     }
 }
 
+@Composable
+private fun SoundPreviewButton(sourceUrls: List<String>, onPlayingSource: (String) -> Unit) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val candidates = remember(sourceUrls) { sourceUrls.filter { it.startsWith("https://") }.distinct() }
+    var isPlaying by remember(candidates) { mutableStateOf(false) }
+    var isLoading by remember(candidates) { mutableStateOf(false) }
+    var failed by remember(candidates) { mutableStateOf(false) }
+    var sourceIndex by remember(candidates) { mutableIntStateOf(0) }
+    val player = remember(candidates) {
+        candidates.takeIf { it.isNotEmpty() }?.let {
+            ExoPlayer.Builder(context.applicationContext).build().apply {
+                repeatMode = Player.REPEAT_MODE_ONE
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_VIDEO, true)
+                    .build()
+            }
+        }
+    }
+    DisposableEffect(player, lifecycleOwner) {
+        fun tryNextSource() {
+            if (sourceIndex + 1 < candidates.size) {
+                sourceIndex++
+                player?.setMediaItem(MediaItem.fromUri(candidates[sourceIndex]))
+                player?.prepare()
+                player?.play()
+            } else {
+                player?.pause()
+                failed = true
+                isLoading = false
+                isPlaying = false
+                conectate.com.presentation.common.AppFeedbackBus.showError(
+                    "No se pudo escuchar este sonido. Prueba otro video o inténtalo más tarde."
+                )
+            }
+        }
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+                if (playing) candidates.getOrNull(sourceIndex)?.let(onPlayingSource)
+            }
+            override fun onPlaybackStateChanged(state: Int) {
+                isLoading = state == Player.STATE_BUFFERING && player?.playWhenReady == true
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                tryNextSource()
+            }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                if (player?.playWhenReady == true && tracks.groups.isNotEmpty() &&
+                    !tracks.isTypeSelected(androidx.media3.common.C.TRACK_TYPE_AUDIO)) {
+                    tryNextSource()
+                }
+            }
+        }
+        player?.addListener(listener)
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, _ ->
+            if (!lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                player?.pause()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            player?.removeListener(listener)
+            player?.release()
+        }
+    }
+    IconButton(
+        onClick = {
+            if (isPlaying) player?.pause() else {
+                if (failed && candidates.isNotEmpty()) {
+                    sourceIndex = 0
+                    player?.setMediaItem(MediaItem.fromUri(candidates[0]))
+                }
+                failed = false
+                if (player?.mediaItemCount == 0 && candidates.isNotEmpty()) {
+                    sourceIndex = 0
+                    player.setMediaItem(MediaItem.fromUri(candidates[0]))
+                }
+                if (player?.playbackState == Player.STATE_IDLE) player.prepare()
+                player?.play()
+            }
+        },
+        enabled = player != null,
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        } else {
+            Icon(
+                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                if (failed) "Reintentar escuchar sonido" else if (isPlaying) "Pausar sonido" else "Escuchar sonido",
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
@@ -312,6 +410,7 @@ fun VideoFeedScreen(
     val recordingDuration by viewModel.recordingDuration.collectAsState()
     val soundVideos by viewModel.soundVideos.collectAsState()
     val isSoundVideosLoading by viewModel.isSoundVideosLoading.collectAsState()
+    val soundVideosError by viewModel.soundVideosError.collectAsState()
     
     // Search State
     val isSearchMode by viewModel.isSearchMode.collectAsState()
@@ -1228,7 +1327,7 @@ fun VideoFeedScreen(
                 
                 // 1. Prepare the route
                 val video = selectedVideoForShare
-                val videoLink = "https://conectate.com/video/${video?.id}"
+                val videoLink = video?.let { videoWebLink(it.id) }.orEmpty()
                 val route = Screen.Chat.createRoute(
                     user.id,
                     initialMessage = "¡Mira este video!\n$videoLink\n\n${video?.title ?: ""}"
@@ -1383,18 +1482,29 @@ fun VideoFeedScreen(
     }
 
     selectedSound?.let { soundVideo ->
-        val sourceSoundUrl = soundVideo.soundUrl ?: soundVideo.videoUrl
-        val resolvedSource = UbuntuMedia.resolveUrl(sourceSoundUrl) ?: sourceSoundUrl
+        val soundSources = remember(soundVideo.soundUrl, soundVideo.videoUrl) {
+            listOfNotNull(soundVideo.soundUrl?.takeIf { it.isNotBlank() },
+                soundVideo.videoUrl.takeIf { it.isNotBlank() })
+                .map { UbuntuMedia.resolveUrl(it) ?: it }
+                .filter { it.startsWith("https://") }
+                .distinct()
+        }
+        val resolvedSource = soundSources.firstOrNull().orEmpty()
+        var selectedSource by remember(soundSources) { mutableStateOf(resolvedSource) }
         LaunchedEffect(soundVideo.soundId ?: soundVideo.id) {
             viewModel.loadSoundVideos(soundVideo)
         }
-        ModalBottomSheet(onDismissRequest = {
-            selectedSound = null
-            viewModel.clearSoundVideos()
-        }) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                selectedSound = null
+                viewModel.clearSoundVideos()
+            },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -1426,15 +1536,11 @@ fun VideoFeedScreen(
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
                     }
-                    IconButton(onClick = {
-                        toggleVisiblePlayback()
-                        if (playbackRequested) exoPlayer.play() else exoPlayer.pause()
-                    }) {
-                        Icon(
-                            if (exoPlayer.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            "Escuchar sonido",
-                        )
-                    }
+                    SoundPreviewButton(soundSources, onPlayingSource = { selectedSource = it })
+                }
+                if (soundSources.isEmpty()) {
+                    Text("Este sonido no está disponible para escucharlo o reutilizarlo ahora.",
+                        color = MaterialTheme.colorScheme.error)
                 }
                 Text(
                     "El editor extraerá la pista de audio del video y conservará la referencia al creador original.",
@@ -1448,6 +1554,12 @@ fun VideoFeedScreen(
                 if (isSoundVideosLoading) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 } else {
+                    soundVideosError?.let { message ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(message, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = { viewModel.loadSoundVideos(soundVideo) }) { Text("Reintentar") }
+                        }
+                    }
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(bottom = 4.dp),
@@ -1487,7 +1599,7 @@ fun VideoFeedScreen(
                         val selection = VideoSoundSelection(
                             soundId = soundVideo.soundId ?: soundVideo.id,
                             sourceVideoId = soundVideo.soundSourceVideoId ?: soundVideo.id,
-                            sourceVideoUrl = resolvedSource,
+                            sourceVideoUrl = selectedSource,
                             title = soundVideo.soundTitle
                                 ?: "Sonido original — ${soundVideo.userName.ifBlank { "Novvin" }}",
                             artist = soundVideo.soundArtist ?: soundVideo.userName.ifBlank { "Novvin" },
@@ -1497,7 +1609,7 @@ fun VideoFeedScreen(
                         viewModel.clearSoundVideos()
                         onNavigateToUpload(selection)
                     },
-                    enabled = resolvedSource.startsWith("https://"),
+                    enabled = selectedSource.startsWith("https://"),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Default.VideoCall, null)
@@ -1872,6 +1984,19 @@ fun VideoFeedScreen(
                                 setSidePanelIndex(2)
                                 onNavigateToProfile(userId)
                             },
+                            onMentionClick = { username ->
+                                navScope.launch {
+                                    val user = viewModel.userRepository.searchMentionCandidates(
+                                        username, excludeUserId = null, limit = 12,
+                                    ).getOrNull()?.firstOrNull {
+                                        it.username.equals(username, ignoreCase = true)
+                                    }
+                                    if (user != null) onNavigateToProfile(user.id)
+                                    else conectate.com.presentation.common.AppFeedbackBus.showError(
+                                        "Este perfil ya no está disponible."
+                                    )
+                                }
+                            },
                             onSwipeRight = {
                                 onHorizontalSwipe(video, forward = false)
                             },
@@ -1987,54 +2112,68 @@ fun VideoFeedScreen(
                     )
                 }
             } else if (!isSearchMode) {
-                // NORMAL MODE: Tabs and Search Icon
-                Box(
+                // LIVE, feed tabs, search and create share a single responsive toolbar.
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
+                        .padding(start = 8.dp, end = 72.dp),
                 ) {
-                    // Search Switcher
+                    val compactVideoToolbar = maxWidth < 300.dp
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                     IconButton(
-                        onClick = { viewModel.toggleSearchMode(true) },
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 8.dp)
+                        onClick = {
+                            exoPlayer.pause()
+                            onNavigateToLiveDiscovery()
+                        },
+                        modifier = Modifier.size(48.dp),
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Buscar",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
+                            Icons.Default.LiveTv,
+                            contentDescription = "Ver directos",
+                            tint = Color(0xFFFF365D),
+                            modifier = Modifier.size(24.dp),
                         )
                     }
-
                     Row(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalArrangement = Arrangement.Center
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             text = "Amigos",
                             color = if (selectedTab == 1) Color.White else Color.White.copy(alpha = 0.6f),
-                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier
-                                .padding(horizontal = 8.dp)
+                                .padding(horizontal = 4.dp)
                                 .clickable { viewModel.onTabSelected(1) }
                         )
                         Text(
                             text = "|",
                             color = Color.White.copy(alpha = 0.3f),
-                            modifier = Modifier.padding(horizontal = 4.dp)
+                            modifier = Modifier.padding(horizontal = 2.dp)
                         )
                         Text(
-                            text = "Recomendado",
+                            text = if (compactVideoToolbar) "Para ti" else "Recomendado",
                             color = if (selectedTab == 0) Color.White else Color.White.copy(alpha = 0.6f),
-                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier
-                                .padding(horizontal = 8.dp)
+                                .padding(horizontal = 4.dp)
                                 .clickable { viewModel.onTabSelected(0) }
                         )
+                    }
+                    IconButton(onClick = { viewModel.toggleSearchMode(true) }, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Default.Search, contentDescription = "Buscar videos", tint = Color.White)
+                    }
                     }
                 }
             } else {
@@ -2084,11 +2223,11 @@ fun VideoFeedScreen(
                 }
             }
             
-            // Upload Button
+            // Keep the create action on the same toolbar row as LIVE, tabs and search.
             Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = 16.dp),
+                    .padding(end = 8.dp, top = 0.dp),
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -2329,6 +2468,7 @@ fun VideoItem(
     onAddToCollection: () -> Unit,
     onLongPress: () -> Unit,
     onProfileClick: (String) -> Unit,
+    onMentionClick: (String) -> Unit,
     onSwipeRight: () -> Unit,
     onSwipeLeft: () -> Unit,
     currentUserId: String?,
@@ -2700,7 +2840,7 @@ fun VideoItem(
                             showShareMenu = false
                             val sendIntent = android.content.Intent().apply {
                                 action = android.content.Intent.ACTION_SEND
-                                putExtra(android.content.Intent.EXTRA_TEXT, "Mira este video en Novvin: https://conectate.com/video/${video.id}\n\nO abre directamente en la app:\nconectate://video/${video.id}\n\n${video.title}")
+                                putExtra(android.content.Intent.EXTRA_TEXT, "Mira este video en Novvin: ${videoWebLink(video.id)}\n\nO abre directamente en la app:\nconectate://video/${video.id}\n\n${video.title}")
                                 type = "text/plain"
                             }
                             val shareIntent = android.content.Intent.createChooser(sendIntent, "Compartir video con...")
@@ -2891,8 +3031,9 @@ fun VideoItem(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
+            VideoDescriptionText(
                 text = video.description,
+                onMentionClick = onMentionClick,
                 color = Color.White,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2

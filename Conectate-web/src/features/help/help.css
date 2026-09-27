@@ -1,0 +1,8 @@
+.help-page { display: grid; gap: .85rem; max-width: 850px; margin: auto; min-width: 0; }
+.help-intro, .help-topic { padding: 1.1rem; }
+.help-intro h2, .help-intro h3 { margin: 0 0 .4rem; }
+.help-intro p, .help-topic p { margin: 0; overflow-wrap: anywhere; }
+.help-list { display: grid; gap: .65rem; }
+.help-topic summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 750; }
+.help-topic[open] { display: grid; gap: .75rem; }
+.help-topic .ghost-btn { justify-self: start; }
