@@ -68,5 +68,10 @@ peticiones principales, señalización Socket.IO, WebSocket, carga de archivos,
 imágenes y reproducción. No cambia la resolución de otros dominios. La
 consulta pública tiene tiempos de espera acotados y un caché de cinco minutos.
 
-La instalación y prueba de la APK corregida en el Motorola se documentan
-después de completar la compilación.
+La APK corregida compiló con `:app:assembleDebug` y se instaló con
+`adb install -r` en el Motorola sin borrar los datos: las cuentas guardadas
+seguían visibles. Su SHA-256 es
+`48D80D93131E2138CEDED6A3B27012A96634C8B63D3A763DD5DC8D2ED2A0FC2A`.
+No se introdujo ninguna contraseña personal durante la prueba. Falta observar
+un intento de inicio de sesión en ese teléfono con la APK nueva para confirmar
+el recorrido completo; el teléfono se desconectó de ADB antes de ese paso.
