@@ -575,11 +575,11 @@ fun SettingsScreen(
                 ) {
                     Icon(Icons.Default.Lock, contentDescription = null)
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("Códigos para recuperar contraseña")
+                    Text("Códigos de respaldo (opcionales)")
                 }
                 if (passwordRecoveryExpanded) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Si olvidas tu contraseña, un código guardado te permitirá crear otra sin correo. Guarda estos códigos fuera del teléfono; se muestran una sola vez.")
+                    Text("Estos códigos son un atajo si los guardas antes, fuera del teléfono. No tienes que memorizarlos. Si pierdes la contraseña y no tienes uno, usa «Solicitar ayuda» para que un administrador verifique tu cuenta.")
                     passwordRecoveryRemaining?.let { Text("Códigos disponibles: $it") }
                     OutlinedTextField(
                         value = passwordRecoveryPassword,

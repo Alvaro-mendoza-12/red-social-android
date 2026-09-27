@@ -417,7 +417,7 @@ class AuthViewModel @Inject constructor(
                     _assistedRecoveryCaseId.value = it.caseId
                     context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE)
                         .edit().putString("case_id", it.caseId).apply()
-                    "Solicitud recibida. Guarda el número de solicitud. Un administrador enviará primero un código de 6 dígitos para confirmar tu contacto nuevo; después revisará si la cuenta te pertenece."
+                    "Solicitud recibida. Un administrador revisará la cuenta y, si confirma que te pertenece, enviará un código al contacto indicado para que crees una contraseña nueva."
                 },
                 onFailure = { mapAuthError(it) }
             )

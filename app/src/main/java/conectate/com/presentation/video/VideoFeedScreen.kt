@@ -2743,12 +2743,10 @@ fun VideoItem(
             val isFollowing = followedUsers.any { it.trim().lowercase() == normalizedVideoUserId }
             val showFollowButton = !isOwnVideo && !isFollowing
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+            Box(modifier = Modifier.size(width = 54.dp, height = 65.dp)) {
                 conectate.com.presentation.components.CircularProfileImage(
-                    modifier = Modifier.clickable { onProfileClick(video.userId) },
+                    modifier = Modifier.align(Alignment.TopCenter)
+                        .clickable { onProfileClick(video.userId) },
                     imageUrl = if (video.userProfileImage.isNotEmpty()) video.userProfileImage else null,
                     size = 50.dp,
                     isVerified = video.isVerified,
@@ -2763,6 +2761,7 @@ fun VideoItem(
                 if (showFollowButton) {
                     Surface(
                         modifier = Modifier
+                            .align(Alignment.BottomCenter)
                             .size(28.dp)
                             .semantics {
                                 contentDescription = "Seguir a ${video.userName}"

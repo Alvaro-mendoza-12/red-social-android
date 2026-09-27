@@ -17,23 +17,32 @@ class ProfileIdentityTest {
         )
 
         val handle = profilePublicHandle(user)
-        assertEquals("juan_perez_446655440000", handle)
+        assertEquals("juan_perez", handle)
         assertFalse(handle.contains("private"))
+        assertEquals(5, profileShortId(user).length)
     }
 
     @Test
-    fun chosenUsernameAndFullIdCanBeSharedAndSearched() {
-        val user = User(id = id, email = "juan@example.com", username = "Juan_01")
+    fun displayNameTakesPrecedenceAndFullIdCanBeSearched() {
+        val user = User(id = id, email = "juan@example.com", username = "Juan_01", display_name = "Juan Pérez")
         val handle = profilePublicHandle(user)
 
-        assertEquals("juan_01_446655440000", handle)
-        assertEquals("446655440000", profileSearchQuery("@$handle"))
+        assertEquals("juan_perez", handle)
         assertEquals(id, profileSearchQuery(id))
+        assertEquals("446655440000", profileSearchQuery("@juan_01_446655440000"))
     }
 
     @Test
     fun emailOnlyAccountGetsNeutralHandle() {
         val user = User(id = id, email = "secret@example.com", username = "secret")
-        assertEquals("usuario_446655440000", profilePublicHandle(user))
+        assertEquals("usuario", profilePublicHandle(user))
+    }
+
+    @Test
+    fun shortReferenceIsStableAndUsesExistingNumericIdWhenAvailable() {
+        val user = User(id = id, display_name = "Juan Pérez")
+        assertEquals(profileShortId(user), profileShortId(user.copy(email = "changed@example.com")))
+        assertEquals(5, profileShortId(user).length)
+        assertEquals("1234", profileShortId(user.copy(numeric_id = 1234)))
     }
 }

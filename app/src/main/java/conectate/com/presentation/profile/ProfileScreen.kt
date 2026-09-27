@@ -47,6 +47,7 @@ import conectate.com.data.model.Post
 import conectate.com.data.model.Badge
 import conectate.com.data.model.User
 import conectate.com.data.model.profilePublicHandle
+import conectate.com.data.model.profileShortId
 import conectate.com.data.model.MomentHighlight
 import conectate.com.core.profile.ProfileSocialLinks
 import conectate.com.presentation.common.ConnectivityViewModel
@@ -492,6 +493,7 @@ fun ProfileScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("@${profilePublicHandle(identityUser)}")
+                    Text("Código corto: ${profileShortId(identityUser)}")
                     Text(
                         text = identityUser.id,
                         style = MaterialTheme.typography.bodySmall,
@@ -983,7 +985,8 @@ fun ProfileScreen(
                                     .offset(y = (-50).dp)
                             ) {
                                 Row(verticalAlignment = Alignment.Top) {
-                                    val nameToDisplay = user.display_name ?: user.full_name ?: user.username ?: "Usuario"
+                                    val nameToDisplay = user.display_name?.takeIf(String::isNotBlank)
+                                        ?: user.full_name?.takeIf(String::isNotBlank) ?: "Usuario"
                                     Box(
                                         modifier = Modifier.clickable {
                                             rewrittenAvatarUrl?.let {
@@ -1054,6 +1057,11 @@ fun ProfileScreen(
                                                 maxLines = 1,
                                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                                 modifier = Modifier.weight(1f, fill = false),
+                                            )
+                                            Text(
+                                                text = "#${profileShortId(user)}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                             TextButton(
                                                 onClick = { identityDialogUser = user },

@@ -89,9 +89,6 @@ fun LoginScreen(
     var assistedContactType by rememberSaveable { mutableStateOf("whatsapp") }
     var assistedProfileHint by rememberSaveable { mutableStateOf("") }
     var assistedDescription by rememberSaveable { mutableStateOf("") }
-    var assistedConfirmCaseId by rememberSaveable { mutableStateOf("") }
-    var assistedContactCode by rememberSaveable { mutableStateOf("") }
-    var assistedEnterExistingCase by rememberSaveable { mutableStateOf(false) }
     var assistedCodeStage by rememberSaveable { mutableStateOf(false) }
     var assistedCaseCopied by rememberSaveable { mutableStateOf(false) }
     var showSuspendedDialog by rememberSaveable { mutableStateOf(false) }
@@ -107,9 +104,6 @@ fun LoginScreen(
     val assistedRecoverySubmitting by viewModel.assistedRecoverySubmitting.collectAsStateWithLifecycle()
     val assistedRecoveryMessage by viewModel.assistedRecoveryMessage.collectAsStateWithLifecycle()
     val assistedRecoveryCaseId by viewModel.assistedRecoveryCaseId.collectAsStateWithLifecycle()
-    LaunchedEffect(assistedRecoveryCaseId) {
-        if (assistedConfirmCaseId.isBlank()) assistedConfirmCaseId = assistedRecoveryCaseId.orEmpty()
-    }
     LaunchedEffect(assistedRecoveryCaseId) { assistedCaseCopied = false }
     val currentUserId by viewModel.currentUserId.collectAsStateWithLifecycle()
     val suspendedState = authState as? AuthState.Suspended
@@ -577,16 +571,21 @@ fun LoginScreen(
 
         } else if (loginType == "assisted") {
                 Text(
-                    "Si olvidaste la contraseña o perdiste el teléfono y el correo, solicita una revisión. " +
-                    "No necesitas un código anterior. No escribas contraseñas ni adjuntes documentos.",
+                    "¿No puedes entrar? Cuéntanos qué recuerdas de tu cuenta. Un administrador revisará tu solicitud y, si confirma que te pertenece, te enviará un código para crear otra contraseña.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(16.dp))
             if (!assistedCodeStage) {
+                OutlinedButton(
+                    onClick = { assistedCodeStage = true },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                ) { Text("Ya recibí el código · Crear contraseña") }
+                Spacer(modifier = Modifier.height(12.dp))
+                if (assistedRecoveryCaseId.isNullOrBlank()) {
                 OutlinedTextField(
                     value = assistedIdentifier,
                     onValueChange = { assistedIdentifier = it.take(160) },
-                    label = { Text("Correo, usuario o dato que recuerdes") },
+                    label = { Text("Correo o usuario de la cuenta") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
@@ -596,7 +595,7 @@ fun LoginScreen(
                     label = { Text("Nombre o enlace del perfil que recuerdes (opcional)") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
                 )
-                Text("Contacto nuevo para recibir los códigos")
+                Text("¿Dónde puedes recibir el código?")
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     FilterChip(
                         selected = assistedContactType == "whatsapp",
@@ -617,9 +616,9 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = assistedDescription,
                     onValueChange = { assistedDescription = it.take(1000) },
-                    label = { Text("Qué acceso perdiste") },
+                    label = { Text("Qué recuerdas de tu cuenta y qué ocurrió") },
                     supportingText = {
-                        Text("Explica qué pasó en al menos 20 caracteres (${assistedDescription.trim().length}/20). No incluyas contraseñas ni documentos.")
+                        Text("Cuenta cuándo entraste por última vez, nombres de contactos, publicaciones u otros datos que solo tú conozcas. Mínimo 20 caracteres (${assistedDescription.trim().length}/20). Nunca escribas contraseñas ni adjuntes documentos.")
                     },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
@@ -648,7 +647,8 @@ fun LoginScreen(
                         color = MaterialTheme.colorScheme.onPrimary,
                         strokeWidth = 2.dp,
                     )
-                    else Text("Solicitar revisión")
+                    else Text("Enviar solicitud de ayuda")
+                }
                 }
                 assistedRecoveryMessage?.let { message ->
                     Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -659,8 +659,9 @@ fun LoginScreen(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text("Número de solicitud", style = MaterialTheme.typography.titleSmall)
-                            Text("Ya recibimos esta solicitud. Espera el código de contacto del administrador; no necesitas enviarla de nuevo.")
+                            Text("Solicitud recibida", style = MaterialTheme.typography.titleSmall)
+                            Text("El equipo revisará tus datos. Si confirma la cuenta, enviará un único código al contacto que elegiste. Luego podrás crear una contraseña nueva.")
+                            Text("Referencia para consultar con soporte:")
                             SelectionContainer {
                                 Text(caseId, style = MaterialTheme.typography.bodyMedium)
                             }
@@ -676,45 +677,9 @@ fun LoginScreen(
                             }
                             TextButton(onClick = {
                                 viewModel.startNewAssistedRecoveryRequest()
-                                assistedConfirmCaseId = ""
-                                assistedContactCode = ""
                             }) { Text("Empezar otra solicitud") }
                         }
                     }
-                }
-                if (assistedRecoveryCaseId.isNullOrBlank() && !assistedEnterExistingCase) {
-                    TextButton(onClick = { assistedEnterExistingCase = true }) {
-                        Text("Ya tengo un número de solicitud y código de contacto")
-                    }
-                }
-                if (!assistedRecoveryCaseId.isNullOrBlank() || assistedEnterExistingCase) {
-                    Spacer(Modifier.height(12.dp))
-                    Text("Paso 2 de 3 · Confirma tu contacto", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "Un administrador enviará manualmente un código de 6 dígitos al WhatsApp o correo nuevo que indicaste. " +
-                            "No se envía automáticamente al solicitar la revisión. Tu número de solicitud ya está guardado aquí.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedTextField(
-                        value = assistedConfirmCaseId, onValueChange = { assistedConfirmCaseId = it.take(36) },
-                        label = { Text("Número de solicitud") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = assistedContactCode, onValueChange = { assistedContactCode = it.filter(Char::isDigit).take(6) },
-                        label = { Text("Código de 6 dígitos enviado por el administrador") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    )
-                    OutlinedButton(
-                        onClick = { viewModel.confirmAssistedContact(assistedConfirmCaseId, assistedContactCode) },
-                        enabled = !assistedRecoverySubmitting && assistedConfirmCaseId.length == 36 && assistedContactCode.length == 6,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Confirmar contacto nuevo") }
-                    Text(
-                        "Paso 3: después de verificar que la cuenta es tuya, el administrador te entregará un código temporal para crear una contraseña nueva y entrar.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             } else {
                 MigratedPasswordSetupCard(
@@ -724,8 +689,8 @@ fun LoginScreen(
                     confirmPassword = migrationConfirmPassword,
                     recoveryCodeRequired = true,
                     recoveryCode = migrationToken,
-                    recoveryCodeHint = "Escribe el código temporal que te entregó el administrador tras verificar tu cuenta.",
-                    info = "Elige una contraseña nueva para recuperar el acceso.",
+                    recoveryCodeHint = "Pega el código que el administrador envió a tu WhatsApp o correo. Si generó otro, usa el más reciente.",
+                    info = "Escribe el código recibido y crea una contraseña nueva. Entrarás al terminar.",
                     isLoading = authState is AuthState.Loading,
                     onNewPasswordChange = { migrationNewPassword = it },
                     onConfirmPasswordChange = { migrationConfirmPassword = it },
@@ -743,11 +708,11 @@ fun LoginScreen(
                     },
                 )
             }
-            TextButton(
-                onClick = { assistedCodeStage = !assistedCodeStage },
+            if (assistedCodeStage) TextButton(
+                onClick = { assistedCodeStage = false },
                 modifier = Modifier.align(Alignment.End),
             ) {
-                Text(if (assistedCodeStage) "Solicitar revisión" else "Ya tengo un código del administrador")
+                Text("Volver a la solicitud")
             }
         } else if (loginType == "email" || loginType == "recovery") {
             val recovering = loginType == "recovery"

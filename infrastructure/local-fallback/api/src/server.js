@@ -1973,7 +1973,9 @@ app.get(['/v1/admin/account-recovery/cases', '/v1/data/admin/account-recovery/ca
     const { rows } = await pool.query(
       `SELECT c.id, c.identifier, c.alternate_contact, c.description, c.status, c.user_id,
               c.reviewed_by, c.verification_ref, c.two_factor_reset, c.created_at, c.reviewed_at,
-              c.contact_type, c.profile_hint, c.candidate_user_id, c.contact_verified_at,
+              c.contact_type, c.profile_hint,
+              COALESCE(c.user_id, c.candidate_user_id) AS candidate_user_id,
+              c.contact_verified_at,
               u.email AS candidate_email, u.display_name AS candidate_name,
               o.profile->>'username' AS candidate_username
        FROM fallback_account_recovery_cases c
@@ -2038,7 +2040,7 @@ app.post(['/v1/admin/account-recovery/cases/:id/issue-code', '/v1/data/admin/acc
     const reviewedBy = cleanText(req.body?.reviewedBy, 120)
     const verificationRef = cleanText(req.body?.verificationRef, 240)
     const resetTwoFactor = req.body?.resetTwoFactor === true
-    if (reviewedBy.length < 3 || verificationRef.length < 8) {
+    if (reviewedBy.length < 3 || verificationRef.length < 20) {
       return res.status(400).json({ error: 'REVIEWER_AND_VERIFICATION_REFERENCE_REQUIRED' })
     }
 
@@ -2053,7 +2055,7 @@ app.post(['/v1/admin/account-recovery/cases/:id/issue-code', '/v1/data/admin/acc
       return res.status(404).json({ error: 'USER_NOT_FOUND' })
     }
     const recoveryCase = await client.query(
-      `SELECT id, user_id, contact_verified_at FROM fallback_account_recovery_cases
+      `SELECT id, user_id, alternate_contact, contact_type FROM fallback_account_recovery_cases
        WHERE id = $1 AND status IN ('pending', 'issued') FOR UPDATE`,
       [req.params.id],
     )
@@ -2061,16 +2063,20 @@ app.post(['/v1/admin/account-recovery/cases/:id/issue-code', '/v1/data/admin/acc
       await client.query('ROLLBACK')
       return res.status(404).json({ error: 'OPEN_RECOVERY_CASE_NOT_FOUND' })
     }
-    if (!recoveryCase.rows[0].contact_verified_at) {
+    // The administrator verifies account ownership before issuing one recovery
+    // code. Redeeming that code at the reviewed contact completes the flow;
+    // a separate six-digit contact challenge is no longer required.
+    if (!['email', 'whatsapp'].includes(recoveryCase.rows[0].contact_type) ||
+        !recoveryCase.rows[0].alternate_contact) {
       await client.query('ROLLBACK')
-      return res.status(409).json({ error: 'RECOVERY_CONTACT_NOT_VERIFIED' })
+      return res.status(409).json({ error: 'RECOVERY_CONTACT_REQUIRED' })
     }
     if (recoveryCase.rows[0].user_id && recoveryCase.rows[0].user_id !== account.rows[0].id) {
       await client.query('ROLLBACK')
       return res.status(409).json({ error: 'RECOVERY_CASE_ACCOUNT_MISMATCH' })
     }
 
-    const resetToken = createPasswordResetToken()
+    const resetToken = crypto.randomBytes(12).toString('base64url')
     await client.query(
       `UPDATE fallback_password_reset_tokens SET consumed_at = NOW()
        WHERE user_id = $1 AND consumed_at IS NULL`,
@@ -2078,15 +2084,11 @@ app.post(['/v1/admin/account-recovery/cases/:id/issue-code', '/v1/data/admin/acc
     )
     await client.query(
       `INSERT INTO fallback_password_reset_tokens(user_id, token_hash, expires_at, recovery_case_id)
-       VALUES ($1, $2, NOW() + ($3::text || ' minutes')::interval, $4)`,
-      [account.rows[0].id, hashPasswordResetToken(resetToken), passwordResetTokenTtlMinutes, req.params.id],
+       VALUES ($1, $2, 'infinity'::timestamptz, $3)`,
+      [account.rows[0].id, hashPasswordResetToken(resetToken), req.params.id],
     )
-    const blockedPasswordHash = await bcrypt.hash(crypto.randomBytes(48).toString('base64url'), 12)
-    await client.query(
-      `UPDATE fallback_users SET password_hash = $2, password_enabled = TRUE WHERE id = $1`,
-      [account.rows[0].id, blockedPasswordHash],
-    )
-    await revokeAllUserSessions(account.rows[0].id, client)
+    // Keep the existing password and sessions usable until the new code is
+    // actually redeemed. Issuing or reissuing a code must not lock someone out.
     await client.query(
       `UPDATE fallback_account_recovery_cases
        SET status = 'issued', user_id = $2, reviewed_by = $3,
@@ -2106,7 +2108,7 @@ app.post(['/v1/admin/account-recovery/cases/:id/issue-code', '/v1/data/admin/acc
     client = null
 
     res.set('Cache-Control', 'no-store')
-    return res.json({ ok: true, resetToken, expiresInMinutes: passwordResetTokenTtlMinutes })
+    return res.json({ ok: true, resetToken, expiresInMinutes: null })
   } catch (error) {
     if (client) await client.query('ROLLBACK').catch(() => {})
     return next(error)
@@ -2713,6 +2715,11 @@ app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
        RETURNING ${userSelectColumns}`,
       [row.id, passwordHash],
     )
+    await client.query(
+      `UPDATE fallback_password_reset_tokens SET consumed_at = NOW()
+       WHERE user_id = $1 AND consumed_at IS NULL`,
+      [row.id],
+    )
     await revokeAllUserSessions(row.id, client)
     await client.query('COMMIT')
     client.release()
@@ -3026,6 +3033,11 @@ app.post('/v1/auth/complete-migrated-password-reset', async (req, res, next) => 
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_complete_migrated_password_reset', user.id, { email: user.email })
+    await pool.query(
+      `UPDATE fallback_password_reset_tokens SET consumed_at = NOW()
+       WHERE user_id = $1 AND consumed_at IS NULL`,
+      [user.id],
+    )
     await revokeAllUserSessions(user.id)
     if (await hasEnabledSecondFactor(user.id)) {
       return res.json({ ok: true, requiresTwoFactor: true })
