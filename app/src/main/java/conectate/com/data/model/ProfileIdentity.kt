@@ -5,11 +5,14 @@ import java.util.Locale
 
 /** Public label comes from the chosen display name, never from an email-derived username. */
 fun profilePublicHandle(user: User): String {
-    val displayName = (user.display_name ?: user.full_name).orEmpty().trim()
-    return Normalizer.normalize(displayName.ifBlank { "usuario" }, Normalizer.Form.NFD)
+    val displayName = sequenceOf(user.display_name, user.full_name)
+        .map { it.orEmpty().trim() }
+        .firstOrNull { it.isNotBlank() && '@' !in it }
+        ?: "usuario"
+    return Normalizer.normalize(displayName, Normalizer.Form.NFD)
         .replace(Regex("\\p{M}+"), "")
         .lowercase(Locale.ROOT)
-        .replace(Regex("[^a-z0-9_.-]+"), "_")
+        .replace(Regex("[^\\p{L}\\p{N}_.-]+"), "_")
         .trim('_', '.', '-')
         .take(24)
         .ifBlank { "usuario" }

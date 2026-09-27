@@ -36,6 +36,14 @@ class ProfileIdentityTest {
     fun emailOnlyAccountGetsNeutralHandle() {
         val user = User(id = id, email = "secret@example.com", username = "secret")
         assertEquals("usuario", profilePublicHandle(user))
+        assertEquals("usuario", profilePublicHandle(user.copy(display_name = "secret@example.com")))
+    }
+
+    @Test
+    fun nonLatinNamesStayReadableAndBlankDisplayNameUsesFullName() {
+        val user = User(id = id, display_name = "  ", full_name = "山田 太郎")
+        assertEquals("山田_太郎", profilePublicHandle(user))
+        assertEquals("李_明", profilePublicHandle(user.copy(display_name = "李 明")))
     }
 
     @Test

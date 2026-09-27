@@ -8,6 +8,9 @@ visual de cinco cifras. Esa referencia puede coincidir entre personas; el UUID
 completo sigue siendo la identidad única para enlaces y búsquedas exactas, y
 está disponible en «Ver ID». No se modifican direcciones de correo ni claves
 internas de las cuentas existentes.
+Los nombres en alfabetos no latinos conservan sus caracteres. Si el nombre
+visible contiene una dirección de correo, se usa otro nombre disponible o
+«usuario» para no exponerlo en el arroba.
 
 ## Videos
 
