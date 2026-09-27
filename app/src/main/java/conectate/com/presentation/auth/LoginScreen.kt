@@ -576,9 +576,9 @@ fun LoginScreen(
             }
 
         } else if (loginType == "assisted") {
-            Text(
-                "Si no puedes entrar y no tienes un código guardado, solicita una revisión. " +
-                    "No escribas contraseñas ni adjuntes documentos.",
+                Text(
+                    "Si olvidaste la contraseña o perdiste el teléfono y el correo, solicita una revisión. " +
+                    "No necesitas un código anterior. No escribas contraseñas ni adjuntes documentos.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -751,6 +751,7 @@ fun LoginScreen(
             }
         } else if (loginType == "email" || loginType == "recovery") {
             val recovering = loginType == "recovery"
+            val usingSavedCode = recovering && passwordFlowMode == "saved_code"
             // Email Login Form
             if (recovering) {
                 Text(
@@ -759,10 +760,40 @@ fun LoginScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 20.dp),
                 )
+                Button(
+                    onClick = {
+                        assistedIdentifier = email.trim()
+                        assistedCodeStage = false
+                        migrationEmail = ""
+                        migrationToken = ""
+                        migrationNewPassword = ""
+                        migrationConfirmPassword = ""
+                        loginType = "assisted"
+                        viewModel.resetAuthState()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(18.dp),
+                ) { Text(stringResource(R.string.auth_assisted_recovery_button)) }
+                Spacer(modifier = Modifier.height(12.dp))
+                if (!usingSavedCode && migrationEmail.isBlank()) {
+                    OutlinedButton(
+                        onClick = { passwordFlowMode = "saved_code" },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(18.dp),
+                    ) { Text(stringResource(R.string.auth_saved_code)) }
+                    Text(
+                        stringResource(R.string.auth_recovery_backup_explanation),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
             }
 
             // Email Field
-            OutlinedTextField(
+            if (!recovering || usingSavedCode || migrationEmail.isNotBlank()) {
+                if (recovering) Spacer(modifier = Modifier.height(20.dp))
+                OutlinedTextField(
                 value = email,
                 onValueChange = {
                     email = it
@@ -799,9 +830,10 @@ fun LoginScreen(
                         contentDescription = null
                     )
                 }
-            )
+                )
 
-            Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+            }
 
             // Password Field
             if (!recovering) {
@@ -834,7 +866,7 @@ fun LoginScreen(
             )
             }
 
-            Spacer(modifier = Modifier.height(if (recovering) 12.dp else 24.dp))
+            if (!recovering) Spacer(modifier = Modifier.height(24.dp))
 
             if (needsTwoFactor && !recovering) {
                 OutlinedTextField(
@@ -888,11 +920,9 @@ fun LoginScreen(
             }
 
             if (recovering) {
-                if (migrationEmail.isBlank()) {
-                    Text(
-                        stringResource(R.string.auth_recovery_email_unavailable),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                if (migrationEmail.isBlank() && usingSavedCode) {
+                    Text(stringResource(R.string.auth_recovery_code_instruction),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = {
@@ -910,21 +940,19 @@ fun LoginScreen(
                         modifier = Modifier.fillMaxWidth().height(54.dp),
                         shape = RoundedCornerShape(18.dp),
                     ) {
-                        Text(stringResource(R.string.auth_saved_code))
+                        Text(stringResource(R.string.auth_recovery_continue))
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedButton(
-                        onClick = {
-                            assistedIdentifier = email.trim()
-                            loginType = "assisted"
-                        },
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                        shape = RoundedCornerShape(18.dp),
-                    ) { Text(stringResource(R.string.auth_assisted_recovery_button)) }
+                    TextButton(onClick = { passwordFlowMode = "migration" }) {
+                        Text(stringResource(R.string.auth_recovery_back_options))
+                    }
                 }
             } else {
                 TextButton(
-                    onClick = { loginType = "recovery" },
+                    onClick = {
+                        passwordFlowMode = "migration"
+                        loginType = "recovery"
+                    },
                     modifier = Modifier.align(Alignment.End),
                 ) {
                     Text(stringResource(R.string.auth_forgot_password))
