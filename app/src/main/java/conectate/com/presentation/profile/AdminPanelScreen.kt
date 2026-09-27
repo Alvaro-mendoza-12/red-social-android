@@ -834,44 +834,74 @@ fun AdminPanelScreen(
                     }
                     6 -> {
                         item(key = "recovery-guide") {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("Recuperación de cuentas", style = MaterialTheme.typography.titleLarge)
-                                Text("Lee lo que recuerda la persona, identifica la cuenta y registra cómo comprobaste que le pertenece. Después prepara un único código para cambiar la contraseña.")
-                                OutlinedButton(onClick = viewModel::refreshRecoveryCases) { Text("Actualizar solicitudes") }
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("Recuperación de cuentas", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Revisa la solicitud, confirma la cuenta y entrega el código al contacto indicado.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                OutlinedButton(
+                                    onClick = viewModel::refreshRecoveryCases,
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                                ) { Text("Actualizar solicitudes") }
                                 recoverySecret?.let { secret ->
-                                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-                                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                                    ) {
+                                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                             Text(
-                                                if (recoverySecretAction == "contact-code") "Código para confirmar el contacto"
-                                                else "Código para crear contraseña",
+                                                "Código listo para entregar",
+                                                style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
                                             )
-                                            Text("Solicitud: ${recoverySecretCaseId.orEmpty()}")
                                             val matched = recoveryCases.firstOrNull { it.id == recoverySecretCaseId }
-                                            matched?.let {
-                                                Text("Contacto: ${matched.alternateContact}")
+                                            Text(
+                                                "Solicitud #${recoverySecretCaseId.orEmpty().take(8)} · ${matched?.alternateContact ?: "Comprueba el destinatario"}",
+                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                            )
+                                            Surface(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = MaterialTheme.colorScheme.surface,
+                                            ) {
+                                                androidx.compose.foundation.text.selection.SelectionContainer {
+                                                    Text(
+                                                        secret,
+                                                        modifier = Modifier.padding(14.dp),
+                                                        style = MaterialTheme.typography.titleLarge,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                    )
+                                                }
                                             }
-                                            androidx.compose.foundation.text.selection.SelectionContainer { Text(secret) }
-                                            Text("Se preparó un mensaje para el contacto elegido. Revisa el destinatario y toca Enviar en WhatsApp o correo. Este código se muestra una sola vez; si generas otro, el anterior deja de funcionar.")
+                                            Text(
+                                                "Revisa el destinatario y envía el mensaje desde WhatsApp o correo. El código se muestra una sola vez; uno nuevo anula el anterior.",
+                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
                                             val message = recoveryDeliveryMessage(
                                                 recoverySecretCaseId.orEmpty(), secret,
                                                 recoverySecretAction == "contact-code",
                                             )
-                                            OutlinedButton(onClick = {
-                                                (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
-                                                    ?.setPrimaryClip(ClipData.newPlainText("Mensaje de recuperación Novvin", message))
-                                            }) { Text("Copiar mensaje completo") }
                                             matched?.let { destination ->
-                                                OutlinedButton(onClick = {
+                                                Button(onClick = {
                                                     openRecoveryMessage(context, destination.contactType, destination.alternateContact, message)
-                                                }) {
-                                                    Text(if (destination.contactType == "whatsapp") "Abrir WhatsApp con mensaje" else "Preparar correo con mensaje")
+                                                }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                                    Text(if (destination.contactType == "whatsapp") "Abrir WhatsApp" else "Preparar correo")
                                                 }
                                             }
                                             OutlinedButton(onClick = {
                                                 (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+                                                    ?.setPrimaryClip(ClipData.newPlainText("Mensaje de recuperación Novvin", message))
+                                            }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Copiar mensaje completo") }
+                                            OutlinedButton(onClick = {
+                                                (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
                                                     ?.setPrimaryClip(ClipData.newPlainText("Código de recuperación Novvin", secret))
-                                            }) { Text("Copiar código") }
+                                            }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Copiar solo el código") }
                                             TextButton(onClick = viewModel::clearRecoverySecret) { Text("Cerrar código") }
                                         }
                                     }
@@ -917,89 +947,186 @@ private fun AdminRecoveryCard(
 ) {
     val context = LocalContext.current
     var accountQuery by remember(recovery.id) { mutableStateOf(recovery.identifier) }
-    var accountId by remember(recovery.id) { mutableStateOf(recovery.candidateUserId) }
+    var searchedQuery by remember(recovery.id) { mutableStateOf(recovery.identifier) }
+    var accountId by remember(recovery.id) { mutableStateOf("") }
     var evidence by remember(recovery.id) { mutableStateOf("") }
     var resetTwoFactor by remember(recovery.id) { mutableStateOf(false) }
     var confirmIssue by remember(recovery.id) { mutableStateOf(false) }
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            accountQuery = recovery.identifier
+            searchedQuery = recovery.identifier
+            accountId = ""
+        }
+    }
+    val statusLabel = when (recovery.status) {
+        "pending" -> "Pendiente"
+        "issued" -> "Código emitido"
+        "completed" -> "Completada"
+        "rejected" -> "Rechazada"
+        else -> recovery.status
+    }
+    val statusColor = when (recovery.status) {
+        "completed" -> MaterialTheme.colorScheme.primaryContainer
+        "rejected" -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    val statusTextColor = when (recovery.status) {
+        "completed" -> MaterialTheme.colorScheme.onPrimaryContainer
+        "rejected" -> MaterialTheme.colorScheme.onErrorContainer
+        else -> MaterialTheme.colorScheme.onSecondaryContainer
+    }
     if (confirmIssue) {
         AlertDialog(
             onDismissRequest = { confirmIssue = false },
-            title = { Text("Confirmar recuperación") },
-            text = { Text("Cuenta: ${recovery.candidateName.ifBlank { accountId }}\nContacto: ${recovery.alternateContact}\nConfirma que comprobaste que la cuenta le pertenece al solicitante. El código anterior se anulará; la contraseña y las sesiones actuales solo cambiarán cuando el titular use el nuevo código.${if (resetTwoFactor) " Al usarlo también se restablecerá el segundo factor." else ""}") },
+            title = { Text("Emitir código de recuperación") },
+            text = {
+                val selected = accounts.firstOrNull { it.id == accountId }
+                Text(
+                    "Cuenta: ${selected?.displayName.orEmpty()} · ${selected?.email.orEmpty()}\n" +
+                        "Enviar a: ${recovery.alternateContact}\n\n" +
+                        "La contraseña cambiará cuando la persona use el código. " +
+                        "Si ya había uno, quedará anulado." +
+                        if (resetTwoFactor) " También se restablecerá el segundo factor." else ""
+                )
+            },
             confirmButton = {
                 Button(onClick = {
                     confirmIssue = false
                     onAction("issue-code", accountId.trim(), evidence.trim(), resetTwoFactor)
-                }) { Text("Emitir código") }
+                }) { Text("Confirmar y preparar mensaje") }
             },
             dismissButton = { TextButton(onClick = { confirmIssue = false }) { Text("Cancelar") } },
         )
     }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            val statusLabel = when (recovery.status) {
-                "pending" -> "Pendiente"
-                "issued" -> "Código emitido"
-                "completed" -> "Completada"
-                "rejected" -> "Rechazada"
-                else -> recovery.status
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Surface(shape = RoundedCornerShape(50), color = statusColor) {
+                Text(
+                    statusLabel,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = statusTextColor,
+                )
             }
-            Text("$statusLabel · ${recovery.candidateName.ifBlank { recovery.identifier }}", style = MaterialTheme.typography.titleMedium)
-            Text("Cuenta indicada: ${recovery.identifier}", style = MaterialTheme.typography.bodySmall)
-            Text("Referencia ${recovery.id.take(8)}", style = MaterialTheme.typography.labelSmall)
-            if (recovery.candidateUserId.isNotBlank()) {
-                Text("Posible cuenta: ${recovery.candidateName} · ${recovery.candidateEmail}")
-            } else Text("No hay coincidencia clara. Busca la cuenta antes de aprobar.", color = MaterialTheme.colorScheme.error)
-            androidx.compose.foundation.text.selection.SelectionContainer {
-                Text("Enviar por ${if (recovery.contactType == "whatsapp") "WhatsApp" else "correo"}: ${recovery.alternateContact}")
+            Text(
+                recovery.candidateName.ifBlank { recovery.identifier },
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "Solicitud #${recovery.id.take(8)} · ${recovery.identifier}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Enviar código por ${if (recovery.contactType == "whatsapp") "WhatsApp" else "correo"}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.foundation.text.selection.SelectionContainer {
+                        Text(recovery.alternateContact, fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
-            TextButton(onClick = onToggle) { Text(if (expanded) "Cerrar revisión" else "Leer y revisar") }
+            FilledTonalButton(
+                onClick = onToggle,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text(if (expanded) "Ocultar detalles" else "Revisar solicitud") }
             if (expanded) {
                 OutlinedButton(onClick = {
                     (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
                         ?.setPrimaryClip(ClipData.newPlainText("Contacto recuperación Novvin", recovery.alternateContact))
-                }) { Text("Copiar contacto") }
-                if (recovery.profileHint.isNotBlank()) Text("Perfil recordado: ${recovery.profileHint}")
-                Text("Lo que recuerda de su cuenta", style = MaterialTheme.typography.titleSmall)
-                Text(recovery.description)
+                }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Copiar contacto") }
+                HorizontalDivider()
+                Text("Lo que cuenta la persona", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(recovery.description, style = MaterialTheme.typography.bodyMedium)
+                if (recovery.profileHint.isNotBlank()) Text(
+                    "Perfil recordado: ${recovery.profileHint}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 if (recovery.status in setOf("pending", "issued") && canReview) {
-                    Text("1. Identifica la cuenta correcta", style = MaterialTheme.typography.titleSmall)
+                    HorizontalDivider()
+                    Text("1 · Confirma la cuenta", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    if (recovery.candidateUserId.isNotBlank()) Text(
+                        "Coincidencia sugerida: ${recovery.candidateName} · ${recovery.candidateEmail}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ) else Text("No encontramos una coincidencia clara. Busca la cuenta antes de continuar.", color = MaterialTheme.colorScheme.error)
                     OutlinedTextField(
-                        value = accountQuery, onValueChange = { accountQuery = it },
+                        value = accountQuery, onValueChange = { accountQuery = it; accountId = "" },
                         label = { Text("Buscar por correo, nombre o usuario") },
                         modifier = Modifier.fillMaxWidth(), singleLine = true,
                     )
-                    OutlinedButton(onClick = { onSearch(accountQuery) }, enabled = accountQuery.trim().length >= 3) { Text("Buscar") }
-                    if (accounts.isEmpty() && accountId.isBlank()) Text("Busca una cuenta para continuar.", style = MaterialTheme.typography.bodySmall)
-                    accounts.forEach { account ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = accountId == account.id, onClick = { accountId = account.id })
-                            Text("${account.displayName} · ${account.email}", modifier = Modifier.weight(1f))
+                    FilledTonalButton(
+                        onClick = { accountId = ""; searchedQuery = accountQuery.trim(); onSearch(searchedQuery) },
+                        enabled = accountQuery.trim().length >= 3,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text("Buscar cuentas") }
+                    val visibleAccounts = if (accountQuery.trim() == searchedQuery) accounts else emptyList()
+                    if (visibleAccounts.isEmpty()) Text("Busca y selecciona la cuenta correcta para continuar.", style = MaterialTheme.typography.bodySmall)
+                    visibleAccounts.forEach { account ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable { accountId = account.id },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (accountId == account.id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = accountId == account.id, onClick = { accountId = account.id })
+                                Column(Modifier.weight(1f)) {
+                                    Text(account.displayName.ifBlank { account.username }, fontWeight = FontWeight.SemiBold)
+                                    Text(account.email, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
                         }
                     }
-                    if (accountId.isNotBlank()) Text("Cuenta seleccionada: ${accounts.firstOrNull { it.id == accountId }?.email ?: recovery.candidateEmail}")
-                    Text("2. Registra cómo comprobaste la propiedad", style = MaterialTheme.typography.titleSmall)
+                    HorizontalDivider()
+                    Text("2 · Anota cómo la verificaste", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
                         value = evidence, onValueChange = { evidence = it.take(240) },
-                        label = { Text("Qué comprobaste para aprobar") },
-                        supportingText = { Text("Describe una prueba concreta en al menos 20 caracteres. No anotes contraseñas ni documentos.") },
+                        label = { Text("Comprobación o motivo de rechazo") },
+                        supportingText = { Text("Mínimo 20 caracteres (${evidence.trim().length}/20). No escribas contraseñas ni documentos.") },
                         modifier = Modifier.fillMaxWidth(), minLines = 2,
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { resetTwoFactor = !resetTwoFactor },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Checkbox(checked = resetTwoFactor, onCheckedChange = { resetTwoFactor = it })
-                        Text("Restablecer también el segundo factor")
+                        Text("Restablecer también el segundo factor", modifier = Modifier.weight(1f))
                     }
+                    Text("3 · Entrega el código", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Se preparará un mensaje para el contacto indicado. Revísalo antes de enviarlo.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Button(
                         onClick = { confirmIssue = true },
-                        enabled = !busy && accountId.trim().length == 36 && evidence.trim().length >= 20,
-                    ) { Text(if (recovery.status == "issued") "Generar otro código" else "Aprobar y preparar mensaje") }
-                    Text("Al generar otro código, el anterior deja de funcionar. El mensaje se abrirá listo para revisar y enviar.", style = MaterialTheme.typography.bodySmall)
+                        enabled = !busy && visibleAccounts.any { it.id == accountId } && evidence.trim().length >= 20,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    ) { Text(if (recovery.status == "issued") "Generar un código nuevo" else "Aprobar y preparar mensaje") }
+                    if (recovery.status == "issued") Text(
+                        "Un código nuevo anula el anterior.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     if (recovery.status == "pending") {
                         OutlinedButton(
                             onClick = { onAction("reject", "", evidence.trim(), false) },
                             enabled = !busy && evidence.trim().length >= 20,
-                        ) { Text("Rechazar con motivo") }
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        ) { Text("Rechazar solicitud") }
                     }
+                } else if (!canReview && recovery.status in setOf("pending", "issued")) {
+                    Text("Solo la cuenta propietaria puede aprobar o rechazar solicitudes.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

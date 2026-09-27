@@ -570,116 +570,140 @@ fun LoginScreen(
             }
 
         } else if (loginType == "assisted") {
-                Text(
-                    "¿No puedes entrar? Cuéntanos qué recuerdas de tu cuenta. Un administrador revisará tu solicitud y, si confirma que te pertenece, te enviará un código para crear otra contraseña.",
+            Text(
+                "Completa estos datos. Si confirmamos que la cuenta es tuya, te enviaremos un código al contacto que elijas.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(modifier = Modifier.height(16.dp))
             if (!assistedCodeStage) {
-                OutlinedButton(
-                    onClick = { assistedCodeStage = true },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                ) { Text("Ya recibí el código · Crear contraseña") }
-                Spacer(modifier = Modifier.height(12.dp))
                 if (assistedRecoveryCaseId.isNullOrBlank()) {
-                OutlinedTextField(
-                    value = assistedIdentifier,
-                    onValueChange = { assistedIdentifier = it.take(160) },
-                    label = { Text("Correo o usuario de la cuenta") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = assistedProfileHint,
-                    onValueChange = { assistedProfileHint = it.take(160) },
-                    label = { Text("Nombre o enlace del perfil que recuerdes (opcional)") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true,
-                )
-                Text("¿Dónde puedes recibir el código?")
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FilterChip(
-                        selected = assistedContactType == "whatsapp",
-                        onClick = { assistedContactType = "whatsapp" }, label = { Text("WhatsApp") },
-                    )
-                    FilterChip(
-                        selected = assistedContactType == "email",
-                        onClick = { assistedContactType = "email" }, label = { Text("Correo") },
-                    )
-                }
-                OutlinedTextField(
-                    value = assistedContact,
-                    onValueChange = { assistedContact = it.take(240) },
-                    label = { Text(if (assistedContactType == "email") "Correo nuevo" else "Número de WhatsApp con prefijo del país") },
-                    supportingText = { Text(if (assistedContactType == "email") "Escribe un correo nuevo válido al que puedas entrar." else "Incluye el prefijo del país y usa un número de WhatsApp activo.") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = assistedDescription,
-                    onValueChange = { assistedDescription = it.take(1000) },
-                    label = { Text("Qué recuerdas de tu cuenta y qué ocurrió") },
-                    supportingText = {
-                        Text("Cuenta cuándo entraste por última vez, nombres de contactos, publicaciones u otros datos que solo tú conozcas. Mínimo 20 caracteres (${assistedDescription.trim().length}/20). Nunca escribas contraseñas ni adjuntes documentos.")
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 3,
-                    maxLines = 5,
-                )
-                if (assistedDescription.trim().length < 20) {
-                    Text(
-                        "Completa la explicación para habilitar la solicitud. El nombre del perfil es opcional.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Button(
-                    onClick = {
-                        viewModel.requestAssistedRecovery(
-                            assistedIdentifier, assistedContact, assistedDescription,
-                            assistedContactType, assistedProfileHint,
-                        )
-                    },
-                    enabled = assistedRecoveryCaseId.isNullOrBlank() && !assistedRecoverySubmitting && assistedIdentifier.trim().length >= 3 &&
-                        assistedContactValid && assistedDescription.trim().length >= 20,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    if (assistedRecoverySubmitting) CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp,
-                    )
-                    else Text("Enviar solicitud de ayuda")
-                }
-                }
-                assistedRecoveryMessage?.let { message ->
-                    Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                assistedRecoveryCaseId?.let { caseId ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(
                             modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
-                            Text("Solicitud recibida", style = MaterialTheme.typography.titleSmall)
-                            Text("El equipo revisará tus datos. Si confirma la cuenta, enviará un único código al contacto que elegiste. Luego podrás crear una contraseña nueva.")
-                            Text("Referencia para consultar con soporte:")
-                            SelectionContainer {
-                                Text(caseId, style = MaterialTheme.typography.bodyMedium)
+                            Text("1 · Cuéntanos cuál es tu cuenta", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            OutlinedTextField(
+                                value = assistedIdentifier,
+                                onValueChange = { assistedIdentifier = it.take(160) },
+                                label = { Text("Correo o usuario de la cuenta") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                value = assistedProfileHint,
+                                onValueChange = { assistedProfileHint = it.take(160) },
+                                label = { Text("Nombre o enlace del perfil (opcional)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                            )
+                            HorizontalDivider()
+                            Text("2 · Elige dónde recibir el código", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                FilterChip(
+                                    selected = assistedContactType == "whatsapp",
+                                    onClick = { assistedContactType = "whatsapp" }, label = { Text("WhatsApp") },
+                                )
+                                FilterChip(
+                                    selected = assistedContactType == "email",
+                                    onClick = { assistedContactType = "email" }, label = { Text("Correo") },
+                                )
                             }
-                            TextButton(onClick = {
+                            OutlinedTextField(
+                                value = assistedContact,
+                                onValueChange = { assistedContact = it.take(240) },
+                                label = { Text(if (assistedContactType == "email") "Correo al que puedes entrar" else "WhatsApp con prefijo del país") },
+                                supportingText = { Text(if (assistedContactType == "email") "Debe ser un correo que puedas abrir ahora." else "Ejemplo: +51 999 999 999") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                            )
+                            HorizontalDivider()
+                            Text("3 · Explica lo que recuerdas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Cuéntanos cuándo entraste por última vez, contactos o publicaciones que ayuden a reconocer tu cuenta. No escribas contraseñas ni envíes documentos.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            OutlinedTextField(
+                                value = assistedDescription,
+                                onValueChange = { assistedDescription = it.take(1000) },
+                                label = { Text("Qué pasó y qué recuerdas") },
+                                supportingText = { Text("Mínimo 20 caracteres (${assistedDescription.trim().length}/20)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 3,
+                                maxLines = 5,
+                            )
+                            val missing = when {
+                                assistedIdentifier.trim().length < 3 -> "Escribe el correo o usuario de tu cuenta."
+                                !assistedContactValid -> "Escribe un ${if (assistedContactType == "email") "correo válido" else "número de WhatsApp válido"}."
+                                assistedDescription.trim().length < 20 -> "Explica lo que recuerdas en al menos 20 caracteres."
+                                else -> null
+                            }
+                            if (missing != null) Text(
+                                missing,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Button(
+                                onClick = {
+                                    viewModel.requestAssistedRecovery(
+                                        assistedIdentifier, assistedContact, assistedDescription,
+                                        assistedContactType, assistedProfileHint,
+                                    )
+                                },
+                                enabled = !assistedRecoverySubmitting && missing == null,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                            ) {
+                                if (assistedRecoverySubmitting) CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp,
+                                ) else Text("Enviar solicitud de ayuda")
+                            }
+                        }
+                    }
+                }
+                assistedRecoveryMessage?.let { message ->
+                    Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                }
+                assistedRecoveryCaseId?.let { caseId ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text("Solicitud recibida", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("Referencia #${caseId.take(8)}", style = MaterialTheme.typography.bodyMedium)
+                            Text("Revisaremos la cuenta. Si se aprueba, el administrador te enviará el código al contacto que elegiste. Después podrás crear otra contraseña.")
+                            OutlinedButton(onClick = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
                                     as? ClipboardManager
                                 clipboard?.setPrimaryClip(
                                     ClipData.newPlainText("Número de solicitud Novvin", caseId)
                                 )
                                 assistedCaseCopied = clipboard != null
-                            }) {
-                                Text(if (assistedCaseCopied) "Número copiado" else "Copiar número")
+                            }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                Text(if (assistedCaseCopied) "Referencia copiada" else "Copiar referencia completa")
+                            }
+                            Button(onClick = { assistedCodeStage = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                                Text("Ya recibí el código")
                             }
                             TextButton(onClick = {
                                 viewModel.startNewAssistedRecoveryRequest()
                             }) { Text("Empezar otra solicitud") }
                         }
                     }
+                }
+                if (assistedRecoveryCaseId.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = { assistedCodeStage = true },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    ) { Text("Ya tengo un código · Crear contraseña") }
                 }
             } else {
                 MigratedPasswordSetupCard(
