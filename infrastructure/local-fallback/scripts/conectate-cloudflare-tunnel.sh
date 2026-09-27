@@ -116,7 +116,9 @@ update_public_url() {
     }
     stable_url="$(env_value STABLE_PUBLIC_BASE_URL)"
     advertised_url="$url"
-    if [[ "$stable_url" =~ ^https://[-a-zA-Z0-9.]+\.ts\.net:8443$ ]] && tunnel_ready "$stable_url"; then
+    # Funnel accepts HTTPS on both 443 and 8443. Prefer the standard 443
+    # origin when configured so mobile networks that block 8443 can log in.
+    if [[ "$stable_url" =~ ^https://[-a-zA-Z0-9.]+\.ts\.net(:8443)?$ ]] && tunnel_ready "$stable_url"; then
       advertised_url="$stable_url"
     elif [ -n "$stable_url" ]; then
       echo 'WARN: origen estable no disponible; usando temporalmente el túnel de respaldo' >&2
