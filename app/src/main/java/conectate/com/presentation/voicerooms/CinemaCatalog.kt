@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit
  */
 class CinemaCatalog {
     private val client = OkHttpClient.Builder()
+        .dns(conectate.com.core.network.PublicBackendDns)
         .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)

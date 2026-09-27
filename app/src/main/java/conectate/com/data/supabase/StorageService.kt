@@ -36,6 +36,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
+import conectate.com.core.network.PublicBackendDns
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -74,6 +75,7 @@ class StorageService @Inject constructor(
     }
 
     private val largeUploadClient = OkHttpClient.Builder()
+        .dns(PublicBackendDns)
         .connectTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.MINUTES)
         .readTimeout(2, TimeUnit.MINUTES)

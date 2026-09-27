@@ -56,7 +56,8 @@ internal suspend fun saveDocumentToDownloads(context: Context, file: File, name:
         } ?: error("No se pudo escribir el archivo en Descargas.")
     }
 
-private val documentDownloadClient = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
+private val documentDownloadClient = OkHttpClient.Builder().dns(conectate.com.core.network.PublicBackendDns)
+    .connectTimeout(15, TimeUnit.SECONDS)
     .readTimeout(30, TimeUnit.SECONDS).callTimeout(120, TimeUnit.SECONDS).followSslRedirects(false).build()
 
 /** The preview's 32 MB parsing ceiling must not prevent downloading a larger attachment. */

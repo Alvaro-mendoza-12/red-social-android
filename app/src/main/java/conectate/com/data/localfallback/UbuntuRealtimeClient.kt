@@ -1,6 +1,7 @@
 package conectate.com.data.localfallback
 
 import android.util.Log
+import conectate.com.core.network.PublicBackendDns
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,7 +38,7 @@ class UbuntuRealtimeClient @Inject constructor() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
-    private val client = OkHttpClient.Builder().build()
+    private val client = OkHttpClient.Builder().dns(PublicBackendDns).build()
     private val subscribedChannels = ConcurrentHashMap.newKeySet<String>()
     private val _events = MutableSharedFlow<UbuntuRealtimeEnvelope>(extraBufferCapacity = 256)
     val events: SharedFlow<UbuntuRealtimeEnvelope> = _events.asSharedFlow()

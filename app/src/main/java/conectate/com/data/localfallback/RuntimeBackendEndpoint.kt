@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import conectate.com.BuildConfig
 import conectate.com.core.network.BackendTrustPolicy
+import conectate.com.core.network.PublicBackendDns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -56,6 +57,7 @@ object RuntimeBackendEndpoint {
     )
 
     private val client = OkHttpClient.Builder()
+        .dns(PublicBackendDns)
         .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(4, TimeUnit.SECONDS)
         .callTimeout(6, TimeUnit.SECONDS)

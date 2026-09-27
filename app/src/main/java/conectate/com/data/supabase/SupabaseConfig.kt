@@ -14,6 +14,7 @@ import io.ktor.client.plugins.logging.*
 import io.ktor.client.plugins.*
 import io.ktor.client.request.get
 import conectate.com.core.network.AutomaticRetryPolicy
+import conectate.com.core.network.PublicBackendDns
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
@@ -75,6 +76,9 @@ class SupabaseConfig @Inject constructor(
     }
 
     val httpClient = HttpClient(OkHttp) {
+        engine {
+            config { dns(PublicBackendDns) }
+        }
         install(HttpTimeout) {
             requestTimeoutMillis = 25_000
             connectTimeoutMillis = 20_000
@@ -251,6 +255,7 @@ class SupabaseConfig @Inject constructor(
             supabaseUrl = safeUrl,
             supabaseKey = safeKey
         ) {
+            httpEngine = OkHttp.create { config { dns(PublicBackendDns) } }
             httpConfig {
                 install(HttpTimeout) {
                     requestTimeoutMillis = 30000

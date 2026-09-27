@@ -47,7 +47,26 @@ esa cuenta también se eliminó. Todos los contenedores principales quedaron
 `healthy` tras el cambio.
 
 Estas comprobaciones demuestran el recorrido desde esta PC y el emulador.
-Falta confirmar el acceso desde el teléfono y la red que reportaron el error;
-la versión instalada y cualquier DNS o VPN del dispositivo pueden influir.
-La APK instalada antes de este cambio conserva su dirección anterior hasta
-que se actualice.
+
+## Comprobación directa en Motorola moto g04
+
+El teléfono `ZY22JSH8CF` (Android 14) tenía una APK 3.3.14 anterior al cambio
+a 443. En el Wi-Fi compartido por esta PC, `conectate.tail9b267c.ts.net`
+resolvió a `100.91.84.2` y no hubo respuesta. El DNS de la red era
+`192.168.137.1`, que heredó la respuesta dividida de Tailscale, pero el móvil
+no tenía Tailscale ni una ruta a `100.91.84.2`. Con el Wi-Fi apagado durante
+unos segundos, por datos móviles el mismo nombre resolvió a la IP pública
+`209.177.145.137` y respondió en 149 ms. El Wi-Fi se volvió a encender.
+Esta comparación identifica una causa directa del tiempo de espera en ese
+teléfono: el tráfico ni siquiera llegaba al backend.
+
+La app ahora conserva el nombre HTTPS original y la validación normal del
+certificado, pero si el DNS del sistema ofrece solo direcciones privadas para
+el Funnel configurado, obtiene direcciones públicas mediante DNS sobre HTTPS
+con arranque directo a un resolvedor público. La política se aplica a las
+peticiones principales, señalización Socket.IO, WebSocket, carga de archivos,
+imágenes y reproducción. No cambia la resolución de otros dominios. La
+consulta pública tiene tiempos de espera acotados y un caché de cinco minutos.
+
+La instalación y prueba de la APK corregida en el Motorola se documentan
+después de completar la compilación.

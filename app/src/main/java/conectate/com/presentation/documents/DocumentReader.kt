@@ -150,7 +150,8 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
     companion object {
         val textExtensions = setOf("txt", "csv", "tsv", "json", "md", "xml", "log", "yaml", "yml")
         private val knownExtensions = textExtensions + setOf("pdf", "docx", "xlsx", "pptx", "doc", "xls", "ppt")
-        private val remoteClient = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
+        private val remoteClient = OkHttpClient.Builder().dns(conectate.com.core.network.PublicBackendDns)
+            .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS).callTimeout(40, TimeUnit.SECONDS).followSslRedirects(false).build()
     }
 }

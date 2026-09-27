@@ -6,6 +6,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import conectate.com.BuildConfig
+import conectate.com.core.network.PublicBackendDns
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -28,6 +29,7 @@ object MediaPlaybackDataSources {
     // device-dependent HttpURLConnection for every range request.
     private val mediaHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .dns(PublicBackendDns)
             .connectTimeout(CONNECT_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
             .readTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
             .writeTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)

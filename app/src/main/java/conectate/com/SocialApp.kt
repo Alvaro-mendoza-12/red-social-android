@@ -183,6 +183,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
     override fun newImageLoader(): ImageLoader {
         val performanceProfile = AppPerformanceProfiles.detect(this)
         val okHttpClient = okhttp3.OkHttpClient.Builder()
+            .dns(conectate.com.core.network.PublicBackendDns)
             .addInterceptor { chain ->
                 val request = chain.request()
                 val host = request.url.host
