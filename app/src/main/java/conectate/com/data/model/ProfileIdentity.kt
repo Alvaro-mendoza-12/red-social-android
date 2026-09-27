@@ -10,9 +10,10 @@ fun profilePublicHandle(user: User): String {
         .firstOrNull { it.isNotBlank() && '@' !in it }
         ?: "usuario"
     return Normalizer.normalize(displayName, Normalizer.Form.NFD)
-        .replace(Regex("\\p{M}+"), "")
+        .replace(Regex("(\\p{IsLatin})\\p{M}+"), "$1")
+        .let { Normalizer.normalize(it, Normalizer.Form.NFC) }
         .lowercase(Locale.ROOT)
-        .replace(Regex("[^\\p{L}\\p{N}_.-]+"), "_")
+        .replace(Regex("[^\\p{L}\\p{N}\\p{M}_.-]+"), "_")
         .trim('_', '.', '-')
         .take(24)
         .ifBlank { "usuario" }

@@ -44,6 +44,7 @@ class ProfileIdentityTest {
         val user = User(id = id, display_name = "  ", full_name = "山田 太郎")
         assertEquals("山田_太郎", profilePublicHandle(user))
         assertEquals("李_明", profilePublicHandle(user.copy(display_name = "李 明")))
+        assertEquals("ガク", profilePublicHandle(user.copy(display_name = "ガク")))
     }
 
     @Test
