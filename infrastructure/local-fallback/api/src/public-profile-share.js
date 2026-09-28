@@ -78,20 +78,33 @@ ${bioLines.map((line, index) => `<text x="90" y="${438 + index * 42}" font-famil
 
 async function publicProfilePosts(pool, profile) {
   if (profile.is_private || !/^[0-9a-f-]{36}$/i.test(String(profile.id || ''))) return []
-  const { rows } = await pool.query(`WITH aliases AS (
+  const aliases = `WITH aliases AS (
       SELECT $1::text AS id
       UNION SELECT u.id::text FROM fallback_users u
         WHERE u.id::text = $1 OR u.supabase_user_id::text = $1
       UNION SELECT u.supabase_user_id::text FROM fallback_users u
         WHERE u.id::text = $1 OR u.supabase_user_id::text = $1
-    )
+    )`
+  const { rows } = await pool.query(`${aliases}
     SELECT p.content, COALESCE(NULLIF(p.media_url, ''), p.media_urls->>0) AS media_url,
-      p.media_urls, p.media_type, p.created_at
+      p.id::text AS id, p.media_urls, p.media_type, p.created_at
     FROM fallback_posts p
     WHERE lower(p.user_id) IN (SELECT lower(id) FROM aliases WHERE id IS NOT NULL)
       AND p.visibility = 'public' AND p.is_sensitive = FALSE
     ORDER BY p.created_at DESC LIMIT 12`, [profile.id])
-  return rows
+  const table = await pool.query("SELECT to_regclass('supabase_import.posts') AS name")
+  if (!table.rows[0]?.name) return rows
+  const imported = await pool.query(`${aliases}
+    SELECT to_jsonb(p) AS row FROM supabase_import.posts p
+    WHERE lower(p.user_id) IN (SELECT lower(id) FROM aliases WHERE id IS NOT NULL)
+      AND COALESCE(NULLIF(p.visibility, ''), 'public') = 'public'
+      AND COALESCE(to_jsonb(p)->>'is_sensitive', 'false') NOT IN ('true', 't', '1')
+      AND COALESCE(to_jsonb(p)->>'is_deleted', 'false') NOT IN ('true', 't', '1')
+      AND NOT EXISTS (SELECT 1 FROM fallback_posts f WHERE f.id::text = p.id)
+    ORDER BY p.created_at DESC LIMIT 12`, [profile.id])
+  return [...rows, ...imported.rows.map(({ row }) => row)]
+    .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))
+    .slice(0, 12)
 }
 
 function profileShareHtml(profile, publicBaseUrl, posts = []) {

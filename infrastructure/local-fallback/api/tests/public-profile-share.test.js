@@ -28,7 +28,13 @@ test('shared profiles use readable metadata, escape untrusted text and omit priv
 
 test('guest web view includes only public and non-sensitive profile posts', async () => {
   const statements = []
-  const pool = { async query(sql) { statements.push(sql); return { rows: [{
+  const pool = { async query(sql) { statements.push(sql); if (sql.includes('to_regclass')) return { rows: [{ name: 'supabase_import.posts' }] }
+    if (sql.includes('supabase_import.posts p')) return { rows: [{ row: {
+      id: 'imported-post', content: 'Cinco fotos', media_type: 'image',
+      media_urls: Array.from({ length: 5 }, (_, index) => `https://example.invalid/foto-${index + 1}.jpg`),
+      created_at: new Date('2026-09-29T10:00:00Z'),
+    } }] }
+    return { rows: [{
     content: 'Hola desde Novvin', media_type: 'image',
     media_url: 'https://example.invalid/photo.jpg',
     media_urls: ['https://example.invalid/photo.jpg', 'https://example.invalid/photo-2.jpg'],
@@ -37,17 +43,19 @@ test('guest web view includes only public and non-sensitive profile posts', asyn
   const profile = { id: '550e8400-e29b-41d4-a716-446655440000',
     display_name: 'Mirella', username: 'mirella_vr07' }
   const posts = await publicProfilePosts(pool, profile)
-  assert.equal(posts.length, 1)
+  assert.equal(posts.length, 2)
   assert.match(statements[0], /p\.visibility = 'public' AND p\.is_sensitive = FALSE/)
   const html = profileShareHtml(profile, 'https://example.invalid', posts)
   assert.match(html, /Hola desde Novvin/)
   assert.match(html, /photo\.jpg/)
   assert.match(html, /photo-2\.jpg/)
+  assert.match(html, /foto-5\.jpg/)
   assert.match(html, /Desliza a la izquierda para ver las 2 fotos/)
+  assert.match(html, /Desliza a la izquierda para ver las 5 fotos/)
   assert.equal((html.match(/alt="Imagen [12] de 2 de la publicación"/g) || []).length, 2)
   assert.match(html, /2026-09-28/)
   assert.deepEqual(await publicProfilePosts(pool, { ...profile, is_private: true }), [])
-  assert.equal(statements.length, 1)
+  assert.equal(statements.length, 3)
   assert.doesNotMatch(profileShareHtml({ ...profile, is_private: true }, 'https://example.invalid', posts),
     /Hola desde Novvin/)
 })
