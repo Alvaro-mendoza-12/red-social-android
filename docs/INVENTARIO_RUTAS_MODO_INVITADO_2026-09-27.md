@@ -1,60 +1,60 @@
 # Inventario de rutas y acceso del modo invitado
 
-Rama: `feature/live-gifts`. Inventario estático generado de las declaraciones de rutas. Las rutas con expresiones regulares o variables se describen por separado. Una ruta con `authRequired` exige sesión registrada y rechaza la audiencia `novvin-guests`. Este inventario no sustituye las comprobaciones de ejecución.
+Rama: `feature/live-gifts`. Generado con `node scripts/generate-guest-route-inventory.mjs`. Identifica declaraciones literales y conserva el último controlador de cada método/ruta. Las expresiones regulares y variables se describen debajo. Este inventario estático no sustituye las pruebas de ejecución.
+
+`authRequired` exige sesión registrada y rechaza la audiencia `novvin-guests`; `requireGuest` admite únicamente esa audiencia. Los controles de administrador exigen su capacidad o credencial administrativa.
 
 | Método | Ruta | Control declarado | Fuente |
 | --- | --- | --- | --- |
-| GET | `/` | control específico | server.js:1696 |
-| POST | `/functions/v1/web-login-pairing` | control específico | server.js:3424 |
-| GET | `/health` | control específico | server.js:1700 |
-| GET | `/ready` | control específico | server.js:1710 |
-| GET | `/v1/admin/account-recovery/accounts` | control específico | server.js:2029 |
-| GET | `/v1/admin/account-recovery/cases` | control específico | server.js:2006 |
-| POST | `/v1/admin/account-recovery/cases/:id/contact-code` | control específico | server.js:2051 |
-| POST | `/v1/admin/account-recovery/cases/:id/issue-code` | control específico | server.js:2069 |
-| POST | `/v1/admin/account-recovery/cases/:id/reject` | control específico | server.js:2155 |
-| POST | `/v1/admin/sync/import-supabase-users` | control específico | server.js:1861 |
-| GET | `/v1/admin/sync/status` | control específico | server.js:1837 |
-| POST | `/v1/admin/users/set-local-password` | control específico | server.js:1923 |
+| GET | `/` | control propio del flujo | server.js:1702 |
+| POST | `/functions/v1/web-login-pairing` | control propio del flujo | server.js:3431 |
+| GET | `/health` | control propio del flujo | server.js:1706 |
+| GET | `/ready` | control propio del flujo | server.js:1716 |
+| GET | `/v1/admin/account-recovery/accounts` | recoveryAdminRequired | server.js:2035 |
+| GET | `/v1/admin/account-recovery/cases` | recoveryAdminRequired | server.js:2012 |
+| POST | `/v1/admin/account-recovery/cases/:id/contact-code` | recoveryAdminRequired | server.js:2057 |
+| POST | `/v1/admin/account-recovery/cases/:id/issue-code` | recoveryAdminRequired | server.js:2075 |
+| POST | `/v1/admin/account-recovery/cases/:id/reject` | recoveryAdminRequired | server.js:2161 |
+| POST | `/v1/admin/sync/import-supabase-users` | adminRequired | server.js:1867 |
+| GET | `/v1/admin/sync/status` | adminRequired | server.js:1843 |
+| POST | `/v1/admin/users/set-local-password` | adminRequired | server.js:1929 |
 | POST | `/v1/ai/chat` | authRequired | ai-routes.js:175 |
 | POST | `/v1/ai/feedback` | authRequired | ai-routes.js:191 |
 | GET | `/v1/ai/health` | authRequired | ai-routes.js:167 |
-| POST | `/v1/auth/2fa/disable` | authRequired | server.js:2721 |
-| POST | `/v1/auth/2fa/enable` | authRequired | server.js:2668 |
-| POST | `/v1/auth/2fa/setup` | authRequired | server.js:2646 |
-| GET | `/v1/auth/2fa/status` | authRequired | server.js:2634 |
-| POST | `/v1/auth/account-recovery/cases` | control específico | server.js:326 |
-| POST | `/v1/auth/account-recovery/cases` | control específico | server.js:2182 |
-| POST | `/v1/auth/account-recovery/cases/:id/confirm-contact` | control específico | server.js:335 |
-| POST | `/v1/auth/account-recovery/cases/:id/confirm-contact` | control específico | server.js:2223 |
-| POST | `/v1/auth/activate-local-password` | control específico | server.js:3489 |
-| POST | `/v1/auth/change-password` | authRequired | server.js:2749 |
-| POST | `/v1/auth/complete-migrated-password-reset` | control específico | server.js:3070 |
-| POST | `/v1/auth/login` | control específico | server.js:2365 |
-| POST | `/v1/auth/logout` | control específico | server.js:2552 |
-| GET | `/v1/auth/me` | authRequired | server.js:3138 |
-| POST | `/v1/auth/password-recovery-codes/confirm` | control específico | server.js:2991 |
-| POST | `/v1/auth/password-recovery-codes/rotate` | authRequired | server.js:2596 |
-| GET | `/v1/auth/password-recovery-codes/status` | authRequired | server.js:2584 |
-| POST | `/v1/auth/password-reset/confirm` | control específico | server.js:2891 |
-| POST | `/v1/auth/password-reset/request` | control específico | server.js:2827 |
-| POST | `/v1/auth/refresh` | control específico | server.js:2466 |
-| POST | `/v1/auth/register` | control específico | server.js:2271 |
-| POST | `/v1/auth/sync-to-supabase` | authRequired | server.js:3561 |
-| GET | `/v1/auth/username/availability` | control específico | server.js:2251 |
-| POST | `/v1/auth/web-login-pairing` | control específico | server.js:3423 |
-| DELETE | `/v1/auth/web-session` | control específico | server.js:3254 |
-| POST | `/v1/auth/web-session/refresh` | control específico | server.js:3158 |
-| POST | `/v1/auth/web-session/upgrade` | authRequired | server.js:3228 |
-| DELETE | `/v1/auth/web-sessions` | authRequired | server.js:3443 |
-| GET | `/v1/auth/web-sessions` | authRequired | server.js:3426 |
-| DELETE | `/v1/auth/web-sessions/:sessionId` | authRequired | server.js:3461 |
+| POST | `/v1/auth/2fa/disable` | authRequired | server.js:2728 |
+| POST | `/v1/auth/2fa/enable` | authRequired | server.js:2675 |
+| POST | `/v1/auth/2fa/setup` | authRequired | server.js:2653 |
+| GET | `/v1/auth/2fa/status` | authRequired | server.js:2641 |
+| POST | `/v1/auth/account-recovery/cases` | control propio del flujo | server.js:2188 |
+| POST | `/v1/auth/account-recovery/cases/:id/confirm-contact` | control propio del flujo | server.js:2229 |
+| POST | `/v1/auth/activate-local-password` | control propio del flujo | server.js:3496 |
+| POST | `/v1/auth/change-password` | authRequired | server.js:2756 |
+| POST | `/v1/auth/complete-migrated-password-reset` | control propio del flujo | server.js:3077 |
+| POST | `/v1/auth/login` | control propio del flujo | server.js:2372 |
+| POST | `/v1/auth/logout` | control propio del flujo | server.js:2559 |
+| GET | `/v1/auth/me` | authRequired | server.js:3145 |
+| POST | `/v1/auth/password-recovery-codes/confirm` | control propio del flujo | server.js:2998 |
+| POST | `/v1/auth/password-recovery-codes/rotate` | authRequired | server.js:2603 |
+| GET | `/v1/auth/password-recovery-codes/status` | authRequired | server.js:2591 |
+| POST | `/v1/auth/password-reset/confirm` | control propio del flujo | server.js:2898 |
+| POST | `/v1/auth/password-reset/request` | control propio del flujo | server.js:2834 |
+| POST | `/v1/auth/refresh` | control propio del flujo | server.js:2473 |
+| POST | `/v1/auth/register` | control propio del flujo | server.js:2278 |
+| POST | `/v1/auth/sync-to-supabase` | authRequired | server.js:3568 |
+| GET | `/v1/auth/username/availability` | control propio del flujo | server.js:2257 |
+| POST | `/v1/auth/web-login-pairing` | control propio del flujo | server.js:3430 |
+| DELETE | `/v1/auth/web-session` | control propio del flujo | server.js:3261 |
+| POST | `/v1/auth/web-session/refresh` | control propio del flujo | server.js:3165 |
+| POST | `/v1/auth/web-session/upgrade` | authRequired | server.js:3235 |
+| DELETE | `/v1/auth/web-sessions` | authRequired | server.js:3450 |
+| GET | `/v1/auth/web-sessions` | authRequired | server.js:3433 |
+| DELETE | `/v1/auth/web-sessions/:sessionId` | authRequired | server.js:3468 |
 | GET | `/v1/data/admin/access` | authRequired | admin-moderation-routes.js:1564 |
-| GET | `/v1/data/admin/account-recovery/accounts` | control específico | server.js:2029 |
-| GET | `/v1/data/admin/account-recovery/cases` | control específico | server.js:2006 |
-| POST | `/v1/data/admin/account-recovery/cases/:id/contact-code` | control específico | server.js:2051 |
-| POST | `/v1/data/admin/account-recovery/cases/:id/issue-code` | control específico | server.js:2069 |
-| POST | `/v1/data/admin/account-recovery/cases/:id/reject` | control específico | server.js:2155 |
+| GET | `/v1/data/admin/account-recovery/accounts` | recoveryAdminRequired | server.js:2035 |
+| GET | `/v1/data/admin/account-recovery/cases` | recoveryAdminRequired | server.js:2012 |
+| POST | `/v1/data/admin/account-recovery/cases/:id/contact-code` | recoveryAdminRequired | server.js:2057 |
+| POST | `/v1/data/admin/account-recovery/cases/:id/issue-code` | recoveryAdminRequired | server.js:2075 |
+| POST | `/v1/data/admin/account-recovery/cases/:id/reject` | recoveryAdminRequired | server.js:2161 |
 | POST | `/v1/data/admin/badges` | authRequired | admin-moderation-routes.js:1589 |
 | DELETE | `/v1/data/admin/badges/:id` | authRequired | admin-moderation-routes.js:1720 |
 | GET | `/v1/data/admin/catalog` | authRequired | admin-moderation-routes.js:1574 |
@@ -414,28 +414,32 @@ Rama: `feature/live-gifts`. Inventario estático generado de las declaraciones d
 | POST | `/v1/data/voice/rooms/:roomId/leave` | authRequired | data-routes.js:12021 |
 | PATCH | `/v1/data/voice/rooms/:roomId/stage/participants/:userId` | authRequired | data-routes.js:11928 |
 | PATCH | `/v1/data/voice/rooms/:roomId/stage/request` | authRequired | data-routes.js:11872 |
-| GET | `/v1/guest/:kind/:id/comments` | requireGuest | guest-mode-routes.js:220 |
-| GET | `/v1/guest/moments` | requireGuest | guest-mode-routes.js:178 |
-| GET | `/v1/guest/posts` | requireGuest | guest-mode-routes.js:153 |
-| GET | `/v1/guest/posts/:id` | requireGuest | guest-mode-routes.js:206 |
-| GET | `/v1/guest/profiles/:id` | requireGuest | guest-mode-routes.js:317 |
-| GET | `/v1/guest/profiles/search` | requireGuest | guest-mode-routes.js:262 |
-| POST | `/v1/guest/session` | control específico | guest-mode-routes.js:124 |
-| GET | `/v1/guest/videos` | requireGuest | guest-mode-routes.js:129 |
-| GET | `/v1/guest/videos/:id` | requireGuest | guest-mode-routes.js:206 |
-| POST | `/v1/internal/live/:liveId/terminate` | control específico | live-routes.js:1594 |
-| POST | `/v1/internal/live/battles/:battleId/events` | control específico | live-routes.js:1515 |
-| POST | `/v1/moderation/appeals` | control específico | admin-moderation-routes.js:1483 |
-| GET | `/v1/moderation/decision` | control específico | admin-moderation-routes.js:1453 |
+| GET | `/v1/guest/:kind/:id/comments` | requireGuest | guest-mode-routes.js:269 |
+| GET | `/v1/guest/moments` | requireGuest | guest-mode-routes.js:227 |
+| GET | `/v1/guest/posts` | requireGuest | guest-mode-routes.js:200 |
+| GET | `/v1/guest/posts/:id` | requireGuest | guest-mode-routes.js:255 |
+| GET | `/v1/guest/profiles/:id` | requireGuest | guest-mode-routes.js:366 |
+| GET | `/v1/guest/profiles/search` | requireGuest | guest-mode-routes.js:311 |
+| POST | `/v1/guest/session` | control propio del flujo | guest-mode-routes.js:169 |
+| GET | `/v1/guest/videos` | requireGuest | guest-mode-routes.js:174 |
+| GET | `/v1/guest/videos/:id` | requireGuest | guest-mode-routes.js:255 |
+| POST | `/v1/internal/live/:liveId/terminate` | control propio del flujo | live-routes.js:1594 |
+| POST | `/v1/internal/live/battles/:battleId/events` | control propio del flujo | live-routes.js:1515 |
+| POST | `/v1/moderation/appeals` | control propio del flujo | admin-moderation-routes.js:1483 |
+| GET | `/v1/moderation/decision` | control propio del flujo | admin-moderation-routes.js:1453 |
+| GET | `/v1/public/profiles/:identifier` | control propio del flujo | public-profile-share.js:37 |
 | GET | `/v1/storage/buckets` | authRequired | storage-routes.js:1331 |
 | GET | `/v1/storage/objects` | authRequired | storage-routes.js:1384 |
 | POST | `/v1/storage/upload` | authRequired | storage-routes.js:1344 |
-| GET | `/v1/system/health` | authRequired | server.js:1754 |
-| GET | `/v1/upstream/supabase` | authRequired | server.js:1775 |
-| POST | `/v1/webhooks/paypal/payouts` | control específico | creator-payout-routes.js:1102 |
+| GET | `/v1/system/health` | authRequired | server.js:1760 |
+| GET | `/v1/upstream/supabase` | authRequired | server.js:1781 |
+| POST | `/v1/webhooks/paypal/payouts` | control propio del flujo | creator-payout-routes.js:1102 |
 
-## Rutas dinámicas
+## Rutas dinámicas y controles propios
 
-- `/rest/v1/<tabla>` y `/rest/v1/rpc/<función>`: autenticación opcional de entrada y exigencia explícita de sesión registrada dentro del controlador, salvo resolución pública del correo de acceso.
-- `/storage/v1/object/<bucket>/<path>`: escritura y firma requieren autenticación registrada; lectura pública según bucket.
-- Rutas internas, callbacks de pagos y webhooks: requieren su credencial específica; el token de invitado no reemplaza esas credenciales.
+- `/rest/v1/<tabla>` y `/rest/v1/rpc/<función>`: entrada `authOptional` y exigencia de sesión registrada dentro del controlador, salvo resolver el correo de acceso.
+- `/storage/v1/object/<bucket>/<path>`: escritura y firma requieren sesión registrada; lectura pública depende del bucket.
+- Registro, acceso, recuperación, segundo factor, renovación y vinculación web: cada flujo exige su prueba correspondiente; entrar como invitado no sustituye credenciales ni códigos.
+- `/v1/public/profiles/<identifier>`: vista previa HTML de perfil público, campos explícitos, privacidad compartida con invitado y límite de 60 consultas/minuto/IP.
+- Rutas internas, webhooks y callbacks: credencial específica del servicio; el JWT de invitado no proporciona esa autorización.
+- `health` y `ready`: comprobaciones de disponibilidad; no autorizan acciones sociales.

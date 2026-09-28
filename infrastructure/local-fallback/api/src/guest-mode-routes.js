@@ -83,12 +83,57 @@ async function readPublicContent(pool, kind, id) {
     ? `SELECT to_jsonb(v) AS row FROM supabase_import.videos v
        WHERE v.id = $1 AND COALESCE(NULLIF(to_jsonb(v)->>'is_public', ''),
          NULLIF(to_jsonb(v)->>'ispublic', '')) IN ('true', 't', '1')
+         AND COALESCE(to_jsonb(v)->>'is_sensitive', 'false') NOT IN ('true', 't', '1')
+         AND COALESCE(to_jsonb(v)->>'is_deleted', 'false') NOT IN ('true', 't', '1')
          AND NOT EXISTS (SELECT 1 FROM fallback_videos f WHERE f.id::text = v.id) LIMIT 1`
     : `SELECT to_jsonb(p) AS row FROM supabase_import.posts p
        WHERE p.id = $1 AND COALESCE(NULLIF(p.visibility, ''), 'public') = 'public'
+         AND COALESCE(to_jsonb(p)->>'is_sensitive', 'false') NOT IN ('true', 't', '1')
+         AND COALESCE(to_jsonb(p)->>'is_deleted', 'false') NOT IN ('true', 't', '1')
          AND NOT EXISTS (SELECT 1 FROM fallback_posts f WHERE f.id::text = p.id) LIMIT 1`,
     [id])
   return result.rows[0] ? (video ? importedVideo(result.rows[0].row) : importedPost(result.rows[0].row)) : null
+}
+
+
+async function readPublicProfile(pool, identifier) {
+  const id = String(identifier || '').trim().replace(/^@/, '').toLowerCase()
+  const { rows } = await pool.query(
+    `SELECT u.id::text AS id, COALESCE(NULLIF(o.profile->>'display_name', ''), u.display_name, 'Usuario') AS display_name,
+        CASE WHEN lower(o.profile->>'username') = split_part(lower(u.email), '@', 1)
+      THEN NULL ELSE NULLIF(o.profile->>'username', '') END AS username,
+        COALESCE(NULLIF(o.profile->>'avatar_url', ''), u.avatar_url) AS avatar_url,
+        NULLIF(o.profile->>'bio', '') AS bio
+     FROM fallback_users u
+     LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+     WHERE (u.id::text = $1 OR u.supabase_user_id::text = $1 OR lower(o.profile->>'username') = $1)
+       AND COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
+       AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
+     LIMIT 1`,
+    [id],
+  )
+  let profile = rows[0]
+  if (await importedTableExists(pool, 'profiles')) {
+    const result = await pool.query(
+      `SELECT to_jsonb(p) AS row FROM supabase_import.profiles p
+       LEFT JOIN fallback_users u ON u.supabase_user_id::text = p.id OR u.id::text = p.id
+       LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+       WHERE (p.id = $1 OR u.id::text = $1 OR lower(p.username) = $1)
+     AND COALESCE(NULLIF(p.is_suspended, ''), 'false') NOT IN ('true', 't', '1')
+     AND COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
+     AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
+       LIMIT 1`,
+      [id],
+    )
+    if (result.rows[0]) {
+      const legacy = importedProfile(result.rows[0].row)
+      profile = profile
+    ? { ...legacy, ...profile, username: profile.username || legacy.username,
+      bio: profile.bio || legacy.bio, avatar_url: profile.avatar_url || legacy.avatar_url }
+    : legacy
+    }
+  }
+  return profile || null
 }
 
 function issueGuestIdentity(jwt, secret, issuer) {
@@ -140,7 +185,9 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
           `SELECT to_jsonb(v) AS row FROM supabase_import.videos v
            WHERE COALESCE(NULLIF(to_jsonb(v)->>'is_public', ''),
                           NULLIF(to_jsonb(v)->>'ispublic', '')) IN ('true', 't', '1')
-             AND NOT EXISTS (SELECT 1 FROM fallback_videos f WHERE f.id::text = v.id)
+             AND COALESCE(to_jsonb(v)->>'is_sensitive', 'false') NOT IN ('true', 't', '1')
+         AND COALESCE(to_jsonb(v)->>'is_deleted', 'false') NOT IN ('true', 't', '1')
+         AND NOT EXISTS (SELECT 1 FROM fallback_videos f WHERE f.id::text = v.id)
            ORDER BY v.created_at DESC LIMIT 30`,
         )
         imported = result.rows.map(({ row }) => importedVideo(row)).filter((item) => item.video_url)
@@ -165,7 +212,9 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
         const result = await pool.query(
           `SELECT to_jsonb(p) AS row FROM supabase_import.posts p
            WHERE COALESCE(NULLIF(p.visibility, ''), 'public') = 'public'
-             AND NOT EXISTS (SELECT 1 FROM fallback_posts f WHERE f.id::text = p.id)
+             AND COALESCE(to_jsonb(p)->>'is_sensitive', 'false') NOT IN ('true', 't', '1')
+         AND COALESCE(to_jsonb(p)->>'is_deleted', 'false') NOT IN ('true', 't', '1')
+         AND NOT EXISTS (SELECT 1 FROM fallback_posts f WHERE f.id::text = p.id)
            ORDER BY p.created_at DESC LIMIT 30`,
         )
         imported = result.rows.map(({ row }) => importedPost(row))
@@ -318,41 +367,7 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
     try {
       const id = String(req.params.id || '')
       if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'PROFILE_ID_INVALID' })
-      const { rows } = await pool.query(
-        `SELECT u.id::text AS id, COALESCE(NULLIF(o.profile->>'display_name', ''), u.display_name, 'Usuario') AS display_name,
-                CASE WHEN lower(o.profile->>'username') = split_part(lower(u.email), '@', 1)
-                  THEN NULL ELSE NULLIF(o.profile->>'username', '') END AS username,
-                COALESCE(NULLIF(o.profile->>'avatar_url', ''), u.avatar_url) AS avatar_url,
-                NULLIF(o.profile->>'bio', '') AS bio
-         FROM fallback_users u
-         LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
-         WHERE (u.id = $1::uuid OR u.supabase_user_id = $1::uuid)
-           AND COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
-           AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
-         LIMIT 1`,
-        [id],
-      )
-      let profile = rows[0]
-      if (await importedTableExists(pool, 'profiles')) {
-        const result = await pool.query(
-          `SELECT to_jsonb(p) AS row FROM supabase_import.profiles p
-           LEFT JOIN fallback_users u ON u.supabase_user_id::text = p.id OR u.id::text = p.id
-           LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
-           WHERE (p.id = $1 OR u.id::text = $1)
-             AND COALESCE(NULLIF(p.is_suspended, ''), 'false') NOT IN ('true', 't', '1')
-             AND COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
-             AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
-           LIMIT 1`,
-          [id],
-        )
-        if (result.rows[0]) {
-          const legacy = importedProfile(result.rows[0].row)
-          profile = profile
-            ? { ...legacy, ...profile, username: profile.username || legacy.username,
-              bio: profile.bio || legacy.bio, avatar_url: profile.avatar_url || legacy.avatar_url }
-            : legacy
-        }
-      }
+      const profile = await readPublicProfile(pool, id)
       if (!profile) return res.status(404).json({ error: 'PROFILE_NOT_FOUND' })
       res.set('Cache-Control', 'private, max-age=30')
       res.json({ profile })
@@ -360,4 +375,4 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
   })
 }
 
-module.exports = { GUEST_AUDIENCE, issueGuestIdentity, guestAuth, readPublicContent, registerGuestModeRoutes }
+module.exports = { GUEST_AUDIENCE, issueGuestIdentity, guestAuth, readPublicContent, readPublicProfile, registerGuestModeRoutes }

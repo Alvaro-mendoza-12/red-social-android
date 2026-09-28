@@ -10,6 +10,10 @@ const baseUrl = String(process.env.E2E_API_URL || 'http://127.0.0.1:3001').repla
 const email = `two-factor-e2e-${crypto.randomUUID()}@novvin.invalid`
 const password = `E2E-${crypto.randomUUID()}!`
 const nextPassword = `E2E-${crypto.randomUUID()}!`
+const trustedWebOrigin = String(process.env.CORS_ORIGIN || '').split(',')
+  .map((value) => value.trim()).find((value) => /^https?:\/\//.test(value))
+const webHeaders = { 'x-novvin-web-session': 'web-v1',
+  ...(trustedWebOrigin ? { origin: trustedWebOrigin } : {}) }
 
 async function request(path, body, token, extraHeaders = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -56,7 +60,7 @@ async function run() {
     assert.ok(enabled.body.accessToken)
     const stalePairing = await request('/v1/auth/web-login-pairing', {
       action: 'consume', pairId: pairing.body.pairId, nonce: pairing.body.nonce,
-    }, undefined, { 'x-novvin-web-session': 'web-v1' })
+    }, undefined, webHeaders)
     assert.equal(stalePairing.status, 409)
     assert.equal(stalePairing.body.error, 'PAIRING_REJECTED')
 
@@ -100,19 +104,27 @@ async function run() {
 
     const webChallenge = await request('/v1/auth/login', {
       email, password, client: 'web',
-    }, undefined, { 'x-novvin-web-session': 'web-v1' })
+    }, undefined, webHeaders)
     assert.equal(webChallenge.body.error, 'TWO_FACTOR_REQUIRED')
     const webRecovered = await request('/v1/auth/login', {
       email, password, backupCode: enabled.body.recoveryCodes[2], client: 'web',
-    }, undefined, { 'x-novvin-web-session': 'web-v1' })
+    }, undefined, webHeaders)
     assert.equal(webRecovered.status, 200, `web second factor status ${webRecovered.status}`)
     assert.ok(webRecovered.body.accessToken)
 
     const resetRequest = await request('/v1/auth/password-reset/request', { email })
     assert.equal(resetRequest.status, 200, JSON.stringify(resetRequest.body))
-    assert.ok(resetRequest.body.resetToken)
+    // Production must never return a reset secret to an unauthenticated caller.
+    // Seed a secret only for this synthetic fixture to test preservation of 2FA.
+    let resetToken = resetRequest.body.resetToken
+    if (!resetToken) {
+      resetToken = crypto.randomBytes(32).toString('hex')
+      await pool.query(`INSERT INTO fallback_password_reset_tokens(user_id, token_hash, expires_at)
+        SELECT id, $2, NOW() + INTERVAL '10 minutes' FROM fallback_users WHERE email = $1`,
+        [email, crypto.createHash('sha256').update(resetToken).digest('hex')])
+    }
     const reset = await request('/v1/auth/password-reset/confirm', {
-      resetToken: resetRequest.body.resetToken, newPassword: nextPassword,
+      resetToken, newPassword: nextPassword,
     })
     assert.equal(reset.status, 200, JSON.stringify(reset.body))
     assert.equal(reset.body.requiresTwoFactor, true)

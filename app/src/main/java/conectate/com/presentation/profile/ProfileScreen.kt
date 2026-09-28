@@ -43,6 +43,7 @@ import coil.compose.AsyncImage
 import coil.imageLoader
 import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.data.localfallback.UbuntuStorageUrl
+import conectate.com.data.localfallback.RuntimeBackendEndpoint
 import conectate.com.data.model.Post
 import conectate.com.data.model.Badge
 import conectate.com.data.model.User
@@ -71,6 +72,15 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 
 private fun profileShareLink(userId: String): String =
     "conectate://profile/${Uri.encode(userId.trim())}"
+
+private fun publicProfileShareLink(user: User): String {
+    val base = RuntimeBackendEndpoint.baseUrlFlow.value.trimEnd('/')
+    if (Uri.parse(base).scheme != "https") return profileShareLink(user.id)
+    val handle = profilePublicHandle(user)
+    val identifier = user.username?.trim()?.removePrefix("@")
+        ?.takeIf { it.equals(handle, ignoreCase = true) } ?: user.id
+    return "$base/v1/public/profiles/${Uri.encode(identifier)}"
+}
 
 internal fun profileUserIdFromQr(raw: String?): String? {
     val uri = runCatching { Uri.parse(raw?.trim().orEmpty()) }.getOrNull() ?: return null
@@ -1104,7 +1114,7 @@ fun ProfileScreen(
                                         }
                                         OutlinedButton(
                                             onClick = {
-                                                val link = profileShareLink(user.id)
+                                                val link = publicProfileShareLink(user)
                                                 context.startActivity(
                                                     Intent.createChooser(
                                                         Intent(Intent.ACTION_SEND).apply {

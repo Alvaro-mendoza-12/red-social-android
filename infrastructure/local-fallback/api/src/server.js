@@ -6,9 +6,11 @@ const helmet = require('helmet')
 const jwt = require('jsonwebtoken')
 const { Pool } = require('pg')
 const { registerGuestModeRoutes } = require('./guest-mode-routes')
+const { registerPublicProfileShareRoutes } = require('./public-profile-share')
 const {
   cleanUsername,
   usernameCandidates,
+  usernameSeed,
   usernameOwnedByAnother,
   usernameProblem,
 } = require('./username-policy')
@@ -286,6 +288,10 @@ app.use('/v1/guest', createDistributedRateLimitMiddleware({
   code: 'GUEST_READ_RATE_LIMITED',
   key: authIpKey,
   methods: ['GET'],
+}))
+app.use('/v1/public/profiles', createDistributedRateLimitMiddleware({
+  pool, scope: 'public:profile-preview', limit: 60, windowMs: 60_000,
+  code: 'PROFILE_PREVIEW_RATE_LIMITED', key: authIpKey, methods: ['GET'],
 }))
 app.use('/v1/auth/logout', createDistributedRateLimitMiddleware({
   pool,
@@ -2256,7 +2262,8 @@ app.get('/v1/auth/username/availability', async (req, res, next) => {
     const suggestions = []
     if (!available) {
       const candidates = usernameCandidates(req.query.name || username, username)
-      candidates.push(...Array.from({ length: 4 }, () => `usuario${crypto.randomBytes(6).toString('hex')}`))
+      candidates.push(...Array.from({ length: 4 }, () =>
+        `${usernameSeed(req.query.name || username).slice(0, 18)}${crypto.randomBytes(3).toString('hex')}`))
       for (const candidate of candidates) {
         if (candidate === username || await usernameOwnedByAnother(pool, candidate)) continue
         suggestions.push(candidate)
@@ -3677,6 +3684,7 @@ registerGooglePlayRtdnRoutes(app, {
 registerPostgrestCompatRoutes(app, { pool, authRequired, authOptional })
 registerAiRoutes(app, { authRequired })
 registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName })
+registerPublicProfileShareRoutes(app, { pool, publicBaseUrl: process.env.PUBLIC_BASE_URL })
 
 app.use((req, res) => {
   res.status(404).json({ error: 'NOT_FOUND', path: req.path })

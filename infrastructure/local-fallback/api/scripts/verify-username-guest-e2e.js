@@ -11,11 +11,11 @@ const password = `Test-${crypto.randomBytes(18).toString('hex')}!`
 const contentId = crypto.randomUUID()
 const checks = []
 
-async function request(path, method = 'GET', body, token) {
+async function request(path, method = 'GET', body, token, extraHeaders = {}) {
   const started = Date.now()
   const response = await fetch(`${base}${path}`, {
     method, headers: { 'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      ...(token ? { authorization: `Bearer ${token}` } : {}), ...extraHeaders },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(15_000),
   })
@@ -73,6 +73,9 @@ async function main() {
     const guest = await request('/v1/guest/session', 'POST', {})
     check('guest identity generated', guest.status === 201 && guest.body.role === 'guest' && /^guest_/.test(guest.body.id))
     const guestToken = guest.body.accessToken
+    const shared = await fetch(`${base}/v1/public/profiles/${handle}`, { signal: AbortSignal.timeout(10_000) })
+    const html = await shared.text()
+    check('shared profile has public readable preview', shared.status === 200 && html.includes('og:title') && html.includes(`@${handle}`) && !html.includes(email))
     for (const path of ['videos', 'posts', 'moments', 'profiles/search?q=ad']) {
       const result = await request(`/v1/guest/${path}`, 'GET', undefined, guestToken)
       check(`public ${path} readable`, result.status === 200 && noPrivateFields(result.body))
@@ -101,14 +104,51 @@ async function main() {
     // A local private row must override an older imported public row at every read path.
     const imported = await db.query("SELECT to_regclass('supabase_import.videos') AS table_oid")
     if (imported.rows[0].table_oid) {
-      await db.query(`INSERT INTO supabase_import.videos(id, ispublic, url) VALUES ($1, 'true', 'https://example.invalid/private.mp4')`, [contentId])
+      await db.query(`INSERT INTO supabase_import.videos(id, ispublic, url, __source_file)
+        VALUES ($1, 'true', 'https://example.invalid/private.mp4', 'username-guest-e2e')`, [contentId])
       await db.query(`INSERT INTO fallback_videos(id, user_id, video_url, is_public) VALUES ($1, $2, 'https://example.invalid/private.mp4', FALSE)`, [contentId, id])
       for (const tail of ['', '/comments']) {
         check('private local content masks stale public import', (await request(`/v1/guest/videos/${contentId}${tail}`, 'GET', undefined, guestToken)).status === 404)
       }
     }
+    await db.query(`UPDATE fallback_profile_overrides SET profile = profile || '{"profile_visibility":"only_me"}'::jsonb WHERE user_id = $1`, [id])
+    check('private profile blocked in guest view', (await request(`/v1/guest/profiles/${id}`, 'GET', undefined, guestToken)).status === 404)
+    check('private profile blocked in public preview',
+      (await fetch(`${base}/v1/public/profiles/${handle}`, { signal: AbortSignal.timeout(10_000) })).status === 404)
+    assert.ok(process.env.ADMIN_SYNC_TOKEN, 'manual recovery verification needs the configured server administrator credential')
+    const manual = await request('/v1/auth/account-recovery/cases', 'POST', {
+      identifier: email, contactType: 'email', alternateContact: emails[2],
+      description: 'Caso sintético: perdí contraseña y dispositivo; comprueba solo esta cuenta de prueba.',
+    })
+    check('manual recovery request accepted', manual.status === 202 && Boolean(manual.body.caseId))
+    const adminHeaders = { 'x-admin-token': process.env.ADMIN_SYNC_TOKEN }
+    const cases = await request('/v1/admin/account-recovery/cases', 'GET', undefined, undefined, adminHeaders)
+    check('administrator receives recovery request', cases.status === 200 && JSON.stringify(cases.body).includes(manual.body.caseId))
+    const review = { userId: id, reviewedBy: 'E2E synthetic reviewer',
+      verificationRef: 'Propiedad de fixture confirmada por esta prueba sintética aislada; no es una cuenta real.', resetTwoFactor: false }
+    const issue = () => request(`/v1/admin/account-recovery/cases/${manual.body.caseId}/issue-code`, 'POST', review, undefined, adminHeaders)
+    const firstCode = await issue()
+    check('administrator can issue a recovery code', firstCode.status === 200 && Boolean(firstCode.body.resetToken))
+    const secondCode = await issue()
+    check('administrator can replace recovery code', secondCode.status === 200 && Boolean(secondCode.body.resetToken))
+    const replacementPassword = `Recovered-${crypto.randomBytes(18).toString('hex')}`
+    check('replaced code rejected', (await request('/v1/auth/password-reset/confirm', 'POST', {
+      resetToken: firstCode.body.resetToken, newPassword: replacementPassword,
+    })).status === 401)
+    const recovered = await request('/v1/auth/password-reset/confirm', 'POST', {
+      resetToken: secondCode.body.resetToken, newPassword: replacementPassword,
+    })
+    check('reviewed code recovers complete access', recovered.status === 200 && Boolean(recovered.body.accessToken))
+    check('manual recovery revokes old sessions', (await request('/v1/auth/me', 'GET', undefined, token)).status === 401)
+    check('manual recovery permits new password login', (await request('/v1/auth/login', 'POST', {
+      email, password: replacementPassword, client: 'android',
+    })).status === 200)
+    check('manual recovery code cannot be reused', (await request('/v1/auth/password-reset/confirm', 'POST', {
+      resetToken: secondCode.body.resetToken, newPassword: replacementPassword,
+    })).status === 401)
     console.log(JSON.stringify({ ok: true, checks: checks.length, loginMs: login.elapsedMs, modulesWithDeniedWrites: paths.length }))
   } finally {
+    await db.query('DELETE FROM fallback_account_recovery_cases WHERE identifier = ANY($1::text[])', [emails])
     await db.query('DELETE FROM fallback_videos WHERE id = $1', [contentId])
     const imported = await db.query("SELECT to_regclass('supabase_import.videos') AS table_oid")
     if (imported.rows[0].table_oid) await db.query('DELETE FROM supabase_import.videos WHERE id = $1', [contentId])

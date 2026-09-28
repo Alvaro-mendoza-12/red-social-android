@@ -29,7 +29,7 @@ Las rutas de invitado no implementan mutaciones. Las rutas existentes para accio
 
 ## Límites conocidos
 
-- Un enlace de perfil `conectate://profile/<id>` abre la app instalada. La vista previa rica en WhatsApp u otras redes requiere un dominio HTTPS público y metadatos Open Graph; el dominio privado de Tailscale no sirve para destinatarios externos.
+- Compartir perfil usa HTTPS del servidor y metadatos Open Graph cuando el endpoint activo es HTTPS. El enlace muestra nombre, @usuario, descripción y avatar; incluye un botón para abrir la app instalada. El servidor tiene Tailscale Funnel habilitado, por lo que ese acceso es público. La presentación final de la tarjeta depende de la aplicación receptora y su caché. El QR interno conserva `conectate://profile/<id>`.
 - El historial de videos vistos en modo invitado no se transfiere a una cuenta registrada. No se crea una cuenta de base de datos para cada visitante; esto evita datos personales innecesarios y deja la sesión temporal limitada a lectura.
 
 ## Cierre de los hallazgos adicionales
@@ -89,4 +89,4 @@ El flujo reutiliza `RegisterScreen`, `AuthViewModel`, `AuthRepository`, `AuthSer
 - Pruebas Android añadidas: `UsernamePolicyTest`; se ejecutan junto a `ProfileIdentityTest` y `ReadDeadlineTest`.
 - Verificación real reproducible: `api/scripts/verify-username-guest-e2e.js`. Crea cuentas exclusivamente sintéticas, comprueba carrera, acceso, edición del nombre, inmutabilidad, lectura pública y 22 rutas de escritura bloqueadas, y limpia sus datos. El resultado de la ejecución se registra al terminar el despliegue.
 
-Las comprobaciones de este documento no certifican que todas las pantallas históricas de la aplicación estén libres de errores. La prueba visual disponible es en emulador; el Motorola debe figurar en ADB para poder comprobar esta versión en ese dispositivo. La vista previa de perfil en redes externas sigue requiriendo el dominio público indicado arriba.
+Las comprobaciones de este documento no certifican que todas las pantallas históricas de la aplicación estén libres de errores. La prueba visual disponible es en emulador; el Motorola debe figurar en ADB para poder comprobar esta versión en ese dispositivo. La vista previa pública se valida como HTML y metadatos; la tarjeta final en WhatsApp no se ha probado enviando mensajes reales.

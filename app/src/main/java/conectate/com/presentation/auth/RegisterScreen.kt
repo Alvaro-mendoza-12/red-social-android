@@ -74,6 +74,7 @@ fun RegisterScreen(
     var usernameError by remember { mutableStateOf("") }
     var usernameSuggestions by remember { mutableStateOf(emptyList<String>()) }
     var autoSuggestUsername by rememberSaveable { mutableStateOf(false) }
+    var usernameEditedManually by rememberSaveable { mutableStateOf(false) }
     var usernameCheckAttempt by remember { mutableIntStateOf(0) }
     var usernameCheckFailed by remember { mutableStateOf(false) }
     var showUsernameSuggestions by remember { mutableStateOf(false) }
@@ -267,7 +268,10 @@ fun RegisterScreen(
                 if (registrationStep == 0) {
                     OutlinedTextField(
                         value = name,
-                        onValueChange = { name = it.take(60) },
+                        onValueChange = {
+                            name = it.take(60)
+                            if (!usernameEditedManually) username = ""
+                        },
                         label = { Text("Nombre visible") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -288,6 +292,7 @@ fun RegisterScreen(
                         value = username,
                         onValueChange = {
                             autoSuggestUsername = false
+                            usernameEditedManually = true
                             username = it.removePrefix("@").lowercase(Locale.ROOT).take(25)
                             viewModel.resetAuthState()
                         },
@@ -319,7 +324,9 @@ fun RegisterScreen(
                             Text("Nombres recomendados")
                         }
                         if (showUsernameSuggestions) usernameSuggestions.forEach { suggestion ->
-                            TextButton(onClick = { autoSuggestUsername = false; username = suggestion }) { Text("@$suggestion") }
+                            TextButton(onClick = {
+                                autoSuggestUsername = false; usernameEditedManually = true; username = suggestion
+                            }) { Text("@$suggestion") }
                         }
                     }
                 }
