@@ -228,7 +228,7 @@ fun SocialScreen(
     val feedLifecycleState by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     LaunchedEffect(feedMode, isRefreshing, feedError, posts, pagerState.currentPage, feedLifecycleState) {
         if (feedLifecycleState == androidx.lifecycle.Lifecycle.State.RESUMED &&
-            feedMode == "following" && !isRefreshing && feedError == null && pagerState.currentPage == 0) {
+            feedMode == SocialFeedMode.FOLLOWING && !isRefreshing && feedError == null && pagerState.currentPage == 0) {
             currentFollowingCallback(posts)
         }
     }

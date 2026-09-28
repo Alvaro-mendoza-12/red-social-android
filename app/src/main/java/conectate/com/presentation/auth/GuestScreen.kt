@@ -437,7 +437,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                         Spacer(Modifier.height(12.dp))
                         Icon(Icons.Default.SportsEsports, contentDescription = null, modifier = Modifier.size(56.dp))
                         Text("Encuentra compañeros para jugar", style = MaterialTheme.typography.headlineSmall)
-                        Text("Para crear tu perfil de jugador y conectar con otras personas, necesitas una cuenta. Juegos está disponible para cuentas autorizadas durante la prueba cerrada.")
+                        Text("Para crear tu perfil de jugador y conectar con otras personas, necesitas una cuenta.")
                         Button(onClick = { restrictedAction = "conectar con jugadores" }, modifier = Modifier.fillMaxWidth()) {
                             Text("Crear cuenta para continuar")
                         }
