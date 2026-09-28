@@ -12,10 +12,14 @@ const request = { mediaUrl, contentType: 'image', allowedOwnedBuckets: ['chat-me
   isForwarded: true, forwardedFromMessageId: 'source' }
 
 function fixture({ kind = 'chat', message = {}, member = true, blocked = false,
-  publicRoom = false, deletedRoom = false, missing = false, storageOwner = false } = {}) {
+  publicRoom = false, deletedRoom = false, missing = false, storageOwner = false,
+  stored = false, stickerSource = false } = {}) {
   const queries = []
   const pool = { query: async (sql, params) => {
     queries.push(String(sql))
+    if (sql.includes('SELECT id::text AS id FROM fallback_messages')) {
+      return { rows: stickerSource ? [{ id: 'source' }] : [] }
+    }
     if (sql.includes('to_jsonb(m) AS message')) return { rows: missing ? [] : [{
       kind, scope_id: 'scope', message: { id: 'source', sender_id: 'sender',
         media_url: mediaUrl, content_type: 'image', deleted_by: [], ...message },
@@ -31,7 +35,9 @@ function fixture({ kind = 'chat', message = {}, member = true, blocked = false,
       creator_id: 'leader', is_public: publicRoom, is_deleted: deletedRoom }] }
     if (sql.includes('FROM fallback_collection_members')) return { rows: [{ room_id: 'scope',
       user_id: 'old-viewer', is_deleted: !member }] }
-    if (sql.includes('FROM fallback_storage_objects')) return { rows: storageOwner ? [{ owner_id: user.id }] : [] }
+    if (sql.includes('to_regclass') || sql.includes('fallback_compat_rows')) return { rows: [] }
+    if (sql.includes('FROM fallback_storage_objects')) return { rows:
+      (sql.includes('owner_id') ? storageOwner : stored) ? [{ owner_id: user.id }] : [] }
     throw new Error(`Unexpected query: ${sql.slice(0, 100)} / ${params?.length}`)
   } }
   return { pool, queries }
@@ -91,8 +97,25 @@ test('non-forwarded owned upload remains supported', async () => {
     { ...request, isForwarded: false }), true)
 })
 
+test('a saved sticker can be sent again only while its source chat remains accessible', async () => {
+  const saved = { ...request, contentType: 'sticker', isForwarded: false }
+  assert.equal(await currentUserMayReferenceMessageMedia(
+    fixture({ stickerSource: true, stored: true, message: { content_type: 'sticker' } }).pool,
+    user, identity, saved), true)
+  for (const options of [
+    { member: false }, { blocked: true },
+    { message: { deleted_for_all: true } }, { message: { deleted_by: ['viewer'] } },
+    { message: { is_view_once: true } }, { stored: false },
+  ]) {
+    assert.equal(await currentUserMayReferenceMessageMedia(
+      fixture({ stickerSource: true, stored: true, message: { content_type: 'sticker' }, ...options }).pool,
+      user, identity, saved), false)
+  }
+})
+
 test('labelling another user\'s stored photo as a sticker does not authorize reuse', async () => {
   const pool = { query: async (sql) => {
+    if (sql.includes('SELECT id::text AS id FROM fallback_messages')) return { rows: [] }
     if (sql.includes('FROM fallback_storage_objects')) {
       return { rows: sql.includes('owner_id') ? [] : [{ exists: true }] }
     }

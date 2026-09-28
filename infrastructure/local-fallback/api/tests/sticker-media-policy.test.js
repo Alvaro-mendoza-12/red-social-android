@@ -25,6 +25,7 @@ function catalogPool({ importedPacks = [pack], importedItems = [item], packs = [
       const rows = params[0] === 'sticker_packs' ? packs : items
       return { rows: rows.map(row => ({ row })) }
     }
+    if (sql.includes('SELECT id::text AS id FROM fallback_messages')) return { rows: [] }
     if (sql.includes('FROM fallback_storage_objects')) {
       const permitted = sql.includes('owner_id') ? owned : stored
       return { rows: permitted && params[0] === 'chat-media' ? [{}] : [] }

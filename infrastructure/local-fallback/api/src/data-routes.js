@@ -4421,6 +4421,30 @@ async function forwardedMessageMediaIsAccessible(pool, user, identity, sourceMes
   return false
 }
 
+async function savedStickerMessageIsAccessible(pool, user, identity, mediaUrl) {
+  if (!parsePublicStorageObjectUrl(mediaUrl, ['chat-media'])) return false
+  const pathname = new URL(mediaUrl).pathname
+  const marker = '/storage/v1/object/public/chat-media/'
+  const markerIndex = pathname.indexOf(marker)
+  if (markerIndex < 0) return false
+  // Saved stickers have a local catalog entry only. Authorize reuse through a
+  // message the viewer may still access, including its deletion and block rules.
+  const storagePath = pathname.slice(markerIndex)
+  const { rows } = await pool.query(
+    `SELECT id::text AS id FROM fallback_messages
+     WHERE content_type = 'sticker' AND strpos(media_url, $1) > 0
+     UNION ALL
+     SELECT id::text AS id FROM fallback_room_messages
+     WHERE content_type = 'sticker' AND strpos(media_url, $1) > 0
+     LIMIT 64`,
+    [storagePath],
+  )
+  for (const row of rows) {
+    if (await forwardedMessageMediaIsAccessible(pool, user, identity, row.id, mediaUrl)) return true
+  }
+  return false
+}
+
 async function currentUserMayReferenceMessageMedia(
   pool,
   user,
@@ -4435,7 +4459,10 @@ async function currentUserMayReferenceMessageMedia(
   }
   if (await currentUserOwnsStorageObject(pool, user.id, mediaUrl, allowedOwnedBuckets)) return true
   if (normalizeId(contentType) === 'sticker') {
-    if (!parsePublicStorageObjectUrl(mediaUrl, ['chat-media'])) return false
+    if (!parsePublicStorageObjectUrl(mediaUrl, ['chat-media'])) {
+      const { canReuseCatalogStickerMedia } = require('./postgrest-compat-routes')
+      return canReuseCatalogStickerMedia(pool, identity, mediaUrl)
+    }
     // Custom stickers are uploaded once to chat-media, also when sent to a
     // group/community or a video comment rather than a private chat.
     if (!allowedOwnedBuckets.includes('chat-media') &&
@@ -4444,7 +4471,8 @@ async function currentUserMayReferenceMessageMedia(
     // Resolve lazily: the compatibility layer also uses data-routes. Reuse its
     // merged catalog so a local privacy/deletion override wins over imports.
     const { canReuseCatalogStickerMedia } = require('./postgrest-compat-routes')
-    return canReuseCatalogStickerMedia(pool, identity, mediaUrl)
+    if (await canReuseCatalogStickerMedia(pool, identity, mediaUrl)) return true
+    return savedStickerMessageIsAccessible(pool, user, identity, mediaUrl)
   }
   return false
 }
