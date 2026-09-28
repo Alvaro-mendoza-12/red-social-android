@@ -1836,10 +1836,8 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
 async function upsertProfile(pool, auth, row) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
-  if (Object.prototype.hasOwnProperty.call(row, 'username') && row.username != null) {
+  if (Object.prototype.hasOwnProperty.call(row, 'username')) {
     const username = cleanUsername(row.username)
-    const problem = usernameProblem(username)
-    if (problem) throw httpError(problem, 400)
     const { rows: currentNames } = await pool.query(
       `SELECT profile->>'username' AS username FROM fallback_profile_overrides
        WHERE user_id = $1::uuid AND NULLIF(trim(profile->>'username'), '') IS NOT NULL
@@ -1871,6 +1869,8 @@ async function upsertProfile(pool, auth, row) {
     if (existing && existing.toLowerCase() !== username.toLowerCase()) {
       throw httpError('USERNAME_IMMUTABLE', 409)
     }
+    const problem = usernameProblem(username)
+    if (!existing && problem) throw httpError(problem, 400)
     if (await usernameOwnedByAnother(pool, username, identity.values)) {
       throw httpError('USERNAME_TAKEN', 409)
     }

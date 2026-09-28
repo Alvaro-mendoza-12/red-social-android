@@ -1815,21 +1815,19 @@ class LocalFallbackApiClient @Inject constructor(
     }
 
     suspend fun checkUsernameAvailability(username: String, displayName: String): Result<UsernameAvailabilityResponse> {
+        return conectate.com.core.network.runReadWithDeadline(8_000L) {
         val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
-            ?: return Result.failure(Exception("No pudimos conectar con el servidor para comprobar el nombre de usuario."))
-        return try {
+            ?: error("No pudimos conectar con el servidor para comprobar el nombre de usuario.")
             val response = supabaseConfig.httpClient.get("$endpoint/v1/auth/username/availability") {
                 parameter("username", username.trim())
                 parameter("name", displayName.trim())
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
-                Result.success(json.decodeFromString<UsernameAvailabilityResponse>(body))
+                json.decodeFromString<UsernameAvailabilityResponse>(body)
             } else {
-                Result.failure(toException(response, decodeError(body)))
+                throw toException(response, decodeError(body))
             }
-        } catch (error: Exception) {
-            Result.failure(error)
         }
     }
 

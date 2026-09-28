@@ -12,9 +12,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -34,6 +36,7 @@ import conectate.com.data.localfallback.GuestProfile
 import conectate.com.presentation.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,6 +64,23 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
     private var searchJob: Job? = null
+    private var refreshJob: Job? = null
+    private val _busy = MutableStateFlow(0)
+    val busy = _busy.asStateFlow()
+
+    private suspend fun <T> request(block: suspend () -> T): Result<T> {
+        _busy.value += 1
+        _error.value = null
+        return try {
+            Result.success(withContext(Dispatchers.IO) { block() })
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            _error.value = if (error is IllegalStateException) error.message else
+                "No pudimos conectar. Revisa tu conexión y vuelve a intentarlo."
+            Result.failure(error)
+        } finally { _busy.value -= 1 }
+    }
 
     fun hasSavedSession() = api.hasActiveGuest()
     fun rememberPendingPreview(type: String, id: String = "") = api.rememberPendingPreview(type, id)
@@ -70,32 +90,26 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     val previewContent = _previewContent.asStateFlow()
 
     fun openContent(kind: String, id: String) = viewModelScope.launch {
-        runCatching { withContext(Dispatchers.IO) { api.content(kind, id) } }
+        request { api.content(kind, id) }
             .onSuccess { _previewContent.value = it }
-            .onFailure { _error.value = "No pudimos abrir este contenido público." }
     }
 
     fun clearPreviewContent() { _previewContent.value = null }
 
     fun enter() = viewModelScope.launch {
-        runCatching { withContext(Dispatchers.IO) { api.ensureIdentity() } }
-            .onSuccess { _identity.value = it; refresh("videos") }
-            .onFailure { _error.value = "No pudimos iniciar el modo invitado. Revisa tu conexión e inténtalo nuevamente." }
+        request { api.ensureIdentity() }.onSuccess { _identity.value = it }
     }
 
-    fun refresh(section: String) = viewModelScope.launch {
-        _error.value = null
-        runCatching {
-            withContext(Dispatchers.IO) {
-                when (section) {
-                    "videos" -> _videos.value = api.videos()
-                    "social" -> {
-                        _posts.value = api.posts()
-                        _moments.value = api.moments()
-                    }
+    fun refresh(section: String) {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            when (section) {
+                "videos" -> request { api.videos() }.onSuccess { _videos.value = it }
+                "social" -> request { api.posts() to api.moments() }.onSuccess {
+                    _posts.value = it.first; _moments.value = it.second
                 }
             }
-        }.onFailure { _error.value = "No pudimos cargar el contenido público. Revisa tu conexión e inténtalo nuevamente." }
+        }
     }
 
     fun search(query: String) {
@@ -103,16 +117,14 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
         if (query.trim().length < 2) { _profiles.value = emptyList(); return }
         searchJob = viewModelScope.launch {
             delay(350)
-            runCatching { withContext(Dispatchers.IO) { api.searchProfiles(query) } }
+            request { api.searchProfiles(query) }
                 .onSuccess { _profiles.value = it; _error.value = null }
-                .onFailure { _error.value = "No pudimos buscar personas. Inténtalo nuevamente." }
         }
     }
 
     fun openProfile(id: String) = viewModelScope.launch {
-        runCatching { withContext(Dispatchers.IO) { api.profile(id) } }
+        request { api.profile(id) }
             .onSuccess { _selectedProfile.value = it }
-            .onFailure { _error.value = "No pudimos abrir este perfil." }
     }
 
     fun closeProfile() { _selectedProfile.value = null }
@@ -121,9 +133,8 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     fun consumePendingProfile() = api.consumePendingProfile()
     fun loadComments(kind: String, id: String) = viewModelScope.launch {
         _comments.value = emptyList()
-        runCatching { withContext(Dispatchers.IO) { api.comments(kind, id) } }
+        request { api.comments(kind, id) }
             .onSuccess { _comments.value = it }
-            .onFailure { _error.value = "No pudimos cargar los comentarios." }
     }
     fun leave() { api.clear(); api.clearPendingProfile() }
 }
@@ -140,15 +151,16 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
     val comments by viewModel.comments.collectAsState()
     val previewContent by viewModel.previewContent.collectAsState()
     val error by viewModel.error.collectAsState()
-    var section by remember { mutableStateOf("videos") }
-    var query by remember { mutableStateOf("") }
+    val busy by viewModel.busy.collectAsState()
+    var section by rememberSaveable { mutableStateOf("messages") }
+    var query by rememberSaveable { mutableStateOf("") }
     var restrictedAction by remember { mutableStateOf<String?>(null) }
     var playingVideo by remember { mutableStateOf<String?>(null) }
     var previewImage by remember { mutableStateOf<String?>(null) }
     var commentTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     LaunchedEffect(Unit) { viewModel.enter() }
-    LaunchedEffect(section) { if (identity != null) viewModel.refresh(section) }
+    LaunchedEffect(section, identity?.id) { if (identity != null) viewModel.refresh(section) }
     LaunchedEffect(identity?.id) {
         if (identity == null) return@LaunchedEffect
         when (val preview = viewModel.consumePendingPreview()) {
@@ -222,14 +234,19 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
         )
     }
 
-    commentTarget?.let {
+    commentTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { commentTarget = null },
             title = { Text("Comentarios") },
             text = {
                 Column {
+                    if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = { viewModel.loadComments(target.first, target.second) }) { Text("Reintentar") }
+                    }
                     LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
-                        if (comments.isEmpty()) item { Text("Aún no hay comentarios.") }
+                        if (comments.isEmpty() && busy == 0 && error == null) item { Text("Aún no hay comentarios.") }
                         items(comments.take(100), key = { it.id }) { comment ->
                             Text("${comment.userName}: ${comment.content}", modifier = Modifier.padding(vertical = 6.dp))
                         }
@@ -291,19 +308,23 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
             if (identity == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
+                        if (busy > 0) CircularProgressIndicator()
                         Spacer(Modifier.height(16.dp))
                         Text(error ?: "Preparando tu visita…")
                         if (error != null) TextButton(onClick = viewModel::enter) { Text("Reintentar") }
                     }
                 }
             } else {
+                if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth())
                 error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
-                    TextButton(onClick = { viewModel.refresh(section) }) { Text("Reintentar") }
+                    TextButton(onClick = {
+                        if (section == "messages" || section == "search") viewModel.search(query)
+                        else viewModel.refresh(section)
+                    }) { Text("Reintentar") }
                 }
                 when (section) {
-                    "videos" -> GuestContentList(
+                    "videos" -> if (busy == 0 || videos.isNotEmpty()) GuestContentList(
                         videos, "Aún no hay videos públicos",
                         onOpen = { video -> if (!video.videoUrl.isNullOrBlank()) playingVideo = video.videoUrl },
                         onProfile = { viewModel.openProfile(it.userId) },
@@ -330,7 +351,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                             }
                             Spacer(Modifier.height(12.dp))
                         }
-                        GuestContentList(
+                        if (busy == 0 || posts.isNotEmpty()) GuestContentList(
                             posts, "Aún no hay publicaciones públicas",
                             onOpen = { viewModel.openContent("posts", it.id) },
                             onProfile = { viewModel.openProfile(it.userId) },
@@ -352,6 +373,9 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                             singleLine = true,
                         )
                         LazyColumn {
+                            if (query.trim().length >= 2 && profiles.isEmpty() && busy == 0 && error == null) {
+                                item { Text("No encontramos personas. Prueba otro nombre o @usuario.", modifier = Modifier.padding(vertical = 16.dp)) }
+                            }
                             items(profiles, key = { it.id }) { profile ->
                                 ListItem(
                                     headlineContent = { Text("@${profile.username ?: "usuario"}") },
@@ -364,6 +388,8 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                     }
                     "profile" -> {
                         Spacer(Modifier.height(24.dp))
+                        Icon(Icons.Default.Person, contentDescription = "Avatar de invitado", modifier = Modifier.size(64.dp))
+                        Text("Modo invitado", color = MaterialTheme.colorScheme.primary)
                         Text(identity!!.displayName, style = MaterialTheme.typography.headlineMedium)
                         Text("@${identity!!.username}", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(12.dp))
@@ -426,6 +452,7 @@ private fun GuestContentList(
 @Composable
 private fun GuestVideoPlayer(url: String) {
     val context = LocalContext.current
+    val playerHeight = (LocalConfiguration.current.screenHeightDp - 220).coerceIn(140, 420).dp
     val player = remember(url) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.parse(url)))
@@ -436,6 +463,6 @@ private fun GuestVideoPlayer(url: String) {
     DisposableEffect(player) { onDispose { player.release() } }
     AndroidView(
         factory = { PlayerView(it).apply { this.player = player } },
-        modifier = Modifier.fillMaxWidth().height(420.dp),
+        modifier = Modifier.fillMaxWidth().height(playerHeight),
     )
 }

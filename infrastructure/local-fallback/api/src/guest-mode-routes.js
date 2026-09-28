@@ -66,6 +66,31 @@ function importedProfile(row) {
   }
 }
 
+async function readPublicContent(pool, kind, id) {
+  const video = kind === 'videos'
+  const { rows } = await pool.query(video
+    ? `SELECT id::text, user_id, user_name, user_profile_image, title,
+              description, video_url, cover_url, thumbnail_url, created_at
+       FROM fallback_videos WHERE id = $1::uuid AND is_public = TRUE AND is_sensitive = FALSE`
+    : `SELECT id::text, user_id, user_name, user_profile_image, content,
+              COALESCE(media_url, media_urls->>0) AS media_url, media_urls, media_type, created_at
+       FROM fallback_posts WHERE id = $1::uuid AND visibility = 'public' AND is_sensitive = FALSE`,
+    [id])
+  if (rows[0]) return rows[0]
+  if (!await importedTableExists(pool, kind)) return null
+  // Local rows are authoritative, even when a private row has an old public import.
+  const result = await pool.query(video
+    ? `SELECT to_jsonb(v) AS row FROM supabase_import.videos v
+       WHERE v.id = $1 AND COALESCE(NULLIF(to_jsonb(v)->>'is_public', ''),
+         NULLIF(to_jsonb(v)->>'ispublic', '')) IN ('true', 't', '1')
+         AND NOT EXISTS (SELECT 1 FROM fallback_videos f WHERE f.id::text = v.id) LIMIT 1`
+    : `SELECT to_jsonb(p) AS row FROM supabase_import.posts p
+       WHERE p.id = $1 AND COALESCE(NULLIF(p.visibility, ''), 'public') = 'public'
+         AND NOT EXISTS (SELECT 1 FROM fallback_posts f WHERE f.id::text = p.id) LIMIT 1`,
+    [id])
+  return result.rows[0] ? (video ? importedVideo(result.rows[0].row) : importedPost(result.rows[0].row)) : null
+}
+
 function issueGuestIdentity(jwt, secret, issuer) {
   const id = `guest_${crypto.randomUUID()}`
   const username = `guest${crypto.randomBytes(6).toString('hex')}`
@@ -185,33 +210,7 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
       if (!['videos', 'posts'].includes(kind) || !/^[0-9a-f-]{36}$/i.test(id)) {
         return res.status(400).json({ error: 'CONTENT_ID_INVALID' })
       }
-      const { rows } = await pool.query(kind === 'videos'
-        ? `SELECT id::text, user_id, user_name, user_profile_image, title,
-                  description, video_url, cover_url, thumbnail_url, created_at
-           FROM fallback_videos
-           WHERE id = $1::uuid AND is_public = TRUE AND is_sensitive = FALSE LIMIT 1`
-        : `SELECT id::text, user_id, user_name, user_profile_image, content,
-                  COALESCE(media_url, media_urls->>0) AS media_url,
-                  media_urls, media_type, created_at
-           FROM fallback_posts
-           WHERE id = $1::uuid AND visibility = 'public' AND is_sensitive = FALSE LIMIT 1`,
-        [id],
-      )
-      let content = rows[0]
-      const importTable = kind === 'videos' ? 'videos' : 'posts'
-      if (!content && await importedTableExists(pool, importTable)) {
-        const result = await pool.query(kind === 'videos'
-          ? `SELECT to_jsonb(v) AS row FROM supabase_import.videos v
-             WHERE v.id = $1
-               AND COALESCE(NULLIF(to_jsonb(v)->>'is_public', ''),
-                            NULLIF(to_jsonb(v)->>'ispublic', '')) IN ('true', 't', '1') LIMIT 1`
-          : `SELECT to_jsonb(p) AS row FROM supabase_import.posts p
-             WHERE p.id = $1 AND COALESCE(NULLIF(p.visibility, ''), 'public') = 'public' LIMIT 1`,
-          [id],
-        )
-        content = result.rows[0] && (kind === 'videos'
-          ? importedVideo(result.rows[0].row) : importedPost(result.rows[0].row))
-      }
+      const content = await readPublicContent(pool, kind, id)
       if (!content) return res.status(404).json({ error: 'CONTENT_NOT_FOUND' })
       res.set('Cache-Control', 'private, max-age=30')
       res.json({ content })
@@ -225,36 +224,31 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
       if (!['videos', 'posts'].includes(kind) || !/^[0-9a-f-]{36}$/i.test(id)) {
         return res.status(400).json({ error: 'CONTENT_ID_INVALID' })
       }
+      if (!await readPublicContent(pool, kind, id)) {
+        return res.status(404).json({ error: 'CONTENT_NOT_FOUND' })
+      }
       const video = kind === 'videos'
       const { rows } = await pool.query(video
         ? `SELECT c.id::text, c.user_name, c.content, c.created_at
-           FROM fallback_video_comments c JOIN fallback_videos v ON v.id::text = c.video_id
-           WHERE v.id = $1::uuid AND v.is_public = TRUE AND v.is_sensitive = FALSE
-             AND c.is_deleted = FALSE ORDER BY c.created_at ASC LIMIT 100`
+           FROM fallback_video_comments c WHERE c.video_id = $1 AND c.is_deleted = FALSE
+           ORDER BY c.created_at ASC LIMIT 100`
         : `SELECT c.id::text, COALESCE(u.display_name, 'Usuario') AS user_name,
-                  c.content, c.created_at
-           FROM fallback_post_comments c JOIN fallback_posts p ON p.id::text = c.post_id
+                  c.content, c.created_at FROM fallback_post_comments c
            LEFT JOIN fallback_users u ON u.id::text = c.user_id
-           WHERE p.id = $1::uuid AND p.visibility = 'public' AND p.is_sensitive = FALSE
-             AND c.is_deleted = FALSE ORDER BY c.created_at ASC LIMIT 100`,
-        [id],
-      )
+           WHERE c.post_id = $1 AND c.is_deleted = FALSE ORDER BY c.created_at ASC LIMIT 100`,
+        [id])
       let imported = []
       const importTable = video ? 'video_comments' : 'post_comments'
       if (await importedTableExists(pool, importTable)) {
-        const result = await pool.query(video
-          ? `SELECT to_jsonb(c) AS row FROM supabase_import.video_comments c
-             JOIN supabase_import.videos v ON v.id = c.video_id
-             WHERE c.video_id = $1
-               AND COALESCE(NULLIF(to_jsonb(v)->>'is_public', ''),
-                            NULLIF(to_jsonb(v)->>'ispublic', '')) IN ('true', 't', '1')
-             ORDER BY c.created_at ASC LIMIT 100`
-          : `SELECT to_jsonb(c) AS row FROM supabase_import.post_comments c
-             JOIN supabase_import.posts p ON p.id = c.post_id
-             WHERE c.post_id = $1 AND COALESCE(NULLIF(p.visibility, ''), 'public') = 'public'
-             ORDER BY c.created_at ASC LIMIT 100`,
-          [id],
-        )
+        // Identifiers come exclusively from the fixed kind allowlist above.
+        const parentColumn = video ? 'video_id' : 'post_id'
+        const localTable = video ? 'fallback_video_comments' : 'fallback_post_comments'
+        const result = await pool.query(
+          `SELECT to_jsonb(c) AS row FROM supabase_import.${importTable} c
+           WHERE c.${parentColumn} = $1
+             AND COALESCE(to_jsonb(c)->>'is_deleted', 'false') NOT IN ('true', 't', '1')
+             AND NOT EXISTS (SELECT 1 FROM ${localTable} f WHERE f.id::text = c.id)
+           ORDER BY c.created_at ASC LIMIT 100`, [id])
         imported = result.rows.map(({ row }) => ({
           id: String(row.id), user_name: row.user_name || 'Usuario',
           content: row.content || '', created_at: row.created_at,
@@ -366,4 +360,4 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
   })
 }
 
-module.exports = { GUEST_AUDIENCE, issueGuestIdentity, guestAuth, registerGuestModeRoutes }
+module.exports = { GUEST_AUDIENCE, issueGuestIdentity, guestAuth, readPublicContent, registerGuestModeRoutes }

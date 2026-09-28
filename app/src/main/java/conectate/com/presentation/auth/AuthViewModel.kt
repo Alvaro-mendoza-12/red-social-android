@@ -160,8 +160,9 @@ class AuthViewModel @Inject constructor(
         imageUri: Uri?,
         acceptedPrivacyPolicy: Boolean
     ) {
+        if (_authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
         viewModelScope.launch {
-            _authState.value = AuthState.Loading
 
             var result = authRepository.signUpWithEmail(
                 email, password, name, username, country, gender, birthDate, imageUri, acceptedPrivacyPolicy

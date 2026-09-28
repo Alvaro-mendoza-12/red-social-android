@@ -1,0 +1,441 @@
+# Inventario de rutas y acceso del modo invitado
+
+Rama: `feature/live-gifts`. Inventario estático generado de las declaraciones de rutas. Las rutas con expresiones regulares o variables se describen por separado. Una ruta con `authRequired` exige sesión registrada y rechaza la audiencia `novvin-guests`. Este inventario no sustituye las comprobaciones de ejecución.
+
+| Método | Ruta | Control declarado | Fuente |
+| --- | --- | --- | --- |
+| GET | `/` | control específico | server.js:1696 |
+| POST | `/functions/v1/web-login-pairing` | control específico | server.js:3424 |
+| GET | `/health` | control específico | server.js:1700 |
+| GET | `/ready` | control específico | server.js:1710 |
+| GET | `/v1/admin/account-recovery/accounts` | control específico | server.js:2029 |
+| GET | `/v1/admin/account-recovery/cases` | control específico | server.js:2006 |
+| POST | `/v1/admin/account-recovery/cases/:id/contact-code` | control específico | server.js:2051 |
+| POST | `/v1/admin/account-recovery/cases/:id/issue-code` | control específico | server.js:2069 |
+| POST | `/v1/admin/account-recovery/cases/:id/reject` | control específico | server.js:2155 |
+| POST | `/v1/admin/sync/import-supabase-users` | control específico | server.js:1861 |
+| GET | `/v1/admin/sync/status` | control específico | server.js:1837 |
+| POST | `/v1/admin/users/set-local-password` | control específico | server.js:1923 |
+| POST | `/v1/ai/chat` | authRequired | ai-routes.js:175 |
+| POST | `/v1/ai/feedback` | authRequired | ai-routes.js:191 |
+| GET | `/v1/ai/health` | authRequired | ai-routes.js:167 |
+| POST | `/v1/auth/2fa/disable` | authRequired | server.js:2721 |
+| POST | `/v1/auth/2fa/enable` | authRequired | server.js:2668 |
+| POST | `/v1/auth/2fa/setup` | authRequired | server.js:2646 |
+| GET | `/v1/auth/2fa/status` | authRequired | server.js:2634 |
+| POST | `/v1/auth/account-recovery/cases` | control específico | server.js:326 |
+| POST | `/v1/auth/account-recovery/cases` | control específico | server.js:2182 |
+| POST | `/v1/auth/account-recovery/cases/:id/confirm-contact` | control específico | server.js:335 |
+| POST | `/v1/auth/account-recovery/cases/:id/confirm-contact` | control específico | server.js:2223 |
+| POST | `/v1/auth/activate-local-password` | control específico | server.js:3489 |
+| POST | `/v1/auth/change-password` | authRequired | server.js:2749 |
+| POST | `/v1/auth/complete-migrated-password-reset` | control específico | server.js:3070 |
+| POST | `/v1/auth/login` | control específico | server.js:2365 |
+| POST | `/v1/auth/logout` | control específico | server.js:2552 |
+| GET | `/v1/auth/me` | authRequired | server.js:3138 |
+| POST | `/v1/auth/password-recovery-codes/confirm` | control específico | server.js:2991 |
+| POST | `/v1/auth/password-recovery-codes/rotate` | authRequired | server.js:2596 |
+| GET | `/v1/auth/password-recovery-codes/status` | authRequired | server.js:2584 |
+| POST | `/v1/auth/password-reset/confirm` | control específico | server.js:2891 |
+| POST | `/v1/auth/password-reset/request` | control específico | server.js:2827 |
+| POST | `/v1/auth/refresh` | control específico | server.js:2466 |
+| POST | `/v1/auth/register` | control específico | server.js:2271 |
+| POST | `/v1/auth/sync-to-supabase` | authRequired | server.js:3561 |
+| GET | `/v1/auth/username/availability` | control específico | server.js:2251 |
+| POST | `/v1/auth/web-login-pairing` | control específico | server.js:3423 |
+| DELETE | `/v1/auth/web-session` | control específico | server.js:3254 |
+| POST | `/v1/auth/web-session/refresh` | control específico | server.js:3158 |
+| POST | `/v1/auth/web-session/upgrade` | authRequired | server.js:3228 |
+| DELETE | `/v1/auth/web-sessions` | authRequired | server.js:3443 |
+| GET | `/v1/auth/web-sessions` | authRequired | server.js:3426 |
+| DELETE | `/v1/auth/web-sessions/:sessionId` | authRequired | server.js:3461 |
+| GET | `/v1/data/admin/access` | authRequired | admin-moderation-routes.js:1564 |
+| GET | `/v1/data/admin/account-recovery/accounts` | control específico | server.js:2029 |
+| GET | `/v1/data/admin/account-recovery/cases` | control específico | server.js:2006 |
+| POST | `/v1/data/admin/account-recovery/cases/:id/contact-code` | control específico | server.js:2051 |
+| POST | `/v1/data/admin/account-recovery/cases/:id/issue-code` | control específico | server.js:2069 |
+| POST | `/v1/data/admin/account-recovery/cases/:id/reject` | control específico | server.js:2155 |
+| POST | `/v1/data/admin/badges` | authRequired | admin-moderation-routes.js:1589 |
+| DELETE | `/v1/data/admin/badges/:id` | authRequired | admin-moderation-routes.js:1720 |
+| GET | `/v1/data/admin/catalog` | authRequired | admin-moderation-routes.js:1574 |
+| POST | `/v1/data/admin/creator-payouts/accounts/:creatorId/verify` | authRequired | creator-payout-routes.js:1020 |
+| POST | `/v1/data/admin/creator-payouts/requests/:requestId/decision` | authRequired | creator-payout-routes.js:1050 |
+| GET | `/v1/data/admin/moderation/appeals` | authRequired | admin-moderation-routes.js:2103 |
+| PUT | `/v1/data/admin/moderation/appeals/:id` | authRequired | admin-moderation-routes.js:2161 |
+| GET | `/v1/data/admin/reports` | authRequired | admin-moderation-routes.js:2265 |
+| PUT | `/v1/data/admin/reports/:id/status` | authRequired | admin-moderation-routes.js:2428 |
+| GET | `/v1/data/admin/stats` | authRequired | admin-moderation-routes.js:1981 |
+| POST | `/v1/data/admin/suspend` | authRequired | admin-moderation-routes.js:2291 |
+| GET | `/v1/data/admin/suspended-profiles` | authRequired | admin-moderation-routes.js:2048 |
+| POST | `/v1/data/admin/unsuspend` | authRequired | admin-moderation-routes.js:2380 |
+| GET | `/v1/data/admin/users` | authRequired | admin-moderation-routes.js:1638 |
+| DELETE | `/v1/data/admin/users/:id` | authRequired | admin-moderation-routes.js:1947 |
+| GET | `/v1/data/admin/users/:id` | authRequired | admin-moderation-routes.js:1697 |
+| PUT | `/v1/data/admin/users/:id/access` | authRequired | admin-moderation-routes.js:1808 |
+| PATCH | `/v1/data/admin/users/:id/decorations` | authRequired | admin-moderation-routes.js:1891 |
+| GET | `/v1/data/admin/video-reports` | authRequired | admin-moderation-routes.js:2278 |
+| GET | `/v1/data/algorithm/capabilities` | authRequired | algorithm-routes.js:975 |
+| GET | `/v1/data/algorithm/config` | authRequired | algorithm-routes.js:1044 |
+| GET | `/v1/data/algorithm/profiles` | authRequired | algorithm-routes.js:987 |
+| POST | `/v1/data/algorithm/profiles` | authRequired | algorithm-routes.js:1008 |
+| PATCH | `/v1/data/algorithm/profiles/:profileId` | authRequired | algorithm-routes.js:1058 |
+| GET | `/v1/data/algorithm/profiles/:profileId/config` | authRequired | algorithm-routes.js:1030 |
+| PUT | `/v1/data/algorithm/profiles/:profileId/data-permissions` | authRequired | algorithm-routes.js:1260 |
+| PUT | `/v1/data/algorithm/profiles/:profileId/feed-mix/:surface` | authRequired | algorithm-routes.js:1196 |
+| PUT | `/v1/data/algorithm/profiles/:profileId/preferences` | authRequired | algorithm-routes.js:1110 |
+| DELETE | `/v1/data/algorithm/profiles/:profileId/preferences/:preferenceId` | authRequired | algorithm-routes.js:1164 |
+| POST | `/v1/data/algorithm/profiles/:profileId/temporary-preferences` | authRequired | algorithm-routes.js:1307 |
+| DELETE | `/v1/data/algorithm/profiles/:profileId/temporary-preferences/:preferenceId` | authRequired | algorithm-routes.js:1359 |
+| GET | `/v1/data/challenges/:activeChallengeId/participation` | authRequired | data-routes.js:13635 |
+| GET | `/v1/data/challenges/:activeChallengeId/submissions` | authRequired | data-routes.js:13530 |
+| POST | `/v1/data/challenges/:activeChallengeId/submissions` | authRequired | data-routes.js:13572 |
+| GET | `/v1/data/challenges/:activeChallengeId/submissions/me` | authRequired | data-routes.js:13610 |
+| GET | `/v1/data/challenges/active` | authRequired | data-routes.js:13466 |
+| POST | `/v1/data/challenges/master` | authRequired | data-routes.js:13479 |
+| DELETE | `/v1/data/challenges/master/:challengeId` | authRequired | data-routes.js:13513 |
+| GET | `/v1/data/challenges/master/mine` | authRequired | data-routes.js:13501 |
+| POST | `/v1/data/challenges/submissions/:submissionId/vote` | authRequired | data-routes.js:13655 |
+| GET | `/v1/data/creator/analytics/content` | authRequired | creator-analytics-routes.js:734 |
+| GET | `/v1/data/creator/analytics/live/:contentId` | authRequired | creator-analytics-routes.js:733 |
+| GET | `/v1/data/creator/analytics/video/:contentId` | authRequired | creator-analytics-routes.js:732 |
+| PUT | `/v1/data/creator/payouts/account` | authRequired | creator-payout-routes.js:838 |
+| POST | `/v1/data/creator/payouts/requests` | authRequired | creator-payout-routes.js:898 |
+| POST | `/v1/data/creator/payouts/requests/:requestId/cancel` | authRequired | creator-payout-routes.js:985 |
+| GET | `/v1/data/creator/payouts/summary` | authRequired | creator-payout-routes.js:824 |
+| GET | `/v1/data/feed` | authRequired | data-routes.js:8225 |
+| DELETE | `/v1/data/feed/comments/:commentId` | authRequired | data-routes.js:8812 |
+| PATCH | `/v1/data/feed/comments/:commentId` | authRequired | data-routes.js:8880 |
+| DELETE | `/v1/data/feed/comments/:commentId/reaction` | authRequired | data-routes.js:8974 |
+| PUT | `/v1/data/feed/comments/:commentId/reaction` | authRequired | data-routes.js:8943 |
+| POST | `/v1/data/feed/posts` | authRequired | data-routes.js:8328 |
+| DELETE | `/v1/data/feed/posts/:postId` | authRequired | data-routes.js:8689 |
+| GET | `/v1/data/feed/posts/:postId` | authRequired | data-routes.js:8591 |
+| PATCH | `/v1/data/feed/posts/:postId` | authRequired | data-routes.js:8605 |
+| POST | `/v1/data/feed/posts/:postId/comments` | authRequired | data-routes.js:8749 |
+| DELETE | `/v1/data/feed/posts/:postId/reaction` | authRequired | data-routes.js:9184 |
+| POST | `/v1/data/feed/posts/:postId/reaction` | authRequired | data-routes.js:9143 |
+| GET | `/v1/data/feed/posts/:postId/reactions` | authRequired | data-routes.js:8992 |
+| POST | `/v1/data/feed/posts/:postId/remix` | authRequired | data-routes.js:8463 |
+| PATCH | `/v1/data/feed/posts/:postId/remix-permission` | authRequired | data-routes.js:8421 |
+| DELETE | `/v1/data/feed/posts/:postId/share` | authRequired | data-routes.js:9238 |
+| POST | `/v1/data/feed/posts/:postId/share` | authRequired | data-routes.js:9203 |
+| POST | `/v1/data/feed/posts/:postId/thread-summary` | authRequired | data-routes.js:9051 |
+| GET | `/v1/data/follows` | authRequired | data-routes.js:7360 |
+| GET | `/v1/data/friends` | authRequired | data-routes.js:13695 |
+| POST | `/v1/data/friends` | authRequired | data-routes.js:13724 |
+| DELETE | `/v1/data/friends/:requestId` | authRequired | data-routes.js:13769 |
+| PATCH | `/v1/data/friends/:requestId` | authRequired | data-routes.js:13746 |
+| DELETE | `/v1/data/friends/users/:targetUserId` | authRequired | data-routes.js:13789 |
+| GET | `/v1/data/live` | authRequired | live-routes.js:1644 |
+| POST | `/v1/data/live` | authRequired | live-routes.js:1821 |
+| DELETE | `/v1/data/live/:liveId` | authRequired | live-routes.js:2167 |
+| GET | `/v1/data/live/:liveId` | authRequired | live-routes.js:1747 |
+| POST | `/v1/data/live/:liveId/battles` | authRequired | live-routes.js:1275 |
+| GET | `/v1/data/live/:liveId/battles/:battleId` | authRequired | live-routes.js:1448 |
+| POST | `/v1/data/live/:liveId/battles/:battleId/end` | authRequired | live-routes.js:1476 |
+| POST | `/v1/data/live/:liveId/battles/:battleId/respond` | authRequired | live-routes.js:1387 |
+| GET | `/v1/data/live/:liveId/battles/candidates` | authRequired | live-routes.js:1238 |
+| GET | `/v1/data/live/:liveId/battles/current` | authRequired | live-routes.js:1358 |
+| POST | `/v1/data/live/:liveId/chapters` | authRequired | live-routes.js:2101 |
+| DELETE | `/v1/data/live/:liveId/chapters/:chapterId` | authRequired | live-routes.js:2145 |
+| GET | `/v1/data/live/:liveId/comments` | authRequired | live-routes.js:2384 |
+| POST | `/v1/data/live/:liveId/comments` | authRequired | live-routes.js:2415 |
+| DELETE | `/v1/data/live/:liveId/comments/:commentId` | authRequired | live-routes.js:2468 |
+| POST | `/v1/data/live/:liveId/games/draw-guess` | authRequired | live-draw-guess-routes.js:606 |
+| GET | `/v1/data/live/:liveId/games/draw-guess/:gameId` | authRequired | live-draw-guess-routes.js:945 |
+| POST | `/v1/data/live/:liveId/games/draw-guess/:gameId/accept` | authRequired | live-draw-guess-routes.js:715 |
+| POST | `/v1/data/live/:liveId/games/draw-guess/:gameId/advance` | authRequired | live-draw-guess-routes.js:1227 |
+| POST | `/v1/data/live/:liveId/games/draw-guess/:gameId/cancel` | authRequired | live-draw-guess-routes.js:1267 |
+| POST | `/v1/data/live/:liveId/games/draw-guess/:gameId/draw` | authRequired | live-draw-guess-routes.js:988 |
+| POST | `/v1/data/live/:liveId/games/draw-guess/:gameId/guesses` | authRequired | live-draw-guess-routes.js:1056 |
+| POST | `/v1/data/live/:liveId/games/draw-guess/:gameId/start` | authRequired | live-draw-guess-routes.js:783 |
+| GET | `/v1/data/live/:liveId/games/draw-guess/current` | authRequired | live-draw-guess-routes.js:879 |
+| GET | `/v1/data/live/:liveId/gifts` | authRequired | live-gift-events.js:29 |
+| POST | `/v1/data/live/:liveId/guests/:guestUserId/mute` | authRequired | live-routes.js:1185 |
+| POST | `/v1/data/live/:liveId/guests/:guestUserId/remove` | authRequired | live-routes.js:1105 |
+| GET | `/v1/data/live/:liveId/guests/invitations` | authRequired | live-routes.js:997 |
+| POST | `/v1/data/live/:liveId/guests/invitations` | authRequired | live-routes.js:925 |
+| PATCH | `/v1/data/live/:liveId/guests/invitations/:invitationId` | authRequired | live-routes.js:1033 |
+| POST | `/v1/data/live/:liveId/guests/requests` | authRequired | live-routes.js:964 |
+| GET | `/v1/data/live/:liveId/moderation` | authRequired | live-routes.js:2184 |
+| POST | `/v1/data/live/:liveId/moderation/actions` | authRequired | live-routes.js:2321 |
+| PATCH | `/v1/data/live/:liveId/moderation/settings` | authRequired | live-routes.js:2204 |
+| DELETE | `/v1/data/live/:liveId/moderators/:userId` | authRequired | live-routes.js:2293 |
+| PUT | `/v1/data/live/:liveId/moderators/:userId` | authRequired | live-routes.js:2260 |
+| POST | `/v1/data/live/:liveId/participants/state` | authRequired | live-routes.js:874 |
+| GET | `/v1/data/live/:liveId/points/balance` | authRequired | live-points-routes.js:459 |
+| POST | `/v1/data/live/:liveId/points/heartbeat` | authRequired | live-points-routes.js:290 |
+| POST | `/v1/data/live/:liveId/points/redeem` | authRequired | live-points-routes.js:550 |
+| GET | `/v1/data/live/:liveId/points/redemptions` | authRequired | live-points-routes.js:652 |
+| PATCH | `/v1/data/live/:liveId/points/redemptions/:redemptionId` | authRequired | live-points-routes.js:679 |
+| GET | `/v1/data/live/:liveId/points/rewards` | authRequired | live-points-routes.js:493 |
+| POST | `/v1/data/live/:liveId/points/rewards` | authRequired | live-points-routes.js:517 |
+| POST | `/v1/data/live/:liveId/points/session` | authRequired | live-points-routes.js:242 |
+| PATCH | `/v1/data/live/:liveId/points/settings` | authRequired | live-points-routes.js:415 |
+| DELETE | `/v1/data/live/:liveId/replay` | authRequired | live-routes.js:2075 |
+| GET | `/v1/data/live/:liveId/replay` | authRequired | live-routes.js:2004 |
+| PUT | `/v1/data/live/:liveId/replay` | authRequired | live-routes.js:2023 |
+| POST | `/v1/data/live/:liveId/sfu-token` | authRequired | live-routes.js:793 |
+| PATCH | `/v1/data/live/:liveId/state` | authRequired | live-routes.js:1900 |
+| GET | `/v1/data/live/:liveId/supporters` | authRequired | live-routes.js:1769 |
+| GET | `/v1/data/live/capabilities` | authRequired | live-routes.js:772 |
+| GET | `/v1/data/live/replays` | authRequired | live-routes.js:1695 |
+| POST | `/v1/data/messages/chats` | authRequired | data-routes.js:9652 |
+| DELETE | `/v1/data/messages/chats/:chatId` | authRequired | data-routes.js:9801 |
+| GET | `/v1/data/messages/chats/:chatId` | authRequired | data-routes.js:13898 |
+| POST | `/v1/data/messages/chats/:chatId/clear` | authRequired | data-routes.js:9770 |
+| POST | `/v1/data/messages/chats/:chatId/messages` | authRequired | data-routes.js:13966 |
+| PATCH | `/v1/data/messages/chats/:chatId/messages/:messageId` | authRequired | data-routes.js:14109 |
+| POST | `/v1/data/messages/chats/:chatId/messages/:messageId/delete` | authRequired | data-routes.js:14182 |
+| POST | `/v1/data/messages/chats/:chatId/messages/:messageId/reactions` | authRequired | data-routes.js:14288 |
+| PATCH | `/v1/data/messages/chats/:chatId/preferences` | authRequired | data-routes.js:9843 |
+| POST | `/v1/data/messages/chats/:chatId/read` | authRequired | data-routes.js:9892 |
+| POST | `/v1/data/messages/chats/:chatId/read-visible` | authRequired | conversation-activity-routes.js:44 |
+| POST | `/v1/data/messages/communities` | authRequired | data-routes.js:10009 |
+| DELETE | `/v1/data/messages/communities/:roomId` | authRequired | data-routes.js:11140 |
+| GET | `/v1/data/messages/communities/:roomId` | authRequired | data-routes.js:10136 |
+| GET | `/v1/data/messages/communities/:roomId/channels` | authRequired | data-routes.js:10210 |
+| POST | `/v1/data/messages/communities/:roomId/channels` | authRequired | data-routes.js:10353 |
+| DELETE | `/v1/data/messages/communities/:roomId/channels/:channelId` | authRequired | data-routes.js:10470 |
+| PATCH | `/v1/data/messages/communities/:roomId/channels/:channelId` | authRequired | data-routes.js:10384 |
+| POST | `/v1/data/messages/communities/:roomId/channels/:channelId/pause` | authRequired | data-routes.js:10423 |
+| POST | `/v1/data/messages/communities/:roomId/channels/:channelId/voice-room` | authRequired | data-routes.js:10239 |
+| GET | `/v1/data/messages/communities/:roomId/events` | authRequired | data-routes.js:10611 |
+| POST | `/v1/data/messages/communities/:roomId/events` | authRequired | data-routes.js:10637 |
+| DELETE | `/v1/data/messages/communities/:roomId/events/:eventId` | authRequired | data-routes.js:10749 |
+| PATCH | `/v1/data/messages/communities/:roomId/events/:eventId` | authRequired | data-routes.js:10680 |
+| PUT | `/v1/data/messages/communities/:roomId/events/:eventId/attendance` | authRequired | data-routes.js:10772 |
+| POST | `/v1/data/messages/communities/:roomId/join` | authRequired | data-routes.js:11013 |
+| POST | `/v1/data/messages/communities/:roomId/leave` | authRequired | data-routes.js:11094 |
+| PATCH | `/v1/data/messages/communities/:roomId/member-profile` | authRequired | data-routes.js:10536 |
+| GET | `/v1/data/messages/communities/:roomId/member-profiles` | authRequired | data-routes.js:10510 |
+| POST | `/v1/data/messages/communities/:roomId/messages` | authRequired | data-routes.js:11249 |
+| PATCH | `/v1/data/messages/communities/:roomId/messages/:messageId` | authRequired | data-routes.js:11478 |
+| POST | `/v1/data/messages/communities/:roomId/messages/:messageId/delete` | authRequired | data-routes.js:11525 |
+| GET | `/v1/data/messages/communities/:roomId/preview` | authRequired | data-routes.js:10813 |
+| POST | `/v1/data/messages/communities/:roomId/read` | authRequired | data-routes.js:9937 |
+| GET | `/v1/data/messages/communities/:roomId/roles` | authRequired | data-routes.js:10149 |
+| POST | `/v1/data/messages/communities/:roomId/update` | authRequired | data-routes.js:14346 |
+| GET | `/v1/data/messages/communities/explore` | authRequired | data-routes.js:10091 |
+| POST | `/v1/data/messages/groups` | authRequired | data-routes.js:10009 |
+| DELETE | `/v1/data/messages/groups/:roomId` | authRequired | data-routes.js:11140 |
+| GET | `/v1/data/messages/groups/:roomId` | authRequired | data-routes.js:10136 |
+| POST | `/v1/data/messages/groups/:roomId/invites` | authRequired | data-routes.js:10879 |
+| POST | `/v1/data/messages/groups/:roomId/join` | authRequired | data-routes.js:11013 |
+| POST | `/v1/data/messages/groups/:roomId/join-invite` | authRequired | data-routes.js:10922 |
+| POST | `/v1/data/messages/groups/:roomId/leave` | authRequired | data-routes.js:11094 |
+| PATCH | `/v1/data/messages/groups/:roomId/member-settings` | authRequired | data-routes.js:10979 |
+| POST | `/v1/data/messages/groups/:roomId/messages` | authRequired | data-routes.js:11249 |
+| PATCH | `/v1/data/messages/groups/:roomId/messages/:messageId` | authRequired | data-routes.js:11478 |
+| POST | `/v1/data/messages/groups/:roomId/messages/:messageId/delete` | authRequired | data-routes.js:11525 |
+| GET | `/v1/data/messages/groups/:roomId/preview` | authRequired | data-routes.js:10813 |
+| POST | `/v1/data/messages/groups/:roomId/read` | authRequired | data-routes.js:9937 |
+| POST | `/v1/data/messages/groups/:roomId/update` | authRequired | data-routes.js:14346 |
+| GET | `/v1/data/messages/inbox` | authRequired | data-routes.js:9308 |
+| GET | `/v1/data/messages/markers/:kind/:roomId` | authRequired | message-markers-routes.js:147 |
+| DELETE | `/v1/data/messages/markers/:kind/:roomId/:messageId/pin` | authRequired | message-markers-routes.js:319 |
+| PUT | `/v1/data/messages/markers/:kind/:roomId/:messageId/pin` | authRequired | message-markers-routes.js:288 |
+| DELETE | `/v1/data/messages/markers/:kind/:roomId/:messageId/saved` | authRequired | message-markers-routes.js:352 |
+| PUT | `/v1/data/messages/markers/:kind/:roomId/:messageId/saved` | authRequired | message-markers-routes.js:338 |
+| GET | `/v1/data/messages/markers/:kind/:roomId/access` | authRequired | message-markers-routes.js:143 |
+| DELETE | `/v1/data/messages/nicknames/:targetUserId` | authRequired | data-routes.js:13880 |
+| PUT | `/v1/data/messages/nicknames/:targetUserId` | authRequired | data-routes.js:13848 |
+| GET | `/v1/data/messages/saved` | authRequired | message-markers-routes.js:151 |
+| POST | `/v1/data/messages/translate` | authRequired | data-routes.js:6739 |
+| POST | `/v1/data/moments` | authRequired | moments-routes.js:959 |
+| DELETE | `/v1/data/moments/:momentId` | authRequired | moments-routes.js:1457 |
+| DELETE | `/v1/data/moments/:momentId/music` | authRequired | moments-routes.js:1254 |
+| POST | `/v1/data/moments/:momentId/music` | authRequired | moments-routes.js:1160 |
+| DELETE | `/v1/data/moments/:momentId/reaction` | authRequired | moments-routes.js:1310 |
+| POST | `/v1/data/moments/:momentId/reaction` | authRequired | moments-routes.js:1287 |
+| POST | `/v1/data/moments/:momentId/view` | authRequired | moments-routes.js:1326 |
+| GET | `/v1/data/moments/:momentId/viewers` | authRequired | moments-routes.js:1390 |
+| GET | `/v1/data/moments/feed` | authRequired | moments-routes.js:947 |
+| GET | `/v1/data/moments/notification-preferences` | authRequired | moments-routes.js:915 |
+| PUT | `/v1/data/moments/notification-preferences` | authRequired | moments-routes.js:929 |
+| DELETE | `/v1/data/music/:trackId` | authRequired | music-library-routes.js:85 |
+| PATCH | `/v1/data/music/:trackId` | authRequired | music-routes.js:967 |
+| DELETE | `/v1/data/music/:trackId/favorite` | authRequired | music-routes.js:1199 |
+| POST | `/v1/data/music/:trackId/favorite` | authRequired | music-routes.js:1188 |
+| POST | `/v1/data/music/:trackId/listens` | authRequired | music-routes.js:1229 |
+| POST | `/v1/data/music/:trackId/publish` | authRequired | music-routes.js:997 |
+| POST | `/v1/data/music/:trackId/report` | authRequired | music-routes.js:1271 |
+| GET | `/v1/data/music/:trackId/status` | authRequired | music-routes.js:1055 |
+| POST | `/v1/data/music/:trackId/takedown` | authRequired | music-routes.js:1290 |
+| POST | `/v1/data/music/admin/:trackId/moderate` | authRequired | music-routes.js:1317 |
+| GET | `/v1/data/music/admin/moderation-queue` | authRequired | music-routes.js:1306 |
+| DELETE | `/v1/data/music/artists/:artistId/follow` | authRequired | music-routes.js:1219 |
+| POST | `/v1/data/music/artists/:artistId/follow` | authRequired | music-routes.js:1209 |
+| DELETE | `/v1/data/music/catalog/:trackKey/favorite` | authRequired | music-routes.js:826 |
+| POST | `/v1/data/music/catalog/:trackKey/favorite` | authRequired | music-routes.js:807 |
+| POST | `/v1/data/music/catalog/:trackKey/not-interested` | authRequired | music-routes.js:765 |
+| POST | `/v1/data/music/catalog/:trackKey/play-events` | authRequired | music-routes.js:780 |
+| POST | `/v1/data/music/catalog/:trackKey/report` | authRequired | music-routes.js:841 |
+| GET | `/v1/data/music/catalog/categories` | authRequired | music-routes.js:646 |
+| GET | `/v1/data/music/catalog/search` | authRequired | music-routes.js:662 |
+| GET | `/v1/data/music/catalog/tracks/:trackKey` | authRequired | music-routes.js:724 |
+| GET | `/v1/data/music/catalog/tracks/:trackKey/moments` | authRequired | music-routes.js:743 |
+| GET | `/v1/data/music/dashboard` | authRequired | music-routes.js:1065 |
+| POST | `/v1/data/music/listens/:sessionId/complete` | authRequired | music-routes.js:1248 |
+| GET | `/v1/data/music/my` | authRequired | music-library-routes.js:78 |
+| GET | `/v1/data/music/recommendations` | authRequired | music-routes.js:1111 |
+| GET | `/v1/data/music/search` | authRequired | music-routes.js:1081 |
+| GET | `/v1/data/music/terms` | authRequired | music-routes.js:637 |
+| GET | `/v1/data/music/tracks/:trackId` | authRequired | music-routes.js:1178 |
+| POST | `/v1/data/music/upload` | authRequired | music-routes.js:866 |
+| GET | `/v1/data/notification-digest` | authRequired | notification-digest-routes.js:545 |
+| GET | `/v1/data/notification-digest/preferences` | authRequired | notification-digest-routes.js:480 |
+| PUT | `/v1/data/notification-digest/preferences` | authRequired | notification-digest-routes.js:491 |
+| DELETE | `/v1/data/notifications` | authRequired | data-routes.js:7844 |
+| GET | `/v1/data/notifications` | authRequired | data-routes.js:7691 |
+| POST | `/v1/data/notifications` | authRequired | data-routes.js:7745 |
+| DELETE | `/v1/data/notifications/:notificationId` | authRequired | data-routes.js:7828 |
+| PATCH | `/v1/data/notifications/:notificationId/read` | authRequired | data-routes.js:7771 |
+| DELETE | `/v1/data/notifications/fcm-tokens` | authRequired | data-routes.js:7810 |
+| POST | `/v1/data/notifications/fcm-tokens` | authRequired | data-routes.js:7859 |
+| POST | `/v1/data/notifications/read-all` | authRequired | data-routes.js:7792 |
+| GET | `/v1/data/playmatch/admin/catalog/stats` | authRequired | playmatch-catalog.js:297 |
+| POST | `/v1/data/playmatch/admin/catalog/sync` | authRequired | playmatch-catalog.js:319 |
+| POST | `/v1/data/playmatch/admin/games` | authRequired | playmatch-catalog.js:344 |
+| PATCH | `/v1/data/playmatch/admin/games/:gameId` | authRequired | playmatch-catalog.js:375 |
+| PUT | `/v1/data/playmatch/admin/games/:gameId/rank-schema` | authRequired | playmatch-catalog.js:402 |
+| PUT | `/v1/data/playmatch/admin/games/:gameId/roles` | authRequired | playmatch-catalog.js:445 |
+| PUT | `/v1/data/playmatch/availability` | authRequired | playmatch-routes.js:1018 |
+| GET | `/v1/data/playmatch/capabilities` | authRequired | playmatch-routes.js:794 |
+| GET | `/v1/data/playmatch/catalog` | authRequired | playmatch-routes.js:816 |
+| GET | `/v1/data/playmatch/connections` | authRequired | playmatch-routes.js:1213 |
+| POST | `/v1/data/playmatch/connections` | authRequired | playmatch-routes.js:1163 |
+| POST | `/v1/data/playmatch/connections/:connectionId/decision` | authRequired | playmatch-routes.js:1244 |
+| POST | `/v1/data/playmatch/games` | authRequired | playmatch-routes.js:935 |
+| GET | `/v1/data/playmatch/games/:gameId/config` | authRequired | playmatch-catalog.js:285 |
+| DELETE | `/v1/data/playmatch/games/:userGameId` | authRequired | playmatch-routes.js:1003 |
+| GET | `/v1/data/playmatch/games/popular` | authRequired | playmatch-catalog.js:274 |
+| GET | `/v1/data/playmatch/games/search` | authRequired | playmatch-catalog.js:256 |
+| GET | `/v1/data/playmatch/matches` | authRequired | playmatch-routes.js:1426 |
+| POST | `/v1/data/playmatch/matches/:matchId/decision` | authRequired | playmatch-routes.js:1458 |
+| POST | `/v1/data/playmatch/matchmaking/sessions` | authRequired | playmatch-routes.js:1296 |
+| GET | `/v1/data/playmatch/matchmaking/sessions/:sessionId` | authRequired | playmatch-routes.js:1370 |
+| POST | `/v1/data/playmatch/matchmaking/sessions/:sessionId/cancel` | authRequired | playmatch-routes.js:1406 |
+| GET | `/v1/data/playmatch/players` | authRequired | playmatch-routes.js:1102 |
+| GET | `/v1/data/playmatch/players/:playerId` | authRequired | playmatch-routes.js:1143 |
+| PUT | `/v1/data/playmatch/preferences` | authRequired | playmatch-routes.js:1056 |
+| GET | `/v1/data/playmatch/profile` | authRequired | playmatch-routes.js:839 |
+| PATCH | `/v1/data/playmatch/profile` | authRequired | playmatch-routes.js:851 |
+| POST | `/v1/data/presence` | authRequired | data-routes.js:7112 |
+| GET | `/v1/data/profile/login-emails` | authRequired | data-routes.js:7044 |
+| POST | `/v1/data/profile/login-emails` | authRequired | data-routes.js:7061 |
+| DELETE | `/v1/data/profile/login-emails/:email` | authRequired | data-routes.js:7097 |
+| GET | `/v1/data/profile/me` | authRequired | data-routes.js:6771 |
+| PATCH | `/v1/data/profile/me` | authRequired | data-routes.js:6858 |
+| GET | `/v1/data/profiles/:profileId` | authRequired | data-routes.js:7228 |
+| DELETE | `/v1/data/profiles/:profileId/block` | authRequired | data-routes.js:7672 |
+| GET | `/v1/data/profiles/:profileId/block` | authRequired | data-routes.js:7639 |
+| POST | `/v1/data/profiles/:profileId/block` | authRequired | data-routes.js:7652 |
+| DELETE | `/v1/data/profiles/:profileId/follow` | authRequired | data-routes.js:7473 |
+| POST | `/v1/data/profiles/:profileId/follow` | authRequired | data-routes.js:7432 |
+| GET | `/v1/data/profiles/ranking` | authRequired | data-routes.js:7192 |
+| GET | `/v1/data/profiles/search` | authRequired | data-routes.js:7161 |
+| GET | `/v1/data/proximity/nearby` | authRequired | proximity-routes.js:605 |
+| DELETE | `/v1/data/proximity/presence` | authRequired | proximity-routes.js:592 |
+| PUT | `/v1/data/proximity/presence` | authRequired | proximity-routes.js:543 |
+| DELETE | `/v1/data/proximity/random/availability` | authRequired | proximity-routes.js:847 |
+| POST | `/v1/data/proximity/random/availability` | authRequired | proximity-routes.js:793 |
+| POST | `/v1/data/proximity/random/bottles` | authRequired | proximity-routes.js:879 |
+| DELETE | `/v1/data/proximity/random/bottles/:bottleId` | authRequired | proximity-routes.js:1098 |
+| POST | `/v1/data/proximity/random/bottles/:bottleId/respond` | authRequired | proximity-routes.js:990 |
+| GET | `/v1/data/proximity/random/bottles/incoming` | authRequired | proximity-routes.js:967 |
+| GET | `/v1/data/proximity/random/bottles/outgoing` | authRequired | proximity-routes.js:936 |
+| POST | `/v1/data/proximity/random/match` | authRequired | proximity-routes.js:658 |
+| DELETE | `/v1/data/proximity/random/queue` | authRequired | proximity-routes.js:777 |
+| GET | `/v1/data/proximity/random/sessions` | authRequired | proximity-routes.js:763 |
+| DELETE | `/v1/data/proximity/random/sessions/:sessionId` | authRequired | proximity-routes.js:1259 |
+| GET | `/v1/data/proximity/random/sessions/:sessionId` | authRequired | proximity-routes.js:1120 |
+| GET | `/v1/data/proximity/random/sessions/:sessionId/messages` | authRequired | proximity-routes.js:1135 |
+| POST | `/v1/data/proximity/random/sessions/:sessionId/messages` | authRequired | proximity-routes.js:1175 |
+| POST | `/v1/data/proximity/random/sessions/:sessionId/reveal` | authRequired | proximity-routes.js:1236 |
+| GET | `/v1/data/proximity/random/status` | authRequired | proximity-routes.js:743 |
+| GET | `/v1/data/recommendations` | authRequired | algorithm-recommendation-routes.js:326 |
+| POST | `/v1/data/reports/content` | authRequired | data-routes.js:7548 |
+| POST | `/v1/data/reports/users` | authRequired | data-routes.js:7493 |
+| GET | `/v1/data/saved-collections` | authRequired | data-routes.js:7942 |
+| POST | `/v1/data/saved-collections` | authRequired | data-routes.js:8071 |
+| DELETE | `/v1/data/saved-collections/:collectionId` | authRequired | data-routes.js:8141 |
+| PATCH | `/v1/data/saved-collections/:collectionId` | authRequired | data-routes.js:8108 |
+| POST | `/v1/data/saved-collections/:collectionId/items` | authRequired | data-routes.js:8158 |
+| DELETE | `/v1/data/saved-collections/:collectionId/items/:postId` | authRequired | data-routes.js:8206 |
+| GET | `/v1/data/search/semantic` | authRequired | data-routes.js:7880 |
+| GET | `/v1/data/socialization/capabilities` | authRequired | socialization-routes.js:307 |
+| GET | `/v1/data/socialization/cards` | authRequired | socialization-cards-routes.js:277 |
+| GET | `/v1/data/socialization/preferences` | authRequired | socialization-routes.js:319 |
+| PUT | `/v1/data/socialization/preferences` | authRequired | socialization-routes.js:333 |
+| GET | `/v1/data/support/admins/:alias` | authRequired | data-routes.js:9261 |
+| POST | `/v1/data/typing` | authRequired | data-routes.js:13811 |
+| GET | `/v1/data/videos` | authRequired | data-routes.js:12098 |
+| POST | `/v1/data/videos` | authRequired | data-routes.js:12588 |
+| DELETE | `/v1/data/videos/:videoId` | authRequired | data-routes.js:13036 |
+| GET | `/v1/data/videos/:videoId` | authRequired | data-routes.js:12474 |
+| PATCH | `/v1/data/videos/:videoId` | authRequired | data-routes.js:12446 |
+| GET | `/v1/data/videos/:videoId/comments` | authRequired | data-routes.js:13101 |
+| POST | `/v1/data/videos/:videoId/comments` | authRequired | data-routes.js:13136 |
+| DELETE | `/v1/data/videos/:videoId/favorite` | authRequired | data-routes.js:12846 |
+| POST | `/v1/data/videos/:videoId/favorite` | authRequired | data-routes.js:12820 |
+| DELETE | `/v1/data/videos/:videoId/reaction` | authRequired | data-routes.js:12804 |
+| POST | `/v1/data/videos/:videoId/reaction` | authRequired | data-routes.js:12766 |
+| DELETE | `/v1/data/videos/:videoId/share` | authRequired | data-routes.js:12987 |
+| POST | `/v1/data/videos/:videoId/share` | authRequired | data-routes.js:12918 |
+| POST | `/v1/data/videos/:videoId/view` | authRequired | data-routes.js:12869 |
+| GET | `/v1/data/videos/collections` | authRequired | video-collections-routes.js:66 |
+| POST | `/v1/data/videos/collections` | authRequired | video-collections-routes.js:82 |
+| DELETE | `/v1/data/videos/collections/:collectionId` | authRequired | video-collections-routes.js:128 |
+| PATCH | `/v1/data/videos/collections/:collectionId` | authRequired | video-collections-routes.js:109 |
+| GET | `/v1/data/videos/collections/:collectionId/items` | authRequired | video-collections-routes.js:142 |
+| DELETE | `/v1/data/videos/collections/:collectionId/items/:videoId` | authRequired | video-collections-routes.js:214 |
+| PUT | `/v1/data/videos/collections/:collectionId/items/:videoId` | authRequired | video-collections-routes.js:184 |
+| PATCH | `/v1/data/videos/collections/:collectionId/items/:videoId/move` | authRequired | video-collections-routes.js:263 |
+| POST | `/v1/data/videos/collections/:collectionId/items/reorder` | authRequired | video-collections-routes.js:231 |
+| DELETE | `/v1/data/videos/comments/:commentId` | authRequired | data-routes.js:13352 |
+| PATCH | `/v1/data/videos/comments/:commentId` | authRequired | data-routes.js:13236 |
+| DELETE | `/v1/data/videos/comments/:commentId/reaction` | authRequired | data-routes.js:13293 |
+| PUT | `/v1/data/videos/comments/:commentId/reaction` | authRequired | data-routes.js:13264 |
+| POST | `/v1/data/videos/comments/:commentId/report` | authRequired | data-routes.js:13315 |
+| DELETE | `/v1/data/videos/history` | authRequired | video-history-routes.js:116 |
+| DELETE | `/v1/data/videos/history/:videoId` | authRequired | video-history-routes.js:103 |
+| PUT | `/v1/data/videos/history/:videoId` | authRequired | video-history-routes.js:83 |
+| GET | `/v1/data/videos/history/list` | authRequired | video-history-routes.js:49 |
+| GET | `/v1/data/videos/publish-attempt/:attemptId` | authRequired | data-routes.js:12567 |
+| DELETE | `/v1/data/videos/watch-later/:videoId` | authRequired | video-watch-later-routes.js:106 |
+| PUT | `/v1/data/videos/watch-later/:videoId` | authRequired | video-watch-later-routes.js:89 |
+| GET | `/v1/data/videos/watch-later/list` | authRequired | video-watch-later-routes.js:52 |
+| GET | `/v1/data/voice/rooms` | authRequired | data-routes.js:11696 |
+| POST | `/v1/data/voice/rooms` | authRequired | data-routes.js:11592 |
+| DELETE | `/v1/data/voice/rooms/:roomId` | authRequired | data-routes.js:12056 |
+| GET | `/v1/data/voice/rooms/:roomId` | authRequired | data-routes.js:11737 |
+| POST | `/v1/data/voice/rooms/:roomId/join` | authRequired | data-routes.js:11775 |
+| POST | `/v1/data/voice/rooms/:roomId/leave` | authRequired | data-routes.js:12021 |
+| PATCH | `/v1/data/voice/rooms/:roomId/stage/participants/:userId` | authRequired | data-routes.js:11928 |
+| PATCH | `/v1/data/voice/rooms/:roomId/stage/request` | authRequired | data-routes.js:11872 |
+| GET | `/v1/guest/:kind/:id/comments` | requireGuest | guest-mode-routes.js:220 |
+| GET | `/v1/guest/moments` | requireGuest | guest-mode-routes.js:178 |
+| GET | `/v1/guest/posts` | requireGuest | guest-mode-routes.js:153 |
+| GET | `/v1/guest/posts/:id` | requireGuest | guest-mode-routes.js:206 |
+| GET | `/v1/guest/profiles/:id` | requireGuest | guest-mode-routes.js:317 |
+| GET | `/v1/guest/profiles/search` | requireGuest | guest-mode-routes.js:262 |
+| POST | `/v1/guest/session` | control específico | guest-mode-routes.js:124 |
+| GET | `/v1/guest/videos` | requireGuest | guest-mode-routes.js:129 |
+| GET | `/v1/guest/videos/:id` | requireGuest | guest-mode-routes.js:206 |
+| POST | `/v1/internal/live/:liveId/terminate` | control específico | live-routes.js:1594 |
+| POST | `/v1/internal/live/battles/:battleId/events` | control específico | live-routes.js:1515 |
+| POST | `/v1/moderation/appeals` | control específico | admin-moderation-routes.js:1483 |
+| GET | `/v1/moderation/decision` | control específico | admin-moderation-routes.js:1453 |
+| GET | `/v1/storage/buckets` | authRequired | storage-routes.js:1331 |
+| GET | `/v1/storage/objects` | authRequired | storage-routes.js:1384 |
+| POST | `/v1/storage/upload` | authRequired | storage-routes.js:1344 |
+| GET | `/v1/system/health` | authRequired | server.js:1754 |
+| GET | `/v1/upstream/supabase` | authRequired | server.js:1775 |
+| POST | `/v1/webhooks/paypal/payouts` | control específico | creator-payout-routes.js:1102 |
+
+## Rutas dinámicas
+
+- `/rest/v1/<tabla>` y `/rest/v1/rpc/<función>`: autenticación opcional de entrada y exigencia explícita de sesión registrada dentro del controlador, salvo resolución pública del correo de acceso.
+- `/storage/v1/object/<bucket>/<path>`: escritura y firma requieren autenticación registrada; lectura pública según bucket.
+- Rutas internas, callbacks de pagos y webhooks: requieren su credencial específica; el token de invitado no reemplaza esas credenciales.

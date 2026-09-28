@@ -9,6 +9,9 @@ import io.ktor.client.request.post
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import conectate.com.core.network.runReadWithDeadline
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -75,6 +78,7 @@ class GuestModeApi @Inject constructor(
     private val conversionPrefs = context.getSharedPreferences("guest_conversion", Context.MODE_PRIVATE)
     private val previewPrefs = context.getSharedPreferences("guest_preview", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
+    private val identityMutex = Mutex()
     private suspend fun endpoint(): String = RuntimeBackendEndpoint.authenticationEndpoint()
         ?: error("El servidor no está disponible. Revisa tu conexión e inténtalo nuevamente.")
 
@@ -93,10 +97,14 @@ class GuestModeApi @Inject constructor(
         )
     }
 
-    suspend fun ensureIdentity(): GuestIdentity {
-        savedIdentity()?.let { return it }
+    suspend fun ensureIdentity(): GuestIdentity = identityMutex.withLock {
+        savedIdentity()?.let { return@withLock it }
+        runReadWithDeadline(10_000L) { createIdentity() }.getOrThrow()
+    }
+
+    private suspend fun createIdentity(): GuestIdentity {
         val response = config.httpClient.post("${endpoint()}/v1/guest/session")
-        if (!response.status.isSuccess()) error("No pudimos iniciar el modo invitado. Inténtalo nuevamente.")
+        checkResponse(response.status.value)
         val identity = json.decodeFromString<GuestIdentity>(response.bodyAsText())
         require(identity.role == "guest" && identity.id.startsWith("guest_"))
         prefs.edit().putString("id", identity.id).putString("username", identity.username)
@@ -167,12 +175,36 @@ class GuestModeApi @Inject constructor(
     }
 
     private suspend fun <T> read(path: String, query: String? = null, parse: (String) -> T): T {
-        val identity = ensureIdentity()
-        val response = config.httpClient.get("${endpoint()}/v1/guest/$path") {
-            header("Authorization", "Bearer ${identity.accessToken}")
-            if (query != null) parameter("q", query.trim().take(50))
-        }
-        if (!response.status.isSuccess()) error("No pudimos cargar el contenido público. Inténtalo nuevamente.")
-        return parse(response.bodyAsText())
+        return runReadWithDeadline(12_000L) {
+            val base = endpoint()
+            var identity = ensureIdentity()
+            var response = config.httpClient.get("$base/v1/guest/$path") {
+                header("Authorization", "Bearer ${identity.accessToken}")
+                if (query != null) parameter("q", query.trim().take(50))
+            }
+            if (response.status.value == 401) {
+                identityMutex.withLock {
+                    // Another parallel request may already have renewed the session.
+                    if (savedIdentity()?.accessToken == identity.accessToken) clear()
+                }
+                identity = ensureIdentity()
+                response = config.httpClient.get("$base/v1/guest/$path") {
+                    header("Authorization", "Bearer ${identity.accessToken}")
+                    if (query != null) parameter("q", query.trim().take(50))
+                }
+            }
+            checkResponse(response.status.value)
+            parse(response.bodyAsText())
+        }.getOrThrow()
+    }
+
+    private fun checkResponse(status: Int) {
+        if (status in 200..299) return
+        error(when (status) {
+            404 -> "Este contenido ya no está disponible o es privado."
+            429 -> "Has realizado varias consultas seguidas. Espera un momento y vuelve a intentarlo."
+            401 -> "No pudimos renovar tu visita. Vuelve a entrar como invitado."
+            else -> "El servidor no pudo cargar el contenido. Inténtalo nuevamente."
+        })
     }
 }

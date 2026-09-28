@@ -6867,21 +6867,24 @@ function registerDataRoutes(app, {
         fallbackProfileRow(user)
 
       const patch = profilePatchFromBody(req.body || {})
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'username') && req.body.username == null) {
+        return res.status(409).json({ error: 'USERNAME_IMMUTABLE' })
+      }
       if (Object.keys(patch).length === 0) {
         return res.status(400).json({ error: 'PROFILE_PATCH_EMPTY' })
       }
       if (Object.prototype.hasOwnProperty.call(patch, 'username')) {
         const username = cleanUsername(patch.username)
-        const problem = usernameProblem(username)
-        if (problem) {
-          return res.status(400).json({ error: problem, message: 'Usa entre 3 y 24 letras, números, puntos, guiones o guiones bajos.' })
-        }
         const previousOverride = await localProfileOverride(pool, user.id)
         const existingUsername = cleanUsername(
           textOf(previousOverride, ['username'], '') || textOf(importedProfile, ['username'], ''),
         )
         if (existingUsername && existingUsername.toLowerCase() !== username.toLowerCase()) {
           return res.status(409).json({ error: 'USERNAME_IMMUTABLE', message: 'El nombre de usuario de esta cuenta es permanente.' })
+        }
+        const problem = usernameProblem(username)
+        if (!existingUsername && problem) {
+          return res.status(400).json({ error: problem, message: 'Usa entre 3 y 24 letras, números, puntos, guiones o guiones bajos.' })
         }
         if (await usernameOwnedByAnother(pool, username, identity.values)) {
           return res.status(409).json({ error: 'USERNAME_TAKEN', message: 'Nombre en uso, elige otro nombre de usuario.' })

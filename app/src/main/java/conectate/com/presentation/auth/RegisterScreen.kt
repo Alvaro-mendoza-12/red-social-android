@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import android.net.Uri
 import android.util.Patterns
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -31,6 +33,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -46,9 +52,11 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
-import java.text.Normalizer
+import conectate.com.data.model.suggestedPublicUsername
+import conectate.com.data.model.publicUsernameFormatError
 import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,10 +69,14 @@ fun RegisterScreen(
     var name by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
     var registrationStep by rememberSaveable { mutableIntStateOf(0) }
-    var usernameAvailable by remember { mutableStateOf(false) }
+    var usernameAvailable by rememberSaveable { mutableStateOf(false) }
     var usernameChecking by remember { mutableStateOf(false) }
     var usernameError by remember { mutableStateOf("") }
     var usernameSuggestions by remember { mutableStateOf(emptyList<String>()) }
+    var autoSuggestUsername by rememberSaveable { mutableStateOf(false) }
+    var usernameCheckAttempt by remember { mutableIntStateOf(0) }
+    var usernameCheckFailed by remember { mutableStateOf(false) }
+    var showUsernameSuggestions by remember { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
@@ -97,23 +109,45 @@ fun RegisterScreen(
         if (privacyAcceptedFromDocument) acceptedPrivacyPolicy = true
     }
 
-    LaunchedEffect(username, name, registrationStep) {
+    BackHandler(enabled = registrationStep > 0 && authState !is AuthState.Loading) {
+        registrationStep -= 1
+    }
+
+    LaunchedEffect(authError) {
+        if (authError.contains("@usuario", ignoreCase = true)) {
+            registrationStep = 1
+            usernameAvailable = false
+            autoSuggestUsername = false
+            usernameCheckAttempt += 1
+        }
+    }
+
+    LaunchedEffect(username, name, registrationStep, usernameCheckAttempt) {
         if (registrationStep != 1) return@LaunchedEffect
         usernameAvailable = false
         usernameSuggestions = emptyList()
         usernameError = ""
         usernameChecking = false
+        usernameCheckFailed = false
+        showUsernameSuggestions = false
         val candidate = username.trim().removePrefix("@").lowercase(Locale.ROOT)
-        if (!Regex("[a-z0-9_.-]{3,24}").matches(candidate)) {
-            usernameError = "Usa de 3 a 24 letras, números, puntos, guiones o guiones bajos."
+        val formatError = publicUsernameFormatError(candidate)
+        if (formatError != null) {
+            usernameError = formatError
             return@LaunchedEffect
         }
-        delay(400)
         usernameChecking = true
+        delay(400)
         val result = viewModel.checkUsernameAvailability(candidate, name)
+        coroutineContext.ensureActive()
         usernameChecking = false
         result.fold(
             onSuccess = {
+                if (autoSuggestUsername && !it.available && it.suggestions.isNotEmpty()) {
+                    username = it.suggestions.first()
+                    return@fold
+                }
+                autoSuggestUsername = false
                 usernameAvailable = it.available
                 usernameError = when (it.reason) {
                     "USERNAME_TAKEN" -> "Este @usuario ya está en uso. Elige otro."
@@ -123,7 +157,10 @@ fun RegisterScreen(
                 }
                 usernameSuggestions = it.suggestions
             },
-            onFailure = { usernameError = "No se pudo comprobar el @usuario. Revisa la conexión e inténtalo otra vez." }
+            onFailure = {
+                usernameCheckFailed = true
+                usernameError = "No se pudo comprobar el @usuario. Revisa la conexión y pulsa Reintentar."
+            }
         )
     }
 
@@ -234,16 +271,34 @@ fun RegisterScreen(
                         label = { Text("Nombre visible") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = {
+                            if (name.trim().length >= 2) {
+                                if (username.isBlank()) {
+                                    username = suggestedPublicUsername(name)
+                                    autoSuggestUsername = true
+                                }
+                                registrationStep = 1
+                            }
+                        }),
                         supportingText = { Text("Podrás cambiarlo más adelante.") },
                     )
                 } else {
                     OutlinedTextField(
                         value = username,
-                        onValueChange = { username = it.removePrefix("@").lowercase(Locale.ROOT).take(24) },
+                        onValueChange = {
+                            autoSuggestUsername = false
+                            username = it.removePrefix("@").lowercase(Locale.ROOT).take(25)
+                            viewModel.resetAuthState()
+                        },
                         label = { Text("Identificador único") },
                         prefix = { Text("@") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = {
+                            if (usernameAvailable && !usernameChecking) registrationStep = 2
+                        }),
                         isError = usernameError.isNotBlank(),
                         supportingText = {
                             Text(when {
@@ -251,14 +306,20 @@ fun RegisterScreen(
                                 usernameAvailable -> "Disponible. Será tu identificador permanente."
                                 usernameError.isNotBlank() -> usernameError
                                 else -> "Solo letras minúsculas, números, puntos, guiones y _."
-                            }, color = if (usernameError.isNotBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }, color = if (usernameError.isNotBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                         },
                     )
+                    if (usernameCheckFailed) {
+                        TextButton(onClick = { usernameCheckAttempt += 1 }) { Text("Reintentar comprobación") }
+                    }
                     if (usernameSuggestions.isNotEmpty()) {
                         Spacer(Modifier.height(12.dp))
-                        Text("Otras opciones disponibles", style = MaterialTheme.typography.labelLarge)
-                        usernameSuggestions.forEach { suggestion ->
-                            TextButton(onClick = { username = suggestion }) { Text("@$suggestion") }
+                        TextButton(onClick = { showUsernameSuggestions = !showUsernameSuggestions }) {
+                            Text("Nombres recomendados")
+                        }
+                        if (showUsernameSuggestions) usernameSuggestions.forEach { suggestion ->
+                            TextButton(onClick = { autoSuggestUsername = false; username = suggestion }) { Text("@$suggestion") }
                         }
                     }
                 }
@@ -269,7 +330,10 @@ fun RegisterScreen(
                             if (name.trim().length < 2) {
                                 AppFeedbackBus.showError("Escribe un nombre de al menos dos caracteres.")
                             } else {
-                                if (username.isBlank()) username = suggestedUsername(name)
+                                if (username.isBlank()) {
+                                    username = suggestedPublicUsername(name)
+                                    autoSuggestUsername = true
+                                }
                                 registrationStep = 1
                             }
                         } else if (usernameAvailable && !usernameChecking) registrationStep = 2
@@ -692,15 +756,6 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(24.dp))
         }
     }
-}
-
-private fun suggestedUsername(name: String): String {
-    val seed = Normalizer.normalize(name.trim(), Normalizer.Form.NFKD)
-        .replace(Regex("[\\u0300-\\u036f]"), "")
-        .lowercase(Locale.ROOT)
-        .replace(Regex("[^a-z0-9]+"), "")
-        .take(24)
-    return if (seed.length >= 3) seed else "usuario${seed}".take(24)
 }
 
 

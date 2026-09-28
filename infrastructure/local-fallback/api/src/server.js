@@ -1504,7 +1504,7 @@ async function ensureAuthMetadataColumns(executor = pool) {
   `)
 }
 
-async function syncLocalUserToSupabase(user, password) {
+async function syncLocalUserToSupabase(user, password, username = null) {
   const supabaseAdmin = getSupabaseAdminClient()
   if (!supabaseAdmin) {
     return { attempted: false, ok: false, error: 'SUPABASE_ADMIN_NOT_CONFIGURED' }
@@ -1517,6 +1517,7 @@ async function syncLocalUserToSupabase(user, password) {
     user_metadata: {
       display_name: user.displayName,
       local_fallback_id: user.id,
+      ...(username ? { username } : {}),
     },
   })
 
@@ -2251,19 +2252,19 @@ app.get('/v1/auth/username/availability', async (req, res, next) => {
   try {
     const username = cleanUsername(req.query.username).toLowerCase()
     const problem = usernameProblem(username)
-    if (problem) return res.json({ username, available: false, reason: problem, suggestions: [] })
-    const available = !(await usernameOwnedByAnother(pool, username))
+    const available = !problem && !(await usernameOwnedByAnother(pool, username))
     const suggestions = []
     if (!available) {
       const candidates = usernameCandidates(req.query.name || username, username)
-      for (const candidate of candidates.slice(0, 16)) {
+      candidates.push(...Array.from({ length: 4 }, () => `usuario${crypto.randomBytes(6).toString('hex')}`))
+      for (const candidate of candidates) {
         if (candidate === username || await usernameOwnedByAnother(pool, candidate)) continue
         suggestions.push(candidate)
         if (suggestions.length === 3) break
       }
     }
     res.set('Cache-Control', 'no-store')
-    return res.json({ username, available, reason: available ? null : 'USERNAME_TAKEN', suggestions })
+    return res.json({ username, available, reason: available ? null : problem || 'USERNAME_TAKEN', suggestions })
   } catch (error) { return next(error) }
 })
 
@@ -2331,7 +2332,7 @@ app.post('/v1/auth/register', async (req, res, next) => {
       client.release()
     }
     let user = sanitizeUser(rows[0])
-    const supabaseSync = await syncLocalUserToSupabase(user, password)
+    const supabaseSync = await syncLocalUserToSupabase(user, password, username)
     if (supabaseSync.ok && supabaseSync.user) {
       user = supabaseSync.user
     } else if (supabaseSync.attempted && !supabaseSync.ok) {
@@ -3682,6 +3683,9 @@ app.use((req, res) => {
 })
 
 app.use((error, _req, res, _next) => {
+  if (error?.code === 'P0001' && error.message === 'USERNAME_IMMUTABLE') {
+    return res.status(409).json({ error: 'USERNAME_IMMUTABLE', requestId: _req.requestId })
+  }
   console.error('[api] request failed', {
     requestId: _req.requestId,
     ...safeErrorLogDetails(error, {
