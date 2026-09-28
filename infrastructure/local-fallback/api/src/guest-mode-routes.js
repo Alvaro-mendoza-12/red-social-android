@@ -66,6 +66,7 @@ function importedProfile(row) {
     display_name: row.display_name || row.full_name || 'Usuario',
     username: handle && verifiedHandle ? handle : null,
     avatar_url: row.avatar_url || null, bio: row.bio || null,
+    is_private: row.is_private === true || row.is_private === 'true',
   }
 }
 
@@ -106,7 +107,8 @@ async function readPublicProfile(pool, identifier) {
         CASE WHEN COALESCE(o.profile->>'username_origin', '') NOT IN ('chosen', 'migrated_name')
       THEN NULL ELSE NULLIF(o.profile->>'username', '') END AS username,
         COALESCE(NULLIF(o.profile->>'avatar_url', ''), u.avatar_url) AS avatar_url,
-        NULLIF(o.profile->>'bio', '') AS bio
+        NULLIF(o.profile->>'bio', '') AS bio,
+        COALESCE(o.profile->>'is_private', 'false') IN ('true', 't', '1') AS is_private
      FROM fallback_users u
      LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
      WHERE (u.id::text = $1 OR u.supabase_user_id::text = $1 OR lower(o.profile->>'username') = $1)
@@ -134,7 +136,8 @@ async function readPublicProfile(pool, identifier) {
       const legacy = importedProfile(result.rows[0].row)
       profile = profile
     ? { ...legacy, ...profile, username: profile.username || legacy.username,
-      bio: profile.bio || legacy.bio, avatar_url: profile.avatar_url || legacy.avatar_url }
+      bio: profile.bio || legacy.bio, avatar_url: profile.avatar_url || legacy.avatar_url,
+      is_private: profile.is_private || legacy.is_private }
     : legacy
     }
   }

@@ -80,7 +80,7 @@ private fun publicProfileShareLink(user: User): String {
     val identifier = user.username?.trim()?.removePrefix("@")
         ?.takeIf { user.username_origin in setOf("chosen", "migrated_name") &&
             it.equals(handle, ignoreCase = true) } ?: user.id
-    return "$base/v1/public/profiles/${Uri.encode(identifier)}?preview=2"
+    return "$base/v1/public/profiles/${Uri.encode(identifier)}?preview=3"
 }
 
 internal fun profileUserIdFromQr(raw: String?): String? {
@@ -1120,10 +1120,13 @@ fun ProfileScreen(
                                                     Intent.createChooser(
                                                         Intent(Intent.ACTION_SEND).apply {
                                                             type = "text/plain"
-                                                            // A single URL lets WhatsApp and other messengers fetch the
-                                                            // public Open Graph card, including the profile portrait.
-                                                            putExtra(Intent.EXTRA_TEXT, link)
-                                                            putExtra(Intent.EXTRA_TITLE, "${user.displayName} · Novvin")
+                                                            // One public link keeps the rich profile card available
+                                                            // across messengers; download and guest viewing live there.
+                                                            putExtra(Intent.EXTRA_TEXT,
+                                                                "Mira mi perfil en Novvin ✨\n$link")
+                                                            val title = "${user.displayName} (@${profilePublicHandle(user)}) · Novvin"
+                                                            putExtra(Intent.EXTRA_TITLE, title)
+                                                            putExtra(Intent.EXTRA_SUBJECT, title)
                                                         },
                                                         "Compartir perfil",
                                                     )

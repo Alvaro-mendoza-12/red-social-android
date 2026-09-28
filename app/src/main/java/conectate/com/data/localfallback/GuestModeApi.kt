@@ -51,6 +51,7 @@ data class GuestContent(
     @SerialName("cover_url") val coverUrl: String? = null,
     @SerialName("thumbnail_url") val thumbnailUrl: String? = null,
     @SerialName("media_url") val mediaUrl: String? = null,
+    @SerialName("media_urls") val mediaUrls: List<String> = emptyList(),
 )
 
 @Serializable

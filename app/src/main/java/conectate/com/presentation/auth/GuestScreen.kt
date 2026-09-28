@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -256,6 +258,12 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
         )
     }
     previewContent?.let { content ->
+        val photos = remember(content.id, content.mediaUrl, content.mediaUrls) {
+            (content.mediaUrls + listOfNotNull(content.mediaUrl))
+                .filter { it.isNotBlank() }.distinct()
+        }
+        val photoPager = rememberPagerState(pageCount = { photos.size })
+        val photoScope = rememberCoroutineScope()
         AlertDialog(
             onDismissRequest = viewModel::clearPreviewContent,
             title = { Text(content.userName) },
@@ -264,11 +272,29 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                     if (!content.videoUrl.isNullOrBlank()) GuestVideoPlayer(content.videoUrl)
                     else {
                         Text(content.content)
-                        content.mediaUrl?.let {
-                            if (content.mediaType == "video" || it.substringBefore('?').endsWith(".mp4", true)) {
-                                GuestVideoPlayer(it)
-                            } else AsyncImage(model = it, contentDescription = "Publicación pública",
-                                modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp))
+                        val media = photos.firstOrNull()
+                        if (media != null) {
+                            if (content.mediaType == "video" || media.substringBefore('?').endsWith(".mp4", true)) {
+                                GuestVideoPlayer(media)
+                            } else {
+                                HorizontalPager(state = photoPager, modifier = Modifier.fillMaxWidth().height(300.dp)) { page ->
+                                    AsyncImage(model = photos[page],
+                                        contentDescription = "Imagen ${page + 1} de ${photos.size} de la publicación",
+                                        modifier = Modifier.fillMaxSize())
+                                }
+                                if (photos.size > 1) {
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween) {
+                                        TextButton(onClick = {
+                                            photoScope.launch { photoPager.animateScrollToPage(photoPager.currentPage - 1) }
+                                        }, enabled = photoPager.currentPage > 0) { Text("Anterior") }
+                                        Text("${photoPager.currentPage + 1} / ${photos.size}")
+                                        TextButton(onClick = {
+                                            photoScope.launch { photoPager.animateScrollToPage(photoPager.currentPage + 1) }
+                                        }, enabled = photoPager.currentPage < photos.lastIndex) { Text("Siguiente") }
+                                    }
+                                }
+                            }
                         }
                     }
                     TextButton(onClick = { viewModel.openProfile(content.userId) }) { Text("Ver perfil") }
@@ -491,6 +517,10 @@ private fun GuestContentList(
                         (content.videoUrl == null && image?.substringBefore('?')?.endsWith(".mp4", true) == true)
                     if (!image.isNullOrBlank() && !mediaIsVideo) {
                         AsyncImage(model = image, contentDescription = "Vista previa pública", modifier = Modifier.fillMaxWidth().height(180.dp))
+                        if (content.mediaUrls.distinct().size > 1) {
+                            Text("1 / ${content.mediaUrls.distinct().size} · Toca para ver todas las fotos",
+                                color = MaterialTheme.colorScheme.primary)
+                        }
                     } else if (mediaIsVideo) {
                         Icon(Icons.Default.PlayCircle, contentDescription = "Video público",
                             modifier = Modifier.fillMaxWidth().height(96.dp))
