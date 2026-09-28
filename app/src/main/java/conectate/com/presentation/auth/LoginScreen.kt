@@ -363,13 +363,14 @@ fun LoginScreen(
         val responsiveHorizontalPadding =
             if (maxWidth > 600.dp) ((maxWidth - 520.dp) / 2).coerceAtLeast(20.dp) else 20.dp
         val availableHeight = maxHeight
+        val authScrollState = key(loginType, assistedCodeStage) { rememberScrollState() }
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(authScrollState)
                 .padding(horizontal = responsiveHorizontalPadding, vertical = 24.dp),
             horizontalAlignment = Alignment.Start,
         ) {
