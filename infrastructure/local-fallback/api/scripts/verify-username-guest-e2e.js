@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const crypto = require('node:crypto')
 const { Client } = require('pg')
 const { codeAtStep } = require('../src/two-factor')
-const base = String(process.env.E2E_API_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '')
+const base = String(process.env.E2E_API_URL || process.argv[2] || 'http://127.0.0.1:3001').replace(/\/+$/, '')
 const suffix = crypto.randomBytes(6).toString('hex')
 const emails = [1, 2, 3].map((n) => `username-guest-e2e-${suffix}-${n}@example.invalid`)
 const matchingHandle = `match${suffix}`
@@ -12,6 +12,8 @@ emails.push(`${matchingHandle}@example.invalid`)
 const handle = `auditoria${suffix}`
 const password = `Test-${crypto.randomBytes(18).toString('hex')}!`
 const contentId = crypto.randomUUID()
+const noveltyNotificationId = crypto.randomUUID()
+const noveltyConnectionId = crypto.randomUUID()
 const checks = []
 
 async function request(path, method = 'GET', body, token, extraHeaders = {}) {
@@ -51,7 +53,7 @@ async function main() {
     const id = winner.body.user.id
     check('registration creates complete session', Boolean(token && id))
     const sameName = await register(emails[2], `${handle}b`)
-    check('visible names may repeat', sameName.status === 201)
+    check(`visible names may repeat (HTTP ${sameName.status})`, sameName.status === 201)
     const occupied = await request(`/v1/auth/username/availability?username=${handle.toUpperCase()}&name=Nombre%20visible`)
     check('case insensitive availability', occupied.status === 200 && !occupied.body.available)
     check('recommendations supplied', occupied.body.suggestions?.length > 0)
@@ -113,6 +115,41 @@ async function main() {
         check(`public ${path} comments readable`, (await request(`/v1/guest/${path}/${itemId}/comments`, 'GET', undefined, guestToken)).status === 200)
       }
     }
+    // Home indicators use real authenticated data, isolated to this run's accounts.
+    for (const path of [
+      '/v1/data/messages/inbox?tab=chats', '/v1/data/videos?followingOnly=true&limit=60',
+      '/v1/data/feed?mode=following&limit=20', '/v1/data/moments/feed',
+      '/v1/data/notifications?unreadOnly=true', '/v1/data/playmatch/capabilities',
+      '/v1/data/playmatch/connections', '/v1/data/playmatch/matches',
+    ]) {
+      const result = await request(path, 'GET', undefined, token)
+      check(`registered home data readable ${path}`, result.status === 200)
+      const denied = await request(path, 'GET', undefined, guestToken)
+      check(`guest cannot read private home data ${path}`, denied.status === 401 || denied.status === 403)
+    }
+    await db.query(`INSERT INTO fallback_notifications(id,recipient_id,actor_id,type,content)
+      VALUES ($1,$2,$3,'activity','Aviso sintético privado de esta auditoría')`, [noveltyNotificationId, id, chosenId])
+    const unread = await request('/v1/data/notifications?unreadOnly=true', 'GET', undefined, token)
+    check('profile novelty contains its own unread notification', unread.body.unreadCount > 0 && unread.body.items.some((item) => item.id === noveltyNotificationId))
+    const outsider = await request('/v1/data/notifications?unreadOnly=true', 'GET', undefined, chosenToken)
+    check('another account cannot read the notification', !outsider.body.items.some((item) => item.id === noveltyNotificationId))
+    await request(`/v1/data/notifications/${noveltyNotificationId}/read`, 'PATCH', {}, chosenToken)
+    check('another account cannot clear the indicator', !(await db.query('SELECT is_read FROM fallback_notifications WHERE id=$1', [noveltyNotificationId])).rows[0].is_read)
+    check('the owner can mark its notification read', (await request(`/v1/data/notifications/${noveltyNotificationId}/read`, 'PATCH', {}, token)).status === 200)
+    const read = await request('/v1/data/notifications?unreadOnly=true', 'GET', undefined, token)
+    check('read notification stops contributing to novelty', !read.body.items.some((item) => item.id === noveltyNotificationId) && read.body.unreadCount < unread.body.unreadCount)
+    await db.query(`INSERT INTO fallback_gaming_connection_requests(id,requester_user_id,recipient_user_id,idempotency_key)
+      VALUES ($1,$2,$3,$4)`, [noveltyConnectionId, chosenId, id, `username-guest-e2e-${suffix}`])
+    const invitations = await request('/v1/data/playmatch/connections', 'GET', undefined, token)
+    const incoming = invitations.body.items.find((item) => item.id === noveltyConnectionId)
+    check('games novelty has incoming status and revision', incoming?.direction === 'INCOMING' && incoming.status === 'PENDING' && Boolean(incoming.updatedAt))
+    const outgoing = await request('/v1/data/playmatch/connections', 'GET', undefined, chosenToken)
+    check('sender sees the correct outgoing direction', outgoing.body.items.find((item) => item.id === noveltyConnectionId)?.direction === 'OUTGOING')
+    const unrelated = await request('/v1/data/playmatch/connections', 'GET', undefined, sameName.body.accessToken)
+    check('unrelated accounts cannot read game invitations', !unrelated.body.items.some((item) => item.id === noveltyConnectionId))
+    await db.query("UPDATE fallback_gaming_connection_requests SET status='ACCEPTED',updated_at=NOW() WHERE id=$1", [noveltyConnectionId])
+    const accepted = await request('/v1/data/playmatch/connections', 'GET', undefined, token)
+    check('game status changes reach the app data contract', accepted.body.items.find((item) => item.id === noveltyConnectionId)?.status === 'ACCEPTED')
     const paths = [
       '/v1/data/messages/chats', '/v1/data/messages/groups', '/v1/data/messages/communities',
       '/v1/data/feed/posts', `/v1/data/feed/posts/${contentId}/comments`,
@@ -183,8 +220,10 @@ async function main() {
     check('manual recovery code cannot be reused', (await request('/v1/auth/password-reset/confirm', 'POST', {
       resetToken: secondCode.body.resetToken, newPassword: replacementPassword,
     })).status === 401)
-    console.log(JSON.stringify({ ok: true, checks: checks.length, loginMs: login.elapsedMs, modulesWithDeniedWrites: paths.length }))
+    console.log(JSON.stringify({ ok: true, base, checks: checks.length, loginMs: login.elapsedMs, modulesWithDeniedWrites: paths.length }))
   } finally {
+    await db.query('DELETE FROM fallback_notifications WHERE id=$1', [noveltyNotificationId])
+    await db.query('DELETE FROM fallback_gaming_connection_requests WHERE id=$1', [noveltyConnectionId])
     await db.query('DELETE FROM fallback_account_recovery_cases WHERE identifier = ANY($1::text[])', [emails])
     await db.query('DELETE FROM fallback_videos WHERE id = $1', [contentId])
     const imported = await db.query("SELECT to_regclass('supabase_import.videos') AS table_oid")
