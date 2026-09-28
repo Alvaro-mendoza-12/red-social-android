@@ -222,13 +222,20 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
         AlertDialog(
             onDismissRequest = { restrictedAction = null; viewModel.clearPendingProfile() },
             title = { Text("Estás explorando como invitado") },
-            text = { Text("Crea una cuenta para $action. Podrás seguir explorando si prefieres hacerlo después.") },
-            confirmButton = {
-                Button(onClick = { restrictedAction = null; createAccount() }) { Text("Crear una cuenta ahora") }
+            text = {
+                Text("Crea una cuenta para $action. Podrás seguir explorando si prefieres hacerlo después.",
+                    modifier = Modifier.verticalScroll(rememberScrollState()))
             },
-            dismissButton = { TextButton(onClick = {
-                restrictedAction = null; viewModel.clearPendingProfile()
-            }) { Text("Seguir explorando") } },
+            confirmButton = {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = { restrictedAction = null; createAccount() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Crear una cuenta ahora")
+                    }
+                    TextButton(onClick = {
+                        restrictedAction = null; viewModel.clearPendingProfile()
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Seguir explorando") }
+                }
+            },
         )
     }
 
@@ -236,7 +243,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
         AlertDialog(
             onDismissRequest = { playingVideo = null },
             title = { Text("Video público") },
-            text = { GuestVideoPlayer(url) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) { GuestVideoPlayer(url) } },
             confirmButton = { TextButton(onClick = { playingVideo = null }) { Text("Cerrar") } },
         )
     }
@@ -282,7 +289,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                         Text(it, color = MaterialTheme.colorScheme.error)
                         TextButton(onClick = { viewModel.loadComments(target.first, target.second) }) { Text("Reintentar") }
                     }
-                    LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                    LazyColumn(modifier = Modifier.weight(1f, fill = false).heightIn(max = 340.dp)) {
                         if (comments.isEmpty() && busy == 0 && error == null) item { Text("Aún no hay comentarios.") }
                         items(comments.take(100), key = { it.id }) { comment ->
                             Text("${comment.userName}: ${comment.content}", modifier = Modifier.padding(vertical = 6.dp))
