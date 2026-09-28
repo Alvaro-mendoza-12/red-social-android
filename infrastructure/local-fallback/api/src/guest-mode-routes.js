@@ -57,11 +57,14 @@ function importedMoment(row) {
 
 function importedProfile(row) {
   const handle = String(row.username || '').trim()
-  const emailPrefix = String(row.email || '').split('@')[0]
+  // Imported usernames predate the explicit choice step. Some were derived from
+  // the email plus an ID suffix, so comparing only the exact email prefix leaks
+  // those addresses and presents an unchosen identifier as permanent.
+  const verifiedHandle = ['chosen', 'migrated_name'].includes(row.username_origin)
   return {
     id: String(row.id),
     display_name: row.display_name || row.full_name || 'Usuario',
-    username: handle && (row.username_origin === 'chosen' || handle.toLowerCase() !== emailPrefix.toLowerCase()) ? handle : null,
+    username: handle && verifiedHandle ? handle : null,
     avatar_url: row.avatar_url || null, bio: row.bio || null,
   }
 }
@@ -100,8 +103,7 @@ async function readPublicProfile(pool, identifier) {
   const id = String(identifier || '').trim().replace(/^@/, '').toLowerCase()
   const { rows } = await pool.query(
     `SELECT u.id::text AS id, COALESCE(NULLIF(o.profile->>'display_name', ''), u.display_name, 'Usuario') AS display_name,
-        CASE WHEN lower(o.profile->>'username') = split_part(lower(u.email), '@', 1)
-          AND COALESCE(o.profile->>'username_origin', '') <> 'chosen'
+        CASE WHEN COALESCE(o.profile->>'username_origin', '') NOT IN ('chosen', 'migrated_name')
       THEN NULL ELSE NULLIF(o.profile->>'username', '') END AS username,
         COALESCE(NULLIF(o.profile->>'avatar_url', ''), u.avatar_url) AS avatar_url,
         NULLIF(o.profile->>'bio', '') AS bio
@@ -119,7 +121,9 @@ async function readPublicProfile(pool, identifier) {
       `SELECT to_jsonb(p) AS row FROM supabase_import.profiles p
        LEFT JOIN fallback_users u ON u.supabase_user_id::text = p.id OR u.id::text = p.id
        LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
-       WHERE (p.id = $1 OR u.id::text = $1 OR lower(p.username) = $1)
+       WHERE (p.id = $1 OR u.id::text = $1 OR
+         (COALESCE(to_jsonb(p)->>'username_origin', '') IN ('chosen', 'migrated_name')
+          AND lower(p.username) = $1))
      AND COALESCE(NULLIF(p.is_suspended, ''), 'false') NOT IN ('true', 't', '1')
      AND COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
      AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
@@ -316,8 +320,7 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
       const { rows } = await pool.query(
         `SELECT u.id::text AS id, u.supabase_user_id::text AS supabase_user_id,
                 COALESCE(NULLIF(o.profile->>'display_name', ''), u.display_name, 'Usuario') AS display_name,
-                CASE WHEN lower(o.profile->>'username') = split_part(lower(u.email), '@', 1)
-                  AND COALESCE(o.profile->>'username_origin', '') <> 'chosen'
+                CASE WHEN COALESCE(o.profile->>'username_origin', '') NOT IN ('chosen', 'migrated_name')
                   THEN NULL ELSE NULLIF(o.profile->>'username', '') END AS username,
                 COALESCE(NULLIF(o.profile->>'avatar_url', ''), u.avatar_url) AS avatar_url,
                 NULLIF(o.profile->>'bio', '') AS bio
@@ -325,8 +328,7 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
          LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
          WHERE COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
            AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
-           AND (strpos(lower(CASE WHEN lower(o.profile->>'username') = split_part(lower(u.email), '@', 1)
-             AND COALESCE(o.profile->>'username_origin', '') <> 'chosen'
+           AND (strpos(lower(CASE WHEN COALESCE(o.profile->>'username_origin', '') NOT IN ('chosen', 'migrated_name')
              THEN '' ELSE COALESCE(o.profile->>'username', '') END), $1) > 0
             OR strpos(lower(COALESCE(o.profile->>'display_name', u.display_name, '')), $1) > 0)
          ORDER BY CASE WHEN lower(o.profile->>'username') = $1 THEN 0
@@ -344,7 +346,7 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
            WHERE COALESCE(NULLIF(p.is_suspended, ''), 'false') NOT IN ('true', 't', '1')
              AND COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
              AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
-             AND (strpos(lower(CASE WHEN lower(p.username) = split_part(lower(p.email), '@', 1)
+             AND (strpos(lower(CASE WHEN COALESCE(to_jsonb(p)->>'username_origin', '') NOT IN ('chosen', 'migrated_name')
                THEN '' ELSE COALESCE(p.username, '') END), $1) > 0
                OR strpos(lower(COALESCE(p.display_name, p.full_name, '')), $1) > 0)
            ORDER BY CASE WHEN lower(p.username) = $1 THEN 0

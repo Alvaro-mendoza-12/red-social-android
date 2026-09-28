@@ -78,8 +78,9 @@ private fun publicProfileShareLink(user: User): String {
     if (Uri.parse(base).scheme != "https") return profileShareLink(user.id)
     val handle = profilePublicHandle(user)
     val identifier = user.username?.trim()?.removePrefix("@")
-        ?.takeIf { it.equals(handle, ignoreCase = true) } ?: user.id
-    return "$base/v1/public/profiles/${Uri.encode(identifier)}"
+        ?.takeIf { user.username_origin in setOf("chosen", "migrated_name") &&
+            it.equals(handle, ignoreCase = true) } ?: user.id
+    return "$base/v1/public/profiles/${Uri.encode(identifier)}?preview=2"
 }
 
 internal fun profileUserIdFromQr(raw: String?): String? {
@@ -1119,15 +1120,10 @@ fun ProfileScreen(
                                                     Intent.createChooser(
                                                         Intent(Intent.ACTION_SEND).apply {
                                                             type = "text/plain"
-                                                            val description = user.bio?.trim()?.takeIf { it.isNotBlank() }
-                                                            putExtra(
-                                                                Intent.EXTRA_TEXT,
-                                                                buildString {
-                                                                    append("${user.displayName} (@${profilePublicHandle(user)}) · Perfil de Novvin")
-                                                                    if (description != null) append("\n$description")
-                                                                    append("\n$link")
-                                                                },
-                                                            )
+                                                            // A single URL lets WhatsApp and other messengers fetch the
+                                                            // public Open Graph card, including the profile portrait.
+                                                            putExtra(Intent.EXTRA_TEXT, link)
+                                                            putExtra(Intent.EXTRA_TITLE, "${user.displayName} · Novvin")
                                                         },
                                                         "Compartir perfil",
                                                     )
