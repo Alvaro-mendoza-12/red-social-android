@@ -19,6 +19,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -52,6 +53,7 @@ fun StickerPanel(
     val isLoading by viewModel.isLoading.collectAsState()
     val actionMessage by viewModel.actionMessage.collectAsState()
     val compactHeight = LocalConfiguration.current.screenHeightDp < 500
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = compactHeight)
 
     var selectedTab by remember { mutableStateOf(StickerPanelTab.RECENT) }
     var selectedPackId by remember { mutableStateOf<String?>(null) }
@@ -94,7 +96,8 @@ fun StickerPanel(
     }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
     ) {
         Column(
             modifier = Modifier
