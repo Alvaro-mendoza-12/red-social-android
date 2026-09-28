@@ -128,7 +128,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     MainActivityContent(
                         currentIntent = currentIntent,
-                        onIntentConsumed = { intentState.value = null },
+                        onIntentConsumed = { consumeIncomingIntent(currentIntent) },
                         incomingShare = incomingShare,
                         onIncomingShareConsumed = ::discardIncomingShare,
                         authRepository = authRepository,
@@ -157,6 +157,18 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         acceptIncomingIntent(intent)
+    }
+
+    private fun consumeIncomingIntent(consumedIntent: Intent?) {
+        // A delayed navigation callback must not consume a newer delivery.
+        if (consumedIntent == null || intentState.value !== consumedIntent) return
+        intentState.value = null
+        // Android keeps Activity.intent through recreation. Clearing only the
+        // Compose state would replay a consumed link on rotation or font changes.
+        // Captured shares retain their intent until discardIncomingShare handles it.
+        if (incomingShareState.value == null && intent === consumedIntent) {
+            setIntent(Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java))
+        }
     }
 
     private fun acceptIncomingIntent(incomingIntent: Intent) {
