@@ -212,8 +212,7 @@ fun SocialScreen(
     
     // Friend Request Count
     val friendViewModel: conectate.com.presentation.profile.FriendRequestsViewModel = hiltViewModel()
-    val friendRequests by friendViewModel.requests.collectAsState()
-    val pendingRequestCount = friendRequests.size
+    val pendingRequestCount by friendViewModel.unseenRequestCount.collectAsState()
     
     val pullRefreshState = rememberPullRefreshState(isUserRefreshing, {
         viewModel.refreshDiscovery()
@@ -238,7 +237,6 @@ fun SocialScreen(
 
     LaunchedEffect(Unit) {
         notificationViewModel.updateUnreadCount()
-        friendViewModel.loadRequests()
         viewModel.refreshLives()
         // Moments auto-load in ViewModel init - no manual call needed
     }
@@ -377,6 +375,7 @@ fun SocialScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                friendViewModel.loadRequests()
                 // Forzar refresco si estamos en la pestaña de Retos al volver a la app
                 if (pagerState.currentPage == 2) {
                     challengeViewModel.loadActiveChallenge()

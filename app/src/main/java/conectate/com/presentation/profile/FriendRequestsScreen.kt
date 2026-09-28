@@ -18,6 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import conectate.com.presentation.components.UserItem
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,6 +31,19 @@ fun FriendRequestsScreen(
     val requests by viewModel.requests.collectAsState()
     val acceptedRequests by viewModel.acceptedRequests.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val loadError by viewModel.loadError.collectAsState()
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+
+    LaunchedEffect(lifecycleState) {
+        if (lifecycleState == Lifecycle.State.RESUMED) {
+            viewModel.loadRequests()
+        }
+    }
+    LaunchedEffect(lifecycleState, isLoading, loadError, requests) {
+        if (lifecycleState == Lifecycle.State.RESUMED && !isLoading && !loadError) {
+            viewModel.markLoadedRequestsViewed()
+        }
+    }
 
 
     Scaffold(
@@ -50,6 +65,17 @@ fun FriendRequestsScreen(
         ) {
             if (isLoading && requests.isEmpty()) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else if (loadError && requests.isEmpty()) {
+                Column(
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("No pudimos cargar las solicitudes. Comprueba tu conexión.")
+                    OutlinedButton(onClick = { viewModel.loadRequests() }) {
+                        Text("Reintentar")
+                    }
+                }
             } else if (requests.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No tienes solicitudes pendientes", color = Color.Gray)

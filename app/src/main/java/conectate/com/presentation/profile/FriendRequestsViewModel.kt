@@ -4,17 +4,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.User
 import conectate.com.data.repository.FriendRepository
+import conectate.com.data.local.prefs.SeenFriendRequestsPreferences
+import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import javax.inject.Inject
 
 @HiltViewModel
 class FriendRequestsViewModel @Inject constructor(
     private val friendRepository: FriendRepository,
-    private val dismissedRequestsPreferences: conectate.com.data.local.prefs.DismissedRequestsPreferences
+    private val dismissedRequestsPreferences: conectate.com.data.local.prefs.DismissedRequestsPreferences,
+    private val seenRequestsPreferences: SeenFriendRequestsPreferences,
+    private val authService: AuthService,
 ) : ViewModel() {
 
     private val _requests = MutableStateFlow<List<User>>(emptyList())
@@ -23,49 +30,93 @@ class FriendRequestsViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _loadError = MutableStateFlow(false)
+    val loadError: StateFlow<Boolean> = _loadError.asStateFlow()
+    private val _unseenRequestCount = MutableStateFlow(0)
+    val unseenRequestCount: StateFlow<Int> = _unseenRequestCount.asStateFlow()
+    private var pendingIds: Set<String> = emptySet()
+    private var pendingOwnerId: String? = null
+    private var loadJob: Job? = null
+
     // Track accepted requests (local + recent friends) to show "Confirmed" state
     private val _acceptedRequests = MutableStateFlow<Map<String, Long>>(emptyMap())
     val acceptedRequests: StateFlow<Map<String, Long>> = _acceptedRequests.asStateFlow()
 
     init {
-        loadRequests()
+        viewModelScope.launch {
+            seenRequestsPreferences.revision.collect {
+                updateUnseenCount()
+            }
+        }
     }
 
     fun loadRequests() {
-        viewModelScope.launch {
-            _isLoading.value = true
-            
-            // 1. Fetch Pending Requests
-            val pendingResult = friendRepository.getPendingRequests()
-            val pendingList = pendingResult.getOrNull() ?: emptyList()
-            
-            // 2. Fetch Recent Friends (Confirmed requests)
-            val recentResult = friendRepository.getRecentFriends(10)
-            val recentList = recentResult.getOrNull() ?: emptyList()
-            
-            // 3. Filter out dismissed confirmed requests
-            val dismissedIds = dismissedRequestsPreferences.getDismissedRequests()
-            val visibleRecent = recentList.filter { it.first.id !in dismissedIds }
-            
-            // 4. Update acceptedRequests map with recent friends (using updated_at timestamp)
-            val recentMap = visibleRecent.associate { (user, dateStr) ->
-                // Parse date string to long if possible, else use current time
-                 val time = try {
-                     java.time.Instant.parse(dateStr).toEpochMilli()
-                 } catch (e: Exception) {
-                     System.currentTimeMillis()
-                 }
-                user.id to time
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            val ownerId = authService.getCurrentUserId() ?: run {
+                pendingIds = emptySet()
+                pendingOwnerId = null
+                _requests.value = emptyList()
+                _acceptedRequests.value = emptyMap()
+                _unseenRequestCount.value = 0
+                _loadError.value = false
+                _isLoading.value = false
+                return@launch
             }
-            _acceptedRequests.value = recentMap
-            
-            // 5. Combine lists: Pending first, then Recent (Confirmed)
-            // Note: We only add recent friends to the LIST if we want them displayed.
-            // UI displays items from 'requests'.
-            _requests.value = pendingList + visibleRecent.map { it.first }
-            
-            _isLoading.value = false
+            if (pendingOwnerId != null && pendingOwnerId != ownerId) {
+                pendingIds = emptySet()
+                _requests.value = emptyList()
+                _acceptedRequests.value = emptyMap()
+                _unseenRequestCount.value = 0
+            }
+            _isLoading.value = true
+            try {
+                coroutineScope {
+                    val recent = async { friendRepository.getRecentFriends(10) }
+                    val pendingList = friendRepository.getPendingRequests().getOrNull()
+                    if (authService.getCurrentUserId() != ownerId || pendingList == null) {
+                        recent.cancel()
+                        if (authService.getCurrentUserId() == ownerId) _loadError.value = true
+                        return@coroutineScope
+                    }
+                    pendingOwnerId = ownerId
+                    pendingIds = pendingList.map { it.id }.toSet()
+                    _requests.value = pendingList
+                    _acceptedRequests.value = emptyMap()
+                    _loadError.value = false
+                    updateUnseenCount()
+                    // The pending list is useful immediately; recent confirmations are optional.
+                    _isLoading.value = false
+
+                    val recentList = recent.await().getOrNull().orEmpty()
+                    if (authService.getCurrentUserId() != ownerId) return@coroutineScope
+                    val dismissedIds = dismissedRequestsPreferences.getDismissedRequests()
+                    val visibleRecent = recentList.filter { it.first.id !in dismissedIds }
+                    _acceptedRequests.value = visibleRecent.associate { (user, dateStr) ->
+                        val time = runCatching { java.time.Instant.parse(dateStr).toEpochMilli() }
+                            .getOrElse { System.currentTimeMillis() }
+                        user.id to time
+                    }
+                    _requests.value = pendingList + visibleRecent.map { it.first }
+                }
+            } finally {
+                _isLoading.value = false
+            }
         }
+    }
+
+    fun markLoadedRequestsViewed() {
+        val ownerId = authService.getCurrentUserId() ?: return
+        if (_loadError.value || _isLoading.value || pendingOwnerId != ownerId) return
+        seenRequestsPreferences.markSeen(ownerId, pendingIds)
+        updateUnseenCount()
+    }
+
+    private fun updateUnseenCount() {
+        val ownerId = authService.getCurrentUserId()
+        _unseenRequestCount.value = if (ownerId != null && ownerId == pendingOwnerId) {
+            seenRequestsPreferences.unseenCount(ownerId, pendingIds)
+        } else 0
     }
 
     fun acceptRequest(user: User) {

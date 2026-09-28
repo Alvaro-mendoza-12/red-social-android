@@ -23,6 +23,14 @@ class ProfileIdentityTest {
     }
 
     @Test
+    fun legacyHandleIsHiddenWhenListResponseOmitsEmail() {
+        val user = User(id = id, username = "alvaromendozamarin004", display_name = "Álvaro")
+        assertEquals("alvaro", profilePublicHandle(user))
+        assertEquals("alvaro", profilePublicHandle(user.copy(email = "alvaromendozamarin004@example.com")))
+        assertEquals("alvaro", profilePublicHandle(user.copy(username = "alvaro", username_origin = "migrated_name")))
+    }
+
+    @Test
     fun explicitlyChosenUsernameIsPreservedEvenWhenItCoincidesWithEmailPrefix() {
         val user = User(id = id, email = "mirella_vr07@example.invalid", username = "mirella_vr07",
             display_name = "Mirella Vásquez", username_origin = "chosen")
