@@ -56,6 +56,7 @@ fun ChangePasswordScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
             .verticalScroll(rememberScrollState())
@@ -69,6 +70,7 @@ fun ChangePasswordScreen(
             Text(
                 text = "Cambiar contraseña",
                 fontSize = 32.sp,
+                lineHeight = 40.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -166,7 +168,7 @@ fun ChangePasswordScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .heightIn(min = 56.dp),
                 enabled = authState !is AuthState.Loading && validationError == null,
                 shape = MaterialTheme.shapes.medium
             ) {

@@ -375,16 +375,16 @@ fun LoginScreen(
         ) {
         AuthBrandHeader(
             title = when {
-                isAddAccountMode -> "Agrega otra cuenta"
                 loginType == "recovery" -> stringResource(R.string.auth_recovery_title)
                 loginType == "assisted" -> "Recuperación con ayuda"
+                isAddAccountMode -> "Agrega otra cuenta"
                 loginType == "email" -> "Qué bueno verte"
                 else -> "Tu mundo empieza aquí"
             },
             subtitle = when {
-                isAddAccountMode -> "Entra con la cuenta que quieres sumar. Podrás alternar entre ellas después."
                 loginType == "recovery" -> stringResource(R.string.auth_recovery_subtitle)
                 loginType == "assisted" -> "Un administrador verificará que la cuenta te pertenece."
+                isAddAccountMode -> "Entra con la cuenta que quieres sumar. Podrás alternar entre ellas después."
                 loginType == "email" -> "Entra para seguir donde dejaste tus conversaciones y momentos."
                 else -> "Mensajes, videos y momentos con tu gente en un solo lugar."
             },
