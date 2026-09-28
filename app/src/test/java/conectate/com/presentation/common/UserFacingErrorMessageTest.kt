@@ -96,7 +96,7 @@ class UserFacingErrorMessageTest {
         ).toUserFacingMessage()
 
         assertEquals(
-            "No pudimos conectarnos con el servidor. Revisa tu internet e inténtalo otra vez.",
+            "No pudimos llegar al servidor de Novvin desde este dispositivo. Inténtalo otra vez en unos momentos.",
             result
         )
     }
