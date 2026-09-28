@@ -6,7 +6,7 @@ Este informe amplía `MODO_INVITADO_Y_USUARIO_UNICO_2026-09-27.md` y `CIERRE_INV
 
 ## Entrega comprobada
 
-- Android **3.3.22-debug**, código **84**, código de producto **f906b53f24c1**.
+- Corte de esta sección: Android **3.3.22-debug**, código **84**, código de producto **f906b53f24c1**. La entrega posterior **3.3.24-debug**, código **86**, y la migración del servidor se detallan en [PERFILES_COMPARTIDOS_Y_USUARIOS_LEGADOS_2026-09-28.md](PERFILES_COMPARTIDOS_Y_USUARIOS_LEGADOS_2026-09-28.md).
 - APK: `build/deliverables/Novvin-3.3.22-debug-v84-f906b53.apk`.
 - SHA-256: `4008ABE1699FEA6A9D51F53A63C2C44C68865D4AD1DA79A5205DE061E57B3E42`.
 - `:app:assembleDebug :app:testDebugUnitTest`: **BUILD SUCCESSFUL**, 871 pruebas en 191 suites; cero fallos, errores u omisiones. Log: `build/codex-3.3.22-delivery-build.log`; resultados XML: `app/build/test-results/testDebugUnitTest`.
@@ -29,7 +29,7 @@ La barra del invitado ahora conserva Mensajes, Videos, Social, Juegos y Perfil. 
 
 ### Identificadores nuevos y cuentas anteriores
 
-La unicidad y permanencia descritas para el registro se aplican al username elegido y guardado como identificador canónico. Para cuentas antiguas cuyo identificador se derivaba del correo, se oculta ese dato en las vistas públicas y se muestra una alternativa basada en el nombre. Esa alternativa visual heredada no queda certificada como identificador global único y permanente: una migración completa de esas cuentas sigue pendiente. Las operaciones siguen utilizando el UUID real de la cuenta. El ID de cinco dígitos mostrado en perfil es una referencia visual, no una clave única de base de datos.
+La unicidad y permanencia descritas para el registro se aplican al username elegido y guardado como identificador canónico. Posteriormente se migraron 70 cuentas locales antiguas a identificadores canónicos únicos basados en el nombre visible; el detalle y la excepción de un perfil importado sin cuenta local están en el informe posterior enlazado arriba. Las operaciones siguen utilizando el UUID real de la cuenta. El ID de cinco dígitos mostrado en perfil es una referencia visual, no una clave única de base de datos.
 
 El autor del video muestra el nombre visible sin añadirle un `@` ficticio. Sigue siendo pulsable para abrir el perfil; perfil, búsqueda y menciones emplean la identidad pública correspondiente. No se muestra un correo como autor público.
 
@@ -161,4 +161,4 @@ Referencia: [Nielsen Norman Group](https://www.nngroup.com/articles/ten-usabilit
 
 ## Pendientes anteriores que se mantienen explícitos
 
-La migración de identificadores de cuentas heredadas a usernames canónicos elegidos, la traducción completa a todos los idiomas de Android, el audio de salas con dos participantes reales, los casos avanzados del editor de video, la revisión manual completa con TalkBack, la entrega release firmada y el rediseño general de la web no se declaran completados por esta revisión de identidad/novedades. El retiro continúa suspendido.
+La traducción completa a todos los idiomas de Android, el audio de salas con dos participantes reales, los casos avanzados del editor de video, la revisión manual completa con TalkBack, la entrega release firmada y el rediseño general de la web no se declaran completados por esta revisión de identidad/novedades. El retiro continúa suspendido. La migración posterior de identificadores está documentada en el informe enlazado arriba.

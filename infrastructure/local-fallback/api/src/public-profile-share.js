@@ -22,11 +22,28 @@ function previewText(value, limit) {
   return plain.length > limit ? `${plain.slice(0, limit - 1)}…` : plain
 }
 
+function previewLines(value, lineLength = 36) {
+  const plain = String(value || '').replace(/[\r\n\t]+/g, ' ').trim()
+  const lines = []
+  let rest = plain
+  while (rest && lines.length < 2) {
+    if (rest.length <= lineLength) { lines.push(rest); rest = ''; break }
+    const cut = rest.lastIndexOf(' ', lineLength)
+    const end = cut >= lineLength / 2 ? cut : lineLength
+    lines.push(rest.slice(0, end).trim())
+    rest = rest.slice(end).trim()
+  }
+  if (rest && lines.length === 2) lines[1] = previewText(lines[1], lineLength - 1) + '…'
+  return lines
+}
+
 async function publicProfileCard(profile, publicBaseUrl) {
   const base = String(publicBaseUrl || '').replace(/\/+$/, '')
-  const name = previewText(profile.display_name || 'Usuario', 32)
+  const rawName = String(profile.display_name || 'Usuario')
+  const name = previewText(rawName, /[^\u0000-\u00ff]/.test(rawName) ? 17 : 24)
   const handle = previewText(profile.username ? `@${profile.username}` : 'Perfil en Novvin', 30)
-  const bio = previewText(profile.bio || `Conoce el perfil de ${name} en Novvin.`, 105)
+  const bioLines = previewLines(profile.bio || `Conoce el perfil de ${name} en Novvin.`)
+  const nameSize = name.length > 18 || /[^\u0000-\u00ff]/.test(name) ? 44 : 64
   const avatarUrl = canonicalStorageUrl(profile.avatar_url, base)
   let avatarMarkup = `<circle cx="186" cy="246" r="86" fill="#234572"/><text x="186" y="273" text-anchor="middle" font-size="82" font-weight="700" fill="#ffffff">${escapeHtml(name.charAt(0).toUpperCase())}</text>`
   try {
@@ -51,9 +68,9 @@ async function publicProfileCard(profile, publicBaseUrl) {
 <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101b36"/><stop offset="1" stop-color="#26336d"/></linearGradient><clipPath id="avatarClip"><circle cx="186" cy="246" r="96"/></clipPath></defs>
 <rect width="1200" height="630" fill="url(#bg)"/><circle cx="1110" cy="32" r="320" fill="#22c4d9" opacity=".13"/>
 <rect x="0" y="0" width="1200" height="10" fill="#34d6d0"/><circle cx="186" cy="246" r="102" fill="#34d6d0"/>
-${avatarMarkup}<text x="324" y="210" font-family="sans-serif" font-size="64" font-weight="700" fill="#ffffff">${escapeHtml(name)}</text>
+${avatarMarkup}<text x="324" y="210" font-family="sans-serif" font-size="${nameSize}" font-weight="700" fill="#ffffff">${escapeHtml(name)}</text>
 <text x="328" y="265" font-family="sans-serif" font-size="32" fill="#81e4e5">${escapeHtml(handle)}</text>
-<text x="90" y="438" font-family="sans-serif" font-size="31" fill="#eef3ff">${escapeHtml(bio)}</text>
+${bioLines.map((line, index) => `<text x="90" y="${438 + index * 42}" font-family="sans-serif" font-size="29" fill="#eef3ff">${escapeHtml(line)}</text>`).join('')}
 <rect x="0" y="540" width="1200" height="90" fill="#0b142a"/><text x="90" y="597" font-family="sans-serif" font-size="38" font-weight="700" fill="#ffffff">Novvin</text>
 <text x="1070" y="596" text-anchor="end" font-family="sans-serif" font-size="25" fill="#b9cbe4">Mira mi perfil</text></svg>`
   return sharp(Buffer.from(svg)).jpeg({ quality: 85, mozjpeg: true }).toBuffer()

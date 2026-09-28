@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { allocateLegacyHandle } = require('../scripts/migrate-legacy-usernames')
+const { allocateLegacyHandle, handleForLegacyUser } = require('../scripts/migrate-legacy-usernames')
 
 test('legacy visible names receive stable normalized unique handles', () => {
   const owners = new Map([['alvaro', new Set(['account-1'])]])
@@ -20,4 +20,10 @@ test('legacy handle allocation respects twenty-four character limit', () => {
   assert.ok(first.length <= 24)
   assert.ok(second.length <= 24)
   assert.notEqual(first, second)
+})
+
+test('the preexisting official account retains the reserved brand handle', () => {
+  const official = { id: '7e3737e5-8826-4096-8973-089f0661462a' }
+  assert.equal(handleForLegacyUser(official, 'Novvin', new Map()), 'novvin')
+  assert.equal(handleForLegacyUser({ id: 'other' }, 'Novvin', new Map()), 'usuarionovvin')
 })

@@ -3,6 +3,7 @@
 // Run without --apply to preview counts. Back up PostgreSQL before --apply.
 const { Client } = require('pg')
 const { usernameSeed, usernameProblem } = require('../src/username-policy')
+const OFFICIAL_NOVVIN_ACCOUNT_ID = '7e3737e5-8826-4096-8973-089f0661462a'
 
 function allocateLegacyHandle(displayName, owner, owners) {
   const seed = usernameSeed(displayName)
@@ -22,6 +23,16 @@ function reserve(owners, handle, owner) {
   if (!key) return
   if (!owners.has(key)) owners.set(key, new Set())
   owners.get(key).add(owner)
+}
+
+function handleForLegacyUser(user, displayName, owners) {
+  // The existing official account owns the reserved brand name. Keep the
+  // reservation for all other users and for all future registrations.
+  if (user.id === OFFICIAL_NOVVIN_ACCOUNT_ID && displayName.trim().toLowerCase() === 'novvin') {
+    const occupied = owners.get('novvin')
+    if (!occupied || (occupied.size === 1 && occupied.has(user.id))) return 'novvin'
+  }
+  return allocateLegacyHandle(displayName, user.id, owners)
 }
 
 async function migrate(client, apply = false) {
@@ -57,8 +68,8 @@ async function migrate(client, apply = false) {
     for (const user of users) {
       if (String(user.profile?.username || '').trim()) { preserved += 1; continue }
       const displayName = user.profile?.display_name || user.display_name || 'Usuario'
-      const handle = allocateLegacyHandle(displayName, user.id, owners)
-      if (handle !== usernameSeed(displayName)) suffixed += 1
+      const handle = handleForLegacyUser(user, displayName, owners)
+      if (handle !== usernameSeed(displayName) && handle !== 'novvin') suffixed += 1
       reserve(owners, handle, user.id)
       if (apply) {
         await client.query(`INSERT INTO fallback_profile_overrides (user_id, profile, updated_at)
@@ -102,4 +113,4 @@ if (require.main === module) main().catch((error) => {
   process.exitCode = 1
 })
 
-module.exports = { allocateLegacyHandle, migrate }
+module.exports = { allocateLegacyHandle, handleForLegacyUser, migrate }
