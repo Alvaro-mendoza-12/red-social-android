@@ -79,6 +79,15 @@ test('externally hosted catalog stickers must match the exact HTTP URL', () => {
   assert.equal(allowed({ items: [{ ...item, media_url: 'file:///private' }], mediaUrl: 'file:///private' }), false)
 })
 
+test('accessible external catalog stickers can be sent without a local storage row', async () => {
+  const external = 'https://cdn.example/sticker.gif'
+  const pool = catalogPool({ importedItems: [{ ...item, media_url: external }] })
+  const request = { mediaUrl: external, contentType: 'sticker', allowedOwnedBuckets: ['chat-media'] }
+  assert.equal(await currentUserMayReferenceMessageMedia(pool, user, identity, request), true)
+  assert.equal(await currentUserMayReferenceMessageMedia(pool, user, identity,
+    { ...request, mediaUrl: `${external}?different` }), false)
+})
+
 test('merged catalog revokes imported public permission when a local pack override is private or deleted', async () => {
   assert.equal(await canReuseCatalogStickerMedia(catalogPool(), identity, mediaUrl), true)
   for (const override of [{ is_public: false }, { is_deleted: true }]) {

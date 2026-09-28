@@ -15,6 +15,7 @@ test('shared profiles use readable metadata, escape untrusted text and omit priv
   assert.match(html, /conectate:\/\/profile\/test-id/)
   assert.match(html, /https:\/\/example.invalid\/v1\/public\/profiles\/mirella_vr07/)
   assert.match(html, /og:image:width" content="1200"/)
+  assert.match(html, /rel="icon"/)
   assert.match(html, /\/v1\/public\/profiles\/mirella_vr07\/card.jpg/)
   assert.ok(!html.includes('private@example.invalid'))
   assert.ok(!html.includes('javascript:'))
