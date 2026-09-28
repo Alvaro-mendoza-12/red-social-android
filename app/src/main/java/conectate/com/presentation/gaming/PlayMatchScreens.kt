@@ -769,9 +769,15 @@ private fun PlayerDetailTopBar(onBack: () -> Unit, onReport: () -> Unit, onBlock
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(color = Color.White.copy(alpha = .15f), shape = RoundedCornerShape(50)) { Icon(if (searching) Icons.Default.Close else Icons.Default.Bolt, null, tint = Color.White, modifier = Modifier.padding(10.dp).size(23.dp)) }
-            Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(if (searching) "Buscando compañero…" else "Encontrar compañero", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp); Text(if (searching) "Toca para cancelar" else "Match aleatorio al instante", color = Color.White.copy(alpha = .78f), fontSize = 12.sp) }
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Color.White)
+            Surface(color = Color.Black.copy(alpha = .08f), shape = RoundedCornerShape(50)) {
+                Icon(if (searching) Icons.Default.Close else Icons.Default.Bolt, null, tint = Color.Black, modifier = Modifier.padding(10.dp).size(23.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(if (searching) "Buscando compañero…" else "Encontrar compañero", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text(if (searching) "Toca para cancelar" else "Según tu perfil y disponibilidad", color = Color.Black, fontSize = 12.sp)
+            }
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Color.Black)
         }
     }
 }

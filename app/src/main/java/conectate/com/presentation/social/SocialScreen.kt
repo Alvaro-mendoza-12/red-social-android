@@ -1616,13 +1616,13 @@ fun SocialScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .height(48.dp)
+                        .heightIn(min = 56.dp)
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     // Title Area
-                    Column(verticalArrangement = Arrangement.Center) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                          Text(
                              text = when (pagerState.currentPage) {
                                  0 -> "Novvin"
@@ -1632,7 +1632,8 @@ fun SocialScreen(
                              style = MaterialTheme.typography.headlineSmall,
                              fontWeight = FontWeight.ExtraBold,
                              color = MaterialTheme.colorScheme.primary,
-                             maxLines = 1
+                             maxLines = 1,
+                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                          )
                     }
 
@@ -1710,8 +1711,9 @@ fun SocialScreen(
                     }
                 }
 
-                PrimaryTabRow(
+                PrimaryScrollableTabRow(
                     selectedTabIndex = pagerState.currentPage,
+                    edgePadding = 0.dp,
                     containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary,
                     indicator = {
@@ -1735,6 +1737,7 @@ fun SocialScreen(
                                 Text(
                                     text = title,
                                     fontSize = 14.sp,
+                                    maxLines = 1,
                                     fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Medium
                                 )
                             }

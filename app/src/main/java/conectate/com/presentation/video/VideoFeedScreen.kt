@@ -3011,10 +3011,13 @@ fun VideoItem(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "@${video.userName}",
+                    text = video.userName.ifBlank { "Usuario" },
+                    modifier = Modifier.weight(1f, fill = false).clickable { onProfileClick(video.userId) },
                     color = Color.White,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
                 if (video.isVerified) {
                     Spacer(modifier = Modifier.width(4.dp))
@@ -3070,7 +3073,9 @@ fun VideoItem(
                 Text(
                     text = "Sonido original - ${video.userName}",
                     color = Color.White,
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
         }
