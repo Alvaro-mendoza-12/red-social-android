@@ -721,7 +721,7 @@ fun AdminPanelScreen(
             LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 when (selectedTabIndex) {
                     0 -> {
-                        item(key = "admin-summary") { AdminSummary(stats, systemHealth) }
+                        item(key = "admin-summary") { AdminSummary(stats, systemHealth, isLoading) }
                     }
                     1 -> {
                         item(key = "admin-create-badge") {
@@ -1212,10 +1212,11 @@ private fun CustomBadgesCard(
 @Composable
 private fun AdminSummary(
     stats: conectate.com.data.localfallback.AdminDashboardStats,
-    systemHealth: SystemHealthResponse?
+    systemHealth: SystemHealthResponse?,
+    isLoading: Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SystemHealthPanel(systemHealth)
+        SystemHealthPanel(systemHealth, isLoading)
         Spacer(Modifier.height(8.dp))
         Text("Estado de moderación", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         AdminMetric("Usuarios", stats.totalUsers, Icons.Default.People)
@@ -1227,7 +1228,7 @@ private fun AdminSummary(
 }
 
 @Composable
-private fun SystemHealthPanel(health: SystemHealthResponse?) {
+private fun SystemHealthPanel(health: SystemHealthResponse?, isLoading: Boolean) {
     val labels = linkedMapOf(
         "api" to "API",
         "database" to "Base de datos",
@@ -1244,11 +1245,19 @@ private fun SystemHealthPanel(health: SystemHealthResponse?) {
         )
         if (health == null) {
             Card(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    "No se pudo comprobar el estado de los servicios. Pulsa actualizar para intentarlo otra vez.",
+                Row(
                     modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text(
+                        if (isLoading) "Comprobando servicios…"
+                        else "No se pudo comprobar el estado de los servicios. Pulsa actualizar para intentarlo otra vez.",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
 
