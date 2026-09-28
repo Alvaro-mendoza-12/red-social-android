@@ -54,6 +54,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import conectate.com.data.model.suggestedPublicUsername
 import conectate.com.data.model.publicUsernameFormatError
+import conectate.com.data.model.isPublicUsernameVerified
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -69,7 +70,9 @@ fun RegisterScreen(
     var name by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
     var registrationStep by rememberSaveable { mutableIntStateOf(0) }
-    var usernameAvailable by rememberSaveable { mutableStateOf(false) }
+    // Do not restore a server check after recreation; verify again before continuing.
+    var verifiedUsername by remember { mutableStateOf<String?>(null) }
+    val usernameAvailable = isPublicUsernameVerified(username, verifiedUsername)
     var usernameChecking by remember { mutableStateOf(false) }
     var usernameError by remember { mutableStateOf("") }
     var usernameSuggestions by remember { mutableStateOf(emptyList<String>()) }
@@ -117,7 +120,7 @@ fun RegisterScreen(
     LaunchedEffect(authError) {
         if (authError.contains("@usuario", ignoreCase = true)) {
             registrationStep = 1
-            usernameAvailable = false
+            verifiedUsername = null
             autoSuggestUsername = false
             usernameCheckAttempt += 1
         }
@@ -125,7 +128,7 @@ fun RegisterScreen(
 
     LaunchedEffect(username, name, registrationStep, usernameCheckAttempt) {
         if (registrationStep != 1) return@LaunchedEffect
-        usernameAvailable = false
+        verifiedUsername = null
         usernameSuggestions = emptyList()
         usernameError = ""
         usernameChecking = false
@@ -149,7 +152,7 @@ fun RegisterScreen(
                     return@fold
                 }
                 autoSuggestUsername = false
-                usernameAvailable = it.available
+                verifiedUsername = candidate.takeIf { _ -> it.available }
                 usernameError = when (it.reason) {
                     "USERNAME_TAKEN" -> "Este @usuario ya está en uso. Elige otro."
                     "USERNAME_RESERVED" -> "Este @usuario está reservado. Elige otro."

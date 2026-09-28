@@ -20,3 +20,10 @@ fun publicUsernameFormatError(value: String): String? = when {
         "Usa letras sin tildes, números, puntos, guiones o guiones bajos; sin espacios."
     else -> null
 }
+
+/** Availability is usable only for the exact normalized value the server checked. */
+fun isPublicUsernameVerified(value: String, verifiedUsername: String?): Boolean {
+    val candidate = value.trim().removePrefix("@").lowercase(Locale.ROOT)
+    return verifiedUsername != null && publicUsernameFormatError(candidate) == null &&
+        candidate == verifiedUsername.lowercase(Locale.ROOT)
+}

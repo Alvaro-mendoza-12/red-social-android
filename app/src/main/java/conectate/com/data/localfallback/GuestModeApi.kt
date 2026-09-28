@@ -11,12 +11,16 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import conectate.com.core.network.runReadWithDeadline
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.util.UUID
 
 @Serializable
 data class GuestIdentity(
@@ -79,6 +83,8 @@ class GuestModeApi @Inject constructor(
     private val previewPrefs = context.getSharedPreferences("guest_preview", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
     private val identityMutex = Mutex()
+    private val sessionStateLock = Any()
+    private var sessionRevision = 0L
     private suspend fun endpoint(): String = RuntimeBackendEndpoint.authenticationEndpoint()
         ?: error("El servidor no está disponible. Revisa tu conexión e inténtalo nuevamente.")
 
@@ -97,28 +103,55 @@ class GuestModeApi @Inject constructor(
         )
     }
 
-    suspend fun ensureIdentity(): GuestIdentity = identityMutex.withLock {
+    suspend fun ensureIdentity(): GuestIdentity = ensureIdentity(currentSessionRevision())
+
+    private suspend fun ensureIdentity(expectedRevision: Long): GuestIdentity = identityMutex.withLock {
+        checkSessionRevision(expectedRevision)
         savedIdentity()?.let { return@withLock it }
-        runReadWithDeadline(10_000L) { createIdentity() }.getOrThrow()
+        runReadWithDeadline(10_000L) { createIdentity(expectedRevision) }.getOrThrow()
     }
 
-    private suspend fun createIdentity(): GuestIdentity {
+    private suspend fun createIdentity(revision: Long): GuestIdentity {
         val response = config.httpClient.post("${endpoint()}/v1/guest/session")
         checkResponse(response.status.value)
         val identity = json.decodeFromString<GuestIdentity>(response.bodyAsText())
         require(identity.role == "guest" && identity.id.startsWith("guest_"))
-        prefs.edit().putString("id", identity.id).putString("username", identity.username)
-            .putString("display_name", identity.displayName).putString("token", identity.accessToken)
-            .putLong("expires_at", System.currentTimeMillis() + identity.expiresIn * 1000L).apply()
+        coroutineContext.ensureActive()
+        persistIdentity(identity, revision)
         return identity
     }
 
-    fun clear() { prefs.edit().clear().apply() }
+    internal fun currentSessionRevision(): Long = synchronized(sessionStateLock) { sessionRevision }
+
+    private fun checkSessionRevision(expectedRevision: Long) {
+        if (currentSessionRevision() != expectedRevision) {
+            throw CancellationException("La visita de invitado ya terminó.")
+        }
+    }
+
+    internal fun persistIdentity(identity: GuestIdentity, expectedRevision: Long) {
+        synchronized(sessionStateLock) {
+            if (sessionRevision != expectedRevision) {
+                throw CancellationException("La sesión de invitado cambió mientras se preparaba la visita.")
+            }
+            prefs.edit().putString("id", identity.id).putString("username", identity.username)
+                .putString("display_name", identity.displayName).putString("token", identity.accessToken)
+                .putLong("expires_at", System.currentTimeMillis() + identity.expiresIn * 1000L).apply()
+        }
+    }
+
+    fun clear() {
+        synchronized(sessionStateLock) {
+            sessionRevision += 1
+            prefs.edit().clear().apply()
+        }
+    }
 
     fun rememberPendingProfile(id: String) {
-        if (id.matches(Regex("[0-9a-fA-F-]{36}"))) {
-            conversionPrefs.edit().putString("profile_id", id).apply()
-        }
+        val validId = validProfileId(id)
+        conversionPrefs.edit().apply {
+            if (validId == null) remove("profile_id") else putString("profile_id", validId)
+        }.apply()
     }
 
     fun clearPendingProfile() { conversionPrefs.edit().remove("profile_id").apply() }
@@ -137,8 +170,12 @@ class GuestModeApi @Inject constructor(
     fun consumePendingProfile(): String? {
         val id = conversionPrefs.getString("profile_id", null)
         conversionPrefs.edit().remove("profile_id").apply()
-        return id
+        return id?.let(::validProfileId)
     }
+
+    private fun validProfileId(id: String): String? = runCatching {
+        UUID.fromString(id).toString().takeIf { it.equals(id, ignoreCase = true) }
+    }.getOrNull()
 
     suspend fun videos(): List<GuestContent> = read("videos") {
         json.decodeFromString<GuestContentList>(it).items
@@ -175,24 +212,30 @@ class GuestModeApi @Inject constructor(
     }
 
     private suspend fun <T> read(path: String, query: String? = null, parse: (String) -> T): T {
+        val revision = currentSessionRevision()
         return runReadWithDeadline(12_000L) {
             val base = endpoint()
-            var identity = ensureIdentity()
+            var identity = ensureIdentity(revision)
             var response = config.httpClient.get("$base/v1/guest/$path") {
                 header("Authorization", "Bearer ${identity.accessToken}")
                 if (query != null) parameter("q", query.trim().take(50))
             }
+            checkSessionRevision(revision)
             if (response.status.value == 401) {
                 identityMutex.withLock {
                     // Another parallel request may already have renewed the session.
-                    if (savedIdentity()?.accessToken == identity.accessToken) clear()
+                    synchronized(sessionStateLock) {
+                        checkSessionRevision(revision)
+                        if (savedIdentity()?.accessToken == identity.accessToken) prefs.edit().clear().apply()
+                    }
                 }
-                identity = ensureIdentity()
+                identity = ensureIdentity(revision)
                 response = config.httpClient.get("$base/v1/guest/$path") {
                     header("Authorization", "Bearer ${identity.accessToken}")
                     if (query != null) parameter("q", query.trim().take(50))
                 }
             }
+            checkSessionRevision(revision)
             checkResponse(response.status.value)
             parse(response.bodyAsText())
         }.getOrThrow()

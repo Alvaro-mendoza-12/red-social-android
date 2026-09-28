@@ -19,13 +19,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.navigation.NavController
@@ -68,6 +76,10 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     val error = _error.asStateFlow()
     private var searchJob: Job? = null
     private var refreshJob: Job? = null
+    private var profileJob: Job? = null
+    private var contentJob: Job? = null
+    private var commentsJob: Job? = null
+    private var enterJob: Job? = null
     private val _busy = MutableStateFlow(0)
     val busy = _busy.asStateFlow()
 
@@ -75,7 +87,9 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
         _busy.value += 1
         _error.value = null
         return try {
-            Result.success(withContext(Dispatchers.IO) { block() })
+            val value = withContext(Dispatchers.IO) { block() }
+            api.savedIdentity()?.let { _identity.value = it }
+            Result.success(value)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -92,15 +106,21 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     private val _previewContent = MutableStateFlow<GuestContent?>(null)
     val previewContent = _previewContent.asStateFlow()
 
-    fun openContent(kind: String, id: String) = viewModelScope.launch {
-        request { api.content(kind, id) }
-            .onSuccess { _previewContent.value = it }
+    fun openContent(kind: String, id: String) {
+        clearPreviewContent()
+        contentJob = viewModelScope.launch {
+            request { api.content(kind, id) }
+                .onSuccess { _previewContent.value = it }
+        }
     }
 
-    fun clearPreviewContent() { _previewContent.value = null }
+    fun clearPreviewContent() { contentJob?.cancel(); _previewContent.value = null }
 
-    fun enter() = viewModelScope.launch {
-        request { api.ensureIdentity() }.onSuccess { _identity.value = it }
+    fun enter() {
+        if (enterJob?.isActive == true) return
+        enterJob = viewModelScope.launch {
+            request { api.ensureIdentity() }.onSuccess { _identity.value = it }
+        }
     }
 
     fun refresh(section: String) {
@@ -117,29 +137,41 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
 
     fun search(query: String) {
         searchJob?.cancel()
-        if (query.trim().length < 2) { _profiles.value = emptyList(); return }
+        _profiles.value = emptyList()
+        _error.value = null
+        if (query.trim().length < 2) return
         searchJob = viewModelScope.launch {
-            delay(350)
-            request { api.searchProfiles(query) }
+            request { delay(350); api.searchProfiles(query) }
                 .onSuccess { _profiles.value = it; _error.value = null }
         }
     }
 
-    fun openProfile(id: String) = viewModelScope.launch {
-        request { api.profile(id) }
-            .onSuccess { _selectedProfile.value = it }
+    fun openProfile(id: String) {
+        closeProfile()
+        profileJob = viewModelScope.launch {
+            request { api.profile(id) }
+                .onSuccess { _selectedProfile.value = it }
+        }
     }
 
-    fun closeProfile() { _selectedProfile.value = null }
+    fun closeProfile() { profileJob?.cancel(); _selectedProfile.value = null }
     fun rememberProfileForSignup() { _selectedProfile.value?.id?.let(api::rememberPendingProfile) }
     fun clearPendingProfile() = api.clearPendingProfile()
     fun consumePendingProfile() = api.consumePendingProfile()
-    fun loadComments(kind: String, id: String) = viewModelScope.launch {
+    fun loadComments(kind: String, id: String) {
+        commentsJob?.cancel()
         _comments.value = emptyList()
-        request { api.comments(kind, id) }
-            .onSuccess { _comments.value = it }
+        commentsJob = viewModelScope.launch {
+            request { api.comments(kind, id) }
+                .onSuccess { _comments.value = it }
+        }
     }
-    fun leave() { api.clear(); api.clearPendingProfile() }
+    fun clearComments() { commentsJob?.cancel(); _comments.value = emptyList() }
+    fun leave() {
+        listOf(searchJob, refreshJob, profileJob, contentJob, commentsJob, enterJob).forEach { it?.cancel() }
+        api.clear(); api.clearPendingProfile(); api.consumePendingPreview()
+        _identity.value = null
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -239,7 +271,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
 
     commentTarget?.let { target ->
         AlertDialog(
-            onDismissRequest = { commentTarget = null },
+            onDismissRequest = { commentTarget = null; viewModel.clearComments() },
             title = { Text("Comentarios") },
             text = {
                 Column {
@@ -257,7 +289,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                     TextButton(onClick = { restrictedAction = "comentar" }) { Text("Escribir comentario") }
                 }
             },
-            confirmButton = { TextButton(onClick = { commentTarget = null }) { Text("Cerrar") } },
+            confirmButton = { TextButton(onClick = { commentTarget = null; viewModel.clearComments() }) { Text("Cerrar") } },
         )
     }
 
@@ -413,6 +445,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun GuestContentList(
     contents: List<GuestContent>, emptyMessage: String,
     onOpen: (GuestContent) -> Unit,
@@ -441,7 +474,7 @@ private fun GuestContentList(
                     val description = content.content.ifBlank { content.description.ifBlank { content.title } }
                     if (description.isNotBlank()) Text(description, maxLines = 4)
                     if (!content.videoUrl.isNullOrBlank()) Text("Toca para ver", color = MaterialTheme.colorScheme.primary)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         TextButton(onClick = { onComments(content) }) { Text("Comentarios") }
                         TextButton(onClick = { onRestricted("dar Me gusta") }) { Text("Me gusta") }
                     }
@@ -455,17 +488,53 @@ private fun GuestContentList(
 @Composable
 private fun GuestVideoPlayer(url: String) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val playerHeight = (LocalConfiguration.current.screenHeightDp - 220).coerceIn(140, 420).dp
+    var failed by remember(url) { mutableStateOf(false) }
+    var buffering by remember(url) { mutableStateOf(true) }
     val player = remember(url) {
-        ExoPlayer.Builder(context).build().apply {
+        ExoPlayer.Builder(context.applicationContext).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.parse(url)))
-            prepare()
-            playWhenReady = true
         }
     }
-    DisposableEffect(player) { onDispose { player.release() } }
-    AndroidView(
-        factory = { PlayerView(it).apply { this.player = player } },
-        modifier = Modifier.fillMaxWidth().height(playerHeight),
-    )
+    DisposableEffect(player, lifecycleOwner) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                buffering = playbackState == Player.STATE_BUFFERING
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                failed = true; buffering = false; player.pause()
+            }
+        }
+        val observer = LifecycleEventObserver { _, _ ->
+            if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) player.pause()
+        }
+        player.addListener(listener)
+        lifecycleOwner.lifecycle.addObserver(observer)
+        player.prepare()
+        player.playWhenReady = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+    Column {
+        if (buffering && !failed) LinearProgressIndicator(Modifier.fillMaxWidth())
+        AndroidView(
+            factory = { PlayerView(it).apply { this.player = player } },
+            update = { it.player = player },
+            modifier = Modifier.fillMaxWidth().height(playerHeight),
+        )
+        if (failed) {
+            Text("No pudimos reproducir el video. Revisa tu conexión e inténtalo nuevamente.",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            TextButton(onClick = {
+                failed = false; buffering = true
+                player.prepare()
+                player.playWhenReady = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            }) { Text("Reintentar video") }
+        }
+    }
 }

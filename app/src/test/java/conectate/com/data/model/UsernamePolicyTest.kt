@@ -18,4 +18,14 @@ class UsernamePolicyTest {
         listOf("mirella_vr07", "adolfo.03", "nombre-03", "User123")
             .forEach { assertNull(publicUsernameFormatError(it)) }
     }
+
+    @Test fun availabilityCannotBeReusedAfterEditingOrRestoringWithoutAResponse() {
+        assertTrue(isPublicUsernameVerified("Mirella_vr07", "mirella_vr07"))
+        assertTrue(isPublicUsernameVerified(" @mirella_vr07 ", "mirella_vr07"))
+        assertFalse(isPublicUsernameVerified("mirella_vr08", "mirella_vr07"))
+        assertFalse(isPublicUsernameVerified("mirella_vr07", null))
+        assertFalse(isPublicUsernameVerified("", ""))
+        assertFalse(isPublicUsernameVerified("mirella vásquez", "mirella vásquez"))
+        assertFalse(isPublicUsernameVerified("a".repeat(25), "a".repeat(25)))
+    }
 }

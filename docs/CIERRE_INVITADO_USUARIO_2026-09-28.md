@@ -1,0 +1,39 @@
+# Continuidad móvil: invitado, registro y conexión — 28/09/2026
+
+Checkout: `D:\red social - live-gifts`. Rama: `feature/live-gifts`.
+
+## Correcciones adicionales
+
+| Hallazgo | Cambio |
+| --- | --- |
+| La disponibilidad del @usuario se guardaba como un booleano separado del texto comprobado. | La autorización para continuar compara el texto actual con el valor exacto validado por el servidor. Una recreación exige comprobarlo de nuevo. |
+| Una sesión de invitado podía terminar mientras su alta o renovación seguía en curso. | Las solicitudes conservan una revisión de sesión. Salir o convertir la cuenta invalida las respuestas tardías; no vuelven a guardar el token. Renovar por vencimiento conserva la revisión de esa visita. |
+| Búsquedas y vistas podían conservar datos de la consulta anterior. | Se vacían resultados al cambiar la búsqueda y se incluye el debounce en el estado de carga. Perfil, contenido y comentarios cancelan su consulta anterior o cerrada. |
+| La identidad mostrada podía seguir siendo la anterior después de renovar el token. | Las lecturas actualizan la identidad visible desde la sesión vigente. |
+| El reproductor de invitado no informaba de errores ni pausaba al dejar la app. | Indicador de carga, mensaje accesible, reintento manual, pausa al perder el estado RESUMED y liberación del reproductor al cerrar. |
+| Las acciones de una tarjeta podían ocupar más ancho con texto grande. | Los botones pasan a otra línea cuando hace falta mediante FlowRow. |
+| El destino de conversión admitía cadenas de 36 guiones, sin un UUID real. | Se valida y normaliza el UUID al guardar y al consumir; se usa una sola vez. |
+| Una solicitud sintética antigua seguía en administración. | Se comprobó el ID y su identificador de prueba, la cuenta ya ausente, y se eliminó únicamente esa solicitud. Documentado en `IMPLEMENTACION_LIVE_AUTH_2026-09-26.md`. |
+
+## Comprobaciones ejecutadas
+
+- Android: 21 pruebas correctas, sin errores, fallos u omisiones, de `UsernamePolicyTest`, `GuestModeSessionTest`, `ProfileIdentityTest` y `ReadDeadlineTest`. Cubren identidad conservada al reabrir, vencimiento, conversión, consumo único de destinos, UUID inválido, salida y respuesta tardía posterior a la salida.
+- Se repitió `verify-username-guest-e2e.js` contra el HTTPS público: 70 comprobaciones correctas; 22 rutas de escritura rechazaron el JWT de invitado. Incluye registro, carrera por username, contraseña correcta/incorrecta, recuperación manual, sustitución y consumo del código, segundo factor perdido y nuevo acceso. Acceso de la cuenta sintética en 585 ms; no es una garantía de latencia para otras conexiones.
+- Las lecturas reales de invitado devolvieron 12 videos, 30 publicaciones, cero momentos vigentes y dos resultados en una búsqueda. El estado vacío de momentos corresponde a esa consulta del servidor.
+- `/ready` respondió correctamente con base de datos accesible. API, PostgreSQL, edge, realtime, señalización, Redis, coturn y chatbot estaban saludables. El backend sigue en `2ecd45a568b4`; estas correcciones cambian Android y no necesitan un despliegue de API.
+
+## Ciclo de sesión
+
+El invitado conserva su identidad al cerrar y abrir mientras el token es válido. La duración es de 30 días; al acercarse al vencimiento se genera otra identidad temporal. Borrar datos, reinstalar sin datos restaurados o salir elimina la identidad local. Las reglas de backup incluyen explícitamente solo preferencias generales: no incluyen `guest_session`, `guest_conversion` ni `guest_preview`. Convertir la sesión elimina el token, conserva el destino público validado hasta consumirlo y mantiene idioma y tema.
+
+## Límites y solicitudes anteriores que no se declaran cerradas
+
+- El Motorola no aparece en ADB. La revisión visual de esta entrega debe distinguirse de una prueba física.
+- TalkBack no está instalado en el emulador actual; la revisión de etiquetas, regiones accesibles y foco no equivale a una sesión manual con ese lector.
+- El selector de idioma y `locales_config.xml` tienen ocho variantes: español, inglés, portugués, francés, alemán, japonés y chino simplificado/tradicional. La solicitud previa de **todos los idiomas de Android** no está completada; existen además textos nuevos en español que requieren recursos traducidos. No se configura un proveedor de pago ni se presenta un fallback como traducción completa.
+- Las pruebas de salud y señalización no certifican audio bidireccional de salas de voz. Sigue haciendo falta comprobarlo con dos participantes y audio real.
+- El informe de videos mantiene pruebas pendientes del editor con más filtros, clips combinados y medios dañados. La validación actual del invitado no cierra esos casos.
+- La web continúa después de la prioridad móvil. El informe previo señala que su retorno tras acceso estaba compilado localmente y pendiente de despliegue; no se presenta esta entrega Android como su despliegue.
+- No se incluye una entrega release firmada para sustituir instalaciones de producción. La APK de esta iteración es de depuración.
+
+El retiro continúa suspendido según la indicación del usuario.

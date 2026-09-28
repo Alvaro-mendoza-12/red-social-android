@@ -2,6 +2,8 @@
 
 Rama de trabajo: `feature/live-gifts` del checkout `D:\red social - live-gifts`.
 
+La revisión posterior de sesión, solicitudes tardías y reproducción está en [Continuidad del 28/09/2026](CIERRE_INVITADO_USUARIO_2026-09-28.md).
+
 ## Auditoría previa
 
 El acceso existente exigía una sesión de usuario registrado antes de abrir las rutas principales. No había una identidad de invitado, una API de lectura separada ni una pantalla para explorar sin registro. Los perfiles heredados podían usar identificadores derivados del correo, la búsqueda podía mezclar el correo con criterios públicos y el registro no pedía un identificador único permanente. El control de acceso de las rutas de escritura ya dependía de la autenticación del servidor; una pantalla de invitado que reutilizara el token de una cuenta real habría roto esa separación.
