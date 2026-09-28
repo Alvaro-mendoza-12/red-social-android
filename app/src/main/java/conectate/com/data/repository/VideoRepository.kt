@@ -210,8 +210,8 @@ class VideoRepository @Inject constructor(
         }
     }
 
-    private fun accountScopedFeedKey(scope: String): String {
-        val accountId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty().ifBlank { "guest" }
+    private fun accountScopedFeedKey(scope: String, ownerId: String? = authService.getCurrentUserId()): String {
+        val accountId = ownerId?.trim()?.lowercase().orEmpty().ifBlank { "guest" }
         return "$scope:$accountId"
     }
 
@@ -224,18 +224,18 @@ class VideoRepository @Inject constructor(
 
     private fun persistLocalFeed(scope: String, videos: List<Video>, ownerId: String? = authService.getCurrentUserId()) {
         if (ownerId != authService.getCurrentUserId()) return
-        if (videos.isEmpty()) { clearLocalFeed(scope); return }
+        if (videos.isEmpty()) { clearLocalFeed(scope, ownerId); return }
         runCatching {
             localFeedCache.edit()
-                .putString(accountScopedFeedKey(scope), cacheJson.encodeToString(videos.take(50)))
+                .putString(accountScopedFeedKey(scope, ownerId), cacheJson.encodeToString(videos.take(50)))
                 .apply()
         }.onFailure { error ->
             android.util.Log.w("VideoRepository", "No se pudo guardar la caché local del feed", error)
         }
     }
 
-    private fun clearLocalFeed(scope: String) {
-        localFeedCache.edit().remove(accountScopedFeedKey(scope)).apply()
+    private fun clearLocalFeed(scope: String, ownerId: String? = authService.getCurrentUserId()) {
+        localFeedCache.edit().remove(accountScopedFeedKey(scope, ownerId)).apply()
     }
 
     private fun removeVideoFromLocalFeeds(videoId: String) {
@@ -691,7 +691,7 @@ class VideoRepository @Inject constructor(
                 persistLocalFeed("following", videos, currentUserId)
                 emit(videos)
             } else {
-                if (currentUserId == authService.getCurrentUserId()) clearLocalFeed("following")
+                if (currentUserId == authService.getCurrentUserId()) clearLocalFeed("following", currentUserId)
                 emit(emptyList())
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {

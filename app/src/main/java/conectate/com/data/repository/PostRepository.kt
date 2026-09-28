@@ -134,8 +134,8 @@ class PostRepository @Inject constructor(
     )
     private val maxPostMediaBytes = 25L * 1024 * 1024
 
-    private fun localFeedKey(mode: String): String {
-        val accountId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty().ifBlank { "guest" }
+    private fun localFeedKey(mode: String, ownerId: String? = authService.getCurrentUserId()): String {
+        val accountId = ownerId?.trim()?.lowercase().orEmpty().ifBlank { "guest" }
         return "$mode:$accountId"
     }
 
@@ -149,7 +149,7 @@ class PostRepository @Inject constructor(
         if (ownerId != authService.getCurrentUserId()) return
         runCatching {
             localFeedCache.edit()
-                .putString(localFeedKey(mode), cacheJson.encodeToString(posts.take(60)))
+                .putString(localFeedKey(mode, ownerId), cacheJson.encodeToString(posts.take(60)))
                 .apply()
         }.onFailure { error ->
             android.util.Log.w("PostRepository", "No se pudo guardar la caché local del feed", error)
