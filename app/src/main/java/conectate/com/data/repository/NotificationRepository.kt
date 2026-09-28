@@ -72,10 +72,10 @@ class NotificationRepository @Inject constructor(
     }
 
     init {
-        // Automatically start observing if we have a user
         scope.launch {
-            authService.getCurrentUserId()?.let {
-                updateUnreadCount()
+            authService.currentSession.map { authService.getCurrentUserId() }.distinctUntilChanged().collectLatest { userId ->
+                clearData()
+                if (userId != null) updateUnreadCount()
             }
         }
     }
@@ -136,12 +136,15 @@ class NotificationRepository @Inject constructor(
     suspend fun getNotifications(): Result<List<conectate.com.data.model.Notification>> {
         return try {
             if (authService.isLocalFallbackSession()) {
+                val owner = authService.getCurrentUserId()
                 val token = authService.getAccessToken()
                     ?: return Result.failure(Exception("No token"))
                 return localFallbackApiClient.loadNotifications(token)
                     .map { response ->
-                        _unreadCount.value = response.unreadCount
-                        scheduleMomentExpiryRefresh(response.items)
+                        if (owner != null && owner == authService.getCurrentUserId()) {
+                            _unreadCount.value = response.unreadCount
+                            scheduleMomentExpiryRefresh(response.items)
+                        }
                         response.items
                     }
             }
@@ -416,12 +419,15 @@ class NotificationRepository @Inject constructor(
 
     suspend fun getUnreadCount(): Result<Int> {
         if (authService.isLocalFallbackSession()) {
+            val owner = authService.getCurrentUserId()
             val token = authService.getAccessToken()
                 ?: return Result.failure(Exception("No token"))
             return localFallbackApiClient.loadNotifications(token, unreadOnly = true, limit = 500)
                 .map { response ->
-                    _unreadCount.value = response.unreadCount
-                    scheduleMomentExpiryRefresh(response.items)
+                    if (owner != null && owner == authService.getCurrentUserId()) {
+                        _unreadCount.value = response.unreadCount
+                        scheduleMomentExpiryRefresh(response.items)
+                    }
                     response.unreadCount
                 }
         }
@@ -445,7 +451,7 @@ class NotificationRepository @Inject constructor(
 
             val contentRange = response.headers["Content-Range"]
             val count = contentRange?.substringAfter("/")?.toIntOrNull() ?: 0
-            _unreadCount.value = count
+            if (userId == authService.getCurrentUserId()) _unreadCount.value = count
             count
         }
     }
@@ -468,8 +474,9 @@ class NotificationRepository @Inject constructor(
                 if (envelope.event != "notification") return@collect
                 val payload = envelope.payload["notification"]?.jsonObject ?: return@collect
                 val notification = supabaseConfig.json.decodeFromJsonElement<Notification>(payload)
-                if (notification.recipientId.equals(userId, ignoreCase = true)) {
-                    _unreadCount.value = _unreadCount.value + 1
+                if (notification.recipientId.equals(userId, ignoreCase = true) &&
+                    userId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
+                    if (!notification.isRead) _unreadCount.value = _unreadCount.value + 1
                     emit(notification)
                 }
             }

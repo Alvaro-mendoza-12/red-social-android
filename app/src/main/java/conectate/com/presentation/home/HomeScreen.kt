@@ -21,6 +21,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -82,13 +86,13 @@ fun HomeScreen(
     } == true
     val unreadBadge by homeViewModel.totalUnreadConversations.collectAsStateWithLifecycle()
     val newFollowingVideos by homeViewModel.newFollowingVideos.collectAsStateWithLifecycle()
-    val newFollowingMoments by homeViewModel.newFollowingMoments.collectAsStateWithLifecycle()
+    val newSocialContent by homeViewModel.newSocialContent.collectAsStateWithLifecycle()
+    val newGames by homeViewModel.newGames.collectAsStateWithLifecycle()
+    val unreadProfileNotifications by homeViewModel.unreadProfileNotifications.collectAsStateWithLifecycle()
 
-    LaunchedEffect(currentDestination?.route) {
-        when (currentDestination?.route) {
-            Screen.Videos.route -> homeViewModel.markSectionSeen("videos")
-            Screen.Social.route -> homeViewModel.markSectionSeen("social")
-        }
+    LifecycleStartEffect(homeViewModel) {
+        homeViewModel.setForeground(true)
+        onStopOrDispose { homeViewModel.setForeground(false) }
     }
 
     Scaffold(
@@ -103,8 +107,17 @@ fun HomeScreen(
                 modifier = Modifier.heightIn(min = 64.dp),
             ) {
                 items.forEach { item ->
+                    val hasNews = when (item) {
+                        BottomNavItem.Messages -> unreadBadge > 0
+                        BottomNavItem.Videos -> newFollowingVideos
+                        BottomNavItem.Social -> newSocialContent
+                        BottomNavItem.Games -> newGames
+                        BottomNavItem.Profile -> unreadProfileNotifications > 0
+                    }
                     NavigationBarItem(
-                        modifier = Modifier.testTag("main-tab-${item.route}"),
+                        modifier = Modifier.testTag("main-tab-${item.route}").semantics {
+                            stateDescription = if (hasNews) "Hay novedades" else "Sin novedades"
+                        },
                         icon = { 
                             BadgedBox(
                                 badge = {
@@ -120,8 +133,7 @@ fun HomeScreen(
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
-                                    } else if ((item is BottomNavItem.Videos && newFollowingVideos) ||
-                                        (item is BottomNavItem.Social && newFollowingMoments)) {
+                                    } else if (hasNews) {
                                         Badge(containerColor = Color(0xFFE53935))
                                     }
                                 }
@@ -143,7 +155,7 @@ fun HomeScreen(
                                 }
                             }
                         },
-                        label = { Text(item.title, fontSize = 10.sp, maxLines = 1) },
+                        label = { Text(item.title, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         selected = currentDestination?.hierarchy?.any { destination ->
                             destination.route == item.route || (
                                 item is BottomNavItem.Games && destination.route?.startsWith("games_") == true
@@ -229,6 +241,7 @@ fun HomeScreen(
                 conectate.com.presentation.video.VideoFeedScreen(
                     navController = navController,
                     feedRefreshToken = videoFeedRefreshToken,
+                    onFollowingFeedVisible = { videos -> homeViewModel.markFeedSeen("videos", videos.map { it.created_at }) },
                     onNavigateToUpload = { sound ->
                         conectate.com.presentation.video.savePendingVideoSound(mainNavController, sound)
                         mainNavController.navigate(Screen.VideoUpload.route)
@@ -261,7 +274,8 @@ fun HomeScreen(
                 conectate.com.presentation.social.SocialScreen(
                     mainNavController,
                     sharedText = sharedText,
-                    sharedUri = sharedUri
+                    sharedUri = sharedUri,
+                    onFollowingFeedVisible = { posts -> homeViewModel.markFeedSeen("social", posts.map { it.createdAt }) },
                 )
             }
             
@@ -313,6 +327,7 @@ fun HomeScreen(
                     onOpenPlayer = { playerId -> navController.navigate(Screen.PlayerDetail.createRoute(playerId)) },
                     onMatchFound = { sessionId -> navController.navigate(Screen.MatchFound.createRoute(sessionId)) { launchSingleTop = true } },
                     onOpenChat = { userId -> mainNavController.navigate(Screen.Chat.createRoute(userId)) },
+                    onInboxVisible = homeViewModel::markGamesSeen,
                 )
             }
 

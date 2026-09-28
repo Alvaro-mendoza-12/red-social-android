@@ -72,6 +72,8 @@ class VideoFeedViewModel @Inject constructor(
 
     private val _followingVideos = MutableStateFlow<List<Video>>(emptyList())
     val followingVideos: StateFlow<List<Video>> = _followingVideos.asStateFlow()
+    private val _followingFeedError = MutableStateFlow<String?>(null)
+    val followingFeedError = _followingFeedError.asStateFlow()
     private val profileFeedOwnerId: String? = savedStateHandle.get<String>("profileId")
         ?.trim()
         ?.takeIf { it.isNotBlank() }
@@ -329,6 +331,7 @@ class VideoFeedViewModel @Inject constructor(
         _forYouVideos.clear()
         _isRefreshing.value = false
         _followingVideos.value = emptyList()
+        _followingFeedError.value = null
         _socialHighlights.value = emptyList()
         _recommendedPeople.value = emptyList()
         _socializationCards.value = emptyList()
@@ -1025,10 +1028,15 @@ class VideoFeedViewModel @Inject constructor(
             }
             try {
                 _isLoading.value = true
-                videoRepository.getFollowingVideos().collect { videos ->
-                    if (generation == accountGeneration && videos.isNotEmpty()) _followingVideos.value = videos
+                _followingFeedError.value = null
+                videoRepository.getFollowingVideos(failOnError = true).collect { videos ->
+                    if (generation == accountGeneration) _followingVideos.value = videos
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
+                if (generation == accountGeneration) _followingFeedError.value =
+                    "No pudimos actualizar los videos de tus seguidos. Intenta nuevamente."
                 android.util.Log.e("VideoFeedVM", "Error loading following videos", e)
             } finally {
                 uiWatchdog.cancel()

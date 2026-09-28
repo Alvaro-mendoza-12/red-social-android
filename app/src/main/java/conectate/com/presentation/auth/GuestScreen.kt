@@ -335,7 +335,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                     Triple("messages", "Mensajes", Icons.Default.ChatBubbleOutline),
                     Triple("videos", "Videos", Icons.Default.VideoLibrary),
                     Triple("social", "Social", Icons.Default.Public),
-                    Triple("search", "Buscar", Icons.Default.Search),
+                    Triple("games", "Juegos", Icons.Default.SportsEsports),
                     Triple("profile", "Perfil", Icons.Default.Person),
                 ).forEach { (route, label, icon) ->
                     NavigationBarItem(
@@ -428,6 +428,21 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                                     modifier = Modifier.clickable { viewModel.openProfile(profile.id) },
                                 )
                             }
+                        }
+                    }
+                    "games" -> Column(
+                        Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Spacer(Modifier.height(12.dp))
+                        Icon(Icons.Default.SportsEsports, contentDescription = null, modifier = Modifier.size(56.dp))
+                        Text("Encuentra compañeros para jugar", style = MaterialTheme.typography.headlineSmall)
+                        Text("Para crear tu perfil de jugador y conectar con otras personas, necesitas una cuenta. Juegos está disponible para cuentas autorizadas durante la prueba cerrada.")
+                        Button(onClick = { restrictedAction = "conectar con jugadores" }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Crear cuenta para continuar")
+                        }
+                        OutlinedButton(onClick = { section = "messages" }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Seguir explorando personas")
                         }
                     }
                     "profile" -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {

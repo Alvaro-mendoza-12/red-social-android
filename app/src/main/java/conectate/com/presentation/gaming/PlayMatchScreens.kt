@@ -76,9 +76,17 @@ fun GamesHomeScreen(
     onMatchFound: (String) -> Unit,
     onOpenChat: (String) -> Unit,
     viewModel: PlayMatchViewModel = hiltViewModel(),
+    onInboxVisible: (List<PlayMatchConnection>, List<PlayMatchMatch>) -> Unit = { _, _ -> },
 ) {
     PlayMatchSystemBars()
     val state by viewModel.state.collectAsState()
+    val currentInboxCallback by rememberUpdatedState(onInboxVisible)
+    val inboxLifecycleState by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    LaunchedEffect(state.capabilities.enabled, state.connections, state.matches, inboxLifecycleState) {
+        if (inboxLifecycleState == androidx.lifecycle.Lifecycle.State.RESUMED && state.capabilities.enabled) {
+            currentInboxCallback(state.connections, state.matches)
+        }
+    }
     LaunchedEffect(state.session?.status, state.session?.id) {
         if (state.session?.status == "MATCH_FOUND") state.session?.id?.let(onMatchFound)
     }

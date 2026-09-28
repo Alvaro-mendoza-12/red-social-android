@@ -610,7 +610,7 @@ class VideoRepository @Inject constructor(
     }
 
 
-    fun getFollowingVideos(): Flow<List<Video>> = flow {
+    fun getFollowingVideos(emitCachedSnapshots: Boolean = true, failOnError: Boolean = false): Flow<List<Video>> = flow {
         var hasFallbackEmission = false
         try {
             val currentUserId = authService.getCurrentUserId()
@@ -619,7 +619,7 @@ class VideoRepository @Inject constructor(
                 return@flow
             }
 
-            val localVideos = readLocalFeed("following")
+            val localVideos = if (emitCachedSnapshots) readLocalFeed("following") else emptyList()
             if (localVideos.isNotEmpty()) {
                 emit(localVideos)
                 hasFallbackEmission = true
@@ -628,6 +628,7 @@ class VideoRepository @Inject constructor(
             if (shouldUseUbuntuBackend()) {
                 val accessToken = authService.getAccessTokenAwait()
                 if (accessToken == null) {
+                    if (failOnError) throw IllegalStateException("Tu sesión no está disponible. Vuelve a iniciar sesión.")
                     if (!hasFallbackEmission) emit(emptyList())
                     return@flow
                 }
@@ -643,14 +644,17 @@ class VideoRepository @Inject constructor(
                     // not issue one extra legacy-Supabase read per refresh.
                     val videos = result.getOrThrow().map { it.normalizedStorageUrls() }
                     persistLocalFeed("following", videos)
-                    if (videos.isNotEmpty() || !hasFallbackEmission) emit(videos)
+                    emit(videos)
                 } else if (!hasFallbackEmission) {
+                    if (failOnError) throw result.exceptionOrNull() ?: IllegalStateException("No pudimos cargar los videos de tus seguidos.")
                     android.util.Log.e(
                         "VideoRepository",
                         "Error fetching Ubuntu following videos",
                         result.exceptionOrNull()
                     )
                     emit(emptyList())
+                } else if (failOnError) {
+                    throw result.exceptionOrNull() ?: IllegalStateException("No pudimos actualizar los videos de tus seguidos.")
                 }
                 return@flow
             }
@@ -688,8 +692,11 @@ class VideoRepository @Inject constructor(
                 clearLocalFeed("following")
                 emit(emptyList())
             }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             android.util.Log.e("VideoRepository", "Error fetching following videos", e)
+            if (failOnError) throw e
             if (!hasFallbackEmission) emit(emptyList())
         }
     }

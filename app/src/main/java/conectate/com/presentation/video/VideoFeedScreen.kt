@@ -359,7 +359,8 @@ fun VideoFeedScreen(
     onNavigateToChat: (String) -> Unit,
     onNavigateToLiveSetup: () -> Unit = {},
     onNavigateToLiveDiscovery: () -> Unit = {},
-    onNavigateToLiveViewer: (String) -> Unit = {}
+    onNavigateToLiveViewer: (String) -> Unit = {},
+    onFollowingFeedVisible: (List<conectate.com.data.model.Video>) -> Unit = {},
 ) {
     val watchLaterViewModel: VideoWatchLaterViewModel = hiltViewModel()
     val historyViewModel: VideoHistoryViewModel = hiltViewModel()
@@ -385,7 +386,17 @@ fun VideoFeedScreen(
     val videoAutoplayOnMobile by viewModel.videoAutoplayOnMobile.collectAsStateWithLifecycle()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val feedError by viewModel.feedError.collectAsState()
+    val recommendationError by viewModel.feedError.collectAsState()
+    val followingError by viewModel.followingFeedError.collectAsState()
+    val feedError = if (selectedTab == 1) followingError else recommendationError
+    val currentFollowingCallback by rememberUpdatedState(onFollowingFeedVisible)
+    val feedLifecycleState by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    LaunchedEffect(selectedTab, isLoading, isRefreshing, feedError, followingVideos, feedLifecycleState) {
+        if (feedLifecycleState == androidx.lifecycle.Lifecycle.State.RESUMED &&
+            selectedTab == 1 && !isLoading && !isRefreshing && feedError == null) {
+            currentFollowingCallback(followingVideos)
+        }
+    }
     val isConnected by connectivityViewModel.isConnected.collectAsState()
     val isCellular by connectivityViewModel.isCellular.collectAsState()
     val cellularAutoplayBlocked = isCellular && !videoAutoplayOnMobile
@@ -1872,7 +1883,7 @@ fun VideoFeedScreen(
                  Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Color.White)
                 }
-            } else if (selectedTab == 0 && feedEntries.isEmpty() && feedError != null) {
+            } else if (feedEntries.isEmpty() && feedError != null) {
                  Box(
                      modifier = Modifier.fillMaxSize(),
                      contentAlignment = Alignment.Center
@@ -1883,7 +1894,7 @@ fun VideoFeedScreen(
                          modifier = Modifier.padding(horizontal = 32.dp)
                      ) {
                          Text(
-                             "Videos no respondió a tiempo. Tu contenido guardado seguirá disponible cuando exista.",
+                             feedError ?: "No pudimos actualizar tus videos. Intenta nuevamente.",
                              color = Color.White,
                              textAlign = TextAlign.Center,
                              fontWeight = FontWeight.Bold

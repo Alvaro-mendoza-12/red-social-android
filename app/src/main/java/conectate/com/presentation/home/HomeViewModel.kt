@@ -8,6 +8,11 @@ import conectate.com.data.repository.GroupRepository
 import conectate.com.data.repository.CommunityRepository
 import conectate.com.data.repository.VideoRepository
 import conectate.com.data.repository.MomentRepository
+import conectate.com.data.repository.PostRepository
+import conectate.com.data.repository.PlayMatchRepository
+import conectate.com.data.repository.NotificationRepository
+import conectate.com.data.model.PlayMatchConnection
+import conectate.com.data.model.PlayMatchMatch
 import conectate.com.data.supabase.AuthService
 import conectate.com.presentation.messages.normalizedVisibleConversations
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,6 +20,10 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
@@ -29,6 +38,9 @@ class HomeViewModel @Inject constructor(
     private val communityRepository: CommunityRepository,
     private val videoRepository: VideoRepository,
     private val momentRepository: MomentRepository,
+    private val postRepository: PostRepository,
+    private val playMatchRepository: PlayMatchRepository,
+    private val notificationRepository: NotificationRepository,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -36,16 +48,39 @@ class HomeViewModel @Inject constructor(
     private val _newFollowingVideos = MutableStateFlow(false)
     val newFollowingVideos: StateFlow<Boolean> = _newFollowingVideos.asStateFlow()
     private val _newFollowingMoments = MutableStateFlow(false)
-    val newFollowingMoments: StateFlow<Boolean> = _newFollowingMoments.asStateFlow()
+    private val _newFollowingPosts = MutableStateFlow(false)
+    val newSocialContent = combine(_newFollowingPosts, _newFollowingMoments) { posts, moments -> posts || moments }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    private val _newGames = MutableStateFlow(false)
+    val newGames = _newGames.asStateFlow()
+    val unreadProfileNotifications = notificationRepository.unreadCount
+    private val foreground = MutableStateFlow(false)
+    private var latestVideoAt: Instant? = null
+    private var latestPostAt: Instant? = null
+    private var gameKeys: Set<String> = emptySet()
 
-    fun markSectionSeen(section: String) {
+    fun setForeground(visible: Boolean) { foreground.value = visible }
+
+    fun markFeedSeen(section: String, timestamps: List<String>) {
         val userId = authService.getCurrentUserId() ?: return
-        sectionVisits.edit().putString("$userId:$section", Instant.now().toString()).apply()
+        val loadedThrough = HomeNoveltyPolicy.newest(timestamps) ?: return
+        val seen = maxOf(lastSectionVisit(userId, section), loadedThrough)
+        sectionVisits.edit().putString("$userId:$section", seen.toString()).apply()
         when (section) {
-            "videos" -> _newFollowingVideos.value = false
-            "social" -> _newFollowingMoments.value = false
+            "videos" -> _newFollowingVideos.value = HomeNoveltyPolicy.hasNewer(latestVideoAt, seen)
+            "social" -> _newFollowingPosts.value = HomeNoveltyPolicy.hasNewer(latestPostAt, seen)
         }
     }
+
+    fun markGamesSeen(connections: List<PlayMatchConnection>, matches: List<PlayMatchMatch>) {
+        val userId = authService.getCurrentUserId() ?: return
+        val loaded = HomeNoveltyPolicy.gameEvents(connections, matches)
+        val seen = sectionVisits.getStringSet("$userId:games", emptySet()).orEmpty() + loaded
+        sectionVisits.edit().putStringSet("$userId:games", seen.takeLastBounded(500)).apply()
+        _newGames.value = (gameKeys - seen).isNotEmpty()
+    }
+
+    private fun Set<String>.takeLastBounded(limit: Int): Set<String> = toList().takeLast(limit).toSet()
 
     private fun lastSectionVisit(userId: String, section: String): Instant {
         val key = "$userId:$section"
@@ -58,32 +93,47 @@ class HomeViewModel @Inject constructor(
         return runCatching { Instant.parse(saved) }.getOrDefault(Instant.now())
     }
 
-    private suspend fun refreshNewContent(userId: String) {
-        lastSectionVisit(userId, "videos")
-        val momentsSince = lastSectionVisit(userId, "social")
-        runCatching {
-            val videos = videoRepository.getFollowingVideos().toList().lastOrNull().orEmpty()
-            val currentVisit = lastSectionVisit(userId, "videos")
-            _newFollowingVideos.value = videos.any {
-                runCatching { Instant.parse(it.created_at).isAfter(currentVisit) }.getOrDefault(false)
+    private suspend fun quietlyRefresh(block: suspend () -> Unit) {
+        try { withTimeoutOrNull(12_000L) { block() } }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { /* A failed refresh never acknowledges unseen content. */ }
+    }
+
+    private fun isCurrent(userId: String) = userId == authService.getCurrentUserId()
+
+    private suspend fun refreshNewContent(userId: String) = coroutineScope {
+        launch { quietlyRefresh {
+            val videos = videoRepository.getFollowingVideos(emitCachedSnapshots = false, failOnError = true)
+                .toList().lastOrNull().orEmpty()
+            currentCoroutineContext().ensureActive()
+            if (isCurrent(userId)) {
+                latestVideoAt = HomeNoveltyPolicy.newest(videos.filter { it.userId != userId }.map { it.created_at })
+                _newFollowingVideos.value = HomeNoveltyPolicy.hasNewer(latestVideoAt, lastSectionVisit(userId, "videos"))
             }
-        }
-        runCatching {
-            momentRepository.refreshMoments()
-            val moments = momentRepository.getMoments().first()
-            val candidates = moments.filter {
-                it.userId != userId && runCatching {
-                    Instant.parse(it.createdAt.orEmpty()).isAfter(momentsSince)
-                }.getOrDefault(false)
+        } }
+        launch { quietlyRefresh {
+            val posts = postRepository.getGlobalPosts(mode = "following", emitCachedSnapshots = false)
+                .toList().lastOrNull().orEmpty()
+            if (postRepository.globalFeedError.value != null) return@quietlyRefresh
+            currentCoroutineContext().ensureActive()
+            if (isCurrent(userId)) {
+                latestPostAt = HomeNoveltyPolicy.newest(posts.filter { it.userId != userId }.map { it.createdAt })
+                _newFollowingPosts.value = HomeNoveltyPolicy.hasNewer(latestPostAt, lastSectionVisit(userId, "social"))
             }
-            val following = userRepository.getFollowedUserIds(candidates.map { it.userId }).getOrThrow()
-            val currentVisit = lastSectionVisit(userId, "social")
-            _newFollowingMoments.value = candidates.any {
-                it.userId.lowercase() in following && runCatching {
-                    Instant.parse(it.createdAt.orEmpty()).isAfter(currentVisit)
-                }.getOrDefault(false)
+        } }
+        launch { quietlyRefresh { momentRepository.refreshMoments() } }
+        launch { quietlyRefresh { notificationRepository.updateUnreadCount().getOrThrow() } }
+        launch { quietlyRefresh {
+            if (!playMatchRepository.capabilities().getOrThrow().enabled) return@quietlyRefresh
+            val connections = playMatchRepository.connections().getOrThrow().items
+            val matches = playMatchRepository.matches().getOrThrow().items
+            currentCoroutineContext().ensureActive()
+            if (isCurrent(userId)) {
+                gameKeys = HomeNoveltyPolicy.gameEvents(connections, matches)
+                val seen = sectionVisits.getStringSet("$userId:games", emptySet()).orEmpty()
+                _newGames.value = (gameKeys - seen).isNotEmpty()
             }
-        }
+        } }
     }
 
     private val _currentUserAvatarUrl = MutableStateFlow<String?>(null)
@@ -127,13 +177,40 @@ class HomeViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            authService.currentSession.map { authService.getCurrentUserId() }.distinctUntilChanged().collectLatest { userId ->
+            authService.currentSession.map { authService.getCurrentUserId() }.distinctUntilChanged().collect {
                 _newFollowingVideos.value = false
                 _newFollowingMoments.value = false
+                _newFollowingPosts.value = false
+                _newGames.value = false
+                latestVideoAt = null
+                latestPostAt = null
+                gameKeys = emptySet()
+            }
+        }
+        viewModelScope.launch {
+            combine(authService.currentSession.map { authService.getCurrentUserId() }.distinctUntilChanged(), foreground) { userId, visible ->
+                userId.takeIf { visible }
+            }.distinctUntilChanged().collectLatest { userId ->
                 if (userId.isNullOrBlank()) return@collectLatest
-                while (true) {
-                    refreshNewContent(userId)
-                    kotlinx.coroutines.delay(120_000L)
+                lastSectionVisit(userId, "videos")
+                lastSectionVisit(userId, "social")
+                coroutineScope {
+                    launch {
+                        momentRepository.getMoments().collectLatest { moments -> quietlyRefresh {
+                            val now = Instant.now()
+                            val candidates = moments.filter {
+                                it.userId != userId && !it.isViewed &&
+                                    HomeNoveltyPolicy.instant(it.expiresAt)?.isAfter(now) == true
+                            }
+                            val following = if (candidates.isEmpty()) emptySet() else
+                                userRepository.getFollowedUserIds(candidates.map { it.userId }.distinct()).getOrThrow()
+                            if (isCurrent(userId)) _newFollowingMoments.value = candidates.any { it.userId.lowercase() in following }
+                        } }
+                    }
+                    while (true) {
+                        refreshNewContent(userId)
+                        kotlinx.coroutines.delay(120_000L)
+                    }
                 }
             }
         }

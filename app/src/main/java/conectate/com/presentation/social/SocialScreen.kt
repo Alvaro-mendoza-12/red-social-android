@@ -177,7 +177,8 @@ fun SocialScreen(
     createMomentViewModel: CreateMomentViewModel = hiltViewModel(),
     connectivityViewModel: ConnectivityViewModel = hiltViewModel(),
     sharedText: String? = null,
-    sharedUri: String? = null
+    sharedUri: String? = null,
+    onFollowingFeedVisible: (List<conectate.com.data.model.Post>) -> Unit = {},
 ) {
     val posts by viewModel.posts.collectAsState()
     val recommendedPeople by viewModel.recommendedPeople.collectAsState()
@@ -223,6 +224,14 @@ fun SocialScreen(
     
     val tabs = listOf("Social", "Momentos", "Rondas")
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { tabs.size })
+    val currentFollowingCallback by rememberUpdatedState(onFollowingFeedVisible)
+    val feedLifecycleState by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    LaunchedEffect(feedMode, isRefreshing, feedError, posts, pagerState.currentPage, feedLifecycleState) {
+        if (feedLifecycleState == androidx.lifecycle.Lifecycle.State.RESUMED &&
+            feedMode == "following" && !isRefreshing && feedError == null && pagerState.currentPage == 0) {
+            currentFollowingCallback(posts)
+        }
+    }
     val coroutineScope = rememberCoroutineScope()
     val socialListState = rememberLazyListState()
     var automaticFeedRecoveryAttempts by remember { mutableIntStateOf(0) }
