@@ -153,7 +153,8 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
   app.get('/v1/guest/moments', requireGuest, async (req, res, next) => {
     try {
       const { rows } = await pool.query(
-        `SELECT id::text, user_id, media_url, media_type, thumbnail_url, caption,
+        `SELECT id::text, user_id, media_url, media_type, thumbnail_url,
+                COALESCE(caption, '') AS caption,
                 created_at, expires_at
          FROM fallback_moments
          WHERE visibility_type = 'public' AND visibility = 'all'
