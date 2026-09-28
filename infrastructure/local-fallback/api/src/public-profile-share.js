@@ -143,7 +143,7 @@ function profileShareHtml(profile, publicBaseUrl, posts = []) {
   }).join('')
   return `<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}">
+<title>${escapeHtml(title)}</title>${image ? `<link rel="icon" href="${escapeHtml(image)}" type="image/jpeg">` : ''}<meta name="description" content="${escapeHtml(description)}">
 <meta property="og:type" content="profile"><meta property="og:site_name" content="Novvin"><meta property="og:locale" content="es_PE">
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:description" content="${escapeHtml(description)}">

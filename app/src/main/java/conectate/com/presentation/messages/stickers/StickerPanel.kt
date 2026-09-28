@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -28,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import conectate.com.data.model.StickerItem
@@ -51,6 +51,7 @@ fun StickerPanel(
     val packs by viewModel.packs.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val actionMessage by viewModel.actionMessage.collectAsState()
+    val compactHeight = LocalConfiguration.current.screenHeightDp < 500
 
     var selectedTab by remember { mutableStateOf(StickerPanelTab.RECENT) }
     var selectedPackId by remember { mutableStateOf<String?>(null) }
@@ -98,7 +99,7 @@ fun StickerPanel(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.6f)
+                .fillMaxHeight(if (compactHeight) 0.94f else 0.6f)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -152,7 +153,7 @@ fun StickerPanel(
                 onCreateClick = { imagePickerLauncher.launch("image/*") },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 180.dp, max = 420.dp)
+                    .weight(1f)
             )
         }
     }
