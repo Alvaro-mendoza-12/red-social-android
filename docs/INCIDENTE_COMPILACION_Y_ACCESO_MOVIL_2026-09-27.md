@@ -75,3 +75,9 @@ seguían visibles. Su SHA-256 es
 No se introdujo ninguna contraseña personal durante la prueba. Falta observar
 un intento de inicio de sesión en ese teléfono con la APK nueva para confirmar
 el recorrido completo; el teléfono se desconectó de ADB antes de ese paso.
+
+## Continuidad del 28/09/2026
+
+La APK posterior **3.3.22-debug**, código **84**, producto **f906b53f24c1**, compiló con `assembleDebug` y pasó las **871 pruebas Android** disponibles, sin fallos, errores ni omisiones. Se instaló en el Motorola sin borrar datos; el hash del APK instalado coincide con la entrega. La sesión guardada reabre en Mensajes después de cerrar completamente la app. El servidor pasó **103 comprobaciones por HTTPS**, incluidas contraseña correcta/incorrecta, recuperación y nuevo acceso con la cuenta sintética. No se cambió ninguna contraseña personal para realizar esas pruebas.
+
+El bloqueo de compilación se liberó mediante un BuildService administrado por Gradle; se ajustaron sus heaps y se restauró la compilación incremental en daemon de Kotlin. Estos cambios no requieren borrar repetidamente archivos del índice de Git. Detalles, hash y evidencias: [VERIFICACION_REQUISITOS_MOVIL_2026-09-28.md](VERIFICACION_REQUISITOS_MOVIL_2026-09-28.md). Las observaciones del 27/09 anteriores se conservan como historial del incidente.

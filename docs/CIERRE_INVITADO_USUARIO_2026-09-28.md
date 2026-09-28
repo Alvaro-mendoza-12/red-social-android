@@ -20,7 +20,9 @@ Checkout: `D:\red social - live-gifts`. Rama: `feature/live-gifts`.
 | Una solicitud sintética antigua seguía en administración. | Se comprobó el ID y su identificador de prueba, la cuenta ya ausente, y se eliminó únicamente esa solicitud. Documentado en `IMPLEMENTACION_LIVE_AUTH_2026-09-26.md`. |
 | Dos daemons quedaron esperando el bloqueo de compilación incluso después de terminar la tarea anterior. | Se sustituye la captura del canal en `buildFinished` por un BuildService AutoCloseable, con uso declarado en las tareas y espera limitada. Gradle administra la liberación también para consultas del IDE y compilaciones fallidas. |
 
-## Comprobaciones ejecutadas
+## Comprobaciones de la primera entrega de este informe
+
+La entrega más reciente, 3.3.22-debug/84, y la revisión física posterior se describen en [VERIFICACION_REQUISITOS_MOVIL_2026-09-28.md](VERIFICACION_REQUISITOS_MOVIL_2026-09-28.md). Esa entrega pasó 871 pruebas Android y 103 comprobaciones del servidor por HTTPS. Los resultados siguientes se conservan como evidencia de la iteración anterior, no como el conteo actual.
 
 - Android: 23 pruebas correctas, sin errores, fallos u omisiones, de `UsernamePolicyTest`, `GuestModeSessionTest`, `ProfileIdentityTest` y `ReadDeadlineTest`. Cubren identidad conservada al reabrir, vencimiento, conversión, consumo único de destinos, UUID inválido, salida, respuesta tardía posterior a la salida, observación de enlaces posteriores y origen del @usuario elegido.
 - Se repitió `verify-username-guest-e2e.js` contra el HTTPS público: 78 comprobaciones correctas; 22 rutas de escritura rechazaron el JWT de invitado. Incluye registro, carrera por username, contraseña correcta/incorrecta, recuperación manual, sustitución y consumo del código, segundo factor perdido y nuevo acceso. También comprueba la elección explícita coincidente con el prefijo de correo, búsqueda, vista previa, protección del origen y privacidad de identidades heredadas. Acceso de la cuenta sintética en 680 ms; no es una garantía de latencia para otras conexiones.
@@ -33,7 +35,7 @@ El invitado conserva su identidad al cerrar y abrir mientras el token es válido
 
 ## Límites y solicitudes anteriores que no se declaran cerradas
 
-- El Motorola no aparece en ADB. La revisión visual de esta entrega debe distinguirse de una prueba física.
+- El Motorola no aparecía en ADB durante la primera iteración de este informe. Posteriormente se instaló 3.3.22-debug/84 sin borrar datos y se revisaron pantallas reales a escala normal y al 200 %; su alcance y las capturas figuran en el informe de verificación enlazado.
 - TalkBack no está instalado en el emulador actual; la revisión de etiquetas, regiones accesibles y foco no equivale a una sesión manual con ese lector.
 - El selector de idioma y `locales_config.xml` tienen ocho variantes: español, inglés, portugués, francés, alemán, japonés y chino simplificado/tradicional. La solicitud previa de **todos los idiomas de Android** no está completada; existen además textos nuevos en español que requieren recursos traducidos. No se configura un proveedor de pago ni se presenta un fallback como traducción completa.
 - Las pruebas de salud y señalización no certifican audio bidireccional de salas de voz. Sigue haciendo falta comprobarlo con dos participantes y audio real.
