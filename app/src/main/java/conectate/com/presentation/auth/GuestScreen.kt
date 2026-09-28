@@ -3,6 +3,8 @@ package conectate.com.presentation.auth
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -17,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -216,7 +219,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
             onDismissRequest = viewModel::clearPreviewContent,
             title = { Text(content.userName) },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     if (!content.videoUrl.isNullOrBlank()) GuestVideoPlayer(content.videoUrl)
                     else {
                         Text(content.content)
@@ -263,7 +266,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
             onDismissRequest = viewModel::closeProfile,
             title = { Text(profile.displayName) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("@${profile.username ?: "usuario"}")
                     profile.bio?.let { Text(it) }
                     OutlinedButton(onClick = {
@@ -281,7 +284,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Explorar Novvin") },
+                title = { Text("Explorar Novvin", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 actions = { TextButton(onClick = ::createAccount) { Text("Crear cuenta") } },
             )
         },
@@ -298,7 +301,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                         selected = section == route,
                         onClick = { section = route },
                         icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label, maxLines = 1) },
+                        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     )
                 }
             }
@@ -386,7 +389,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                             }
                         }
                     }
-                    "profile" -> {
+                    "profile" -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                         Spacer(Modifier.height(24.dp))
                         Icon(Icons.Default.Person, contentDescription = "Avatar de invitado", modifier = Modifier.size(64.dp))
                         Text("Modo invitado", color = MaterialTheme.colorScheme.primary)

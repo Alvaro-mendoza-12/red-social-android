@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict')
 const crypto = require('node:crypto')
 const { Client } = require('pg')
+const { codeAtStep } = require('../src/two-factor')
 const base = String(process.env.E2E_API_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '')
 const suffix = crypto.randomBytes(6).toString('hex')
 const emails = [1, 2, 3].map((n) => `username-guest-e2e-${suffix}-${n}@example.invalid`)
@@ -44,7 +45,7 @@ async function main() {
     check('concurrent registration rejects duplicate', racing.some((r) => r.status === 409 && r.body.error === 'USERNAME_TAKEN'))
     const winner = racing.find((r) => r.status === 201)
     const email = winner.body.user.email
-    const token = winner.body.accessToken
+    let token = winner.body.accessToken
     const id = winner.body.user.id
     check('registration creates complete session', Boolean(token && id))
     const sameName = await register(emails[2], `${handle}b`)
@@ -116,6 +117,13 @@ async function main() {
     check('private profile blocked in public preview',
       (await fetch(`${base}/v1/public/profiles/${handle}`, { signal: AbortSignal.timeout(10_000) })).status === 404)
     assert.ok(process.env.ADMIN_SYNC_TOKEN, 'manual recovery verification needs the configured server administrator credential')
+    const factorSetup = await request('/v1/auth/2fa/setup', 'POST', { password }, token)
+    check('second factor prepared for lost-device fixture', factorSetup.status === 200 && Boolean(factorSetup.body.secret))
+    const factorEnabled = await request('/v1/auth/2fa/enable', 'POST', {
+      password, totpCode: codeAtStep(factorSetup.body.secret, Math.floor(Date.now() / 30_000)),
+    }, token)
+    check('second factor enabled before manual recovery', factorEnabled.status === 200 && Boolean(factorEnabled.body.accessToken))
+    token = factorEnabled.body.accessToken
     const manual = await request('/v1/auth/account-recovery/cases', 'POST', {
       identifier: email, contactType: 'email', alternateContact: emails[2],
       description: 'Caso sintético: perdí contraseña y dispositivo; comprueba solo esta cuenta de prueba.',
@@ -125,7 +133,7 @@ async function main() {
     const cases = await request('/v1/admin/account-recovery/cases', 'GET', undefined, undefined, adminHeaders)
     check('administrator receives recovery request', cases.status === 200 && JSON.stringify(cases.body).includes(manual.body.caseId))
     const review = { userId: id, reviewedBy: 'E2E synthetic reviewer',
-      verificationRef: 'Propiedad de fixture confirmada por esta prueba sintética aislada; no es una cuenta real.', resetTwoFactor: false }
+      verificationRef: 'Propiedad de fixture confirmada por esta prueba sintética aislada; no es una cuenta real.', resetTwoFactor: true }
     const issue = () => request(`/v1/admin/account-recovery/cases/${manual.body.caseId}/issue-code`, 'POST', review, undefined, adminHeaders)
     const firstCode = await issue()
     check('administrator can issue a recovery code', firstCode.status === 200 && Boolean(firstCode.body.resetToken))
@@ -139,6 +147,8 @@ async function main() {
       resetToken: secondCode.body.resetToken, newPassword: replacementPassword,
     })
     check('reviewed code recovers complete access', recovered.status === 200 && Boolean(recovered.body.accessToken))
+    check('reviewed lost-device recovery resets second factor',
+      (await request('/v1/auth/2fa/status', 'GET', undefined, recovered.body.accessToken)).body.enabled === false)
     check('manual recovery revokes old sessions', (await request('/v1/auth/me', 'GET', undefined, token)).status === 401)
     check('manual recovery permits new password login', (await request('/v1/auth/login', 'POST', {
       email, password: replacementPassword, client: 'android',
