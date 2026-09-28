@@ -38,7 +38,7 @@ const { stableKey } = require('./request-security')
 const { safeErrorLogDetails } = require('./request-observability')
 const { insertMessageOnce } = require('./message-insert-store')
 const { mayReuseMessageMedia } = require('./message-media-access')
-const { USERNAME_PATTERN, cleanUsername, usernameOwnedByAnother } = require('./username-policy')
+const { cleanUsername, usernameOwnedByAnother, usernameProblem } = require('./username-policy')
 const { ensureDirectMessageRequestPolicy, introPolicyError } = require('./direct-message-request-policy')
 const { ensureMessageMarkerTables, registerMessageMarkerRoutes } = require('./message-markers-routes')
 const { ensureVideoWatchLaterTables, registerVideoWatchLaterRoutes } = require('./video-watch-later-routes')
@@ -3209,6 +3209,37 @@ function publicMentionHandles(content) {
 }
 
 async function findUniquePublicMention(pool, handle) {
+  const exact = new Map()
+  const { rows: localHandles } = await pool.query(
+    `SELECT u.id::text AS id, u.supabase_user_id::text AS supabase_user_id,
+            COALESCE(NULLIF(o.profile->>'display_name', ''), u.display_name) AS display_name
+     FROM fallback_profile_overrides o JOIN fallback_users u ON u.id = o.user_id
+     WHERE lower(trim(o.profile->>'username')) = $1
+     UNION ALL
+     SELECT c.row_id AS id, NULL AS supabase_user_id,
+            COALESCE(c.row->>'display_name', c.row->>'full_name', '') AS display_name
+     FROM fallback_compat_rows c
+     WHERE c.table_name = 'profiles' AND lower(trim(c.row->>'username')) = $1
+     LIMIT 3`,
+    [handle],
+  )
+  localHandles.forEach((item) => exact.set(normalizeId(item.supabase_user_id || item.id), item))
+  if (await tableExists(pool, 'profiles')) {
+    const { rows: importedHandles } = await pool.query(
+      `SELECT to_jsonb(t) AS row FROM supabase_import.profiles AS t
+       WHERE lower(trim(to_jsonb(t)->>'username')) = $1 LIMIT 3`,
+      [handle],
+    )
+    importedHandles.forEach((entry) => {
+      const profile = normalizeImportedRow(entry.row)
+      const id = textOf(profile, ['id', 'user_id', 'supabase_user_id'], '')
+      const key = normalizeId(id)
+      if (key && !exact.has(key)) exact.set(key, {
+        id, display_name: textOf(profile, ['display_name', 'full_name'], ''),
+      })
+    })
+  }
+  if (exact.size > 0) return exact.size === 1 ? [...exact.values()][0] : null
   const firstPart = handle.split(/[_.-]/)[0]
   if (!firstPart) return null
   const { rows } = await pool.query(
@@ -3437,7 +3468,6 @@ async function publicProfileSearchCandidates(pool, rawQuery, limit = 250) {
          COALESCE(to_jsonb(t)->>'id', ''),
          COALESCE(to_jsonb(t)->>'user_id', ''),
          COALESCE(to_jsonb(t)->>'supabase_user_id', ''),
-         COALESCE(to_jsonb(t)->>'email', ''),
          COALESCE(to_jsonb(t)->>'username', ''),
          COALESCE(to_jsonb(t)->>'display_name', ''),
          COALESCE(to_jsonb(t)->>'full_name', ''),
@@ -3466,7 +3496,6 @@ async function publicProfileSearchCandidates(pool, rawQuery, limit = 250) {
      WHERE $1 = '' OR lower(concat_ws(' ',
        u.id::text,
        COALESCE(u.supabase_user_id::text, ''),
-       COALESCE(u.email, ''),
        COALESCE(u.display_name, ''),
        COALESCE(o.profile->>'username', ''),
        COALESCE(o.profile->>'display_name', ''),
@@ -3497,7 +3526,6 @@ function profileMatchesQuery(profile, query) {
   if (!query) return true
   const haystack = [
     profile.id,
-    profile.email,
     profile.display_name,
     profile.full_name,
     profile.username,
@@ -6844,8 +6872,16 @@ function registerDataRoutes(app, {
       }
       if (Object.prototype.hasOwnProperty.call(patch, 'username')) {
         const username = cleanUsername(patch.username)
-        if (!USERNAME_PATTERN.test(username)) {
-          return res.status(400).json({ error: 'USERNAME_INVALID', message: 'Usa entre 3 y 24 letras, números, puntos, guiones o guiones bajos.' })
+        const problem = usernameProblem(username)
+        if (problem) {
+          return res.status(400).json({ error: problem, message: 'Usa entre 3 y 24 letras, números, puntos, guiones o guiones bajos.' })
+        }
+        const previousOverride = await localProfileOverride(pool, user.id)
+        const existingUsername = cleanUsername(
+          textOf(previousOverride, ['username'], '') || textOf(importedProfile, ['username'], ''),
+        )
+        if (existingUsername && existingUsername.toLowerCase() !== username.toLowerCase()) {
+          return res.status(409).json({ error: 'USERNAME_IMMUTABLE', message: 'El nombre de usuario de esta cuenta es permanente.' })
         }
         if (await usernameOwnedByAnother(pool, username, identity.values)) {
           return res.status(409).json({ error: 'USERNAME_TAKEN', message: 'Nombre en uso, elige otro nombre de usuario.' })

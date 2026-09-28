@@ -1,9 +1,50 @@
 'use strict'
 
 const USERNAME_PATTERN = /^[A-Za-z0-9_.-]{3,24}$/
+const RESERVED_USERNAMES = new Set([
+  'admin', 'administrator', 'administrador', 'administradora', 'soporte',
+  'support', 'system', 'sistema', 'moderator', 'moderador', 'moderadora',
+  'official', 'oficial', 'root', 'novvin', 'conectate', 'security',
+  'seguridad', 'help', 'ayuda', 'api', 'staff', 'team', 'equipo',
+  'null', 'undefined', 'guest', 'invitado',
+])
+const BLOCKED_USERNAME_PARTS = ['porn', 'porno', 'nazi', 'puto', 'puta', 'mierda']
 
 function cleanUsername(value) {
   return typeof value === 'string' ? value.trim().replace(/^@/, '') : ''
+}
+
+function usernameProblem(value) {
+  const username = cleanUsername(value)
+  if (!USERNAME_PATTERN.test(username)) return 'USERNAME_INVALID'
+  const lower = username.toLowerCase()
+  if (RESERVED_USERNAMES.has(lower) || BLOCKED_USERNAME_PARTS.some((part) => lower.includes(part))) {
+    return 'USERNAME_RESERVED'
+  }
+  return null
+}
+
+function usernameSeed(displayName) {
+  const seed = String(displayName || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .slice(0, 24)
+  if (seed.length >= 3 && !usernameProblem(seed)) return seed
+  const fallback = `usuario${seed}`.slice(0, 24)
+  return usernameProblem(fallback) ? 'usuario' : fallback
+}
+
+function usernameCandidates(displayName, requested = '') {
+  const base = usernameSeed(displayName)
+  const root = (cleanUsername(requested).toLowerCase().replace(/[^a-z0-9]/g, '') || base).slice(0, 20)
+  const candidates = [base]
+  for (let number = 2; number <= 40; number += 1) {
+    const suffix = String(number)
+    candidates.push(`${root.slice(0, 24 - suffix.length)}${suffix}`)
+  }
+  return [...new Set(candidates)].filter((value) => !usernameProblem(value))
 }
 
 async function usernameOwnedByAnother(pool, username, ownerIds = []) {
@@ -33,4 +74,11 @@ async function usernameOwnedByAnother(pool, username, ownerIds = []) {
   return legacy.rows.length > 0
 }
 
-module.exports = { USERNAME_PATTERN, cleanUsername, usernameOwnedByAnother }
+module.exports = {
+  USERNAME_PATTERN,
+  cleanUsername,
+  usernameCandidates,
+  usernameOwnedByAnother,
+  usernameProblem,
+  usernameSeed,
+}

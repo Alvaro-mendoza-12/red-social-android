@@ -8,6 +8,9 @@ import androidx.navigation.navArgument
 import conectate.com.presentation.auth.LoginScreen
 import conectate.com.presentation.auth.NovvinAuthTheme
 import conectate.com.presentation.auth.RegisterScreen
+import conectate.com.presentation.auth.GuestScreen
+import conectate.com.presentation.auth.GuestModeViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import conectate.com.presentation.auth.WebLoginScannerScreen
 import conectate.com.presentation.legal.PrivacyPolicyScreen
 
@@ -18,6 +21,7 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
     hasPendingIntent: Boolean
 ) {
     composable(Screen.Splash.route) {
+        val guestViewModel: GuestModeViewModel = hiltViewModel()
         conectate.com.presentation.auth.SplashScreen()
 
         LaunchedEffect(isInitializing, isLoggedIn, hasPendingIntent) {
@@ -38,7 +42,11 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                 android.util.Log.d("MainActivity", "Splash: Already navigated to $currentRoute. Aborting.")
             } else {
                 try {
-                    val targetRoute = if (isLoggedIn) Screen.Home.createRoute() else Screen.Login.route
+                    val targetRoute = when {
+                        isLoggedIn -> Screen.Home.createRoute()
+                        guestViewModel.hasSavedSession() -> Screen.Guest.route
+                        else -> Screen.Login.route
+                    }
                     android.util.Log.d("MainActivity", "Splash: Navigating to ${if (isLoggedIn) "Home" else "Login"}")
                     navController.navigate(targetRoute) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
@@ -63,11 +71,26 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
         }
     }
 
-    composable(Screen.Register.route) { registerEntry ->
+    composable(Screen.Guest.route) {
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
                 navController.navigate(Screen.Home.createRoute()) {
-                    popUpTo(Screen.Register.route) { inclusive = true }
+                    popUpTo(navController.graph.id) { inclusive = false }
+                    launchSingleTop = true
+                }
+            }
+        } else GuestScreen(navController)
+    }
+
+    composable(Screen.Register.route) { registerEntry ->
+        val guestViewModel: GuestModeViewModel = hiltViewModel()
+        if (isLoggedIn) {
+            LaunchedEffect(isLoggedIn) {
+                val pendingProfile = guestViewModel.consumePendingProfile()
+                navController.navigate(
+                    pendingProfile?.let(Screen.UserProfile::createRoute) ?: Screen.Home.createRoute()
+                ) {
+                    popUpTo(navController.graph.id) { inclusive = false }
                     launchSingleTop = true
                 }
             }

@@ -22,7 +22,7 @@ const { googlePlayRtdnConfiguration } = require('./google-play-rtdn')
 const { applyGiftToActiveBattle } = require('./live-battle-scoring')
 const { stableKey } = require('./request-security')
 const { safeErrorLogDetails } = require('./request-observability')
-const { USERNAME_PATTERN, cleanUsername, usernameOwnedByAnother } = require('./username-policy')
+const { cleanUsername, usernameOwnedByAnother, usernameProblem } = require('./username-policy')
 const { introPolicyError } = require('./direct-message-request-policy')
 const { catalogAllowsStickerMedia, stickerPackReadable, stickerRowDeleted } = require('./sticker-media-policy')
 const {
@@ -1838,7 +1838,39 @@ async function upsertProfile(pool, auth, row) {
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   if (Object.prototype.hasOwnProperty.call(row, 'username') && row.username != null) {
     const username = cleanUsername(row.username)
-    if (!USERNAME_PATTERN.test(username)) throw httpError('USERNAME_INVALID', 400)
+    const problem = usernameProblem(username)
+    if (problem) throw httpError(problem, 400)
+    const { rows: currentNames } = await pool.query(
+      `SELECT profile->>'username' AS username FROM fallback_profile_overrides
+       WHERE user_id = $1::uuid AND NULLIF(trim(profile->>'username'), '') IS NOT NULL
+       UNION ALL
+       SELECT row->>'username' AS username FROM fallback_compat_rows
+       WHERE table_name = 'profiles' AND lower(row_id) = ANY($2::text[])
+         AND NULLIF(trim(row->>'username'), '') IS NOT NULL
+       LIMIT 1`,
+      [identity.localUserId, identity.values],
+    )
+    let existing = cleanUsername(currentNames[0]?.username)
+    if (!existing) {
+      const { rows: importedTable } = await pool.query(
+        "SELECT to_regclass('supabase_import.profiles') AS table_oid",
+      )
+      if (importedTable[0]?.table_oid) {
+        const { rows: importedNames } = await pool.query(
+          `SELECT to_jsonb(t)->>'username' AS username
+           FROM supabase_import.profiles t
+           WHERE lower(COALESCE(to_jsonb(t)->>'id', '')) = ANY($1::text[])
+              OR lower(COALESCE(to_jsonb(t)->>'user_id', '')) = ANY($1::text[])
+              OR lower(COALESCE(to_jsonb(t)->>'supabase_user_id', '')) = ANY($1::text[])
+           LIMIT 1`,
+          [identity.values],
+        )
+        existing = cleanUsername(importedNames[0]?.username)
+      }
+    }
+    if (existing && existing.toLowerCase() !== username.toLowerCase()) {
+      throw httpError('USERNAME_IMMUTABLE', 409)
+    }
     if (await usernameOwnedByAnother(pool, username, identity.values)) {
       throw httpError('USERNAME_TAKEN', 409)
     }

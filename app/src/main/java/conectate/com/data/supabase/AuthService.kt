@@ -56,6 +56,7 @@ private val json = Json {
 data class SignUpMetadata(
     val full_name: String,
     val display_name: String? = null,
+    val username: String,
     val country: String,
     val avatar_url: String? = null,
     val privacy_policy_accepted: Boolean = false,
@@ -609,7 +610,8 @@ class AuthService @Inject constructor(
                 val localResult = localFallbackApiClient.register(
                     email = email,
                     password = password,
-                    displayName = metadata.display_name ?: metadata.full_name
+                    displayName = metadata.display_name ?: metadata.full_name,
+                    username = metadata.username,
                 )
                 val localSession = localResult.getOrElse { error ->
                     registrationInProgress = false
@@ -630,6 +632,7 @@ class AuthService @Inject constructor(
                     metadata.display_name?.takeIf { it.isNotBlank() }?.let {
                         put("display_name", kotlinx.serialization.json.JsonPrimitive(it))
                     }
+                    put("username", kotlinx.serialization.json.JsonPrimitive(metadata.username))
                     put("country", kotlinx.serialization.json.JsonPrimitive(metadata.country))
                     metadata.avatar_url?.takeIf { it.isNotBlank() }?.let {
                         put("avatar_url", kotlinx.serialization.json.JsonPrimitive(it))

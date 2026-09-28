@@ -543,6 +543,13 @@ fun LoginScreen(
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                TextButton(
+                    onClick = { navController.navigate(Screen.Guest.route) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) { Text("Continuar como invitado") }
+
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             if (!currentUserId.isNullOrBlank() || storedAccounts.isNotEmpty()) {

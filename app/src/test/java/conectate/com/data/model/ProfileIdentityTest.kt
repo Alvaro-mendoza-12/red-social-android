@@ -23,11 +23,11 @@ class ProfileIdentityTest {
     }
 
     @Test
-    fun displayNameTakesPrecedenceAndFullIdCanBeSearched() {
+    fun chosenUsernameTakesPrecedenceAndFullIdCanBeSearched() {
         val user = User(id = id, email = "juan@example.com", username = "Juan_01", display_name = "Juan Pérez")
         val handle = profilePublicHandle(user)
 
-        assertEquals("juan_perez", handle)
+        assertEquals("juan_01", handle)
         assertEquals(id, profileSearchQuery(id))
         assertEquals("446655440000", profileSearchQuery("@juan_01_446655440000"))
     }

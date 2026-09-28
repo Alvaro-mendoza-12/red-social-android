@@ -70,7 +70,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 
 private fun profileShareLink(userId: String): String =
-    "https://conectate.com/profile/${Uri.encode(userId.trim())}"
+    "conectate://profile/${Uri.encode(userId.trim())}"
 
 internal fun profileUserIdFromQr(raw: String?): String? {
     val uri = runCatching { Uri.parse(raw?.trim().orEmpty()) }.getOrNull() ?: return null
@@ -1109,7 +1109,15 @@ fun ProfileScreen(
                                                     Intent.createChooser(
                                                         Intent(Intent.ACTION_SEND).apply {
                                                             type = "text/plain"
-                                                            putExtra(Intent.EXTRA_TEXT, "Mi usuario: @${profilePublicHandle(user)}\nID: ${user.id}\n$link")
+                                                            val description = user.bio?.trim()?.takeIf { it.isNotBlank() }
+                                                            putExtra(
+                                                                Intent.EXTRA_TEXT,
+                                                                buildString {
+                                                                    append("${user.displayName} (@${profilePublicHandle(user)}) · Perfil de Novvin")
+                                                                    if (description != null) append("\n$description")
+                                                                    append("\n$link")
+                                                                },
+                                                            )
                                                         },
                                                         "Compartir perfil",
                                                     )

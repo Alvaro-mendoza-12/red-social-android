@@ -5,8 +5,12 @@ import java.util.Locale
 
 val publicMentionPattern = Regex("(?<![\\p{L}\\p{N}_.-])@([\\p{L}\\p{N}](?:[\\p{L}\\p{N}\\p{M}_.-]{0,22}[\\p{L}\\p{N}\\p{M}])?)")
 
-/** Public label comes from the chosen display name, never from an email-derived username. */
+/** New accounts use their unique public username; older profiles retain a safe fallback. */
 fun profilePublicHandle(user: User): String {
+    user.username?.trim()?.removePrefix("@")?.takeIf {
+        it.matches(Regex("[A-Za-z0-9_.-]{3,24}")) &&
+            !it.equals(user.email.substringBefore('@'), ignoreCase = true)
+    }?.let { return it.lowercase(Locale.ROOT) }
     val displayName = sequenceOf(user.display_name, user.full_name)
         .map { it.orEmpty().trim() }
         .firstOrNull { it.isNotBlank() && '@' !in it }

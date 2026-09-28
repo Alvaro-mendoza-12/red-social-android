@@ -444,12 +444,13 @@ class UserRepository @Inject constructor(
             ?: sanitizeProfileText(user.display_name)
             ?: sanitizeProfileText(sessionSeed?.fullName)
             ?: displayName
-        val resolvedUsername = resolveUsernameForProfile(
-            userId = normalizedId,
-            preferredUsername = user.username,
-            preferredDisplayName = displayName,
-            email = normalizedEmail
-        )
+        val resolvedUsername = user.username?.trim()?.takeIf { it.isNotBlank() }
+            ?: resolveUsernameForProfile(
+                userId = normalizedId,
+                preferredUsername = null,
+                preferredDisplayName = displayName,
+                email = normalizedEmail
+            )
 
         return user.copy(
             id = normalizedId,
@@ -1325,10 +1326,11 @@ class UserRepository @Inject constructor(
             var acceptedAt = if (privacyPolicyAccepted) java.time.OffsetDateTime.now().toString() else null
 
             val preparedUser = prepareProfileForPersistence(user)
-            val usernameCandidates = linkedSetOf(
-                preparedUser.username.orEmpty(),
-                buildDeterministicUsername(preparedUser.id)
-            ).filter { it.isNotBlank() }
+            // Never replace a username chosen by the person after a registration race.
+            val usernameCandidates = listOf(
+                preparedUser.username?.takeIf { it.isNotBlank() }
+                    ?: buildDeterministicUsername(preparedUser.id)
+            )
 
             var finalResponse: HttpResponse? = null
             var finalUser = preparedUser
@@ -2568,7 +2570,7 @@ class UserRepository @Inject constructor(
                     accessToken = token,
                     query = profileSearchQuery(sanitizedQuery),
                     limit = 20
-                ).map { users -> users.deduplicatedForSearch() }
+                ).map { users -> users.deduplicatedForSearch().rankedForSearch(sanitizedQuery) }
             }
 
             // 1. If it's a numeric ID, try exact match and also partial matches
@@ -2595,7 +2597,7 @@ class UserRepository @Inject constructor(
             }.decodeList<User>()
 
             android.util.Log.d("UserRepository", "✅ Search successful: ${response.size} users found")
-            Result.success(response.deduplicatedForSearch())
+            Result.success(response.deduplicatedForSearch().rankedForSearch(sanitizedQuery))
         } catch (e: Exception) {
             android.util.Log.e("UserRepository", "❌ Search failed: ${e.message}", e)
             Result.failure(e)
@@ -2607,11 +2609,9 @@ class UserRepository @Inject constructor(
         val users = mutableListOf<User>()
         for (user in this) {
             val keys = listOf(
+                user.id,
                 user.email,
                 user.username.orEmpty(),
-                user.display_name.orEmpty(),
-                user.full_name.orEmpty(),
-                user.id
             )
                 .map { it.trim().lowercase() }
                 .filter { it.isNotBlank() && it != "null" }
@@ -2636,6 +2636,22 @@ class UserRepository @Inject constructor(
             keys.forEach { indexByKey[it] = existingIndex }
         }
         return users
+    }
+
+    private fun List<User>.rankedForSearch(query: String): List<User> {
+        val clean = query.trim().removePrefix("@").lowercase(java.util.Locale.ROOT)
+        return sortedWith(compareBy<User> { user ->
+            val handle = user.username.orEmpty().lowercase(java.util.Locale.ROOT)
+            val display = user.displayName.lowercase(java.util.Locale.ROOT)
+            when {
+                handle == clean -> 0
+                handle.startsWith(clean) -> 1
+                display == clean -> 2
+                display.startsWith(clean) -> 3
+                handle.contains(clean) -> 4
+                else -> 5
+            }
+        }.thenBy { it.username.orEmpty() })
     }
 
     suspend fun searchMentionCandidates(

@@ -4,6 +4,7 @@ sealed class Screen(val route: String) {
     object Splash : Screen("splash")
     object Login : Screen("login")
     object Register : Screen("register")
+    object Guest : Screen("guest")
     object PhoneVerification : Screen("phone_verification")
     object Home : Screen("home?startTab={startTab}&sharedText={sharedText}&sharedUri={sharedUri}") {
         fun createRoute(startTab: String? = null, sharedText: String? = null, sharedUri: String? = null): String {

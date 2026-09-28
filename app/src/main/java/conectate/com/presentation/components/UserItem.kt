@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import conectate.com.data.model.User
+import conectate.com.data.model.profilePublicHandle
 
 @Composable
 
@@ -28,6 +29,7 @@ fun UserItem(
     user: User,
     onClick: () -> Unit,
     showPublicId: Boolean = false,
+    handleFirst: Boolean = false,
     trailingContent: @Composable (RowScope.() -> Unit)? = null
 ) {
     Row(
@@ -51,7 +53,7 @@ fun UserItem(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = user.display_name ?: user.full_name ?: "Usuario",
+                    text = if (handleFirst) "@${profilePublicHandle(user)}" else user.displayName,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -75,14 +77,10 @@ fun UserItem(
                 }
             }
             
-            val handle = if (!user.username.isNullOrBlank()) {
-                "@${user.username}"
-            } else {
-                "@usuario${user.numeric_id ?: ""}"
-            }
+            val handle = "@${profilePublicHandle(user)}"
             
             Text(
-                text = if (showPublicId) {
+                text = if (handleFirst) user.displayName else if (showPublicId) {
                     val publicId = user.numeric_id?.toString()?.takeIf { it.isNotBlank() }
                         ?: user.id.take(8)
                     "$handle · ID $publicId"

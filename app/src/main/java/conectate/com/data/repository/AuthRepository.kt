@@ -117,6 +117,7 @@ class AuthRepository @Inject constructor(
         email: String,
         password: String,
         name: String,
+        username: String,
         country: String,
         gender: String,
         birthDate: String,
@@ -129,6 +130,10 @@ class AuthRepository @Inject constructor(
 
         val acceptedAt = java.time.OffsetDateTime.now().toString()
         val normalizedName = name.trim()
+        val normalizedUsername = username.trim().removePrefix("@").lowercase(java.util.Locale.ROOT)
+        if (!Regex("[a-z0-9_.-]{3,24}").matches(normalizedUsername)) {
+            return Result.failure(Exception("El @usuario debe tener entre 3 y 24 letras, números, puntos, guiones o guiones bajos."))
+        }
         val normalizedCountry = country.trim()
         val normalizedGender = gender.trim().lowercase()
             .takeIf { it in setOf("man", "woman", "unspecified") }
@@ -150,6 +155,7 @@ class AuthRepository @Inject constructor(
                 metadata = conectate.com.data.supabase.SignUpMetadata(
                     full_name = name,
                     display_name = name,
+                    username = normalizedUsername,
                     country = country,
                     privacy_policy_accepted = acceptedPrivacyPolicy,
                     privacy_policy_accepted_at = acceptedAt
@@ -168,6 +174,7 @@ class AuthRepository @Inject constructor(
         var user = User(
             id = userId,
             email = email,
+            username = normalizedUsername,
             display_name = normalizedName,
             full_name = normalizedName,
             country = normalizedCountry,
@@ -233,6 +240,7 @@ class AuthRepository @Inject constructor(
         )
 
         val hydratedUser = confirmedUser.copy(
+            username = normalizedUsername,
             display_name = normalizedName.takeIf { it.isNotBlank() },
             full_name = normalizedName.takeIf { it.isNotBlank() },
             country = normalizedCountry.takeIf { it.isNotBlank() },

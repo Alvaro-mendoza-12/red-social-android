@@ -81,6 +81,15 @@ fun HomeScreen(
         destination.route == Screen.Games.route || destination.route?.startsWith("games_") == true
     } == true
     val unreadBadge by homeViewModel.totalUnreadConversations.collectAsStateWithLifecycle()
+    val newFollowingVideos by homeViewModel.newFollowingVideos.collectAsStateWithLifecycle()
+    val newFollowingMoments by homeViewModel.newFollowingMoments.collectAsStateWithLifecycle()
+
+    LaunchedEffect(currentDestination?.route) {
+        when (currentDestination?.route) {
+            Screen.Videos.route -> homeViewModel.markSectionSeen("videos")
+            Screen.Social.route -> homeViewModel.markSectionSeen("social")
+        }
+    }
 
     Scaffold(
         modifier = Modifier.testTag("main-home"),
@@ -111,6 +120,9 @@ fun HomeScreen(
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
+                                    } else if ((item is BottomNavItem.Videos && newFollowingVideos) ||
+                                        (item is BottomNavItem.Social && newFollowingMoments)) {
+                                        Badge(containerColor = Color(0xFFE53935))
                                     }
                                 }
                             ) {

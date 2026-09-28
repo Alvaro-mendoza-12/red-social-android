@@ -31,6 +31,11 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        private const val PROCESS_INSTANCE_KEY = "novvin_process_instance"
+        private val processInstanceId = java.util.UUID.randomUUID().toString()
+    }
+
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(conectate.com.data.local.prefs.AppLocalePreferences.wrap(newBase))
     }
@@ -73,7 +78,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val createStartedAtMs = android.os.SystemClock.elapsedRealtime()
-        super.onCreate(savedInstanceState)
+        // A process restored after the app was closed must start at Messages, not
+        // restore an old tab from Navigation's saved back stack. Rotation in the
+        // same process still keeps its state.
+        super.onCreate(savedInstanceState?.takeIf {
+            it.getString(PROCESS_INSTANCE_KEY) == processInstanceId
+        })
         if (BuildConfig.DEBUG) {
             android.util.Log.d(
                 "StartupTiming",
@@ -137,6 +147,11 @@ class MainActivity : ComponentActivity() {
                 "MainActivity setContent submitted in ${android.os.SystemClock.elapsedRealtime() - createStartedAtMs} ms"
             )
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(PROCESS_INSTANCE_KEY, processInstanceId)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onNewIntent(intent: Intent) {

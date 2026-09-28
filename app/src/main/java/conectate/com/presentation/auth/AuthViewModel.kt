@@ -8,6 +8,8 @@ import conectate.com.data.localfallback.LocalFallbackMigratedPasswordSetupRequir
 import conectate.com.data.localfallback.LocalFallbackTwoFactorRequiredException
 import conectate.com.data.localfallback.LocalFallbackPasswordChangedNeedsTwoFactorException
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.GuestModeApi
+import conectate.com.data.localfallback.UsernameAvailabilityResponse
 import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.model.User
 import conectate.com.data.repository.AuthRepository
@@ -62,6 +64,7 @@ sealed class AuthState {
 class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val localFallbackApiClient: LocalFallbackApiClient,
+    private val guestModeApi: GuestModeApi,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -150,6 +153,7 @@ class AuthViewModel @Inject constructor(
         email: String,
         password: String,
         name: String,
+        username: String,
         country: String,
         gender: String,
         birthDate: String,
@@ -160,11 +164,12 @@ class AuthViewModel @Inject constructor(
             _authState.value = AuthState.Loading
 
             var result = authRepository.signUpWithEmail(
-                email, password, name, country, gender, birthDate, imageUri, acceptedPrivacyPolicy
+                email, password, name, username, country, gender, birthDate, imageUri, acceptedPrivacyPolicy
             )
 
             _authState.value = result.fold(
                 onSuccess = { 
+                    guestModeApi.clear()
                     _isUserLoggedIn.value = true
                     _currentUserId.value = it.id
                     // Successful sign-up keeps the session active so the nav graph can open Home directly.
@@ -187,6 +192,7 @@ class AuthViewModel @Inject constructor(
             var result = authRepository.signInWithEmail(email, password, secondFactorCode)
             _authState.value = result.fold(
                 onSuccess = {
+                    guestModeApi.clear()
                     _isUserLoggedIn.value = true
                     _currentUserId.value = it.id
                     _assistedRecoveryCaseId.value = null
@@ -262,12 +268,16 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    suspend fun checkUsernameAvailability(username: String, displayName: String): Result<UsernameAvailabilityResponse> =
+        localFallbackApiClient.checkUsernameAvailability(username, displayName)
+
     fun prepareAddAccount(onReady: () -> Unit) {
         if (_authState.value is AuthState.Loading) return
         viewModelScope.launch {
             _accountSwitchMessage.value = "Guardando la cuenta actual…"
             authRepository.rememberCurrentAccount().fold(
                 onSuccess = {
+                    guestModeApi.clear()
                     _accountSwitchMessage.value = null
                     // A previous login success must not complete the add-account screen.
                     _authState.value = AuthState.Idle

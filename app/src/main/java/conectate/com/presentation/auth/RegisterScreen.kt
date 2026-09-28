@@ -46,6 +46,9 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.text.Normalizer
+import java.util.Locale
+import kotlinx.coroutines.delay
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,6 +59,12 @@ fun RegisterScreen(
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     var name by rememberSaveable { mutableStateOf("") }
+    var username by rememberSaveable { mutableStateOf("") }
+    var registrationStep by rememberSaveable { mutableIntStateOf(0) }
+    var usernameAvailable by remember { mutableStateOf(false) }
+    var usernameChecking by remember { mutableStateOf(false) }
+    var usernameError by remember { mutableStateOf("") }
+    var usernameSuggestions by remember { mutableStateOf(emptyList<String>()) }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
@@ -86,6 +95,36 @@ fun RegisterScreen(
 
     LaunchedEffect(privacyAcceptedFromDocument) {
         if (privacyAcceptedFromDocument) acceptedPrivacyPolicy = true
+    }
+
+    LaunchedEffect(username, name, registrationStep) {
+        if (registrationStep != 1) return@LaunchedEffect
+        usernameAvailable = false
+        usernameSuggestions = emptyList()
+        usernameError = ""
+        usernameChecking = false
+        val candidate = username.trim().removePrefix("@").lowercase(Locale.ROOT)
+        if (!Regex("[a-z0-9_.-]{3,24}").matches(candidate)) {
+            usernameError = "Usa de 3 a 24 letras, números, puntos, guiones o guiones bajos."
+            return@LaunchedEffect
+        }
+        delay(400)
+        usernameChecking = true
+        val result = viewModel.checkUsernameAvailability(candidate, name)
+        usernameChecking = false
+        result.fold(
+            onSuccess = {
+                usernameAvailable = it.available
+                usernameError = when (it.reason) {
+                    "USERNAME_TAKEN" -> "Este @usuario ya está en uso. Elige otro."
+                    "USERNAME_RESERVED" -> "Este @usuario está reservado. Elige otro."
+                    "USERNAME_INVALID" -> "Este @usuario no es válido."
+                    else -> if (it.available) "" else "Este @usuario no está disponible."
+                }
+                usernameSuggestions = it.suggestions
+            },
+            onFailure = { usernameError = "No se pudo comprobar el @usuario. Revisa la conexión e inténtalo otra vez." }
+        )
     }
 
     // Lista de países (principales de América Latina)
@@ -171,7 +210,75 @@ fun RegisterScreen(
     ) {
         val responsiveHorizontalPadding =
             if (maxWidth > 600.dp) ((maxWidth - 560.dp) / 2).coerceAtLeast(20.dp) else 20.dp
-        Column(
+        if (registrationStep < 2) {
+            Column(
+                modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+                    .imePadding().verticalScroll(rememberScrollState())
+                    .padding(horizontal = responsiveHorizontalPadding, vertical = 24.dp),
+            ) {
+                AuthBrandHeader(
+                    title = if (registrationStep == 0) "¿Cómo te llamas?" else "Elige tu @usuario",
+                    subtitle = if (registrationStep == 0)
+                        "Este nombre se mostrará en tu perfil y puede coincidir con el de otras personas."
+                    else "Tu @usuario será único y permanente. Servirá para encontrarte y mencionarte.",
+                    compact = true,
+                    onBack = {
+                        if (registrationStep == 1) registrationStep = 0 else navController.popBackStack()
+                    },
+                )
+                Spacer(Modifier.height(32.dp))
+                if (registrationStep == 0) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it.take(60) },
+                        label = { Text("Nombre visible") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = { Text("Podrás cambiarlo más adelante.") },
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it.removePrefix("@").lowercase(Locale.ROOT).take(24) },
+                        label = { Text("Identificador único") },
+                        prefix = { Text("@") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        isError = usernameError.isNotBlank(),
+                        supportingText = {
+                            Text(when {
+                                usernameChecking -> "Comprobando disponibilidad…"
+                                usernameAvailable -> "Disponible. Será tu identificador permanente."
+                                usernameError.isNotBlank() -> usernameError
+                                else -> "Solo letras minúsculas, números, puntos, guiones y _."
+                            }, color = if (usernameError.isNotBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        },
+                    )
+                    if (usernameSuggestions.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("Otras opciones disponibles", style = MaterialTheme.typography.labelLarge)
+                        usernameSuggestions.forEach { suggestion ->
+                            TextButton(onClick = { username = suggestion }) { Text("@$suggestion") }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(28.dp))
+                Button(
+                    onClick = {
+                        if (registrationStep == 0) {
+                            if (name.trim().length < 2) {
+                                AppFeedbackBus.showError("Escribe un nombre de al menos dos caracteres.")
+                            } else {
+                                if (username.isBlank()) username = suggestedUsername(name)
+                                registrationStep = 1
+                            }
+                        } else if (usernameAvailable && !usernameChecking) registrationStep = 2
+                    },
+                    enabled = registrationStep == 0 || (usernameAvailable && !usernameChecking),
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                ) { Text("Continuar") }
+            }
+        } else Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
@@ -185,7 +292,7 @@ fun RegisterScreen(
             title = "Crea tu espacio",
             subtitle = "Una cuenta para conversar, compartir momentos y descubrir lo que te gusta.",
             compact = true,
-            onBack = { navController.popBackStack() },
+            onBack = { registrationStep = 1 },
         )
 
         Spacer(modifier = Modifier.height(22.dp))
@@ -270,18 +377,8 @@ fun RegisterScreen(
         
         Spacer(modifier = Modifier.height(24.dp))
         
-        // Name Field
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text(stringResource(R.string.name)) },
-            modifier = Modifier.fillMaxWidth(),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-            singleLine = true,
-            leadingIcon = {
-                Icon(imageVector = Icons.Default.Person, contentDescription = null)
-            }
-        )
+        Text("$name · @$username", style = MaterialTheme.typography.titleMedium)
+        TextButton(onClick = { registrationStep = 0 }) { Text("Cambiar nombre o @usuario") }
         
         Spacer(modifier = Modifier.height(24.dp))
         Text(
@@ -526,8 +623,11 @@ fun RegisterScreen(
         // Register Button
         val validationMessage = when {
             name.isBlank() -> "Escribe tu nombre."
+            !usernameAvailable -> "Comprueba que tu @usuario esté disponible."
             email.isBlank() -> "Escribe el correo que usarás para iniciar sesión."
             !emailIsValid -> "Escribe un correo válido."
+            username.equals(email.trim().substringBefore('@'), ignoreCase = true) ->
+                "Por privacidad, elige un @usuario distinto a la parte inicial de tu correo."
             password.length < 8 -> "La contraseña debe tener al menos 8 caracteres."
             confirmPassword.isBlank() -> "Confirma tu contraseña."
             password != confirmPassword -> "Las contraseñas no coinciden."
@@ -546,6 +646,7 @@ fun RegisterScreen(
                         email = email,
                         password = password,
                         name = name,
+                        username = username,
                         country = country,
                         gender = gender,
                         birthDate = birthDate,
@@ -591,6 +692,15 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(24.dp))
         }
     }
+}
+
+private fun suggestedUsername(name: String): String {
+    val seed = Normalizer.normalize(name.trim(), Normalizer.Form.NFKD)
+        .replace(Regex("[\\u0300-\\u036f]"), "")
+        .lowercase(Locale.ROOT)
+        .replace(Regex("[^a-z0-9]+"), "")
+        .take(24)
+    return if (seed.length >= 3) seed else "usuario${seed}".take(24)
 }
 
 

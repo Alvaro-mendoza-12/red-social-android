@@ -5,6 +5,13 @@ const express = require('express')
 const helmet = require('helmet')
 const jwt = require('jsonwebtoken')
 const { Pool } = require('pg')
+const { registerGuestModeRoutes } = require('./guest-mode-routes')
+const {
+  cleanUsername,
+  usernameCandidates,
+  usernameOwnedByAnother,
+  usernameProblem,
+} = require('./username-policy')
 const {
   ensureLocalDataTables,
   processBirthdayNotifications,
@@ -252,6 +259,33 @@ app.use('/v1/auth/refresh', createDistributedRateLimitMiddleware({
   code: 'AUTH_REFRESH_RATE_LIMITED',
   key: authIpKey,
   methods: ['POST'],
+}))
+app.use('/v1/auth/username/availability', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'auth:username-availability',
+  limit: boundedInteger(process.env.AUTH_USERNAME_CHECK_RATE_LIMIT_PER_MINUTE, 30, 5, 120),
+  windowMs: 60_000,
+  code: 'USERNAME_CHECK_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['GET'],
+}))
+app.use('/v1/guest/session', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'guest:session',
+  limit: 20,
+  windowMs: 60 * 60_000,
+  code: 'GUEST_SESSION_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['POST'],
+}))
+app.use('/v1/guest', createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'guest:reads',
+  limit: 120,
+  windowMs: 60_000,
+  code: 'GUEST_READ_RATE_LIMITED',
+  key: authIpKey,
+  methods: ['GET'],
 }))
 app.use('/v1/auth/logout', createDistributedRateLimitMiddleware({
   pool,
@@ -2213,12 +2247,36 @@ app.post('/v1/auth/account-recovery/cases/:id/confirm-contact', async (req, res,
   } catch (error) { return next(error) }
 })
 
+app.get('/v1/auth/username/availability', async (req, res, next) => {
+  try {
+    const username = cleanUsername(req.query.username).toLowerCase()
+    const problem = usernameProblem(username)
+    if (problem) return res.json({ username, available: false, reason: problem, suggestions: [] })
+    const available = !(await usernameOwnedByAnother(pool, username))
+    const suggestions = []
+    if (!available) {
+      const candidates = usernameCandidates(req.query.name || username, username)
+      for (const candidate of candidates.slice(0, 16)) {
+        if (candidate === username || await usernameOwnedByAnother(pool, candidate)) continue
+        suggestions.push(candidate)
+        if (suggestions.length === 3) break
+      }
+    }
+    res.set('Cache-Control', 'no-store')
+    return res.json({ username, available, reason: available ? null : 'USERNAME_TAKEN', suggestions })
+  } catch (error) { return next(error) }
+})
+
 app.post('/v1/auth/register', async (req, res, next) => {
   try {
     if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const email = normalizeEmail(req.body?.email)
     const password = String(req.body?.password || '')
     const displayName = cleanText(req.body?.displayName || email.split('@')[0], 80)
+    // Older installed APKs and operational verification scripts do not send a
+    // username. Give them a random, non-email handle while the new UI asks.
+    const requestedUsername = cleanUsername(req.body?.username).toLowerCase()
+    const username = requestedUsername || `usuario${crypto.randomBytes(6).toString('hex')}`
 
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: 'INVALID_EMAIL' })
@@ -2230,10 +2288,22 @@ app.post('/v1/auth/register', async (req, res, next) => {
         message: 'La contraseña debe tener al menos 8 caracteres.',
       })
     }
+    const usernameError = usernameProblem(username)
+    if (usernameError) return res.status(400).json({ error: usernameError })
+    if (username === email.split('@')[0]) {
+      return res.status(400).json({ error: 'USERNAME_MATCHES_EMAIL', message: 'Elige un identificador distinto a tu correo.' })
+    }
+    if (await usernameOwnedByAnother(pool, username)) {
+      return res.status(409).json({ error: 'USERNAME_TAKEN' })
+    }
 
     const passwordHash = await bcrypt.hash(password, 12)
-    const { rows } = await pool.query(
-      `INSERT INTO fallback_users(
+    const client = await pool.connect()
+    let rows
+    try {
+      await client.query('BEGIN')
+      const inserted = await client.query(
+        `INSERT INTO fallback_users(
           email,
           password_hash,
           password_enabled,
@@ -2245,8 +2315,21 @@ app.post('/v1/auth/register', async (req, res, next) => {
        )
        VALUES ($1, $2, TRUE, $3, 'local', 'local_only', NOW(), NOW())
        RETURNING ${userSelectColumns}`,
-      [email, passwordHash, displayName],
-    )
+        [email, passwordHash, displayName],
+      )
+      rows = inserted.rows
+      await client.query(
+        `INSERT INTO fallback_profile_overrides(user_id, profile, updated_at)
+         VALUES ($1, jsonb_build_object('username', $2::text), NOW())`,
+        [rows[0].id, username],
+      )
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw error
+    } finally {
+      client.release()
+    }
     let user = sanitizeUser(rows[0])
     const supabaseSync = await syncLocalUserToSupabase(user, password)
     if (supabaseSync.ok && supabaseSync.user) {
@@ -2269,7 +2352,10 @@ app.post('/v1/auth/register', async (req, res, next) => {
     return res.status(201).json({ ...session, supabaseSync })
   } catch (error) {
     if (error.code === '23505') {
-      return res.status(409).json({ error: 'EMAIL_ALREADY_EXISTS' })
+      return res.status(409).json({
+        error: error.constraint === 'idx_fallback_profile_username_unique'
+          ? 'USERNAME_TAKEN' : 'EMAIL_ALREADY_EXISTS',
+      })
     }
     return next(error)
   }
@@ -3589,6 +3675,7 @@ registerGooglePlayRtdnRoutes(app, {
 })
 registerPostgrestCompatRoutes(app, { pool, authRequired, authOptional })
 registerAiRoutes(app, { authRequired })
+registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName })
 
 app.use((req, res) => {
   res.status(404).json({ error: 'NOT_FOUND', path: req.path })

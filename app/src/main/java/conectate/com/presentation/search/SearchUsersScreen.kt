@@ -146,9 +146,9 @@ fun SearchUsersScreen(
                     items(searchResults, key = { it.id }) { user ->
                         UserItem(
                             user = user,
-                            showPublicId = true,
+                            handleFirst = true,
                             onClick = {
-                                navController.navigate(Screen.Chat.createRoute(user.id))
+                                navController.navigate(Screen.UserProfile.createRoute(user.id))
                             }
                         )
                         HorizontalDivider()

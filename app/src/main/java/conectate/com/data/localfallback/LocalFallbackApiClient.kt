@@ -760,7 +760,16 @@ private data class LocalFallbackRefreshRequest(
 private data class LocalFallbackRegisterRequest(
     val email: String,
     val password: String,
-    val displayName: String? = null
+    val displayName: String? = null,
+    val username: String,
+)
+
+@Serializable
+data class UsernameAvailabilityResponse(
+    val username: String = "",
+    val available: Boolean = false,
+    val reason: String? = null,
+    val suggestions: List<String> = emptyList(),
 )
 
 @Serializable
@@ -1638,7 +1647,8 @@ class LocalFallbackApiClient @Inject constructor(
     suspend fun register(
         email: String,
         password: String,
-        displayName: String?
+        displayName: String?,
+        username: String,
     ): Result<LocalFallbackAuthResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
@@ -1651,7 +1661,8 @@ class LocalFallbackApiClient @Inject constructor(
                     LocalFallbackRegisterRequest(
                         email = email.trim().lowercase(),
                         password = password,
-                        displayName = displayName?.trim()?.takeIf { it.isNotBlank() }
+                        displayName = displayName?.trim()?.takeIf { it.isNotBlank() },
+                        username = username.trim().lowercase(),
                     )
                 )
             }
@@ -1800,6 +1811,25 @@ class LocalFallbackApiClient @Inject constructor(
                 "$baseUrl/v1/data/messages/inbox?tab=${urlEncode(tab)}",
                 accessToken,
             ).getOrThrow().normalized()
+        }
+    }
+
+    suspend fun checkUsernameAvailability(username: String, displayName: String): Result<UsernameAvailabilityResponse> {
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("No pudimos conectar con el servidor para comprobar el nombre de usuario."))
+        return try {
+            val response = supabaseConfig.httpClient.get("$endpoint/v1/auth/username/availability") {
+                parameter("username", username.trim())
+                parameter("name", displayName.trim())
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                Result.success(json.decodeFromString<UsernameAvailabilityResponse>(body))
+            } else {
+                Result.failure(toException(response, decodeError(body)))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -6388,6 +6418,12 @@ class LocalFallbackApiClient @Inject constructor(
             "ACCOUNT_NOT_FOUND" -> Exception("No existe una cuenta con ese correo. Regístrate para crear una cuenta.")
             "INVALID_PASSWORD" -> Exception("Contraseña incorrecta. Intenta otra vez o restablece tu contraseña.")
             "EMAIL_ALREADY_EXISTS" -> Exception("Ese correo ya existe en el servidor Ubuntu.")
+            "USERNAME_TAKEN" -> Exception("Ese @usuario ya está en uso. Elige una de las sugerencias u otro nombre.")
+            "USERNAME_INVALID" -> Exception("El @usuario debe tener entre 3 y 24 letras, números, puntos, guiones o guiones bajos.")
+            "USERNAME_RESERVED" -> Exception("Ese @usuario está reservado o no está permitido. Elige otro.")
+            "USERNAME_MATCHES_EMAIL" -> Exception("Por privacidad, elige un @usuario distinto a la parte inicial de tu correo.")
+            "USERNAME_IMMUTABLE" -> Exception("El @usuario de esta cuenta es permanente y no puede modificarse.")
+            "USERNAME_CHECK_RATE_LIMITED" -> Exception("Has comprobado muchos nombres seguidos. Espera un minuto e inténtalo de nuevo.")
             "EMAIL_AND_PASSWORD_REQUIRED" -> Exception("Escribe correo y contraseña.")
             "INVALID_EMAIL" -> Exception("Escribe un correo electrónico válido.")
             "PASSWORD_TOO_SHORT", "EMAIL_AND_STRONG_PASSWORD_REQUIRED" ->

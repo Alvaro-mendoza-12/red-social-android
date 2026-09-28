@@ -69,7 +69,7 @@ internal enum class ProfileEditSection(
     val description: String,
 ) {
     APPEARANCE("Fotos y apariencia", "Foto de perfil, video de 2 segundos y portada"),
-    BASIC("Información básica", "Nombre, @usuario, biografía, ubicación y cumpleaños"),
+    BASIC("Información básica", "Nombre, biografía, ubicación y cumpleaños"),
     INTERESTS("Gustos y videojuegos", "Intereses, pasatiempos y juegos vinculados"),
     MUSIC("Música de entrada", "Canción que se reproduce desde la presentación de tu perfil"),
     SOCIAL("Redes sociales", "Instagram, TikTok, Facebook, X y WhatsApp"),
@@ -187,10 +187,11 @@ internal fun ProfileEditSections(
                 )
                 OutlinedTextField(
                     value = username,
-                    onValueChange = onUsernameChange,
-                    label = { Text("Nombre de usuario") },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Identificador único") },
                     prefix = { Text("@") },
-                    supportingText = { Text("Único: 3–24 letras, números, _, . o -. Distingue perfiles con el mismo nombre.") },
+                    supportingText = { Text("Es permanente. El nombre visible sí se puede cambiar.") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
