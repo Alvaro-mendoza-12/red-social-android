@@ -17,6 +17,7 @@ Checkout: `D:\red social - live-gifts`. Rama: `feature/live-gifts`.
 | Un enlace recibido con la pantalla de invitado ya abierta guardaba su acción sin mostrar el aviso. | La vista observa el destino pendiente mediante StateFlow y lo consume una sola vez; también procesa enlaces nuevos sin recrear la sesión. |
 | El registro rechazaba un @usuario elegido que coincidiese con el prefijo del correo. | El servidor registra `username_origin` al crear la cuenta. Se conserva la elección explícita en perfil, búsqueda y vista previa; los identificadores heredados derivados del correo siguen ocultos. Las actualizaciones del cliente no cambian ese origen. |
 | Una solicitud sintética antigua seguía en administración. | Se comprobó el ID y su identificador de prueba, la cuenta ya ausente, y se eliminó únicamente esa solicitud. Documentado en `IMPLEMENTACION_LIVE_AUTH_2026-09-26.md`. |
+| Dos daemons quedaron esperando el bloqueo de compilación incluso después de terminar la tarea anterior. | Se sustituye la captura del canal en `buildFinished` por un BuildService AutoCloseable, con uso declarado en las tareas y espera limitada. Gradle administra la liberación también para consultas del IDE y compilaciones fallidas. |
 
 ## Comprobaciones ejecutadas
 
