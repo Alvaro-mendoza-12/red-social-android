@@ -222,8 +222,9 @@ class VideoRepository @Inject constructor(
             .orEmpty()
     }.getOrDefault(emptyList())
 
-    private fun persistLocalFeed(scope: String, videos: List<Video>) {
-        if (videos.isEmpty()) return
+    private fun persistLocalFeed(scope: String, videos: List<Video>, ownerId: String? = authService.getCurrentUserId()) {
+        if (ownerId != authService.getCurrentUserId()) return
+        if (videos.isEmpty()) { clearLocalFeed(scope); return }
         runCatching {
             localFeedCache.edit()
                 .putString(accountScopedFeedKey(scope), cacheJson.encodeToString(videos.take(50)))
@@ -434,6 +435,7 @@ class VideoRepository @Inject constructor(
         emitLocalSnapshotFirst: Boolean = true,
     ): Flow<List<Video>> = flow {
         val startedAt = System.currentTimeMillis()
+        val feedOwnerId = authService.getCurrentUserId()
         val cacheKey = "videos:public:offset=$offset:limit=$limit:random=$random"
         val storedSnapshot = if (offset == 0) readLocalFeed("public") else emptyList()
         val localSnapshot = if (random && storedSnapshot.size > 1) {
@@ -479,7 +481,7 @@ class VideoRepository @Inject constructor(
                         }
                         val deliveredVideos = videos.map { mergeWithLocalVideoStats(it.normalizedStorageUrls()) }
                         _videoFeedError.value = null
-                        if (offset == 0 && deliveredVideos.isNotEmpty()) persistLocalFeed("public", deliveredVideos)
+                        if (offset == 0) persistLocalFeed("public", deliveredVideos, feedOwnerId)
                         if (deliveredVideos.isNotEmpty() || !hasFallbackEmission) emit(deliveredVideos)
                     } else {
                         _videoFeedError.value = result.exceptionOrNull()?.message
@@ -523,7 +525,7 @@ class VideoRepository @Inject constructor(
                     _videoFeedError.value = null
 
                     if (offset == 0 && deliveredVideos.isNotEmpty()) {
-                        persistLocalFeed("public", deliveredVideos)
+                        persistLocalFeed("public", deliveredVideos, feedOwnerId)
                         if (!random) {
                             val stored = runCatching {
                                 upstashCache.set(cacheKey, cacheJson.encodeToString(deliveredVideos), 300)
@@ -643,7 +645,7 @@ class VideoRepository @Inject constructor(
                     // other interaction counters in the same response. Do
                     // not issue one extra legacy-Supabase read per refresh.
                     val videos = result.getOrThrow().map { it.normalizedStorageUrls() }
-                    persistLocalFeed("following", videos)
+                    persistLocalFeed("following", videos, currentUserId)
                     emit(videos)
                 } else if (!hasFallbackEmission) {
                     if (failOnError) throw result.exceptionOrNull() ?: IllegalStateException("No pudimos cargar los videos de tus seguidos.")
@@ -686,10 +688,10 @@ class VideoRepository @Inject constructor(
                 var videos: List<Video> = videoResponse.decodeList<Video>().map { it.normalizedStorageUrls() }
                 var sharedIds = getUserSharedContentIds(currentUserId, "video")
                 videos = videos.map { it.copy(sharedByMe = sharedIds.contains(it.id)).normalizedStorageUrls() }
-                persistLocalFeed("following", videos)
+                persistLocalFeed("following", videos, currentUserId)
                 emit(videos)
             } else {
-                clearLocalFeed("following")
+                if (currentUserId == authService.getCurrentUserId()) clearLocalFeed("following")
                 emit(emptyList())
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {

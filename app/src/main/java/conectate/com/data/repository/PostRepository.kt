@@ -145,7 +145,8 @@ class PostRepository @Inject constructor(
             .orEmpty()
     }.getOrDefault(emptyList())
 
-    private fun persistLocalFeed(mode: String, posts: List<Post>) {
+    private fun persistLocalFeed(mode: String, posts: List<Post>, ownerId: String? = authService.getCurrentUserId()) {
+        if (ownerId != authService.getCurrentUserId()) return
         runCatching {
             localFeedCache.edit()
                 .putString(localFeedKey(mode), cacheJson.encodeToString(posts.take(60)))
@@ -217,6 +218,7 @@ class PostRepository @Inject constructor(
         emitCachedSnapshots: Boolean = true,
     ): Flow<List<Post>> = flow {
         var startedAt = System.currentTimeMillis()
+        val feedOwnerId = authService.getCurrentUserId()
         val normalizedMode = mode.trim().lowercase().takeIf { it in setOf("discover", "following") }
             ?: "discover"
         val cacheKey = "posts:$normalizedMode:offset=$offset:limit=$limit"
@@ -259,7 +261,7 @@ class PostRepository @Inject constructor(
                 }
                 val posts = result.getOrThrow().items
                 _globalFeedError.value = null
-                if (offset == 0) persistLocalFeed(normalizedMode, posts)
+                if (offset == 0) persistLocalFeed(normalizedMode, posts, feedOwnerId)
                 appMetrics.incrementCounter(
                     metric = "posts_fetch_success",
                     attributes = mapOf("source" to "ubuntu", "count" to posts.size.toString())
@@ -303,7 +305,7 @@ class PostRepository @Inject constructor(
                     posts = enrichPostReactions(accessToken, posts, currentUserId)
 
                     if (offset == 0) {
-                        persistLocalFeed(normalizedMode, posts)
+                        persistLocalFeed(normalizedMode, posts, feedOwnerId)
                         val stored = runCatching {
                             upstashCache.set(cacheKey, cacheJson.encodeToString(posts), 300)
                         }.getOrDefault(false)

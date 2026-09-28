@@ -123,7 +123,7 @@ fun HomeScreen(
                                 badge = {
                                     if (item is BottomNavItem.Messages && unreadBadge > 0) {
                                         Badge(
-                                            containerColor = Color(0xFF2196F3), // Blue circle as requested
+                                            containerColor = Color(0xFF1565C0), // White numerals retain readable contrast.
                                             contentColor = Color.White,
                                             modifier = Modifier.offset(x = 6.dp, y = 0.dp)
                                         ) {
