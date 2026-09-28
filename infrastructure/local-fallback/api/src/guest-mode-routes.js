@@ -32,17 +32,27 @@ function importedVideo(row) {
   }
 }
 
-function importedPost(row) {
+function normalizeGuestPost(row) {
   let mediaUrls = row.media_urls || []
   if (typeof mediaUrls === 'string') {
     try { mediaUrls = JSON.parse(mediaUrls) } catch (_) { mediaUrls = [] }
   }
   if (!Array.isArray(mediaUrls)) mediaUrls = []
+  mediaUrls = [...new Set(mediaUrls.map((entry) =>
+    typeof entry === 'string' ? entry : entry?.url || entry?.media_url)
+    .filter((url) => typeof url === 'string' && url.trim()))]
+  const mediaUrl = typeof row.media_url === 'string' && !row.media_url.trim().startsWith('{')
+    ? row.media_url : mediaUrls[0] || null
+  return { ...row, media_url: mediaUrl || mediaUrls[0] || null, media_urls: mediaUrls }
+}
+
+function importedPost(row) {
+  const media = normalizeGuestPost(row)
   return {
     id: String(row.id), user_id: row.user_id || '', user_name: row.user_name || 'Usuario',
     user_profile_image: row.user_profile_image || null,
-    content: row.content || '', media_url: row.media_url || mediaUrls[0] || null,
-    media_urls: mediaUrls, media_type: row.media_type || null,
+    content: row.content || '', media_url: media.media_url,
+    media_urls: media.media_urls, media_type: row.media_type || null,
     created_at: row.created_at,
   }
 }
@@ -80,7 +90,7 @@ async function readPublicContent(pool, kind, id) {
               COALESCE(media_url, media_urls->>0) AS media_url, media_urls, media_type, created_at
        FROM fallback_posts WHERE id = $1::uuid AND visibility = 'public' AND is_sensitive = FALSE`,
     [id])
-  if (rows[0]) return rows[0]
+  if (rows[0]) return video ? rows[0] : normalizeGuestPost(rows[0])
   if (!await importedTableExists(pool, kind)) return null
   // Local rows are authoritative, even when a private row has an old public import.
   const result = await pool.query(video
@@ -228,7 +238,7 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
         imported = result.rows.map(({ row }) => importedPost(row))
       }
       res.set('Cache-Control', 'private, max-age=30')
-      res.json({ items: mergedPublicContent(rows, imported) })
+      res.json({ items: mergedPublicContent(rows.map(normalizeGuestPost), imported) })
     } catch (error) { next(error) }
   })
 

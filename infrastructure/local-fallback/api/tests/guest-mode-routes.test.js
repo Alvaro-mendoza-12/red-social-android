@@ -23,6 +23,18 @@ test('detail lookup cannot revive a private local item from an old public import
   }
 })
 
+test('guest post detail exposes every image URL when storage uses media objects', async () => {
+  const first = 'https://example.invalid/one.jpg'
+  const second = 'https://example.invalid/two.jpg'
+  const pool = { async query() { return { rows: [{ id: cryptoId(), content: 'Dos fotos',
+    media_url: first, media_urls: [{ url: first, media_type: 'image' },
+      { url: second, media_type: 'image' }] }] } } }
+  const { readPublicContent } = require('../src/guest-mode-routes')
+  const post = await readPublicContent(pool, 'posts', cryptoId())
+  assert.deepEqual(post.media_urls, [first, second])
+  assert.equal(post.media_url, first)
+})
+
 test('comments require publicly readable content and include local comments on imported content', async () => {
   const app = express()
   const statements = []
