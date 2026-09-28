@@ -7,6 +7,8 @@ const { codeAtStep } = require('../src/two-factor')
 const base = String(process.env.E2E_API_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '')
 const suffix = crypto.randomBytes(6).toString('hex')
 const emails = [1, 2, 3].map((n) => `username-guest-e2e-${suffix}-${n}@example.invalid`)
+const matchingHandle = `match${suffix}`
+emails.push(`${matchingHandle}@example.invalid`)
 const handle = `auditoria${suffix}`
 const password = `Test-${crypto.randomBytes(18).toString('hex')}!`
 const contentId = crypto.randomUUID()
@@ -74,6 +76,31 @@ async function main() {
     const guest = await request('/v1/guest/session', 'POST', {})
     check('guest identity generated', guest.status === 201 && guest.body.role === 'guest' && /^guest_/.test(guest.body.id))
     const guestToken = guest.body.accessToken
+    const explicitlyChosen = await register(emails[3], matchingHandle)
+    check('an explicitly chosen username may coincide with the email prefix', explicitlyChosen.status === 201)
+    const chosenId = explicitlyChosen.body.user.id
+    const chosenToken = explicitlyChosen.body.accessToken
+    const chosenProfile = await request('/v1/data/profile/me', 'GET', undefined, chosenToken)
+    check('registration records username provenance', chosenProfile.body.profile.username_origin === 'chosen')
+    check('public profile preserves the chosen username',
+      (await request(`/v1/guest/profiles/${chosenId}`, 'GET', undefined, guestToken)).body.profile.username === matchingHandle)
+    const chosenSearch = await request(`/v1/guest/profiles/search?q=${matchingHandle}`, 'GET', undefined, guestToken)
+    check('public search finds the chosen username without private fields',
+      chosenSearch.body.items.some((item) => item.id === chosenId && item.username === matchingHandle) && noPrivateFields(chosenSearch.body))
+    await request('/v1/data/profile/me', 'PATCH', { username_origin: 'legacy', bio: 'Prueba propia' }, chosenToken)
+    await request(`/rest/v1/profiles?id=eq.${chosenId}`, 'PATCH', { username_origin: 'legacy', bio: 'Prueba propia' }, chosenToken)
+    const preservedOrigin = await db.query("SELECT profile->>'username_origin' AS origin FROM fallback_profile_overrides WHERE user_id=$1", [chosenId])
+    check('profile updates cannot change username provenance', preservedOrigin.rows[0].origin === 'chosen')
+    const chosenShare = await fetch(`${base}/v1/public/profiles/${matchingHandle}`, { signal: AbortSignal.timeout(10_000) })
+    const chosenHtml = await chosenShare.text()
+    check('shared preview preserves the chosen handle without exposing email',
+      chosenShare.status === 200 && chosenHtml.includes(`@${matchingHandle}`) && !chosenHtml.includes(emails[3]))
+    await db.query("UPDATE fallback_profile_overrides SET profile = profile - 'username_origin' WHERE user_id=$1", [chosenId])
+    check('a legacy email-derived handle remains hidden',
+      (await request(`/v1/guest/profiles/${chosenId}`, 'GET', undefined, guestToken)).body.profile.username == null)
+    const hiddenSearch = await request(`/v1/guest/profiles/search?q=${matchingHandle}`, 'GET', undefined, guestToken)
+    check('legacy email-derived handles are not searchable', !hiddenSearch.body.items.some((item) => item.id === chosenId))
+    await db.query("UPDATE fallback_profile_overrides SET profile = profile || '{\"username_origin\":\"chosen\"}'::jsonb WHERE user_id=$1", [chosenId])
     const shared = await fetch(`${base}/v1/public/profiles/${handle}`, { signal: AbortSignal.timeout(10_000) })
     const html = await shared.text()
     check('shared profile has public readable preview', shared.status === 200 && html.includes('og:title') && html.includes(`@${handle}`) && !html.includes(email))

@@ -2298,9 +2298,6 @@ app.post('/v1/auth/register', async (req, res, next) => {
     }
     const usernameError = usernameProblem(username)
     if (usernameError) return res.status(400).json({ error: usernameError })
-    if (username === email.split('@')[0]) {
-      return res.status(400).json({ error: 'USERNAME_MATCHES_EMAIL', message: 'Elige un identificador distinto a tu correo.' })
-    }
     if (await usernameOwnedByAnother(pool, username)) {
       return res.status(409).json({ error: 'USERNAME_TAKEN' })
     }
@@ -2328,8 +2325,8 @@ app.post('/v1/auth/register', async (req, res, next) => {
       rows = inserted.rows
       await client.query(
         `INSERT INTO fallback_profile_overrides(user_id, profile, updated_at)
-         VALUES ($1, jsonb_build_object('username', $2::text), NOW())`,
-        [rows[0].id, username],
+         VALUES ($1, jsonb_build_object('username', $2::text, 'username_origin', $3::text), NOW())`,
+        [rows[0].id, username, requestedUsername ? 'chosen' : 'generated'],
       )
       await client.query('COMMIT')
     } catch (error) {

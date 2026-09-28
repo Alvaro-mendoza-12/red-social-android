@@ -6592,6 +6592,7 @@ class LocalFallbackApiClient @Inject constructor(
             id = textOf(row, "supabase_user_id", "supabaseUserId", "id", "user_id", "profile_id"),
             email = textOf(row, "email"),
             username = textOf(row, "username").ifBlank { null },
+            username_origin = textOf(row, "username_origin").ifBlank { null },
             full_name = textOf(row, "full_name", "name").ifBlank { null },
             bio = textOf(row, "bio").ifBlank { null },
             avatar_url = UbuntuStorageUrl.rewriteOrEmpty(textOf(row, "avatar_url", "photo_url", "profile_image")),

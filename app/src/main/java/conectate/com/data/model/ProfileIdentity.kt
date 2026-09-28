@@ -9,7 +9,7 @@ val publicMentionPattern = Regex("(?<![\\p{L}\\p{N}_.-])@([\\p{L}\\p{N}](?:[\\p{
 fun profilePublicHandle(user: User): String {
     user.username?.trim()?.removePrefix("@")?.takeIf {
         it.matches(Regex("[A-Za-z0-9_.-]{3,24}")) &&
-            !it.equals(user.email.substringBefore('@'), ignoreCase = true)
+            (user.username_origin == "chosen" || !it.equals(user.email.substringBefore('@'), ignoreCase = true))
     }?.let { return it.lowercase(Locale.ROOT) }
     val displayName = sequenceOf(user.display_name, user.full_name)
         .map { it.orEmpty().trim() }

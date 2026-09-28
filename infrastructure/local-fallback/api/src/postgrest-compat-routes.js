@@ -1836,6 +1836,9 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
 async function upsertProfile(pool, auth, row) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
+  // Provenance comes from registration, never from a client profile update.
+  row = { ...row }
+  delete row.username_origin
   if (Object.prototype.hasOwnProperty.call(row, 'username')) {
     const username = cleanUsername(row.username)
     const { rows: currentNames } = await pool.query(

@@ -23,6 +23,14 @@ class ProfileIdentityTest {
     }
 
     @Test
+    fun explicitlyChosenUsernameIsPreservedEvenWhenItCoincidesWithEmailPrefix() {
+        val user = User(id = id, email = "mirella_vr07@example.invalid", username = "mirella_vr07",
+            display_name = "Mirella Vásquez", username_origin = "chosen")
+        assertEquals("mirella_vr07", profilePublicHandle(user))
+        assertEquals("mirella_vasquez", profilePublicHandle(user.copy(username_origin = null)))
+    }
+
+    @Test
     fun chosenUsernameTakesPrecedenceAndFullIdCanBeSearched() {
         val user = User(id = id, email = "juan@example.com", username = "Juan_01", display_name = "Juan Pérez")
         val handle = profilePublicHandle(user)

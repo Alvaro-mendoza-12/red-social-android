@@ -77,7 +77,8 @@ data class User(
     @Serializable(with = NullableDoubleAsZeroSerializer::class)
     val balance: Double = 0.0,
     @SerialName("created_at") val created_at: String = "",
-    @SerialName("updated_at") val updated_at: String = ""
+    @SerialName("updated_at") val updated_at: String = "",
+    val username_origin: String? = null
 ) {
     val displayName: String
         get() {

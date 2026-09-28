@@ -572,6 +572,11 @@ assert.deepStrictEqual(
   'explicit empty values must remain intentional clears',
 )
 assert.deepStrictEqual(
+  profilePatchFromBody({ username_origin: 'chosen', bio: 'Descripción' }),
+  { bio: 'Descripción' },
+  'a client cannot change username provenance through a profile PATCH',
+)
+assert.deepStrictEqual(
   profileClearFields({ interests: [], hobbies: [], linked_games: ['Minecraft'], profile_welcome: '' }),
   ['interests', 'hobbies', 'profile_welcome'],
 )
