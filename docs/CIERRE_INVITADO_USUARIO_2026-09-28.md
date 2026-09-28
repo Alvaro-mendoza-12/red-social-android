@@ -13,14 +13,16 @@ Checkout: `D:\red social - live-gifts`. Rama: `feature/live-gifts`.
 | El reproductor de invitado no informaba de errores ni pausaba al dejar la app. | Indicador de carga, mensaje accesible, reintento manual, pausa al perder el estado RESUMED y liberación del reproductor al cerrar. |
 | Las acciones de una tarjeta podían ocupar más ancho con texto grande. | Los botones pasan a otra línea cuando hace falta mediante FlowRow. |
 | El destino de conversión admitía cadenas de 36 guiones, sin un UUID real. | Se valida y normaliza el UUID al guardar y al consumir; se usa una sola vez. |
+| Un enlace recibido con la pantalla de invitado ya abierta guardaba su acción sin mostrar el aviso. | La vista observa el destino pendiente mediante StateFlow y lo consume una sola vez; también procesa enlaces nuevos sin recrear la sesión. |
+| El registro rechazaba un @usuario elegido que coincidiese con el prefijo del correo. | El servidor registra `username_origin` al crear la cuenta. Se conserva la elección explícita en perfil, búsqueda y vista previa; los identificadores heredados derivados del correo siguen ocultos. Las actualizaciones del cliente no cambian ese origen. |
 | Una solicitud sintética antigua seguía en administración. | Se comprobó el ID y su identificador de prueba, la cuenta ya ausente, y se eliminó únicamente esa solicitud. Documentado en `IMPLEMENTACION_LIVE_AUTH_2026-09-26.md`. |
 
 ## Comprobaciones ejecutadas
 
 - Android: 21 pruebas correctas, sin errores, fallos u omisiones, de `UsernamePolicyTest`, `GuestModeSessionTest`, `ProfileIdentityTest` y `ReadDeadlineTest`. Cubren identidad conservada al reabrir, vencimiento, conversión, consumo único de destinos, UUID inválido, salida y respuesta tardía posterior a la salida.
-- Se repitió `verify-username-guest-e2e.js` contra el HTTPS público: 70 comprobaciones correctas; 22 rutas de escritura rechazaron el JWT de invitado. Incluye registro, carrera por username, contraseña correcta/incorrecta, recuperación manual, sustitución y consumo del código, segundo factor perdido y nuevo acceso. Acceso de la cuenta sintética en 585 ms; no es una garantía de latencia para otras conexiones.
+- Se repitió `verify-username-guest-e2e.js` contra el HTTPS público: 78 comprobaciones correctas; 22 rutas de escritura rechazaron el JWT de invitado. Incluye registro, carrera por username, contraseña correcta/incorrecta, recuperación manual, sustitución y consumo del código, segundo factor perdido y nuevo acceso. También comprueba la elección explícita coincidente con el prefijo de correo, búsqueda, vista previa, protección del origen y privacidad de identidades heredadas. Acceso de la cuenta sintética en 680 ms; no es una garantía de latencia para otras conexiones.
 - Las lecturas reales de invitado devolvieron 12 videos, 30 publicaciones, cero momentos vigentes y dos resultados en una búsqueda. El estado vacío de momentos corresponde a esa consulta del servidor.
-- `/ready` respondió correctamente con base de datos accesible. API, PostgreSQL, edge, realtime, señalización, Redis, coturn y chatbot estaban saludables. El backend sigue en `2ecd45a568b4`; estas correcciones cambian Android y no necesitan un despliegue de API.
+- `/ready` respondió correctamente con base de datos accesible. API, PostgreSQL, edge, realtime, señalización, Redis, coturn y chatbot estaban saludables. Se desplegó `52f948e5c2e5` como `conectate-mini-pc-20260928T105528Z`, con copia de seguridad verificada en `/home/alvaro/conectate-backups/20260928T105534Z`. La suite del backend tuvo 249 pruebas correctas y una omitida por plataforma.
 
 ## Ciclo de sesión
 

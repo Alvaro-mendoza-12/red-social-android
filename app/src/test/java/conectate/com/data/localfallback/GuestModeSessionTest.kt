@@ -12,6 +12,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = UnitTestApplication::class)
@@ -85,6 +90,20 @@ class GuestModeSessionTest {
         api.rememberPendingPreview("video", profileId)
         assertEquals(GuestPendingPreview("video", profileId), api.consumePendingPreview())
         assertNull(api.consumePendingPreview())
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun anotherDeepLinkIsDeliveredWhileTheGuestScreenIsAlreadyOpen() = runTest {
+        val events = mutableListOf<GuestPendingPreview?>()
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            api.pendingPreview.collect { events += it }
+        }
+        val action = GuestPendingPreview("crear momentos", "")
+        api.rememberPendingPreview(action.type)
+        assertEquals(action, api.consumePendingPreview())
+        api.rememberPendingPreview(action.type)
+        assertEquals(listOf(null, action, null, action), events)
+        collector.cancel()
     }
 
     @Test fun leavingGuestModeClearsIdentityAndPendingNavigation() {

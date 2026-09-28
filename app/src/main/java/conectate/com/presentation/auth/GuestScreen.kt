@@ -100,6 +100,7 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     }
 
     fun hasSavedSession() = api.hasActiveGuest()
+    val pendingPreview = api.pendingPreview
     fun rememberPendingPreview(type: String, id: String = "") = api.rememberPendingPreview(type, id)
     fun consumePendingPreview(): GuestPendingPreview? = api.consumePendingPreview()
 
@@ -185,6 +186,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
     val selectedProfile by viewModel.selectedProfile.collectAsState()
     val comments by viewModel.comments.collectAsState()
     val previewContent by viewModel.previewContent.collectAsState()
+    val pendingPreview by viewModel.pendingPreview.collectAsState()
     val error by viewModel.error.collectAsState()
     val busy by viewModel.busy.collectAsState()
     var section by rememberSaveable { mutableStateOf("messages") }
@@ -196,7 +198,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
 
     LaunchedEffect(Unit) { viewModel.enter() }
     LaunchedEffect(section, identity?.id) { if (identity != null) viewModel.refresh(section) }
-    LaunchedEffect(identity?.id) {
+    LaunchedEffect(identity?.id, pendingPreview) {
         if (identity == null) return@LaunchedEffect
         when (val preview = viewModel.consumePendingPreview()) {
             null -> Unit

@@ -13,6 +13,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlin.coroutines.coroutineContext
 import conectate.com.core.network.runReadWithDeadline
 import kotlinx.serialization.SerialName
@@ -85,6 +87,8 @@ class GuestModeApi @Inject constructor(
     private val identityMutex = Mutex()
     private val sessionStateLock = Any()
     private var sessionRevision = 0L
+    private val _pendingPreview = MutableStateFlow(readPendingPreview())
+    val pendingPreview = _pendingPreview.asStateFlow()
     private suspend fun endpoint(): String = RuntimeBackendEndpoint.authenticationEndpoint()
         ?: error("El servidor no está disponible. Revisa tu conexión e inténtalo nuevamente.")
 
@@ -157,14 +161,24 @@ class GuestModeApi @Inject constructor(
     fun clearPendingProfile() { conversionPrefs.edit().remove("profile_id").apply() }
 
     fun rememberPendingPreview(type: String, id: String = "") {
-        previewPrefs.edit().putString("type", type.take(32)).putString("id", id.take(128)).apply()
+        synchronized(sessionStateLock) {
+            val preview = GuestPendingPreview(type.take(32), id.take(128))
+            previewPrefs.edit().putString("type", preview.type).putString("id", preview.id).apply()
+            _pendingPreview.value = preview
+        }
     }
 
-    fun consumePendingPreview(): GuestPendingPreview? {
+    private fun readPendingPreview(): GuestPendingPreview? {
         val type = previewPrefs.getString("type", null) ?: return null
         val id = previewPrefs.getString("id", "").orEmpty()
-        previewPrefs.edit().clear().apply()
         return GuestPendingPreview(type, id)
+    }
+
+    fun consumePendingPreview(): GuestPendingPreview? = synchronized(sessionStateLock) {
+        val preview = _pendingPreview.value
+        previewPrefs.edit().clear().apply()
+        _pendingPreview.value = null
+        preview
     }
 
     fun consumePendingProfile(): String? {
