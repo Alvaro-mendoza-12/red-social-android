@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -111,7 +112,7 @@ fun AdminPanelScreen(
         )
     }
     val recoveryBusy by viewModel.recoveryBusy.collectAsState()
-    var expandedRecoveryCaseId by remember { mutableStateOf<String?>(null) }
+    var expandedRecoveryCaseId by rememberSaveable { mutableStateOf<String?>(null) }
     val userReports by viewModel.userReports.collectAsState()
     val videoReports by viewModel.videoReports.collectAsState()
     val stats by viewModel.stats.collectAsState()
@@ -123,7 +124,7 @@ fun AdminPanelScreen(
     val lastDeletedUserId by viewModel.lastDeletedUserId.collectAsState()
     val deleteCandidate by viewModel.deleteCandidate.collectAsState()
 
-    var selectedTabIndex by remember { mutableStateOf(0) }
+    var selectedTabIndex by rememberSaveable { mutableStateOf(0) }
     var userToSuspend by remember { mutableStateOf<String?>(null) }
     var suspendReason by remember { mutableStateOf("") }
     var suspendDays by remember { mutableStateOf("7") }
@@ -718,7 +719,8 @@ fun AdminPanelScreen(
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
-            LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            val adminListState = key(selectedTabIndex) { rememberLazyListState() }
+            LazyColumn(state = adminListState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 when (selectedTabIndex) {
                     0 -> {
                         item(key = "admin-summary") { AdminSummary(stats, systemHealth, isLoading) }
