@@ -264,6 +264,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
         val photos = remember(content.id, content.mediaUrl, content.mediaUrls) { guestPhotos(content) }
         val photoPager = rememberPagerState(pageCount = { photos.size })
         val photoScope = rememberCoroutineScope()
+        val photoHeight = (LocalConfiguration.current.screenHeightDp - 320).coerceIn(140, 300).dp
         AlertDialog(
             onDismissRequest = viewModel::clearPreviewContent,
             title = { Text(content.userName) },
@@ -277,7 +278,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                             if (content.mediaType == "video" || media.substringBefore('?').endsWith(".mp4", true)) {
                                 GuestVideoPlayer(media)
                             } else {
-                                HorizontalPager(state = photoPager, modifier = Modifier.fillMaxWidth().height(300.dp)) { page ->
+                                HorizontalPager(state = photoPager, modifier = Modifier.fillMaxWidth().height(photoHeight)) { page ->
                                     AsyncImage(model = photos[page],
                                         contentDescription = "Imagen ${page + 1} de ${photos.size} de la publicación",
                                         modifier = Modifier.fillMaxSize())
