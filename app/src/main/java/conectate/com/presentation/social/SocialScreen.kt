@@ -2557,6 +2557,8 @@ private fun FacebookMomentRail(
     val visibleMoments = remember(moments) {
         moments.distinctBy { it.userId }.take(12)
     }
+    val momentCardHeight = 138.dp + 24.dp *
+        (androidx.compose.ui.platform.LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
     Surface(
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth(),
@@ -2569,7 +2571,7 @@ private fun FacebookMomentRail(
                 Box(
                     modifier = Modifier
                         .width(92.dp)
-                        .height(138.dp)
+                        .height(momentCardHeight)
                         .clip(RoundedCornerShape(9.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(9.dp))
@@ -2626,7 +2628,7 @@ private fun FacebookMomentRail(
                 Box(
                     modifier = Modifier
                         .width(92.dp)
-                        .height(138.dp)
+                        .height(momentCardHeight)
                         .clip(RoundedCornerShape(9.dp))
                         .clickable { onOpenMoment(moment) },
                 ) {
