@@ -126,6 +126,7 @@ function profileShareHtml(profile, publicBaseUrl, posts = []) {
   const postsHtml = posts.map((post) => {
     const urls = Array.isArray(post.media_urls) ? post.media_urls : []
     const mediaUrls = [...new Set([...urls, post.media_url]
+      .map((entry) => typeof entry === 'string' ? entry : entry?.url || entry?.media_url)
       .filter((url) => typeof url === 'string' && url.trim())
       .map((url) => canonicalStorageUrl(url, base))
       .filter((url) => /^https:\/\//i.test(url || '')))]

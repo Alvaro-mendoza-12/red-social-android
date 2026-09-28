@@ -20,6 +20,7 @@ import conectate.com.core.network.runReadWithDeadline
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import javax.inject.Inject
 import javax.inject.Singleton
 import java.util.UUID
@@ -51,7 +52,7 @@ data class GuestContent(
     @SerialName("cover_url") val coverUrl: String? = null,
     @SerialName("thumbnail_url") val thumbnailUrl: String? = null,
     @SerialName("media_url") val mediaUrl: String? = null,
-    @SerialName("media_urls") val mediaUrls: List<String> = emptyList(),
+    @SerialName("media_urls") val mediaUrls: List<JsonElement> = emptyList(),
 )
 
 @Serializable

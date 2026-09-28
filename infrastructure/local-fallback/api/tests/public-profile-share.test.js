@@ -31,7 +31,9 @@ test('guest web view includes only public and non-sensitive profile posts', asyn
   const pool = { async query(sql) { statements.push(sql); if (sql.includes('to_regclass')) return { rows: [{ name: 'supabase_import.posts' }] }
     if (sql.includes('supabase_import.posts p')) return { rows: [{ row: {
       id: 'imported-post', content: 'Cinco fotos', media_type: 'image',
-      media_urls: Array.from({ length: 5 }, (_, index) => `https://example.invalid/foto-${index + 1}.jpg`),
+      media_urls: Array.from({ length: 5 }, (_, index) => ({
+        url: `https://example.invalid/foto-${index + 1}.jpg`, media_type: 'image',
+      })),
       created_at: new Date('2026-09-29T10:00:00Z'),
     } }] }
     return { rows: [{

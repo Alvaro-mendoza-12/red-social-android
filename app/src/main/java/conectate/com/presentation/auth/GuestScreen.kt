@@ -56,6 +56,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import javax.inject.Inject
 
 @HiltViewModel
@@ -258,10 +261,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
         )
     }
     previewContent?.let { content ->
-        val photos = remember(content.id, content.mediaUrl, content.mediaUrls) {
-            (content.mediaUrls + listOfNotNull(content.mediaUrl))
-                .filter { it.isNotBlank() }.distinct()
-        }
+        val photos = remember(content.id, content.mediaUrl, content.mediaUrls) { guestPhotos(content) }
         val photoPager = rememberPagerState(pageCount = { photos.size })
         val photoScope = rememberCoroutineScope()
         AlertDialog(
@@ -517,8 +517,9 @@ private fun GuestContentList(
                         (content.videoUrl == null && image?.substringBefore('?')?.endsWith(".mp4", true) == true)
                     if (!image.isNullOrBlank() && !mediaIsVideo) {
                         AsyncImage(model = image, contentDescription = "Vista previa pública", modifier = Modifier.fillMaxWidth().height(180.dp))
-                        if (content.mediaUrls.distinct().size > 1) {
-                            Text("1 / ${content.mediaUrls.distinct().size} · Toca para ver todas las fotos",
+                        val photoCount = guestPhotos(content).size
+                        if (photoCount > 1) {
+                            Text("1 / $photoCount · Toca para ver todas las fotos",
                                 color = MaterialTheme.colorScheme.primary)
                         }
                     } else if (mediaIsVideo) {
@@ -538,6 +539,15 @@ private fun GuestContentList(
         }
     }
 }
+
+private fun guestPhotos(content: GuestContent): List<String> =
+    (content.mediaUrls.mapNotNull { entry ->
+        when (entry) {
+            is JsonPrimitive -> entry.contentOrNull
+            is JsonObject -> ((entry["url"] ?: entry["media_url"]) as? JsonPrimitive)?.contentOrNull
+            else -> null
+        }
+    } + listOfNotNull(content.mediaUrl)).filter { it.isNotBlank() }.distinct()
 
 @Composable
 private fun GuestVideoPlayer(url: String) {
