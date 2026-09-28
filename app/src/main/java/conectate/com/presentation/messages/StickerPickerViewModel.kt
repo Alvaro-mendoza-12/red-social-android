@@ -10,6 +10,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -44,6 +45,11 @@ class StickerPickerViewModel @Inject constructor(
 
     init {
         refreshAll()
+        viewModelScope.launch {
+            stickerRepository.favorites.collectLatest {
+                _favoriteItems.value = stickerRepository.favoritesAsItems()
+            }
+        }
     }
 
     fun refreshAll() {
@@ -71,8 +77,43 @@ class StickerPickerViewModel @Inject constructor(
     }
 
     fun toggleFavorite(stickerId: String) {
+        val item = (_searchResults.value + _favoriteItems.value + _recentItems.value)
+            .firstOrNull { it.id == stickerId }
+        if (item != null) {
+            setFavorite(item, !isFavorite(item))
+            return
+        }
         viewModelScope.launch {
             stickerRepository.toggleFavorite(stickerId)
+            _favoriteItems.value = stickerRepository.favoritesAsItems()
+            _recentItems.value = stickerRepository.recentAsItems()
+            _searchResults.value = stickerRepository.search(_query.value)
+        }
+    }
+
+    fun isFavorite(sticker: StickerItem): Boolean =
+        _favoriteItems.value.any { it.id == sticker.id } ||
+            stickerRepository.isFavoriteMediaUrl(sticker.media_url)
+
+    fun setFavorite(sticker: StickerItem, favorite: Boolean) {
+        viewModelScope.launch {
+            val change = if (favorite) {
+                sticker.media_url?.let { stickerRepository.addFavoriteByMedia(it, sticker.title) }
+                    ?: if (stickerRepository.setFavorite(sticker.id, true)) {
+                        StickerRepository.FavoriteChange.ADDED
+                    } else StickerRepository.FavoriteChange.UNAVAILABLE
+            } else {
+                sticker.media_url?.let { stickerRepository.removeFavoriteByMedia(it) }
+                    ?: if (!stickerRepository.setFavorite(sticker.id, false)) {
+                        StickerRepository.FavoriteChange.REMOVED
+                    } else StickerRepository.FavoriteChange.NOT_PRESENT
+            }
+            _actionMessage.value = when (change) {
+                StickerRepository.FavoriteChange.ADDED -> "Sticker añadido a favoritos"
+                StickerRepository.FavoriteChange.ALREADY_PRESENT -> "Ya tienes este sticker en favoritos"
+                StickerRepository.FavoriteChange.REMOVED -> "Sticker quitado de favoritos"
+                else -> "No se pudo comprobar el sticker. Inténtalo de nuevo"
+            }
             _favoriteItems.value = stickerRepository.favoritesAsItems()
             _recentItems.value = stickerRepository.recentAsItems()
             _searchResults.value = stickerRepository.search(_query.value)
@@ -166,6 +207,7 @@ class StickerPickerViewModel @Inject constructor(
     fun createStickerFromImage(uri: Uri, preferredPackId: String?) {
         viewModelScope.launch {
             _isLoading.value = true
+            val existingIds = stickerRepository.catalog.value.mapTo(mutableSetOf()) { it.id }
             val result = stickerRepository.createStickerFromImage(
                 imageUri = uri,
                 packId = preferredPackId
@@ -176,7 +218,9 @@ class StickerPickerViewModel @Inject constructor(
                 _favoriteItems.value = stickerRepository.favoritesAsItems()
                 _recentItems.value = stickerRepository.recentAsItems()
                 _packs.value = stickerRepository.packs.value
-                _actionMessage.value = "Sticker creado"
+                _actionMessage.value = if (result.getOrNull()?.id?.let { it in existingIds } == true) {
+                    "Este sticker ya está guardado"
+                } else "Sticker creado"
             } else {
                 _actionMessage.value = result.exceptionOrNull()?.message ?: "No se pudo crear sticker"
             }
@@ -196,6 +240,7 @@ class StickerPickerViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             _isLoading.value = true
+            val existingIds = stickerRepository.catalog.value.mapTo(mutableSetOf()) { it.id }
             val result = stickerRepository.createStickerFromBytes(
                 imageBytes = imageBytes,
                 packId = preferredPackId,
@@ -212,7 +257,9 @@ class StickerPickerViewModel @Inject constructor(
                 _favoriteItems.value = stickerRepository.favoritesAsItems()
                 _recentItems.value = stickerRepository.recentAsItems()
                 _packs.value = stickerRepository.packs.value
-                _actionMessage.value = "Sticker creado"
+                _actionMessage.value = if (sticker?.id?.let { it in existingIds } == true) {
+                    "Este sticker ya está guardado"
+                } else "Sticker creado"
                 onCreated(sticker)
             } else {
                 _actionMessage.value = result.exceptionOrNull()?.message ?: "No se pudo crear sticker"

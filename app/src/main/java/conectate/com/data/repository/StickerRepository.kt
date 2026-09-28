@@ -12,17 +12,21 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
 import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.call.body
+import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -41,6 +45,8 @@ class StickerRepository @Inject constructor(
     private val authService: AuthService,
     private val storageService: StorageService
 ) {
+    enum class FavoriteChange { ADDED, ALREADY_PRESENT, REMOVED, NOT_PRESENT, UNAVAILABLE }
+
     companion object {
         private const val PREFS = "sticker_prefs"
         private const val KEY_LOCAL_ITEMS = "local_items_json"
@@ -48,6 +54,7 @@ class StickerRepository @Inject constructor(
         private const val KEY_FAVORITES = "favorite_ids_json"
         private const val KEY_DOWNLOADED_PACKS = "downloaded_pack_ids_json"
         private const val KEY_RECENT_STICKERS = "recent_sticker_ids_json"
+        private const val KEY_MEDIA_ALIASES = "favorite_media_aliases_json"
     }
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -67,6 +74,7 @@ class StickerRepository @Inject constructor(
 
     private val _recentStickerIds = MutableStateFlow<List<String>>(emptyList())
     val recentStickerIds: StateFlow<List<String>> = _recentStickerIds.asStateFlow()
+    @Volatile private var favoriteMediaAliases: Map<String, String> = emptyMap()
 
 
 
@@ -76,6 +84,7 @@ class StickerRepository @Inject constructor(
         val localFavs = loadLocalFavorites()
         val localDownloads = loadDownloadedPacks()
         val localRecents = loadRecentStickerIds()
+        favoriteMediaAliases = loadFavoriteMediaAliases()
 
         _catalog.value = localCatalog
         _packs.value = localPacks
@@ -96,11 +105,11 @@ class StickerRepository @Inject constructor(
         val tokens = q.split(Regex("\\s+")).filter { it.isNotBlank() }
         val base = _catalog.value
         if (tokens.isEmpty()) {
-            return@withContext base.sortedWith(
+            return@withContext distinctStickers(base.sortedWith(
                 compareByDescending<StickerItem> { _favorites.value.contains(it.id) }
                     .thenByDescending { it.is_animated }
                     .thenBy { it.title.lowercase() }
-            )
+            ))
         }
 
         val scored = mutableListOf<Pair<StickerItem, Int>>()
@@ -125,53 +134,122 @@ class StickerRepository @Inject constructor(
             }
         }
 
-        scored.sortedByDescending { pair -> pair.second }
-            .map { pair -> pair.first }
+        distinctStickers(scored.sortedByDescending { pair -> pair.second }
+            .map { pair -> pair.first })
     }
 
 
 
-    suspend fun toggleFavorite(stickerId: String): Boolean = withContext(Dispatchers.IO) {
-        var clean = stickerId.trim()
-        if (clean.isBlank()) return@withContext false
+    suspend fun toggleFavorite(stickerId: String): Boolean =
+        setFavorite(stickerId, !_favorites.value.contains(stickerId.trim()))
 
-        var updated = _favorites.value.toMutableSet().apply {
-            if (contains(clean)) remove(clean) else add(clean)
+    suspend fun setFavorite(stickerId: String, favorite: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val clean = stickerId.trim()
+        if (clean.isBlank()) return@withContext false
+        if (_favorites.value.contains(clean) == favorite) return@withContext favorite
+        val target = _catalog.value.firstOrNull { it.id == clean }
+        val affectedIds = if (!favorite && target != null) {
+            _catalog.value.filter { it.id == clean || StickerIdentity.matches(it, target) }
+                .map { it.id }.filter { _favorites.value.contains(it) }
+        } else listOf(clean)
+        val updated = _favorites.value.toMutableSet().apply {
+            if (favorite) add(clean) else removeAll(affectedIds.toSet())
         }
         _favorites.value = updated
         persistFavorites(updated)
+        if (!favorite) {
+            favoriteMediaAliases = favoriteMediaAliases.filterValues { it !in affectedIds }
+            persistFavoriteMediaAliases()
+        }
 
         // Best effort remote sync. If RPC is missing we keep local behavior.
         runCatching {
             var token = authService.getAccessToken() ?: return@runCatching
-            var payload = buildJsonObject { put("p_sticker_id", JsonPrimitive(clean)) }
-            supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_toggle_sticker_favorite") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                setBody(payload)
+            for (id in affectedIds) {
+                val payload = buildJsonObject { put("p_sticker_id", JsonPrimitive(id)) }
+                supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_toggle_sticker_favorite") {
+                    header("Authorization", "Bearer $token")
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Content-Type", "application/json")
+                    setBody(payload)
+                }
             }
         }
 
-        updated.contains(clean)
+        favorite
     }
 
     fun isFavoriteMediaUrl(mediaUrl: String?): Boolean {
-        var cleanUrl = UbuntuStorageUrl.rewrite(mediaUrl)?.trim().orEmpty()
-        if (cleanUrl.isBlank()) return false
-        val stickerId = _catalog.value.firstOrNull {
-            UbuntuStorageUrl.rewrite(it.media_url)?.trim()?.equals(cleanUrl, ignoreCase = true) == true
-        }?.id ?: return false
-        return _favorites.value.contains(stickerId)
+        val mediaKey = StickerIdentity.mediaKey(mediaUrl) ?: return false
+        if (favoriteMediaAliases[mediaKey]?.let { _favorites.value.contains(it) } == true) return true
+        return _catalog.value.any {
+            _favorites.value.contains(it.id) && StickerIdentity.mediaKey(it.media_url) == mediaKey
+        }
     }
 
-
-
-    suspend fun toggleFavoriteByMedia(mediaUrl: String, title: String = "Sticker"): Boolean = withContext(Dispatchers.IO) {
-        var sticker = ensureStickerForMedia(mediaUrl, title) ?: return@withContext false
+    suspend fun addFavoriteByMedia(mediaUrl: String, title: String = "Sticker"): FavoriteChange = withContext(Dispatchers.IO) {
+        val mediaKey = StickerIdentity.mediaKey(mediaUrl) ?: return@withContext FavoriteChange.UNAVAILABLE
+        val sameUrl = _catalog.value.firstOrNull { StickerIdentity.mediaKey(it.media_url) == mediaKey }
+        if (sameUrl != null && isFavoriteMediaUrl(mediaUrl)) return@withContext FavoriteChange.ALREADY_PRESENT
+        val fingerprint = readStickerFingerprint(mediaUrl)
+        // A new sticker from our own storage must be inspected before adding it.
+        // Otherwise a temporary network failure could create a duplicate.
+        if (fingerprint == null && isOwnStickerUrl(mediaUrl)) {
+            return@withContext FavoriteChange.UNAVAILABLE
+        }
+        val candidate = fingerprint?.let {
+            StickerItem(id = "candidate", title = title, media_url = mediaUrl,
+                content_sha256 = it.sha256, visual_fingerprint = it.visual)
+        }
+        var matching: StickerItem? = null
+        if (candidate != null) {
+            val possibleMatches = _catalog.value.filter {
+                it.media_url != null && (it.source == "message" || it.source == "custom" || _favorites.value.contains(it.id))
+            }
+            for (item in possibleMatches) {
+                val indexed = withCachedFingerprint(item)
+                if (StickerIdentity.matches(indexed, candidate)) {
+                    matching = indexed
+                    break
+                }
+            }
+        }
+        val existing = matching ?: sameUrl
+        if (existing != null && _favorites.value.contains(existing.id)) {
+            rememberMediaAlias(mediaKey, existing.id)
+            return@withContext FavoriteChange.ALREADY_PRESENT
+        }
+        val sticker = existing ?: ensureStickerForMedia(mediaUrl, title, fingerprint)
+            ?: return@withContext FavoriteChange.UNAVAILABLE
+        setFavorite(sticker.id, true)
+        rememberMediaAlias(mediaKey, sticker.id)
         registerRecentSticker(sticker.id)
-        toggleFavorite(sticker.id)
+        FavoriteChange.ADDED
     }
+
+    suspend fun removeFavoriteByMedia(mediaUrl: String): FavoriteChange = withContext(Dispatchers.IO) {
+        val mediaKey = StickerIdentity.mediaKey(mediaUrl) ?: return@withContext FavoriteChange.NOT_PRESENT
+        val ids = _catalog.value.filter {
+            _favorites.value.contains(it.id) && StickerIdentity.mediaKey(it.media_url) == mediaKey
+        }.map { it.id } + listOfNotNull(favoriteMediaAliases[mediaKey])
+            .filter { _favorites.value.contains(it) }
+        if (ids.isEmpty()) return@withContext FavoriteChange.NOT_PRESENT
+        ids.forEach { setFavorite(it, false) }
+        FavoriteChange.REMOVED
+    }
+
+    private fun rememberMediaAlias(mediaKey: String, stickerId: String) {
+        favoriteMediaAliases = favoriteMediaAliases + (mediaKey to stickerId)
+        persistFavoriteMediaAliases()
+    }
+
+    private fun persistFavoriteMediaAliases() {
+        prefs.edit().putString(KEY_MEDIA_ALIASES, json.encodeToString(favoriteMediaAliases)).apply()
+    }
+
+    private fun loadFavoriteMediaAliases(): Map<String, String> = runCatching {
+        json.decodeFromString<Map<String, String>>(prefs.getString(KEY_MEDIA_ALIASES, "{}") ?: "{}")
+    }.getOrDefault(emptyMap())
 
 
 
@@ -284,6 +362,16 @@ class StickerRepository @Inject constructor(
             mimeType.startsWith("image/", ignoreCase = true) -> mimeType.lowercase()
             else -> "image/png"
         }
+        val fingerprint = StickerIdentity.fingerprint(imageBytes)
+        val candidate = StickerItem(id = "candidate", title = title.orEmpty(),
+            content_sha256 = fingerprint.sha256, visual_fingerprint = fingerprint.visual)
+        for (item in _catalog.value.filter { it.source == "custom" || it.source == "message" }) {
+            val indexed = withCachedFingerprint(item)
+            if (StickerIdentity.matches(indexed, candidate)) {
+                registerRecentSticker(indexed.id)
+                return@withContext Result.success(indexed)
+            }
+        }
         val extension = mimeToExtension(cleanMime)
         val remotePath = "stickers/$uid/${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}$extension"
 
@@ -317,7 +405,9 @@ class StickerRepository @Inject constructor(
             is_animated = isAnimatedSticker(imageBytes, cleanMime),
             tags = cleanTags,
             source = "custom",
-            pack_id = selectedPack
+            pack_id = selectedPack,
+            content_sha256 = fingerprint.sha256,
+            visual_fingerprint = fingerprint.visual
         )
 
         var merged = (_catalog.value + sticker).distinctBy { it.id }
@@ -480,7 +570,14 @@ class StickerRepository @Inject constructor(
                 var parsed = runCatching {
                     json.decodeFromString<List<StickerItem>>(response.bodyAsText()).map { it.normalizedStorageUrls() }
                 }.getOrDefault(emptyList())
-                var merged = (parsed + _catalog.value).distinctBy { it.id }
+                val localById = _catalog.value.associateBy { it.id }
+                val merged = (parsed.map { remote ->
+                    val local = localById[remote.id]
+                    remote.copy(
+                        content_sha256 = local?.content_sha256 ?: remote.content_sha256,
+                        visual_fingerprint = local?.visual_fingerprint ?: remote.visual_fingerprint
+                    )
+                } + _catalog.value).distinctBy { it.id }
                 _catalog.value = merged
                 persistItems(merged)
             }
@@ -491,17 +588,25 @@ class StickerRepository @Inject constructor(
 
     fun favoritesAsItems(): List<StickerItem> {
         val ids = _favorites.value
-        return _catalog.value.filter { ids.contains(it.id) }
+        return distinctStickers(_catalog.value.filter { ids.contains(it.id) })
     }
 
     fun recentAsItems(limit: Int = 48): List<StickerItem> {
         if (limit <= 0) return emptyList()
         val byId = _catalog.value.associateBy { it.id }
-        return _recentStickerIds.value
+        return distinctStickers(_recentStickerIds.value
             .asSequence()
             .mapNotNull { byId[it] }
             .take(limit)
-            .toList()
+            .toList())
+    }
+
+    private fun distinctStickers(items: List<StickerItem>): List<StickerItem> {
+        val result = ArrayList<StickerItem>(items.size)
+        items.forEach { item ->
+            if (result.none { StickerIdentity.matches(it, item) }) result.add(item)
+        }
+        return result
     }
 
     fun registerRecentSticker(stickerId: String) {
@@ -517,12 +622,14 @@ class StickerRepository @Inject constructor(
         return _downloadedPacks.value.contains(packId.trim())
     }
 
-    private fun ensureStickerForMedia(mediaUrl: String, title: String): StickerItem? {
-        var cleanUrl = UbuntuStorageUrl.rewrite(mediaUrl)?.trim().orEmpty()
+    private fun ensureStickerForMedia(
+        mediaUrl: String, title: String, fingerprint: StickerFingerprint?
+    ): StickerItem? {
+        val cleanUrl = UbuntuStorageUrl.originalObjectUrl(mediaUrl)?.trim().orEmpty()
         if (cleanUrl.isBlank()) return null
 
         _catalog.value.firstOrNull {
-            UbuntuStorageUrl.rewrite(it.media_url)?.trim()?.equals(cleanUrl, ignoreCase = true) == true
+            StickerIdentity.mediaKey(it.media_url) == StickerIdentity.mediaKey(cleanUrl)
         }?.let { return it }
 
         val generated = StickerItem(
@@ -533,13 +640,52 @@ class StickerRepository @Inject constructor(
             is_animated = cleanUrl.contains(".gif", ignoreCase = true),
             source = "message",
             pack_id = "local-default",
-            pack_name = "Mis stickers"
+            pack_name = "Mis stickers",
+            content_sha256 = fingerprint?.sha256,
+            visual_fingerprint = fingerprint?.visual
         )
 
         var updated = (listOf(generated) + _catalog.value).distinctBy { it.id }
         _catalog.value = updated
         persistItems(updated)
         return generated
+    }
+
+    private fun isOwnStickerUrl(mediaUrl: String): Boolean {
+        val root = UbuntuStorageUrl.baseUrl.trimEnd('/')
+        val url = UbuntuStorageUrl.originalObjectUrl(mediaUrl).orEmpty()
+        return root.startsWith("http", ignoreCase = true) &&
+            url.startsWith("$root/storage/v1/object/public/chat-media/", ignoreCase = true)
+    }
+
+    private suspend fun readStickerFingerprint(mediaUrl: String): StickerFingerprint? {
+        if (!isOwnStickerUrl(mediaUrl)) return null
+        val url = UbuntuStorageUrl.originalObjectUrl(mediaUrl) ?: return null
+        return withTimeoutOrNull(6_000) {
+            runCatching {
+                val response = supabaseConfig.httpClient.get(url) {
+                    UbuntuStorageUrl.publicRequestHeaders.forEach { (name, value) -> header(name, value) }
+                }
+                if (!response.status.isSuccess()) return@runCatching null
+                val maxBytes = 8 * 1024 * 1024
+                if ((response.headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: 0) > maxBytes) {
+                    return@runCatching null
+                }
+                val bytes = response.body<ByteArray>()
+                if (bytes.isEmpty() || bytes.size > maxBytes) null else StickerIdentity.fingerprint(bytes)
+            }.getOrNull()
+        }
+    }
+
+    private suspend fun withCachedFingerprint(item: StickerItem): StickerItem {
+        if ((!item.content_sha256.isNullOrBlank() &&
+                (!item.visual_fingerprint.isNullOrBlank() || item.is_animated)) ||
+            !isOwnStickerUrl(item.media_url.orEmpty())) return item
+        val fingerprint = readStickerFingerprint(item.media_url.orEmpty()) ?: return item
+        val updated = item.copy(content_sha256 = fingerprint.sha256, visual_fingerprint = fingerprint.visual)
+        _catalog.value = _catalog.value.map { if (it.id == item.id) updated else it }
+        persistItems(_catalog.value)
+        return updated
     }
 
     private suspend fun refreshRemoteCatalog() {
@@ -560,7 +706,14 @@ class StickerRepository @Inject constructor(
         }.getOrNull() ?: return
         if (parsed.isEmpty()) return
 
-        var merged = (parsed + _catalog.value).distinctBy { it.id }
+        val localById = _catalog.value.associateBy { it.id }
+        val merged = (parsed.map { remote ->
+            val local = localById[remote.id]
+            remote.copy(
+                content_sha256 = local?.content_sha256 ?: remote.content_sha256,
+                visual_fingerprint = local?.visual_fingerprint ?: remote.visual_fingerprint
+            )
+        } + _catalog.value).distinctBy { it.id }
         _catalog.value = merged
         persistItems(merged)
     }

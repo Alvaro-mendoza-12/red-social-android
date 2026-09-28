@@ -4,6 +4,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +41,8 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -206,7 +210,7 @@ fun StickerPickerDialog(
                             items(currentItems, key = { "${it.id}_${selectedTab}_${it.pack_id ?: "none"}" }) { sticker ->
                                 StickerItemCard(
                                     sticker = sticker,
-                                    isFavorite = favorites.any { it.id == sticker.id },
+                                    isFavorite = viewModel.isFavorite(sticker),
                                     onSelect = { onStickerSelected(sticker) },
                                     onToggleFavorite = { viewModel.toggleFavorite(sticker.id) },
                                     onDelete = {
@@ -298,6 +302,7 @@ fun PackManagementSection(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun StickerItemCard(
     sticker: StickerItem,
@@ -306,10 +311,15 @@ fun StickerItemCard(
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit
 ) {
+    var menuExpanded by remember(sticker.id) { mutableStateOf(false) }
     Card(
         modifier = Modifier
             .aspectRatio(1f)
-            .clickable { onSelect() },
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClickLabel = "Opciones de sticker",
+                onLongClick = { menuExpanded = true }
+            ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -344,6 +354,19 @@ fun StickerItemCard(
                         modifier = Modifier.size(16.dp)
                     )
                 }
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(text = { Text("Enviar sticker") }, onClick = {
+                    menuExpanded = false
+                    onSelect()
+                })
+                DropdownMenuItem(
+                    text = { Text(if (isFavorite) "Quitar de favoritos" else "Añadir a favoritos") },
+                    onClick = {
+                        menuExpanded = false
+                        onToggleFavorite()
+                    }
+                )
             }
         }
     }

@@ -148,6 +148,8 @@ fun StickerPanel(
 
             StickerGrid(
                 stickers = tabItems,
+                isFavorite = { sticker -> viewModel.isFavorite(sticker) },
+                onFavoriteChange = { sticker, favorite -> viewModel.setFavorite(sticker, favorite) },
                 onStickerClick = { sticker ->
                     viewModel.recordStickerSelection(sticker)
                     onStickerSelected(sticker)

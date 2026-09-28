@@ -1014,13 +1014,19 @@ class ChatViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val isFavorite = stickerRepository.toggleFavoriteByMedia(
-                mediaUrl = url,
-                title = message.content.ifBlank { "Sticker" }
-            )
+            val change = if (stickerRepository.isFavoriteMediaUrl(url)) {
+                stickerRepository.removeFavoriteByMedia(url)
+            } else {
+                stickerRepository.addFavoriteByMedia(url, message.content.ifBlank { "Sticker" })
+            }
             Toast.makeText(
                 context,
-                if (isFavorite) "Sticker añadido a favoritos" else "Sticker eliminado de favoritos",
+                when (change) {
+                    StickerRepository.FavoriteChange.ADDED -> "Sticker añadido a favoritos"
+                    StickerRepository.FavoriteChange.ALREADY_PRESENT -> "Ya tienes este sticker en favoritos"
+                    StickerRepository.FavoriteChange.REMOVED -> "Sticker quitado de favoritos"
+                    else -> "No se pudo comprobar el sticker. Inténtalo de nuevo"
+                },
                 Toast.LENGTH_SHORT
             ).show()
             dismissMessageActions()

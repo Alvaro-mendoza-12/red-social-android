@@ -831,14 +831,16 @@ class GroupChatViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val isFavorite = stickerRepository.toggleFavoriteByMedia(
-                mediaUrl = url,
-                title = message.content.ifBlank { "Sticker" }
-            )
-            _errorMessage.value = if (isFavorite) {
-                "Sticker añadido a favoritos"
+            val change = if (stickerRepository.isFavoriteMediaUrl(url)) {
+                stickerRepository.removeFavoriteByMedia(url)
             } else {
-                "Sticker eliminado de favoritos"
+                stickerRepository.addFavoriteByMedia(url, message.content.ifBlank { "Sticker" })
+            }
+            _errorMessage.value = when (change) {
+                StickerRepository.FavoriteChange.ADDED -> "Sticker añadido a favoritos"
+                StickerRepository.FavoriteChange.ALREADY_PRESENT -> "Ya tienes este sticker en favoritos"
+                StickerRepository.FavoriteChange.REMOVED -> "Sticker quitado de favoritos"
+                else -> "No se pudo comprobar el sticker. Inténtalo de nuevo"
             }
             _selectedMessage.value = null
         }

@@ -14,7 +14,9 @@ data class StickerItem(
     val source: String = "local",
     val pack_id: String? = null,
     val pack_name: String? = null,
-    val is_favorite: Boolean = false
+    val is_favorite: Boolean = false,
+    val content_sha256: String? = null,
+    val visual_fingerprint: String? = null
 )
 
 @Serializable
