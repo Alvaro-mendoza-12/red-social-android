@@ -344,7 +344,7 @@ class CallRepository @Inject constructor(
         var profile = loadUserProfileQuick(currentUserId)
         var callerName = profile?.displayName
             ?: profile?.username
-            ?: authService.getCurrentUserEmail()?.substringBefore("@")
+            ?: authService.getCurrentUserDisplayName()
             ?: "Usuario"
         val callerAvatar = profile?.avatar_url
 
@@ -470,7 +470,7 @@ class CallRepository @Inject constructor(
         var profile = loadUserProfileQuick(currentUserId)
         var myName = profile?.displayName
             ?: profile?.username
-            ?: authService.getCurrentUserEmail()?.substringBefore("@")
+            ?: authService.getCurrentUserDisplayName()
             ?: "Usuario"
         var myAvatar = profile?.avatar_url
 
@@ -525,10 +525,7 @@ class CallRepository @Inject constructor(
         // Profile data is decorative for signaling. Waiting for a network
         // lookup here delayed cold-start answers and could make the offer time
         // out before WebRTC joined the call.
-        val myName = authService.getCurrentUserEmail()?.substringBefore("@")
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?: "Usuario"
+        val myName = authService.getCurrentUserDisplayName() ?: "Usuario"
         val myAvatar: String? = null
 
         _incomingInvite.value = null

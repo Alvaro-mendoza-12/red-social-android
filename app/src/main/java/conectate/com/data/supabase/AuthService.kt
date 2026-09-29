@@ -1233,6 +1233,20 @@ class AuthService @Inject constructor(
         return extractJwtClaim(authPrefsOrNull?.getString(KEY_ACCESS_TOKEN, null).orEmpty(), "email")?.lowercase()
     }
 
+    fun getCurrentUserDisplayName(): String? {
+        (if (isLocalFallbackSession()) authPrefsOrNull?.getString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, null) else null)
+            ?.trim()?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        val metadata = _currentSession.value?.user?.metadata as? kotlinx.serialization.json.JsonObject
+        return listOf("display_name", "full_name", "name")
+            .firstNotNullOfOrNull { key ->
+                (metadata?.get(key) as? kotlinx.serialization.json.JsonPrimitive)
+                    ?.contentOrNull
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+            }
+    }
+
     fun getAccessToken(): String? =
         TestRuntimeOverrides.currentSession(context)?.accessToken
             ?: if (isForcedLogout()) null else readLocalFallbackAccessToken()
