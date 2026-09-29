@@ -134,6 +134,7 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
   let sent = 0
   let failed = 0
   const invalidTokens = []
+  const failureCodes = new Map()
 
   for (let offset = 0; offset < tokens.length; offset += 500) {
     const batch = tokens.slice(offset, offset + 500)
@@ -156,6 +157,10 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
     sent += response.successCount
     failed += response.failureCount
     response.responses.forEach((result, index) => {
+      if (!result.success) {
+        const code = String(result.error?.code || 'unknown')
+        failureCodes.set(code, (failureCodes.get(code) || 0) + 1)
+      }
       if (!result.success && isInvalidTokenError(result.error?.code)) invalidTokens.push(batch[index])
     })
   }
@@ -163,7 +168,7 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
   if (invalidTokens.length > 0) {
     await pool.query('DELETE FROM fallback_fcm_tokens WHERE token = ANY($1::text[])', [invalidTokens])
   }
-  console.log(`[push] type=${notification.type} recipientRef=${stableKey(notification.recipient_id)} sent=${sent} failed=${failed}`)
+  console.log(`[push] type=${notification.type} recipientRef=${stableKey(notification.recipient_id)} sent=${sent} failed=${failed} errorCodes=${JSON.stringify(Object.fromEntries(failureCodes))}`)
   return { sent, failed, removedInvalidTokens: invalidTokens.length }
 }
 
