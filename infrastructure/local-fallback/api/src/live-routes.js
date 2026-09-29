@@ -1753,6 +1753,11 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const stream = await streamById(pool, liveId)
       if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
       const identity = userIdentity(user)
+      // A ban belongs to this authenticated account. Preserve that feedback
+      // without exposing profile or stream data, so signaling can explain rejoin denial.
+      if (!ownsStream(stream, identity) && await isLiveBanned(pool, liveId, identity)) {
+        return res.status(403).json({ error: 'LIVE_BANNED' })
+      }
       if (
         (!stream.is_active && !ownsStream(stream, identity)) ||
         !(await canViewStream(pool, stream, identity))

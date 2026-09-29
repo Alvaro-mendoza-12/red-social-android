@@ -12,6 +12,10 @@ import android.net.Network
 import android.os.Build
 import android.util.Log
 import conectate.com.BuildConfig
+import conectate.com.core.network.PublicBackendDns
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.signaling.SignalingConfig
 import io.socket.client.Socket
@@ -72,6 +76,16 @@ class WebRTCManager(
         // Keep remote audio at WebRTC's reference level. Extra gain on the
         // handset speaker makes echo cancellation less effective on some devices.
         private const val REMOTE_AUDIO_GAIN = 1.0
+        private val turnHttpClient by lazy {
+            OkHttpClient.Builder()
+                .dns(PublicBackendDns)
+                .connectTimeout(8, TimeUnit.SECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
+                .callTimeout(10, TimeUnit.SECONDS)
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build()
+        }
         private val liveManagers = Collections.synchronizedMap(
             WeakHashMap<WebRTCManager, Unit>()
         )
@@ -1282,26 +1296,21 @@ class WebRTCManager(
             }
 
             Log.i("WebRTC", "Fetching managed TURN configuration from self-hosted coturn endpoint")
-            var connection = java.net.URL(selfHostedTurnUrl).openConnection() as java.net.HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 8000
-            connection.readTimeout = 8000
-            connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("Authorization", "Bearer $token")
-
-            val responseCode = connection.responseCode
-            if (responseCode in 200..299) {
-                var response = connection.inputStream.bufferedReader().use { it.readText() }
-                val jsonResponse = JSONObject(response)
-                val loaded = loadIceServersFromEnvelope(jsonResponse)
-                if (!loaded) {
-                    Log.e("WebRTC", "Self-hosted TURN response did not include any ICE servers.")
+            val request = Request.Builder().url(selfHostedTurnUrl)
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer $token")
+                .build()
+            turnHttpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val jsonResponse = JSONObject(response.body?.string().orEmpty())
+                    val loaded = loadIceServersFromEnvelope(jsonResponse)
+                    if (!loaded) {
+                        Log.e("WebRTC", "Self-hosted TURN response did not include any ICE servers.")
+                    }
+                    return loaded
                 }
-                return loaded
+                Log.e("WebRTC", "Self-hosted TURN endpoint returned HTTP ${response.code}")
             }
-
-            val errorMsg = connection.errorStream?.bufferedReader()?.use { it.readText() }
-            Log.e("WebRTC", "Self-hosted TURN endpoint error $responseCode: $errorMsg")
         } catch (e: Exception) {
             reportFailure("webrtc_turn_fetch", "Self-hosted TURN request failed", e)
         }

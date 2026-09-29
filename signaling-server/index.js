@@ -882,6 +882,9 @@ async function endLiveStream(liveId, accessToken, reactionCount = 0) {
         });
         return true;
     } catch (error) {
+        // Account deletion may have already removed the stream. Its persisted
+        // termination is complete; remove the lease instead of retrying forever.
+        if (error?.status === 404 && error?.message === 'LIVE_NOT_FOUND') return true;
         console.error(`[SOCKET_DEBUG] [LIVE][DB] Internal termination failed for ref=${diagnosticRef(liveId)}:`, diagnosticError(error));
         return false;
     }
