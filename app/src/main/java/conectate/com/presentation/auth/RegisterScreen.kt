@@ -308,13 +308,22 @@ fun RegisterScreen(
                             if (usernameAvailable && !usernameChecking) registrationStep = 2
                         }),
                         isError = usernameError.isNotBlank(),
+                        trailingIcon = {
+                            if (!usernameChecking && usernameAvailable && usernameError.isBlank()) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = "Usuario disponible", tint = Color(0xFF1B5E20))
+                            }
+                        },
                         supportingText = {
                             Text(when {
                                 usernameChecking -> "Comprobando disponibilidad…"
                                 usernameAvailable -> "Disponible. Será tu identificador permanente."
                                 usernameError.isNotBlank() -> usernameError
                                 else -> "Solo letras minúsculas, números, puntos, guiones y _."
-                            }, color = if (usernameError.isNotBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            }, color = when {
+                                usernameError.isNotBlank() -> MaterialTheme.colorScheme.error
+                                usernameAvailable && !usernameChecking -> Color(0xFF1B5E20)
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                         },
                     )
