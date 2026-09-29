@@ -188,7 +188,8 @@ class LiveRepository @Inject constructor(
     private var connectedLiveKitLiveId: String? = null
 
     // Live stats (host-side)
-    private var peakViewerCount: Int = 0
+    private val _audienceStats = MutableStateFlow(conectate.com.data.model.LiveAudienceStats())
+    val audienceStats = _audienceStats.asStateFlow()
     private var sessionCommentCount: Int = 0
     private var sessionReactionCount: Int = 0
     private val liveMusicMixer = LiveMusicAudioMixer(context)
@@ -1116,7 +1117,7 @@ class LiveRepository @Inject constructor(
 
             _viewerCount.value = stream.viewerCount
             _reactionCount.value = stream.totalReactions.coerceAtLeast(0)
-            peakViewerCount = stream.viewerCount.coerceAtLeast(0)
+            _audienceStats.value = conectate.com.data.model.LiveAudienceStats().withViewerCount(stream.viewerCount)
             sessionCommentCount = 0
             sessionReactionCount = stream.totalReactions.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
             _isMediaReady.value = false
@@ -1185,7 +1186,7 @@ class LiveRepository @Inject constructor(
 
             _viewerCount.value = stream.viewerCount
             _reactionCount.value = stream.totalReactions.coerceAtLeast(0)
-            peakViewerCount = stream.viewerCount.coerceAtLeast(0)
+            _audienceStats.value = conectate.com.data.model.LiveAudienceStats().withViewerCount(stream.viewerCount)
             sessionCommentCount = 0
             sessionReactionCount = stream.totalReactions.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
             _isMediaReady.value = false
@@ -2475,7 +2476,7 @@ class LiveRepository @Inject constructor(
                     val session = _activeSession.value
                     val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
                     val isHost = session?.role == LiveRole.HOST
-                    val peak = maxOf(peakViewerCount, _viewerCount.value).coerceAtLeast(0)
+                    val peak = maxOf(_audienceStats.value.peakConcurrent, _viewerCount.value).coerceAtLeast(0)
                     val totalComments = sessionCommentCount.coerceAtLeast(0)
                     val totalReactions = sessionReactionCount.coerceAtLeast(0)
 
@@ -2721,6 +2722,7 @@ class LiveRepository @Inject constructor(
                     knownViewerSocketIds.clear()
                     knownViewerSocketIds.addAll(currentSocketIds)
                     _liveViewers.value = currentViewers
+                    _audienceStats.update { it.withViewers(currentViewers) }
                     if (currentSocketIds.isNotEmpty()) {
                         scheduleLiveMediaTimeout()
                     }
@@ -2746,6 +2748,7 @@ class LiveRepository @Inject constructor(
                             (current.filterNot { it.socketId == sid } + participant)
                         }
                         if (role == LiveRole.HOST) {
+                            _audienceStats.update { it.withViewers(_liveViewers.value) }
                             webRTCManager?.onUserJoined(sid, uid)
                             scheduleLiveMediaTimeout()
                         }
@@ -2800,7 +2803,7 @@ class LiveRepository @Inject constructor(
                     val count = data.optInt("viewerCount", 0).coerceAtLeast(0)
                     _viewerCount.value = count
                     _activeSession.update { current -> current?.copy(viewerCount = count) }
-                    if (count > peakViewerCount) peakViewerCount = count
+                    _audienceStats.update { it.withViewerCount(count) }
                 }.onFailure { logMalformedSignal("viewer-count", it) }
             }
 

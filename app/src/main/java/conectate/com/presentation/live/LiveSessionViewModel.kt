@@ -72,6 +72,7 @@ class LiveSessionViewModel @Inject constructor(
     val reactionCount = liveRepository.reactionCount
     val giftEvents = liveRepository.giftEvents
     val viewerCount = liveRepository.viewerCount
+    val audienceStats = liveRepository.audienceStats
     val liveViewers = liveRepository.liveViewers
     val guestRequests = liveRepository.guestRequests
     val activeGuests = liveRepository.activeGuests

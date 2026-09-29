@@ -59,6 +59,8 @@ private data class FigmaHostLiveSettingsDraft(
 private data class HostLiveSummarySnapshot(
     val title: String,
     val viewerCount: Int,
+    val uniqueViewers: Int,
+    val peakConcurrent: Int,
     val commentCount: Int,
     val reactionCount: Int,
     val giftDiamonds: Int,
@@ -90,6 +92,7 @@ fun LiveHostScreen(
 ) {
     val session by viewModel.activeSession.collectAsStateWithLifecycle()
     val viewerCount by viewModel.viewerCount.collectAsStateWithLifecycle()
+    val audienceStats by viewModel.audienceStats.collectAsStateWithLifecycle()
     val comments by viewModel.comments.collectAsStateWithLifecycle()
     val reactions by viewModel.reactions.collectAsStateWithLifecycle()
     val reactionCount by viewModel.reactionCount.collectAsStateWithLifecycle()
@@ -398,6 +401,8 @@ fun LiveHostScreen(
         NovvinLiveSummary(
             title = finishedSummary.title,
             viewerCount = finishedSummary.viewerCount,
+            uniqueViewers = finishedSummary.uniqueViewers,
+            peakConcurrent = finishedSummary.peakConcurrent,
             commentCount = finishedSummary.commentCount,
             reactionCount = finishedSummary.reactionCount,
             giftDiamonds = finishedSummary.giftDiamonds,
@@ -406,7 +411,7 @@ fun LiveHostScreen(
             onShare = {
                 val shareText =
                     "Mi directo en Novvin: " + finishedSummary.title +
-                        " · " + finishedSummary.viewerCount + " espectadores" +
+                        " · " + finishedSummary.uniqueViewers + " espectadores únicos" +
                         " · " + finishedSummary.commentCount + " comentarios"
                 val intent = Intent(Intent.ACTION_SEND)
                     .setType("text/plain")
@@ -505,6 +510,8 @@ fun LiveHostScreen(
                     liveSummary = HostLiveSummarySnapshot(
                         title = session?.stream?.title.orEmpty(),
                         viewerCount = viewerCount,
+                        uniqueViewers = audienceStats.uniqueViewers,
+                        peakConcurrent = audienceStats.peakConcurrent,
                         commentCount = comments.size,
                         reactionCount = reactionCount.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(),
                         giftDiamonds = giftEvents.sumOf { it.gift.priceDiamonds },

@@ -9,6 +9,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -550,6 +551,8 @@ internal fun NovvinLiveHostExperience(
 internal fun NovvinLiveSummary(
     title: String,
     viewerCount: Int,
+    uniqueViewers: Int,
+    peakConcurrent: Int,
     commentCount: Int,
     reactionCount: Int,
     giftDiamonds: Int,
@@ -645,7 +648,7 @@ internal fun NovvinLiveSummary(
                     )
                     SummaryStatCard(
                         icon = Icons.Filled.Groups,
-                        value = formatCompactCount(viewerCount),
+                        value = formatCompactCount(uniqueViewers),
                         label = "Espectadores únicos",
                         accent = LivePalette.Cyan,
                         modifier = Modifier.weight(1f)
@@ -676,7 +679,7 @@ internal fun NovvinLiveSummary(
                 ) {
                     SummaryStatCard(
                         icon = Icons.Filled.Groups,
-                        value = formatCompactCount((viewerCount * 0.72f).toInt()),
+                        value = formatCompactCount(peakConcurrent),
                         label = "Pico simultáneo",
                         accent = LivePalette.Purple,
                         modifier = Modifier.weight(1f)
@@ -895,7 +898,8 @@ private fun LiveExperienceFrame(
                     bottom(metrics)
                 }
             } else {
-                val bottomOffset = metrics.composerHeight + 16.dp
+                val bottomOffset = metrics.composerHeight + 16.dp +
+                    if (metrics.horizontalActions) 76.dp else 0.dp
                 CompactChat(
                     comments,
                     metrics.chatHeight,
@@ -904,12 +908,23 @@ private fun LiveExperienceFrame(
                         .padding(start = metrics.horizontalPadding, bottom = bottomOffset)
                         .fillMaxWidth(0.72f)
                 )
-                Box(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = metrics.horizontalPadding, bottom = bottomOffset)
-                ) { actions(metrics) }
-                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { bottom(metrics) }
+                if (metrics.horizontalActions) {
+                    Column(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().imePadding()
+                    ) {
+                        Box(Modifier.fillMaxWidth().padding(horizontal = metrics.horizontalPadding)) {
+                            actions(metrics)
+                        }
+                        bottom(metrics)
+                    }
+                } else {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = metrics.horizontalPadding, bottom = bottomOffset)
+                    ) { actions(metrics) }
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { bottom(metrics) }
+                }
             }
         }
     }
@@ -1184,7 +1199,7 @@ private fun ViewerTopBar(
             ) {
                 Text(
                     "Seguir",
-                    color = Color.White,
+                    color = Color.Black,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
@@ -1348,10 +1363,7 @@ private fun ViewerActions(
     onReaction: () -> Unit,
     onMore: () -> Unit
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(if (metrics.compact) 7.dp else 10.dp)
-    ) {
+    val items: @Composable () -> Unit = {
         if (giftsEnabled) LiveAction(
             icon = Icons.Filled.CardGiftcard,
             label = "Regalo",
@@ -1379,6 +1391,18 @@ private fun ViewerActions(
             onReaction
         )
         LiveAction(Icons.Filled.MoreHoriz, "Más", Color.White, metrics.actionSize, onMore)
+    }
+    if (metrics.horizontalActions) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) { items() }
+    } else {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(if (metrics.compact) 7.dp else 10.dp)
+        ) { items() }
     }
 }
 

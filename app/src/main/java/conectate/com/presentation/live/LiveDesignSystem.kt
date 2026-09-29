@@ -55,7 +55,8 @@ internal data class LiveResponsiveMetrics(
     val actionSize: Dp,
     val composerHeight: Dp,
     val chatHeight: Dp,
-    val compact: Boolean
+    val compact: Boolean,
+    val horizontalActions: Boolean
 )
 
 internal fun liveMetrics(width: Dp, height: Dp): LiveResponsiveMetrics {
@@ -65,8 +66,9 @@ internal fun liveMetrics(width: Dp, height: Dp): LiveResponsiveMetrics {
         topAvatarSize = if (compact) 32.dp else 36.dp,
         actionSize = if (compact) 38.dp else 44.dp,
         composerHeight = if (compact) 56.dp else 64.dp,
-        chatHeight = if (compact) 132.dp else 160.dp,
-        compact = compact
+        chatHeight = if (height < width) 64.dp else if (compact) 132.dp else 160.dp,
+        compact = compact,
+        horizontalActions = height < width
     )
 }
 

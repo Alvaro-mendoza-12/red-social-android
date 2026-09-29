@@ -373,6 +373,16 @@ fun LiveSetupScreen(
                     )
                 }
 
+                if (serviceBannerVisible && mode == CreatorEntryMode.CAMERA && !compact) {
+                    MusicServiceBanner(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        onOpen = { panelName = CreatorPanel.MUSIC.name },
+                        onClose = { serviceBannerVisible = false },
+                    )
+                }
+
                 Spacer(Modifier.weight(1f))
 
                 when (mode) {
@@ -423,18 +433,6 @@ fun LiveSetupScreen(
                 )
             }
 
-            if (serviceBannerVisible && mode == CreatorEntryMode.CAMERA && !compact) {
-                MusicServiceBanner(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        // Keep the announcement below the practice prompt. At
-                        // 360dp wide the former 142dp offset covered its text.
-                        .padding(top = 220.dp, start = 20.dp, end = 20.dp)
-                        .widthIn(max = 460.dp),
-                    onOpen = { panelName = CreatorPanel.MUSIC.name },
-                    onClose = { serviceBannerVisible = false },
-                )
-            }
         }
     }
 
