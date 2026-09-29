@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 const PORT = Number(process.env.PORT || 3001);
 const { resolveLink } = require('./resolver');
 const { normalizeSignalPayload } = require('./payload-policy');
+const { classifyLiveLookupFailure } = require('./live-access-policy');
 const { connectDistributedAdapter } = require('./distributed-adapter');
 const { fetchNamespaceScopeMembers, sharesNamespaceScope } = require('./distributed-scope');
 const {
@@ -898,9 +899,12 @@ async function getLiveStreamMeta(liveId, accessToken) {
             allowGuestRequests: Boolean(stream?.allow_guest_requests ?? stream?.allowGuestRequests)
         };
     } catch (error) {
-        if (error?.status === 404) return { exists: false, isActive: false, hostUserId: '', totalReactions: 0, allowGuestRequests: false };
-        console.error(`[SOCKET_DEBUG] [LIVE][DB] Failed to read ref=${diagnosticRef(liveId)}:`, diagnosticError(error));
-        return { exists: false, isActive: false, hostUserId: '', totalReactions: 0, allowGuestRequests: false };
+        const accessFailure = classifyLiveLookupFailure(error);
+        if (accessFailure === 'unavailable') {
+            console.error(`[SOCKET_DEBUG] [LIVE][DB] Failed to read ref=${diagnosticRef(liveId)}:`, diagnosticError(error));
+        }
+        return { exists: false, isActive: false, hostUserId: '', totalReactions: 0,
+            allowGuestRequests: false, accessFailure };
     }
 }
 
@@ -2177,6 +2181,17 @@ liveIo.on('connection', (socket) => {
         // ban checks. GET /live/:id uses the viewer's own bearer token.
         if (role === 'viewer') {
             const viewerMeta = await getLiveStreamMeta(liveId, getSocketAuthToken(socket));
+            if (viewerMeta.accessFailure === 'banned') {
+                socket.emit('live-moderated', {
+                    action: 'ban',
+                    message: 'El equipo de moderación restringió tu acceso a este directo.'
+                });
+                return;
+            }
+            if (viewerMeta.accessFailure === 'unavailable') {
+                socket.emit('live-moderation-error', { error: 'No se pudo validar tu acceso al directo. Intenta de nuevo.' });
+                return;
+            }
             if (!viewerMeta.exists || !viewerMeta.isActive) {
                 socket.emit('live-ended');
                 return;

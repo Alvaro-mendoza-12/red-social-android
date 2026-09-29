@@ -5,7 +5,7 @@ WORKDIR /usr/src/app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY index.js resolver.js payload-policy.js distributed-adapter.js distributed-scope.js distributed-live-state.js ./
+COPY index.js resolver.js payload-policy.js live-access-policy.js distributed-adapter.js distributed-scope.js distributed-live-state.js ./
 
 USER node
 
