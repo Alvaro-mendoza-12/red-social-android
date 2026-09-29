@@ -2267,11 +2267,12 @@ class VoiceRoomRepository @Inject constructor(
         updateVoiceForegroundService("screen")
         webRTCManager?.ensureLocalTracks()
         webRTCManager?.setAudioEnabled(!isSelfMuted() && canCurrentUserPublishMedia())
+        val portrait = context.resources.displayMetrics.let { it.heightPixels > it.widthPixels }
         webRTCManager?.startVideo(
             isScreen = true,
             intent = intent,
-            targetWidth = performanceProfile.voiceScreenWidth,
-            targetHeight = performanceProfile.voiceScreenHeight,
+            targetWidth = if (portrait) performanceProfile.voiceScreenHeight else performanceProfile.voiceScreenWidth,
+            targetHeight = if (portrait) performanceProfile.voiceScreenWidth else performanceProfile.voiceScreenHeight,
             targetFps = performanceProfile.voiceScreenFps,
             onProjectionStopped = {
                 if (_currentVideoMode.value == VideoMode.SCREEN) {
