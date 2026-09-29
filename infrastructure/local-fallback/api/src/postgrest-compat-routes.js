@@ -9,7 +9,7 @@ const {
 const { appAdminHasCapability, isAppAdmin, recordModerationEvent } = require('./admin-moderation-routes')
 const { ADMIN_CAPABILITY } = require('./admin-capabilities')
 const { accountSuspendedPayload, findActiveSuspension } = require('./account-status')
-const { invalidateImportedDataCache } = require('./data-routes')
+const { invalidateImportedDataCache, currentUserMayReferenceMessageMedia } = require('./data-routes')
 const { sendPushForNotification } = require('./push-notifications')
 const { removeStorageObjectFiles } = require('./storage-routes')
 const {
@@ -3244,13 +3244,6 @@ async function toggleStickerFavoriteRpc(pool, auth, body) {
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   const stickerId = String(messageBodyValue(body, 'sticker_id', '') || '').trim().slice(0, 160)
   if (!stickerId) throw httpError('STICKER_ID_REQUIRED', 400)
-  const accessiblePacks = await accessibleStickerPackIds(pool, identity)
-  const item = (await importedAndCompatRows(pool, 'sticker_pack_items')).find((row) =>
-    normalizeIdentityValue(row.sticker_id || row.id) === normalizeIdentityValue(stickerId) &&
-    accessiblePacks.has(normalizeIdentityValue(row.pack_id)),
-  )
-  if (!item) throw httpError('STICKER_NOT_FOUND', 404)
-
   const compatFavorites = await readCompatRows(pool, 'user_sticker_favorites')
   const existing = compatFavorites.find((row) =>
     identityOwnsRow(identity, row, ['user_id']) &&
@@ -3258,16 +3251,40 @@ async function toggleStickerFavoriteRpc(pool, auth, body) {
   )
   const requestedFavorite = body.p_favorite ?? body.favorite
   const shouldFavorite = desiredStickerFavoriteState(existing, requestedFavorite)
+  // A user may remove their own favorite even after its source pack disappears.
+  if (!shouldFavorite) {
+    if (existing) {
+      await pool.query(
+        `DELETE FROM fallback_compat_rows WHERE table_name = 'user_sticker_favorites' AND row_id = $1`,
+        [rowId(existing, 'user_sticker_favorites')],
+      )
+    }
+    return { ok: true, is_favorite: false }
+  }
+  const accessiblePacks = await accessibleStickerPackIds(pool, identity)
+  let item = (await importedAndCompatRows(pool, 'sticker_pack_items')).find((row) =>
+    normalizeIdentityValue(row.sticker_id || row.id) === normalizeIdentityValue(stickerId) &&
+    !stickerRowDeleted(row) && accessiblePacks.has(normalizeIdentityValue(row.pack_id)),
+  )
+  if (!item) {
+    const mediaUrl = String(messageBodyValue(body, 'media_url', '') || '').trim().slice(0, 2000)
+    if (!mediaUrl || !(await currentUserMayReferenceMessageMedia(pool, { id: identity.localUserId }, identity, {
+      mediaUrl, contentType: 'sticker', allowedOwnedBuckets: ['chat-media'],
+    }))) throw httpError('STICKER_MEDIA_NOT_OWNED')
+    const packId = `saved-stickers:${identity.localUserId}`
+    await storeCompatRow(pool, 'sticker_packs', {
+      id: packId, owner_id: identity.preferredUserId, name: 'Mis stickers', is_public: false,
+    })
+    const title = String(messageBodyValue(body, 'title', 'Sticker') || 'Sticker').trim().slice(0, 80)
+    item = await storeCompatRow(pool, 'sticker_pack_items', {
+      // Two recipients can save the same URL without overwriting each other's pack.
+      id: `saved:${identity.localUserId}:${stickerId}`, sticker_id: stickerId, pack_id: packId,
+      title, label: title, media_url: mediaUrl, thumbnail_url: mediaUrl,
+      is_animated: body.p_is_animated === true, source: 'message', tags: [],
+    })
+  }
   if (Boolean(existing) === shouldFavorite) {
     return { ok: true, is_favorite: shouldFavorite }
-  }
-  if (existing) {
-    await pool.query(
-      `DELETE FROM fallback_compat_rows
-       WHERE table_name = 'user_sticker_favorites' AND row_id = $1`,
-      [rowId(existing, 'user_sticker_favorites')],
-    )
-    return { ok: true, is_favorite: false }
   }
   await storeCompatRow(pool, 'user_sticker_favorites', {
     user_id: identity.preferredUserId,
@@ -6037,6 +6054,7 @@ module.exports = {
   canReuseCatalogStickerMedia,
   _test: {
     desiredStickerFavoriteState,
+    toggleStickerFavoriteRpc,
     DEFAULT_VIRTUAL_GIFTS,
     SERVER_MUTATION_ONLY_TABLES,
     sanitizeProfileRow,
