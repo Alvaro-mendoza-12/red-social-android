@@ -969,6 +969,7 @@ fun VideoGridLayout(
                  key(track) { // Recreate renderer if track instance changes
                      Box(
                          modifier = Modifier
+                             .fillMaxWidth()
                              .aspectRatio(0.7f)
                              .clip(RoundedCornerShape(12.dp))
                              .background(Color.Black)

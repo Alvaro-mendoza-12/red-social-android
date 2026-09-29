@@ -28,11 +28,12 @@ object PublicBackendDns : Dns {
     @Volatile private var cachedAddresses: List<InetAddress> = emptyList()
     @Volatile private var cacheExpiresAtMs = 0L
 
-    private data class Resolver(val host: String, val ip: ByteArray)
+    private data class Resolver(val host: String, val path: String, val ip: ByteArray? = null)
 
     private val resolvers = listOf(
-        Resolver("cloudflare-dns.com", byteArrayOf(1, 1, 1, 1)),
-        Resolver("dns.google", byteArrayOf(8, 8, 8, 8)),
+        Resolver("cloudflare-dns.com", "/dns-query"),
+        Resolver("cloudflare-dns.com", "/dns-query", byteArrayOf(1, 1, 1, 1)),
+        Resolver("dns.google", "/resolve", byteArrayOf(8, 8, 8, 8)),
     )
 
     override fun lookup(hostname: String): List<InetAddress> {
@@ -54,6 +55,7 @@ object PublicBackendDns : Dns {
             }
             for (resolver in resolvers) {
                 val addresses = runCatching { resolveOverHttps(resolver, hostname) }
+                    .onFailure { Log.w(TAG, "Public DNS resolver unavailable: ${resolver.host}", it) }
                     .getOrDefault(emptyList())
                     .filter(::isPublicAddress)
                 if (addresses.isNotEmpty()) {
@@ -64,13 +66,14 @@ object PublicBackendDns : Dns {
                 }
             }
         }
+        if (cachedAddresses.isNotEmpty()) return cachedAddresses
         throw UnknownHostException("No public address available for $hostname")
     }
 
     private fun resolveOverHttps(resolver: Resolver, hostname: String): List<InetAddress> {
         val bootstrapDns = object : Dns {
             override fun lookup(hostname: String): List<InetAddress> {
-                return if (hostname.equals(resolver.host, ignoreCase = true)) {
+                return if (hostname.equals(resolver.host, ignoreCase = true) && resolver.ip != null) {
                     listOf(InetAddress.getByAddress(resolver.ip))
                 } else {
                     Dns.SYSTEM.lookup(hostname)
@@ -79,12 +82,12 @@ object PublicBackendDns : Dns {
         }
         val client = OkHttpClient.Builder()
             .dns(bootstrapDns)
-            .connectTimeout(2, TimeUnit.SECONDS)
-            .readTimeout(2, TimeUnit.SECONDS)
-            .callTimeout(3, TimeUnit.SECONDS)
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(3, TimeUnit.SECONDS)
+            .callTimeout(5, TimeUnit.SECONDS)
             .build()
         val request = Request.Builder()
-            .url("https://${resolver.host}/resolve?name=$hostname&type=A")
+            .url("https://${resolver.host}${resolver.path}?name=$hostname&type=A")
             .header("Accept", "application/dns-json")
             .build()
         client.newCall(request).execute().use { response ->
