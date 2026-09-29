@@ -28,6 +28,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
@@ -72,7 +75,12 @@ class StickerRepository @Inject constructor(
     }
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-    private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    @Volatile private var activeOwnerId: String = authService.getCurrentUserId().orEmpty()
+    // Sticker packs, saved choices and recents belong to an account, not a phone.
+    // The old unscoped preferences cannot be assigned safely to either account.
+    private val prefs get() = context.getSharedPreferences(
+        "$PREFS:${activeOwnerId.ifBlank { "signed-out" }}", Context.MODE_PRIVATE
+    )
     private val remoteFavoriteScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val remoteFavoriteMutex = Mutex()
     private val localStateLock = Any()
@@ -126,6 +134,10 @@ class StickerRepository @Inject constructor(
 
         persistAll(localCatalog, localPacks, localFavs, localDownloads, localRecents)
         remoteFavoriteScope.launch {
+            authService.currentSession.map { authService.getCurrentUserId().orEmpty() }
+                .distinctUntilChanged().collectLatest { ownerId -> switchAccount(ownerId) }
+        }
+        remoteFavoriteScope.launch {
             for (request in identityRequests) {
                 val actingUserId = authService.getCurrentUserId()
                 val items = _catalog.value.filter {
@@ -140,7 +152,30 @@ class StickerRepository @Inject constructor(
         }
     }
 
+    private fun switchAccount(ownerId: String) = synchronized(localStateLock) {
+        if (activeOwnerId == ownerId) return@synchronized
+        activeOwnerId = ownerId
+        val items = loadLocalItems().ifEmpty { defaultCatalog() }
+        val packs = loadLocalPacks().ifEmpty { defaultPacks() }
+        _catalog.value = items
+        _packs.value = packs
+        _favorites.value = loadLocalFavorites()
+        _downloadedPacks.value = loadDownloadedPacks()
+        _recentStickerIds.value = loadRecentStickerIds()
+        favoriteMediaAliases = loadFavoriteMediaAliases()
+        favoriteDecisions = runCatching {
+            json.decodeFromString<Map<String, Long>>(prefs.getString(KEY_FAVORITE_DECISIONS, "{}") ?: "{}")
+        }.getOrDefault(emptyMap())
+        favoriteRevision = favoriteDecisions.values.maxOfOrNull { kotlin.math.abs(it) } ?: 0L
+        stickerUsage = runCatching {
+            json.decodeFromString<Map<String, Int>>(prefs.getString(KEY_STICKER_USAGE, "{}") ?: "{}")
+        }.getOrDefault(emptyMap())
+        publishFavoriteMediaKeys()
+        persistAll(items, packs, _favorites.value, _downloadedPacks.value, _recentStickerIds.value)
+    }
+
     suspend fun bootstrap() {
+        switchAccount(authService.getCurrentUserId().orEmpty())
         // Local content is usable while the optional catalog refresh is in flight.
         identityRequests.trySend(Unit)
         enqueueFavoriteSync(_favorites.value + favoriteDecisions.keys)
@@ -769,10 +804,12 @@ class StickerRepository @Inject constructor(
     }
 
     private suspend fun withCachedFingerprint(item: StickerItem): StickerItem {
+        val ownerId = activeOwnerId
         if (!item.content_sha256.isNullOrBlank() ||
             !isOwnStickerUrl(item.media_url.orEmpty())) return item
         val fingerprint = readStickerFingerprint(item.media_url.orEmpty()) ?: return item
         return synchronized(localStateLock) {
+            if (activeOwnerId != ownerId) return@synchronized item
             val current = _catalog.value.firstOrNull { it.id == item.id } ?: return@synchronized item
             val updated = current.copy(content_sha256 = fingerprint.sha256, visual_fingerprint = fingerprint.visual,
                 is_animated = fingerprint.animated)
@@ -783,6 +820,7 @@ class StickerRepository @Inject constructor(
     }
 
     private suspend fun refreshRemoteCatalog() {
+        val ownerId = activeOwnerId
         var token = authService.getAccessToken() ?: return
         var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_search_stickers") {
             header("Authorization", "Bearer $token")
@@ -801,6 +839,7 @@ class StickerRepository @Inject constructor(
         if (parsed.isEmpty()) return
 
         synchronized(localStateLock) {
+            if (activeOwnerId != ownerId) return@synchronized
             val localById = _catalog.value.associateBy { it.id }
             val merged = (parsed.map { remote ->
                 val local = localById[remote.id]
@@ -822,12 +861,14 @@ class StickerRepository @Inject constructor(
     }
 
     private suspend fun refreshRemotePacks() {
+        val ownerId = activeOwnerId
         runCatching {
             val rows = supabaseConfig.client.postgrest["sticker_packs"].select {
                 order("updated_at", Order.DESCENDING)
             }.decodeList<StickerPack>()
 
             if (rows.isNotEmpty()) {
+                if (activeOwnerId != ownerId) return@runCatching
                 var merged = (rows + _packs.value).distinctBy { it.id }
                 _packs.value = merged
                 persistPacks(merged)

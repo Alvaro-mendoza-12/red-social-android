@@ -552,6 +552,20 @@ fun ChatScreen(
                 }
 
                 if (selectedMessage?.deleted_for_all != true) {
+                    if (selectedMessage?.content_type == "sticker" && selectedMessage?.status == "failed" &&
+                        selectedMessage?.sender_id == currentUserId) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                selectedMessage?.let(viewModel::retryFailedSticker)
+                                viewModel.dismissMessageActions()
+                            }.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text("Reintentar envío")
+                        }
+                    }
                     if (selectedMessage?.content_type == "sticker") {
                         val stickerIsFavorite = viewModel.isStickerFavorite(selectedMessage?.media_url, favoriteStickerMediaKeys)
                         Row(

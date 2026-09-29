@@ -1035,6 +1035,46 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun retryFailedSticker(message: Message) {
+        val ownerId = authService.getCurrentUserId().orEmpty()
+        if (message.content_type != "sticker" || message.status != "failed" ||
+            !message.sender_id.equals(ownerId, ignoreCase = true) ||
+            chatId?.equals(message.chat_id, ignoreCase = true) != true) return
+        if (!ensureNotBlockedForSending() || _isSending.value) return
+        val mediaUrl = message.media_url?.trim().orEmpty()
+        if (!mediaUrl.startsWith("https://", ignoreCase = true)) {
+            conectate.com.presentation.common.AppFeedbackBus.showError("Este sticker ya no está disponible. Elígelo otra vez.")
+            return
+        }
+        viewModelScope.launch {
+            _isSending.value = true
+            try {
+                // Reuse the original ID so a delayed server acknowledgement cannot
+                // produce a duplicate after the user taps retry.
+                val result = messageRepository.sendMessage(
+                    chatId = message.chat_id,
+                    content = message.content,
+                    mediaType = "sticker",
+                    messageId = message.id,
+                    existingMediaUrl = mediaUrl,
+                    replyToId = message.reply_to_id
+                )
+                if (result.isFailure) {
+                    conectate.com.presentation.common.AppFeedbackBus.showError(
+                        "No se pudo reenviar el sticker: ${normalizeSendError(result.exceptionOrNull()?.message.orEmpty())}"
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.w("ChatViewModel", "Sticker retry failed", error)
+                conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo reenviar el sticker. Inténtalo otra vez.")
+            } finally {
+                _isSending.value = false
+            }
+        }
+    }
+
     fun sendContactMessage(
         name: String,
         phone: String,

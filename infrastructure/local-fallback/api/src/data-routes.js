@@ -13739,6 +13739,7 @@ function registerDataRoutes(app, {
         ).then((result) => result.rows.map(normalizeImportedRow)),
       ])
       const merged = [...imported, ...localRows].filter((row) => {
+        if (tab === 'all') return rowMatchesAny(row, ['sender_id', 'receiver_id'], identity.ids)
         if (tab === 'outgoing') return rowMatchesAny(row, ['sender_id'], identity.ids)
         if (tab === 'accepted') return row.status === 'accepted' && (rowMatchesAny(row, ['sender_id', 'receiver_id'], identity.ids))
         return row.status === 'pending' && rowMatchesAny(row, ['receiver_id'], identity.ids)

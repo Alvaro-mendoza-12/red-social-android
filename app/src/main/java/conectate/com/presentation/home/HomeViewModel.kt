@@ -11,6 +11,8 @@ import conectate.com.data.repository.MomentRepository
 import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.PlayMatchRepository
 import conectate.com.data.repository.NotificationRepository
+import conectate.com.data.repository.FriendRepository
+import conectate.com.data.local.prefs.SeenFriendRequestsPreferences
 import conectate.com.data.model.PlayMatchConnection
 import conectate.com.data.model.PlayMatchMatch
 import conectate.com.data.supabase.AuthService
@@ -41,6 +43,8 @@ class HomeViewModel @Inject constructor(
     private val postRepository: PostRepository,
     private val playMatchRepository: PlayMatchRepository,
     private val notificationRepository: NotificationRepository,
+    private val friendRepository: FriendRepository,
+    private val seenFriendRequestsPreferences: SeenFriendRequestsPreferences,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -49,7 +53,11 @@ class HomeViewModel @Inject constructor(
     val newFollowingVideos: StateFlow<Boolean> = _newFollowingVideos.asStateFlow()
     private val _newFollowingMoments = MutableStateFlow(false)
     private val _newFollowingPosts = MutableStateFlow(false)
-    val newSocialContent = combine(_newFollowingPosts, _newFollowingMoments) { posts, moments -> posts || moments }
+    private val _newFriendRequests = MutableStateFlow(false)
+    private var pendingFriendRequestIds: List<String> = emptyList()
+    val newSocialContent = combine(_newFollowingPosts, _newFollowingMoments, _newFriendRequests) { posts, moments, requests ->
+        posts || moments || requests
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     private val _newGames = MutableStateFlow(false)
     val newGames = _newGames.asStateFlow()
@@ -124,6 +132,14 @@ class HomeViewModel @Inject constructor(
         launch { quietlyRefresh { momentRepository.refreshMoments() } }
         launch { quietlyRefresh { notificationRepository.updateUnreadCount().getOrThrow() } }
         launch { quietlyRefresh {
+            val requests = friendRepository.getPendingRequests().getOrThrow()
+            currentCoroutineContext().ensureActive()
+            if (isCurrent(userId)) {
+                pendingFriendRequestIds = requests.map { it.id }
+                _newFriendRequests.value = seenFriendRequestsPreferences.unseenCount(userId, pendingFriendRequestIds) > 0
+            }
+        } }
+        launch { quietlyRefresh {
             if (!playMatchRepository.capabilities().getOrThrow().enabled) return@quietlyRefresh
             val connections = playMatchRepository.connections().getOrThrow().items
             val matches = playMatchRepository.matches().getOrThrow().items
@@ -182,9 +198,24 @@ class HomeViewModel @Inject constructor(
                 _newFollowingMoments.value = false
                 _newFollowingPosts.value = false
                 _newGames.value = false
+                _newFriendRequests.value = false
+                pendingFriendRequestIds = emptyList()
                 latestVideoAt = null
                 latestPostAt = null
                 gameKeys = emptySet()
+            }
+        }
+        viewModelScope.launch {
+            seenFriendRequestsPreferences.revision.collect {
+                val userId = authService.getCurrentUserId() ?: return@collect
+                _newFriendRequests.value = seenFriendRequestsPreferences.unseenCount(userId, pendingFriendRequestIds) > 0
+                quietlyRefresh {
+                    val requests = friendRepository.getPendingRequests().getOrThrow()
+                    if (isCurrent(userId)) {
+                        pendingFriendRequestIds = requests.map { request -> request.id }
+                        _newFriendRequests.value = seenFriendRequestsPreferences.unseenCount(userId, pendingFriendRequestIds) > 0
+                    }
+                }
             }
         }
         viewModelScope.launch {

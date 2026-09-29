@@ -27,7 +27,9 @@ class FriendRequestsViewModel @Inject constructor(
     private val _requests = MutableStateFlow<List<User>>(emptyList())
     val requests: StateFlow<List<User>> = _requests.asStateFlow()
 
-    private val _isLoading = MutableStateFlow(false)
+    // A new screen has no server answer yet. Do not show an empty state while
+    // the first request is still being scheduled by the lifecycle observer.
+    private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _loadError = MutableStateFlow(false)

@@ -12,6 +12,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 @Serializable
 data class FriendRequest(
@@ -68,11 +71,12 @@ class FriendRepository @Inject constructor(
         }
     }
 
-    private suspend fun loadUbuntuUsers(token: String, userIds: List<String>): List<User> {
-        return userIds.distinct()
-            .mapNotNull { id ->
-                localFallbackApiClient.loadProfileUser(token, id).getOrNull()
-            }
+    private suspend fun loadUbuntuUsers(token: String, userIds: List<String>): List<User> = coroutineScope {
+        userIds.distinct().chunked(8).flatMap { batch ->
+            batch.map { id ->
+                async { localFallbackApiClient.loadProfileUser(token, id).getOrNull() }
+            }.awaitAll().filterNotNull()
+        }
     }
 
     suspend fun getFriendStatus(targetUserId: String): Result<FriendStatus> {
@@ -80,24 +84,19 @@ class FriendRepository @Inject constructor(
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             ubuntuToken()?.let { token ->
                 val cleanCurrentUserId = currentUserId.trim().lowercase()
-                findUbuntuFriendRequest(token, targetUserId, "accepted")?.let {
-                    return Result.success(FriendStatus.FRIENDS)
-                }
-                findUbuntuFriendRequest(token, targetUserId, "outgoing")?.let { request ->
-                    return Result.success(
-                        if (request.status == "accepted") FriendStatus.FRIENDS else FriendStatus.PENDING_SENT
-                    )
-                }
-                localFallbackApiClient.loadFriendRequests(token, "incoming").getOrThrow()
-                    .firstOrNull { request ->
-                        request.senderId.equals(targetUserId, ignoreCase = true) &&
-                            request.receiverId.equals(cleanCurrentUserId, ignoreCase = true)
-                    }?.let { request ->
-                        return Result.success(
-                            if (request.status == "accepted") FriendStatus.FRIENDS else FriendStatus.PENDING_RECEIVED
-                        )
+                // A profile used to make three sequential round trips before
+                // showing whether the automatic chat request could be cancelled.
+                val relationships = localFallbackApiClient.loadFriendRequests(token, "all").getOrThrow()
+                    .filter { request ->
+                        request.senderId.equals(targetUserId, ignoreCase = true) ||
+                            request.receiverId.equals(targetUserId, ignoreCase = true)
                     }
-                return Result.success(FriendStatus.NONE)
+                return Result.success(when {
+                    relationships.any { it.status == "accepted" } -> FriendStatus.FRIENDS
+                    relationships.any { it.status == "pending" && it.senderId.equals(cleanCurrentUserId, ignoreCase = true) } -> FriendStatus.PENDING_SENT
+                    relationships.any { it.status == "pending" && it.receiverId.equals(cleanCurrentUserId, ignoreCase = true) } -> FriendStatus.PENDING_RECEIVED
+                    else -> FriendStatus.NONE
+                })
             }
             
             // Check if I sent a request or we are friends
