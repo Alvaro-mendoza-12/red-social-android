@@ -416,6 +416,7 @@ fun ChatScreen(
     }
 
     val selectedMessage by viewModel.selectedMessage.collectAsState()
+    val favoriteStickerMediaKeys by viewModel.favoriteStickerMediaKeys.collectAsState()
     val replyToMessage by viewModel.replyToMessage.collectAsState()
 
     val editingMessage by viewModel.editingMessage.collectAsState()
@@ -580,7 +581,7 @@ fun ChatScreen(
 
                 if (selectedMessage?.deleted_for_all != true) {
                     if (selectedMessage?.content_type == "sticker") {
-                        val stickerIsFavorite = viewModel.isStickerFavorite(selectedMessage?.media_url)
+                        val stickerIsFavorite = viewModel.isStickerFavorite(selectedMessage?.media_url, favoriteStickerMediaKeys)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

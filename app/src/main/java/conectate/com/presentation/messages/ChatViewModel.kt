@@ -1005,7 +1005,10 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun isStickerFavorite(mediaUrl: String?): Boolean = stickerRepository.isFavoriteMediaUrl(mediaUrl)
+    val favoriteStickerMediaKeys = stickerRepository.favoriteMediaKeys
+
+    fun isStickerFavorite(mediaUrl: String?, mediaKeys: Set<String>): Boolean =
+        conectate.com.data.repository.StickerIdentity.mediaKey(mediaUrl) in mediaKeys
 
     fun toggleStickerFavorite(message: Message) {
         val url = message.media_url?.trim().orEmpty()
@@ -1029,7 +1032,6 @@ class ChatViewModel @Inject constructor(
                 },
                 Toast.LENGTH_SHORT
             ).show()
-            dismissMessageActions()
         }
     }
 

@@ -821,7 +821,10 @@ class GroupChatViewModel @Inject constructor(
         _selectedMessage.value = null
     }
 
-    fun isStickerFavorite(mediaUrl: String?): Boolean = stickerRepository.isFavoriteMediaUrl(mediaUrl)
+    val favoriteStickerMediaKeys = stickerRepository.favoriteMediaKeys
+
+    fun isStickerFavorite(mediaUrl: String?, mediaKeys: Set<String>): Boolean =
+        conectate.com.data.repository.StickerIdentity.mediaKey(mediaUrl) in mediaKeys
 
     fun toggleStickerFavorite(message: conectate.com.data.model.Message) {
         val url = message.media_url?.trim().orEmpty()
@@ -842,7 +845,6 @@ class GroupChatViewModel @Inject constructor(
                 StickerRepository.FavoriteChange.REMOVED -> "Sticker quitado de favoritos"
                 else -> "No se pudo comprobar el sticker. Inténtalo de nuevo"
             }
-            _selectedMessage.value = null
         }
     }
 

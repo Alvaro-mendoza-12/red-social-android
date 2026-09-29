@@ -6,12 +6,12 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.StickerItem
 import conectate.com.data.model.StickerPack
 import conectate.com.data.repository.StickerRepository
-import conectate.com.data.repository.StickerIdentity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -47,8 +47,11 @@ class StickerPickerViewModel @Inject constructor(
     init {
         refreshAll()
         viewModelScope.launch {
-            stickerRepository.favorites.collectLatest {
+            combine(stickerRepository.favorites, stickerRepository.catalog, stickerRepository.recentStickerIds) { _, _, _ -> Unit }
+                .collectLatest {
                 _favoriteItems.value = stickerRepository.favoritesAsItems()
+                _recentItems.value = stickerRepository.recentAsItems()
+                _searchResults.value = stickerRepository.search(_query.value)
             }
         }
     }
@@ -97,31 +100,24 @@ class StickerPickerViewModel @Inject constructor(
             stickerRepository.isFavoriteMediaUrl(sticker.media_url)
 
     fun setFavorite(sticker: StickerItem, favorite: Boolean) {
-        if (!favorite) {
-            // Update Compose before any disk or network work starts.
-            _favoriteItems.value = _favoriteItems.value.filterNot {
-                it.id == sticker.id || StickerIdentity.matches(it, sticker)
-            }
+        val change = if (favorite) {
+            sticker.media_url?.let { stickerRepository.addFavoriteByMedia(it, sticker.title) }
+                ?: if (stickerRepository.setFavorite(sticker.id, true)) {
+                    StickerRepository.FavoriteChange.ADDED
+                } else StickerRepository.FavoriteChange.UNAVAILABLE
+        } else {
+            stickerRepository.setFavorite(sticker.id, false)
+            StickerRepository.FavoriteChange.REMOVED
         }
+        _actionMessage.value = when (change) {
+            StickerRepository.FavoriteChange.ADDED -> "Sticker añadido a favoritos"
+            StickerRepository.FavoriteChange.ALREADY_PRESENT -> "Ya tienes este sticker en favoritos"
+            StickerRepository.FavoriteChange.REMOVED -> "Sticker quitado de favoritos"
+            else -> "No se pudo comprobar el sticker. Inténtalo de nuevo"
+        }
+        _favoriteItems.value = stickerRepository.favoritesAsItems()
+        _recentItems.value = stickerRepository.recentAsItems()
         viewModelScope.launch {
-            val change = if (favorite) {
-                sticker.media_url?.let { stickerRepository.addFavoriteByMedia(it, sticker.title) }
-                    ?: if (stickerRepository.setFavorite(sticker.id, true)) {
-                        StickerRepository.FavoriteChange.ADDED
-                    } else StickerRepository.FavoriteChange.UNAVAILABLE
-            } else {
-                if (stickerRepository.setFavorite(sticker.id, false)) {
-                    StickerRepository.FavoriteChange.NOT_PRESENT
-                } else StickerRepository.FavoriteChange.REMOVED
-            }
-            _actionMessage.value = when (change) {
-                StickerRepository.FavoriteChange.ADDED -> "Sticker añadido a favoritos"
-                StickerRepository.FavoriteChange.ALREADY_PRESENT -> "Ya tienes este sticker en favoritos"
-                StickerRepository.FavoriteChange.REMOVED -> "Sticker quitado de favoritos"
-                else -> "No se pudo comprobar el sticker. Inténtalo de nuevo"
-            }
-            _favoriteItems.value = stickerRepository.favoritesAsItems()
-            _recentItems.value = stickerRepository.recentAsItems()
             _searchResults.value = stickerRepository.search(_query.value)
         }
     }

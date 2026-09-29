@@ -8,9 +8,47 @@ import conectate.com.data.model.StickerItem
 import java.security.MessageDigest
 import kotlin.math.abs
 
-internal data class StickerFingerprint(val sha256: String, val visual: String?)
+internal data class StickerFingerprint(val sha256: String, val visual: String?, val animated: Boolean = false)
+
+internal data class StickerCanonicalState(
+    val favorites: Set<String>,
+    val recents: List<String>,
+    val mediaAliases: Map<String, String>
+)
 
 internal object StickerIdentity {
+    /** A signed revision records the latest choice, including removal during indexing. */
+    fun canonicalState(
+        catalog: List<StickerItem>,
+        favorites: Set<String>,
+        recents: List<String>,
+        decisions: Map<String, Long>
+    ): StickerCanonicalState {
+        val groups = mutableListOf<MutableList<StickerItem>>()
+        catalog.forEach { item ->
+            val group = groups.firstOrNull { members -> members.any { matches(it, item) } }
+            if (group == null) groups.add(mutableListOf(item)) else group.add(item)
+        }
+        val canonicalIds = mutableMapOf<String, String>()
+        val aliases = mutableMapOf<String, String>()
+        val saved = mutableSetOf<String>()
+        groups.forEach { group ->
+            val canonical = group.firstOrNull { it.id in favorites } ?: group.first()
+            val latest = group.mapNotNull { decisions[it.id] }.maxByOrNull { abs(it) }
+            val wanted = latest?.let { it > 0 } ?: group.any { it.id in favorites }
+            if (wanted) saved.add(canonical.id)
+            group.forEach { item ->
+                canonicalIds[item.id] = canonical.id
+                mediaKey(item.media_url)?.let { aliases[it] = canonical.id }
+            }
+        }
+        return StickerCanonicalState(
+            favorites = saved,
+            recents = recents.mapNotNull { canonicalIds[it] }.distinct(),
+            mediaAliases = aliases
+        )
+    }
+
     fun favoriteIdsToRemove(
         stickerId: String,
         catalog: List<StickerItem>,
@@ -31,16 +69,17 @@ internal object StickerIdentity {
         if (firstKey != null && firstKey == mediaKey(b.media_url)) return true
         val firstHash = a.content_sha256
         if (!firstHash.isNullOrBlank() && firstHash == b.content_sha256) return true
-        return visualMatches(a.visual_fingerprint, b.visual_fingerprint)
+        return !a.is_animated && !b.is_animated && visualMatches(a.visual_fingerprint, b.visual_fingerprint)
     }
 
     fun fingerprint(bytes: ByteArray): StickerFingerprint {
         val sha = MessageDigest.getInstance("SHA-256").digest(bytes)
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
         val mime = StickerFormatSupport.detectMimeType(bytes, null)
-        val visual = if (StickerFormatSupport.isAnimated(bytes, mime)) null
+        val animated = StickerFormatSupport.isAnimated(bytes, mime)
+        val visual = if (animated) null
             else runCatching { visualHash(bytes) }.getOrNull()
-        return StickerFingerprint(sha, visual)
+        return StickerFingerprint(sha, visual, animated)
     }
 
     private fun visualMatches(first: String?, second: String?): Boolean {
