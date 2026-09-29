@@ -87,8 +87,9 @@ class FriendRequestsViewModel @Inject constructor(
                     _acceptedRequests.value = emptyMap()
                     _loadError.value = false
                     updateUnseenCount()
-                    // The pending list is useful immediately; recent confirmations are optional.
-                    _isLoading.value = false
+                    // Pending requests can be shown immediately. If that list is empty,
+                    // wait for recent confirmations before declaring the screen empty.
+                    if (pendingList.isNotEmpty()) _isLoading.value = false
 
                     val recentList = recent.await().getOrNull().orEmpty()
                     if (authService.getCurrentUserId() != ownerId) return@coroutineScope
