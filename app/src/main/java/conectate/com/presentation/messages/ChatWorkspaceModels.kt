@@ -95,6 +95,14 @@ internal fun shouldScrollChatToLatest(
     latestMessage: Message,
     wasNearBottom: Boolean,
     accountId: String
+): Boolean = shouldScrollChatToLatest(previousLastMessageId, latestMessage.id, latestMessage.sender_id, wasNearBottom, accountId)
+
+internal fun shouldScrollChatToLatest(
+    previousLastMessageId: String?,
+    latestMessageId: String,
+    latestSenderId: String,
+    wasNearBottom: Boolean,
+    accountId: String
 ): Boolean = previousLastMessageId == null ||
-    (previousLastMessageId != latestMessage.id &&
-        (wasNearBottom || latestMessage.sender_id.equals(accountId, ignoreCase = true)))
+    (previousLastMessageId != latestMessageId &&
+        (wasNearBottom || latestSenderId.equals(accountId, ignoreCase = true)))

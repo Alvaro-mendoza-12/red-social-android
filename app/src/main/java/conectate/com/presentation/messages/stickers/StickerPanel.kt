@@ -5,7 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,11 +15,15 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,7 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import conectate.com.data.model.StickerItem
@@ -41,6 +45,7 @@ fun StickerPanel(
     onDismiss: () -> Unit,
     onStickerSelected: (StickerItem) -> Unit,
     snackbarHostState: SnackbarHostState? = null,
+    modifier: Modifier = Modifier,
     viewModel: StickerPickerViewModel = hiltViewModel()
 ) {
     if (!visible) return
@@ -52,12 +57,11 @@ fun StickerPanel(
     val packs by viewModel.packs.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val actionMessage by viewModel.actionMessage.collectAsState()
-    val compactHeight = LocalConfiguration.current.screenHeightDp < 500
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = compactHeight)
 
     var selectedTab by remember { mutableStateOf(StickerPanelTab.RECENT) }
     var selectedPackId by remember { mutableStateOf<String?>(null) }
     var pendingEditorUri by remember { mutableStateOf<Uri?>(null) }
+    var searchExpanded by remember { mutableStateOf(false) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -95,35 +99,36 @@ fun StickerPanel(
         )
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState
-    ) {
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(if (compactHeight) 0.94f else 0.6f)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                text = "Stickers",
-                style = MaterialTheme.typography.titleLarge
-            )
-
-            OutlinedTextField(
-                value = query,
-                onValueChange = { viewModel.updateQuery(it) },
-                label = { Text("Buscar sticker") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            StickerCategoryTabs(
-                selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it },
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StickerCategoryTabs(
+                    selectedTab = selectedTab,
+                    onTabSelected = { selectedTab = it },
+                    modifier = Modifier.weight(1f),
+                    compact = true
+                )
+                IconButton(onClick = { searchExpanded = !searchExpanded }) {
+                    Icon(Icons.Default.Search, "Buscar stickers")
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Keyboard, "Volver al teclado")
+                }
+            }
+            if (searchExpanded) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { viewModel.updateQuery(it) },
+                    label = { Text("Buscar sticker") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
             if (selectedTab == StickerPanelTab.PACKS) {
                 LazyRow(
@@ -153,7 +158,6 @@ fun StickerPanel(
                 onStickerClick = { sticker ->
                     viewModel.recordStickerSelection(sticker)
                     onStickerSelected(sticker)
-                    onDismiss()
                 },
                 onCreateClick = { imagePickerLauncher.launch("image/*") },
                 modifier = Modifier
@@ -178,7 +182,6 @@ fun StickerPanel(
                     if (created != null) {
                         viewModel.recordStickerSelection(created)
                         onStickerSelected(created)
-                        onDismiss()
                     }
                 }
             }

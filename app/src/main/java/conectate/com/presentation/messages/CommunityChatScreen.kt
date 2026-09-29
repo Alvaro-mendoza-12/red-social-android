@@ -49,6 +49,9 @@ import java.util.Locale
 import conectate.com.util.ChatContactPayload
 import conectate.com.presentation.messages.stickers.StickerButton
 import conectate.com.presentation.messages.stickers.StickerPanel
+import conectate.com.presentation.messages.stickers.rememberStickerKeyboardPanel
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Forward
@@ -119,6 +122,7 @@ fun CommunityChatScreen(
     var showRecentGifSheet by remember { mutableStateOf(false) }
     var showPollDialog by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
+    val stickerKeyboardPanel = rememberStickerKeyboardPanel(showStickerCatalogDialog) { showStickerCatalogDialog = it }
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     val mediaPickerViewModel: conectate.com.presentation.components.MediaPickerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val galleryMedia by mediaPickerViewModel.galleryMedia.collectAsState()
@@ -436,6 +440,8 @@ fun CommunityChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .consumeWindowInsets(padding)
+                .imePadding()
         ) {
             if (channels.isNotEmpty()) {
                 Surface(tonalElevation = 1.dp) {
@@ -664,29 +670,8 @@ fun CommunityChatScreen(
                             }
                         }
                         
-                        if (messages.isNotEmpty()) {
-                            val messageIdentity = remember(messages) { messages.map { it.id } }
-                            LaunchedEffect(messageIdentity, focusMessageId) {
-                                if (!focusResolved && !focusMessageId.isNullOrBlank()) {
-                                    val index = messages.indexOfFirst {
-                                        it.id.equals(focusMessageId, ignoreCase = true)
-                                    }
-                                    if (index >= 0) {
-                                        listState.animateScrollToItem(index)
-                                        focusResolved = true
-                                        return@LaunchedEffect
-                                    }
-
-                                }
-                                listState.animateScrollToItem(messages.size - 1)
-                            }
-                            val imeBottom = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
-                            LaunchedEffect(imeBottom) {
-                                if (imeBottom > 0) {
-                                    listState.scrollToItem(messages.lastIndex)
-                                }
-                            }
-                        }
+                        ConversationScrollAnchor("community:$currentUserId:$communityId:${selectedChannel?.id}", messages, currentUserId, focusMessageId, listState,
+                            messageId = { it.id }, senderId = { it.sender_id })
                         }
                     }
                     is CommunityChatUiState.Error -> {
@@ -903,11 +888,13 @@ fun CommunityChatScreen(
                             IconButton(onClick = { showAttachmentSheet = true }) {
                                 Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
                             }
-                            StickerButton(onClick = { showStickerCatalogDialog = true })
+                            StickerButton(onClick = stickerKeyboardPanel.toggle, showingStickers = showStickerCatalogDialog)
                             TextField(
                                 value = messageText,
                                 onValueChange = { viewModel.updateMessageText(it) },
-                                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                                modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
+                                    .focusRequester(stickerKeyboardPanel.inputFocusRequester)
+                                    .onFocusChanged { if (it.isFocused) stickerKeyboardPanel.onInputFocused() },
                                 enabled = true,
                                 placeholder = { Text("Mensaje") },
                                 maxLines = 4,
@@ -994,6 +981,22 @@ fun CommunityChatScreen(
                         }
                     }
                 }
+            }
+
+            if (showStickerCatalogDialog) {
+                StickerPanel(
+                    visible = showStickerCatalogDialog,
+                    onDismiss = stickerKeyboardPanel.showKeyboard,
+                    modifier = Modifier.fillMaxWidth().height(stickerKeyboardPanel.height),
+                    snackbarHostState = snackbarHostState,
+                    onStickerSelected = { sticker ->
+                        if (!sticker.media_url.isNullOrBlank()) {
+                            viewModel.sendStickerFromUrl(sticker.media_url)
+                        } else {
+                            viewModel.sendStickerEmoji(sticker.title.ifBlank { "🧩" })
+                        }
+                    }
+                )
             }
         }
     }
@@ -1635,20 +1638,7 @@ fun CommunityChatScreen(
         }
     }
 
-    if (showStickerCatalogDialog) {
-        StickerPanel(
-            visible = showStickerCatalogDialog,
-            onDismiss = { showStickerCatalogDialog = false },
-            snackbarHostState = snackbarHostState,
-            onStickerSelected = { sticker ->
-                if (!sticker.media_url.isNullOrBlank()) {
-                    viewModel.sendStickerFromUrl(sticker.media_url)
-                } else {
-                    viewModel.sendStickerEmoji(sticker.title.ifBlank { "🧩" })
-                }
-            }
-        )
-    }
+
 
     if (showPollDialog) {
         PollComposerDialog(

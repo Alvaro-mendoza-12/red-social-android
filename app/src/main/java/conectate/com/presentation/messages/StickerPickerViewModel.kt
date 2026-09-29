@@ -252,9 +252,6 @@ class StickerPickerViewModel @Inject constructor(
             _isLoading.value = false
             if (result.isSuccess) {
                 val sticker = result.getOrNull()
-                if (sticker != null) {
-                    stickerRepository.registerRecentSticker(sticker.id)
-                }
                 _searchResults.value = stickerRepository.search(_query.value)
                 _favoriteItems.value = stickerRepository.favoritesAsItems()
                 _recentItems.value = stickerRepository.recentAsItems()

@@ -73,6 +73,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import conectate.com.util.ChatContactPayload
 import conectate.com.presentation.messages.stickers.StickerButton
 import conectate.com.presentation.messages.stickers.StickerPanel
+import conectate.com.presentation.messages.stickers.rememberStickerKeyboardPanel
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 
@@ -164,6 +167,7 @@ fun ChatScreen(
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showRecentGifSheet by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
+    val stickerKeyboardPanel = rememberStickerKeyboardPanel(showStickerCatalogDialog) { showStickerCatalogDialog = it }
     // Full screen media state
     var fullScreenMediaItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     var fullScreenImageInitialIndex by remember { mutableStateOf(0) }
@@ -368,9 +372,6 @@ fun ChatScreen(
                 .toSet()
         }
     }
-    var focusResolved by remember(focusMessageId) { mutableStateOf(focusMessageId.isNullOrBlank()) }
-    val messageIdentity = remember(messages) { messages.map { it.id } }
-    var previousLastMessageId by remember { mutableStateOf<String?>(null) }
     val showJumpToLatest by remember(messages, listState) {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
@@ -383,37 +384,8 @@ fun ChatScreen(
         viewModel.onVisibleMessageIdsChanged(visibleMessageIds)
     }
     
-    // Incoming messages must not interrupt someone reading older history.
-    LaunchedEffect(messageIdentity, focusMessageId) {
-        if (messages.isEmpty()) return@LaunchedEffect
-
-        if (!focusResolved && !focusMessageId.isNullOrBlank()) {
-            val targetIndex = messages.indexOfFirst { msg ->
-                msg.id.equals(focusMessageId, ignoreCase = true)
-            }
-            if (targetIndex >= 0) {
-                listState.scrollToItem(targetIndex)
-                focusResolved = true
-                previousLastMessageId = messages.last().id
-                return@LaunchedEffect
-            }
-
-        }
-
-        val latest = messages.last()
-        val wasNearBottom = previousLastMessageId in visibleMessageIds
-        if (shouldScrollChatToLatest(previousLastMessageId, latest, wasNearBottom, currentUserId)) {
-            listState.scrollToItem(messages.lastIndex)
-        }
-        previousLastMessageId = latest.id
-    }
-
-    val imeBottom = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
-    LaunchedEffect(imeBottom) {
-        if (imeBottom > 0 && messages.isNotEmpty() && !showJumpToLatest) {
-            listState.scrollToItem(messages.lastIndex)
-        }
-    }
+    ConversationScrollAnchor("direct:$currentUserId:${workspaceChat?.id}", messages, currentUserId, focusMessageId, listState,
+        messageId = { it.id }, senderId = { it.sender_id })
 
     val selectedMessage by viewModel.selectedMessage.collectAsState()
     val favoriteStickerMediaKeys by viewModel.favoriteStickerMediaKeys.collectAsState()
@@ -1153,6 +1125,8 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .consumeWindowInsets(padding)
+                .imePadding()
         ) {
             ConversationMarkersBar(markersViewModel) { messageId ->
                 val index = messages.indexOfFirst { it.id.equals(messageId, ignoreCase = true) }
@@ -1669,7 +1643,7 @@ fun ChatScreen(
                         }
 
                         StickerButton(
-                            onClick = { showStickerCatalogDialog = true },
+                            onClick = stickerKeyboardPanel.toggle, showingStickers = showStickerCatalogDialog,
                             enabled = !isBlocked
                         )
                      
@@ -1679,7 +1653,9 @@ fun ChatScreen(
                         onValueChange = { viewModel.updateMessageText(it) },
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 4.dp),
+                            .padding(horizontal = 4.dp)
+                            .focusRequester(stickerKeyboardPanel.inputFocusRequester)
+                            .onFocusChanged { if (it.isFocused) stickerKeyboardPanel.onInputFocused() },
                         enabled = voiceState == VoiceState.IDLE && !isBlocked,
                         placeholder = { 
                             if (voiceState != VoiceState.IDLE) {
@@ -1776,6 +1752,22 @@ fun ChatScreen(
               }
             }
         }
+
+            if (showStickerCatalogDialog) {
+                StickerPanel(
+                    visible = showStickerCatalogDialog,
+                    onDismiss = stickerKeyboardPanel.showKeyboard,
+                    modifier = Modifier.fillMaxWidth().height(stickerKeyboardPanel.height),
+                    snackbarHostState = snackbarHostState,
+                    onStickerSelected = { sticker ->
+                        if (!sticker.media_url.isNullOrBlank()) {
+                            viewModel.sendStickerFromUrl(sticker.media_url)
+                        } else {
+                            viewModel.sendStickerText(sticker.title.ifBlank { "🧩 Sticker" })
+                        }
+                    }
+                )
+            }
         }
     }
 
@@ -1959,20 +1951,7 @@ fun ChatScreen(
         )
     }
 
-    if (showStickerCatalogDialog) {
-        StickerPanel(
-            visible = showStickerCatalogDialog,
-            onDismiss = { showStickerCatalogDialog = false },
-            snackbarHostState = snackbarHostState,
-            onStickerSelected = { sticker ->
-                if (!sticker.media_url.isNullOrBlank()) {
-                    viewModel.sendStickerFromUrl(sticker.media_url)
-                } else {
-                    viewModel.sendStickerText(sticker.title.ifBlank { "🧩 Sticker" })
-                }
-            }
-        )
-    }
+
 
     if (showScheduleDialog) {
         AlertDialog(

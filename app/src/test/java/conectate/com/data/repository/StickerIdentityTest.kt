@@ -7,6 +7,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StickerIdentityTest {
+    @Test
+    fun `recents contain only favorites ordered by actual usage`() {
+        assertEquals(listOf("frequent", "saved"), StickerIdentity.frequentFavoriteIds(
+            listOf("unknown", "saved", "frequent", "saved"), setOf("saved", "frequent"),
+            mapOf("unknown" to 100, "frequent" to 9, "saved" to 2), 48))
+    }
+
+    @Test
+    fun `removing favorite also removes it from recents`() {
+        assertEquals(listOf("saved"), StickerIdentity.frequentFavoriteIds(
+            listOf("removed", "saved"), setOf("saved"), mapOf("removed" to 9), 48))
+    }
+
     private fun duplicate(id: String) = StickerItem(id = id, title = "Sticker", media_url = "https://media.example/$id.webp", content_sha256 = "same")
 
     @Test

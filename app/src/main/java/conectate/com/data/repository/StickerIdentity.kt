@@ -17,6 +17,9 @@ internal data class StickerCanonicalState(
 )
 
 internal object StickerIdentity {
+    fun frequentFavoriteIds(recents: List<String>, favorites: Set<String>, usage: Map<String, Int>, limit: Int): List<String> =
+        recents.distinct().filter { it in favorites }.sortedByDescending { usage[it] ?: 0 }.take(limit.coerceAtLeast(0))
+
     /** A signed revision records the latest choice, including removal during indexing. */
     fun canonicalState(
         catalog: List<StickerItem>,

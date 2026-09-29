@@ -47,6 +47,9 @@ import java.util.Locale
 import conectate.com.util.ChatContactPayload
 import conectate.com.presentation.messages.stickers.StickerButton
 import conectate.com.presentation.messages.stickers.StickerPanel
+import conectate.com.presentation.messages.stickers.rememberStickerKeyboardPanel
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Forward
@@ -108,11 +111,11 @@ fun GroupChatScreen(
     val isLoadingMessageInfo by viewModel.isLoadingMessageInfo.collectAsState()
     val pollOptionVoters by viewModel.pollOptionVoters.collectAsState()
     val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsState()
-    var focusResolved by remember(focusMessageId) { mutableStateOf(focusMessageId.isNullOrBlank()) }
 
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showPollDialog by remember { mutableStateOf(false) }
     var showStickerCatalogDialog by remember { mutableStateOf(false) }
+    val stickerKeyboardPanel = rememberStickerKeyboardPanel(showStickerCatalogDialog) { showStickerCatalogDialog = it }
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
@@ -425,6 +428,8 @@ fun GroupChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .consumeWindowInsets(padding)
+                .imePadding()
         ) {
             ConversationMarkersBar(markersViewModel) { messageId ->
                 val index = messages.indexOfFirst { it.id.equals(messageId, ignoreCase = true) }
@@ -586,29 +591,8 @@ fun GroupChatScreen(
                             }
                         }
                         
-                        if (state.messages.isNotEmpty()) {
-                            val messageIdentity = remember(state.messages) { state.messages.map { it.id } }
-                            LaunchedEffect(messageIdentity, focusMessageId) {
-                                if (!focusResolved && !focusMessageId.isNullOrBlank()) {
-                                    val index = state.messages.indexOfFirst {
-                                        it.id.equals(focusMessageId, ignoreCase = true)
-                                    }
-                                    if (index >= 0) {
-                                        listState.animateScrollToItem(index)
-                                        focusResolved = true
-                                        return@LaunchedEffect
-                                    }
-
-                                }
-                                listState.animateScrollToItem(state.messages.size - 1)
-                            }
-                            val imeBottom = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
-                            LaunchedEffect(imeBottom) {
-                                if (imeBottom > 0) {
-                                    listState.scrollToItem(state.messages.lastIndex)
-                                }
-                            }
-                        }
+                        ConversationScrollAnchor("group:$currentUserId:$groupId", messages, currentUserId, focusMessageId, listState,
+                            messageId = { it.id }, senderId = { it.sender_id })
                     }
                     is GroupChatUiState.Error -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -775,11 +759,13 @@ fun GroupChatScreen(
                             IconButton(onClick = { showAttachmentSheet = true }) {
                                 Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
                             }
-                            StickerButton(onClick = { showStickerCatalogDialog = true })
+                            StickerButton(onClick = stickerKeyboardPanel.toggle, showingStickers = showStickerCatalogDialog)
                             TextField(
                                 value = messageText,
                                 onValueChange = { viewModel.updateMessageText(it) },
-                                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                                modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
+                                    .focusRequester(stickerKeyboardPanel.inputFocusRequester)
+                                    .onFocusChanged { if (it.isFocused) stickerKeyboardPanel.onInputFocused() },
                                 enabled = true,
                                 placeholder = { Text("Mensaje") },
                                 maxLines = 4,
@@ -854,6 +840,22 @@ fun GroupChatScreen(
                         }
                     }
                 }
+            }
+
+            if (showStickerCatalogDialog) {
+                StickerPanel(
+                    visible = showStickerCatalogDialog,
+                    onDismiss = stickerKeyboardPanel.showKeyboard,
+                    modifier = Modifier.fillMaxWidth().height(stickerKeyboardPanel.height),
+                    snackbarHostState = snackbarHostState,
+                    onStickerSelected = { sticker ->
+                        if (!sticker.media_url.isNullOrBlank()) {
+                            viewModel.sendStickerFromUrl(sticker.media_url)
+                        } else {
+                            viewModel.sendStickerEmoji(sticker.title.ifBlank { "🧩" })
+                        }
+                    }
+                )
             }
         }
     }
@@ -1314,20 +1316,7 @@ fun GroupChatScreen(
         }
     }
 
-    if (showStickerCatalogDialog) {
-        StickerPanel(
-            visible = showStickerCatalogDialog,
-            onDismiss = { showStickerCatalogDialog = false },
-            snackbarHostState = snackbarHostState,
-            onStickerSelected = { sticker ->
-                if (!sticker.media_url.isNullOrBlank()) {
-                    viewModel.sendStickerFromUrl(sticker.media_url)
-                } else {
-                    viewModel.sendStickerEmoji(sticker.title.ifBlank { "🧩" })
-                }
-            }
-        )
-    }
+
 
     if (showPollDialog) {
         PollComposerDialog(

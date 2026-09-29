@@ -68,6 +68,7 @@ class StickerRepository @Inject constructor(
         private const val KEY_RECENT_STICKERS = "recent_sticker_ids_json"
         private const val KEY_MEDIA_ALIASES = "favorite_media_aliases_json"
         private const val KEY_FAVORITE_DECISIONS = "favorite_decisions_json"
+        private const val KEY_STICKER_USAGE = "sticker_usage_json"
     }
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -78,6 +79,7 @@ class StickerRepository @Inject constructor(
     private val identityRequests = Channel<Unit>(Channel.CONFLATED)
     private var favoriteDecisions: Map<String, Long> = emptyMap()
     private var favoriteRevision = 0L
+    private var stickerUsage: Map<String, Int> = emptyMap()
 
     private val _catalog = MutableStateFlow<List<StickerItem>>(emptyList())
     val catalog: StateFlow<List<StickerItem>> = _catalog.asStateFlow()
@@ -111,6 +113,9 @@ class StickerRepository @Inject constructor(
             json.decodeFromString<Map<String, Long>>(prefs.getString(KEY_FAVORITE_DECISIONS, "{}") ?: "{}")
         }.getOrDefault(emptyMap())
         favoriteRevision = favoriteDecisions.values.maxOfOrNull { kotlin.math.abs(it) } ?: 0L
+        stickerUsage = runCatching {
+            json.decodeFromString<Map<String, Int>>(prefs.getString(KEY_STICKER_USAGE, "{}") ?: "{}")
+        }.getOrDefault(emptyMap())
 
         _catalog.value = localCatalog
         _packs.value = localPacks
@@ -272,7 +277,6 @@ class StickerRepository @Inject constructor(
         // Persist and publish before any download, hashing or server request.
         rememberMediaAlias(mediaKey, sticker.id)
         setFavorite(sticker.id, true)
-        registerRecentSticker(sticker.id)
         identityRequests.trySend(Unit)
         FavoriteChange.ADDED
     }
@@ -305,6 +309,11 @@ class StickerRepository @Inject constructor(
         val before = _favorites.value
         val state = StickerIdentity.canonicalState(_catalog.value, before, _recentStickerIds.value, favoriteDecisions)
         favoriteMediaAliases = favoriteMediaAliases + state.mediaAliases
+        stickerUsage = stickerUsage.entries.groupBy { entry ->
+            _catalog.value.firstOrNull { it.id == entry.key }?.media_url
+                ?.let { StickerIdentity.mediaKey(it) }?.let { state.mediaAliases[it] } ?: entry.key
+        }.mapValues { (_, entries) -> entries.sumOf { it.value.toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
+        prefs.edit().putString(KEY_STICKER_USAGE, json.encodeToString(stickerUsage)).apply()
         _favorites.value = state.favorites
         _recentStickerIds.value = state.recents
         persistFavorites(state.favorites)
@@ -439,7 +448,6 @@ class StickerRepository @Inject constructor(
         for (item in _catalog.value.filter { it.source == "custom" || it.source == "message" }) {
             val indexed = withCachedFingerprint(item)
             if (StickerIdentity.matches(indexed, candidate)) {
-                registerRecentSticker(indexed.id)
                 return@withContext Result.success(indexed)
             }
         }
@@ -484,7 +492,6 @@ class StickerRepository @Inject constructor(
         var merged = (_catalog.value + sticker).distinctBy { it.id }
         _catalog.value = merged
         persistItems(merged)
-        registerRecentSticker(sticker.id)
 
         if (!selectedPack.isNullOrBlank()) {
             addStickerToPack(selectedPack, sticker)
@@ -665,11 +672,9 @@ class StickerRepository @Inject constructor(
     fun recentAsItems(limit: Int = 48): List<StickerItem> {
         if (limit <= 0) return emptyList()
         val byId = _catalog.value.associateBy { it.id }
-        return distinctStickers(_recentStickerIds.value
-            .asSequence()
-            .mapNotNull { byId[it] }
-            .take(limit)
-            .toList())
+        return distinctStickers(StickerIdentity.frequentFavoriteIds(
+            _recentStickerIds.value, _favorites.value, stickerUsage, limit
+        ).mapNotNull { byId[it] })
     }
 
     private fun distinctStickers(items: List<StickerItem>): List<StickerItem> {
@@ -683,6 +688,8 @@ class StickerRepository @Inject constructor(
     fun registerRecentSticker(stickerId: String) = synchronized(localStateLock) {
         val cleanId = stickerId.trim()
         if (cleanId.isBlank()) return@synchronized
+        stickerUsage = stickerUsage + (cleanId to ((stickerUsage[cleanId] ?: 0).toLong() + 1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+        prefs.edit().putString(KEY_STICKER_USAGE, json.encodeToString(stickerUsage)).apply()
         var updated = listOf(cleanId) + _recentStickerIds.value.filterNot { it == cleanId }
         val capped = updated.take(80)
         _recentStickerIds.value = capped
