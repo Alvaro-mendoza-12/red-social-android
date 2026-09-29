@@ -219,6 +219,23 @@ class HomeViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            var previousUnread: Int? = null
+            notificationRepository.unreadCount.collect { unread ->
+                val lastUnread = previousUnread
+                val shouldRefresh = lastUnread != null && unread > lastUnread
+                previousUnread = unread
+                if (!shouldRefresh) return@collect
+                val userId = authService.getCurrentUserId() ?: return@collect
+                quietlyRefresh {
+                    val requests = friendRepository.getPendingRequests().getOrThrow()
+                    if (isCurrent(userId)) {
+                        pendingFriendRequestIds = requests.map { request -> request.id }
+                        _newFriendRequests.value = seenFriendRequestsPreferences.unseenCount(userId, pendingFriendRequestIds) > 0
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
             combine(authService.currentSession.map { authService.getCurrentUserId() }.distinctUntilChanged(), foreground) { userId, visible ->
                 userId.takeIf { visible }
             }.distinctUntilChanged().collectLatest { userId ->
