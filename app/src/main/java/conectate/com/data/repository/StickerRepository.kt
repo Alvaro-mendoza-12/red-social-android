@@ -232,6 +232,7 @@ class StickerRepository @Inject constructor(
         setFavorite(stickerId, !_favorites.value.contains(stickerId.trim()))
 
     fun setFavorite(stickerId: String, favorite: Boolean): Boolean = synchronized(localStateLock) {
+        switchAccount(authService.getCurrentUserId().orEmpty())
         val clean = stickerId.trim()
         if (clean.isBlank()) return@synchronized false
         val target = _catalog.value.firstOrNull { it.id == clean }
@@ -265,11 +266,13 @@ class StickerRepository @Inject constructor(
         val actingUserId = authService.getCurrentUserId()
         remoteFavoriteScope.launch {
             remoteFavoriteMutex.withLock {
-                if (actingUserId.isNullOrBlank() || authService.getCurrentUserId() != actingUserId) {
+                if (actingUserId.isNullOrBlank() || authService.getCurrentUserId() != actingUserId ||
+                    activeOwnerId != actingUserId) {
                     return@withLock
                 }
                 val token = authService.getAccessToken() ?: return@withLock
                 for (id in stickerIds.distinct()) {
+                    if (authService.getCurrentUserId() != actingUserId || activeOwnerId != actingUserId) break
                     val desired = _favorites.value.contains(id)
                     runCatching {
                         val payload = buildJsonObject {
@@ -303,6 +306,7 @@ class StickerRepository @Inject constructor(
     }
 
     fun addFavoriteByMedia(mediaUrl: String, title: String = "Sticker"): FavoriteChange = synchronized(localStateLock) {
+        switchAccount(authService.getCurrentUserId().orEmpty())
         val mediaKey = StickerIdentity.mediaKey(mediaUrl) ?: return@synchronized FavoriteChange.UNAVAILABLE
         if (isFavoriteMediaUrl(mediaUrl)) return@synchronized FavoriteChange.ALREADY_PRESENT
         val existing = _catalog.value.firstOrNull { it.id == favoriteMediaAliases[mediaKey] }
@@ -317,6 +321,7 @@ class StickerRepository @Inject constructor(
     }
 
     fun removeFavoriteByMedia(mediaUrl: String): FavoriteChange = synchronized(localStateLock) {
+        switchAccount(authService.getCurrentUserId().orEmpty())
         val mediaKey = StickerIdentity.mediaKey(mediaUrl) ?: return@synchronized FavoriteChange.NOT_PRESENT
         val ids = _catalog.value.filter {
             _favorites.value.contains(it.id) && StickerIdentity.mediaKey(it.media_url) == mediaKey
@@ -700,11 +705,13 @@ class StickerRepository @Inject constructor(
     }
 
     fun favoritesAsItems(): List<StickerItem> {
+        switchAccount(authService.getCurrentUserId().orEmpty())
         val ids = _favorites.value
         return distinctStickers(_catalog.value.filter { ids.contains(it.id) })
     }
 
     fun recentAsItems(limit: Int = 48): List<StickerItem> {
+        switchAccount(authService.getCurrentUserId().orEmpty())
         if (limit <= 0) return emptyList()
         val byId = _catalog.value.associateBy { it.id }
         return distinctStickers(StickerIdentity.frequentFavoriteIds(
@@ -721,6 +728,7 @@ class StickerRepository @Inject constructor(
     }
 
     fun registerRecentSticker(stickerId: String) = synchronized(localStateLock) {
+        switchAccount(authService.getCurrentUserId().orEmpty())
         val cleanId = stickerId.trim()
         if (cleanId.isBlank()) return@synchronized
         stickerUsage = stickerUsage + (cleanId to ((stickerUsage[cleanId] ?: 0).toLong() + 1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
