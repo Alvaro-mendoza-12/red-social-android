@@ -1373,7 +1373,7 @@ private fun ViewerActions(
         )
         LiveAction(
             icon = if (guestBroadcasting) Icons.Filled.Videocam else Icons.Filled.PersonAdd,
-            label = when (guestState.status) {
+            label = if (guestBroadcasting) "Controles" else when (guestState.status) {
                 LiveGuestRequestStatus.PENDING -> "Pendiente"
                 LiveGuestRequestStatus.ACCEPTED -> "Unirme"
                 else -> "Invitado"
