@@ -53,6 +53,7 @@ fun LiveViewerScreen(
     val uiError by viewModel.uiError.collectAsStateWithLifecycle()
     val moderation by viewModel.moderationState.collectAsStateWithLifecycle()
     val liveViewers by viewModel.liveViewers.collectAsStateWithLifecycle()
+    val reactionCount by viewModel.reactionCount.collectAsStateWithLifecycle()
     val activeGuests by viewModel.activeGuests.collectAsStateWithLifecycle()
     val guestState by viewModel.guestAccessState.collectAsStateWithLifecycle()
     val guestBroadcasting by viewModel.isGuestBroadcasting.collectAsStateWithLifecycle()
@@ -227,6 +228,7 @@ fun LiveViewerScreen(
     NovvinLiveViewerExperience(
         stream = stream,
         viewerCount = viewerCount,
+        reactionCount = reactionCount.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
         viewers = liveViewers,
         hostTrack = hostTrack,
         remoteTracks = guestTracks,

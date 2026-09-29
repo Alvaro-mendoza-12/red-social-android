@@ -133,6 +133,7 @@ import io.livekit.android.renderer.TextureViewRenderer
 internal fun NovvinLiveViewerExperience(
     stream: LiveStream?,
     viewerCount: Int,
+    reactionCount: Int,
     viewers: List<LiveViewerParticipant>,
     hostTrack: VideoTrack?,
     remoteTracks: Map<String, VideoTrack>,
@@ -220,6 +221,7 @@ internal fun NovvinLiveViewerExperience(
         actions = { metrics ->
             ViewerActions(
                 metrics = metrics,
+                reactionCount = reactionCount,
                 guestState = guestState,
                 guestBroadcasting = guestBroadcasting,
                 giftsEnabled = stream?.giftsEnabled != false,
@@ -323,6 +325,7 @@ private enum class ViewerPanel { GIFTS, GUEST_REQUEST, GUEST_SETUP, MORE }
 internal fun NovvinLiveHostExperience(
     stream: LiveStream?,
     viewerCount: Int,
+    reactionCount: Int,
     viewers: List<LiveViewerParticipant>,
     localTrack: VideoTrack?,
     remoteTracks: Map<String, VideoTrack>,
@@ -398,6 +401,7 @@ internal fun NovvinLiveHostExperience(
         top = { metrics ->
             HostTopBar(
                 viewerCount = viewerCount,
+                reactionCount = reactionCount,
                 stream = stream,
                 metrics = metrics,
                 requestCount = requests.size,
@@ -1334,6 +1338,7 @@ private fun ConnectingState(stream: LiveStream?, text: String) {
 @Composable
 private fun ViewerActions(
     metrics: LiveResponsiveMetrics,
+    reactionCount: Int,
     guestState: LiveGuestAccessState,
     guestBroadcasting: Boolean,
     giftsEnabled: Boolean,
@@ -1366,7 +1371,13 @@ private fun ViewerActions(
             onClick = onGuest
         )
         LiveAction(Icons.Filled.Share, "Compartir", Color.White, metrics.actionSize, onShare)
-        LiveAction(Icons.Filled.Favorite, "Me gusta", LivePalette.Pink, metrics.actionSize, onReaction)
+        LiveAction(
+            Icons.Filled.Favorite,
+            "${formatCompactCount(reactionCount)} me gusta",
+            LivePalette.Pink,
+            metrics.actionSize,
+            onReaction
+        )
         LiveAction(Icons.Filled.MoreHoriz, "Más", Color.White, metrics.actionSize, onMore)
     }
 }
@@ -1880,6 +1891,7 @@ private fun SheetActionRow(
 @Composable
 private fun HostTopBar(
     viewerCount: Int,
+    reactionCount: Int,
     stream: LiveStream?,
     metrics: LiveResponsiveMetrics,
     requestCount: Int,
@@ -1913,7 +1925,7 @@ private fun HostTopBar(
             }
         )
         LivePill(
-            text = formatCompactCount(viewerCount),
+            text = "${formatCompactCount(viewerCount)} · ♥${formatCompactCount(reactionCount)}",
             leadingContent = {
                 Icon(Icons.Filled.Groups, null, tint = Color.White, modifier = Modifier.size(12.dp))
             }
