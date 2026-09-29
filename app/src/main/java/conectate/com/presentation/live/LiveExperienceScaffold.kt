@@ -1670,7 +1670,8 @@ private fun GuestSetupSheet(
                     }
                 )
                 Text(
-                    "La cámara y el micrófono no se activan hasta que pulses Entrar al directo.",
+                    if (broadcasting) "Puedes apagar tu cámara o micrófono en cualquier momento."
+                    else "La cámara y el micrófono no se activan hasta que pulses Entrar al directo.",
                     color = LivePalette.Muted,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(horizontal = 4.dp)

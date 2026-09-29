@@ -11,6 +11,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
 import android.util.Log
+import conectate.com.BuildConfig
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.signaling.SignalingConfig
 import io.socket.client.Socket
@@ -332,9 +333,11 @@ class WebRTCManager(
             
             // v22.0: Background Stats Monitor for Audio Levels
             statsScope.launch {
+                var sample = 0
                 while (true) {
                     delay(1000)
                     updateLocalAudioLevelFromStats()
+                    if (BuildConfig.DEBUG && ++sample % 5 == 0) logMediaStats()
                 }
             }
         } catch (e: Exception) {
@@ -2528,12 +2531,23 @@ class WebRTCManager(
 
     // v19.0: Remote Audio Level Detection via RTCStats
     fun getRemoteAudioLevels(callback: (Map<String, Double>) -> Unit) {
+        if (executor.isShutdown) {
+            callback(emptyMap())
+            return
+        }
         executor.execute {
-            val levels = mutableMapOf<String, Double>()
-            val latch = java.util.concurrent.CountDownLatch(peerConnections.size)
-            
-            peerConnections.forEach { (socketId, pc) ->
-                pc.getStats { report ->
+            val peers = peerConnections.toMap()
+            val batch = RtcAudioLevelBatch(peers.keys, callback)
+            if (peers.isEmpty()) {
+                batch.finish()
+                return@execute
+            }
+            statsScope.launch {
+                delay(200)
+                batch.finish()
+            }
+            peers.forEach { (socketId, pc) ->
+                runCatching { pc.getStats { report ->
                     var maxLevel = 0.0
                     // Iterate and find audio levels
                     // Standard WebRTC Stats: "inbound-rtp" or "track"
@@ -2560,24 +2574,35 @@ class WebRTCManager(
                         }
                     }
                     
-                    if (maxLevel > 0.0) {
-                        levels[socketId] = maxLevel
+                    batch.accept(socketId, maxLevel)
+                } }.onFailure { batch.accept(socketId, 0.0) }
+            }
+        }
+    }
+
+    // Debug builds only. Never include SDP, candidates, tokens, addresses or account IDs.
+    private fun logMediaStats() {
+        if (executor.isShutdown) return
+        executor.execute {
+            peerConnections.values.toList().forEachIndexed { index, pc ->
+                runCatching { pc.getStats { report ->
+                    report.statsMap.values.forEach { stats ->
+                        if (stats.type == "inbound-rtp" || stats.type == "outbound-rtp") {
+                            val m = stats.members
+                            val fields = listOf("bytesReceived", "bytesSent", "packetsReceived",
+                                "packetsLost", "framesDecoded", "framesEncoded", "framesPerSecond",
+                                "jitter", "totalDecodeTime", "jitterBufferDelay", "jitterBufferEmittedCount")
+                                .mapNotNull { key -> (m[key] as? Number)?.let { "$key=$it" } }
+                                .joinToString(" ")
+                            Log.d("RtcMediaStats", "peer=$index ${stats.type} kind=${m["kind"] ?: m["mediaType"]} $fields")
+                        }
+                        if (stats.type == "candidate-pair" && stats.members["state"] == "succeeded") {
+                            val rtt = stats.members["currentRoundTripTime"] as? Number
+                            if (rtt != null) Log.d("RtcMediaStats", "peer=$index rttSeconds=$rtt")
+                        }
                     }
-                    latch.countDown()
-                }
+                } }
             }
-            
-            // Wait with short timeout to aggregate
-            try {
-                latch.await(200, java.util.concurrent.TimeUnit.MILLISECONDS)
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                Log.w("WebRTCManager", "Interrupted while waiting for remote audio levels", e)
-            } catch (e: Exception) {
-                Log.w("WebRTCManager", "Failed while waiting for remote audio levels", e)
-            }
-            
-            callback(levels)
         }
     }
 
