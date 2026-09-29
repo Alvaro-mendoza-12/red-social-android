@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.StickerItem
 import conectate.com.data.model.StickerPack
 import conectate.com.data.repository.StickerRepository
+import conectate.com.data.repository.StickerIdentity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -96,6 +97,12 @@ class StickerPickerViewModel @Inject constructor(
             stickerRepository.isFavoriteMediaUrl(sticker.media_url)
 
     fun setFavorite(sticker: StickerItem, favorite: Boolean) {
+        if (!favorite) {
+            // Update Compose before any disk or network work starts.
+            _favoriteItems.value = _favoriteItems.value.filterNot {
+                it.id == sticker.id || StickerIdentity.matches(it, sticker)
+            }
+        }
         viewModelScope.launch {
             val change = if (favorite) {
                 sticker.media_url?.let { stickerRepository.addFavoriteByMedia(it, sticker.title) }
@@ -103,10 +110,9 @@ class StickerPickerViewModel @Inject constructor(
                         StickerRepository.FavoriteChange.ADDED
                     } else StickerRepository.FavoriteChange.UNAVAILABLE
             } else {
-                sticker.media_url?.let { stickerRepository.removeFavoriteByMedia(it) }
-                    ?: if (!stickerRepository.setFavorite(sticker.id, false)) {
-                        StickerRepository.FavoriteChange.REMOVED
-                    } else StickerRepository.FavoriteChange.NOT_PRESENT
+                if (stickerRepository.setFavorite(sticker.id, false)) {
+                    StickerRepository.FavoriteChange.NOT_PRESENT
+                } else StickerRepository.FavoriteChange.REMOVED
             }
             _actionMessage.value = when (change) {
                 StickerRepository.FavoriteChange.ADDED -> "Sticker añadido a favoritos"

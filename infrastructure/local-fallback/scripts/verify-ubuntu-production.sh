@@ -447,6 +447,24 @@ if is_stable_https_origin "$configured_public_base_url"; then
   else
     production_requirement "origen HTTPS publico no responde /ready (HTTP ${public_ready_code:-000})"
   fi
+
+  # A generic web fallback can also return 401. Require the signaling
+  # service's unauthenticated response so Android can actually fetch TURN.
+  public_turn_code="$(curl_status "${configured_public_base_url}/turn-credentials")"
+  if [ "$public_turn_code" = "401" ] &&
+     grep -qE '"error"[[:space:]]*:[[:space:]]*"Missing bearer token"' "$tmp_dir/curl-body.txt"; then
+    status_line PASS "origen HTTPS publico enruta /turn-credentials a signaling"
+  else
+    production_requirement "origen HTTPS publico no enruta /turn-credentials a signaling (HTTP ${public_turn_code:-000})"
+  fi
+
+  public_live_ids_code="$(curl_status "${configured_public_base_url}/live-active-ids")"
+  if [ "$public_live_ids_code" = "200" ] &&
+     grep -q '"liveIds"' "$tmp_dir/curl-body.txt"; then
+    status_line PASS "origen HTTPS publico enruta /live-active-ids a signaling"
+  else
+    production_requirement "origen HTTPS publico no enruta /live-active-ids a signaling (HTTP ${public_live_ids_code:-000})"
+  fi
 fi
 
 section "Validacion funcional por modulo"

@@ -22,11 +22,16 @@ import io.ktor.client.call.body
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -59,6 +64,8 @@ class StickerRepository @Inject constructor(
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    private val remoteFavoriteScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val remoteFavoriteMutex = Mutex()
 
     private val _catalog = MutableStateFlow<List<StickerItem>>(emptyList())
     val catalog: StateFlow<List<StickerItem>> = _catalog.asStateFlow()
@@ -146,12 +153,13 @@ class StickerRepository @Inject constructor(
     suspend fun setFavorite(stickerId: String, favorite: Boolean): Boolean = withContext(Dispatchers.IO) {
         val clean = stickerId.trim()
         if (clean.isBlank()) return@withContext false
-        if (_favorites.value.contains(clean) == favorite) return@withContext favorite
-        val target = _catalog.value.firstOrNull { it.id == clean }
-        val affectedIds = if (!favorite && target != null) {
-            _catalog.value.filter { it.id == clean || StickerIdentity.matches(it, target) }
-                .map { it.id }.filter { _favorites.value.contains(it) }
-        } else listOf(clean)
+        if (favorite && _favorites.value.contains(clean)) return@withContext true
+        val affectedIds = if (favorite) listOf(clean) else StickerIdentity.favoriteIdsToRemove(
+            stickerId = clean,
+            catalog = _catalog.value,
+            favorites = _favorites.value
+        )
+        if (!favorite && affectedIds.isEmpty()) return@withContext false
         val updated = _favorites.value.toMutableSet().apply {
             if (favorite) add(clean) else removeAll(affectedIds.toSet())
         }
@@ -162,16 +170,29 @@ class StickerRepository @Inject constructor(
             persistFavoriteMediaAliases()
         }
 
-        // Best effort remote sync. If RPC is missing we keep local behavior.
-        runCatching {
-            var token = authService.getAccessToken() ?: return@runCatching
-            for (id in affectedIds) {
-                val payload = buildJsonObject { put("p_sticker_id", JsonPrimitive(id)) }
-                supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_toggle_sticker_favorite") {
-                    header("Authorization", "Bearer $token")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    header("Content-Type", "application/json")
-                    setBody(payload)
+        // The local choice is visible immediately. Serialize idempotent server updates so
+        // rapid add/remove taps cannot be reordered or turn a removal back into an add.
+        val actingUserId = authService.getCurrentUserId()
+        remoteFavoriteScope.launch {
+            remoteFavoriteMutex.withLock {
+                if (actingUserId.isNullOrBlank() || authService.getCurrentUserId() != actingUserId) {
+                    return@withLock
+                }
+                val token = authService.getAccessToken() ?: return@withLock
+                for (id in affectedIds) {
+                    val desired = _favorites.value.contains(id)
+                    runCatching {
+                        val payload = buildJsonObject {
+                            put("p_sticker_id", JsonPrimitive(id))
+                            put("p_favorite", JsonPrimitive(desired))
+                        }
+                        supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_toggle_sticker_favorite") {
+                            header("Authorization", "Bearer $token")
+                            header("apikey", supabaseConfig.supabaseAnonKey)
+                            header("Content-Type", "application/json")
+                            setBody(payload)
+                        }
+                    }
                 }
             }
         }

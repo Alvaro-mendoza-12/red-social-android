@@ -1,8 +1,10 @@
 const assert = require('node:assert/strict')
-const { io } = require('../../../Conectate-web/node_modules/socket.io-client')
+const { io } = require(require.resolve('socket.io-client', {
+  paths: [__dirname, require('node:path').resolve(__dirname, '../api')],
+}))
 
 const apiUrl = String(process.argv[2] || process.env.API_URL || 'http://127.0.0.1:3080').replace(/\/+$/, '')
-const runId = Date.now().toString()
+const runId = process.env.E2E_REUSE_RUN_ID || Date.now().toString()
 const password = 'Conectate123!'
 
 async function request(path, { token, method = 'GET', body, expected = 200 } = {}) {
@@ -21,9 +23,10 @@ async function request(path, { token, method = 'GET', body, expected = 200 } = {
 }
 
 async function register(label) {
-  const auth = await request('/v1/auth/register', {
+  const reuse = Boolean(process.env.E2E_REUSE_RUN_ID)
+  const auth = await request(reuse ? '/v1/auth/login' : '/v1/auth/register', {
     method: 'POST',
-    expected: 201,
+    expected: reuse ? 200 : 201,
     body: {
       email: `module-live-socket.${label}.${runId}@example.local`,
       password,
@@ -138,6 +141,8 @@ async function main() {
       'viewer-count',
       (payload) => payload?.liveId === liveId && payload?.viewerCount === 1,
     )
+    const hostSawJoin = waitForEvent(hostSocket, 'viewer-joined', (payload) => payload?.userId === viewer.id)
+    const viewerSawJoin = waitForEvent(viewerSocket, 'viewer-joined', (payload) => payload?.userId === viewer.id)
     viewerSocket.emit('join-live', {
       liveId,
       userId: viewer.id,
@@ -146,13 +151,15 @@ async function main() {
     })
     await hostInfo
     await viewerCount
+    await hostSawJoin
+    await viewerSawJoin
     await waitUntil(async () => {
       const detail = await request(`/v1/data/live/${liveId}`, { token: owner.token })
       return detail.stream.viewer_count === 1
     }, 'Viewer count persistence')
 
-    const reaction = waitForEvent(hostSocket, 'reaction', (payload) => payload?.emoji === '🔥')
-    viewerSocket.emit('send-reaction', { liveId, userId: viewer.id, emoji: '🔥' })
+    const reaction = waitForEvent(hostSocket, 'reaction', (payload) => payload?.kind === 'heart')
+    viewerSocket.emit('send-reaction', { liveId, userId: viewer.id })
     await reaction
 
     const liveEnded = waitForEvent(viewerSocket, 'live-ended')
@@ -168,6 +175,8 @@ async function main() {
   }
 
   await request(`/v1/data/live/${liveId}`, { token: owner.token, method: 'DELETE' })
+  await request('/rest/v1/rpc/delete_own_account', { token: viewer.token, method: 'POST', body: {} })
+  await request('/rest/v1/rpc/delete_own_account', { token: owner.token, method: 'POST', body: {} })
   process.stdout.write(JSON.stringify({
     ok: true,
     websocketAuthenticated: true,

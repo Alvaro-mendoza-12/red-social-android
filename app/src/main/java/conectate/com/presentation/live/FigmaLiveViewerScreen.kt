@@ -227,6 +227,7 @@ fun LiveViewerScreen(
     NovvinLiveViewerExperience(
         stream = stream,
         viewerCount = viewerCount,
+        viewers = liveViewers,
         hostTrack = hostTrack,
         remoteTracks = guestTracks,
         liveKitVideos = liveKitRemoteVideos,

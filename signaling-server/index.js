@@ -2377,7 +2377,9 @@ liveIo.on('connection', (socket) => {
 
         // Notify host and provide host info to viewer
         if (session.host?.socketId) {
-            liveIo.to(session.host.socketId).emit('viewer-joined', {
+            // Every participant should see the live join activity. The Android
+            // viewer only updates the UI; only the host establishes a media peer.
+            liveIo.to(liveId).emit('viewer-joined', {
                 socketId: socket.id,
                 userId,
                 name,
@@ -2878,7 +2880,7 @@ liveIo.on('connection', (socket) => {
                     }
                     session.viewers.delete(viewerSocketId);
                     if (session.host?.socketId) {
-                        liveIo.to(session.host.socketId).emit('viewer-left', viewerSocketId);
+                        liveIo.to(liveId).emit('viewer-left', viewerSocketId);
                     }
                 }
                 const viewerCount = session.viewers.size;
@@ -2999,7 +3001,7 @@ liveIo.on('connection', (socket) => {
                 }
                 emitLiveGuestState(liveId, session);
                 if (session.host?.socketId) {
-                    liveIo.to(session.host.socketId).emit('viewer-left', socket.id);
+                    liveIo.to(liveId).emit('viewer-left', socket.id);
                 }
 
                 const viewerCount = session.viewers.size;

@@ -672,6 +672,7 @@ fun LiveHostScreen(
     NovvinLiveHostExperience(
         stream = session?.stream,
         viewerCount = viewerCount,
+        viewers = liveViewers,
         localTrack = if (isMediaReady) localVideoTrack else null,
         remoteTracks = remoteTracks,
         liveKitVideos = liveKitRemoteVideos,

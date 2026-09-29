@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict')
-const { io } = require('../../../Conectate-web/node_modules/socket.io-client')
+const { randomUUID } = require('node:crypto')
+const { io } = require(require.resolve('socket.io-client', {
+  paths: [__dirname, require('node:path').resolve(__dirname, '../api')],
+}))
 
 const apiUrl = String(process.argv[2] || process.env.API_URL || 'http://127.0.0.1:3080').replace(/\/+$/, '')
 const runId = Date.now().toString()
@@ -100,9 +103,24 @@ async function verifySignalExchange(first, second, firstAccount, secondAccount) 
 }
 
 async function verifyPairNamespace(namespace, joinEvent, joinedEvent, scopeField, accountA, accountB) {
+  const scopeId = namespace === '' ? randomUUID() : `${namespace.replace('/', '')}-${runId}`
+  if (namespace === '') {
+    await request('/v1/data/voice/rooms', {
+      token: accountA.token,
+      method: 'POST',
+      expected: 201,
+      body: { id: scopeId, name: `WebRTC voice ${runId}`, roomMode: 'casual', isPublic: true },
+    })
+    for (const account of [accountA, accountB]) {
+      await request(`/v1/data/voice/rooms/${scopeId}/join`, {
+        token: account.token,
+        method: 'POST',
+        body: { userName: 'WebRTC fixture', socketId: randomUUID(), isMuted: false },
+      })
+    }
+  }
   let first = await connect(namespace, accountA)
   const second = await connect(namespace, accountB)
-  const scopeId = `${namespace.replace('/', '') || 'voice'}-${runId}`
   try {
     const firstJoined = waitForEvent(first, joinedEvent)
     first.emit(joinEvent, { [scopeField]: scopeId, userId: accountA.id, name: 'WebRTC A' })
@@ -146,6 +164,9 @@ async function verifyPairNamespace(namespace, joinEvent, joinedEvent, scopeField
   } finally {
     second.disconnect()
     first.disconnect()
+    if (namespace === '') {
+      await request(`/v1/data/voice/rooms/${scopeId}`, { token: accountA.token, method: 'DELETE' })
+    }
   }
 }
 
@@ -180,9 +201,11 @@ async function verifyLive(accountA, accountB) {
 
     const hostInfo = waitForEvent(viewer, 'host-info', (data) => data?.userId === accountA.id)
     const viewerJoined = waitForEvent(host, 'viewer-joined', (data) => data?.userId === accountB.id)
+    const viewerJoinActivity = waitForEvent(viewer, 'viewer-joined', (data) => data?.userId === accountB.id)
     viewer.emit('join-live', { liveId, userId: accountB.id, name: 'WebRTC viewer', role: 'viewer' })
     await hostInfo
     await viewerJoined
+    await viewerJoinActivity
     await verifySignalExchange(host, viewer, accountA, accountB)
 
     const previousHostSocketId = host.id
@@ -245,6 +268,7 @@ async function main() {
   try {
     accountA = await register('a')
     accountB = await register('b')
+    await request('/v1/auth/me', { token: accountA.token })
     const turn = await request('/turn-credentials', { token: accountA.token })
     const turnUrls = turn.iceServers.flatMap((server) => server.urls || [])
     assert.equal(turn.provider, 'coturn-rest')

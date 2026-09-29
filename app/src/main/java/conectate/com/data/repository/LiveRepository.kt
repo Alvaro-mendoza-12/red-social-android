@@ -2729,13 +2729,12 @@ class LiveRepository @Inject constructor(
 
             createdSocket.on("viewer-joined") { args ->
                 if (socket !== createdSocket) return@on
-                if (role != LiveRole.HOST) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val sid = data.optString("socketId").trim()
                     val uid = data.optString("userId").trim()
-                    if (sid.isNotBlank()) {
-                        knownViewerSocketIds += sid
+                    if (sid.isNotBlank() && sid != createdSocket.id()) {
+                        if (role == LiveRole.HOST) knownViewerSocketIds += sid
                         _liveViewers.update { current ->
                             val participant = LiveViewerParticipant(
                                 socketId = sid,
@@ -2746,21 +2745,22 @@ class LiveRepository @Inject constructor(
                             )
                             (current.filterNot { it.socketId == sid } + participant)
                         }
-                        webRTCManager?.onUserJoined(sid, uid)
-                        scheduleLiveMediaTimeout()
+                        if (role == LiveRole.HOST) {
+                            webRTCManager?.onUserJoined(sid, uid)
+                            scheduleLiveMediaTimeout()
+                        }
                     }
                 }.onFailure { logMalformedSignal("viewer-joined", it) }
             }
 
             createdSocket.on("viewer-left") { args ->
                 if (socket !== createdSocket) return@on
-                if (role != LiveRole.HOST) return@on
                 runCatching {
                     val sid = (args.firstOrNull() as? String)?.trim().orEmpty()
                     if (sid.isNotBlank()) {
-                        knownViewerSocketIds -= sid
+                        if (role == LiveRole.HOST) knownViewerSocketIds -= sid
                         _liveViewers.update { viewers -> viewers.filterNot { it.socketId == sid } }
-                        webRTCManager?.onUserLeft(sid)
+                        if (role == LiveRole.HOST) webRTCManager?.onUserLeft(sid)
                     }
                 }.onFailure { logMalformedSignal("viewer-left", it) }
             }
@@ -3745,19 +3745,18 @@ class LiveRepository @Inject constructor(
         val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return null
         if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return null
 
-        val upstreamKbps = capabilities.linkUpstreamBandwidthKbps
-        val downstreamKbps = capabilities.linkDownstreamBandwidthKbps
-        val fastTransport =
-            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-        val notMetered = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
-
-        val canUse1080 =
-            upstreamKbps >= 6_000 &&
-                downstreamKbps >= 12_000 &&
-                (fastTransport || notMetered)
-
-        return if (canUse1080) LiveQuality.P1080 else LiveQuality.P720
+        // Android's link bandwidth describes the phone-to-router link, not the
+        // Internet uplink. A P2P live encodes/uploads once for each viewer, so
+        // promoting a 720p broadcast to 1080p merely because Wi-Fi reports a
+        // high link rate causes stalls and hot devices. Keep a stable 720p for
+        // small rooms and step down as the outgoing peer count grows.
+        val viewers = _viewerCount.value.coerceAtLeast(0)
+        val linkUpstreamKbps = capabilities.linkUpstreamBandwidthKbps
+        return if (viewers >= 3 || (viewers > 0 && linkUpstreamKbps in 1 until 2_500)) {
+            LiveQuality.P480
+        } else {
+            LiveQuality.P720
+        }
     }
 
     private fun startService(

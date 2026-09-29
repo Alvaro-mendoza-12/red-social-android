@@ -11,6 +11,17 @@ import kotlin.math.abs
 internal data class StickerFingerprint(val sha256: String, val visual: String?)
 
 internal object StickerIdentity {
+    fun favoriteIdsToRemove(
+        stickerId: String,
+        catalog: List<StickerItem>,
+        favorites: Set<String>
+    ): List<String> {
+        val target = catalog.firstOrNull { it.id == stickerId }
+        if (target == null) return listOf(stickerId).filter { it in favorites }
+        return catalog.filter { it.id in favorites && (it.id == stickerId || matches(it, target)) }
+            .map { it.id }
+    }
+
     fun mediaKey(url: String?): String? = UbuntuStorageUrl.stableCacheKey(
         UbuntuStorageUrl.originalObjectUrl(url)
     )?.trim()?.takeIf(String::isNotEmpty)

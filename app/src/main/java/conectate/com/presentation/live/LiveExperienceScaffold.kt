@@ -114,6 +114,7 @@ import conectate.com.data.model.LiveMusicPlaybackState
 import conectate.com.data.model.LiveReaction
 import conectate.com.data.model.LiveSource
 import conectate.com.data.model.LiveStream
+import conectate.com.data.model.LiveViewerParticipant
 import conectate.com.R
 import conectate.com.presentation.wallet.GiftCelebrationOverlay
 import conectate.com.data.model.GiftReceipt
@@ -132,6 +133,7 @@ import io.livekit.android.renderer.TextureViewRenderer
 internal fun NovvinLiveViewerExperience(
     stream: LiveStream?,
     viewerCount: Int,
+    viewers: List<LiveViewerParticipant>,
     hostTrack: VideoTrack?,
     remoteTracks: Map<String, VideoTrack>,
     liveKitVideos: List<LiveKitRoomBridge.RemoteVideo>,
@@ -173,6 +175,7 @@ internal fun NovvinLiveViewerExperience(
     var panel by remember { mutableStateOf<ViewerPanel?>(null) }
     var dismissedBattleResult by remember { mutableStateOf<Long?>(null) }
     var visibleGift by remember { mutableStateOf<LiveGiftEvent?>(null) }
+    val visibleJoiner = rememberLatestViewerJoin(stream?.id, viewers)
     LaunchedEffect(giftsReceived.lastOrNull()?.createdAtMs) {
         val latest = giftsReceived.lastOrNull() ?: return@LaunchedEffect
         visibleGift = latest
@@ -204,7 +207,8 @@ internal fun NovvinLiveViewerExperience(
             ViewerTopBar(stream, viewerCount, following, metrics, onFollow, onClose)
         },
         event = {
-            visibleGift?.let { GiftToast(it) }
+            if (visibleJoiner != null) LiveJoinToast(visibleJoiner)
+            else visibleGift?.let { GiftToast(it) }
         },
         center = {
             when {
@@ -319,6 +323,7 @@ private enum class ViewerPanel { GIFTS, GUEST_REQUEST, GUEST_SETUP, MORE }
 internal fun NovvinLiveHostExperience(
     stream: LiveStream?,
     viewerCount: Int,
+    viewers: List<LiveViewerParticipant>,
     localTrack: VideoTrack?,
     remoteTracks: Map<String, VideoTrack>,
     liveKitVideos: List<LiveKitRoomBridge.RemoteVideo>,
@@ -368,6 +373,7 @@ internal fun NovvinLiveHostExperience(
     var panel by remember { mutableStateOf<HostPanel?>(null) }
     var dismissedBattleResult by remember { mutableStateOf<Long?>(null) }
     var visibleGift by remember { mutableStateOf<LiveGiftEvent?>(null) }
+    val visibleJoiner = rememberLatestViewerJoin(stream?.id, viewers)
     LaunchedEffect(giftsReceived.lastOrNull()?.createdAtMs) {
         val latest = giftsReceived.lastOrNull() ?: return@LaunchedEffect
         visibleGift = latest
@@ -400,7 +406,9 @@ internal fun NovvinLiveHostExperience(
             )
         },
         event = {
-            if (requests.isNotEmpty()) {
+            if (visibleJoiner != null) {
+                LiveJoinToast(visibleJoiner)
+            } else if (requests.isNotEmpty()) {
                 GuestRequestBanner(requests.first(), requests.size) { panel = HostPanel.REQUESTS }
             } else {
                 visibleGift?.let { GiftToast(it) }
@@ -1191,6 +1199,44 @@ private fun ViewerTopBar(
             size = if (metrics.compact) 30.dp else 32.dp,
             containerColor = Color.Black.copy(alpha = 0.52f),
             borderColor = Color.White.copy(alpha = 0.12f)
+        )
+    }
+}
+
+@Composable
+private fun rememberLatestViewerJoin(
+    liveId: String?,
+    viewers: List<LiveViewerParticipant>
+): LiveViewerParticipant? {
+    var knownSocketIds by remember(liveId) { mutableStateOf(emptySet<String>()) }
+    var visibleJoiner by remember(liveId) { mutableStateOf<LiveViewerParticipant?>(null) }
+    val socketIds = viewers.map { it.socketId }
+    LaunchedEffect(liveId, socketIds) {
+        val joined = viewers.lastOrNull { it.socketId.isNotBlank() && it.socketId !in knownSocketIds }
+        knownSocketIds = socketIds.toSet()
+        if (joined != null) {
+            visibleJoiner = joined
+            delay(3_000L)
+            if (visibleJoiner?.socketId == joined.socketId) visibleJoiner = null
+        }
+    }
+    return visibleJoiner
+}
+
+@Composable
+private fun LiveJoinToast(viewer: LiveViewerParticipant) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.Black.copy(alpha = 0.70f))
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = "${viewer.name.ifBlank { "Una persona" }} se unió",
+            color = Color.White,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

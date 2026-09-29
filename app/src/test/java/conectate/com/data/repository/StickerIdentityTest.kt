@@ -2,6 +2,7 @@ package conectate.com.data.repository
 
 import conectate.com.data.model.StickerItem
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,5 +26,21 @@ class StickerIdentityTest {
         val first = StickerItem(id = "first", title = "Sticker", visual_fingerprint = "a5:102:90:80:1000")
         val second = StickerItem(id = "second", title = "Sticker", visual_fingerprint = "5a:104:92:81:1005")
         assertFalse(StickerIdentity.matches(first, second))
+    }
+
+    @Test
+    fun `removing displayed duplicate also removes saved favorite id`() {
+        val displayed = StickerItem(id = "recent-copy", title = "Sticker", content_sha256 = "same")
+        val saved = StickerItem(id = "saved-original", title = "Sticker", content_sha256 = "same")
+        val unrelated = StickerItem(id = "other", title = "Sticker", content_sha256 = "other")
+
+        assertEquals(
+            listOf("saved-original"),
+            StickerIdentity.favoriteIdsToRemove(
+                stickerId = displayed.id,
+                catalog = listOf(displayed, saved, unrelated),
+                favorites = setOf(saved.id, unrelated.id)
+            )
+        )
     }
 }

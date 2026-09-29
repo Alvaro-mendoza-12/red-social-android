@@ -3235,6 +3235,10 @@ async function addStickerToPackRpc(pool, auth, body) {
   })
 }
 
+function desiredStickerFavoriteState(existing, requestedFavorite) {
+  return typeof requestedFavorite === 'boolean' ? requestedFavorite : !existing
+}
+
 async function toggleStickerFavoriteRpc(pool, auth, body) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
@@ -3252,6 +3256,11 @@ async function toggleStickerFavoriteRpc(pool, auth, body) {
     identityOwnsRow(identity, row, ['user_id']) &&
     normalizeIdentityValue(row.sticker_id || row.item_id) === normalizeIdentityValue(stickerId),
   )
+  const requestedFavorite = body.p_favorite ?? body.favorite
+  const shouldFavorite = desiredStickerFavoriteState(existing, requestedFavorite)
+  if (Boolean(existing) === shouldFavorite) {
+    return { ok: true, is_favorite: shouldFavorite }
+  }
   if (existing) {
     await pool.query(
       `DELETE FROM fallback_compat_rows
@@ -6027,6 +6036,7 @@ function registerPostgrestCompatRoutes(app, { pool, authOptional }) {
 module.exports = {
   canReuseCatalogStickerMedia,
   _test: {
+    desiredStickerFavoriteState,
     DEFAULT_VIRTUAL_GIFTS,
     SERVER_MUTATION_ONLY_TABLES,
     sanitizeProfileRow,

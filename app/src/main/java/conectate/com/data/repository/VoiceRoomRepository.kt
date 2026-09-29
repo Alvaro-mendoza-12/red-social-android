@@ -2334,6 +2334,12 @@ class VoiceRoomRepository @Inject constructor(
             onComplete = { started ->
                 if (started) {
                     _currentVideoMode.value = VideoMode.CAMERA
+                    updateSharingState(
+                        socketId = currentSocketId(),
+                        userId = authService.getCurrentUserId(),
+                        isCameraSharing = true,
+                        isScreenSharing = false
+                    )
                     webRTCManager?.setVideoSendEnabled(true, renegotiate = false)
                     broadcastCurrentMediaState(
                         repeatCount = if (performanceProfile.reduceMotion) 2 else 3,
@@ -2343,6 +2349,12 @@ class VoiceRoomRepository @Inject constructor(
                     reinforceAudioAfterVideoTransition("camera-share-start")
                 } else {
                     _currentVideoMode.value = VideoMode.NONE
+                    updateSharingState(
+                        socketId = currentSocketId(),
+                        userId = authService.getCurrentUserId(),
+                        isCameraSharing = false,
+                        isScreenSharing = false
+                    )
                     _videoError.value = "No se pudo iniciar la cámara."
                     broadcastCurrentMediaState(repeatCount = 2, intervalMs = 250)
                 }
@@ -2358,6 +2370,12 @@ class VoiceRoomRepository @Inject constructor(
         )
         _currentVideoMode.value = VideoMode.NONE
         webRTCManager?.stopVideo()
+        updateSharingState(
+            socketId = currentSocketId(),
+            userId = authService.getCurrentUserId(),
+            isCameraSharing = false,
+            isScreenSharing = false
+        )
         broadcastCurrentMediaState(repeatCount = 2, intervalMs = 250)
         reinforceAudioAfterVideoTransition("video-stop")
     }

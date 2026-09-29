@@ -5,7 +5,11 @@ import androidx.compose.runtime.Composable
 import android.Manifest
 import android.content.ClipData
 import android.content.Intent
+import android.net.Uri
 import android.view.ViewGroup
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -50,6 +54,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -1916,6 +1921,15 @@ fun ChatBubble(
     onReply: () -> Unit,
     onCopy: (String) -> Unit
 ) {
+    val links = remember(message.text) {
+        Regex("https?://\\S+", RegexOption.IGNORE_CASE).findAll(message.text)
+            .map { it.value.trimEnd('.', ',', ';', ':', ')', ']', '}', '!', '?') }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(3)
+            .toList()
+    }
+    var openedLink by remember(message.id) { mutableStateOf<String?>(null) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1939,11 +1953,69 @@ fun ChatBubble(
                 bottomEnd = if (isMe) 0.dp else 16.dp
             )
         ) {
-            SelectionContainer {
-                Text(
-                    text = message.text,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    color = if (isMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                SelectionContainer {
+                    Text(
+                        text = message.text,
+                        color = if (isMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                links.forEach { link ->
+                    TextButton(onClick = { openedLink = link }) {
+                        Text("Abrir enlace en Novvin: ${Uri.parse(link).host.orEmpty()}")
+                    }
+                }
+            }
+        }
+    }
+    openedLink?.let { link ->
+        VoiceRoomLinkDialog(link = link, onDismiss = { openedLink = null })
+    }
+}
+
+@Composable
+private fun VoiceRoomLinkDialog(link: String, onDismiss: () -> Unit) {
+    var webView by remember(link) { mutableStateOf<WebView?>(null) }
+    DisposableEffect(link) {
+        onDispose {
+            webView?.stopLoading()
+            webView?.destroy()
+            webView = null
+        }
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.86f),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(Uri.parse(link).host.orEmpty(), modifier = Modifier.weight(1f), maxLines = 1)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar enlace")
+                    }
+                }
+                AndroidView(
+                    factory = { context ->
+                        WebView(context).apply {
+                            settings.javaScriptEnabled = true
+                            settings.allowFileAccess = false
+                            settings.allowContentAccess = false
+                            settings.domStorageEnabled = true
+                            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldOverrideUrlLoading(
+                                    view: WebView?, request: WebResourceRequest?
+                                ): Boolean = request?.url?.scheme !in listOf("http", "https")
+                            }
+                            loadUrl(link)
+                            webView = this
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().weight(1f)
                 )
             }
         }
