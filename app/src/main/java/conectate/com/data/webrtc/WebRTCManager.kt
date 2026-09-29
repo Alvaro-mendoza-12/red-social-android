@@ -783,7 +783,11 @@ class WebRTCManager(
             peerConnections[socketId]?.setAudioPlayout(remoteAudioPlaybackEnabled)
             track.setEnabled(remoteAudioPlaybackEnabled)
             track.setVolume(if (remoteAudioPlaybackEnabled) REMOTE_AUDIO_GAIN else 0.0)
-            remoteAudioTracks[socketId] = track
+            // Rolled-back negotiations can leave an older receiver alive.
+            // Play this participant once, even when a new track replaces it.
+            remoteAudioTracks.put(socketId, track)?.takeIf { it.id() != track.id() }?.let { oldTrack ->
+                runCatching { oldTrack.setEnabled(false) }
+            }
             Log.i("WebRTCManager", "Remote Audio Track configured and enabled for $socketId")
         }
     }
@@ -1524,12 +1528,13 @@ class WebRTCManager(
                         
                         // v7.2.6: Reinforce transceivers to ensure local track is still active
                         var pc = peerConnections[socketId]
+                        val audioTransceiver = pc?.let(::getOrAddAudioTransceiver)
                         pc?.transceivers?.forEach { t ->
                             if (t.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO) {
-                                if (t.direction == RtpTransceiver.RtpTransceiverDirection.RECV_ONLY) {
+                                if (t === audioTransceiver && t.direction == RtpTransceiver.RtpTransceiverDirection.RECV_ONLY) {
                                     t.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
                                 }
-                                t.sender.setTrack(localAudioTrack, false)
+                                t.sender.setTrack(if (t === audioTransceiver) localAudioTrack else null, false)
                             } else if (t.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) {
                                 var activeVideoTrack = activeOutgoingVideoTrack()
                                 t.sender.setTrack(activeVideoTrack, false)
@@ -1737,12 +1742,16 @@ class WebRTCManager(
                 Log.w("WebRTC", "Remote answer ignored, no peer connection found for sender=$senderSocketId userId=$remoteUserId. Known peers=${peerConnections.keys}")
                 return@execute
             }
+            if (pc.signalingState() != PeerConnection.SignalingState.HAVE_LOCAL_OFFER) {
+                Log.d("WebRTC", "Ignoring remote answer without a pending local offer")
+                return@execute
+            }
             Log.d("WebRTC", "Setting Remote Description (ANSWER) for $peerKey")
             isSettingRemoteAnswerPending[peerKey] = true
             offerRetryJobs.remove(peerKey)?.cancel()
-            localOfferTimeoutJobs.remove(peerKey)?.cancel()
             pc.setRemoteDescription(object : SdpObserverAdapter() {
                 override fun onSetSuccess() {
+                    localOfferTimeoutJobs.remove(peerKey)?.cancel()
                     Log.d("WebRTC", "Remote Description (ANSWER) SET successfully for $peerKey")
                     isSettingRemoteAnswerPending[peerKey] = false
                     cancelGlareRecovery(peerKey)
@@ -1889,7 +1898,10 @@ class WebRTCManager(
                         makingOffer[socketId] = false
                         localOfferTimeoutJobs.remove(socketId)?.cancel()
                         localOfferTimeoutJobs[socketId] = asyncScope.launch {
-                            delay(5_000L)
+                            // TURN discovery may take up to ten seconds on a
+                            // new network. Do not roll back while the peer is
+                            // still fetching credentials and preparing its answer.
+                            delay(20_000L)
                             executor.execute {
                                 localOfferTimeoutJobs.remove(socketId)
                                 val activePc = peerConnections[socketId] ?: return@execute

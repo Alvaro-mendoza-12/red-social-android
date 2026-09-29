@@ -248,7 +248,7 @@ fun VoiceRoomActiveScreen(
                                 color = if (hasRealVideo) Color.White else MaterialTheme.colorScheme.onSurface 
                             )
                             Text(
-                                text = "ID: ${room?.readableId ?: "..."}",
+                                text = "ID: ${room?.readableId?.takeIf { it.isNotBlank() } ?: room?.id ?: "..."}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = (if (hasRealVideo) Color.White else MaterialTheme.colorScheme.onSurface).copy(alpha = 0.7f)
                             )
@@ -264,7 +264,7 @@ fun VoiceRoomActiveScreen(
                     },
                     actions = {
                         IconButton(onClick = {
-                             room?.readableId?.let { id ->
+                             (room?.readableId?.takeIf { it.isNotBlank() } ?: room?.id)?.let { id ->
                                 clipboardScope.launch {
                                     clipboard.setClipEntry(
                                         ClipEntry(ClipData.newPlainText("ID de sala", id))
@@ -1408,6 +1408,7 @@ fun ControlBar(
                 item {
                     ControlIcon(
                         icon = if (isMuted) Icons.Rounded.MicOff else Icons.Rounded.Mic,
+                        description = if (isMuted) "Activar micrófono" else "Silenciar micrófono",
                         isActive = !isMuted,
                         activeColor = MaterialTheme.colorScheme.primary,
                         inactiveColor = MaterialTheme.colorScheme.error,
@@ -1419,6 +1420,7 @@ fun ControlBar(
                 item {
                     ControlIcon(
                         icon = if (videoMode == VoiceRoomRepository.VideoMode.CAMERA) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff,
+                        description = if (videoMode == VoiceRoomRepository.VideoMode.CAMERA) "Apagar cámara" else "Activar cámara",
                         isActive = videoMode == VoiceRoomRepository.VideoMode.CAMERA,
                         enabled = canPublishMedia,
                         onClick = onToggleCamera
@@ -1428,6 +1430,7 @@ fun ControlBar(
                     Box {
                         ControlIcon(
                             icon = Icons.AutoMirrored.Filled.Chat,
+                            description = "Abrir chat de la sala",
                             isActive = unreadChatCount > 0,
                             activeColor = MaterialTheme.colorScheme.primary,
                             onClick = onShowChat
@@ -1443,6 +1446,7 @@ fun ControlBar(
                 item {
                     ControlIcon(
                         icon = if (isSpeaker) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                        description = if (isSpeaker) "Desactivar altavoz" else "Activar altavoz",
                         isActive = isSpeaker,
                         onClick = onToggleSpeaker
                     )
@@ -1454,6 +1458,7 @@ fun ControlBar(
                         } else {
                             Icons.AutoMirrored.Rounded.ScreenShare
                         },
+                        description = if (videoMode == VoiceRoomRepository.VideoMode.SCREEN) "Dejar de compartir pantalla" else "Compartir pantalla",
                         isActive = videoMode == VoiceRoomRepository.VideoMode.SCREEN,
                         activeColor = Color.Red,
                         enabled = canPublishMedia,
@@ -1463,6 +1468,7 @@ fun ControlBar(
                 item {
                     ControlIcon(
                         icon = Icons.Default.AddReaction,
+                        description = "Enviar reacción",
                         isActive = false,
                         onClick = onShowReactions
                     )
@@ -1470,6 +1476,7 @@ fun ControlBar(
                 item {
                     ControlIcon(
                         icon = Icons.Default.ClosedCaption,
+                        description = if (captionsEnabled) "Desactivar subtítulos" else "Activar subtítulos",
                         isActive = captionsEnabled,
                         activeColor = MaterialTheme.colorScheme.tertiary,
                         enabled = canPublishMedia,
@@ -1479,6 +1486,7 @@ fun ControlBar(
                 item {
                     ControlIcon(
                         icon = Icons.AutoMirrored.Filled.Notes,
+                        description = "Resumen de la conversación",
                         isActive = isSummaryLoading,
                         activeColor = MaterialTheme.colorScheme.tertiary,
                         enabled = !isSummaryLoading,
@@ -1489,6 +1497,7 @@ fun ControlBar(
                     item {
                         ControlIcon(
                             icon = Icons.Default.PanTool,
+                            description = if (handRaised) "Bajar la mano" else "Pedir la palabra",
                             isActive = handRaised,
                             activeColor = MaterialTheme.colorScheme.tertiary,
                             onClick = onToggleHandRaised
@@ -1499,6 +1508,7 @@ fun ControlBar(
                     item {
                         ControlIcon(
                             icon = if (isCinemaActive) Icons.Default.MovieFilter else Icons.Default.Movie,
+                            description = if (isCinemaActive) "Cambiar película" else "Ver película juntos",
                             isActive = isCinemaActive,
                             activeColor = Color(0xFFFFD700),
                             onClick = onToggleCinema
@@ -1523,6 +1533,7 @@ fun ControlBar(
 @Composable
 fun ControlIcon(
     icon: ImageVector,
+    description: String,
     isActive: Boolean,
     activeColor: Color = MaterialTheme.colorScheme.primary,
     inactiveColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1542,7 +1553,7 @@ fun ControlIcon(
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = description,
             tint = if (enabled) contentColor else contentColor.copy(alpha = 0.35f),
             modifier = Modifier.size(28.dp)
         )
