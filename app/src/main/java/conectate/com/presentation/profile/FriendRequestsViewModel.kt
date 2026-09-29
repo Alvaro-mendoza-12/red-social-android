@@ -39,6 +39,7 @@ class FriendRequestsViewModel @Inject constructor(
     private var pendingIds: Set<String> = emptySet()
     private var pendingOwnerId: String? = null
     private var loadJob: Job? = null
+    private var loadGeneration = 0L
 
     // Track accepted requests (local + recent friends) to show "Confirmed" state
     private val _acceptedRequests = MutableStateFlow<Map<String, Long>>(emptyMap())
@@ -53,6 +54,7 @@ class FriendRequestsViewModel @Inject constructor(
     }
 
     fun loadRequests() {
+        val generation = ++loadGeneration
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             val ownerId = authService.getCurrentUserId() ?: run {
@@ -103,7 +105,7 @@ class FriendRequestsViewModel @Inject constructor(
                     _requests.value = pendingList + visibleRecent.map { it.first }
                 }
             } finally {
-                _isLoading.value = false
+                if (generation == loadGeneration) _isLoading.value = false
             }
         }
     }
