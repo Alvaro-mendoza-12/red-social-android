@@ -8,8 +8,17 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -63,6 +72,10 @@ fun InternalDocumentDialog(
     var pendingPdfSend by remember(source) { mutableStateOf<File?>(null) }
     var offerSendAfterSave by remember(source) { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
+    var officePdf by remember(source) { mutableStateOf<OfficePdfPreview?>(null) }
+    var officeFailure by remember(source) { mutableStateOf<String?>(null) }
+    var officeLoading by remember(source) { mutableStateOf(false) }
+    var officeRetry by remember(source) { mutableIntStateOf(0) }
     var wordEdits by remember(source) { mutableStateOf<List<WordParagraphEdit>>(emptyList()) }
     val openedOffice = document?.body as? DocumentBody.Office
     val wordOriginal = openedOffice?.value?.takeIf { it.format.startsWith("Word") }?.wordParagraphs.orEmpty()
@@ -93,6 +106,14 @@ fun InternalDocumentDialog(
                 .map { WordParagraphEdit(it.text) }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) { error = failure.message ?: "No se pudo leer el documento." }
+    }
+    LaunchedEffect(document?.file, officeRetry) {
+        val opened = document?.takeIf { it.body is DocumentBody.Office } ?: return@LaunchedEffect
+        officeLoading = true; officeFailure = null
+        try { officePdf = session.renderOffice(opened) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) { officeFailure = failure.message ?: "No se pudo preparar el diseño del documento." }
+        finally { officeLoading = false }
     }
     val saveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(destinationMimeType)
@@ -151,7 +172,9 @@ fun InternalDocumentDialog(
                 } finally {
                     temporaryEditedDocx?.delete()
                 }
-                val copy = if (asPdf && !textOnly && richHtml != null) {
+                val copy = if (asPdf && !textOnly && !wordChanged && officePdf != null) {
+                    copyOfficePreviewPdf(context, opened.name, officePdf!!.file)
+                } else if (asPdf && !textOnly && richHtml != null) {
                     createRichDocumentPdf(context, opened.name, richHtml)
                 } else createDocumentCopy(context, opened.name, text, asPdf)
                 if (forSending) onSend?.invoke(Uri.fromFile(copy))
@@ -211,8 +234,9 @@ fun InternalDocumentDialog(
                             }
                         }
                         is DocumentBody.Office -> {
-                            var visual by remember(opened.file) { mutableStateOf(body.value.htmlPreview != null) }
-                            val canEditWord = body.value.format.startsWith("Word") && wordEdits.size == body.value.wordParagraphs.size
+                            var visual by remember(opened.file) { mutableStateOf(true) }
+                            var layout by remember(opened.file) { mutableStateOf(true) }
+                            val canEditWord = body.value.format.startsWith("Word") && wordEdits.isNotEmpty() && wordEdits.size == body.value.wordParagraphs.size
                             if (canEditWord) Row(
                                 Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -234,20 +258,31 @@ fun InternalDocumentDialog(
                                     modifier = Modifier.weight(1f).fillMaxWidth(),
                                 )
                             } else {
-                            Text("Vista interna del contenido disponible. No se ejecutan macros ni fórmulas; verifica el diseño antes de enviar.",
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.bodySmall)
-                            if (body.value.htmlPreview != null) Text(
-                                "La exportación PDF conserva el contenido visual compatible; el diseño puede variar respecto al archivo abierto en Office.",
-                                modifier = Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            if (body.value.htmlPreview != null) {
-                                Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    FilterChip(selected = visual, onClick = { visual = true }, label = { Text("Vista visual") })
-                                    FilterChip(selected = !visual, onClick = { visual = false }, label = { Text("Texto") })
-                                }
+                            Text("El archivo original se conserva. El diseño se abre en lectura; puedes ampliar y deslizar sus páginas.",
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
+                            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(selected = layout, onClick = { layout = true }, label = { Text("Diseño") })
+                                if (body.value.htmlPreview != null) FilterChip(selected = !layout && visual,
+                                    onClick = { layout = false; visual = true }, label = { Text("Contenido") })
+                                if (body.value.sections.isNotEmpty()) FilterChip(selected = !layout && !visual,
+                                    onClick = { layout = false; visual = false }, label = { Text("Texto") })
                             }
-                            if (visual && body.value.htmlPreview != null) {
+                            val prepared = officePdf
+                            if (layout && prepared != null) {
+                                PdfDocumentPages(prepared.file, prepared.pages, Modifier.weight(1f))
+                            } else if (layout) {
+                                Box(Modifier.weight(1f).fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        if (officeLoading) { CircularProgressIndicator(); Text("Preparando el diseño del documento…") }
+                                        else { Text(officeFailure ?: "No se pudo abrir el diseño.")
+                                            Button(onClick = { officeRetry++ }) { Text("Reintentar") }
+                                            if (body.value.htmlPreview != null) OutlinedButton(onClick = { layout = false; visual = true }) {
+                                                Text("Ver contenido compatible")
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if (visual && body.value.htmlPreview != null) {
                                 OfficeHtmlPreview(body.value.htmlPreview, Modifier.weight(1f).fillMaxWidth())
                             } else {
                                 LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -461,51 +496,76 @@ private fun OfficeHtmlPreview(html: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PdfDocumentPages(file: File, pages: Int, modifier: Modifier = Modifier) {
-    var page by remember(file) { mutableIntStateOf(0) }
-    var bitmap by remember(file) { mutableStateOf<Bitmap?>(null) }
-    var failure by remember(file) { mutableStateOf<String?>(null) }
-    var zoom by remember(file, page) { mutableFloatStateOf(1f) }
-    var pan by remember(file, page) { mutableStateOf(Offset.Zero) }
+@OptIn(ExperimentalLayoutApi::class)
+internal fun PdfDocumentPages(file: File, pages: Int, modifier: Modifier = Modifier) {
+    val pager = rememberPagerState(pageCount = { pages })
+    val scope = rememberCoroutineScope()
+    var currentZoom by remember(file) { mutableFloatStateOf(1f) }
+    var reset by remember(file) { mutableIntStateOf(0) }
+    LaunchedEffect(pager.currentPage) { currentZoom = 1f; reset++ }
+    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        FlowRow(horizontalArrangement = Arrangement.Center, verticalArrangement = Arrangement.Center) {
+            TextButton(onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
+                enabled = pager.currentPage > 0) { Text("Anterior") }
+            Text("${pager.currentPage + 1} / $pages", Modifier.align(Alignment.CenterVertically).testTag("document-page-counter"))
+            TextButton(onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } },
+                enabled = pager.currentPage + 1 < pages) { Text("Siguiente") }
+            if (currentZoom > 1.01f) TextButton(onClick = { reset++ }) { Text("Restablecer zoom") }
+        }
+        HorizontalPager(pager, modifier = Modifier.weight(1f).fillMaxWidth().testTag("document-pages"),
+            userScrollEnabled = currentZoom <= 1.01f, beyondViewportPageCount = 0) { page ->
+            PdfPageCanvas(file, page, reset, Modifier.fillMaxSize()) { zoom ->
+                if (page == pager.currentPage) currentZoom = zoom
+            }
+        }
+    }
+}
+
+@Composable
+private fun PdfPageCanvas(file: File, page: Int, reset: Int, modifier: Modifier, onZoom: (Float) -> Unit) {
+    var bitmap by remember(file, page) { mutableStateOf<Bitmap?>(null) }
+    var failure by remember(file, page) { mutableStateOf<String?>(null) }
+    var zoom by remember(file, page, reset) { mutableFloatStateOf(1f) }
+    var pan by remember(file, page, reset) { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
-    val zoomState = rememberTransformableState { centroid, zoomChange, panChange, _ ->
+    fun transform(centroid: Offset, zoomChange: Float, panChange: Offset) {
         val nextZoom = (zoom * zoomChange).coerceIn(1f, 4f)
         val maxX = (nextZoom - 1f) * viewport.width / 2f
         val maxY = (nextZoom - 1f) * viewport.height / 2f
-        val scaleShift = 1f - nextZoom / zoom
         val centered = centroid - Offset(viewport.width / 2f, viewport.height / 2f)
+        val scaleShift = 1f - nextZoom / zoom
         pan = Offset((pan.x + panChange.x + centered.x * scaleShift).coerceIn(-maxX, maxX),
             (pan.y + panChange.y + centered.y * scaleShift).coerceIn(-maxY, maxY))
         zoom = nextZoom
     }
+    LaunchedEffect(zoom) { onZoom(zoom) }
     LaunchedEffect(file, page) {
-        failure = null
-        bitmap = null
         try { bitmap = renderDocumentPdfPage(file, page) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { failure = error.message ?: "No se pudo dibujar esta página." }
     }
-    // Render only the current page, bounded to 1200 × 1600 pixels; old bitmaps are reclaimed by Android.
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { page-- }, enabled = page > 0) { Text("Anterior") }
-            Text("${page + 1} / $pages")
-            TextButton(onClick = { page++ }, enabled = page + 1 < pages) { Text("Siguiente") }
-            TextButton(onClick = { zoom = 1f; pan = Offset.Zero }, enabled = zoom > 1f) {
-                Text("${(zoom * 100).toInt()} %")
+    // Each retained page is bounded to 1200 × 1600; Compose may still draw its bitmap after disposal.
+    Box(modifier.padding(8.dp).onSizeChanged { viewport = it }.clipToBounds()
+        .pointerInput(file, page, reset) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                do {
+                    // Claim a pinch before the outer pager can treat one finger as a page swipe.
+                    // At normal size, a single finger continues through to the pager.
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    if (event.changes.count { it.pressed } >= 2 || zoom > 1.01f) {
+                        transform(event.calculateCentroid(useCurrent = false), event.calculateZoom(), event.calculatePan())
+                        event.changes.forEach { if (it.positionChanged()) it.consume() }
+                    }
+                } while (event.changes.any { it.pressed })
             }
-        }
-        Box(Modifier.weight(1f).fillMaxWidth().padding(8.dp).onSizeChanged { viewport = it }
-            .clipToBounds().transformable(zoomState),
-            contentAlignment = Alignment.Center) {
-            val rendered = bitmap
-            when {
-                rendered != null -> Image(rendered.asImageBitmap(), "Página ${page + 1}",
-                    Modifier.fillMaxSize().graphicsLayer(scaleX = zoom, scaleY = zoom,
-                        translationX = pan.x, translationY = pan.y))
-                failure != null -> Text(failure!!)
-                else -> CircularProgressIndicator()
-            }
+        }, contentAlignment = Alignment.Center) {
+        val rendered = bitmap
+        when {
+            rendered != null -> Image(rendered.asImageBitmap(), "Página ${page + 1}",
+                Modifier.fillMaxSize().graphicsLayer(scaleX = zoom, scaleY = zoom, translationX = pan.x, translationY = pan.y))
+            failure != null -> Text(failure!!)
+            else -> CircularProgressIndicator()
         }
     }
 }

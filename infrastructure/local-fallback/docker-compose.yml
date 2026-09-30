@@ -104,6 +104,7 @@ services:
       AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-3000}
       AI_CHAT_REQUEST_TIMEOUT_MS: ${AI_CHAT_REQUEST_TIMEOUT_MS:-3000}
       TRANSLATION_INTERNAL_URL: http://host.docker.internal:5000
+      OFFICE_PREVIEW_INTERNAL_URL: http://office-preview:3000
       FIREBASE_SERVICE_ACCOUNT_SOURCE_FILE: /run/secrets/firebase-service-account.json
       FIREBASE_SERVICE_ACCOUNT_FILE: /tmp/novvin-secrets/firebase-service-account.json
       GOOGLE_PLAY_SERVICE_ACCOUNT_SOURCE_FILE: ${GOOGLE_PLAY_SERVICE_ACCOUNT_SOURCE_FILE:-/run/novvin-secrets/google-play-service-account.json}
@@ -141,6 +142,7 @@ services:
       db:
         condition: service_healthy
     networks:
+      office-preview:
       default:
         aliases:
           - conectate-api
@@ -154,6 +156,33 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  office-preview:
+    image: gotenberg/gotenberg@sha256:c85f019d6ae4927714507254331cc0ed72da7b619ee798e3a45de01f54372c12
+    restart: unless-stopped
+    environment:
+      LIBREOFFICE_AUTO_START: "true"
+      LIBREOFFICE_DENY_LIST: ".*"
+      API_DOWNLOAD_FROM_DENY_LIST: ".*"
+      API_DISABLE_DOWNLOAD_FROM: "true"
+      API_TIMEOUT: "30s"
+      API_BODY_LIMIT: "33MB"
+    networks: [office-preview]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: "1.0"
+    pids_limit: 192
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
 
   ai-chatbot:
     build:
@@ -379,3 +408,7 @@ volumes:
 secrets:
   signaling_redis_password:
     file: ${SIGNALING_REDIS_PASSWORD_FILE:-./secrets/signaling-redis-password.txt}
+
+networks:
+  office-preview:
+    internal: true

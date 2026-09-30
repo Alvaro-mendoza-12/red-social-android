@@ -80,7 +80,7 @@ private fun publicProfileShareLink(user: User): String {
     val identifier = user.username?.trim()?.removePrefix("@")
         ?.takeIf { user.username_origin in setOf("chosen", "migrated_name") &&
             it.equals(handle, ignoreCase = true) } ?: user.id
-    return "$base/v1/public/profiles/${Uri.encode(identifier)}?preview=3"
+    return "$base/p/${Uri.encode(identifier)}?preview=4"
 }
 
 internal fun profileUserIdFromQr(raw: String?): String? {
@@ -1120,10 +1120,10 @@ fun ProfileScreen(
                                                     Intent.createChooser(
                                                         Intent(Intent.ACTION_SEND).apply {
                                                             type = "text/plain"
-                                                            // One public link keeps the rich profile card available
+                                                            // Put the public profile first so destinations can preview its card.
                                                             // across messengers; download and guest viewing live there.
                                                             putExtra(Intent.EXTRA_TEXT,
-                                                                "Mira mi perfil en Novvin ✨\n$link")
+                                                                buildProfileInvitation(user.displayName, profilePublicHandle(user), link))
                                                             val title = "${user.displayName} (@${profilePublicHandle(user)}) · Novvin"
                                                             putExtra(Intent.EXTRA_TITLE, title)
                                                             putExtra(Intent.EXTRA_SUBJECT, title)

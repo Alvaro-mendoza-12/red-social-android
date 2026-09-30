@@ -93,8 +93,8 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 36
-        versionCode = 114
-        versionName = "9.0.17"
+        versionCode = 115
+        versionName = "9.0.18"
         buildConfigField("String", "BUILD_COMMIT", buildCommit.asBuildConfigString())
 
         val props = Properties()

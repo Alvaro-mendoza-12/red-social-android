@@ -301,6 +301,15 @@ class NativeMediaServerAuditTest {
         val role=args.getString("crossDeviceRole")
         Assume.assumeTrue(role in listOf("publisher","viewer"))
         val flow=checkNotNull(args.getString("crossDeviceFlow"))
+        val bothCameras = args.getString("crossDeviceBothCameras") == "true" && flow != "live"
+        val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)
+        val network = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+        val transport = when {
+            network?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "cellular"
+            network?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true -> "wifi"
+            else -> "other"
+        }
+        args.getString("crossExpectedTransport")?.let { assertEquals("Network changed during audit", it, transport) }
         val scopeId=checkNotNull(args.getString("crossDeviceScope"))
         UUID.fromString(scopeId)
         compose.setContent { MaterialTheme { Text("Prueba entre dispositivos: $flow / $role") } }
@@ -315,7 +324,7 @@ class NativeMediaServerAuditTest {
         try {
             peerFile.delete(); readyFile.delete()
             endpoint.connect()
-            if(role=="publisher") {
+            if(role=="publisher" || bothCameras) {
                 val started=CountDownLatch(1); var ok=false
                 endpoint.manager.startVideo(false,isFront=false,targetWidth=640,targetHeight=480,targetFps=24,onComplete={ok=it;started.countDown()})
                 assertTrue(started.await(15,TimeUnit.SECONDS));assertTrue(ok)
@@ -334,7 +343,7 @@ class NativeMediaServerAuditTest {
             val peer=JSONObject(peerFile.readText())
             val started=System.nanoTime()
             endpoint.manager.onUserJoined(peer.getString("socketId"),peer.getString("userId"))
-            if(role=="viewer") {
+            if(role=="viewer" || bothCameras) {
                 waitUntil("No remote camera on the second device",40) { endpoint.manager.remoteVideoTracks.value.isNotEmpty() }
                 remoteTrack=endpoint.manager.remoteVideoTracks.value.values.first().also { it.addSink(sink) }
                 waitUntil("Second device received no picture",40) { frames.get()>0 }
@@ -348,10 +357,11 @@ class NativeMediaServerAuditTest {
             val pair=selectedId?.let(stats.statsMap::get)
             val types=listOf("localCandidateId","remoteCandidateId").mapNotNull { pair?.members?.get(it)?.toString()?.let(stats.statsMap::get)?.members?.get("candidateType") }
             val fps=(frames.get()-before)*1_000_000_000.0/(System.nanoTime()-sample)
-            val report=JSONObject().put("flow",flow).put("role",role).put("audioReceived",audio).put("receivedFps",fps).put("firstFrameMs",firstFrameMs)
+            val report=JSONObject().put("scopeId",scopeId).put("flow",flow).put("role",role).put("transport",transport)
+                .put("bidirectionalVideo",bothCameras).put("audioReceived",audio).put("receivedFps",fps).put("firstFrameMs",firstFrameMs)
                 .put("candidateTypes",JSONArray(types)).put("rttSeconds",pair?.members?.get("currentRoundTripTime"))
             File(folder,"cross-device-$flow-$role.json").writeText(report.toString(2))
-            if(role=="viewer") assertTrue("Second-device video is too slow",fps>=8)
+            if(role=="viewer" || bothCameras) assertTrue("Second-device video is too slow",fps>=8)
             if(flow=="call") assertTrue("Call must cross the public TURN server",types.contains("relay"))
         } finally {
             remoteTrack?.let { runCatching { it.removeSink(sink) } }

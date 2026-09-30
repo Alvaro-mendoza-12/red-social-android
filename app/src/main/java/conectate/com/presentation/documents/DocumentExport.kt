@@ -29,6 +29,9 @@ internal fun documentMimeType(name: String, fallback: String = "application/octe
     name.substringAfterLast('.', "").lowercase()
 ) {
     "pdf" -> "application/pdf"
+    "doc" -> "application/msword"
+    "xls" -> "application/vnd.ms-excel"
+    "ppt" -> "application/vnd.ms-powerpoint"
     "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
@@ -129,6 +132,17 @@ private suspend fun copyDocumentStream(input: InputStream, output: OutputStream)
         require(copied <= 100L * 1024 * 1024) { "El documento supera el límite de descarga de 100 MB." }
         output.write(buffer, 0, count)
     }
+}
+
+internal suspend fun copyOfficePreviewPdf(context: Context, originalName: String, source: File): File = withContext(Dispatchers.IO) {
+    val directory = File(context.cacheDir, "document-copies").apply { mkdirs() }
+    val name = safeDocumentName(originalName).substringBeforeLast('.').take(80)
+    val output = File(directory, "$name-copia-${UUID.randomUUID().toString().take(8)}.pdf")
+    try {
+        source.inputStream().use { input -> output.outputStream().use { copyDocumentStream(input, it) } }
+        currentCoroutineContext().ensureActive()
+        output
+    } catch (error: Throwable) { output.delete(); throw error }
 }
 
 internal suspend fun createDocumentCopy(context: Context, originalName: String, text: String, asPdf: Boolean): File = withContext(Dispatchers.IO) {

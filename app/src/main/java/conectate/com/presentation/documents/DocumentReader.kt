@@ -78,7 +78,7 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
                     }
                     val request = Request.Builder().url(uri.toString())
                     UbuntuStorageUrl.publicRequestHeaders.forEach { (key, value) -> request.header(key, value) }
-                    remoteClient.newCall(request.build()).await().use { response ->
+                    remoteClient.newCall(request.build()).awaitDocumentResponse().use { response ->
                         check(response.isSuccessful) { "No se pudo descargar el documento (${response.code})." }
                         val body = response.body ?: throw IOException("El documento está vacío.")
                         require(body.contentLength() <= DocumentLimits.INPUT_BYTES) { "El documento supera 32 MB." }
@@ -110,6 +110,10 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
                     require(file.length() <= DocumentLimits.TEXT_BYTES) { "El texto supera 512 KB para la edición interna." }
                     DocumentBody.Text(DocumentContentParser.decodeText(file.readBytes()))
                 }
+                extension in setOf("doc", "xls", "ppt") -> DocumentBody.Office(ParsedOfficeDocument(
+                    when (extension) { "doc" -> "Word"; "xls" -> "Excel"; else -> "PowerPoint" } + " · lectura",
+                    emptyList(),
+                ))
                 else -> DocumentBody.Unsupported("Este formato se conserva como archivo. La edición interna admite texto; Office moderno se abre en lectura. Los formatos DOC, XLS y PPT antiguos requieren conversión previa.")
             }
             OpenedDocument(name, mime, file, file.length(), body)
@@ -117,6 +121,30 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
             file.delete()
             throw error
         }
+    }
+
+    suspend fun renderOffice(opened: OpenedDocument, tokenOverride: String? = null): OfficePdfPreview = withContext(Dispatchers.IO) {
+        val original = checkNotNull(opened.file)
+        val preview = synchronized(this@DocumentReadSession) {
+            check(!closed)
+            File(directory, "office-preview.pdf")
+        }
+        try {
+            DocumentOfficePreviewClient.convert(context, original, opened.name, tokenOverride).use { response ->
+                val body = response.body ?: throw IOException("La vista del documento está vacía.")
+                require(body.contentLength() <= DocumentLimits.INPUT_BYTES) { "La vista supera 32 MB." }
+                body.byteStream().use { copyBounded(it, preview) }
+            }
+            currentCoroutineContext().ensureActive()
+            require(preview.inputStream().use { it.readBytesAtMost(5) }.toString(Charsets.US_ASCII) == "%PDF-") {
+                "El servidor no devolvió una vista PDF válida."
+            }
+            val count = ParcelFileDescriptor.open(preview, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer -> renderer.pageCount }
+            }
+            require(count > 0) { "La vista del documento no contiene páginas." }
+            OfficePdfPreview(preview, count)
+        } catch (error: Throwable) { preview.delete(); throw error }
     }
 
     private suspend fun copyBounded(input: InputStream, file: File) = suspendCancellableCoroutine<Unit> { continuation ->
@@ -171,7 +199,7 @@ private fun InputStream.readBytesAtMost(limit: Int): ByteArray {
 }
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
+internal suspend fun Call.awaitDocumentResponse(): Response = suspendCancellableCoroutine { continuation ->
     continuation.invokeOnCancellation { cancel() }
     enqueue(object : Callback {
         override fun onFailure(call: Call, error: IOException) {
