@@ -564,6 +564,13 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         accountLabel: String?
     ) {
         var channelId = getString(R.string.social_notification_channel_id)
+        val action = when (type) {
+            "friend_request_accepted" -> getString(R.string.notification_friend_accepted)
+            "friend_request" -> getString(R.string.notification_friend_requested)
+            "follow" -> getString(R.string.notification_followed)
+            else -> null
+        }
+        val readableBody=conectate.com.util.socialNotificationBody(title,body,action)
         var intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("type", type)
@@ -598,8 +605,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             .setSmallIcon(R.drawable.ic_notification)
             .setLargeIcon(avatarBitmap ?: BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher))
             .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentText(readableBody)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(readableBody))
             .setSubText(accountLabel?.let { "Cuenta: $it" } ?: getString(R.string.app_name))
             .setColor(ContextCompat.getColor(this, R.color.red_primary))
             .setAutoCancel(true)

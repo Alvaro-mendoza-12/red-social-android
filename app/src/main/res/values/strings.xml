@@ -109,4 +109,7 @@
     <string name="auth_email_password_hint">Usa al menos 8 caracteres.</string>
     <string name="auth_email_password_mismatch">Las contraseñas no coinciden.</string>
     <string name="auth_email_change_email">Usar otro correo</string>
+    <string name="notification_friend_accepted">Aceptó tu solicitud de amistad</string>
+    <string name="notification_friend_requested">Te envió una solicitud de amistad</string>
+    <string name="notification_followed">Empezó a seguirte</string>
 </resources>

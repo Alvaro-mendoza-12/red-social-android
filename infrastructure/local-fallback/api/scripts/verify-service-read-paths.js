@@ -2,7 +2,7 @@
 
 // Authenticated diagnostics only: no publishing, messages, money, room joins,
 // scheduled-challenge creation, or personal content in the printed evidence.
-const { issueDiagnosticToken, cleanBaseUrl, responseItems } = require('./verify-social-read-paths')
+const { withReadPathToken, cleanBaseUrl, responseItems } = require('./verify-social-read-paths')
 
 async function verifyServiceReadPaths({ baseUrl, token, fetchImpl = fetch }) {
   const checks = []
@@ -38,10 +38,11 @@ async function verifyServiceReadPaths({ baseUrl, token, fetchImpl = fetch }) {
 
 if (require.main === module) {
   ;(async () => {
-    const token = String(process.env.SMOKE_ACCESS_TOKEN || '').trim() || await issueDiagnosticToken()
-    const evidence = await verifyServiceReadPaths({ baseUrl: cleanBaseUrl(process.env.SMOKE_API_BASE_URL), token })
-    console.log(JSON.stringify(evidence, null, 2))
-    if (!evidence.ok) process.exitCode = 1
+    await withReadPathToken(async token => {
+      const evidence = await verifyServiceReadPaths({ baseUrl: cleanBaseUrl(process.env.SMOKE_API_BASE_URL), token })
+      console.log(JSON.stringify(evidence, null, 2))
+      if (!evidence.ok) process.exitCode = 1
+    })
   })().catch(() => {
     // Exception messages can contain credential-bearing URLs. Keep logs safe.
     console.error('Service read-path verification failed; inspect the protected server logs.')

@@ -2816,9 +2816,9 @@ fun ChallengeSection(
             votingCountdown
         } else {
             activeChallenge?.let {
-                val expires = java.time.ZonedDateTime.parse(it.expiresAt).toInstant().toEpochMilli()
-                val now = java.time.Instant.now().toEpochMilli()
-                maxOf(0L, (expires - now) / 1000).toInt()
+                conectate.com.presentation.social.components.roundRemainingSeconds(
+                    it.expiresAt, System.currentTimeMillis()
+                )
             } ?: 0
         }
 
@@ -2826,7 +2826,8 @@ fun ChallengeSection(
             // Header de Ganadores con cuenta regresiva interna
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "¡TENEMOS GANADORES!", 
+                    "¡TENEMOS GANADORES!",
+                    modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.primary
@@ -2859,52 +2860,12 @@ fun ChallengeSection(
 
         Spacer(Modifier.height(12.dp))
 
-        // Banner Pro Principal
-        Card(
-            modifier = Modifier.fillMaxWidth().height(140.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = if (isVoting) Color(0xFFFF9800) else if (isCompleted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary)
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                // Refresh Button in top right of the banner as a safeguard
-                IconButton(
-                    onClick = onRefresh,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
-                ) {
-                    Icon(Icons.Filled.Refresh, null, tint = Color.White.copy(alpha = 0.5f))
-                }
-
-                Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        if (isVoting) "VOTACIÓN DE LA RONDA" else if (isCompleted) "RONDA FINALIZADA" else "RONDA ACTUAL",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.8f),
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        activeChallenge?.challenge?.title ?: "Cargando...",
-                        style = MaterialTheme.typography.headlineSmall,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    
-                    if (isVoting) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            formatRemainingTime(votingCountdown),
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                }
-            }
-        }
+        conectate.com.presentation.social.components.RoundStatusCard(
+            title = activeChallenge?.challenge?.title ?: "Preparando la próxima ronda…",
+            status = activeChallenge?.status,
+            votingCountdown = votingCountdown,
+            onRefresh = onRefresh
+        )
 
         Spacer(Modifier.height(24.dp))
 

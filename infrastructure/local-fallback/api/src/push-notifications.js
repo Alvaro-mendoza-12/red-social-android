@@ -70,6 +70,17 @@ function buildData(notification, extraData = {}) {
     if (serialized !== null) data[key] = serialized
   }
 
+  const socialActions = {
+    friend_request_accepted: 'aceptó tu solicitud de amistad',
+    friend_request: 'te envió una solicitud de amistad',
+    follow: 'empezó a seguirte',
+  }
+  const action = socialActions[type]
+  if (action && (!String(data.body || '').trim() || String(data.body).trim().toLowerCase() === actorName.trim().toLowerCase())) {
+    data.body = `${actorName} ${action}`
+    data.content = data.body
+  }
+
   // Account targeting must always come from the persisted, authenticated
   // notification. Never allow caller-supplied extra data to redirect a push
   // to a different signed-in account on a multi-account device.

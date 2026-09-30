@@ -32,6 +32,8 @@ class AppThemesTest {
                     scheme.primaryContainer to scheme.onPrimaryContainer,
                     scheme.secondary to scheme.onSecondary,
                     scheme.secondaryContainer to scheme.onSecondaryContainer,
+                    scheme.tertiary to scheme.onTertiary,
+                    scheme.tertiaryContainer to scheme.onTertiaryContainer,
                     scheme.background to scheme.onBackground,
                     scheme.surface to scheme.onSurface,
                     scheme.surfaceVariant to scheme.onSurfaceVariant

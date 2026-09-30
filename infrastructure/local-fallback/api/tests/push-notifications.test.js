@@ -43,6 +43,13 @@ function testPublicStatusDoesNotExposeConfigurationPaths() {
 }
 
 testRecipientIsAuthoritative()
+for (const body of [null, '', ' Ana ']) {
+  const data = buildData({ type: 'friend_request_accepted', actor_name: 'Ana', recipient_id: 'account-2' }, { body })
+  assert.equal(data.body, 'Ana aceptó tu solicitud de amistad')
+  assert.equal(data.content, data.body)
+}
+assert.equal(buildData({ type: 'friend_request', actor_name: 'Ana' }).body, 'Ana te envió una solicitud de amistad')
+assert.equal(buildData({ type: 'follow', actor_name: 'Ana', content: 'Mensaje específico' }).body, 'Mensaje específico')
 testPayloadDoesNotSerializeObjectsOrSecrets()
 testPublicStatusDoesNotExposeConfigurationPaths()
 console.log('push notification payload tests passed')
