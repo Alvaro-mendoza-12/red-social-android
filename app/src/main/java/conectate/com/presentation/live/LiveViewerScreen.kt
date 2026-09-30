@@ -102,15 +102,16 @@ fun LegacyLiveViewerScreen(
     var showDrawGuessDialog by remember(liveId) { mutableStateOf(false) }
     var showChannelPointsDialog by remember(liveId) { mutableStateOf(false) }
     var requestedCamera by remember(liveId) { mutableStateOf(false) }
-    var connectedGuestInvitationId by remember(liveId) { mutableStateOf<String?>(null) }
     val exitGate = remember(liveId) { LiveViewerExitGate() }
     val currentUserId = viewModel.getCurrentUserId().orEmpty()
     val pendingInvitation = guestInvitations.firstOrNull {
-        it.status == "pending" && it.initiatedBy == "host" &&
+        it.liveId.equals(liveId, ignoreCase = true) &&
+            it.status == "pending" && it.initiatedBy == "host" &&
             it.inviteeUserId.equals(currentUserId, ignoreCase = true)
     }
     val ownJoinRequest = guestInvitations.firstOrNull {
-        it.initiatedBy == "viewer" && it.inviteeUserId.equals(currentUserId, ignoreCase = true)
+        it.liveId.equals(liveId, ignoreCase = true) && it.initiatedBy == "viewer" &&
+            it.inviteeUserId.equals(currentUserId, ignoreCase = true)
     }
     val guestPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -129,11 +130,13 @@ fun LegacyLiveViewerScreen(
         when {
             action?.startsWith("accept:") == true -> {
                 val invitationId = action.substringAfter("accept:").substringBefore(":")
+                requestedCamera = cameraRequired
                 viewModel.respondToGuestInvitation(
                     liveId,
                     invitationId,
                     accept = true,
-                    publishCamera = cameraRequired
+                    publishCamera = cameraRequired,
+                    connectMediaAfterAccept = false
                 )
             }
             action?.startsWith("request:") == true -> {
@@ -203,42 +206,28 @@ fun LegacyLiveViewerScreen(
         viewModel.startCollaborationPolling(sessionId)
     }
 
-    LaunchedEffect(ownJoinRequest?.id, ownJoinRequest?.status, requestedCamera, liveKitState) {
-        val request = ownJoinRequest ?: return@LaunchedEffect
-        if (request.status != "accepted") return@LaunchedEffect
-        if (connectedGuestInvitationId == request.id && liveKitState != conectate.com.data.livekit.LiveKitRoomBridge.State.DISCONNECTED) return@LaunchedEffect
-        viewModel.connectLiveKit(
-            liveId = liveId,
-            role = "guest",
-            publishAudio = true,
-            publishCamera = requestedCamera
-        ).onSuccess {
-            connectedGuestInvitationId = request.id
-            AppFeedbackBus.show(if (requestedCamera) "Te uniste con cámara" else "Te uniste por voz")
-        }.onFailure {
-            AppFeedbackBus.showError("La solicitud fue aceptada, pero no se pudo abrir la conexión de invitado.")
-        }
-    }
-
-    LaunchedEffect(
-        session?.stream?.id,
-        collaborationCapabilities.guestsBattlesEnabled,
-        collaborationCapabilities.sfuAvailable
-    ) {
-        val sessionId = session?.stream?.id ?: return@LaunchedEffect
-        if (collaborationCapabilities.guestsBattlesEnabled && collaborationCapabilities.sfuAvailable) {
-            viewModel.connectLiveKit(
-                liveId = sessionId,
-                role = "viewer",
-                publishAudio = false,
-                publishCamera = false
-            ).onFailure {
-                // El directo principal continúa por el transporte existente;
-                // únicamente se pierde el audio opcional de los invitados.
-                AppFeedbackBus.showError("No se pudo conectar el audio de los invitados.")
+    val collaborationPlan = liveViewerCollaborationPlan(
+        liveId = session?.stream?.id?.takeIf { it.equals(liveId, ignoreCase = true) && !exitRequested },
+        currentUserId = currentUserId,
+        invitations = guestInvitations,
+        guestsBattlesEnabled = collaborationCapabilities.guestsBattlesEnabled,
+        sfuAvailable = collaborationCapabilities.sfuAvailable,
+        requestedCamera = requestedCamera
+    )
+    LiveViewerCollaborationConnectionOwner(
+        plan = collaborationPlan,
+        transportState = liveKitState,
+        leaving = exitRequested || manualLeaveRequested,
+        disconnect = { viewModel.disconnectLiveKit() },
+        connect = { plan ->
+            viewModel.connectLiveKit(plan.liveId, plan.role, plan.publishAudio, plan.publishCamera)
+        },
+        onConnected = { plan ->
+            if (plan.role == "guest") {
+                AppFeedbackBus.show(if (plan.publishCamera) "Te uniste con cámara" else "Te uniste por voz")
             }
         }
-    }
+    )
 
     LaunchedEffect(session?.stream?.id) {
         if (session?.stream?.id == liveId) {
@@ -331,7 +320,11 @@ fun LegacyLiveViewerScreen(
             confirmButton = {
                 TextButton(onClick = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                        viewModel.respondToGuestInvitation(liveId, pendingInvitation.id, accept = true, publishCamera = false)
+                        requestedCamera = false
+                        viewModel.respondToGuestInvitation(
+                            liveId, pendingInvitation.id, accept = true,
+                            publishCamera = false, connectMediaAfterAccept = false
+                        )
                     } else {
                         permissionAction = "accept:${pendingInvitation.id}:voice"
                         guestPermissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))

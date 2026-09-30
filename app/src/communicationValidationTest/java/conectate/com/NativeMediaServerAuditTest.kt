@@ -176,6 +176,121 @@ class NativeMediaServerAuditTest {
                 }))
         }
     }
+    /** Exercises the production guest path without switching or erasing the active account. */
+    @Test(timeout=180_000) fun nativeGuestStartsWithLatestControlsAndKeepsTheOwnerSession() {
+        Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("auditNativeGuest") == "true")
+        val component = EntryPointAccessors.fromApplication(context, MessageNotificationReceiverEntryPoint::class.java)
+        val auth = component.authService()
+        val owner = checkNotNull(auth.getCurrentUserId())
+        val provider = component.javaClass.getDeclaredField("liveRepositoryProvider").apply { isAccessible = true }.get(component)
+            as javax.inject.Provider<*>
+        val repository = provider.get() as conectate.com.data.repository.LiveRepository
+        assertNull("Do not interrupt an existing LIVE", repository.activeSession.value)
+        val fixtures = checkNotNull(suppliedAccounts())
+        val host = Endpoint(fixtures.first(), "/live", false)
+        var scopeId: String? = null
+        var track: VideoTrack? = null
+        val frames = AtomicInteger()
+        val sink = VideoSink { frames.incrementAndGet() }
+        val guestRequest = java.util.concurrent.atomic.AtomicReference<JSONObject?>(null)
+        var guestLocalTrack: VideoTrack? = null
+        val capturedFrames = AtomicInteger()
+        var capturedWidth = 0; var capturedHeight = 0
+        val localSink = VideoSink { frame -> capturedFrames.incrementAndGet(); capturedWidth = frame.buffer.width; capturedHeight = frame.buffer.height }
+        compose.setContent { MaterialTheme { Text("Prueba de invitado LIVE; conserva tu cuenta y tus datos.") } }
+        try {
+            host.socket.on("viewer-joined") { args -> (args.firstOrNull() as? JSONObject)?.let {
+                host.manager.onUserJoined(it.getString("socketId"), it.getString("userId"))
+            } }
+            host.socket.on("live-guest-request") { args -> (args.firstOrNull() as? JSONObject)?.let { guestRequest.set(it) } }
+            host.connect()
+            scopeId = request("/v1/data/live", host.account, "POST", JSONObject()
+                .put("title", "Prueba aislada de arranque invitado").put("source", "audio"), 201)
+                .getJSONObject("stream").getString("id")
+            request("/v1/data/live/$scopeId/state", host.account, "PATCH", JSONObject().put("isActive", true).put("allowGuestRequests", true))
+            host.join("join-live", "viewer-count", JSONObject().put("liveId", scopeId).put("role", "host")
+                .put("source", "audio").put("videoEnabled", false).put("micEnabled", true))
+            val joinedAt = System.nanoTime()
+            runBlocking { repository.joinLiveAsViewer(scopeId).getOrThrow() }
+            val joinMs = (System.nanoTime() - joinedAt) / 1_000_000
+            val socketField = repository.javaClass.getDeclaredField("socket").apply { isAccessible = true }
+            waitUntil("Guest socket did not connect", 30) { (socketField.get(repository) as? Socket)?.connected() == true }
+            waitUntil("Viewer did not establish media before guest promotion", 30) {
+                host.manager.peerConnectionStates.value.values.any {
+                    it == PeerConnection.IceConnectionState.CONNECTED || it == PeerConnection.IceConnectionState.COMPLETED
+                }
+            }
+            Thread.sleep(500)
+            val requestedAt = System.nanoTime()
+            repository.requestGuestAccess()
+            waitUntil("Host received no persisted guest request", 30) { guestRequest.get() != null }
+            val invitations = request("/v1/data/live/$scopeId/guests/invitations", host.account).getJSONArray("invitations")
+            val invitation = (0 until invitations.length()).map { invitations.getJSONObject(it) }
+                .first { it.optString("invitee_user_id").ifBlank { it.optString("inviteeUserId") } == owner && it.getString("status") == "pending" }
+            request("/v1/data/live/$scopeId/guests/invitations/${invitation.getString("id")}", host.account,
+                "PATCH", JSONObject().put("status", "accepted"))
+            host.socket.emit("live-guest-response", JSONObject().put("liveId", scopeId)
+                .put("targetSocketId", guestRequest.get()!!.getString("socketId")).put("accepted", true))
+            waitUntil("Production guest never received acceptance", 20) {
+                repository.guestAccessState.value.status == conectate.com.data.model.LiveGuestRequestStatus.ACCEPTED
+            }
+            val requestAndApprovalMs = (System.nanoTime() - requestedAt) / 1_000_000
+            val offersBeforePromotion = host.signalCounts["sent-offer"]?.get() ?: 0
+            host.manager.onUserJoined(guestRequest.get()!!.getString("socketId"), owner, restartExistingPeer = false)
+            Thread.sleep(500)
+            assertEquals("Guest promotion restarted healthy viewer ICE", offersBeforePromotion, host.signalCounts["sent-offer"]?.get() ?: 0)
+            val startupAt = System.nanoTime()
+            assertTrue(repository.startGuestBroadcast(videoEnabled = true, micEnabled = true))
+            waitUntil("No native guest video track", 30) { host.manager.remoteVideoTracks.value.isNotEmpty() }
+            track = host.manager.remoteVideoTracks.value.values.first().also { it.addSink(sink) }
+            waitUntil("Guest camera sent no real picture", 30) { frames.get() > 0 }
+            val firstFrameMs = (System.nanoTime() - startupAt) / 1_000_000
+            assertTrue(repository.isGuestBroadcasting.value)
+            guestLocalTrack = checkNotNull(repository.localVideoTrack.value).also { it.addSink(localSink) }
+            val before = frames.get(); val beforeCapture = capturedFrames.get(); val sampledAt = System.nanoTime(); Thread.sleep(8_000)
+            val elapsed = System.nanoTime() - sampledAt
+            val fps = (frames.get() - before) * 1_000_000_000.0 / elapsed
+            val captureFps = (capturedFrames.get() - beforeCapture) * 1_000_000_000.0 / elapsed
+            File(context.getExternalFilesDir("communication-qa")!!, "native-guest-startup.json")
+                .writeText(JSONObject().put("joinMs", joinMs).put("requestAndApprovalMs", requestAndApprovalMs)
+                    .put("firstFrameMs", firstFrameMs).put("receivedFps", fps).put("captureFps", captureFps)
+                    .put("capturedWidth", capturedWidth).put("capturedHeight", capturedHeight).put("passed", false).toString(2))
+            assertTrue("Native guest camera is too slow: $fps", fps >= 8)
+            assertTrue(repository.setGuestVideoEnabled(false))
+            assertFalse(repository.isGuestVideoEnabled.value)
+            assertTrue(repository.setGuestVideoEnabled(true))
+            val resumedFrom = frames.get()
+            waitUntil("Guest did not resume camera", 15) { frames.get() > resumedFrom + 3 }
+            repository.leaveGuestSeat()
+            repository.setGuestMicEnabled(true)
+            assertFalse(repository.isGuestBroadcasting.value)
+            // A delayed camera callback must not resurrect a seat that was left.
+            Thread.sleep(2_000)
+            assertFalse(repository.isGuestBroadcasting.value)
+            val manager = repository.javaClass.getDeclaredField("webRTCManager").apply { isAccessible = true }
+                .get(repository) as WebRTCManager
+            val microphone = manager.javaClass.getDeclaredField("outgoingAudioEnabled").apply { isAccessible = true }.getBoolean(manager)
+            assertFalse("A late mic toggle reopened a departed guest", microphone)
+            assertEquals(owner, auth.getCurrentUserId())
+            File(context.getExternalFilesDir("communication-qa")!!, "native-guest-startup.json")
+                .writeText(JSONObject().put("joinMs", joinMs).put("requestAndApprovalMs", requestAndApprovalMs)
+                    .put("firstFrameMs", firstFrameMs).put("receivedFps", fps).put("captureFps", captureFps)
+                    .put("capturedWidth", capturedWidth).put("capturedHeight", capturedHeight).put("passed", true)
+                    .put("cameraDisableEnable", true).put("seatStayedClosed", true).put("promotionPreservedMedia", true)
+                    .put("ownerSessionPreserved", true).toString(2))
+        } finally {
+            track?.let { runCatching { it.removeSink(sink) } }
+            guestLocalTrack?.let { runCatching { it.removeSink(localSink) } }
+            if (repository.activeSession.value?.stream?.id == scopeId) runBlocking { repository.endLive().getOrThrow() }
+            host.close()
+            scopeId?.let { id ->
+                request("/v1/data/live/$id/state", host.account, "PATCH", JSONObject().put("isActive", false))
+                request("/v1/data/live/$id", host.account, "DELETE")
+            }
+            assertEquals("The guest audit changed the active account", owner, auth.getCurrentUserId())
+        }
+    }
+
     @Test(timeout=180_000) fun liveDeliversRealFramesThroughServerSignaling() = audit("live",false)
     @Test(timeout=180_000) fun voiceRoomDeliversVideoThroughServerSignaling() = audit("voice",false)
     @Test(timeout=180_000) fun callDeliversFramesUsingOnlyRelayCandidates() = audit("call",true)

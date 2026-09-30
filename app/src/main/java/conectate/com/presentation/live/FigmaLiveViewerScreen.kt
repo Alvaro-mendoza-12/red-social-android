@@ -44,6 +44,7 @@ fun LiveViewerScreen(
     val localGuestTrack by viewModel.localVideoTrack.collectAsStateWithLifecycle()
     val remoteTracks by viewModel.remoteVideoTracks.collectAsStateWithLifecycle()
     val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
+    val liveKitState by viewModel.liveKitState.collectAsStateWithLifecycle()
     val eglBaseContext by viewModel.eglBaseContext.collectAsStateWithLifecycle()
     val session by viewModel.activeSession.collectAsStateWithLifecycle()
     val isFollowingHost by viewModel.isFollowingHost.collectAsStateWithLifecycle()
@@ -62,22 +63,6 @@ fun LiveViewerScreen(
     val giftEvents by viewModel.giftEvents.collectAsStateWithLifecycle()
     val battle by viewModel.battleState.collectAsStateWithLifecycle()
     var rechargeMinimumCoins by remember(liveId) { mutableStateOf<Int?>(null) }
-
-    LaunchedEffect(battle.battleId, battle.status, battle.opponentLiveId) {
-        if (
-            battle.status == conectate.com.data.model.LiveBattleStatus.ACTIVE &&
-            battle.battleId.isNotBlank() && battle.opponentLiveId.isNotBlank()
-        ) {
-            viewModel.connectLiveKit(
-                liveId = liveId,
-                role = "viewer",
-                publishAudio = false,
-                publishCamera = false,
-            ).onFailure {
-                AppFeedbackBus.showError("No se pudo conectar la vista compartida de batalla.")
-            }
-        }
-    }
 
     val context = LocalContext.current
     val stream = session?.stream
@@ -102,6 +87,24 @@ fun LiveViewerScreen(
     var showModerationDialog by remember(liveId) { mutableStateOf(false) }
     var pendingGuestStart by remember(liveId) { mutableStateOf<Pair<Boolean, Boolean>?>(null) }
     val exitGate = remember(liveId) { FigmaLiveViewerExitGate() }
+
+    val battleCollaborationPlan = liveViewerBattleCollaborationPlan(
+        liveId = session?.stream?.id?.takeIf {
+            it.equals(liveId, ignoreCase = true) && !manualLeaveRequested
+        },
+        battle = battle
+    )
+    // The active viewer screen keeps its native guest broadcast. The optional
+    // cross-LIVE room only receives media and has one connection owner.
+    LiveViewerCollaborationConnectionOwner(
+        plan = battleCollaborationPlan,
+        transportState = liveKitState,
+        leaving = manualLeaveRequested,
+        disconnect = { viewModel.disconnectLiveKit() },
+        connect = { plan ->
+            viewModel.connectLiveKit(plan.liveId, plan.role, plan.publishAudio, plan.publishCamera)
+        }
+    )
 
     val guestPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()

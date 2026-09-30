@@ -46,12 +46,14 @@ class LiveDuetDeviceAuditTest {
         val request = Request.Builder().url(SignalingConfig.BASE_URL + "/v1/data/live/$liveId/sfu-token")
             .header("Authorization", "Bearer " + account.getString("token"))
             .post(JSONObject().put("role", role).toString().toRequestBody("application/json".toMediaType())).build()
+        val requestStarted = System.nanoTime()
         val session = client.newCall(request).execute().use { response ->
             assertTrue("Duet session HTTP ${response.code}", response.isSuccessful)
             val data = JSONObject(response.body!!.string())
             LiveSfuSession(wsUrl = data.getString("wsUrl"), roomName = data.getString("roomName"),
                 token = data.getString("token"), role = role!!)
         }
+        val sessionRequestMs = (System.nanoTime() - requestStarted) / 1_000_000
         val folder=context.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }
         fun waitForPhase(name: String,seconds: Long): Boolean {
             val file=File(context.cacheDir,name)
@@ -94,6 +96,19 @@ class LiveDuetDeviceAuditTest {
             }
             val started = System.nanoTime()
             runBlocking { withTimeout(35_000) { bridge.connect(session, true, true, existingCapture?.localVideoTrack).getOrThrow() } }
+            val connectMs = (System.nanoTime() - started) / 1_000_000
+            val timings = checkNotNull(bridge.lastStartupTimings)
+            val startup = JSONObject().put("roomCreationMs", timings.roomCreationMs)
+                .put("signalingMs", timings.signalingMs).put("audioMs", timings.audioMs)
+                .put("videoMs", timings.videoMs).put("totalMs", timings.totalMs)
+            val roomField = bridge.javaClass.getDeclaredField("room").apply { isAccessible = true }
+            val room = roomField.get(bridge) as io.livekit.android.room.Room
+            val sources = room.localParticipant.trackPublications.values.map { it.source }.toSet()
+            assertTrue("Parallel startup lost microphone publication", io.livekit.android.room.track.Track.Source.MICROPHONE in sources)
+            assertTrue("Parallel startup lost camera publication", io.livekit.android.room.track.Track.Source.CAMERA in sources)
+            File(folder, "sfu-published-$role.json").writeText(JSONObject()
+                .put("scopeId", liveId).put("sessionRequestMs", sessionRequestMs)
+                .put("connectMs", connectMs).toString())
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(40)
             while (bridge.remoteVideos.value.isEmpty() && System.nanoTime() < deadline) Thread.sleep(100)
             assertTrue("No guest/host video track", bridge.remoteVideos.value.isNotEmpty())
@@ -116,8 +131,6 @@ class LiveDuetDeviceAuditTest {
             val before = frames.get(); val sample = System.nanoTime(); Thread.sleep(10_000)
             val fps = (frames.get() - before) * 1_000_000_000.0 / (System.nanoTime() - sample)
             if (existingCapture != null) assertTrue("Battle interrupted existing broadcast capture", existingFrames.get() > existingBefore)
-            val roomField = bridge.javaClass.getDeclaredField("room").apply { isAccessible = true }
-            val room = roomField.get(bridge) as io.livekit.android.room.Room
             runBlocking { bridge.connect(session, true, true, existingCapture?.localVideoTrack).getOrThrow() }
             assertSame("Duplicate connection replaced the active room", room, roomField.get(bridge))
             val statsReady = CountDownLatch(2)
@@ -183,7 +196,7 @@ class LiveDuetDeviceAuditTest {
             }
             File(context.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }, "sfu-duet-$role.json")
                 .writeText(JSONObject().put("scopeId", liveId).put("role", role).put("audioReceived", audio)
-                    .put("rendered", true).put("existingBroadcastPreserved",existingCapture != null).put("controlsAndReplacementCapture",existingCapture != null).put("receivedFps", fps).put("firstFrameMs", firstFrameMs).toString(2))
+                    .put("rendered", true).put("existingBroadcastPreserved",existingCapture != null).put("controlsAndReplacementCapture",existingCapture != null).put("receivedFps", fps).put("firstFrameMs", firstFrameMs).put("connectMs", connectMs).put("sessionRequestMs", sessionRequestMs).put("subscribeAndRenderMs", firstFrameMs - connectMs).put("startup", startup).toString(2))
         } finally {
             File(folder,"sfu-done-$role.json").writeText(JSONObject().put("scopeId",liveId).toString())
             waitForPhase("sfu-stop-now.json",20)

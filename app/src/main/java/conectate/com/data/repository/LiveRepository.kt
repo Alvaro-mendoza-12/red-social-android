@@ -37,6 +37,8 @@ import conectate.com.data.model.LiveGiftEvent
 import conectate.com.data.model.GiftReceipt
 import conectate.com.data.model.VirtualGift
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.livekit.shouldClearPreviousCollaborationParticipant
+import conectate.com.data.livekit.LiveCollaborationConnectionGate
 import conectate.com.data.livekit.LiveKitRoomBridge
 import conectate.com.data.local.prefs.LivePreferences
 import conectate.com.data.model.LiveCreatorLayoutStyle
@@ -170,6 +172,7 @@ class LiveRepository @Inject constructor(
     private val sessionEndMutex = Mutex()
     private val closeCoordinator = LiveSessionCloseCoordinator()
     private val mediaTransitionGate = LiveMediaTransitionGate()
+    private val guestMediaStartCoordinator = LiveGuestMediaStartCoordinator()
     private val reactionExpiryJobs = ConcurrentHashMap<String, Job>()
     private val reactionBatchLock = Any()
     private var reactionBatchJob: Job? = null
@@ -184,8 +187,12 @@ class LiveRepository @Inject constructor(
     private var hostSessionStartedElapsedMs: Long = 0L
     @Volatile
     private var lastGhostReconciliationUserId: String? = null
+    private val collaborationConnectionGate = LiveCollaborationConnectionGate()
+    private data class ConfirmedCollaboration(val liveId: String, val userId: String, val accessToken: String)
     @Volatile
-    private var connectedLiveKitLiveId: String? = null
+    private var confirmedCollaboration: ConfirmedCollaboration? = null
+    private val connectedLiveKitLiveId: String? get() = confirmedCollaboration?.liveId
+    @Volatile
     private var followHostCollaborationControls = false
 
     // Live stats (host-side)
@@ -353,13 +360,15 @@ class LiveRepository @Inject constructor(
         scope.launch {
             liveKitRoomBridge.state.collect { state ->
                 if (state == LiveKitRoomBridge.State.DISCONNECTED) {
-                    val liveId = connectedLiveKitLiveId
-                    if (!liveId.isNullOrBlank()) {
-                        connectedLiveKitLiveId = null
-                        followHostCollaborationControls = false
-                        val token = localAccessToken()
-                        if (token.isNotBlank()) {
-                            localFallbackApiClient.updateLiveParticipantState(token, liveId, "disconnected")
+                    val departed = confirmedCollaboration
+                    val version = collaborationConnectionGate.snapshot()
+                    if (departed != null) collaborationConnectionGate.ifLatest(version) {
+                        if (liveKitRoomBridge.state.value == LiveKitRoomBridge.State.DISCONNECTED &&
+                            confirmedCollaboration === departed
+                        ) {
+                            confirmedCollaboration = null
+                            followHostCollaborationControls = false
+                            clearCollaborationParticipant(departed.accessToken, departed.liveId)
                         }
                     }
                 }
@@ -900,51 +909,104 @@ class LiveRepository @Inject constructor(
         if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         val normalizedId = normalizeLiveSessionId(liveId)
             ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
-        val session = localFallbackApiClient.issueLiveSfuSession(token, normalizedId, role)
-            .getOrElse { return@withContext Result.failure(it) }
-        val followControls = conectate.com.data.livekit.shouldFollowLiveHostControls(
-            role, publishAudio, publishCamera,
-            _battleState.value.status == LiveBattleStatus.ACTIVE && _battleState.value.opponentLiveId.isNotBlank()
-        )
-        val existingVideo = webRTCManager?.localVideoTrack.takeIf {
-            followControls && _activeSession.value?.role == LiveRole.HOST
-        }
-        val connected = liveKitRoomBridge.connect(session, publishAudio, publishCamera, existingVideo)
-        if (connected.isFailure) {
-            runCatching {
-                localFallbackApiClient.updateLiveParticipantState(token, normalizedId, "disconnected")
-            }.onFailure { error ->
-                android.util.Log.w("LiveRepository", "Unable to clear LiveKit participant after failed connection.", error)
+        val userId = authService.getCurrentUserId()?.trim().orEmpty()
+        if (userId.isBlank()) return@withContext Result.failure(Exception("La cuenta no tiene una sesión válida"))
+        collaborationConnectionGate.runLatest {
+            suspend fun ensureActorCurrent() {
+                ensureCurrent()
+                if (!userId.equals(authService.getCurrentUserId()?.trim(), ignoreCase = true)) {
+                    throw CancellationException("The active account changed during LIVE startup")
+                }
             }
-            return@withContext connected
-        }
-        val marked = localFallbackApiClient.updateLiveParticipantState(token, normalizedId, "connected")
-        if (marked.isFailure) {
-            liveKitRoomBridge.disconnectAwait()
-            runCatching {
-                localFallbackApiClient.updateLiveParticipantState(token, normalizedId, "disconnected")
-            }.onFailure { error ->
-                android.util.Log.w("LiveRepository", "Unable to clear LiveKit participant after failed confirmation.", error)
+            val previous = confirmedCollaboration
+            var sessionIssued = false
+            try {
+                val issued = localFallbackApiClient.issueLiveSfuSession(token, normalizedId, role)
+                sessionIssued = issued.isSuccess
+                // HTTP Result wrappers may catch cancellation. Do not open media afterwards.
+                ensureActorCurrent()
+                val session = issued.getOrElse { return@runLatest Result.failure(it) }
+                val followControls = conectate.com.data.livekit.shouldFollowLiveHostControls(
+                    role, publishAudio, publishCamera,
+                    _battleState.value.status == LiveBattleStatus.ACTIVE && _battleState.value.opponentLiveId.isNotBlank()
+                )
+                val existingVideo = webRTCManager?.localVideoTrack.takeIf {
+                    followControls && _activeSession.value?.role == LiveRole.HOST
+                }
+                if (previous != null && shouldClearPreviousCollaborationParticipant(
+                        previous.liveId, previous.userId, normalizedId, userId
+                    )
+                ) clearCollaborationParticipant(previous.accessToken, previous.liveId)
+                ensureActorCurrent()
+                val connected = liveKitRoomBridge.connect(session, publishAudio, publishCamera, existingVideo)
+                ensureActorCurrent()
+                if (connected.isFailure) {
+                    closeCollaborationAttempt(token, normalizedId)
+                    return@runLatest connected
+                }
+                val marked = localFallbackApiClient.updateLiveParticipantState(token, normalizedId, "connected")
+                ensureActorCurrent()
+                if (marked.isFailure) {
+                    closeCollaborationAttempt(token, normalizedId)
+                    return@runLatest Result.failure(
+                        marked.exceptionOrNull() ?: Exception("No se pudo confirmar el participante del live.")
+                    )
+                }
+                confirmedCollaboration = ConfirmedCollaboration(normalizedId, userId, token)
+                followHostCollaborationControls = followControls
+                if (followControls) emitLiveState()
+                Result.success(Unit)
+            } catch (cancelled: CancellationException) {
+                // Issuing a token can reserve a participant even if HTTP was cancelled.
+                closeCollaborationAttempt(token, normalizedId)
+                throw cancelled
+            } catch (error: Exception) {
+                if (sessionIssued) closeCollaborationAttempt(token, normalizedId)
+                Result.failure(error)
             }
-            return@withContext Result.failure(
-                marked.exceptionOrNull() ?: Exception("No se pudo confirmar el participante del live.")
+        }
+    }
+
+    private suspend fun clearCollaborationParticipant(token: String, liveId: String) {
+        if (token.isBlank()) return
+        withTimeoutOrNull(2_000L) {
+            localFallbackApiClient.updateLiveParticipantState(token, liveId, "disconnected")
+        }
+    }
+
+    private suspend fun clearDepartedCollaboration(departed: ConfirmedCollaboration?) {
+        departed ?: return
+        val current = confirmedCollaboration
+        if (shouldClearPreviousCollaborationParticipant(
+                departed.liveId, departed.userId, current?.liveId, current?.userId
             )
+        ) clearCollaborationParticipant(departed.accessToken, departed.liveId)
+    }
+
+    private suspend fun closeCollaborationAttempt(token: String, liveId: String) = withContext(NonCancellable) {
+        val previous = confirmedCollaboration
+        confirmedCollaboration = null
+        followHostCollaborationControls = false
+        runCatching { liveKitRoomBridge.disconnectAwait() }.onFailure {
+            android.util.Log.w("LiveRepository", "Unable to release cancelled collaboration media", it)
         }
-        connectedLiveKitLiveId = normalizedId
-        followHostCollaborationControls = followControls
-        if (followControls) emitLiveState()
-        Result.success(Unit)
+        if (previous != null && (previous.liveId != liveId || previous.accessToken != token)) {
+            clearDepartedCollaboration(previous)
+        }
+        clearCollaborationParticipant(token, liveId)
     }
 
     fun disconnectLiveKit() {
-        val liveId = connectedLiveKitLiveId
-        connectedLiveKitLiveId = null
+        collaborationConnectionGate.invalidate()
+        val departed = confirmedCollaboration
+        confirmedCollaboration = null
         followHostCollaborationControls = false
-        liveKitRoomBridge.disconnect()
-        if (!liveId.isNullOrBlank()) scope.launch {
-            val token = localAccessToken()
-            if (token.isNotBlank()) {
-                localFallbackApiClient.updateLiveParticipantState(token, liveId, "disconnected")
+        scope.launch {
+            collaborationConnectionGate.serialized {
+                if (confirmedCollaboration == null) liveKitRoomBridge.disconnectAwait()
+                // A different room/account must be cleared even when a newer SDK
+                // connection superseded this deferred close. Keep its original token.
+                clearDepartedCollaboration(departed)
             }
         }
     }
@@ -1969,91 +2031,146 @@ class LiveRepository @Inject constructor(
         }
     }
 
-    fun startGuestBroadcast(videoEnabled: Boolean, micEnabled: Boolean): Boolean {
-        val session = _activeSession.value ?: return false
-        if (session.role != LiveRole.VIEWER ||
-            _guestAccessState.value.status != LiveGuestRequestStatus.ACCEPTED
-        ) {
-            return false
-        }
-        if (micEnabled && !hasPermission(android.Manifest.permission.RECORD_AUDIO)) {
-            _runtimeErrors.tryEmit("Concede permiso al micrófono para participar en el directo.")
-            return false
-        }
-        if (videoEnabled && !hasPermission(android.Manifest.permission.CAMERA)) {
-            _runtimeErrors.tryEmit("Concede permiso a la cámara para participar en el directo.")
-            return false
-        }
-
-        val manager = webRTCManager ?: return false
-        _isGuestMicEnabled.value = micEnabled
-        _isGuestVideoEnabled.value = videoEnabled
-        _isGuestBroadcasting.value = true
-        manager.ensureLocalTracks()
-        manager.setAudioEnabled(micEnabled)
-        manager.setVideoSendEnabled(videoEnabled, renegotiate = false)
-        if (!videoEnabled) {
-            manager.stopVideo()
-            return true
-        }
-
-        val quality = _quality.value
-        manager.startVideo(
-            isScreen = false,
-            isFront = true,
-            targetWidth = quality.width,
-            targetHeight = quality.height,
-            targetFps = 24,
-            onComplete = { started ->
-                _isGuestBroadcasting.value = started
-                if (!started) {
-                    _isGuestVideoEnabled.value = false
-                    manager.setVideoSendEnabled(false, renegotiate = false)
-                    _runtimeErrors.tryEmit("No se pudo iniciar la cámara del invitado.")
-                } else {
-                    manager.setVideoSendEnabled(true)
-                }
+    fun startGuestBroadcast(videoEnabled: Boolean, micEnabled: Boolean): Boolean =
+        guestMediaStartCoordinator.withLock {
+            val session = _activeSession.value ?: return@withLock false
+            if (session.role != LiveRole.VIEWER ||
+                _guestAccessState.value.status != LiveGuestRequestStatus.ACCEPTED
+            ) {
+                return@withLock false
             }
-        )
-        return true
-    }
+            if (micEnabled && !hasPermission(android.Manifest.permission.RECORD_AUDIO)) {
+                _runtimeErrors.tryEmit("Concede permiso al micrófono para participar en el directo.")
+                return@withLock false
+            }
+            if (videoEnabled && !hasPermission(android.Manifest.permission.CAMERA)) {
+                _runtimeErrors.tryEmit("Concede permiso a la cámara para participar en el directo.")
+                return@withLock false
+            }
 
-    fun setGuestMicEnabled(enabled: Boolean) {
-        if (!_isGuestBroadcasting.value) return
-        if (enabled && !hasPermission(android.Manifest.permission.RECORD_AUDIO)) {
-            _runtimeErrors.tryEmit("Concede permiso al micrófono para activarlo.")
-            return
-        }
-        _isGuestMicEnabled.value = enabled
-        webRTCManager?.setAudioEnabled(enabled)
-    }
+            val manager = webRTCManager ?: return@withLock false
+            val attempt = guestMediaStartCoordinator.begin(session.stream.id)
+            _isGuestMicEnabled.value = micEnabled
+            _isGuestVideoEnabled.value = videoEnabled
+            _isGuestBroadcasting.value = true
+            manager.ensureLocalTracks()
+            manager.setAudioEnabled(micEnabled)
+            // Publish only after capture opens and the latest camera choice is checked.
+            manager.setVideoSendEnabled(false, renegotiate = false)
+            if (!videoEnabled) {
+                manager.stopVideo()
+                guestMediaStartCoordinator.completeIfCurrent(attempt) { }
+                return@withLock true
+            }
 
-    fun setGuestVideoEnabled(enabled: Boolean): Boolean {
-        if (!_isGuestBroadcasting.value) return false
-        if (enabled && !hasPermission(android.Manifest.permission.CAMERA)) {
-            _runtimeErrors.tryEmit("Concede permiso a la cámara para activarla.")
-            return false
-        }
-        _isGuestVideoEnabled.value = enabled
-        val manager = webRTCManager ?: return false
-        if (enabled && !manager.hasLocalVideoTrack()) {
-            val quality = _quality.value
+            val capture = nativeLiveGuestCaptureProfile(
+                conectate.com.util.AppPerformanceProfiles.detect(context).tier, _quality.value
+            )
             manager.startVideo(
                 isScreen = false,
                 isFront = true,
-                targetWidth = quality.width,
-                targetHeight = quality.height,
-                targetFps = 24,
+                targetWidth = capture.width,
+                targetHeight = capture.height,
+                targetFps = capture.fps,
                 onComplete = { started ->
-                    _isGuestVideoEnabled.value = started
-                    manager.setVideoSendEnabled(started)
-                    if (!started) _runtimeErrors.tryEmit("No se pudo activar la cámara.")
+                    guestMediaStartCoordinator.completeIfCurrent(
+                        attempt = attempt,
+                        eligible = {
+                            webRTCManager === manager &&
+                                _activeSession.value?.let {
+                                    it.role == LiveRole.VIEWER && it.stream.id == session.stream.id
+                                } == true &&
+                                _guestAccessState.value.status == LiveGuestRequestStatus.ACCEPTED &&
+                                _isGuestBroadcasting.value
+                        }
+                    ) {
+                        if (!started) {
+                            _isGuestBroadcasting.value = false
+                            _isGuestVideoEnabled.value = false
+                            _isGuestMicEnabled.value = false
+                            manager.setAudioEnabled(false)
+                            manager.setVideoSendEnabled(false, renegotiate = false)
+                            _runtimeErrors.tryEmit("No se pudo iniciar la cámara del invitado.")
+                        } else {
+                            // The SEND_RECV m-line already exists; replacing its track
+                            // does not require another offer or an ICE restart.
+                            manager.setVideoEnabled(_isGuestVideoEnabled.value)
+                        }
+                    }
+                }
+            )
+            true
+        }
+
+    fun setGuestMicEnabled(enabled: Boolean) = guestMediaStartCoordinator.withLock {
+        val session = _activeSession.value ?: return@withLock
+        if (!_isGuestBroadcasting.value || session.role != LiveRole.VIEWER ||
+            _guestAccessState.value.status != LiveGuestRequestStatus.ACCEPTED
+        ) return@withLock
+        if (enabled && !hasPermission(android.Manifest.permission.RECORD_AUDIO)) {
+            _runtimeErrors.tryEmit("Concede permiso al micrófono para activarlo.")
+            return@withLock
+        }
+        _isGuestMicEnabled.value = enabled
+        webRTCManager?.setAudioEnabled(enabled)
+        Unit
+    }
+
+    fun setGuestVideoEnabled(enabled: Boolean): Boolean = guestMediaStartCoordinator.withLock {
+        if (!_isGuestBroadcasting.value) return@withLock false
+        if (enabled && !hasPermission(android.Manifest.permission.CAMERA)) {
+            _runtimeErrors.tryEmit("Concede permiso a la cámara para activarla.")
+            return@withLock false
+        }
+        val session = _activeSession.value ?: return@withLock false
+        if (session.role != LiveRole.VIEWER ||
+            _guestAccessState.value.status != LiveGuestRequestStatus.ACCEPTED
+        ) {
+            return@withLock false
+        }
+        val manager = webRTCManager ?: return@withLock false
+        _isGuestVideoEnabled.value = enabled
+        if (enabled && !manager.hasLocalVideoTrack()) {
+            // A pending start will apply this latest choice; do not open the
+            // same camera again while its first capture is still starting.
+            if (guestMediaStartCoordinator.isStarting(session.stream.id)) return@withLock true
+            val attempt = guestMediaStartCoordinator.begin(session.stream.id)
+            val capture = nativeLiveGuestCaptureProfile(
+                conectate.com.util.AppPerformanceProfiles.detect(context).tier, _quality.value
+            )
+            manager.setVideoSendEnabled(false, renegotiate = false)
+            manager.startVideo(
+                isScreen = false,
+                isFront = true,
+                targetWidth = capture.width,
+                targetHeight = capture.height,
+                targetFps = capture.fps,
+                onComplete = { started ->
+                    guestMediaStartCoordinator.completeIfCurrent(
+                        attempt = attempt,
+                        eligible = {
+                            webRTCManager === manager &&
+                                _activeSession.value?.let {
+                                    it.role == LiveRole.VIEWER && it.stream.id == session.stream.id
+                                } == true &&
+                                _guestAccessState.value.status == LiveGuestRequestStatus.ACCEPTED &&
+                                _isGuestBroadcasting.value
+                        }
+                    ) {
+                        if (!started) {
+                            _isGuestVideoEnabled.value = false
+                            manager.setVideoSendEnabled(false, renegotiate = false)
+                            _runtimeErrors.tryEmit("No se pudo activar la cámara.")
+                        } else {
+                            manager.setVideoEnabled(_isGuestVideoEnabled.value)
+                        }
+                    }
                 }
             )
         } else {
             manager.setVideoEnabled(enabled)
         }
-        return true
+        true
     }
 
     fun leaveGuestSeat() {
@@ -2064,7 +2181,8 @@ class LiveRepository @Inject constructor(
         )
     }
 
-    private fun stopGuestMedia(emitLeave: Boolean) {
+    private fun stopGuestMedia(emitLeave: Boolean) = guestMediaStartCoordinator.withLock {
+        guestMediaStartCoordinator.invalidate()
         val session = _activeSession.value
         if (_isGuestBroadcasting.value || _localVideoTrack.value != null) {
             webRTCManager?.setAudioEnabled(false)
@@ -2867,11 +2985,16 @@ class LiveRepository @Inject constructor(
                 }.onFailure { logMalformedSignal("live-guest-request", it) }
             }
 
+            // A new local socket must recover its peers even if their IDs did not change.
+            var previousGuestSnapshotLocalSocketId: String? = null
             createdSocket.on("live-guests") { args ->
                 if (socket !== createdSocket) return@on
                 runCatching {
                     val array = args.firstOrNull() as? org.json.JSONArray ?: return@runCatching
                     val previousSocketIds = _activeGuests.value.mapTo(mutableSetOf()) { it.socketId }
+                    val localSocketId = createdSocket.id()
+                    val localSocketChanged = previousGuestSnapshotLocalSocketId != localSocketId
+                    previousGuestSnapshotLocalSocketId = localSocketId
                     val currentSocketIds = mutableSetOf<String>()
                     val guests = buildList {
                         for (index in 0 until array.length()) {
@@ -2888,8 +3011,16 @@ class LiveRepository @Inject constructor(
                                     avatarUrl = item.optString("avatarUrl").takeIf { it.isNotBlank() }
                                 )
                             )
-                            if (guestSocketId != createdSocket.id()) {
-                                webRTCManager?.onUserJoined(guestSocketId, guestUserId)
+                            if (shouldConnectLiveGuestPeer(
+                                    guestSocketId, localSocketId, previousSocketIds, localSocketChanged
+                                )
+                            ) {
+                                webRTCManager?.onUserJoined(
+                                    guestSocketId, guestUserId,
+                                    // A seat promotion reuses the viewer's healthy media.
+                                    // A replaced local socket still requests recovery.
+                                    restartExistingPeer = localSocketChanged && previousSocketIds.isNotEmpty()
+                                )
                             }
                         }
                     }
@@ -3574,6 +3705,11 @@ class LiveRepository @Inject constructor(
     }
 
     private suspend fun disconnectAndClear() = withContext(NonCancellable) {
+        guestMediaStartCoordinator.withLock { guestMediaStartCoordinator.invalidate() }
+        collaborationConnectionGate.invalidate()
+        val departedCollaboration = confirmedCollaboration
+        confirmedCollaboration = null
+        followHostCollaborationControls = false
         synchronized(liveEndConfirmationLock) {
             pendingLiveEndConfirmation?.second?.complete(false)
             pendingLiveEndConfirmation = null
@@ -3651,25 +3787,15 @@ class LiveRepository @Inject constructor(
             .onFailure { error ->
                 android.util.Log.e("LiveRepository", "Unable to reset live media cleanly", error)
             }
-        val collaborationLiveId = connectedLiveKitLiveId
-        connectedLiveKitLiveId = null
-        followHostCollaborationControls = false
-        if (!collaborationLiveId.isNullOrBlank()) {
-            runCatching {
-                val token = localAccessToken()
-                if (token.isNotBlank()) {
-                    localFallbackApiClient.updateLiveParticipantState(
-                        token,
-                        collaborationLiveId,
-                        "disconnected"
-                    )
-                }
+        collaborationConnectionGate.serialized {
+            if (confirmedCollaboration == null) {
+                runCatching { liveKitRoomBridge.disconnectAwait() }
+                    .onFailure { error ->
+                        android.util.Log.w("LiveRepository", "Unable to close collaboration audio cleanly", error)
+                    }
             }
+            clearDepartedCollaboration(departedCollaboration)
         }
-        runCatching { liveKitRoomBridge.disconnectAwait() }
-            .onFailure { error ->
-                android.util.Log.w("LiveRepository", "Unable to close collaboration audio cleanly", error)
-            }
 
         _comments.value = emptyList()
         _reactions.value = emptyList()

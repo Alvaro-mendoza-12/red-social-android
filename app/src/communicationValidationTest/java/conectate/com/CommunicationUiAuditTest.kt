@@ -53,6 +53,34 @@ class CommunicationUiAuditTest {
         compose.onNodeWithContentDescription(context.getString(R.string.room_link_close)).performClick()
         compose.onNodeWithTag("room_link_error").assertDoesNotExist()
     }
+    @Test fun liveCollaborationOffersAnExplicitRetryAndClosesWhenItsPlanEnds() {
+        val state = mutableStateOf(conectate.com.data.livekit.LiveKitRoomBridge.State.DISCONNECTED)
+        val plan = mutableStateOf<conectate.com.presentation.live.LiveViewerCollaborationPlan?>(
+            conectate.com.presentation.live.LiveViewerCollaborationPlan("isolated-live", "viewer", false, false))
+        var attempts = 0
+        var disconnects = 0
+        compose.setContent { MaterialTheme {
+            conectate.com.presentation.live.LiveViewerCollaborationConnectionOwner(
+                plan = plan.value, transportState = state.value, leaving = false,
+                connect = {
+                    attempts++
+                    if (attempts == 1) Result.failure(Exception("isolated failure"))
+                    else { state.value = conectate.com.data.livekit.LiveKitRoomBridge.State.CONNECTED; Result.success(Unit) }
+                },
+                disconnect = { disconnects++ }
+            )
+        } }
+        compose.onNodeWithText("Reintentar").assertIsDisplayed().assertIsEnabled()
+        screenshot("live-collaboration-retry")
+        compose.onNodeWithText("Reintentar").performClick()
+        compose.waitForIdle()
+        assertEquals(2, attempts)
+        compose.onNodeWithText("Reintentar").assertDoesNotExist()
+        compose.runOnIdle { plan.value = null }
+        compose.waitForIdle()
+        assertEquals(1, disconnects)
+    }
+
     private fun screenshot(name: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.waitForIdleSync()

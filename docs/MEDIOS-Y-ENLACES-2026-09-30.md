@@ -366,3 +366,10 @@ su cuenta activa y sus datos; se inspeccionó la captura de pantalla de entrada.
 La caída pública y las falsas alarmas de diagnóstico recibieron además una
 corrección de monitor desplegada y probada en el servidor. Detalles en
 [entrada pública y monitor](ENTRADA-PUBLICA-Y-MONITOR-2026-09-30.md).
+
+## Continuación: arranque del invitado, 9.0.17
+
+La espera de 14,735 s de la tabla anterior se aisló publicando primero al
+anfitrión. La referencia con ese protocolo fue 3,976 s en el emulador; las
+correcciones de 9.0.17 y sus mediciones nativas/SFU se documentan en
+[arranque de invitados LIVE](LIVE-ARRANQUE-INVITADOS-2026-09-30.md).

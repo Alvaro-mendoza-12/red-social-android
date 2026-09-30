@@ -1090,7 +1090,7 @@ class WebRTCManager(
     }
 
 
-    fun onUserJoined(remoteSocketId: String, remoteUserId: String) {
+    fun onUserJoined(remoteSocketId: String, remoteUserId: String, restartExistingPeer: Boolean = true) {
         var rsid = remoteSocketId.trim()
         var ruid = remoteUserId.trim()
         if (rsid.isBlank() || ruid.isBlank()) return
@@ -1122,6 +1122,10 @@ class WebRTCManager(
             var pc = getOrCreatePC(rsid, ruid) ?: return@execute
             var peerKey = resolvePeerKey(rsid, ruid) ?: rsid.ifBlank { ruid }
             
+            if (shouldSkipExistingPeerOffer(reusedExistingPeer, restartExistingPeer, pc.iceConnectionState())) {
+                Log.d("WebRTCManager", "Preserving established viewer media while promoting guest")
+                return@execute
+            }
             val isPolite = isPolite(ruid, rsid)
             updateDebugInfo(peerKey, "Role: ${if(isPolite) "POLITE" else "IMPOLITE"}\nUserID: $ruid")
             

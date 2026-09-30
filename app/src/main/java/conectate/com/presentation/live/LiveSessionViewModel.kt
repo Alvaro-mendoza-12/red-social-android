@@ -294,21 +294,20 @@ class LiveSessionViewModel @Inject constructor(
     fun startCollaborationPolling(liveId: String) {
         val normalizedId = normalizeLiveSessionId(liveId) ?: return
         if (collaborationPollingJob?.isActive == true && collaborationPollingLiveId == normalizedId) return
-        collaborationPollingJob?.cancel()
+        val previousPolling = collaborationPollingJob
+        previousPolling?.cancel()
         collaborationPollingLiveId = normalizedId
         collaborationPollingJob = viewModelScope.launch(Dispatchers.IO) {
-            liveRepository.getLiveCollaborationCapabilities()
-            while (true) {
-                // Room policy can change after viewers have already joined.
-                // Refresh it for everyone so guest slots/requests appear on
-                // spectator devices, not only on the host that toggled them.
-                liveRepository.refreshActiveLiveStream(normalizedId)
-                liveRepository.refreshGuestInvitations(normalizedId)
-                liveRepository.refreshActiveBattle(normalizedId)
-                liveRepository.refreshLiveSupporters(normalizedId)
-                liveRepository.refreshLiveGiftEvents(normalizedId)
-                delay(4_000L)
-            }
+            previousPolling?.join()
+            ensureActive()
+            pollLiveCollaboration(
+                refreshInvitations = { liveRepository.refreshGuestInvitations(normalizedId) },
+                refreshCapabilities = { liveRepository.getLiveCollaborationCapabilities() },
+                refreshRoom = { liveRepository.refreshActiveLiveStream(normalizedId) },
+                refreshBattle = { liveRepository.refreshActiveBattle(normalizedId) },
+                refreshSupporters = { liveRepository.refreshLiveSupporters(normalizedId) },
+                refreshGifts = { liveRepository.refreshLiveGiftEvents(normalizedId) }
+            )
         }
     }
 
@@ -337,13 +336,15 @@ class LiveSessionViewModel @Inject constructor(
         liveId: String,
         invitationId: String,
         accept: Boolean,
-        publishCamera: Boolean = false
+        publishCamera: Boolean = false,
+        connectMediaAfterAccept: Boolean = true
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             liveRepository.respondToGuestInvitation(liveId, invitationId, accept)
                 .onSuccess { invitation ->
                     val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
-                    if (accept && invitation.inviteeUserId.equals(currentUserId, ignoreCase = true)) {
+                    ensureActive()
+                    if (connectMediaAfterAccept && accept && invitation.inviteeUserId.equals(currentUserId, ignoreCase = true)) {
                         liveRepository.connectLiveKit(
                             liveId = liveId,
                             role = "guest",

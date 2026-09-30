@@ -19,6 +19,9 @@ import conectate.com.util.AppPerformanceProfiles
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,12 +56,26 @@ class LiveKitRoomBridge @Inject constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutex = Mutex()
+    // Suspend network waits may overlap, but publication-map updates in the SDK
+    // must resume serially. Two IO workers can otherwise overwrite that map.
+    private val mediaDispatcher = Dispatchers.IO.limitedParallelism(1)
     private val _state = MutableStateFlow(State.DISCONNECTED)
     val state: StateFlow<State> = _state.asStateFlow()
     private val _remoteVideos = MutableStateFlow<List<RemoteVideo>>(emptyList())
     val remoteVideos: StateFlow<List<RemoteVideo>> = _remoteVideos.asStateFlow()
     private val _errors = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
     val errors = _errors.asSharedFlow()
+
+    data class StartupTimings(
+        val roomCreationMs: Long,
+        val signalingMs: Long,
+        val audioMs: Long,
+        val videoMs: Long,
+        val totalMs: Long
+    )
+
+    @Volatile var lastStartupTimings: StartupTimings? = null
+        private set
 
     private var room: Room? = null
     private var eventsJob: Job? = null
@@ -86,13 +103,23 @@ class LiveKitRoomBridge @Inject constructor(
             connectionIdentity == identity && sharedVideoSource === existingVideo
         ) {
             desiredMedia.set(publishAudio to publishCamera)
-            return@withLock runCatching { if (publishingRole) applyMediaLocked(current) }
+            return@withLock try {
+                if (publishingRole) applyMediaLocked(current)
+                Result.success(Unit)
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable) { disconnectLocked() }
+                throw cancelled
+            } catch (error: Throwable) {
+                Result.failure(error)
+            }
         }
 
         disconnectLocked()
         desiredMedia.set(publishAudio to publishCamera)
         publishingRole = session.role == "host" || session.role == "guest"
         _state.value = State.CONNECTING
+        lastStartupTimings = null
+        val startupStarted = android.os.SystemClock.elapsedRealtime()
         val quality = liveCollaborationQualityProfile(AppPerformanceProfiles.detect(context).tier)
         val candidate = LiveKit.create(
             context,
@@ -116,6 +143,7 @@ class LiveKitRoomBridge @Inject constructor(
                 )
             )
         )
+        val roomCreationMs = android.os.SystemClock.elapsedRealtime() - startupStarted
         room = candidate
         eventsJob = scope.launch {
             candidate.events.collect { event ->
@@ -156,32 +184,63 @@ class LiveKitRoomBridge @Inject constructor(
             }
         }
 
-        runCatching {
+        try {
+            val signalingStarted = android.os.SystemClock.elapsedRealtime()
             candidate.connect(wsUrl, token)
+            val signalingMs = android.os.SystemClock.elapsedRealtime() - signalingStarted
+            var audioMs = 0L
+            var videoMs = 0L
             if (publishingRole) {
-                if (existingVideo != null) {
-                    val sharedTrack = candidate.localParticipant.createVideoTrack(
-                        name = "live-selected-source",
-                        capturer = ExistingLiveVideoCapturer(existingVideo)
-                    )
-                    try {
-                        sharedTrack.start()
-                        sharedTrack.startCapture()
-                        check(candidate.localParticipant.publishVideoTrack(sharedTrack)) {
-                            "No se pudo compartir la imagen del directo con la batalla."
+                val (audio, video) = desiredMedia.get()
+                applySerializedMedia(
+                    audio = {
+                        val started = android.os.SystemClock.elapsedRealtime()
+                        enableMicrophone(candidate, audio)
+                        audioMs = android.os.SystemClock.elapsedRealtime() - started
+                    },
+                    video = {
+                        val started = android.os.SystemClock.elapsedRealtime()
+                        if (existingVideo != null) {
+                            val sharedTrack = candidate.localParticipant.createVideoTrack(
+                                name = "live-selected-source",
+                                capturer = ExistingLiveVideoCapturer(existingVideo)
+                            )
+                            try {
+                                sharedTrack.start()
+                                // A paused host must not publish a live frame before
+                                // the publication's muted state has been applied.
+                                sharedTrack.enabled = video
+                                sharedTrack.startCapture()
+                                check(candidate.localParticipant.publishVideoTrack(sharedTrack)) {
+                                    "No se pudo compartir la imagen del directo con la batalla."
+                                }
+                            } catch (error: Throwable) {
+                                runCatching { sharedTrack.stop(); sharedTrack.dispose() }
+                                throw error
+                            }
                         }
-                    } catch (error: Throwable) {
-                        runCatching { sharedTrack.stop(); sharedTrack.dispose() }
-                        throw error
+                        // The custom camera publication must exist before this call;
+                        // otherwise the SDK would open a second physical camera.
+                        enableCamera(candidate, video)
+                        videoMs = android.os.SystemClock.elapsedRealtime() - started
                     }
-                }
-                applyMediaLocked(candidate)
+                )
+                if (desiredMedia.get() != (audio to video)) applyMediaLocked(candidate)
             }
             _state.value = State.CONNECTED
             connectionIdentity = identity
             sharedVideoSource = existingVideo
-        }.onFailure {
+            lastStartupTimings = StartupTimings(roomCreationMs, signalingMs, audioMs, videoMs,
+                android.os.SystemClock.elapsedRealtime() - startupStarted)
+            Result.success(Unit)
+        } catch (cancelled: CancellationException) {
+            // Structured publishing has joined both children before the room's
+            // native tracks are released. Cancellation must not become a UI error.
+            withContext(NonCancellable) { disconnectLocked() }
+            throw cancelled
+        } catch (error: Throwable) {
             disconnectLocked()
+            Result.failure(error)
         }
     }
 
@@ -208,12 +267,25 @@ class LiveKitRoomBridge @Inject constructor(
         }
     }
 
+    private suspend fun applySerializedMedia(audio: suspend () -> Unit, video: suspend () -> Unit) =
+        withContext(mediaDispatcher) { applyCollaborationMedia(audio, video) }
+
     private suspend fun applyMediaLocked(candidate: Room) {
         val (audio, video) = desiredMedia.get()
-        val audioChanged = candidate.localParticipant.setMicrophoneEnabled(audio)
-        check(!audio || audioChanged) { "No se pudo activar el micrófono del directo. Revisa su permiso e inténtalo de nuevo." }
-        val cameraChanged = candidate.localParticipant.setCameraEnabled(video)
-        check(!video || cameraChanged) { "No se pudo activar la cámara del directo. Revisa su permiso e inténtalo de nuevo." }
+        applySerializedMedia(
+            audio = { enableMicrophone(candidate, audio) },
+            video = { enableCamera(candidate, video) }
+        )
+    }
+
+    private suspend fun enableMicrophone(candidate: Room, enabled: Boolean) {
+        val changed = candidate.localParticipant.setMicrophoneEnabled(enabled)
+        check(!enabled || changed) { "No se pudo activar el micrófono del directo. Revisa su permiso e inténtalo de nuevo." }
+    }
+
+    private suspend fun enableCamera(candidate: Room, enabled: Boolean) {
+        val changed = candidate.localParticipant.setCameraEnabled(enabled)
+        check(!enabled || changed) { "No se pudo activar la cámara del directo. Revisa su permiso e inténtalo de nuevo." }
     }
 
     fun attachRenderer(video: RemoteVideo, renderer: TextureViewRenderer): Boolean {
