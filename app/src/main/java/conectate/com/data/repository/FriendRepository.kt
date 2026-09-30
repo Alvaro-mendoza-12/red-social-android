@@ -59,6 +59,13 @@ class FriendRepository @Inject constructor(
         return users
     }
 
+    private fun removeCachedPending(ownerId: String, senderId: String) {
+        val snapshot = pendingSnapshot ?: return
+        if (snapshot.ownerId == ownerId && authService.getCurrentUserId() == ownerId) {
+            pendingSnapshot = snapshot.copy(users = snapshot.users.filterNot { it.id == senderId })
+        }
+    }
+
     private suspend fun ubuntuToken(): String? {
         if (!authService.isLocalFallbackSession() || !localFallbackApiClient.isConfigured) return null
         return authService.getAccessTokenAwait()?.trim()?.takeIf { it.isNotBlank() }
@@ -207,6 +214,7 @@ class FriendRepository @Inject constructor(
                 val request = findUbuntuFriendRequest(token, senderId, "incoming")
                     ?: return Result.failure(Exception("Solicitud no encontrada en Ubuntu"))
                 localFallbackApiClient.updateFriendRequest(token, request.id, "accepted").getOrThrow()
+                removeCachedPending(currentUserId, senderId)
                 notificationRepository.sendNotification(
                     recipientId = senderId,
                     type = "friend_request_accepted",
@@ -233,6 +241,7 @@ class FriendRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
+                removeCachedPending(currentUserId, senderId)
                 notificationRepository.sendNotification(
                     recipientId = senderId,
                     type = "friend_request_accepted",
@@ -357,6 +366,7 @@ class FriendRepository @Inject constructor(
                 val request = findUbuntuFriendRequest(token, senderId, "incoming")
                     ?: return Result.failure(Exception("Solicitud no encontrada en Ubuntu"))
                 localFallbackApiClient.deleteFriendRequest(token, request.id).getOrThrow()
+                removeCachedPending(currentUserId, senderId)
                 return Result.success(Unit)
             }
             
@@ -370,6 +380,7 @@ class FriendRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
+                removeCachedPending(currentUserId, senderId)
                 Result.success(Unit)
             } else {
                 Result.failure(Exception("Failed to reject request: ${response.status}"))
