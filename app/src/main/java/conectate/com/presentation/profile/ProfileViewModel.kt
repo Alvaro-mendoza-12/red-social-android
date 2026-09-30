@@ -92,6 +92,7 @@ class ProfileViewModel @Inject constructor(
     val isFollowing: StateFlow<Boolean> = _isFollowing.asStateFlow()
 
     private val _friendStatus = MutableStateFlow(FriendStatus.NONE)
+    private var friendStatusTargetId: String? = null
     val friendStatus: StateFlow<FriendStatus> = _friendStatus.asStateFlow()
     private var lockFriendStateUntil = 0L
 
@@ -160,6 +161,15 @@ class ProfileViewModel @Inject constructor(
             _profileState.value = ProfileUiState.Error("No user logged in")
             return
         }
+
+        // Friendship changes when a first message creates a request, even if
+        // the profile itself is already cached when returning from the chat.
+        if (friendStatusTargetId != idToLoad) {
+            friendStatusTargetId = idToLoad
+            _friendStatus.value = FriendStatus.NONE
+            lockFriendStateUntil = 0L
+        }
+        if (idToLoad != authService.getCurrentUserId()) checkFriendStatus(idToLoad)
 
         // Cancel previous realtime subscription if any
         realtimeJob?.cancel()
@@ -252,7 +262,6 @@ class ProfileViewModel @Inject constructor(
                            if (!_isToggling.value && (now > lockFollowStateUntil)) {
                                checkIfFollowing(idToLoad)
                            }
-                           checkFriendStatus(idToLoad)
                        }
                     } else {
                         val hasUsableProfile = (_profileState.value as? ProfileUiState.Success)
@@ -357,10 +366,13 @@ class ProfileViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            val ownerId = authService.getCurrentUserId()
             val result = friendRepository.getFriendStatus(targetId)
             
             // Re-check guard
             if (System.currentTimeMillis() < lockFriendStateUntil) return@launch
+            if (authService.getCurrentUserId() != ownerId) return@launch
+            if (friendStatusTargetId != targetId) return@launch
 
             result.onSuccess { status ->
                 _friendStatus.value = status

@@ -859,7 +859,7 @@ class StickerRepository @Inject constructor(
             } + _catalog.value).distinctBy { it.id }
             _catalog.value = merged
             // Import a server favorite only if this device has no newer local decision.
-            val imported = parsed.filter { it.is_favorite && it.id !in localById && it.id !in favoriteDecisions }
+            val imported = parsed.filter { it.is_favorite && it.id !in favoriteDecisions }
                 .map { it.id }
             _favorites.value = _favorites.value + imported
             persistItems(merged)

@@ -46,6 +46,19 @@ class FriendRepository @Inject constructor(
     private val notificationRepository: NotificationRepository,
     private val localFallbackApiClient: LocalFallbackApiClient
 ) {
+    data class PendingSnapshot(val ownerId: String, val users: List<User>)
+    @Volatile private var pendingSnapshot: PendingSnapshot? = null
+
+    fun cachedPendingRequests(): List<User>? = pendingSnapshot
+        ?.takeIf { it.ownerId == authService.getCurrentUserId() }?.users
+
+    private fun rememberPending(ownerId: String, users: List<User>): List<User> {
+        if (authService.getCurrentUserId() == ownerId) {
+            pendingSnapshot = PendingSnapshot(ownerId, users)
+        }
+        return users
+    }
+
     private suspend fun ubuntuToken(): String? {
         if (!authService.isLocalFallbackSession() || !localFallbackApiClient.isConfigured) return null
         return authService.getAccessTokenAwait()?.trim()?.takeIf { it.isNotBlank() }
@@ -443,7 +456,11 @@ class FriendRepository @Inject constructor(
             var currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
             ubuntuToken()?.let { token ->
                 val incoming = localFallbackApiClient.loadFriendRequests(token, "incoming").getOrThrow()
-                return Result.success(loadUbuntuUsers(token, incoming.map { it.senderId }))
+                val users = loadUbuntuUsers(token, incoming.map { it.senderId })
+                if (users.size != incoming.map { it.senderId.lowercase() }.distinct().size) {
+                    return Result.failure(Exception("No se pudieron cargar todas las solicitudes"))
+                }
+                return Result.success(rememberPending(currentUserId, users))
             }
             
             // 1. Get sender_ids from pending requests
@@ -462,7 +479,7 @@ class FriendRepository @Inject constructor(
             val requests: List<Map<String, String>> = response.body()
             val senderIds = requests.mapNotNull { it["sender_id"] }
             
-            if (senderIds.isEmpty()) return Result.success(emptyList())
+            if (senderIds.isEmpty()) return Result.success(rememberPending(currentUserId, emptyList()))
             
             // 2. Fetch profiles for these senders
             var usersResponse = supabaseConfig.httpClient.get(
@@ -474,7 +491,7 @@ class FriendRepository @Inject constructor(
             }
             
             if (usersResponse.status.isSuccess()) {
-                Result.success(usersResponse.body())
+                Result.success(rememberPending(currentUserId, usersResponse.body()))
             } else {
                 Result.failure(Exception("Failed to get profiles"))
             }

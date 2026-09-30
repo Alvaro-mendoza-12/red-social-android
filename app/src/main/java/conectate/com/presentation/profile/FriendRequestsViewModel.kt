@@ -24,7 +24,7 @@ class FriendRequestsViewModel @Inject constructor(
     private val authService: AuthService,
 ) : ViewModel() {
 
-    private val _requests = MutableStateFlow<List<User>>(emptyList())
+    private val _requests = MutableStateFlow(friendRepository.cachedPendingRequests().orEmpty())
     val requests: StateFlow<List<User>> = _requests.asStateFlow()
 
     // A new screen has no server answer yet. Do not show an empty state while
@@ -74,6 +74,9 @@ class FriendRequestsViewModel @Inject constructor(
                 _unseenRequestCount.value = 0
             }
             _isLoading.value = true
+            if (_requests.value.isEmpty()) {
+                _requests.value = friendRepository.cachedPendingRequests().orEmpty()
+            }
             try {
                 coroutineScope {
                     val recent = async { friendRepository.getRecentFriends(10) }
