@@ -93,7 +93,7 @@ async function ensureDirectMessageRequestPolicy(pool) {
         ) VALUES (
           recipient, NEW.sender_id, COALESCE(sender_name, 'Usuario'),
           'friend_request', NEW.sender_id, 'profile', 'Te envió una solicitud de amistad.',
-          jsonb_build_object('request_id', request_id::text, 'chat_id', NEW.chat_id)
+          jsonb_build_object('request_id', request_id::text, 'chat_id', NEW.chat_id, 'message_id', NEW.id::text)
         );
       END IF;
       RETURN NEW;
@@ -118,4 +118,19 @@ function introPolicyError(error) {
   return INTRO_ERRORS.has(String(error?.message || '').trim()) ? error.message.trim() : null
 }
 
-module.exports = { ensureDirectMessageRequestPolicy, introPolicyError }
+async function publishAutomaticFriendRequest(pool, { senderId, chatId, messageId }, publish) {
+  if (!senderId || !chatId || !messageId) return 0
+  const { rows } = await pool.query(
+    `SELECT * FROM fallback_notifications
+     WHERE type = 'friend_request' AND lower(actor_id) = lower($1)
+       AND extra_data->>'chat_id' = $2 AND extra_data->>'message_id' = $3`,
+    [senderId, chatId, messageId],
+  )
+  const send = publish || require('./realtime-publish').publishRealtimeEvent
+  await Promise.all(rows.map((notification) => send(`user:${notification.recipient_id}`, {
+    event: 'notification', notification, extraData: notification.extra_data || {},
+  })))
+  return rows.length
+}
+
+module.exports = { ensureDirectMessageRequestPolicy, introPolicyError, publishAutomaticFriendRequest }

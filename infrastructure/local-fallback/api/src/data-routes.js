@@ -39,7 +39,7 @@ const { safeErrorLogDetails } = require('./request-observability')
 const { insertMessageOnce } = require('./message-insert-store')
 const { mayReuseMessageMedia } = require('./message-media-access')
 const { cleanUsername, usernameOwnedByAnother, usernameProblem } = require('./username-policy')
-const { ensureDirectMessageRequestPolicy, introPolicyError } = require('./direct-message-request-policy')
+const { ensureDirectMessageRequestPolicy, introPolicyError, publishAutomaticFriendRequest } = require('./direct-message-request-policy')
 const { ensureMessageMarkerTables, registerMessageMarkerRoutes } = require('./message-markers-routes')
 const { ensureVideoWatchLaterTables, registerVideoWatchLaterRoutes } = require('./video-watch-later-routes')
 const { ensureVideoHistoryColumns, registerVideoHistoryRoutes } = require('./video-history-routes')
@@ -14101,6 +14101,14 @@ function registerDataRoutes(app, {
         chatId,
         message: insertedMessage,
         recipientIds: recipientList,
+      })
+      // The database trigger persists the first-message friendship request.
+      // Relay that exact notification without inserting or announcing it twice
+      // on idempotent retries, and without delaying the message response for push.
+      void publishAutomaticFriendRequest(pool, {
+        senderId, chatId, messageId: textOf(insertedMessage, ['id'], ''),
+      }).catch((error) => {
+        console.error('[friend-request] realtime relay failed', safeErrorLogDetails(error))
       })
       await Promise.all(
         recipientList.map((recipientId) =>
