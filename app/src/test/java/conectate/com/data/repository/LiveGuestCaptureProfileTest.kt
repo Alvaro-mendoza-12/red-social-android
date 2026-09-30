@@ -7,16 +7,16 @@ import org.junit.Test
 
 class LiveGuestCaptureProfileTest {
     @Test fun lowTierGuestDoesNotOpen720pEvenWhen1080pWasRequested() {
-        assertEquals(LiveGuestCaptureProfile(640, 360, 24), nativeLiveGuestCaptureProfile(AppDeviceTier.LOW, LiveQuality.P1080))
+        assertEquals(LiveGuestCaptureProfile(640, 360, 60), nativeLiveGuestCaptureProfile(AppDeviceTier.LOW, LiveQuality.P1080))
     }
     @Test fun balancedGuestFitsItsCameraBudget() {
-        assertEquals(LiveGuestCaptureProfile(960, 540, 24), nativeLiveGuestCaptureProfile(AppDeviceTier.BALANCED, LiveQuality.P720))
+        assertEquals(LiveGuestCaptureProfile(960, 540, 60), nativeLiveGuestCaptureProfile(AppDeviceTier.BALANCED, LiveQuality.P720))
     }
     @Test fun highTierKeepsAnAlreadySmallerRequestedImage() {
-        assertEquals(LiveGuestCaptureProfile(854, 480, 24), nativeLiveGuestCaptureProfile(AppDeviceTier.HIGH, LiveQuality.P480))
+        assertEquals(LiveGuestCaptureProfile(854, 480, 60), nativeLiveGuestCaptureProfile(AppDeviceTier.HIGH, LiveQuality.P480))
     }
     @Test fun highTierDoesNotUpscaleOrOpen1080pByDefault() {
-        assertEquals(LiveGuestCaptureProfile(1280, 720, 24), nativeLiveGuestCaptureProfile(AppDeviceTier.HIGH, LiveQuality.P1080))
+        assertEquals(LiveGuestCaptureProfile(1280, 720, 60), nativeLiveGuestCaptureProfile(AppDeviceTier.HIGH, LiveQuality.P1080))
     }
     @Test fun allCameraDimensionsAreEvenAndPreserveAspectRatio() {
         AppDeviceTier.entries.forEach { tier -> LiveQuality.entries.forEach { requested ->

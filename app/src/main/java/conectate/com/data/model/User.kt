@@ -82,8 +82,12 @@ data class User(
 ) {
     val displayName: String
         get() {
-            val name = display_name ?: full_name ?: username ?: email.substringBefore("@")
-            return if (name.equals("null", ignoreCase = true)) "Usuario" else name
+            return sequenceOf(display_name, full_name)
+                .mapNotNull { it?.trim()?.takeIf { value -> value.isNotBlank() &&
+                    !value.equals("null", ignoreCase = true) && '@' !in value } }
+                .firstOrNull()
+                ?: profilePublicHandle(this).takeUnless { it == "usuario" }
+                ?: "Usuario"
         }
     
     val safeDisplayName: String

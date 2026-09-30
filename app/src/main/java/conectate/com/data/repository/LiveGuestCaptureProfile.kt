@@ -12,5 +12,5 @@ internal fun nativeLiveGuestCaptureProfile(tier: AppDeviceTier, requested: LiveQ
     val scale = minOf(1.0, budget.width.toDouble() / requested.width, budget.height.toDouble() / requested.height)
     fun even(value: Int) = (value / 2) * 2
     return LiveGuestCaptureProfile(even((requested.width * scale).toInt()), even((requested.height * scale).toInt()),
-        budget.maxFps.coerceAtMost(24))
+        budget.maxFps)
 }

@@ -285,7 +285,6 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
                 val displayName = seed?.displayName
                     ?: seed?.fullName
-                    ?: seed?.email?.substringBefore("@")
                     ?: "Usuario"
                 val startMuted = resolvedRoom.isStageMode()
                     && resolvedRoom.creatorId.trim().lowercase() != userId.trim().lowercase()
@@ -300,7 +299,8 @@ class VoiceRoomActiveViewModel @Inject constructor(
                     avatarUrl = seed?.avatarUrl,
                     signalingRoomId = roomId,
                     startMuted = startMuted,
-                    roomPassword = password
+                    roomPassword = password,
+                    resolvedRoom = resolvedRoom
                 )
                 if (resolvedRoom.isStageMode()) {
                     startStageSync(resolvedRoom.id)

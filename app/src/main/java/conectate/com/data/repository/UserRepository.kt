@@ -255,7 +255,7 @@ class UserRepository @Inject constructor(
             ?: ""
         val displayName = sanitizeProfileText(
             profile.stringValue("display_name", "displayName", "full_name", "name", "username")
-        ) ?: email.substringBefore("@").ifBlank { "Usuario" }
+        ) ?: "Usuario"
 
         return applyLocalUserOverrides(
             User(

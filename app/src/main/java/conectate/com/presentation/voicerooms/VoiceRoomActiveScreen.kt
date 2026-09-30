@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontWeight
@@ -691,7 +692,7 @@ fun VoiceRoomActiveScreen(
 
             // Floating Reactions Overlay
             val activeReactions by viewModel.activeReactions.collectAsState()
-            Box(Modifier.fillMaxSize().padding(bottom = 100.dp), contentAlignment = Alignment.BottomCenter) {
+            Box(Modifier.fillMaxSize().padding(bottom = 12.dp), contentAlignment = Alignment.BottomCenter) {
                 activeReactions.forEach { reaction ->
                     FloatingReaction(reaction)
                 }
@@ -1109,8 +1110,7 @@ fun ParticipantCard(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(80.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .testTag("voice_participant_avatar")
         ) {
              CircularProfileImage(
                  imageUrl = participant.avatarUrl,
@@ -1124,20 +1124,22 @@ fun ParticipantCard(
                  Box(
                      modifier = Modifier
                          .align(Alignment.BottomEnd)
+                         .offset(x = 4.dp, y = 4.dp)
+                         .testTag("voice_participant_muted_badge")
                          .background(MaterialTheme.colorScheme.surface, CircleShape)
                          .padding(2.dp)
                  ) {
                      Box(
                          modifier = Modifier
-                             .size(18.dp)
+                             .size(24.dp)
                              .background(MaterialTheme.colorScheme.error, CircleShape),
                          contentAlignment = Alignment.Center
                      ) {
                          Icon(
                              imageVector = Icons.Rounded.MicOff,
-                             contentDescription = "Muted",
+                             contentDescription = "Micrófono silenciado",
                              tint = Color.White,
-                             modifier = Modifier.size(12.dp)
+                             modifier = Modifier.size(16.dp)
                          )
                      }
                  }
@@ -1148,6 +1150,7 @@ fun ParticipantCard(
             text = participant.name,
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             fontWeight = FontWeight.Medium
         )
         if (connectionState != null) {
@@ -1982,6 +1985,7 @@ fun ChatBubble(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReactionPicker(
     onSelect: (String) -> Unit,
@@ -1989,27 +1993,29 @@ fun ReactionPicker(
 ) {
     val emojis = listOf("❤️", "🔥", "👏", "😂", "😮", "🙌", "💯", "🎉")
     
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                emojis.forEach { emoji ->
-                    Text(
-                        text = emoji,
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier
-                            .clickable { onSelect(emoji) }
-                            .padding(4.dp)
-                    )
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        dragHandle = null
+    ) {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("Reacciones", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Cerrar reacciones")
                 }
             }
-        }
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().testTag("voice_reaction_picker").padding(vertical = 12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(emojis) { emoji ->
+                    TextButton(onClick = { onSelect(emoji) }, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
+                        Text(text = emoji, style = MaterialTheme.typography.headlineMedium)
+                    }
+                }
+            }
     }
 }
 

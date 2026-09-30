@@ -33,7 +33,7 @@ class CameraCadenceAuditTest {
             val sink = VideoSink { frames.incrementAndGet() }
             var track: org.webrtc.VideoTrack? = null
             try {
-                for (requested in listOf(24, 30)) {
+                for (requested in listOf(30, 60)) {
                     val ready = CountDownLatch(1)
                     var success = false
                     manager.startVideo(false, isFront = front, targetWidth = 640, targetHeight = 480,

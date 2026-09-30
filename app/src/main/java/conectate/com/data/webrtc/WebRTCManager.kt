@@ -2127,8 +2127,10 @@ class WebRTCManager(
                 fun makeEven(value: Int): Int = (value / 2) * 2
 
                 val metrics = context.resources.displayMetrics
-                val cameraProfile = nativeCameraProfile(deviceTier, targetWidth ?: 960,
+                val requestedCameraProfile = nativeCameraProfile(deviceTier, targetWidth ?: 960,
                     targetHeight ?: 540, targetFps ?: 24)
+                val cameraProfile = if (isScreen) requestedCameraProfile else
+                    supportedNativeCameraProfile(requestedCameraProfile, supportedCameraFormats(isFront))
                 val fps = if (isScreen) (targetFps ?: 15).coerceIn(10, 30) else cameraProfile.fps
                 val (finalWidth, finalHeight) = if (isScreen) {
                     // Preserve aspect ratio and fit within the requested bounds.
@@ -2421,6 +2423,28 @@ class WebRTCManager(
 
         Log.e("WebRTCManager", "No compatible camera capturer found")
         return null
+    }
+
+    private fun supportedCameraFormats(isFront: Boolean): List<NativeCameraFormat> = runCatching {
+        val enumerator: CameraEnumerator = if (Camera2Enumerator.isSupported(context))
+            Camera2Enumerator(context) else Camera1Enumerator(true)
+        val camera = enumerator.deviceNames.firstOrNull {
+            if (isFront) enumerator.isFrontFacing(it) else enumerator.isBackFacing(it)
+        } ?: enumerator.deviceNames.firstOrNull() ?: return@runCatching emptyList()
+        // Camera2's minimum frame duration alone can overstate the AE limit.
+        val aeMaximum = if (enumerator is Camera2Enumerator) runCatching {
+            val manager = context.getSystemService(android.hardware.camera2.CameraManager::class.java)
+            manager.getCameraCharacteristics(camera)
+                .get(android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                ?.maxOfOrNull { it.upper }?.let { if (it >= 1000) it / 1000 else it }
+        }.getOrNull() else null
+        enumerator.getSupportedFormats(camera).orEmpty().map { format ->
+            NativeCameraFormat(format.width, format.height,
+                minOf(format.framerate.max / 1000, aeMaximum ?: 60))
+        }
+    }.getOrElse { error ->
+        Log.w("WebRTCManager", "Cannot read camera cadence; using conservative capture", error)
+        emptyList()
     }
 
     fun destroy(onComplete: () -> Unit = {}) {

@@ -10,13 +10,13 @@ class LiveCollaborationQualityProfileTest {
         assertEquals(640, profile.width)
         assertEquals(360, profile.height)
         assertFalse(profile.simulcast)
-        assertEquals(24, profile.maxFps)
+        assertEquals(60, profile.maxFps)
     }
     @Test fun largerDevicesRetainAdaptiveLayers() {
         assertTrue(liveCollaborationQualityProfile(AppDeviceTier.BALANCED).simulcast)
         assertEquals(1280, liveCollaborationQualityProfile(AppDeviceTier.HIGH).width)
         assertEquals(720, liveCollaborationQualityProfile(AppDeviceTier.HIGH).height)
-        assertEquals(30, liveCollaborationQualityProfile(AppDeviceTier.HIGH).maxFps)
+        assertEquals(60, liveCollaborationQualityProfile(AppDeviceTier.HIGH).maxFps)
     }
     @Test fun encodingCostIncreasesWithTheDeviceBudget() {
         val profiles = AppDeviceTier.entries.map(::liveCollaborationQualityProfile)

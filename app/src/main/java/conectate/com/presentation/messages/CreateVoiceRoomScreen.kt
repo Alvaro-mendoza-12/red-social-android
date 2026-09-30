@@ -16,6 +16,7 @@ import conectate.com.data.model.VoiceRoomModes
 import conectate.com.data.repository.VoiceRoomRepository
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
@@ -31,18 +32,21 @@ fun CreateVoiceRoomScreen(
     navController: NavController,
     viewModel: CreateVoiceRoomViewModel = hiltViewModel()
 ) {
-    var createdRoomId by remember { mutableStateOf<String?>(null) }
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var roomMode by remember { mutableStateOf(VoiceRoomModes.CASUAL) }
-    var isPublic by remember { mutableStateOf(true) }
+    var createdRoomId by rememberSaveable { mutableStateOf<String?>(null) }
+    var createdRoomCode by rememberSaveable { mutableStateOf<String?>(null) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("") }
+    var roomMode by rememberSaveable { mutableStateOf(VoiceRoomModes.CASUAL) }
+    var isPublic by rememberSaveable { mutableStateOf(true) }
     var password by remember { mutableStateOf("") }
     val error by viewModel.error.collectAsState()
     val isCreating by viewModel.isCreating.collectAsState()
     val clipboard = LocalClipboard.current
     val clipboardScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Crear Sala de Voz") },
@@ -67,6 +71,7 @@ fun CreateVoiceRoomScreen(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
                     .padding(24.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -85,37 +90,40 @@ fun CreateVoiceRoomScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Tu ID de sala es:",
+                    text = "Código de sala",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 // ID Display Card
-                Card(
+                if (!createdRoomCode.isNullOrBlank()) Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     onClick = {
-                        createdRoomId?.let { roomId ->
+                        createdRoomCode?.let { code ->
                             clipboardScope.launch {
                                 clipboard.setClipEntry(
-                                    ClipEntry(ClipData.newPlainText("ID de sala", roomId))
+                                    ClipEntry(ClipData.newPlainText("Código de sala", code))
                                 )
+                                snackbarHostState.showSnackbar("Código copiado")
                             }
                         }
                     }
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = createdRoomId!!,
+                            text = createdRoomCode.orEmpty(),
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            letterSpacing = 4.sp
+                            letterSpacing = 2.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                         Spacer(modifier = Modifier.width(16.dp))
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copiar ID")
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copiar código de sala")
                     }
                 }
                 
@@ -128,7 +136,7 @@ fun CreateVoiceRoomScreen(
                          navController.popBackStack() 
                          navController.navigate(conectate.com.presentation.navigation.Screen.RoomDetail.createRoute(createdRoomId!!))
                     },
-                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)
                 ) {
                     Text("Entrar a la Sala")
                 }
@@ -218,7 +226,7 @@ fun CreateVoiceRoomScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                         Text("Sala Pública", style = MaterialTheme.typography.bodyLarge)
                         Text(
                             "Cualquiera puede unirse a escuchar",
@@ -257,9 +265,9 @@ fun CreateVoiceRoomScreen(
                             isPublic,
                             if (isPublic) null else password,
                             roomMode
-                        ) { id ->
-                            // Assuming id is usable for navigation
-                            createdRoomId = id 
+                        ) { room ->
+                            createdRoomCode = room.readableId
+                            createdRoomId = room.id
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp),

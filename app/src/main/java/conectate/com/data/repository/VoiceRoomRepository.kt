@@ -1224,9 +1224,6 @@ class VoiceRoomRepository @Inject constructor(
             }
             scope.launch { refreshRooms() }
             
-            // Artificial delay to prevent race condition on client double-tap
-            delay(500)
-
             Result.success(createdRoom)
         } catch (e: Exception) {
             Result.failure(e)
@@ -1251,7 +1248,8 @@ class VoiceRoomRepository @Inject constructor(
         avatarUrl: String? = null,
         signalingRoomId: String? = null,
         startMuted: Boolean = false,
-        roomPassword: String? = null
+        roomPassword: String? = null,
+        resolvedRoom: VoiceRoom? = null
     ) = withContext(Dispatchers.IO) {
         android.util.Log.w("VoiceRoomRepository", "📍 joinRoom START: roomId=$roomId, userId=$userId")
         pendingConnectMetricName = "voice_room_join"
@@ -1322,12 +1320,6 @@ class VoiceRoomRepository @Inject constructor(
             reinforceAudioAfterVideoTransition("voice-room-reentry")
             android.util.Log.w("VoiceRoomRepository", "📍 RE-ENTRY completed: Session preserved")
             return@withContext
-        } else if (socket?.connected() == true) {
-             // Socket connected but WebRTC not healthy? Nuke it to avoid zombies.
-             android.util.Log.w("VoiceRoomRepository", "⚠️ Partial state detected (Socket OK, WebRTC Unhealthy). Forcing Hard Reset.")
-             webRTCManager?.hardReset()
-             // Give it a moment to clear
-             kotlinx.coroutines.delay(200)
         }
         
         try {
@@ -1335,7 +1327,6 @@ class VoiceRoomRepository @Inject constructor(
                 android.util.Log.d("VoiceRoomRepository", "Cleaning up previous room channel...")
                 try {
                     leaveRoom()
-                    delay(1000) // v22.0: Increased guard delay to 1s to ensure Audio Hardware is fully released by OS
                 } catch (e: Exception) {
                     android.util.Log.e("VoiceRoomRepository", "Warning during cleanup: ${e.message}")
                     crashReporter.recordException(
@@ -1348,9 +1339,9 @@ class VoiceRoomRepository @Inject constructor(
             activeRoomId = signalRoom
             activeRoomPassword = roomPassword?.takeIf { it.isNotBlank() }
             desiredSelfMuted = joinMuted
-            getRoomById(roomLookupId).getOrNull()?.let { room ->
-                _currentRoom.value = normalizeRoomForUi(room)
-            }
+            val room = resolvedRoom?.takeIf { it.id.equals(roomId, ignoreCase = true) }
+                ?: getRoomById(roomLookupId).getOrThrow()
+            _currentRoom.value = normalizeRoomForUi(room)
 
             // v21.0: Reverting seamless re-entry due to "Zombie Session" issues (Audio/Chat loss).
             // We will fallback to a clean reconnection cycle to safeguard functionality.
@@ -1363,8 +1354,7 @@ class VoiceRoomRepository @Inject constructor(
                     initializeWebRTC(userId)
                 } else {
                     android.util.Log.w("VoiceRoomRepository", "♻️ DIFFERENT SESSION OR STALE: Forcing media engine REBIRTH")
-                    webRTCManager?.hardReset()
-                    delay(500) // v7.2.4: Increased from 100ms to 500ms for aggressive OS/Hardware Release
+                    webRTCManager?.hardResetAwait()
                 }
                 
                 webRTCManager?.ensureLocalTracks() // v7.2.5: Recreate tracks if disposed
@@ -1397,14 +1387,11 @@ class VoiceRoomRepository @Inject constructor(
             )
             _currentParticipants.value = listOf(self)
 
-            // 1. Setup Socket.io for Signaling
-            android.util.Log.i("VoiceRoomRepository", "📡 Connecting to Signaling: $SIGNALING_URL")
-            setupSocketSignaling(signalRoom, userId, displayName, avatarUrl)
-
-            // 2. Setup participants persistence. Ubuntu mode uses local API + Socket.IO; Supabase mode keeps realtime channel.
+            // Validate membership before signaling; a failed admission must not look connected.
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                authService.getAccessTokenAwait()?.let { token ->
-                    localFallbackApiClient.joinVoiceRoom(
+                val token = authService.getAccessTokenAwait()
+                    ?: throw IllegalStateException("Vuelve a iniciar sesión para entrar a la sala.")
+                val participants = localFallbackApiClient.joinVoiceRoom(
                         accessToken = token,
                         roomId = roomLookupId,
                         userName = displayName,
@@ -1412,12 +1399,9 @@ class VoiceRoomRepository @Inject constructor(
                         socketId = socket?.id() ?: userId,
                         isMuted = joinMuted,
                         password = activeRoomPassword
-                    ).onSuccess { participants ->
-                        if (participants.isNotEmpty()) {
-                            _currentRoom.value?.let { current -> applyVoiceRoomState(current, participants) }
-                                ?: run { _currentParticipants.value = participants }
-                        }
-                    }
+                    ).getOrThrow()
+                if (participants.isNotEmpty()) {
+                    applyVoiceRoomState(room, participants)
                 }
             } else {
                 try {
@@ -1434,8 +1418,10 @@ class VoiceRoomRepository @Inject constructor(
                 }
             }
             
-            // Late sync cinema state
-            getRoomById(roomId).getOrNull()?.let { r ->
+            setupSocketSignaling(signalRoom, userId, displayName, avatarUrl)
+
+            // Reuse the room already resolved for admission instead of a third HTTP read.
+            _currentRoom.value?.let { r ->
                 if (r.isCinemaMode) {
                     _cinemaState.value = CinemaState(
                         isCinemaMode = true,
@@ -2417,7 +2403,7 @@ class VoiceRoomRepository @Inject constructor(
 
             // 2. Clear WebRTC State Safely
             try {
-                webRTCManager?.hardReset()
+                webRTCManager?.hardResetAwait()
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomRepository", "Error resetting WebRTC: ${e.message}")
             }

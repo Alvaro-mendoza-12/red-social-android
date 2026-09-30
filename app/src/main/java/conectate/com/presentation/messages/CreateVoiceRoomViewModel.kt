@@ -3,6 +3,7 @@ package conectate.com.presentation.messages
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.repository.VoiceRoomRepository
+import conectate.com.data.model.VoiceRoom
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,7 +27,7 @@ class CreateVoiceRoomViewModel @Inject constructor(
         isPublic: Boolean,
         password: String?,
         roomMode: String,
-        onSuccess: (String) -> Unit
+        onSuccess: (VoiceRoom) -> Unit
     ) {
         if (name.isBlank()) {
             _error.value = "El nombre es obligatorio"
@@ -42,7 +43,7 @@ class CreateVoiceRoomViewModel @Inject constructor(
                 val result = repository.createRoom(name, description, isPublic, password, roomMode)
                 if (result.isSuccess) {
                     val room = result.getOrThrow()
-                    onSuccess(room.id)
+                    onSuccess(room)
                 } else {
                     _error.value = result.exceptionOrNull()?.message
                 }

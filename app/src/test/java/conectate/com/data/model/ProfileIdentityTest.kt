@@ -55,6 +55,15 @@ class ProfileIdentityTest {
         assertEquals("usuario", profilePublicHandle(user.copy(display_name = "secret@example.com")))
     }
 
+    @org.junit.Test
+    fun publicDisplayNameNeverFallsBackToPrivateEmail() {
+        val user = User(id = id, email = "secret@example.com", username = "secret")
+        assertEquals("Usuario", user.displayName)
+        assertEquals("Mirella Vásquez", user.copy(display_name = " ", full_name = "Mirella Vásquez").displayName)
+        assertEquals("Usuario", user.copy(display_name = "secret@example.com").displayName)
+        assertEquals("mirella_vr07", user.copy(username = "mirella_vr07", username_origin = "chosen").displayName)
+    }
+
     @Test
     fun nonLatinNamesStayReadableAndBlankDisplayNameUsesFullName() {
         val user = User(id = id, display_name = "  ", full_name = "山田 太郎")

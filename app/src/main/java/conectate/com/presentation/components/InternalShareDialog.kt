@@ -85,7 +85,7 @@ fun InternalShareDialog(
                                     text = user.displayName,
                                     fontWeight = FontWeight.Bold
                                 )
-                                val handle = user.username ?: user.email.substringBefore("@")
+                                val handle = conectate.com.data.model.profilePublicHandle(user)
                                 Text(
                                     text = "@$handle",
                                     style = MaterialTheme.typography.bodySmall,

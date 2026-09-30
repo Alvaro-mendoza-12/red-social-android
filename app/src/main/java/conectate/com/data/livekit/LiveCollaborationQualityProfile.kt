@@ -12,7 +12,7 @@ internal data class LiveCollaborationQualityProfile(
 
 /** Small devices should not encode three simultaneous 720p streams by default. */
 internal fun liveCollaborationQualityProfile(tier: AppDeviceTier) = when (tier) {
-    AppDeviceTier.LOW -> LiveCollaborationQualityProfile(640, 360, 24, 450_000, false)
-    AppDeviceTier.BALANCED -> LiveCollaborationQualityProfile(960, 540, 24, 900_000, true)
-    AppDeviceTier.HIGH -> LiveCollaborationQualityProfile(1280, 720, 30, 1_700_000, true)
+    AppDeviceTier.LOW -> LiveCollaborationQualityProfile(640, 360, 60, 900_000, false)
+    AppDeviceTier.BALANCED -> LiveCollaborationQualityProfile(960, 540, 60, 1_800_000, true)
+    AppDeviceTier.HIGH -> LiveCollaborationQualityProfile(1280, 720, 60, 3_400_000, true)
 }

@@ -46,6 +46,7 @@ const { ensureVideoHistoryColumns, registerVideoHistoryRoutes } = require('./vid
 const { ensureVideoCollectionTables, registerVideoCollectionRoutes } = require('./video-collections-routes')
 const { validVideoPublishAttemptId, sameVideoPublishPayload } = require('./video-publish-attempt')
 const { normalizeVideoChapters } = require('./video-chapters')
+const { ensureVoiceRoomCodes } = require('./voice-room-identity')
 
 const AUTO_VERIFY_FOLLOWER_THRESHOLD = 100_000
 
@@ -5091,7 +5092,9 @@ function voiceRoomReadableId(row) {
 
 function voiceRoomMatches(row, cleanRoomId) {
   if (!cleanRoomId) return false
-  return voiceRoomId(row) === cleanRoomId || voiceRoomReadableId(row) === cleanRoomId
+  return voiceRoomId(row) === cleanRoomId || voiceRoomReadableId(row) === cleanRoomId ||
+    normalizeId(row.legacy_readable_id) === cleanRoomId ||
+    normalizeId(row.agora_channel_name || row.agoraChannelName) === cleanRoomId
 }
 
 function voiceRoomMode(row) {
@@ -5158,6 +5161,7 @@ async function localVoiceRooms(pool, limit = 1000) {
             is_active,
             agora_channel_name,
             readable_id,
+            legacy_readable_id,
             room_mode,
             password_hash,
             community_id,
@@ -5189,6 +5193,7 @@ async function localVoiceRoomsByAliases(pool, roomAliases) {
         is_active,
         agora_channel_name,
         readable_id,
+        legacy_readable_id,
         room_mode,
         password_hash,
         community_id,
@@ -5198,6 +5203,7 @@ async function localVoiceRoomsByAliases(pool, roomAliases) {
      FROM fallback_voice_rooms
      WHERE lower(id::text) = ANY($1::text[])
         OR lower(COALESCE(readable_id, '')) = ANY($1::text[])
+        OR lower(COALESCE(legacy_readable_id, '')) = ANY($1::text[])
         OR lower(COALESCE(agora_channel_name, '')) = ANY($1::text[])
      LIMIT 8`,
     [aliases],
@@ -6195,6 +6201,7 @@ async function ensureLocalDataTables(pool) {
     `CREATE INDEX IF NOT EXISTS idx_fallback_voice_rooms_active_created
      ON fallback_voice_rooms(is_active, created_at DESC)`,
   )
+  await ensureVoiceRoomCodes(pool)
   await pool.query(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_fallback_voice_rooms_community_channel
      ON fallback_voice_rooms(community_channel_id)
@@ -10330,7 +10337,7 @@ function registerDataRoutes(app, {
             FALSE,
             TRUE,
             'community_' || $5,
-            'community_' || $5,
+            nextval('fallback_voice_room_code_seq')::text,
             'casual',
             $6,
             $7::uuid,
@@ -11629,6 +11636,12 @@ function registerDataRoutes(app, {
       const name = cleanText(req.body?.name, 120) || 'Sala de voz'
       const description = cleanText(req.body?.description, 500)
       const requestedId = validUuid(req.body?.id)
+      if (requestedId) {
+        const existing = await voiceRoomRowsByAliases(pool, [requestedId])
+        if (existing.some((room) => !rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids))) {
+          return res.status(403).json({ error: 'VOICE_ROOM_CREATOR_REQUIRED' })
+        }
+      }
       const requestedMaxParticipants = Number(req.body?.maxParticipants || req.body?.max_participants || 50)
       const maxParticipants = Number.isFinite(requestedMaxParticipants)
         ? Math.max(2, Math.min(requestedMaxParticipants, 200))
@@ -11671,9 +11684,9 @@ function registerDataRoutes(app, {
             $6,
             TRUE,
             COALESCE(NULLIF($7, ''), 'room_' || COALESCE($1::text, gen_random_uuid()::text)),
-            NULLIF($8, ''),
+            nextval('fallback_voice_room_code_seq')::text,
+            $8,
             $9,
-            $10,
             NOW(),
             NOW()
          )
@@ -11687,6 +11700,7 @@ function registerDataRoutes(app, {
             password_hash = EXCLUDED.password_hash,
             is_active = TRUE,
             updated_at = NOW()
+         WHERE lower(fallback_voice_rooms.creator_id) = ANY($10::text[])
          RETURNING
             id::text,
             name,
@@ -11708,11 +11722,13 @@ function registerDataRoutes(app, {
           maxParticipants,
           isPublic,
           String(req.body?.agoraChannelName || req.body?.agora_channel_name || '').trim(),
-          String(req.body?.readableId || req.body?.readable_id || '').trim(),
           requestedRoomMode,
           passwordHash,
+          identity.values.map(normalizeId),
         ],
       )
+
+      if (!rows[0]) return res.status(403).json({ error: 'VOICE_ROOM_CREATOR_REQUIRED' })
 
       const profilesById = indexProfiles(await publicProfilesByIds(pool, identity.values))
       const room = mapVoiceRoom(normalizeImportedRow(rows[0]), profilesById, 0)
@@ -11720,6 +11736,9 @@ function registerDataRoutes(app, {
       void publishVoiceRoomsLiveEvent({ action: 'created', roomId: room.id, room })
       res.status(201).json({ room })
     } catch (error) {
+      if (error.code === '2200H') {
+        return res.status(503).json({ error: 'VOICE_ROOM_CODES_EXHAUSTED' })
+      }
       next(error)
     }
   })

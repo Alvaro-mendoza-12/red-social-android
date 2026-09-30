@@ -1432,7 +1432,7 @@ private fun MomentPeopleDialog(
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(user.displayName, fontWeight = FontWeight.SemiBold)
-                                Text("@${user.username ?: user.email.substringBefore('@')}", style = MaterialTheme.typography.bodySmall)
+                                Text("@${conectate.com.data.model.profilePublicHandle(user)}", style = MaterialTheme.typography.bodySmall)
                             }
                             Checkbox(checked = checked, onCheckedChange = { onToggle(user) })
                         }

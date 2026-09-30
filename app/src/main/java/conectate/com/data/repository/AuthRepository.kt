@@ -1078,7 +1078,6 @@ class AuthRepository @Inject constructor(
         val displayName = seed?.displayName
             ?: seed?.fullName
             ?: fallbackDisplayName
-            ?: email.substringBefore("@").takeIf { it.isNotBlank() }
             ?: "Usuario"
         return User(
             id = userId,

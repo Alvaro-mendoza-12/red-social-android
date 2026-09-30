@@ -266,8 +266,8 @@ test('public read-path monitor records degradation without restarting healthy se
     'utf8',
   )
 
-  assert.match(monitor, /verify:social-read-paths/)
-  assert.match(monitor, /verify:messaging-read-paths/)
+  assert.match(monitor, /run_probe social verify-social-read-paths\.js/)
+  assert.match(monitor, /run_probe messaging verify-messaging-read-paths\.js/)
   assert.match(monitor, /PUBLIC_MONITOR_FAILURE_THRESHOLD/)
   assert.match(monitor, /status=degraded/)
   assert.match(monitor, /--network host/)

@@ -101,8 +101,9 @@ class RoomDetailViewModel @Inject constructor(
             val userResult = userRepository.getUserById(currentUserId)
             userResult.onSuccess { user ->
                 user?.let {
-                    val displayName = if (it.email.isNotEmpty()) it.email else "Usuario"
-                    voiceRoomRepository.joinRoom(roomId, it.id, displayName)
+                    val resolvedRoom = (_uiState.value as? RoomDetailUiState.Success)?.room
+                    voiceRoomRepository.joinRoom(roomId, it.id, it.displayName, avatarUrl = it.avatar_url,
+                        resolvedRoom = resolvedRoom)
                 }
             }
         }

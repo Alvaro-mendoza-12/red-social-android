@@ -650,7 +650,7 @@ class NativeMediaServerAuditTest {
             first=Endpoint(accounts[0],namespace,relayOnly); second=Endpoint(accounts[1],namespace,relayOnly)
             first.connect(); second.connect()
             val captureStarted=CountDownLatch(1); var captureOk=false
-            first.manager.startVideo(isScreen,intent=projection.get(),isFront=false,targetWidth=640,targetHeight=480,targetFps=if(isScreen) 15 else 24,
+            first.manager.startVideo(isScreen,intent=projection.get(),isFront=false,targetWidth=640,targetHeight=480,targetFps=if(isScreen) 15 else if(flow == "live") 60 else 24,
                 onComplete={ captureOk=it; captureStarted.countDown() })
             assertTrue("Camera start timed out",captureStarted.await(15,TimeUnit.SECONDS)); assertTrue("Camera did not start",captureOk)
             localTrack=first.manager.localVideoTrack.value

@@ -1423,7 +1423,7 @@ class LiveRepository @Inject constructor(
             isFront = _isFrontCamera.value,
             targetWidth = 640,
             targetHeight = 480,
-            targetFps = 20
+            targetFps = 60
         )
         setupCameraPreviewActive = started
         if (started) Result.success(Unit)
@@ -1560,7 +1560,7 @@ class LiveRepository @Inject constructor(
                     isFront = _isFrontCamera.value,
                     targetWidth = quality.width,
                     targetHeight = quality.height,
-                    targetFps = 24
+                    targetFps = 60
                 )
                 val requestStillCurrent =
                     _activeSession.value?.role == LiveRole.HOST &&

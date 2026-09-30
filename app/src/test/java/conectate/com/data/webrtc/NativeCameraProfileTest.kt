@@ -6,7 +6,7 @@ import org.junit.Test
 
 class NativeCameraProfileTest {
     @Test fun lowTierBoundsFullHdAndPreservesCadence() {
-        assertEquals(NativeCameraProfile(640, 360, 24), nativeCameraProfile(AppDeviceTier.LOW, 1920, 1080, 30))
+        assertEquals(NativeCameraProfile(640, 360, 30), nativeCameraProfile(AppDeviceTier.LOW, 1920, 1080, 30))
     }
     @Test fun portraitKeepsItsAspectRatio() {
         assertEquals(NativeCameraProfile(360, 640, 24), nativeCameraProfile(AppDeviceTier.LOW, 1080, 1920, 24))
@@ -31,5 +31,28 @@ class NativeCameraProfileTest {
             assertTrue(after.width <= before.width && after.height <= before.height)
             assertEquals(before.fps, after.fps)
         }
+    }
+    @Test fun liveSixtyFpsIsRequestedForEveryDeviceTier() {
+        AppDeviceTier.entries.forEach {
+            assertEquals(60, nativeCameraProfile(it, 1920, 1080, 60).fps)
+        }
+    }
+    @Test fun supportedSixtyFpsUsesSmallerNativeFormatWhenNeeded() {
+        assertEquals(NativeCameraProfile(640, 360, 60), supportedNativeCameraProfile(
+            NativeCameraProfile(1280, 720, 60), listOf(
+                NativeCameraFormat(1280, 720, 30), NativeCameraFormat(640, 360, 60))))
+    }
+    @Test fun unsupportedSixtyFpsUsesTheRealHardwareLimit() {
+        assertEquals(30, supportedNativeCameraProfile(NativeCameraProfile(640, 360, 60),
+            listOf(NativeCameraFormat(640, 480, 30))).fps)
+    }
+    @Test fun absentOrInvalidCameraMetadataDoesNotInventSixtyFps() {
+        assertEquals(30, supportedNativeCameraProfile(NativeCameraProfile(640, 360, 60), emptyList()).fps)
+        assertEquals(24, supportedNativeCameraProfile(NativeCameraProfile(640, 360, 24),
+            listOf(NativeCameraFormat(0, 0, 0))).fps)
+    }
+    @Test fun portraitAndLowerCadenceArePreservedWithNativeFormat() {
+        assertEquals(NativeCameraProfile(360, 640, 15), supportedNativeCameraProfile(
+            NativeCameraProfile(360, 640, 15), listOf(NativeCameraFormat(640, 360, 60))))
     }
 }
