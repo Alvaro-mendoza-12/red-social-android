@@ -48,7 +48,10 @@ docker run --detach --rm --name "$DRILL_NAME" --label "$DRILL_LABEL" \
 CREATED=1
 READY=0
 for attempt in $(seq 1 30); do
-  if docker exec "$DRILL_NAME" pg_isready -U conectate -d novvin_restore_drill >/dev/null 2>&1; then
+  # pg_isready also accepts the entrypoint's temporary bootstrap server. That
+  # server shuts down before PID 1 becomes postgres, interrupting pg_restore.
+  if docker exec "$DRILL_NAME" sh -c \
+    '[ "$(cat /proc/1/comm)" = postgres ] && pg_isready -U conectate -d novvin_restore_drill' >/dev/null 2>&1; then
     READY=1
     break
   fi
@@ -63,6 +66,7 @@ fi
 if ! docker exec "$DRILL_NAME" pg_restore -U conectate -d novvin_restore_drill \
   --exit-on-error --no-owner --no-privileges /backup/postgres.dump \
   > "$LOG_DIR/restore.log" 2>&1; then
+  docker logs "$DRILL_NAME" > "$LOG_DIR/startup.log" 2>&1 || true
   echo "ERROR: isolated restore failed; details remain in the private diagnostic directory" >&2
   exit 1
 fi

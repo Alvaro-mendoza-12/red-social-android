@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -47,6 +48,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -303,7 +306,7 @@ private fun Intent.toAvatarBitmapOrNull(): Bitmap? {
 }
 
 @Composable
-private fun IncomingCallScreen(
+internal fun IncomingCallScreen(
     invite: CallInvite,
     callerAvatarBitmap: Bitmap?,
     onAccept: () -> Unit,
@@ -323,6 +326,7 @@ private fun IncomingCallScreen(
             .systemBarsPadding()
             .padding(horizontal = 20.dp, vertical = 20.dp)
     ) {
+        val stackCallActions = maxWidth < 360.dp || LocalDensity.current.fontScale >= 1.5f
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -375,10 +379,11 @@ private fun IncomingCallScreen(
                 }
             }
 
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                maxItemsInEachRow = if (stackCallActions) 1 else 2
             ) {
                 Button(
                     onClick = {
@@ -390,7 +395,7 @@ private fun IncomingCallScreen(
                         }
                     },
                     enabled = !isHandling,
-                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("incoming_decline"),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB3261E), contentColor = Color.White)
                 ) {
                     androidx.compose.material3.Icon(Icons.Default.CallEnd, contentDescription = null)
@@ -408,7 +413,7 @@ private fun IncomingCallScreen(
                         }
                     },
                     enabled = !isHandling,
-                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("incoming_accept"),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF236D36), contentColor = Color.White)
                 ) {
                     androidx.compose.material3.Icon(Icons.Default.Call, contentDescription = null)

@@ -53,7 +53,16 @@ pertenece al emulador, no altera el DNS del usuario ni rebaja TLS.
 
 ## 3. Llamadas fuera de la app y rutas de audio
 
-En curso. Se requiere repetir la matriz final con dos teléfonos físicos.
+- El servicio FCM crea el repositorio de llamadas bajo demanda; una notificación
+  corriente ya no fuerza esa inicialización específica.
+- Prueba en el emulador fuera de la app: notificación de llamada visible con
+  acciones de contestar/rechazar e intención de pantalla completa. La prueba
+  usa una invitación sintética; no acredita entrega FCM entre dos teléfonos.
+- Cámara, silencio y audio RTP se comprobaron en los tres flujos nativos.
+- Se revisó el enrutamiento existente a auricular, altavoz, cable, USB y Bluetooth
+  y la limpieza de la ruta al finalizar. Hace falta repetirlo con hardware real.
+- Android decide si permite pantalla completa. No se acredita funcionamiento
+  después de forzar detención, bloqueo del fabricante o ausencia de permisos.
 
 ## 4. Carga y resistencia del servidor
 
@@ -77,10 +86,42 @@ En curso. Se requiere repetir la matriz final con dos teléfonos físicos.
   estaban sanos y el monitor desplegado terminó con `status=ok`.
 - Esto no acredita capacidad con cientos de usuarios ni recuperación ante pérdida
   real de la base de datos. No se detuvo la base de datos de usuarios para probarla.
+- La copia del 30/09 pasó SHA-256 y lectura de los archivos y del índice PostgreSQL.
+  La primera restauración aislada falló al entrar durante el servidor provisional
+  del instalador. Se corrigió la espera para exigir el proceso PostgreSQL definitivo
+  y guardar logs en caso de fallo. La repetición restauró 216 tablas y limpió su
+  contenedor. Una prueba Linux reprodujo arranque provisional y fallo de restauración.
+  Es recuperación de la base de datos en aislamiento; no arranca toda la aplicación
+  restaurada ni extrae los archivos de usuarios.
 
 ## 5. Interfaz, accesibilidad y diez heurísticas
 
-En curso.
+- Botones de llamada apilados cuando falta ancho o el texto supera 1,5×, separados
+  12 dp y con altura mínima de 56 dp. Se mantiene desplazamiento vertical.
+- Seis pruebas instrumentadas pasaron: acciones de llamada fuera de la app,
+  pantalla de 320×480 dp con texto 2×, recuperación por correo con pasos separados,
+  errores/reintento/cierre en salas y colaboración LIVE, y rondas con títulos largos,
+  texto 1,6× y ambos temas. Se inspeccionaron las capturas de llamada y ronda.
+- El recorte superior de la captura estrecha corresponde al desplazamiento hacia
+  los botones; el contenido anterior sigue accesible desplazándose hacia arriba.
+- La revisión de estas pantallas relaciona las diez heurísticas con lo observable:
+
+| Heurística | Comprobación en los flujos revisados |
+|---|---|
+| Visibilidad del estado | Llamada entrante, estado de ronda y paso actual de recuperación. |
+| Lenguaje familiar | Contestar, rechazar, código y nueva contraseña separados. |
+| Control y salida | Cerrar enlaces, rechazar llamadas y reintentar sin reiniciar todo. |
+| Consistencia | Acciones Android de llamada y botones reconocibles. |
+| Prevención de errores | Código incompleto y contraseña sin confirmar no permiten avanzar. |
+| Reconocer antes que recordar | Acciones y campos visibles; no hay comandos que memorizar. |
+| Flexibilidad | Pantalla estrecha, texto ampliado y reintentos explícitos. |
+| Información necesaria | Pasos de recuperación separados y títulos de ronda legibles. |
+| Recuperación de errores | Error visible con reintento en enlaces/sesiones fallidas. |
+| Ayuda contextual | Etiquetas y explicación del paso de recuperación. |
+
+Esta matriz no certifica todas las pantallas de la APK ni sustituye pruebas
+completas con TalkBack y usuarios. La parte del sistema Android aparece en inglés
+porque el emulador usa ese idioma; los botones propios revisados están en español.
 
 ## 6. Sesiones largas y entrega
 

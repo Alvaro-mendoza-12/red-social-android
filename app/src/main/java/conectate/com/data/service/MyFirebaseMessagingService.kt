@@ -73,7 +73,10 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     lateinit var communityRepository: conectate.com.data.repository.CommunityRepository
 
     @Inject
-    lateinit var callRepository: CallRepository
+    lateinit var callRepositoryProvider: dagger.Lazy<CallRepository>
+
+    private val callRepository: CallRepository
+        get() = callRepositoryProvider.get()
 
     @Inject
     lateinit var authService: AuthService
