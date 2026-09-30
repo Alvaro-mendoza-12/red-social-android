@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
@@ -22,9 +23,13 @@ fun IncomingCallPermissionCard(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val manager = context.getSystemService(NotificationManager::class.java)
+    val callChannelId = stringResource(R.string.call_notification_channel_id)
     fun status(): Pair<Boolean, Boolean> {
-        val channel = if (Build.VERSION.SDK_INT >= 26) manager.getNotificationChannel(context.getString(R.string.call_notification_channel_id)) else null
-        val notifications = NotificationManagerCompat.from(context).areNotificationsEnabled() && (channel == null || channel.importance >= NotificationManager.IMPORTANCE_HIGH)
+        val channelEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = manager.getNotificationChannel(callChannelId)
+            channel == null || channel.importance >= NotificationManager.IMPORTANCE_HIGH
+        } else true
+        val notifications = NotificationManagerCompat.from(context).areNotificationsEnabled() && channelEnabled
         val fullscreen = Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent()
         return notifications to fullscreen
     }
@@ -42,7 +47,10 @@ fun IncomingCallPermissionCard(modifier: Modifier = Modifier) {
             Text("Activa los avisos de llamadas para ver Contestar y Rechazar. La pantalla completa permite mostrarlos también con el teléfono bloqueado.",
                 style = MaterialTheme.typography.bodyMedium)
             if (!state.first) OutlinedButton(onClick = {
-                runCatching { context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)) }
+                val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                } else Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                runCatching { context.startActivity(intent) }
                     .onFailure { error = "Abre Ajustes de Android → Novvin → Notificaciones → Llamadas." }
             }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Activar avisos de llamadas") }
             if (!state.second && Build.VERSION.SDK_INT >= 34) OutlinedButton(onClick = {

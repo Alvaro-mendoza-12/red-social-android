@@ -21,7 +21,7 @@
     <string name="live_overlay_title">Chat ao vivo</string>
     <string name="live_overlay_title_default">Transmissão ativa</string>
     <string name="live_overlay_subtitle">Chat flutuante ao vivo</string>
-    <plurals name="live_overlay_status"><item quantity="one">LIVE • %1$d espectador</item><item quantity="other">LIVE • %1$d espectadores</item></plurals>
+    <plurals name="live_overlay_status"><item quantity="one">LIVE • %1$d espectador</item><item quantity="other">LIVE • %1$d espectadores</item><item quantity="many">LIVE • %1$d espectadores</item></plurals>
     <string name="live_overlay_bubble_description">Abrir chat flutuante da transmissão</string>
     <string name="live_overlay_minimize">Minimizar chat flutuante</string>
     <string name="live_overlay_close">Fechar chat flutuante</string>
@@ -99,4 +99,5 @@
     <string name="room_link_close">Fechar link</string>
     <string name="room_link_error">Não foi possível abrir o link</string>
     <string name="room_link_error_hint">Verifique sua conexão ou tente novamente. Você pode fechar esta janela e continuar na sala.</string>
+    <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
 </resources>

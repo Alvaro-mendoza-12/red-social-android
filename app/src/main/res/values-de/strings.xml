@@ -91,4 +91,13 @@
     <string name="auth_email_password_hint">Mindestens 8 Zeichen verwenden.</string>
     <string name="auth_email_password_mismatch">Die Passwörter stimmen nicht überein.</string>
     <string name="auth_email_change_email">Andere E-Mail verwenden</string>
+    <string name="notification_friend_accepted">Hat deine Freundschaftsanfrage angenommen</string>
+    <string name="notification_friend_requested">Hat dir eine Freundschaftsanfrage gesendet</string>
+    <string name="notification_followed">Folgt dir jetzt</string>
+    <string name="room_link_back">Vorherige Seite</string>
+    <string name="room_link_retry">Erneut versuchen</string>
+    <string name="room_link_close">Link schließen</string>
+    <string name="room_link_error">Der Link konnte nicht geöffnet werden</string>
+    <string name="room_link_error_hint">Prüfe deine Verbindung oder versuche es erneut. Du kannst dieses Fenster schließen und im Raum bleiben.</string>
+    <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
 </resources>

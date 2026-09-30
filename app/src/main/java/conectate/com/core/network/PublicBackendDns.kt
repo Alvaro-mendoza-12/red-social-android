@@ -11,6 +11,7 @@ import java.net.InetAddress
 import java.net.URI
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executors
 
 /**
  * Android can inherit a Tailscale split-DNS answer from a shared Wi-Fi network
@@ -21,6 +22,10 @@ import java.util.concurrent.TimeUnit
 object PublicBackendDns : Dns {
     private const val TAG = "PublicBackendDns"
     private const val CACHE_MS = 5 * 60 * 1000L
+    private const val MAX_STALE_MS = 15 * 60 * 1000L
+    private val resolverExecutor = Executors.newFixedThreadPool(4) { task ->
+        Thread(task, "NovvinPublicDns").apply { isDaemon = true }
+    }
     private val backendHost = runCatching {
         URI(BuildConfig.FALLBACK_API_URL.trim()).host.orEmpty().lowercase()
     }.getOrDefault("").takeIf { it.endsWith(".ts.net") }.orEmpty()
@@ -41,10 +46,6 @@ object PublicBackendDns : Dns {
             return Dns.SYSTEM.lookup(hostname)
         }
 
-        val systemAddresses = runCatching { Dns.SYSTEM.lookup(hostname) }.getOrDefault(emptyList())
-        val publicSystemAddresses = systemAddresses.filter(::isPublicAddress)
-        if (publicSystemAddresses.isNotEmpty()) return publicSystemAddresses
-
         val now = SystemClock.elapsedRealtime()
         if (now < cacheExpiresAtMs && cachedAddresses.isNotEmpty()) return cachedAddresses
 
@@ -53,20 +54,19 @@ object PublicBackendDns : Dns {
             if (refreshedNow < cacheExpiresAtMs && cachedAddresses.isNotEmpty()) {
                 return cachedAddresses
             }
-            for (resolver in resolvers) {
-                val addresses = runCatching { resolveOverHttps(resolver, hostname) }
-                    .onFailure { Log.w(TAG, "Public DNS resolver unavailable: ${resolver.host}", it) }
-                    .getOrDefault(emptyList())
-                    .filter(::isPublicAddress)
-                if (addresses.isNotEmpty()) {
-                    cachedAddresses = addresses
-                    cacheExpiresAtMs = SystemClock.elapsedRealtime() + CACHE_MS
-                    Log.i(TAG, "Public backend address resolved over HTTPS")
-                    return addresses
-                }
+            val lookups = listOf<() -> List<InetAddress>>({ Dns.SYSTEM.lookup(hostname).filter(::isPublicAddress) }) +
+                resolvers.map { resolver -> { resolveOverHttps(resolver, hostname).filter(::isPublicAddress) } }
+            val addresses = firstSuccessfulDnsLookup(resolverExecutor, lookups, 4_000L)
+            if (addresses.isNotEmpty()) {
+                cachedAddresses = addresses
+                cacheExpiresAtMs = SystemClock.elapsedRealtime() + CACHE_MS
+                Log.i(TAG, "Public backend address resolved; parallel resolver race complete")
+                return addresses
             }
         }
-        if (cachedAddresses.isNotEmpty()) return cachedAddresses
+        if (cachedAddresses.isNotEmpty() &&
+            SystemClock.elapsedRealtime() < cacheExpiresAtMs + MAX_STALE_MS
+        ) return cachedAddresses
         throw UnknownHostException("No public address available for $hostname")
     }
 
@@ -84,7 +84,7 @@ object PublicBackendDns : Dns {
             .dns(bootstrapDns)
             .connectTimeout(3, TimeUnit.SECONDS)
             .readTimeout(3, TimeUnit.SECONDS)
-            .callTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(3, TimeUnit.SECONDS)
             .build()
         val request = Request.Builder()
             .url("https://${resolver.host}${resolver.path}?name=$hostname&type=A")

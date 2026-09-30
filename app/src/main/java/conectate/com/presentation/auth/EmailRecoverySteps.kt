@@ -32,6 +32,7 @@ fun EmailRecoverySteps(
     onChangeEmail: () -> Unit,
 ) {
     val context = LocalContext.current
+    val copyCodeHint = stringResource(R.string.auth_email_copy_code_hint)
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(draft.resendAt) {
         do { now = System.currentTimeMillis(); if (now >= draft.resendAt) break; delay(1_000) } while (true)
@@ -57,7 +58,7 @@ fun EmailRecoverySteps(
                 val text = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
                 val codes = Regex("(?<![0-9])[0-9]{6}(?![0-9])").findAll(text).map { it.value }.toList()
                 if (codes.size == 1) onCodeChange(codes.single())
-                else android.widget.Toast.makeText(context, context.getString(R.string.auth_email_copy_code_hint), android.widget.Toast.LENGTH_SHORT).show()
+                else android.widget.Toast.makeText(context, copyCodeHint, android.widget.Toast.LENGTH_SHORT).show()
             }, enabled = !loading) { Text(stringResource(R.string.auth_email_paste_code)) }
             Button(onClick = onVerify, enabled = !loading && draft.code.length == 6,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("email_recovery_verify")) {

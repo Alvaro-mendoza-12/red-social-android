@@ -91,4 +91,13 @@
     <string name="auth_email_password_hint">至少使用8个字符。</string>
     <string name="auth_email_password_mismatch">两次密码不一致。</string>
     <string name="auth_email_change_email">使用其他邮箱</string>
+    <string name="notification_friend_accepted">已接受你的好友请求</string>
+    <string name="notification_friend_requested">向你发送了好友请求</string>
+    <string name="notification_followed">开始关注你</string>
+    <string name="room_link_back">上一页</string>
+    <string name="room_link_retry">重试</string>
+    <string name="room_link_close">关闭链接</string>
+    <string name="room_link_error">无法打开链接</string>
+    <string name="room_link_error_hint">请检查网络连接或重试。你可以关闭此窗口并继续留在房间中。</string>
+    <string name="live_overlay_bubble_idle">LIVE\n聊天</string>
 </resources>

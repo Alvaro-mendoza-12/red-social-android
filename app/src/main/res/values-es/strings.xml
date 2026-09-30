@@ -10,7 +10,6 @@
     <string name="widget_moments_title">Crear momento</string>
     <string name="widget_moments_subtitle">Comparte una foto o un video</string>
     <string name="widget_moments_description">Acceso directo para crear un Momento en Novvin.</string>
-    <string name="app_name">Novvin</string>
     <string name="language_settings_title">Idioma de la aplicación</string>
     <string name="language_settings_description">El cambio se aplica inmediatamente y se sincroniza con los ajustes de idioma de Android compatibles.</string>
     <string name="language_system">Automático</string>
@@ -101,4 +100,12 @@
     <string name="auth_email_password_hint">Usa al menos 8 caracteres.</string>
     <string name="auth_email_password_mismatch">Las contraseñas no coinciden.</string>
     <string name="auth_email_change_email">Usar otro correo</string>
+    <string name="notification_friend_accepted">Aceptó tu solicitud de amistad</string>
+    <string name="notification_friend_requested">Te envió una solicitud de amistad</string>
+    <string name="notification_followed">Empezó a seguirte</string>
+    <string name="room_link_back">Página anterior</string>
+    <string name="room_link_retry">Volver a intentar</string>
+    <string name="room_link_close">Cerrar enlace</string>
+    <string name="room_link_error">No se pudo abrir el enlace</string>
+    <string name="room_link_error_hint">Comprueba tu conexión o vuelve a intentarlo. Puedes cerrar esta ventana y seguir en la sala.</string>
 </resources>

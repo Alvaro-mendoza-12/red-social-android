@@ -91,4 +91,13 @@
     <string name="auth_email_password_hint">8文字以上を使用してください。</string>
     <string name="auth_email_password_mismatch">パスワードが一致しません。</string>
     <string name="auth_email_change_email">別のメールを使用</string>
+    <string name="notification_friend_accepted">友達リクエストが承認されました</string>
+    <string name="notification_friend_requested">友達リクエストが届きました</string>
+    <string name="notification_followed">あなたをフォローしました</string>
+    <string name="room_link_back">前のページ</string>
+    <string name="room_link_retry">再試行</string>
+    <string name="room_link_close">リンクを閉じる</string>
+    <string name="room_link_error">リンクを開けませんでした</string>
+    <string name="room_link_error_hint">接続を確認するか、もう一度お試しください。このウィンドウを閉じてもルームに残れます。</string>
+    <string name="live_overlay_bubble_idle">LIVE\nチャット</string>
 </resources>

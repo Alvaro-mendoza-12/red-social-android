@@ -103,6 +103,8 @@ fun LoginScreen(
     var switchingAccountId by rememberSaveable { mutableStateOf<String?>(null) }
     
     val authState by viewModel.authState.collectAsStateWithLifecycle()
+    val recoveryEmailSentMessage = stringResource(R.string.auth_recovery_email_sent,
+        (authState as? AuthState.MigrationPasswordCodeSent)?.expiresInMinutes ?: 30)
     val emailRecovery by viewModel.emailRecovery.collectAsStateWithLifecycle()
     LaunchedEffect(emailRecovery?.email) {
         emailRecovery?.takeUnless { initialAssistedRecovery }?.let {
@@ -199,7 +201,7 @@ fun LoginScreen(
                 emailCodeCooldown = 60
                 recoveryCodeRequired = state.resetToken.isNullOrBlank()
                 migrationInfo = if (state.resetToken.isNullOrBlank()) {
-                    context.getString(R.string.auth_recovery_email_sent, state.expiresInMinutes ?: 30)
+                    recoveryEmailSentMessage
                 } else {
                     "Solicitud verificada por el servidor. Crea ahora una contraseña nueva; el permiso vence en ${state.expiresInMinutes ?: 30} minutos."
                 }

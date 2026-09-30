@@ -10,7 +10,7 @@
     <string name="widget_moments_title" tools:ignore="Typos">Crear momento</string>
     <string name="widget_moments_subtitle">Comparte una foto o un video</string>
     <string name="widget_moments_description" tools:ignore="Typos">Acceso directo para crear un Momento en Novvin.</string>
-    <string name="app_name">Novvin</string>
+    <string name="app_name" translatable="false">Novvin</string>
     <string name="language_settings_title">Idioma de la aplicación</string>
     <string name="language_settings_description">El cambio se aplica inmediatamente y se sincroniza con los ajustes de idioma de Android compatibles.</string>
     <string name="language_system">Automático</string>
@@ -48,13 +48,13 @@
         <item quantity="other">LIVE • %1$d espectadores</item>
     </plurals>
     <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
-    <string name="live_overlay_bubble_status">LIVE\n%1$d</string>
+    <string name="live_overlay_bubble_status" translatable="false">LIVE\n%1$d</string>
     <string name="live_overlay_bubble_description">Abrir chat flotante del live</string>
     <string name="live_overlay_minimize">Minimizar chat flotante</string>
     <string name="live_overlay_close">Cerrar chat flotante</string>
     <string name="live_overlay_empty">Sin mensajes aún</string>
     <string name="live_overlay_user_fallback">Usuario</string>
-    <string name="live_overlay_comment_format">%1$s: %2$s</string>
+    <string name="live_overlay_comment_format" translatable="false">%1$s: %2$s</string>
     <string name="widget_quick_actions_subtitle">Accesos rápidos</string>
     <string name="widget_action_videos">Videos</string>
     <string name="widget_action_moment" tools:ignore="Typos">Momento</string>

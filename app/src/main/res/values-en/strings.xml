@@ -99,4 +99,5 @@
     <string name="room_link_close">Close link</string>
     <string name="room_link_error">The link could not be opened</string>
     <string name="room_link_error_hint">Check your connection or try again. You can close this window and stay in the room.</string>
+    <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
 </resources>

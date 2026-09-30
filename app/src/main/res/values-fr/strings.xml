@@ -21,7 +21,7 @@
     <string name="live_overlay_title">Chat en direct</string>
     <string name="live_overlay_title_default">Direct en cours</string>
     <string name="live_overlay_subtitle">Chat flottant en direct</string>
-    <plurals name="live_overlay_status"><item quantity="one">LIVE • %1$d spectateur</item><item quantity="other">LIVE • %1$d spectateurs</item></plurals>
+    <plurals name="live_overlay_status"><item quantity="one">LIVE • %1$d spectateur</item><item quantity="other">LIVE • %1$d spectateurs</item><item quantity="many">LIVE • %1$d spectateurs</item></plurals>
     <string name="live_overlay_bubble_description">Ouvrir le chat flottant du direct</string>
     <string name="live_overlay_minimize">Réduire le chat flottant</string>
     <string name="live_overlay_close">Fermer le chat flottant</string>
@@ -91,4 +91,13 @@
     <string name="auth_email_password_hint">Utilisez au moins 8 caractères.</string>
     <string name="auth_email_password_mismatch">Les mots de passe ne correspondent pas.</string>
     <string name="auth_email_change_email">Utiliser une autre adresse</string>
+    <string name="notification_friend_accepted">A accepté votre demande d’amitié</string>
+    <string name="notification_friend_requested">Vous a envoyé une demande d’amitié</string>
+    <string name="notification_followed">A commencé à vous suivre</string>
+    <string name="room_link_back">Page précédente</string>
+    <string name="room_link_retry">Réessayer</string>
+    <string name="room_link_close">Fermer le lien</string>
+    <string name="room_link_error">Impossible d’ouvrir le lien</string>
+    <string name="room_link_error_hint">Vérifiez votre connexion ou réessayez. Vous pouvez fermer cette fenêtre et rester dans le salon.</string>
+    <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
 </resources>
