@@ -631,6 +631,14 @@ assert.strictEqual(normalizeProfileSectionVisibility({ music: 'connections' }).m
 assert.strictEqual(normalizeProfileSectionVisibility({ hobbies: 'invalid' }).hobbies, 'everyone')
 
 const recentPresenceTimestamp = new Date(Date.now() - 5_000).toISOString()
+const chosenPublicIdentity = normalizeProfileForPublic({
+  id: 'chosen-profile', username: 'mirella_vr07', username_origin: 'chosen',
+  display_name: 'Mirella Vásquez', email: 'private@example.local',
+})
+assert.equal(chosenPublicIdentity.username, 'mirella_vr07')
+assert.equal(chosenPublicIdentity.username_origin, 'chosen')
+assert.equal(chosenPublicIdentity.email, undefined)
+
 const publicOnlineOnly = normalizeProfileForPublic({
   id: 'presence-user',
   is_online: true,
