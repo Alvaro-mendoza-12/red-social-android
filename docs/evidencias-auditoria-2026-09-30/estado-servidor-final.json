@@ -1,0 +1,75 @@
+{
+  "ok": true,
+  "services": [
+    {
+      "name": "conectate-local-fallback-api-main",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "conectate-local-fallback-db-main",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "conectate-local-fallback-ai-main",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "conectate-local-fallback-office-preview-1",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "conectate-local-fallback-coturn-main",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "conectate-local-fallback-edge-main",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "conectate-local-fallback-realtime-main",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "conectate-local-fallback-signaling-1",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "conectate-local-fallback-signaling-redis-main",
+      "running": true,
+      "health": "healthy"
+    }
+  ],
+  "cleanup": {
+    "remainingSyntheticAccounts": 0
+  },
+  "publicMonitor": {
+    "status": "ok",
+    "checked_at_utc": "2026-09-30T23:45:45Z",
+    "consecutive_failures": "0"
+  },
+  "readPaths": [
+    {
+      "name": "social",
+      "ok": true,
+      "target": "conectate.tail9b267c.ts.net",
+      "requireContent": true,
+      "checks": 7
+    },
+    {
+      "name": "messaging",
+      "ok": true,
+      "target": "conectate.tail9b267c.ts.net",
+      "requireContent": true,
+      "checks": 10
+    }
+  ],
+  "checkedAtUtc": "2026-09-30T23:47:07.369521+00:00"
+}

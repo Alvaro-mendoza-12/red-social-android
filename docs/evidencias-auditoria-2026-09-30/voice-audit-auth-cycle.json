@@ -1,0 +1,113 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "name": "verify-disposable-identity",
+      "status": 200,
+      "elapsedMs": 64
+    },
+    {
+      "name": "verify-disposable-identity",
+      "status": 200,
+      "elapsedMs": 8
+    },
+    {
+      "name": "incorrect-login-rejected",
+      "status": 401,
+      "elapsedMs": 241
+    },
+    {
+      "name": "correct-login-accepted",
+      "status": 200,
+      "elapsedMs": 306
+    },
+    {
+      "name": "overlong-password-change-rejected",
+      "status": 400,
+      "elapsedMs": 10
+    },
+    {
+      "name": "incorrect-current-password-rejected",
+      "status": 401,
+      "elapsedMs": 238
+    },
+    {
+      "name": "change-password-accepted",
+      "status": 200,
+      "elapsedMs": 458
+    },
+    {
+      "name": "previous-session-revoked",
+      "status": 401,
+      "elapsedMs": 8
+    },
+    {
+      "name": "previous-password-rejected",
+      "status": 401,
+      "elapsedMs": 223
+    },
+    {
+      "name": "changed-password-login-accepted",
+      "status": 200,
+      "elapsedMs": 234
+    },
+    {
+      "name": "incorrect-email-code-rejected",
+      "status": 401,
+      "elapsedMs": 16
+    },
+    {
+      "name": "six-digit-code-accepted",
+      "status": 200,
+      "elapsedMs": 19
+    },
+    {
+      "name": "overlong-recovery-password-rejected-without-consuming-grant",
+      "status": 400,
+      "elapsedMs": 7
+    },
+    {
+      "name": "email-code-replay-rejected",
+      "status": 401,
+      "elapsedMs": 8
+    },
+    {
+      "name": "recovery-password-saved",
+      "status": 200,
+      "elapsedMs": 240
+    },
+    {
+      "name": "reset-grant-replay-rejected",
+      "status": 401,
+      "elapsedMs": 11
+    },
+    {
+      "name": "pre-recovery-session-revoked",
+      "status": 401,
+      "elapsedMs": 7
+    },
+    {
+      "name": "pre-recovery-password-rejected",
+      "status": 401,
+      "elapsedMs": 217
+    },
+    {
+      "name": "recovered-password-login-accepted",
+      "status": 200,
+      "elapsedMs": 296
+    },
+    {
+      "name": "recovered-account-data-accessible",
+      "status": 200,
+      "elapsedMs": 11
+    },
+    {
+      "name": "unknown-account-response-remains-generic",
+      "status": 200,
+      "elapsedMs": 9
+    }
+  ],
+  "smtpConfigured": true,
+  "smtpAuthenticated": true,
+  "scope": "Two verified disposable accounts only. Six-digit code issued by the server store; SMTP TLS/auth checked separately. Inbox receipt is not certified."
+}

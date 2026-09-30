@@ -1,0 +1,8 @@
+{
+  "migration": "passed",
+  "numericCodes": 5,
+  "unique": true,
+  "idempotent": true,
+  "legacyAliasPreserved": true,
+  "scope": "Isolated schema rolled back"
+}

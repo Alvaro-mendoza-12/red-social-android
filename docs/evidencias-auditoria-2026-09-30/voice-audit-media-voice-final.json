@@ -1,0 +1,31 @@
+{
+  "flow": "voice",
+  "relayOnly": false,
+  "firstFrameMs": 2667,
+  "receivedFps": 8.705732438765432,
+  "frames": 73,
+  "captureFps": 8.456969669774736,
+  "candidateTypes": [
+    "host",
+    "host"
+  ],
+  "rttSeconds": 0,
+  "sampleSeconds": 8,
+  "memorySamples": [
+    {
+      "elapsedSeconds": 8,
+      "pssKb": 477384,
+      "frames": 70
+    }
+  ],
+  "pssGrowthKb": 37659,
+  "processCpuMs": 5661,
+  "publisherRtpBytes": 46949,
+  "publisherRtpKbps": 46.949,
+  "physicalBatteryMeasured": false,
+  "cameraDisableEnable": true,
+  "cameraSwitch": true,
+  "audioBothDirections": true,
+  "screenShare": false,
+  "differentScreenLuma": 0
+}

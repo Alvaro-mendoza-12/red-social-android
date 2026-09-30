@@ -1,0 +1,31 @@
+{
+  "flow": "call",
+  "relayOnly": true,
+  "firstFrameMs": 3348,
+  "receivedFps": 8.667060993178826,
+  "frames": 72,
+  "captureFps": 8.41921666890003,
+  "candidateTypes": [
+    "relay",
+    "relay"
+  ],
+  "rttSeconds": 0.268,
+  "sampleSeconds": 8,
+  "memorySamples": [
+    {
+      "elapsedSeconds": 8,
+      "pssKb": 479411,
+      "frames": 70
+    }
+  ],
+  "pssGrowthKb": -6740,
+  "processCpuMs": 9127,
+  "publisherRtpBytes": 47372,
+  "publisherRtpKbps": 47.372,
+  "physicalBatteryMeasured": false,
+  "cameraDisableEnable": true,
+  "cameraSwitch": true,
+  "audioBothDirections": true,
+  "screenShare": false,
+  "differentScreenLuma": 0
+}

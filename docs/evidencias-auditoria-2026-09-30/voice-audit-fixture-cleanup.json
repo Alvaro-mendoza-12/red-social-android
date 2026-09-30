@@ -1,0 +1,9 @@
+{
+  "deleted": 2,
+  "accessRejected": true,
+  "statuses": [
+    401,
+    401
+  ],
+  "scope": "Only two verified synthetic audit accounts"
+}

@@ -1,0 +1,82 @@
+{
+  "passed": true,
+  "ownershipGuard": true,
+  "idempotentCode": true,
+  "shortCodeLookup": true,
+  "privatePasswordEnforced": true,
+  "legacyAliasLookup": true,
+  "importedRoomCount": 2,
+  "shortCodes": 21,
+  "timings": [
+    {
+      "operation": "POST /v1/data/voice/rooms",
+      "elapsedMs": 160,
+      "status": 201
+    },
+    {
+      "operation": "POST /v1/data/voice/rooms",
+      "elapsedMs": 64,
+      "status": 201
+    },
+    {
+      "operation": "POST /v1/data/voice/rooms",
+      "elapsedMs": 14,
+      "status": 403
+    },
+    {
+      "operation": "GET /v1/data/voice/rooms/:room",
+      "elapsedMs": 51,
+      "status": 200
+    },
+    {
+      "operation": "POST /v1/data/voice/rooms/:room/join",
+      "elapsedMs": 56,
+      "status": 200
+    },
+    {
+      "operation": "POST /v1/data/voice/rooms/:room/join",
+      "elapsedMs": 39,
+      "status": 200
+    },
+    {
+      "operation": "POST /v1/data/voice/rooms/:room/leave",
+      "elapsedMs": 15,
+      "status": 200
+    },
+    {
+      "operation": "POST /v1/data/voice/rooms/:room/leave",
+      "elapsedMs": 20,
+      "status": 200
+    },
+    {
+      "operation": "POST /v1/data/voice/rooms",
+      "elapsedMs": 316,
+      "status": 201
+    },
+    {
+      "operation": "GET /v1/data/voice/rooms/:room",
+      "elapsedMs": 59,
+      "status": 200
+    },
+    {
+      "operation": "POST /v1/data/voice/rooms/:room/join",
+      "elapsedMs": 9,
+      "status": 403
+    },
+    {
+      "operation": "POST /v1/data/voice/rooms/:room/join",
+      "elapsedMs": 223,
+      "status": 403
+    },
+    {
+      "operation": "POST /v1/data/voice/rooms/:room/join",
+      "elapsedMs": 275,
+      "status": 200
+    },
+    {
+      "operation": "GET /v1/data/voice/rooms/qa-legacy:roome",
+      "elapsedMs": 37,
+      "status": 200
+    }
+  ]
+}

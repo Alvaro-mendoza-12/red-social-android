@@ -1,0 +1,78 @@
+{
+  "ok": true,
+  "target": "conectate.tail9b267c.ts.net",
+  "scope": "HTTP reads and access controls; not two-device media or delivery certification",
+  "giftHistory": "active-live-read",
+  "checks": [
+    {
+      "name": "moments-feed",
+      "status": 200,
+      "elapsedMs": 334,
+      "items": 0,
+      "ok": true
+    },
+    {
+      "name": "voice-rooms-list",
+      "status": 200,
+      "elapsedMs": 308,
+      "items": 3,
+      "ok": true
+    },
+    {
+      "name": "challenge-owned-catalog",
+      "status": 200,
+      "elapsedMs": 196,
+      "items": 0,
+      "ok": true
+    },
+    {
+      "name": "games-catalog",
+      "status": 200,
+      "elapsedMs": 268,
+      "items": 30,
+      "ok": true
+    },
+    {
+      "name": "live-capabilities",
+      "status": 200,
+      "elapsedMs": 195,
+      "items": 0,
+      "ok": true
+    },
+    {
+      "name": "live-directory",
+      "status": 200,
+      "elapsedMs": 203,
+      "items": 1,
+      "ok": true
+    },
+    {
+      "name": "gift-catalog",
+      "status": 200,
+      "elapsedMs": 212,
+      "items": 24,
+      "ok": true
+    },
+    {
+      "name": "live-gifts-require-auth",
+      "status": 401,
+      "elapsedMs": 186,
+      "items": 0,
+      "ok": true
+    },
+    {
+      "name": "live-gifts-invalid-id",
+      "status": 400,
+      "elapsedMs": 198,
+      "items": 0,
+      "ok": true
+    },
+    {
+      "name": "active-live-gift-history",
+      "status": 200,
+      "elapsedMs": 209,
+      "items": 0,
+      "ok": true
+    }
+  ]
+}

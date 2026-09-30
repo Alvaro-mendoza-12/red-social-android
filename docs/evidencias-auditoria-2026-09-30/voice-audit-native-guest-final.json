@@ -1,0 +1,14 @@
+{
+  "joinMs": 942,
+  "requestAndApprovalMs": 1445,
+  "firstFrameMs": 1734,
+  "receivedFps": 11.123951567564758,
+  "captureFps": 11.248939787425035,
+  "capturedWidth": 640,
+  "capturedHeight": 360,
+  "passed": true,
+  "cameraDisableEnable": true,
+  "seatStayedClosed": true,
+  "promotionPreservedMedia": true,
+  "ownerSessionPreserved": true
+}

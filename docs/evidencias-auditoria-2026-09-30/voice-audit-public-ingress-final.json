@@ -1,0 +1,67 @@
+{
+  "ok": true,
+  "publicReachable": true,
+  "target": "conectate.tail9b267c.ts.net",
+  "scope": "Forced public IPv4, verified hostname TLS, HTTP health/readiness and signaling handshake; not authenticated flows or media",
+  "observations": [
+    {
+      "resolver": "cloudflare-dns.com",
+      "addresses": [
+        "199.38.181.54",
+        "209.177.145.137"
+      ]
+    },
+    {
+      "resolver": "dns.google",
+      "addresses": [
+        "209.177.145.137",
+        "199.38.181.54"
+      ]
+    }
+  ],
+  "uncheckedAddresses": 0,
+  "checks": [
+    {
+      "address": "199.38.181.54",
+      "pathname": "/health",
+      "elapsedMs": 1245,
+      "status": 200,
+      "ok": true
+    },
+    {
+      "address": "199.38.181.54",
+      "pathname": "/ready",
+      "elapsedMs": 1120,
+      "status": 200,
+      "ok": true
+    },
+    {
+      "address": "199.38.181.54",
+      "pathname": "/socket.io/?EIO=4&transport=polling",
+      "elapsedMs": 1122,
+      "status": 200,
+      "ok": true
+    },
+    {
+      "address": "209.177.145.137",
+      "pathname": "/health",
+      "elapsedMs": 1238,
+      "status": 200,
+      "ok": true
+    },
+    {
+      "address": "209.177.145.137",
+      "pathname": "/ready",
+      "elapsedMs": 1250,
+      "status": 200,
+      "ok": true
+    },
+    {
+      "address": "209.177.145.137",
+      "pathname": "/socket.io/?EIO=4&transport=polling",
+      "elapsedMs": 1130,
+      "status": 200,
+      "ok": true
+    }
+  ]
+}

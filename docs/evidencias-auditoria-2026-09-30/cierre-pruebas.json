@@ -1,0 +1,56 @@
+{
+  "checkedAtUtc": "2026-09-30T23:46:19.553789+00:00",
+  "sourceCommit": "1e050217b5d61c4ae0536de2cfbc18a3e16290c9",
+  "build": {
+    "successful": true,
+    "variant": "debug",
+    "versionName": "9.0.20-debug",
+    "versionCode": 117,
+    "apkBytes": 278041602,
+    "apkMiB": 265.16,
+    "apkSha256": "db18ee2858823ce0a00567dedac0719a6d59c94a6db3c720c699c10b4f10391c",
+    "signature": "APK Signature Scheme v2 verified with apksigner; debug signer, not production release"
+  },
+  "androidUnit": {
+    "tests": 981,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "classes": 217
+  },
+  "androidLint": {
+    "errors": 0,
+    "warnings": 272,
+    "warningsById": {
+      "ConfigurationScreenWidthHeight": 3,
+      "ModifierParameter": 1,
+      "Untranslatable": 2,
+      "PluralsCandidate": 2,
+      "SetJavaScriptEnabled": 1,
+      "UnusedResources": 16,
+      "IconXmlAndPng": 2,
+      "UseKtx": 245
+    }
+  },
+  "androidInstrumentation": {
+    "tests": 17,
+    "passed": 17,
+    "failed": 0,
+    "skipped": 0,
+    "device": "emulator-5554",
+    "physicalDevice": false
+  },
+  "backendNode": {
+    "tests": 312,
+    "passed": 310,
+    "failed": 0,
+    "skipped": 2,
+    "skipReason": "Bash/Linux fixtures unavailable in the Windows Node run"
+  },
+  "limitations": [
+    "No physical 60 FPS certification",
+    "No independent mobile-operator pair",
+    "No human listening or inbox receipt certification",
+    "No claim of every-function runtime coverage"
+  ]
+}
