@@ -933,8 +933,11 @@ class CallRepository @Inject constructor(
         }
     }
 
+    @Synchronized
     fun refreshAudioSession() {
+        val callId = _activeCall.value?.takeIf { canRefreshCallMedia(it) }?.callId ?: return
         ensureWebRtcInitializedAfterPermission()
+        if (!canRefreshCallMedia(_activeCall.value, callId)) return
         prepareCallAudioSession()
         webRTCManager?.ensureLocalTracks()
         webRTCManager?.setRemoteAudioPlaybackEnabled(true)
@@ -945,8 +948,10 @@ class CallRepository @Inject constructor(
     }
 
     fun refreshAudioSessionRepeatedly(attempts: Int = 3, delayMs: Long = 450L) {
+        val callId = _activeCall.value?.takeIf { canRefreshCallMedia(it) }?.callId ?: return
         scope.launch {
             repeat(attempts.coerceAtLeast(1)) { index ->
+                if (!canRefreshCallMedia(_activeCall.value, callId)) return@launch
                 refreshAudioSession()
                 if (index < attempts - 1) {
                     delay(delayMs)
@@ -1128,9 +1133,11 @@ class CallRepository @Inject constructor(
             val signalingEndpoint = signalingUrl
             val createdSocket = IO.socket(signalingEndpoint, options)
             socket = createdSocket
+            fun isCurrentCallSocket() = socket === createdSocket &&
+                canRefreshCallMedia(_activeCall.value, callId)
 
             createdSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
-                if (socket !== createdSocket) return@on
+                if (!isCurrentCallSocket()) return@on
                 val detail = args.firstOrNull()?.toString().orEmpty().ifBlank { "socket_connect_error" }
                 recoverSocketAfterEndpointFailure(
                     failedSocket = createdSocket,
@@ -1157,7 +1164,7 @@ class CallRepository @Inject constructor(
             }
 
             createdSocket.on(Socket.EVENT_CONNECT) {
-                if (socket !== createdSocket) return@on
+                if (!isCurrentCallSocket()) return@on
                 var sid = createdSocket.id() ?: ""
 
                 // IDENTITY DIAGNOSTIC: Log what userId is being sent vs what authService reports
@@ -1204,6 +1211,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("user-joined") { args ->
+                if (!isCurrentCallSocket()) return@on
                 val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 var sid = data.getString("socketId")
                 var uid = data.getString("userId")
@@ -1231,6 +1239,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("user-left") { args ->
+                if (!isCurrentCallSocket()) return@on
                 val sid = args.getOrNull(0) as? String ?: return@on
                 _participants.update { list -> list.filterNot { it.socketId == sid } }
                 webRTCManager?.onUserLeft(sid)
@@ -1238,6 +1247,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("current-participants") { args ->
+                if (!isCurrentCallSocket()) return@on
                 val participantsJson = args.getOrNull(0) as? org.json.JSONArray ?: return@on
                 val mySocketId = socket?.id() ?: ""
                 val previousRemoteSockets = _participants.value
@@ -1299,6 +1309,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("mute-state") { args ->
+                if (!isCurrentCallSocket()) return@on
                 val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 var uid = data.getString("userId")
                 var muted = data.getBoolean("isMuted")
@@ -1308,6 +1319,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("video-state") { args ->
+                if (!isCurrentCallSocket()) return@on
                 val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 val uid = data.optString("userId", "").trim()
                 val sid = data.optString("socketId", "").trim()
@@ -1327,6 +1339,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("reaction") { args ->
+                if (!isCurrentCallSocket()) return@on
                 val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 val reaction = CallReactionEvent(
                     id = data.optString("reactionId", data.optString("id", "")),
@@ -1338,6 +1351,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("offer") { args ->
+                if (!isCurrentCallSocket()) return@on
                 val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 val senderSocketId = data.getString("sender")
                 var senderUserId = if (data.has("userId")) data.getString("userId") else {
@@ -1348,6 +1362,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("answer") { args ->
+                if (!isCurrentCallSocket()) return@on
                 val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 var sender = data.getString("sender")
                 var senderUserId = if (data.has("userId")) data.getString("userId") else {
@@ -1358,6 +1373,7 @@ class CallRepository @Inject constructor(
             }
 
             socket?.on("ice-candidate") { args ->
+                if (!isCurrentCallSocket()) return@on
                 val data = args.getOrNull(0) as? org.json.JSONObject ?: return@on
                 var sender = data.getString("sender")
                 var senderUserId = if (data.has("userId")) data.getString("userId") else {
@@ -1368,6 +1384,7 @@ class CallRepository @Inject constructor(
             }
 
             createdSocket.on(Socket.EVENT_DISCONNECT) {
+                if (!isCurrentCallSocket()) return@on
                 android.util.Log.w(
                     "CallRepository",
                     "Call signaling socket disconnected; preserving any active WebRTC media path while Socket.IO reconnects."
@@ -1384,7 +1401,7 @@ class CallRepository @Inject constructor(
     private fun ensureWebRtcInitializedAfterPermission() {
         if (!hasMicrophonePermission()) return
         val userId = authService.getCurrentUserId()?.trim().orEmpty()
-        if (userId.isBlank() || _activeCall.value == null) return
+        if (userId.isBlank() || !canRefreshCallMedia(_activeCall.value)) return
 
         if (webRTCManager == null) {
             initializeWebRTC(userId)
@@ -1493,6 +1510,7 @@ class CallRepository @Inject constructor(
         webRtcStateObservationJob?.cancel()
         webRtcStateObservationJob = scope.launch {
             manager.peerConnectionStates.collectLatest { states ->
+                if (webRTCManager !== manager || !canRefreshCallMedia(_activeCall.value)) return@collectLatest
                 val hasConnectedPeer = states.values.any {
                     it == PeerConnection.IceConnectionState.CONNECTED ||
                         it == PeerConnection.IceConnectionState.COMPLETED
@@ -1523,7 +1541,7 @@ class CallRepository @Inject constructor(
 
     private fun promoteConnectedIfReady() {
         var call = _activeCall.value ?: return
-        if (call.connectionState == CallConnectionState.CONNECTED) return
+        if (!canRefreshCallMedia(call) || call.connectionState == CallConnectionState.CONNECTED) return
         if (_participants.value.size < 2) return
         if (!hasConnectedWebRtcMedia()) {
             if (call.connectionState == CallConnectionState.RINGING_OUTGOING) {
@@ -1584,6 +1602,7 @@ class CallRepository @Inject constructor(
 
         scope.launch {
             delay(graceMs)
+            if (!canRefreshCallMedia(_activeCall.value, call.callId)) return@launch
             val stillAlone = _participants.value.size <= 1
             if (stillAlone) {
                 endCallInternal(reason = "Llamada finalizada")
@@ -1591,8 +1610,12 @@ class CallRepository @Inject constructor(
         }
     }
 
+    @Synchronized
     private fun endCallInternal(reason: String) {
         var callSnapshot = _activeCall.value
+        if (callSnapshot?.connectionState == CallConnectionState.ENDED) return
+        // Invalidate delayed audio work before disconnecting/resetting native media.
+        _activeCall.value = callSnapshot?.copy(connectionState = CallConnectionState.ENDED)
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         callTonePlayer.stopRingback()
         clearOutgoingRingTimeout()

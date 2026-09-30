@@ -41,7 +41,8 @@ class LiveKitRoomBridge @Inject constructor(
     data class RemoteVideo(
         val trackId: String,
         val participantName: String,
-        val track: VideoTrack
+        val track: VideoTrack,
+        val participantId: String = ""
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -53,6 +54,7 @@ class LiveKitRoomBridge @Inject constructor(
 
     private var room: Room? = null
     private var eventsJob: Job? = null
+    private val rendererBindings = java.util.concurrent.ConcurrentHashMap<TextureViewRenderer, VideoTrack>()
 
     suspend fun connect(
         session: LiveSfuSession,
@@ -84,6 +86,7 @@ class LiveKitRoomBridge @Inject constructor(
         room = candidate
         eventsJob = scope.launch {
             candidate.events.collect { event ->
+                if (room !== candidate) return@collect
                 _state.value = when (candidate.state) {
                     Room.State.CONNECTED -> State.CONNECTED
                     Room.State.RECONNECTING -> State.RECONNECTING
@@ -97,7 +100,8 @@ class LiveKitRoomBridge @Inject constructor(
                             trackId = videoTrack.sid?.takeIf { it.isNotBlank() }
                                 ?: videoTrack.name.orEmpty().ifBlank { "video-${videoTrack.hashCode()}" },
                             participantName = event.participant.name.orEmpty().ifBlank { "Invitado" },
-                            track = videoTrack
+                            track = videoTrack,
+                            participantId = event.participant.sid.value
                         )
                         _remoteVideos.value = (_remoteVideos.value.filterNot {
                             it.trackId == item.trackId
@@ -109,9 +113,9 @@ class LiveKitRoomBridge @Inject constructor(
                         _remoteVideos.value = _remoteVideos.value.filterNot { it.trackId == trackId }
                     }
                     is RoomEvent.ParticipantDisconnected -> {
-                        val participantName = event.participant.name
+                        val participantId = event.participant.sid.value
                         _remoteVideos.value = _remoteVideos.value.filterNot {
-                            it.participantName == participantName
+                            it.participantId == participantId
                         }
                     }
                     else -> Unit
@@ -145,19 +149,31 @@ class LiveKitRoomBridge @Inject constructor(
         renderer.setMirror(false)
         renderer.setScalingType(livekit.org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL)
         video.track.addRenderer(renderer)
+        rendererBindings.put(renderer, video.track)?.takeIf { it !== video.track }?.let { previous ->
+            runCatching { previous.removeRenderer(renderer) }
+        }
         return true
     }
 
     fun detachRenderer(video: RemoteVideo, renderer: TextureViewRenderer) {
-        runCatching { video.track.removeRenderer(renderer) }
+        val boundTrack = rendererBindings.remove(renderer) ?: return
+        runCatching { boundTrack.removeRenderer(renderer) }
         runCatching { renderer.release() }
     }
 
     private fun disconnectLocked() {
         eventsJob?.cancel()
         eventsJob = null
-        room?.disconnect()
+        val departedRoom = room
         room = null
+        // Renderers must relinquish the old room's EGL context before it is released.
+        rendererBindings.keys.toList().forEach { renderer ->
+            rendererBindings.remove(renderer)?.let { track -> runCatching { track.removeRenderer(renderer) } }
+            runCatching { renderer.release() }
+        }
+        runCatching { departedRoom?.release() }.onFailure { error ->
+            android.util.Log.e("LiveKitRoomBridge", "Could not release the ended room", error)
+        }
         _remoteVideos.value = emptyList()
         _state.value = State.DISCONNECTED
     }

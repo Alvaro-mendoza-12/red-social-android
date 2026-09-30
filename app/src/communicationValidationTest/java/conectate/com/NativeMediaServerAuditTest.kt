@@ -351,7 +351,7 @@ class NativeMediaServerAuditTest {
             val answer=notification.actions.first { action -> listOf("Responder","Contestar","Answer").any {
                 action.title.toString().contains(it,ignoreCase=true)
             } }
-            val answered=System.nanoTime()
+            var answered=0L
             assertNotNull(answer.actionIntent)
             // Android 14 can block an app sending its own activity PendingIntent
             // while in the background. Click the actual SystemUI notification,
@@ -379,6 +379,7 @@ class NativeMediaServerAuditTest {
                 assertNotNull("No visible answer action in SystemUI",button)
                 var clickable=button
                 while(clickable!=null && !clickable.isClickable) clickable=clickable.parent
+                answered=System.nanoTime()
                 assertTrue("SystemUI could not activate the answer button",clickable?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)==true)
             } finally {
                 info.flags=previousFlags;automation.serviceInfo=info
@@ -399,14 +400,61 @@ class NativeMediaServerAuditTest {
                 runCatching { request("/v1/data/notifications/$id",Account(owner,token),"DELETE") }
             } }
             caller.close()
+            Thread.sleep(2_000)
+            assertNull("Delayed audio work reopened a hung-up call",repo.activeCall.value)
+            val managerField=repo.javaClass.getDeclaredField("_webRTCManager").apply { isAccessible=true }
+            val manager=(managerField.get(repo) as kotlinx.coroutines.flow.StateFlow<*>).value as? WebRTCManager
+            assertTrue("Delayed work recreated peers after hangup",manager?.peerConnectionStates?.value.isNullOrEmpty())
         }
     }
 
-    private fun audit(flow: String, relayOnly: Boolean) {
+    @Test(timeout=180_000) fun screenShareDeliversChangingFramesThroughTheVoiceServer() {
+        Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("auditScreenShare")=="true")
+        audit("voice",false,isScreen=true)
+    }
+
+    private fun confirmProjectionConsent() {
+        val automation=InstrumentationRegistry.getInstrumentation().uiAutomation
+        val info=automation.serviceInfo;val oldFlags=info.flags
+        info.flags=oldFlags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or android.accessibilityservice.AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+        automation.serviceInfo=info
+        try {
+            fun find(node: android.view.accessibility.AccessibilityNodeInfo?): android.view.accessibility.AccessibilityNodeInfo? {
+                if(node==null) return null
+                val labels=listOfNotNull(node.text?.toString(),node.contentDescription?.toString())
+                if(node.packageName?.toString()=="com.android.systemui" && (node.viewIdResourceName=="android:id/button1" || labels.any { it.lowercase() in listOf("iniciar ahora","empezar ahora","comenzar ahora","start now","start recording","comenzar","iniciar","start") })) return node
+                for(i in 0 until node.childCount) find(node.getChild(i))?.let { return it }
+                return null
+            }
+            var button: android.view.accessibility.AccessibilityNodeInfo?=null
+            waitUntil("No system consent action for the authorized screen audit",15) {
+                button=automation.windows.firstNotNullOfOrNull { find(it.root) };button!=null
+            }
+            var clickable=button
+            while(clickable!=null && !clickable.isClickable) clickable=clickable.parent
+            assertTrue("Could not confirm screen capture",clickable?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)==true)
+        } finally { info.flags=oldFlags;automation.serviceInfo=info }
+    }
+
+    private fun audit(flow: String, relayOnly: Boolean, isScreen: Boolean=false) {
         for (permission in listOf(Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO)) {
             assertEquals("Grant $permission before this audit", PackageManager.PERMISSION_GRANTED, ContextCompat.checkSelfPermission(context,permission))
         }
-        compose.setContent { MaterialTheme { Text("Prueba aislada de $flow. No modifica tus cuentas.") } }
+        val projection=java.util.concurrent.atomic.AtomicReference<android.content.Intent?>(null)
+        if(isScreen) compose.mainClock.autoAdvance=false
+        compose.setContent { MaterialTheme {
+            if(isScreen) MediaProjectionAuditPreview { projection.set(it) }
+            else Text("Prueba aislada de $flow. No modifica tus cuentas.")
+        } }
+        if(isScreen) {
+            confirmProjectionConsent()
+            waitUntil("Screen consent returned no capture permission",15) { projection.get()!=null }
+            ContextCompat.startForegroundService(context,android.content.Intent(context,conectate.com.services.VoiceForegroundService::class.java)
+                .setAction(conectate.com.services.VoiceForegroundService.ACTION_START)
+                .putExtra(conectate.com.services.VoiceForegroundService.EXTRA_ROOM_NAME,"Prueba aislada de pantalla")
+                .putExtra(conectate.com.services.VoiceForegroundService.EXTRA_VIDEO_MODE,"screen"))
+            Thread.sleep(500)
+        }
         val accounts= mutableListOf<Account>()
         val fixtures=suppliedAccounts()
         var first: Endpoint? = null; var second: Endpoint? = null
@@ -415,7 +463,14 @@ class NativeMediaServerAuditTest {
         var localTrack: VideoTrack? = null
         val frames=AtomicInteger()
         val capturedFrames=AtomicInteger()
-        val sink=VideoSink { frames.incrementAndGet() }
+        val lumaValues=java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+        val sink=VideoSink { frame ->
+            frames.incrementAndGet()
+            if(isScreen && frames.get()%5==0) frame.buffer.toI420()?.let { buffer ->
+                try { lumaValues.add(buffer.dataY.get((buffer.height/2)*buffer.strideY+buffer.width/2).toInt() and 255) }
+                finally { buffer.release() }
+            }
+        }
         val localSink=VideoSink { capturedFrames.incrementAndGet() }
         try {
             if (fixtures != null) accounts.addAll(fixtures)
@@ -424,7 +479,7 @@ class NativeMediaServerAuditTest {
             first=Endpoint(accounts[0],namespace,relayOnly); second=Endpoint(accounts[1],namespace,relayOnly)
             first.connect(); second.connect()
             val captureStarted=CountDownLatch(1); var captureOk=false
-            first.manager.startVideo(false,isFront=false,targetWidth=640,targetHeight=480,targetFps=24,
+            first.manager.startVideo(isScreen,intent=projection.get(),isFront=false,targetWidth=640,targetHeight=480,targetFps=if(isScreen) 15 else 24,
                 onComplete={ captureOk=it; captureStarted.countDown() })
             assertTrue("Camera start timed out",captureStarted.await(15,TimeUnit.SECONDS)); assertTrue("Camera did not start",captureOk)
             localTrack=first.manager.localVideoTrack.value
@@ -452,7 +507,9 @@ class NativeMediaServerAuditTest {
             track=second.manager.remoteVideoTracks.value.values.first(); track.addSink(sink)
             waitUntil("Remote video stayed black") { frames.get()>0 }
             val firstFrameMs=(System.nanoTime()-mediaStarted)/1_000_000
-            val before=frames.get(); val beforeCaptured=capturedFrames.get(); val started=System.nanoTime(); Thread.sleep(8_000)
+            val before=frames.get(); val beforeCaptured=capturedFrames.get(); val started=System.nanoTime()
+            if(isScreen) repeat(80) { compose.mainClock.advanceTimeBy(100);Thread.sleep(100) }
+            else Thread.sleep(8_000)
             val fps=(frames.get()-before)*1_000_000_000.0/(System.nanoTime()-started)
             val capturedFps=(capturedFrames.get()-beforeCaptured)*1_000_000_000.0/(System.nanoTime()-started)
             val stats=second.stats()
@@ -474,16 +531,27 @@ class NativeMediaServerAuditTest {
             Thread.sleep(500)
             first.manager.setVideoEnabled(true)
             val resumedFrom=frames.get()
-            waitUntil("Video did not resume after enabling the camera",10) { frames.get()>resumedFrom+3 }
+            if(isScreen) {
+                // The test owns Compose's animation clock. Keep changing pixels
+                // after resume; a static screen is not guaranteed a new frame.
+                val resumeDeadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10)
+                while(frames.get()<=resumedFrom+3 && System.nanoTime()<resumeDeadline) {
+                    compose.mainClock.advanceTimeBy(100);Thread.sleep(100)
+                }
+                assertTrue("Screen did not resume with changing pixels",frames.get()>resumedFrom+3)
+            } else waitUntil("Video did not resume after enabling the camera",10) { frames.get()>resumedFrom+3 }
+            if (!isScreen) {
             val switched=CountDownLatch(1); var switchOk=false
             assertTrue("Camera cannot switch",first.manager.switchCamera { switchOk=it; switched.countDown() })
             assertTrue("Camera switch timed out",switched.await(10,TimeUnit.SECONDS))
             assertTrue("Camera switch failed",switchOk)
             val switchedFrom=frames.get()
             waitUntil("Remote camera stayed black after switching",10) { frames.get()>switchedFrom+3 }
-            report.put("cameraDisableEnable",true).put("cameraSwitch",true).put("audioBothDirections",returnAudioRtp)
+            }
+            if(isScreen) assertTrue("Shared screen did not show the changing test image: ${lumaValues.size} distinct values",lumaValues.size>=3)
+            report.put("cameraDisableEnable",true).put("cameraSwitch",!isScreen).put("audioBothDirections",returnAudioRtp).put("screenShare",isScreen).put("differentScreenLuma",lumaValues.size)
             val folder=context.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }
-            File(folder,"media-$flow.json").writeText(report.toString(2))
+            File(folder,if(isScreen) "media-screen-share.json" else "media-$flow.json").writeText(report.toString(2))
             Log.i("NativeMediaAudit",report.toString())
             if(relayOnly) assertTrue("Relay path was not selected",candidates.contains("relay"))
             assertTrue("Video is too slow: $fps FPS",fps>=8.0)
@@ -499,6 +567,7 @@ class NativeMediaServerAuditTest {
                 if(flow=="voice") request("/v1/data/voice/rooms/$scopeId",accounts[0],"DELETE")
             }
             if (fixtures == null) accounts.reversed().forEach { runCatching { request("/rest/v1/rpc/delete_own_account",it,"POST",JSONObject()) } }
+            if(isScreen) context.stopService(android.content.Intent(context,conectate.com.services.VoiceForegroundService::class.java))
             Thread.sleep(1_000)
         }
     }
