@@ -208,7 +208,8 @@ async function issueDiagnosticToken() {
       : await client.query(
         `SELECT id, email
          FROM fallback_users
-         ORDER BY last_login_at DESC NULLS LAST, created_at ASC
+         ORDER BY CASE WHEN email LIKE '%@example.invalid' THEN 1 ELSE 0 END,
+                  last_login_at DESC NULLS LAST, created_at ASC
          LIMIT 1`,
       )
     const user = result.rows[0]

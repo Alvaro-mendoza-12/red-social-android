@@ -17,7 +17,18 @@ if ! flock --nonblock 9; then
   exit 0
 fi
 
-public_url="$(tr -d '\r\n' < "$PUBLIC_URL_FILE" 2>/dev/null || true)"
+cd "$ROOT_DIR"
+# Monitor the same canonical origin the deployed API advertises to the app.
+# A legacy quick-tunnel file can rotate independently of the mobile endpoint.
+public_url="${PUBLIC_MONITOR_BASE_URL:-}"
+if [ -z "$public_url" ]; then
+  public_url="$(docker compose config --format json 2>/dev/null | python3 -c \
+    'import json,sys; print(json.load(sys.stdin).get("services",{}).get("api",{}).get("environment",{}).get("PUBLIC_BASE_URL", ""), end="")' \
+    2>/dev/null)" || public_url=""
+fi
+if [ -z "$public_url" ]; then
+  public_url="$(tr -d '\r\n' < "$PUBLIC_URL_FILE" 2>/dev/null || true)"
+fi
 if [[ ! "$public_url" =~ ^https://[a-zA-Z0-9.-]+$ ]]; then
   echo "PUBLIC_READ_PATHS_ERROR=invalid_or_missing_public_url"
   exit 1

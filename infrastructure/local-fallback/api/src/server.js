@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt')
+const { requireBcryptPasswordLength } = require('./new-password-policy')
 const cors = require('cors')
 const crypto = require('crypto')
 const express = require('express')
@@ -1942,7 +1943,7 @@ app.post('/v1/admin/sync/import-supabase-users', adminRequired, async (_req, res
   }
 })
 
-app.post('/v1/admin/users/set-local-password', adminRequired, async (req, res, next) => {
+app.post('/v1/admin/users/set-local-password', adminRequired, requireBcryptPasswordLength('password'), async (req, res, next) => {
   let client
   try {
     const email = normalizeEmail(req.body?.email)
@@ -2303,7 +2304,7 @@ app.get('/v1/auth/username/availability', async (req, res, next) => {
   } catch (error) { return next(error) }
 })
 
-app.post('/v1/auth/register', async (req, res, next) => {
+app.post('/v1/auth/register', requireBcryptPasswordLength('password'), async (req, res, next) => {
   try {
     if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const email = normalizeEmail(req.body?.email)
@@ -2778,7 +2779,7 @@ app.post('/v1/auth/2fa/disable', authRequired, async (req, res, next) => {
   }
 })
 
-app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
+app.post('/v1/auth/change-password', authRequired, requireBcryptPasswordLength('newPassword'), async (req, res, next) => {
   let client
   try {
     const currentPassword = String(req.body?.currentPassword || '')
@@ -2934,7 +2935,7 @@ app.post('/v1/auth/password-reset/verify', async (req, res, next) => {
   } catch (error) { return next(error) }
 })
 
-app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
+app.post('/v1/auth/password-reset/confirm', requireBcryptPasswordLength('newPassword', 'password'), async (req, res, next) => {
   let client
   try {
     if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
@@ -3038,7 +3039,7 @@ app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
   }
 })
 
-app.post('/v1/auth/password-recovery-codes/confirm', async (req, res, next) => {
+app.post('/v1/auth/password-recovery-codes/confirm', requireBcryptPasswordLength('newPassword'), async (req, res, next) => {
   let client
   try {
     if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
@@ -3117,7 +3118,7 @@ app.post('/v1/auth/password-recovery-codes/confirm', async (req, res, next) => {
   }
 })
 
-app.post('/v1/auth/complete-migrated-password-reset', async (req, res, next) => {
+app.post('/v1/auth/complete-migrated-password-reset', requireBcryptPasswordLength('newPassword'), async (req, res, next) => {
   try {
     if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const migrationToken = String(req.body?.migrationToken || '').trim()
@@ -3536,7 +3537,7 @@ app.delete('/v1/auth/web-sessions/:sessionId', authRequired, async (req, res, ne
   }
 })
 
-app.post('/v1/auth/activate-local-password', async (req, res, next) => {
+app.post('/v1/auth/activate-local-password', requireBcryptPasswordLength('password'), async (req, res, next) => {
   try {
     if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const supabaseAccessToken = String(req.body?.supabaseAccessToken || '').trim()

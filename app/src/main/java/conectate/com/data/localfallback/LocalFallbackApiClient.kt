@@ -6598,6 +6598,7 @@ class LocalFallbackApiClient @Inject constructor(
                 email = error.email.orEmpty(),
                 displayName = error.displayName.orEmpty()
             )
+            "PASSWORD_TOO_LONG" -> Exception("La contraseña es demasiado larga. Usa una más corta.")
             else -> Exception(code.ifBlank { "Servidor Ubuntu respondió ${response.status.value}." })
         }
     }

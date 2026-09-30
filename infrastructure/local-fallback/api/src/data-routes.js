@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const { loadCollectionReceipts, isCollectionMessageUnread, projectCollectionReceipt } = require('./collection-read-state')
 const bcrypt = require('bcrypt')
+const { requireBcryptPasswordLength } = require('./new-password-policy')
 const { moderatePublicComment } = require('./content-moderation')
 const { mergeProfileRows } = require('./profile-merge')
 const { callAiService, createFixedWindowRateLimiter } = require('./ai-routes')
@@ -11627,7 +11628,10 @@ function registerDataRoutes(app, {
     },
   )
 
-  app.post('/v1/data/voice/rooms', authRequired, async (req, res, next) => {
+  app.post('/v1/data/voice/rooms', authRequired, (req, res, next) => {
+    if (req.body?.isPublic === false) return requireBcryptPasswordLength('password')(req, res, next)
+    return next()
+  }, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
