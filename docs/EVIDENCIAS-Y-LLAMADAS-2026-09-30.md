@@ -30,6 +30,11 @@ Fecha: 30/09/2026. Proyecto exclusivo: `D:\red social - live-gifts`, rama `featu
 
 ## Alcance y siguientes verificaciones
 
+La entrega inicial de esta sección corresponde a 9.0.3. La llamada real por
+FCM contestada desde Android, la pantalla compartida y los medios entre
+Motorola/emulador se comprobaron después y se documentan en
+[la auditoría de medios](MEDIOS-Y-ENLACES-2026-09-30.md).
+
 Android controla el permiso de pantalla completa, el canal de llamadas y la presentación del aviso. La app ofrece acceso a esos ajustes y no cambia las decisiones del usuario mediante ADB. Queda por verificar una llamada real recibida mediante push estando fuera de la app, así como transporte multimedia entre equipos y latencia de LIVE/salas/llamadas. Esta entrega no certifica toda la aplicación sin errores.
 
 Referencias: [CallStyle y acciones de llamada](https://developer.android.com/develop/ui/compose/notifications/call-style), [permisos de notificación](https://developer.android.com/develop/ui/compose/notifications/notification-permission).

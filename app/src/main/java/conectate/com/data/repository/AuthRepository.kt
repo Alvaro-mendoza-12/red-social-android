@@ -57,16 +57,27 @@ data class AccountSwitchUiState(
 @Singleton
 class AuthRepository @Inject constructor(
     private val authService: AuthService,
-    private val accountSessionRepository: AccountSessionRepository,
+    private val accountSessionRepositoryProvider: dagger.Lazy<AccountSessionRepository>,
     private val supabaseConfig: SupabaseConfig,
-    private val userRepository: UserRepository,
-    private val messageRepository: MessageRepository,
-    private val groupRepository: GroupRepository,
-    private val communityRepository: CommunityRepository,
-    private val notificationRepository: NotificationRepository,
-    private val twoFactorAuthManager: conectate.com.auth.twoFactor.TwoFactorAuthManager,
+    private val userRepositoryProvider: dagger.Lazy<UserRepository>,
+    private val messageRepositoryProvider: dagger.Lazy<MessageRepository>,
+    private val groupRepositoryProvider: dagger.Lazy<GroupRepository>,
+    private val communityRepositoryProvider: dagger.Lazy<CommunityRepository>,
+    private val notificationRepositoryProvider: dagger.Lazy<NotificationRepository>,
+    private val twoFactorAuthManagerProvider: dagger.Lazy<conectate.com.auth.twoFactor.TwoFactorAuthManager>,
     private val localFallbackApiClient: LocalFallbackApiClient
 ) {
+    // Restoring the auth StateFlow must not open the saved-account/2FA keystores
+    // or construct every messaging graph before Activity.onCreate can draw.
+    // Dagger retains the same singleton; its first real operation resolves it.
+    private val accountSessionRepository get() = accountSessionRepositoryProvider.get()
+    private val userRepository get() = userRepositoryProvider.get()
+    private val messageRepository get() = messageRepositoryProvider.get()
+    private val groupRepository get() = groupRepositoryProvider.get()
+    private val communityRepository get() = communityRepositoryProvider.get()
+    private val notificationRepository get() = notificationRepositoryProvider.get()
+    private val twoFactorAuthManager get() = twoFactorAuthManagerProvider.get()
+
     private val repositoryScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, throwable ->
             android.util.Log.e("AuthRepository", "Uncaught repository coroutine exception", throwable)
@@ -111,7 +122,8 @@ class AuthRepository @Inject constructor(
 
     fun getAuthStateFlow() = authService.currentSession
 
-    val storedAccounts: StateFlow<List<conectate.com.data.model.StoredAccountSession>> = accountSessionRepository.accounts
+    val storedAccounts: StateFlow<List<conectate.com.data.model.StoredAccountSession>>
+        get() = accountSessionRepository.accounts
 
     suspend fun signUpWithEmail(
         email: String,

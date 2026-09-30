@@ -285,6 +285,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun syncLiveChatHead(shouldShow: Boolean) {
+        if (!shouldShow) {
+            // Foreground entry only removes the bubble. Resolving the LIVE
+            // repository here used to construct its graph on every cold start.
+            runCatching { stopService(Intent(this, LiveChatHeadService::class.java)) }
+                .onFailure { android.util.Log.w("MainActivity", "LiveChatHeadService stop skipped", it) }
+            return
+        }
         val hasSession = authRepository.getAuthStateFlow().value?.user?.id?.isNotBlank() == true
         val session = if (hasSession) liveRepository.get().activeSession.value else null
         val shouldRun = shouldShow && session?.role == LiveRole.HOST
@@ -305,7 +312,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateOnlineStatus(isOnline: Boolean) {
-        lifecycleScope.launch {
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val userId = authRepository.getCurrentUserId()
                 if (userId != null) {

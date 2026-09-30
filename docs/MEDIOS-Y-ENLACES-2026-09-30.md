@@ -246,3 +246,89 @@ prueba de dos equipos necesita parámetros y se ejecuta por separado.
 
 APK instalada en ambos equipos sin borrar datos: `9.0.15-debug`, código `112`.
 SHA-256: `0737d52b6d68b6865256e0f4a6982bf48488b2cef9a231645abd8263e2a6e846`.
+
+## Apertura de la app después de la auditoría
+
+La reapertura de la app mostró una demora adicional, independiente de las
+pruebas de medios. Tres arranques de proceso nuevos medidos con `am start -W`
+tardaron 9,232, 8,106 y 8,294 s hasta la pantalla. En la última muestra se
+capturaron los registros durante el arranque: `MainActivity.super.onCreate`
+consumió 3,873 s, `setContent` se presentó a los 3,962 s y Android informó
+261 fotogramas saltados. El sondeo HTTPS del mismo periodo aprobó diez
+lecturas/autorizaciones en 186–325 ms y ocho servicios saludables; ese sondeo
+no mide por sí solo todas las solicitudes de inicio de la app.
+
+`AuthRepository` construía las dependencias de mensajes, perfiles, grupos,
+comunidades, notificaciones, cuentas guardadas y segundo factor aunque solo
+se consultara el flujo de sesión. La carga de cuentas y segundo factor abre
+almacenes cifrados en sus constructores. Se difiere su creación mediante los
+mismos singletons de Dagger hasta la operación que los necesite. La lista de
+cuentas conserva su almacenamiento y sus reglas; no se reemplaza por una
+lista vacía ni se rebaja la verificación del segundo factor.
+
+La entrada en primer plano retira la burbuja de LIVE sin construir su repositorio;
+la actualización de presencia resuelve perfil/red en el ejecutor de IO.
+Se añadió una prueba en dispositivo que falla si leer el estado inicial de
+autenticación resuelve cualquiera de las siete dependencias diferidas.
+
+### Mediciones de 9.0.16
+
+Compilación completa y 918 pruebas unitarias aprobadas, cero fallidas,
+erróneas u omitidas. Actualización instalada en Motorola sin borrar datos.
+Se repitieron tres arranques con el proceso cerrado antes de cada uno:
+
+| Muestra | Primera pantalla (`am start -W`) | `super.onCreate` | `setContent` presentado |
+|---|---|---|---|
+| 1 | 6,510 s | 431 ms | 584 ms |
+| 2 | 5,431 s | 508 ms | 636 ms |
+| 3 | 4,395 s | 339 ms | 443 ms |
+
+La creación de la actividad dejó de bloquear casi cuatro segundos. Son muestras
+de una APK de depuración, con proceso nuevo pero cachés del sistema calientes;
+no un percentil de producción ni el tiempo hasta cargar todos los mensajes.
+La composición inicial aún produjo fotogramas saltados (88–137 en estas muestras).
+Se conserva esa observación: la mejora no acredita una apertura instantánea.
+
+Registros: `build/startup-9.0.16-measurements.json`,
+`build/startup-9.0.16-logcat.log` y `build/startup-9.0.16-build.log`.
+El intento adicional de traza por muestreo no produjo datos y no se usa como
+evidencia de atribución de tiempos.
+
+Referencia: [medición de la primera pantalla y de la carga completa en Android](https://developer.android.com/topic/performance/issues/launch-time).
+
+### Repetición completa y caída de la entrada pública
+
+La primera secuencia de 9.0.16 registró siete fallos y se conserva en
+`build/communication-final-complete-9.0.16.log`. Uno pertenecía al ensayo:
+un punto de entrada Hilt declarado solo en la APK de pruebas no existe en el
+componente de producción. El ensayo reutiliza ahora un punto de entrada real.
+Los otros seis fallos coincidieron con conexiones TLS cerradas en la entrada
+pública de Funnel, sin solicitudes recibidas por la señalización del servidor.
+
+Corrección de alcance de los sondeos anteriores: consultar el hostname HTTPS
+desde una PC conectada a Tailscale puede usar su dirección privada. Esos
+resultados comprueban los servicios, pero no acreditan disponibilidad pública.
+Se forzaron ambas direcciones IPv4 obtenidas por DNS público conservando SNI
+y verificación del certificado: ambas fallaron con HTTP 000/error TLS 35,
+aunque los ocho contenedores estaban saludables y Funnel figuraba habilitado.
+
+Se guardó la configuración de rutas en
+`/home/alvaro/conectate-local-fallback/backups/funnel-before-public-recovery-20260930.json`
+y se reinició únicamente `tailscaled`. Tras la reconexión del daemon, las dos
+entradas públicas respondieron HTTP 200 con certificado válido en 883 y 998 ms.
+La configuración de rutas y los contenedores permanecieron disponibles.
+No se atribuye el incidente a una versión o defecto concreto sin evidencia.
+
+La repetición posterior en el Motorola terminó en 135,637 s: trece pruebas
+ejecutadas aprobadas, una omitida por requerir coordinación de dos equipos y
+cero fallidas. Incluye la prueba nueva de dependencias diferidas, 16 ciclos
+de creación/liberación WebRTC, cuatro ensayos de interfaz, salas, LIVE,
+llamada por TURN, llamada real por FCM contestada fuera de la app, dos videos,
+pantalla compartida con cambio de imagen y aislamiento del historial.
+Registro: `build/communication-final-complete-9.0.16-retry.log`.
+
+Motorola actualizado a `9.0.16-debug`, código `113`, sin borrar datos ni cambiar
+la cuenta activa. SHA-256 de la APK instalada:
+`ea6afa713e89a881ac320b641888c12ebbac47c7528b19f9c0b4134d3575a768`.
+La repetición confirma los casos enumerados, no todos los apartados de la app,
+escucha por dos personas ni disponibilidad futura del proveedor del túnel.
