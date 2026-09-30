@@ -21,7 +21,7 @@ function bashPath(value) {
   return match ? `/mnt/${match[1].toLowerCase()}/${match[2]}` : normalized
 }
 
-function runMonitor(fixture, dockerExit, failedScript = '') {
+function runMonitor(fixture, dockerExit, failedScript = '', tokenUnavailable = false) {
   const bashExecutable = process.platform === 'win32'
     ? path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'bash.exe')
     : 'bash'
@@ -35,6 +35,7 @@ function runMonitor(fixture, dockerExit, failedScript = '') {
       ...process.env,
       FAKE_DOCKER_EXIT: String(dockerExit),
       FAKE_DOCKER_FAIL_SCRIPT: failedScript,
+      FAKE_TOKEN_UNAVAILABLE: tokenUnavailable ? '1' : '0',
       PATH: environmentPath,
       PUBLIC_MONITOR_FAILURE_THRESHOLD: '3',
       PUBLIC_MONITOR_LOCK: bashPath(path.join(fixture.root, 'monitor.lock')),
@@ -58,7 +59,9 @@ test('public read-path monitor tolerates isolated failures and alerts on the thi
     const docker = path.join(bin, 'docker')
     fs.writeFileSync(docker, `#!/bin/sh
 case "$*" in
-  *"compose exec"*) printf 'header.payload.signature' ;;
+  *"compose exec"*)
+    if [ "\${FAKE_TOKEN_UNAVAILABLE:-0}" = 1 ]; then exit 1; fi
+    printf 'header.payload.signature' ;;
   *"compose images"*) printf 'sha256:fake-api-image\\n' ;;
   run*)
     if [ -z "\${FAKE_DOCKER_FAIL_SCRIPT:-}" ]; then exit "\${FAKE_DOCKER_EXIT:-0}"; fi
@@ -94,6 +97,17 @@ esac
     const publicFailure = runMonitor(fixture, 1, 'verify-public-ingress.js')
     assert.equal(publicFailure.status, 1, publicFailure.stdout)
     assert.match(publicFailure.stdout, /probes=public-ingress/)
+    assert.match(publicFailure.stdout, /SKIPPED=application_reads_public_ingress_failed/)
+    assert.equal((publicFailure.stdout.match(/PUBLIC_READ_PATHS_PROBE=/g) || []).length, 1)
+
+    assert.equal(runMonitor(fixture, 0).status, 0)
+    const tokenFailure = runMonitor(fixture, 0, '', true)
+    assert.equal(tokenFailure.status, 0, tokenFailure.stderr)
+    assert.match(tokenFailure.stdout, /diagnostic-token status=failed/)
+    assert.match(fs.readFileSync(path.join(state, 'public-read-paths.status'), 'utf8'), /failed_probes=diagnostic-token/)
+    assert.equal(runMonitor(fixture, 0, '', true).status, 0)
+    assert.equal(runMonitor(fixture, 0, '', true).status, 1)
+    assert.equal(runMonitor(fixture, 0).status, 0)
   } finally {
     fs.rmSync(root, { force: true, recursive: true })
   }

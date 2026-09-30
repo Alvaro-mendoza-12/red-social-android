@@ -26,7 +26,7 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=$ROOT_DIR
 ExecStart=$ROOT_DIR/scripts/monitor-public-read-paths.sh
-TimeoutStartSec=210
+TimeoutStartSec=390
 Nice=10
 EOF
 
@@ -35,9 +35,9 @@ cat > "$timer_tmp" <<'EOF'
 Description=Periodic NOVVIN public read-path monitoring
 
 [Timer]
-OnBootSec=5m
-OnUnitActiveSec=10m
-RandomizedDelaySec=45s
+OnBootSec=60s
+OnUnitInactiveSec=90s
+RandomizedDelaySec=15s
 Persistent=true
 Unit=conectate-public-read-paths.service
 

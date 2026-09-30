@@ -57,7 +57,26 @@ En curso. Se requiere repetir la matriz final con dos teléfonos físicos.
 
 ## 4. Carga y resistencia del servidor
 
-En curso.
+- Sonda nueva de lecturas limitada a `/health` y `/ready`: máximo 200 peticiones,
+  24 simultáneas y timeout explícito. Rechaza rutas de escritura y credenciales
+  en la URL. Genera percentiles y cuenta los fallos sin ocultarlos.
+- PC, resolución DNS del sistema: 48 peticiones, 8 simultáneas, cero fallos;
+  p95 104 ms, máximo 144 ms. Esta ruta puede usar Tailscale privado.
+- Dentro del servidor, `/ready`: 120 peticiones, 24 simultáneas, cero fallos;
+  p95 918 ms, máximo 1.335 ms. El tiempo interno máximo declarado fue 4,1 ms;
+  la latencia total incluye cliente y concurrencia.
+- La entrada pública sí se comprobó por separado forzando las direcciones
+  públicas con TLS y SNI: seis respuestas correctas después de su recuperación.
+- Monitor desplegado con copia de respaldo. Comprueba la entrada pública antes
+  de pedir el token: un fallo de base de datos queda registrado como degradado.
+  Si falla la entrada pública, omite las lecturas que no pueden demostrar acceso
+  externo. Se comprueba 90–105 segundos después de acabar la ejecución anterior
+  y alerta tras tres fallos consecutivos; no reinicia servicios automáticamente.
+- Cinco pruebas de carga/monitor en Linux aprobaron, incluidos fallos simulados,
+  recuperación del estado y límite de concurrencia. Los nueve servicios Docker
+  estaban sanos y el monitor desplegado terminó con `status=ok`.
+- Esto no acredita capacidad con cientos de usuarios ni recuperación ante pérdida
+  real de la base de datos. No se detuvo la base de datos de usuarios para probarla.
 
 ## 5. Interfaz, accesibilidad y diez heurísticas
 

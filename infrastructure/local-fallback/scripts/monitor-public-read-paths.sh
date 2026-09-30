@@ -37,18 +37,8 @@ probe_dir="$(mktemp -d)"
 trap 'rm -rf "$probe_dir"' EXIT
 failed=()
 
-# Issue the short-lived diagnostic token inside the long-running API container,
-# where the database is reachable, but perform public HTTPS probes through the
-# host network. Docker bridge hairpin traffic to a Quick Tunnel is intermittent
-# on the production host and does not represent what an external phone sees.
-access_token="$(
-  docker compose exec -T api node -e \
-    'require("./scripts/verify-social-read-paths").issueDiagnosticToken().then((token) => process.stdout.write(token))'
-)"
-if [[ ! "$access_token" =~ ^[^.]+\.[^.]+\.[^.]+$ ]]; then
-  echo "PUBLIC_READ_PATHS_ERROR=diagnostic_token_unavailable"
-  exit 1
-fi
+# Public ingress must be checked even when the database cannot issue a token.
+access_token=""
 api_image="$(docker compose images -q api | head -n 1)"
 if [ -z "$api_image" ]; then
   echo "PUBLIC_READ_PATHS_ERROR=api_image_unavailable"
@@ -84,13 +74,26 @@ run_probe() {
     mv -f "$evidence_tmp" "$STATE_DIR/public-$name.latest.log" 2>/dev/null || true
     echo "PUBLIC_READ_PATHS_PROBE=$name status=failed elapsed_ms=$elapsed_ms"
     tail -n 20 "$output" >&2 || true
+    return 1
   fi
 }
 
 # This is independent of the host's MagicDNS/private Tailscale route.
-run_probe public-ingress verify-public-ingress.js
-run_probe social verify-social-read-paths.js
-run_probe messaging verify-messaging-read-paths.js
+if run_probe public-ingress verify-public-ingress.js; then
+  # Bounded separately: a stalled API/DB must still leave a degraded state.
+  access_token="$(timeout "$PROBE_TIMEOUT_SECONDS" docker compose exec -T api node -e \
+    'require("./scripts/verify-social-read-paths").issueDiagnosticToken().then((token) => process.stdout.write(token))' \
+    2>"$probe_dir/token.log")" || access_token=""
+  if [[ "$access_token" =~ ^[^.]+\.[^.]+\.[^.]+$ ]]; then
+    run_probe social verify-social-read-paths.js || true
+    run_probe messaging verify-messaging-read-paths.js || true
+  else
+    failed+=("diagnostic-token")
+    echo "PUBLIC_READ_PATHS_PROBE=diagnostic-token status=failed"
+  fi
+else
+  echo "PUBLIC_READ_PATHS_SKIPPED=application_reads_public_ingress_failed"
+fi
 
 timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 if [ "${#failed[@]}" -eq 0 ]; then
