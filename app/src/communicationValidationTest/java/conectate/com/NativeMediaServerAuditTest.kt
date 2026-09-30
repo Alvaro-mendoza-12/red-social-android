@@ -295,6 +295,11 @@ class NativeMediaServerAuditTest {
     @Test(timeout=180_000) fun voiceRoomDeliversVideoThroughServerSignaling() = audit("voice",false)
     @Test(timeout=180_000) fun callDeliversFramesUsingOnlyRelayCandidates() = audit("call",true)
 
+    @Test(timeout=600_000) fun sustainedLiveKeepsDeliveringFramesAndRecordsMemory() {
+        Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("auditMediaSoak") == "true")
+        audit("live", false, sampleSeconds = 240)
+    }
+
     /** Two-device run: a coordinator exchanges only socket IDs and creates the test scope. */
     @Test(timeout=180_000) fun mediaCrossesBetweenTwoSeparateDevices() {
         val args=InstrumentationRegistry.getArguments()
@@ -602,7 +607,7 @@ class NativeMediaServerAuditTest {
         } finally { info.flags=oldFlags;automation.serviceInfo=info }
     }
 
-    private fun audit(flow: String, relayOnly: Boolean, isScreen: Boolean=false) {
+    private fun audit(flow: String, relayOnly: Boolean, isScreen: Boolean=false, sampleSeconds: Int=8) {
         for (permission in listOf(Manifest.permission.CAMERA,Manifest.permission.RECORD_AUDIO)) {
             assertEquals("Grant $permission before this audit", PackageManager.PERMISSION_GRANTED, ContextCompat.checkSelfPermission(context,permission))
         }
@@ -673,15 +678,34 @@ class NativeMediaServerAuditTest {
             track=second.manager.remoteVideoTracks.value.values.first(); track.addSink(sink)
             waitUntil("Remote video stayed black") { frames.get()>0 }
             val firstFrameMs=(System.nanoTime()-mediaStarted)/1_000_000
+            val outboundBytesAtStart = first.stats().statsMap.values.filter { it.type == "outbound-rtp" }
+                .sumOf { (it.members["bytesSent"] as? Number)?.toLong() ?: 0L }
             val before=frames.get(); val beforeCaptured=capturedFrames.get(); val started=System.nanoTime()
+            val memorySamples = JSONArray()
+            val cpuStarted = android.os.Process.getElapsedCpuTime()
+            val pssStarted = android.os.Debug.getPss()
             if(isScreen) repeat(80) { compose.mainClock.advanceTimeBy(100);Thread.sleep(100) }
-            else Thread.sleep(8_000)
+            else {
+                var remaining = sampleSeconds
+                while (remaining > 0) {
+                    val interval = minOf(15, remaining)
+                    val previousFrames = frames.get()
+                    Thread.sleep(interval * 1_000L)
+                    assertTrue("Video stopped during sustained sampling", frames.get() > previousFrames)
+                    memorySamples.put(JSONObject().put("elapsedSeconds", sampleSeconds - remaining + interval)
+                        .put("pssKb", android.os.Debug.getPss()).put("frames", frames.get() - before))
+                    remaining -= interval
+                }
+            }
             val fps=(frames.get()-before)*1_000_000_000.0/(System.nanoTime()-started)
             val capturedFps=(capturedFrames.get()-beforeCaptured)*1_000_000_000.0/(System.nanoTime()-started)
             val stats=second.stats()
             val inbound=stats.statsMap.values.filter { it.type=="inbound-rtp" }
             assertTrue("No received audio RTP",inbound.any { it.members["kind"]=="audio" && (it.members["packetsReceived"] as? Number)?.toLong()?.let { n->n>0 }==true })
-            val firstInbound=first.stats().statsMap.values.filter { it.type=="inbound-rtp" }
+            val publisherStats = first.stats()
+            val firstInbound=publisherStats.statsMap.values.filter { it.type=="inbound-rtp" }
+            val outboundBytes = publisherStats.statsMap.values.filter { it.type == "outbound-rtp" }
+                .sumOf { (it.members["bytesSent"] as? Number)?.toLong() ?: 0L } - outboundBytesAtStart
             // Android may silence the second concurrent microphone on one handset.
             // The separate-device audit requires received audio on BOTH devices.
             val returnAudioRtp=firstInbound.any { it.members["kind"]=="audio" && (it.members["packetsReceived"] as? Number)?.toLong()?.let { n->n>0 }==true }
@@ -693,6 +717,11 @@ class NativeMediaServerAuditTest {
             val candidates=listOf("localCandidateId","remoteCandidateId").mapNotNull { selected?.members?.get(it)?.toString()?.let(stats.statsMap::get)?.members?.get("candidateType") }
             val report=JSONObject().put("flow",flow).put("relayOnly",relayOnly).put("firstFrameMs",firstFrameMs).put("receivedFps",fps).put("frames",frames.get())
                 .put("captureFps",capturedFps).put("candidateTypes",JSONArray(candidates)).put("rttSeconds",selected?.members?.get("currentRoundTripTime"))
+                .put("sampleSeconds", sampleSeconds).put("memorySamples", memorySamples)
+                .put("pssGrowthKb", android.os.Debug.getPss() - pssStarted)
+                .put("processCpuMs", android.os.Process.getElapsedCpuTime() - cpuStarted)
+                .put("publisherRtpBytes", outboundBytes).put("publisherRtpKbps", outboundBytes * 8.0 / sampleSeconds / 1000)
+                .put("physicalBatteryMeasured", false)
             if (InstrumentationRegistry.getArguments().getString("auditNetworkRecovery") == "true") {
                 val originalTrack = first.manager.localVideoTrack.value
                 first.manager.setAudioEnabled(false)

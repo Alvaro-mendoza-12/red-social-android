@@ -25,7 +25,8 @@ Los retiros permanecen fuera del alcance por indicación del propietario.
   tenía `hw.camera.front=none`. Se repite con ambas cámaras virtuales habilitadas;
   ese primer fallo no se contabiliza como aprobado ni como defecto del Motorola.
 
-Mediciones nuevas: sala 8,62 FPS, primera imagen 1,86 s; llamada con TURN
+Mediciones nuevas: LIVE 8,87 FPS, primera imagen 1,502 s; sala 8,62 FPS,
+primera imagen 1,86 s; llamada con TURN
 obligatorio 8,62 FPS, primera imagen 3,585 s. Ambos ensayos conservaron los
 controles de cámara y recibieron audio RTP. Son dos extremos en un emulador;
 no acreditan escucha humana ni aumento de FPS en el Motorola.
@@ -80,7 +81,8 @@ pertenece al emulador, no altera el DNS del usuario ni rebaja TLS.
   de pedir el token: un fallo de base de datos queda registrado como degradado.
   Si falla la entrada pública, omite las lecturas que no pueden demostrar acceso
   externo. Se comprueba 90–105 segundos después de acabar la ejecución anterior
-  y alerta tras tres fallos consecutivos; no reinicia servicios automáticamente.
+  y devuelve fallo del servicio tras tres fallos consecutivos; no reinicia
+  servicios automáticamente ni envía un aviso por correo por sí mismo.
 - Cinco pruebas de carga/monitor en Linux aprobaron, incluidos fallos simulados,
   recuperación del estado y límite de concurrencia. Los nueve servicios Docker
   estaban sanos y el monitor desplegado terminó con `status=ok`.
@@ -125,8 +127,47 @@ porque el emulador usa ese idioma; los botones propios revisados están en espa�
 
 ## 6. Sesiones largas y entrega
 
-En curso. No existe una clave de firma de producción configurada en este
-checkout; se conserva el control que impide publicar con una clave de depuración.
+- Prueba nueva optativa de LIVE sostenido con lectura de frames cada 15 segundos,
+  muestras PSS, CPU y bytes RTP. No guarda claves ni tokens en el reporte.
+- 240 segundos de video: primera imagen 1,412 s, 8,47 FPS recibidos, 2.034 frames
+  durante la ventana de medida. Todas las ventanas recibieron frames nuevos.
+  Después recuperó ICE en 2,426 s y permitió silenciar, apagar/encender y girar cámara.
+- PSS creció 8.318 KiB respecto al comienzo de la medida. Las muestras ordinarias
+  estuvieron cerca de 383–397 MiB expresados originalmente en KiB; una muestra
+  devolvió 54.795 KiB. Se conserva ese dato anómalo, no se usa como prueba de ahorro.
+  Cuatro minutos no descartan fugas a largo plazo. Hay dos motores nativos en el
+  mismo proceso de prueba, por lo que no representa una llamada normal de un teléfono.
+- CPU del proceso: 97.811 ms; carga RTP del emisor: 1.405.404 bytes, unos 46,85 kbps.
+  El patrón de la cámara virtual comprime fácilmente: no predice el consumo de
+  datos de una escena real ni incluye todo el tráfico de transporte/servidor.
+- Prueba de ciclo de vida: 16 entradas/salidas, recuperación durante salida y
+  liberación ante presión de memoria, sin peers pendientes o reaparecidos.
+  Ambas pruebas instrumentadas aprobaron. La compilación final y las 971 pruebas
+  unitarias aprobaron sin fallos, errores ni omisiones.
+- APK de prueba: `9.0.19-debug`, código 116; se instala conservando datos en el
+  emulador. Firma APK v2 verificada. No se instala en el Motorola porque se lo
+  llevó el propietario; no es una publicación de producción.
+- El control de firma de producción se ejecutó y bloqueó correctamente la tarea:
+  no hay `keystore.properties` ni las cuatro variables `NOVVIN_UPLOAD_*` configuradas.
+  Se requiere la clave original de publicación antes de generar una entrega final.
+- APK debug universal: unos 258 MiB; excede los presupuestos de tamaño, DEX y
+  bibliotecas nativas definidos para producción. Contiene cuatro arquitecturas y
+  código sin R8. Falta medir el AAB release optimizado y su descarga por dispositivo;
+  no se ampliaron los presupuestos para ocultar estos resultados.
+
+## Pendientes que necesitan otro entorno
+
+1. Motorola y otro teléfono en Wi-Fi/datos de operadores diferentes: imagen,
+   escucha humana, Bluetooth, pantalla bloqueada y cambio real de red.
+2. Sesiones de 30–60 minutos o más en hardware físico: batería, temperatura,
+   memoria y datos con escenas reales; la prueba actual dura cuatro minutos.
+3. Carga representativa con usuarios, archivos y transmisiones simultáneas en
+   un entorno aislado dimensionado para ello. Las lecturas de salud no la sustituyen.
+4. Firma original, AAB optimizado, presupuestos de descarga y prueba de instalación
+   de release antes de publicar. Debug no se presenta como entrega de producción.
+
+Los seis puntos se trabajaron con el entorno disponible. Estos pendientes siguen
+abiertos; no se certifica toda la APK ni ausencia absoluta de errores.
 
 ## Fuentes técnicas
 
@@ -134,3 +175,6 @@ checkout; se conserva el control que impide publicar con una clave de depuració
 - [Configuración de video de LiveKit](https://docs.livekit.io/transport/media/advanced/).
 - [Llamadas Android](https://developer.android.com/develop/connectivity/telecom/voip-app).
 - [Calidad de Android](https://developer.android.com/docs/quality-guidelines/core-app-quality).
+- [Diez heurísticas de Nielsen](https://www.nngroup.com/articles/ten-usability-heuristics/).
+- [Notificaciones Android de llamada](https://developer.android.com/develop/ui/compose/notifications/call-style).
+- [Accesibilidad Android](https://developer.android.com/guide/topics/ui/accessibility/apps).

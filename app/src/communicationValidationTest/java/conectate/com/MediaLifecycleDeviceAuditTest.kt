@@ -52,8 +52,11 @@ class MediaLifecycleDeviceAuditTest {
                 manager.onUserJoined(peer, UUID.randomUUID().toString())
                 barrier()
                 assertTrue("No real native peer was created", manager.peerConnectionStates.value.isNotEmpty())
+                manager.recoverAfterNetworkChange("qa-rapid-departure")
                 manager.onUserLeft(peer)
                 runBlocking { manager.hardResetAwait() }
+                barrier()
+                assertTrue("Queued recovery restored a departed peer", manager.peerConnectionStates.value.isEmpty())
                 assertTrue("Teardown left native peers pending", synchronized(queue) { (pendingEntries.get(queue) as Set<*>).isEmpty() })
                 WebRTCManager.releaseIdleResources()
                 barrier()
@@ -64,7 +67,7 @@ class MediaLifecycleDeviceAuditTest {
             }
             File(context.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }, "media-lifecycle.json")
                 .writeText(JSONObject().put("iterations", 16).put("trimAndReentry", true)
-                    .put("noPendingPeers", true).toString(2))
+                    .put("noPendingPeers", true).put("recoveryDuringDeparture", true).toString(2))
         } finally {
             val closed = CountDownLatch(1)
             manager.destroy { closed.countDown() }
