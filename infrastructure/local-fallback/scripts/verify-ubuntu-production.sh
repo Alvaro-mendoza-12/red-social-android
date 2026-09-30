@@ -448,6 +448,16 @@ if is_stable_https_origin "$configured_public_base_url"; then
     production_requirement "origen HTTPS publico no responde /ready (HTTP ${public_ready_code:-000})"
   fi
 
+  # The web fallback can answer a missing /realtime route with INVALID_SESSION.
+  # Validate the service identity, not merely a generic successful HTTP response.
+  public_realtime_code="$(curl_status "${configured_public_base_url}/realtime/health")"
+  if [ "$public_realtime_code" = "200" ] &&
+     grep -q '"service"[[:space:]]*:[[:space:]]*"conectate-local-fallback-realtime-gateway"' "$tmp_dir/curl-body.txt"; then
+    status_line PASS "origen HTTPS publico enruta /realtime a realtime-gateway"
+  else
+    production_requirement "origen HTTPS publico no enruta /realtime a realtime-gateway (HTTP ${public_realtime_code:-000})"
+  fi
+
   # A generic web fallback can also return 401. Require the signaling
   # service's unauthenticated response so Android can actually fetch TURN.
   public_turn_code="$(curl_status "${configured_public_base_url}/turn-credentials")"

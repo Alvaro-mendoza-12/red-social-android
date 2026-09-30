@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.User
 import conectate.com.data.repository.FriendRepository
+import conectate.com.data.repository.NotificationRepository
 import conectate.com.data.local.prefs.SeenFriendRequestsPreferences
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +23,7 @@ class FriendRequestsViewModel @Inject constructor(
     private val dismissedRequestsPreferences: conectate.com.data.local.prefs.DismissedRequestsPreferences,
     private val seenRequestsPreferences: SeenFriendRequestsPreferences,
     private val authService: AuthService,
+    private val notificationRepository: NotificationRepository,
 ) : ViewModel() {
 
     private val _requests = MutableStateFlow(friendRepository.cachedPendingRequests().orEmpty())
@@ -49,6 +51,16 @@ class FriendRequestsViewModel @Inject constructor(
         viewModelScope.launch {
             seenRequestsPreferences.revision.collect {
                 updateUnseenCount()
+            }
+        }
+        viewModelScope.launch {
+            var previousUnread: Int? = null
+            notificationRepository.unreadCount.collect { count ->
+                val previous = previousUnread
+                previousUnread = count
+                // Social keeps its own instance of this ViewModel while visible.
+                // Refresh it when a notification arrives, not only on screen resume.
+                if (previous != null && count > previous) loadRequests()
             }
         }
     }
