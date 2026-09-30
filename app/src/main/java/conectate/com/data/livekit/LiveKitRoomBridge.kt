@@ -11,6 +11,11 @@ import io.livekit.android.renderer.TextureViewRenderer
 import io.livekit.android.room.Room
 import io.livekit.android.room.track.VideoTrack
 import io.livekit.android.room.track.LocalAudioTrackOptions
+import io.livekit.android.room.track.LocalVideoTrackOptions
+import io.livekit.android.room.track.VideoCaptureParameter
+import io.livekit.android.room.track.VideoEncoding
+import io.livekit.android.room.participant.VideoTrackPublishDefaults
+import conectate.com.util.AppPerformanceProfiles
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,11 +74,20 @@ class LiveKitRoomBridge @Inject constructor(
 
         disconnectLocked()
         _state.value = State.CONNECTING
+        val quality = liveCollaborationQualityProfile(AppPerformanceProfiles.detect(context).tier)
         val candidate = LiveKit.create(
             context,
             RoomOptions(
                 adaptiveStream = true,
                 dynacast = true,
+                videoTrackCaptureDefaults = LocalVideoTrackOptions(
+                    captureParams = VideoCaptureParameter(quality.width, quality.height, quality.maxFps)
+                ),
+                videoTrackPublishDefaults = VideoTrackPublishDefaults(
+                    videoEncoding = VideoEncoding(quality.maxBitrate, quality.maxFps),
+                    simulcast = quality.simulcast,
+                    degradationPreference = livekit.org.webrtc.RtpParameters.DegradationPreference.MAINTAIN_FRAMERATE
+                ),
                 audioTrackCaptureDefaults = LocalAudioTrackOptions(
                     noiseSuppression = true,
                     echoCancellation = true,
@@ -126,8 +140,10 @@ class LiveKitRoomBridge @Inject constructor(
         runCatching {
             candidate.connect(wsUrl, token)
             if (session.role == "host" || session.role == "guest") {
-                candidate.localParticipant.setMicrophoneEnabled(publishAudio)
-                candidate.localParticipant.setCameraEnabled(publishCamera)
+                val audioChanged = candidate.localParticipant.setMicrophoneEnabled(publishAudio)
+                check(!publishAudio || audioChanged) { "No se pudo activar el micrófono del directo. Revisa su permiso e inténtalo de nuevo." }
+                val cameraChanged = candidate.localParticipant.setCameraEnabled(publishCamera)
+                check(!publishCamera || cameraChanged) { "No se pudo activar la cámara del directo. Revisa su permiso e inténtalo de nuevo." }
             }
             _state.value = State.CONNECTED
         }.onFailure {

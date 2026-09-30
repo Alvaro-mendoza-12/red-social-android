@@ -100,7 +100,40 @@ de QA cuyo interlocutor era una de las dos cuentas sintéticas de esta auditorí
 APK instalada: `9.0.12-debug`, código `109`.
 SHA-256: `555b7b3a88c892dd79a87f6c0648a68b7df726f5e7308b800f33450c52b95eb4`.
 
-La prueba adicional de medios de batalla entre Motorola y emulador encontró
-7,70 FPS recibidos por el anfitrión y ausencia de audio entrante en el invitado.
-No se considera aprobada; se está separando el comportamiento del emulador,
-la publicación de audio y la configuración de captura del SDK.
+La primera prueba de batalla no aprobó: el emulador con renderizado por software
+limitó la imagen y las muestras de audio no estaban sincronizadas. Se investigó
+y repitió el ensayo como se describe a continuación; ese resultado inicial no se
+utiliza para afirmar un fallo confirmado de audio en producción.
+
+## Batalla con dos dispositivos y versión 9.0.13
+
+El SDK ajusta ahora captura y publicación al perfil del equipo: básico 640×360,
+24 FPS solicitados y 450 kbps sin simulcast; medio 960×540/24/900 kbps; alto
+1280×720/30/1,7 Mbps. Los perfiles medio y alto usan simulcast. Se comprueba el
+resultado de activar cámara/micrófono y se explica el fallo si no pudieron
+publicarse. Los FPS solicitados no garantizan la capacidad real de la cámara.
+
+Se preparó una solicitud de invitado aceptada y una batalla activa en el servidor
+real. Motorola y emulador conectaron el SDK con roles anfitrión/invitado,
+publicaron micrófono y cámara, decodificaron y dibujaron la imagen del otro.
+El ensayo espera a ambos antes de medir y antes de desconectar. Sin esas barreras,
+un equipo terminaba mientras el otro medía, dejando estadísticas sin audio
+entrante aunque hubiera recibido video. La exigencia de audio en ambos se mantiene.
+
+| Receptor | Imagen dibujada | RTP de audio recibido | FPS recibidos | Inicio hasta primera imagen |
+|---|---|---|---|---|
+| Anfitrión, Motorola | Sí | Sí | 11,20 | 3,888 s |
+| Invitado, emulador | Sí | Sí | 19,90 | 13,385 s |
+
+Ambas pruebas aprobaron y la batalla se finalizó. El inicio lento del invitado
+sigue siendo una observación: incluye arranque del SDK y cámaras, no es una
+medición del retardo audiovisual. El emulador se reinició con GPU del equipo;
+no se atribuye el cambio de FPS solo al código. Este ensayo conecta el SDK desde
+cero; la transición de un directo P2P existente a una batalla requiere otra prueba.
+
+911 pruebas unitarias aprobadas, cero fallidas/omitidas. APK instalada en ambos:
+`9.0.13-debug`, código `110`, sin borrar los datos ni la sesión del Motorola.
+SHA-256: `8fc67ad35a91bf0265c2be5c6fae83751a7ebc54ff511c93d306ce63bd59d4d2`.
+
+No se certifica conversación escuchada por personas, carga alta ni cero retardo.
+Referencia: [opciones de captura del SDK LiveKit Android](https://github.com/livekit/client-sdk-android/blob/v2.27.0/livekit-android-sdk/src/main/java/io/livekit/android/room/track/LocalVideoTrackOptions.kt).
