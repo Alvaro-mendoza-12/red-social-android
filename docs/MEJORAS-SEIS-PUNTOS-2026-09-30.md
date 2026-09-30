@@ -51,6 +51,11 @@ pertenece al emulador, no altera el DNS del usuario ni rebaja TLS.
 - Un ICE-restart solicitado en prueba no equivale a apagar Wi-Fi y pasar a un
   operador real. Esa matriz física permanece pendiente cuando haya dispositivos.
 - `build/six-points-02-build.log`: compilación y suite unitarias aprobadas.
+- Pantalla compartida: 12,68 FPS, primera imagen 1,203 s, recuperación ICE
+  2,191 s y 16 valores de imagen distintos. Se preservaron captura y silencio.
+  La primera prueba falló porque su reloj de animación seguía congelado durante
+  la espera de recuperación. Corregir el fixture para mover la imagen permitió
+  repetir la comprobación sin cambiar el código de pantalla de la aplicación.
 
 ## 3. Llamadas fuera de la app y rutas de audio
 
@@ -133,9 +138,9 @@ porque el emulador usa ese idioma; los botones propios revisados están en espa�
   durante la ventana de medida. Todas las ventanas recibieron frames nuevos.
   Después recuperó ICE en 2,426 s y permitió silenciar, apagar/encender y girar cámara.
 - PSS creció 8.318 KiB respecto al comienzo de la medida. Las muestras ordinarias
-  estuvieron cerca de 383–397 MiB expresados originalmente en KiB; una muestra
+  estuvieron cerca de 373–388 MiB, convertidas de KiB; una muestra
   devolvió 54.795 KiB. Se conserva ese dato anómalo, no se usa como prueba de ahorro.
-  Cuatro minutos no descartan fugas a largo plazo. Hay dos motores nativos en el
+  Cuatro minutos no descartan fugas a largo plazo. Hay dos extremos nativos en el
   mismo proceso de prueba, por lo que no representa una llamada normal de un teléfono.
 - CPU del proceso: 97.811 ms; carga RTP del emisor: 1.405.404 bytes, unos 46,85 kbps.
   El patrón de la cámara virtual comprime fácilmente: no predice el consumo de
@@ -154,6 +159,25 @@ porque el emulador usa ese idioma; los botones propios revisados están en espa�
   bibliotecas nativas definidos para producción. Contiene cuatro arquitecturas y
   código sin R8. Falta medir el AAB release optimizado y su descarga por dispositivo;
   no se ampliaron los presupuestos para ocultar estos resultados.
+
+## Cierre y trazabilidad
+
+- Suite de cierre con la APK instalada: **9 pruebas aprobadas, cero fallos**:
+  seis casos de interfaz, llamada con TURN obligatorio, pantalla compartida con
+  recuperación y reproducción/avance/reanudación de dos videos del servidor.
+  El primer intento de nueve conservó su fallo del fixture de pantalla; después
+  de corregirlo se repitió toda la suite y pasó en 74,304 segundos.
+- Primer frame de los dos videos en la repetición: 858 y 400 ms. El caché puede
+  influir; no se presenta como medida de descarga inicial en datos móviles.
+- Dos cuentas sintéticas eliminadas después de las pruebas. Sus accesos anteriores
+  devolvieron HTTP 401. Se retiraron sus tokens temporales del emulador y de la PC.
+- Los nueve servicios Docker y el monitor público terminaron sanos.
+- Código de la APK identificado como `f396f54b1337`. La corrección posterior del
+  reloj afecta únicamente al APK de pruebas y al reporte, no al APK de la app.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`, versión `9.0.19-debug` (116).
+- SHA-256: `AA7641650546EC0FC2844D1C946561616157531250824CFCB1D58CB901C0A60F`.
+- Commits de implementación: `623f1ab` (medios/ICE), `8c87fed` (monitor/carga),
+  `770d569` (llamadas/restauración), `f396f54` (prueba sostenida/versión).
 
 ## Pendientes que necesitan otro entorno
 

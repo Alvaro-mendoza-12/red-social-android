@@ -729,6 +729,9 @@ class NativeMediaServerAuditTest {
                 val recoveryAt = System.nanoTime()
                 first.manager.recoverAfterNetworkChange("qa-recovery")
                 waitUntil("ICE recovery did not deliver new video frames", 35) {
+                    // A static shared screen can legitimately produce no new
+                    // frames. This fixture owns (and freezes) Compose's clock.
+                    if (isScreen) compose.mainClock.advanceTimeBy(100)
                     frames.get() > recoveryFrom + 20 && first.manager.peerConnectionStates.value.values.any {
                         it == PeerConnection.IceConnectionState.CONNECTED || it == PeerConnection.IceConnectionState.COMPLETED
                     }
