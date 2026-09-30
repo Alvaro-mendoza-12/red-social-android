@@ -81,6 +81,7 @@ class FriendRequestsViewModel @Inject constructor(
                 coroutineScope {
                     val recent = async { friendRepository.getRecentFriends(10) }
                     val pendingList = friendRepository.getPendingRequests().getOrNull()
+                        ?.distinctBy { it.id.lowercase() }
                     if (authService.getCurrentUserId() != ownerId || pendingList == null) {
                         recent.cancel()
                         if (authService.getCurrentUserId() == ownerId) _loadError.value = true
@@ -99,7 +100,13 @@ class FriendRequestsViewModel @Inject constructor(
                     val recentList = recent.await().getOrNull().orEmpty()
                     if (authService.getCurrentUserId() != ownerId) return@coroutineScope
                     val dismissedIds = dismissedRequestsPreferences.getDismissedRequests()
-                    val visibleRecent = recentList.filter { it.first.id !in dismissedIds }
+                    val pendingKeyIds = pendingIds.map { it.lowercase() }.toSet()
+                    // Imported and local relationships may both refer to the same
+                    // account. Each profile must have one row/key, with pending first.
+                    val visibleRecent = recentList
+                        .distinctBy { it.first.id.lowercase() }
+                        .filter { it.first.id !in dismissedIds &&
+                            it.first.id.lowercase() !in pendingKeyIds }
                     _acceptedRequests.value = visibleRecent.associate { (user, dateStr) ->
                         val time = runCatching { java.time.Instant.parse(dateStr).toEpochMilli() }
                             .getOrElse { System.currentTimeMillis() }
