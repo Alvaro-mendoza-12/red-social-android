@@ -41,3 +41,15 @@ Se ejecutaron seis pruebas unitarias de SMTP, códigos de recuperación y segund
 ## Alcance
 
 Esta evidencia cubre la recuperación por correo. No certifica todas las funciones de LIVE, salas o llamadas. La revisión manual continúa para quien perdió también el buzón o los medios del segundo factor.
+
+## APK y comprobación Android
+
+- APK debug 9.0.1, código 98: `build/Novvin-9.0.1-live-gifts-debug.apk`.
+- Compilación final: `BUILD SUCCESSFUL in 4m 55s`.
+- SHA-256: `7A16A8E7C90B75C97436E128B7A79B22E9AE67210852BCE3AA972BC47901A652`.
+- `adb install -r` devolvió `Success` en el emulador Android 15, conservando sus datos. Después del reinicio se verificó `versionCode=98` y `versionName=9.0.1-debug`.
+- La verificación visual y el recorrido de recuperación dentro de esta APK NO se completaron: Windows cerró `qemu-system-x86_64.exe` y su variante headless con excepción `0xc0000005`; también terminó el intento de arranque sin aceleración. El Motorola no aparece en ADB. Se solicitó su conexión para continuar sin borrar datos ni cerrar la sesión personal.
+- Las comprobaciones por HTTPS, SMTP y recepción real descritas arriba sí se completaron. No deben confundirse con una prueba visual completa en teléfono.
+- API público `/health`: HTTP 200, `ok=true`. Los ocho servicios Docker estaban `running/healthy`: API, PostgreSQL, edge, tiempo real, signaling, Redis, coturn y chatbot.
+
+Código y configuración documentada en el commit `8994c2c` de `feature/live-gifts`; la contraseña SMTP permanece exclusivamente en el servidor.
