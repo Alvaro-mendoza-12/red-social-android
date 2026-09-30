@@ -1,6 +1,10 @@
 package conectate.com.presentation.navigation
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import conectate.com.presentation.auth.EmailRecoveryDraftStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
@@ -21,6 +25,7 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
     hasPendingIntent: Boolean
 ) {
     composable(Screen.Splash.route) {
+        val context = LocalContext.current
         val guestViewModel: GuestModeViewModel = hiltViewModel()
         conectate.com.presentation.auth.SplashScreen()
 
@@ -42,7 +47,9 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                 android.util.Log.d("MainActivity", "Splash: Already navigated to $currentRoute. Aborting.")
             } else {
                 try {
+                    val recoveryPending = withContext(Dispatchers.IO) { EmailRecoveryDraftStore(context).read() != null }
                     val targetRoute = when {
+                        recoveryPending -> if (isLoggedIn) Screen.AddAccountLogin.route else Screen.Login.route
                         isLoggedIn -> Screen.Home.createRoute()
                         guestViewModel.hasSavedSession() -> Screen.Guest.route
                         else -> Screen.Login.route
@@ -110,6 +117,10 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
 
     composable(Screen.ChangePassword.route) {
         conectate.com.presentation.auth.ChangePasswordScreen(navController = navController)
+    }
+
+    composable(Screen.AccountRecoveryHelp.route) {
+        NovvinAuthTheme { LoginScreen(navController = navController, isAddAccountMode = true, initialAssistedRecovery = true) }
     }
 
     composable(Screen.AddAccountLogin.route) {

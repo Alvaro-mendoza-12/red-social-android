@@ -39,7 +39,7 @@ SMTP_PASS=CONTRASENA_DE_APLICACION
 4. Reiniciar el API y comprobar envío real, llegada a bandeja/spam, código correcto, incorrecto, vencido, reutilizado y reenvío.
 5. Verificar que la nueva contraseña permite entrar a la misma cuenta y conserva los datos, y que la contraseña anterior y las sesiones revocadas dejan de servir.
 
-Actualización del 29/09/2026: se configuró Gmail SMTP con el remitente `novvin.recuperacion@gmail.com`. Se verificaron la autenticación SMTP, la recepción real en el buzón de prueba, el cambio de contraseña y el inicio de sesión en la misma cuenta. La credencial se conserva únicamente en el `.env` privado del servidor (permisos 600), sin incluirse en este repositorio. Evidencia ampliada en `RECUPERACION-GMAIL-VERIFICADA-2026-09-29.md`.
+Actualización del 29/09/2026: se configuró Gmail SMTP con el remitente `novvin.recuperacion@gmail.com`. Se verificaron la autenticación SMTP, la recepción real en el buzón de prueba, el cambio de contraseña y el inicio de sesión en la misma cuenta. La credencial se conserva únicamente en el `.env` privado del servidor (permisos 600), sin incluirse en este repositorio. Evidencia inicial en `RECUPERACION-GMAIL-VERIFICADA-2026-09-29.md`. El flujo actual de seis dígitos, verificación separada y APK 9.0.2 está documentado en [Recuperación en tres pasos](RECUPERACION-CORREO-TRES-PASOS-2026-09-29.md).
 
 ## Flujo esperado
 

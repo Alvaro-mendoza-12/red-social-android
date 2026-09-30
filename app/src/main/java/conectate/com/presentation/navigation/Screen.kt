@@ -207,6 +207,7 @@ sealed class Screen(val route: String) {
         fun createRoute(liveId: String) = "live_host/$liveId"
     }
     object AddAccountLogin : Screen("add_account_login")
+    object AccountRecoveryHelp : Screen("account_recovery_help")
     object WebLoginScanner : Screen("web_login_scanner?pairId={pairId}&nonce={nonce}") {
         fun createRoute(
             pairId: String? = null,

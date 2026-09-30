@@ -64,6 +64,7 @@ private fun formatSuspensionDateForUi(raw: String?): String {
 fun LoginScreen(
     navController: NavController,
     isAddAccountMode: Boolean = false,
+    initialAssistedRecovery: Boolean = false,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     // Entry, email sign-in, or password recovery.
@@ -71,7 +72,7 @@ fun LoginScreen(
     var showLocalTwoFactorResetNotice by rememberSaveable {
         mutableStateOf(TwoFactorAuthManager.hasLocalStoreResetNotice(context))
     }
-    var loginType by rememberSaveable { mutableStateOf(if (isAddAccountMode) "email" else null) }
+    var loginType by rememberSaveable { mutableStateOf(if (initialAssistedRecovery) "assisted" else if (isAddAccountMode) "email" else null) }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var secondFactorCode by remember { mutableStateOf("") }
@@ -80,8 +81,8 @@ fun LoginScreen(
     var migrationEmail by rememberSaveable { mutableStateOf("") }
     var migrationDisplayName by rememberSaveable { mutableStateOf("") }
     var migrationToken by rememberSaveable { mutableStateOf("") }
-    var migrationNewPassword by rememberSaveable { mutableStateOf("") }
-    var migrationConfirmPassword by rememberSaveable { mutableStateOf("") }
+    var migrationNewPassword by remember { mutableStateOf("") }
+    var migrationConfirmPassword by remember { mutableStateOf("") }
     var recoveryCodeRequired by rememberSaveable { mutableStateOf(false) }
     var migrationInfo by rememberSaveable { mutableStateOf("") }
     var emailCodeCooldown by rememberSaveable { mutableIntStateOf(0) }
@@ -99,6 +100,16 @@ fun LoginScreen(
     var switchingAccountId by rememberSaveable { mutableStateOf<String?>(null) }
     
     val authState by viewModel.authState.collectAsStateWithLifecycle()
+    val emailRecovery by viewModel.emailRecovery.collectAsStateWithLifecycle()
+    LaunchedEffect(emailRecovery?.email) {
+        emailRecovery?.takeUnless { initialAssistedRecovery }?.let {
+            loginType = "recovery"
+            passwordFlowMode = "email_code"
+            email = it.email
+            migrationEmail = ""
+            migrationToken = ""
+        }
+    }
     val storedAccounts by viewModel.storedAccounts.collectAsStateWithLifecycle()
     val accountSwitchMessage by viewModel.accountSwitchMessage.collectAsStateWithLifecycle()
     val appealSubmitting by viewModel.appealSubmitting.collectAsStateWithLifecycle()
@@ -403,8 +414,12 @@ fun LoginScreen(
             } else 0.dp,
             onBack = if (loginType != null || isAddAccountMode) {
                 {
-                    if (isAddAccountMode) navController.popBackStack()
+                    if (isAddAccountMode) {
+                        if (initialAssistedRecovery) navController.popBackStack()
+                        else viewModel.clearEmailRecovery { navController.popBackStack() }
+                    }
                     else if (loginType == "recovery" || loginType == "assisted") {
+                        viewModel.clearEmailRecovery()
                         loginType = "email"
                         migrationEmail = ""
                         migrationToken = ""
@@ -748,6 +763,11 @@ fun LoginScreen(
                     },
                 )
             }
+            if (!assistedCodeStage) TextButton(
+                onClick = { viewModel.clearEmailRecovery(); loginType = "recovery"; passwordFlowMode = "saved_code" },
+                enabled = authState !is AuthState.Loading,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text(stringResource(R.string.auth_saved_code)) }
             if (assistedCodeStage) TextButton(
                 onClick = { assistedCodeStage = false },
                 modifier = Modifier.align(Alignment.End),
@@ -766,6 +786,27 @@ fun LoginScreen(
                 )
             }
 
+            val pendingEmailRecovery = emailRecovery
+            if (recovering && pendingEmailRecovery != null) {
+                EmailRecoverySteps(
+                    draft = pendingEmailRecovery, loading = authState is AuthState.Loading,
+                    newPassword = migrationNewPassword, confirmation = migrationConfirmPassword,
+                    onCodeChange = viewModel::updateEmailRecoveryCode,
+                    onVerify = viewModel::verifyEmailRecoveryCode,
+                    onNewPasswordChange = { migrationNewPassword = it },
+                    onConfirmationChange = { migrationConfirmPassword = it },
+                    onSavePassword = { viewModel.confirmMigratedPasswordCode(pendingEmailRecovery.resetToken, migrationNewPassword) },
+                    onResend = { viewModel.requestMigratedPasswordCode(pendingEmailRecovery.email) },
+                    onChangeEmail = {
+                        viewModel.clearEmailRecovery()
+                        viewModel.resetAuthState()
+                        passwordFlowMode = "migration"
+                        migrationEmail = ""
+                        migrationNewPassword = ""
+                        migrationConfirmPassword = ""
+                    },
+                )
+            } else {
             // Email Field
             run {
                 OutlinedTextField(
@@ -912,6 +953,7 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedButton(
                         onClick = {
+                            viewModel.clearEmailRecovery()
                             assistedIdentifier = email.trim()
                             assistedCodeStage = false
                             migrationToken = ""
@@ -925,11 +967,6 @@ fun LoginScreen(
                         shape = RoundedCornerShape(18.dp),
                     ) { Text(stringResource(R.string.auth_recovery_lost_email)) }
                     Spacer(modifier = Modifier.height(12.dp))
-                    TextButton(
-                        onClick = { passwordFlowMode = "saved_code" },
-                        enabled = authState !is AuthState.Loading,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) { Text(stringResource(R.string.auth_saved_code)) }
                 }
                 if (migrationEmail.isBlank() && usingSavedCode) {
                     Text(stringResource(R.string.auth_recovery_code_instruction),
@@ -1095,6 +1132,7 @@ fun LoginScreen(
                 }
             }
 
+        } // Legacy sign-in / backup-code form
         }
         }
     }

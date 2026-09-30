@@ -80,4 +80,15 @@
     <string name="auth_recovery_lost_email">我也無法存取信箱</string>
     <string name="auth_recovery_email_code_hint">貼上 Novvin 郵件中的完整驗證碼。</string>
     <string name="auth_recovery_save_and_sign_in">儲存密碼並登入</string>
+    <string name="auth_email_password_step">第3步，共3步 · 設定新密碼</string>
+    <string name="auth_email_code_step">第2步，共3步 · 驗證信箱</string>
+    <string name="auth_email_code_sent_hint">如果信箱已註冊，你將收到六位驗證碼。請檢查垃圾郵件，有效期限為15分鐘。</string>
+    <string name="auth_email_six_digit_code">六位驗證碼</string>
+    <string name="auth_email_copy_code_hint">複製最新 Novvin 郵件中的六位驗證碼。</string>
+    <string name="auth_email_paste_code">貼上驗證碼</string>
+    <string name="auth_email_verify_code">驗證驗證碼</string>
+    <string name="auth_email_code_verified">✓ 信箱已驗證</string>
+    <string name="auth_email_password_hint">至少使用8個字元。</string>
+    <string name="auth_email_password_mismatch">兩次密碼不一致。</string>
+    <string name="auth_email_change_email">使用其他信箱</string>
 </resources>

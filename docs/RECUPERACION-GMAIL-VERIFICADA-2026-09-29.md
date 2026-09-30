@@ -2,6 +2,8 @@
 
 Fecha: 29/09/2026. Trabajo: `D:\red social - live-gifts`, rama `feature/live-gifts`.
 
+> Informe histórico de la APK 9.0.1. El flujo actual utiliza seis dígitos y verificación separada antes de la contraseña: [actualización 9.0.2](RECUPERACION-CORREO-TRES-PASOS-2026-09-29.md).
+
 ## Configuración del servidor
 
 - Remitente: `Novvin <novvin.recuperacion@gmail.com>`.

@@ -780,8 +780,12 @@ private data class LocalFallbackChangePasswordRequest(
 
 @Serializable
 private data class LocalFallbackPasswordResetRequest(
-    val email: String
+    val email: String,
+    val codeFormat: String = "numeric"
 )
+
+@Serializable
+private data class LocalFallbackEmailCodeVerifyRequest(val email: String, val code: String)
 
 @Serializable
 private data class LocalFallbackAssistedRecoveryRequest(
@@ -1525,6 +1529,7 @@ class LocalFallbackPasswordChangedNeedsTwoFactorException : Exception(
 
 @Serializable
 data class LocalFallbackPasswordResetResponse(
+    val codeLength: Int? = null,
     val ok: Boolean = true,
     val delivery: String? = null,
     val resetToken: String? = null,
@@ -1720,6 +1725,23 @@ class LocalFallbackApiClient @Inject constructor(
             }
         } catch (error: Exception) {
             Result.failure(error)
+        }
+    }
+
+    suspend fun verifyEmailPasswordCode(email: String, code: String): Result<LocalFallbackPasswordResetResponse> {
+        val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
+            ?: return Result.failure(Exception("El servidor de Novvin no está disponible. Inténtalo de nuevo."))
+        return runCatching {
+            val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/password-reset/verify") {
+                localHeaders()
+                contentType(ContentType.Application.Json)
+                setBody(LocalFallbackEmailCodeVerifyRequest(email.trim().lowercase(), code.trim()))
+            }
+            val body = response.bodyAsText()
+            if (!response.status.isSuccess()) throw toException(response, decodeError(body))
+            json.decodeFromString<LocalFallbackPasswordResetResponse>(body).also {
+                check(it.ok && it.resetToken?.matches(Regex("^[0-9a-f]{64}$")) == true) { "El servidor no pudo verificar el código." }
+            }
         }
     }
 
@@ -6477,6 +6499,8 @@ class LocalFallbackApiClient @Inject constructor(
             "MIGRATION_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Tu cuenta migrada necesita una contraseña de al menos 8 caracteres.")
             "INVALID_MIGRATION_TOKEN" -> Exception("El permiso para cambiar la contraseña venció. Verifica otra vez tu contraseña actual.")
             "RESET_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Ubuntu necesita crear una contraseña de al menos 8 caracteres.")
+            "INVALID_OR_EXPIRED_EMAIL_CODE" -> Exception("El código es incorrecto, venció o se agotaron los intentos. Revisa el último correo o pide otro código.")
+            "EMAIL_AND_SIX_DIGIT_CODE_REQUIRED" -> Exception("Escribe el correo de tu cuenta y el código de seis dígitos.")
             "INVALID_OR_EXPIRED_RESET_TOKEN" -> Exception("El permiso seguro venció o no es válido. Vuelve a solicitar el cambio.")
             "GROUP_INVITE_INVALID" -> Exception("La invitación del grupo está incompleta o no es válida.")
             "GROUP_INVITE_EXPIRED_OR_USED" -> Exception("La invitación del grupo venció o alcanzó su límite de usos.")

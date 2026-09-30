@@ -80,4 +80,15 @@
     <string name="auth_recovery_lost_email">I also lost access to my email</string>
     <string name="auth_recovery_email_code_hint">Paste the complete code from the Novvin email.</string>
     <string name="auth_recovery_save_and_sign_in">Save password and sign in</string>
+    <string name="auth_email_password_step">3 of 3 · Create a new password</string>
+    <string name="auth_email_code_step">2 of 3 · Verify your email</string>
+    <string name="auth_email_code_sent_hint">If this email is registered, you will receive a six-digit code. Check spam too. It is valid for 15 minutes.</string>
+    <string name="auth_email_six_digit_code">6-digit code</string>
+    <string name="auth_email_copy_code_hint">Copy the six-digit code from the latest Novvin email.</string>
+    <string name="auth_email_paste_code">Paste code</string>
+    <string name="auth_email_verify_code">Verify code</string>
+    <string name="auth_email_code_verified">✓ Email verified</string>
+    <string name="auth_email_password_hint">Use at least 8 characters.</string>
+    <string name="auth_email_password_mismatch">Passwords do not match.</string>
+    <string name="auth_email_change_email">Use another email</string>
 </resources>

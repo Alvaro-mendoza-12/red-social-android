@@ -905,6 +905,13 @@ fun SettingsScreen(
 
             // Section: Soporte y Ayuda
             SettingsSection(title = "Soporte y Ayuda") {
+                OutlinedButton(onClick = { mainNavController.navigate(Screen.AccountRecoveryHelp.route) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                    Text("Ayudar a recuperar una cuenta")
+                }
+                Text("Envía una solicitud desde esta cuenta si perdiste otra o alguien te quitó el acceso.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(12.dp))
                 var showSupportDialog by remember { mutableStateOf(false) }
                 var dialogStep by remember { mutableStateOf(1) } // 1: Warning, 2: Admin Selection
 

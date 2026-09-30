@@ -63,6 +63,7 @@ const {
 const { processDueNotificationDigests } = require('./notification-digest-routes')
 const { createRequestObservabilityMiddleware, safeErrorLogDetails } = require('./request-observability')
 const { createPasswordResetMailer } = require('./password-reset-mailer')
+const { createEmailRecoveryStore, CODE_MINUTES } = require('./password-reset-email-code')
 const {
   hashPasswordRecoveryCode,
   issuePasswordRecoveryCodes,
@@ -328,6 +329,10 @@ app.use('/v1/auth/password-reset/request', createDistributedRateLimitMiddleware(
   code: 'AUTH_PASSWORD_RESET_RATE_LIMITED',
   key: authCredentialKey,
   methods: ['POST'],
+}))
+app.use('/v1/auth/password-reset/verify', createDistributedRateLimitMiddleware({
+  pool, scope: 'auth:password-reset-verify', limit: 8, windowMs: 15 * 60_000,
+  code: 'AUTH_PASSWORD_RESET_RATE_LIMITED', key: authCredentialKey, methods: ['POST'],
 }))
 app.post('/v1/auth/account-recovery/cases', createDistributedRateLimitMiddleware({
   pool,
@@ -673,6 +678,8 @@ function createPasswordResetToken() {
 function hashPasswordResetToken(token) {
   return crypto.createHash('sha256').update(String(token || '').trim()).digest('hex')
 }
+
+const emailRecoveryStore = createEmailRecoveryStore({ pool, secret: twoFactorEncryptionSecret, makeToken: createPasswordResetToken, hashToken: hashPasswordResetToken })
 
 function createAuthRefreshToken() {
   return crypto.randomBytes(48).toString('base64url')
@@ -1359,6 +1366,12 @@ async function ensureAuthMetadataColumns(executor = pool) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `)
+  await executor.query(`CREATE TABLE IF NOT EXISTS fallback_password_reset_email_codes (
+    user_id UUID PRIMARY KEY REFERENCES fallback_users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0 AND attempts <= 5),
+    expires_at TIMESTAMPTZ NOT NULL, consumed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`)
   await executor.query(`
     CREATE INDEX IF NOT EXISTS idx_fallback_password_reset_tokens_user
     ON fallback_password_reset_tokens(user_id, created_at DESC)
@@ -2831,10 +2844,12 @@ app.post('/v1/auth/change-password', authRequired, async (req, res, next) => {
 app.post('/v1/auth/password-reset/request', async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body?.email)
+    const numericCode = req.body?.codeFormat === 'numeric' && passwordResetDelivery === 'smtp'
     const baseResponse = {
       ok: true,
       delivery: passwordResetDelivery === 'smtp' ? 'email' : passwordResetDelivery,
-      expiresInMinutes: passwordResetTokenTtlMinutes,
+      expiresInMinutes: numericCode ? CODE_MINUTES : passwordResetTokenTtlMinutes,
+      ...(numericCode ? { codeLength: 6 } : {}),
     }
 
     if (!isValidEmail(email) || passwordResetDelivery === 'disabled') {
@@ -2854,19 +2869,16 @@ app.post('/v1/auth/password-reset/request', async (req, res, next) => {
     }
 
     const row = rows[0]
+    if (numericCode) {
+      const code = await emailRecoveryStore.issue(row.id, email)
+      try { await passwordResetMailer.deliver(email, code, CODE_MINUTES) }
+      catch (error) { console.error('[auth] password reset email failed', error?.code || error?.name || 'unknown') }
+      return res.json(baseResponse)
+    }
+    // Preserve long-token support for installed clients and manual recovery.
     const token = createPasswordResetToken()
     const tokenHash = hashPasswordResetToken(token)
-    await pool.query(
-      `UPDATE fallback_password_reset_tokens
-       SET consumed_at = NOW()
-       WHERE user_id = $1 AND consumed_at IS NULL`,
-      [row.id],
-    )
-    await pool.query(
-      `INSERT INTO fallback_password_reset_tokens(user_id, token_hash, expires_at)
-       VALUES ($1, $2, NOW() + ($3::text || ' minutes')::interval)`,
-      [row.id, tokenHash, passwordResetTokenTtlMinutes],
-    )
+    await emailRecoveryStore.issueLegacy(row.id, tokenHash, passwordResetTokenTtlMinutes)
 
     let delivery
     try {
@@ -2892,6 +2904,21 @@ app.post('/v1/auth/password-reset/request', async (req, res, next) => {
   }
 })
 
+app.post('/v1/auth/password-reset/verify', async (req, res, next) => {
+  try {
+    if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
+    const email = normalizeEmail(req.body?.email)
+    const code = String(req.body?.code || '').trim()
+    if (!isValidEmail(email) || !/^[0-9]{6}$/.test(code)) {
+      return res.status(400).json({ error: 'EMAIL_AND_SIX_DIGIT_CODE_REQUIRED' })
+    }
+    const verified = await emailRecoveryStore.verify(email, code)
+    if (!verified) return res.status(401).json({ error: 'INVALID_OR_EXPIRED_EMAIL_CODE' })
+    res.set('Cache-Control', 'no-store')
+    return res.json(verified)
+  } catch (error) { return next(error) }
+})
+
 app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
   let client
   try {
@@ -2906,6 +2933,9 @@ app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
     const tokenHash = hashPasswordResetToken(resetToken)
     client = await pool.connect()
     await client.query('BEGIN')
+    await client.query(`SELECT id FROM fallback_users WHERE id = (
+      SELECT user_id FROM fallback_password_reset_tokens WHERE token_hash = $1
+    ) FOR UPDATE`, [tokenHash])
     const { rows } = await client.query(
       `SELECT token.id AS token_id, token.user_id, token.recovery_case_id, ${userSelectColumns
         .split(',')
@@ -2954,6 +2984,7 @@ app.post('/v1/auth/password-reset/confirm', async (req, res, next) => {
        RETURNING ${userSelectColumns}`,
       [row.user_id, passwordHash],
     )
+    await client.query('UPDATE fallback_password_reset_email_codes SET consumed_at = NOW() WHERE user_id = $1 AND consumed_at IS NULL', [row.user_id])
     await revokeAllUserSessions(row.user_id, client)
     if (row.recovery_case_id) {
       const reviewedCase = await client.query(

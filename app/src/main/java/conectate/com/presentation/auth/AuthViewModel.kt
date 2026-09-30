@@ -23,6 +23,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
 sealed class AuthState {
@@ -68,6 +72,12 @@ class AuthViewModel @Inject constructor(
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
+    private val emailRecoveryStore = EmailRecoveryDraftStore(context)
+    private val emailRecoveryMutex = Mutex()
+    private var emailRecoveryGeneration = 0
+    private val _emailRecovery = MutableStateFlow<EmailRecoveryDraft?>(null)
+    val emailRecovery: StateFlow<EmailRecoveryDraft?> = _emailRecovery.asStateFlow()
+
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
@@ -110,6 +120,11 @@ class AuthViewModel @Inject constructor(
     )
 
     init {
+        viewModelScope.launch {
+            val generation = emailRecoveryGeneration
+            val restored = withContext(Dispatchers.IO) { emailRecoveryStore.read() }
+            if (generation == emailRecoveryGeneration) _emailRecovery.value = restored
+        }
         checkAuthState()
         observeStoredAccounts()
         validateSessionHealth()
@@ -385,34 +400,84 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    private suspend fun persistEmailRecovery(snapshot: EmailRecoveryDraft?) {
+        withContext(Dispatchers.IO) {
+            emailRecoveryMutex.withLock {
+                if (_emailRecovery.value == snapshot) {
+                    if (snapshot == null) emailRecoveryStore.clear() else emailRecoveryStore.save(snapshot)
+                }
+            }
+        }
+    }
+
+    fun clearEmailRecovery(onCleared: () -> Unit = {}) {
+        emailRecoveryGeneration += 1
+        _emailRecovery.value = null
+        viewModelScope.launch { runCatching { persistEmailRecovery(null) }; onCleared() }
+    }
+
+    fun updateEmailRecoveryCode(value: String) {
+        val previous = _emailRecovery.value ?: return
+        if (previous.verified || _authState.value is AuthState.Loading) return
+        val code = value.filter { it in '0'..'9' }.take(6)
+        val next = previous.copy(code = code)
+        _emailRecovery.value = next
+        if (_authState.value is AuthState.Error) _authState.value = AuthState.Idle
+        viewModelScope.launch { runCatching { persistEmailRecovery(next) } }
+        if (code.length == 6 && code != previous.code) verifyEmailRecoveryCode()
+    }
+
+    fun verifyEmailRecoveryCode() {
+        val current = _emailRecovery.value ?: return
+        if (current.code.length != 6 || current.verified || _authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
+        viewModelScope.launch {
+            val result = localFallbackApiClient.verifyEmailPasswordCode(current.email, current.code)
+            if (_emailRecovery.value != current) return@launch
+            result.fold(onSuccess = { verified ->
+                val next = current.copy(code = "", resetToken = verified.resetToken.orEmpty(),
+                    expiresAt = System.currentTimeMillis() + (verified.expiresInMinutes ?: 10) * 60_000L)
+                _emailRecovery.value = next
+                runCatching { persistEmailRecovery(next) }.fold(
+                    onSuccess = { _authState.value = AuthState.Idle },
+                    onFailure = { _authState.value = AuthState.Error("No se pudo guardar el avance. Mantén abierta esta pantalla para terminar.") })
+            }, onFailure = { _authState.value = AuthState.Error(mapAuthError(it)) })
+        }
+    }
+
     fun requestMigratedPasswordCode(email: String) {
         if (_authState.value is AuthState.Loading) return
+        val normalizedEmail = email.trim().lowercase()
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(normalizedEmail).matches()) {
+            _authState.value = AuthState.Error("Ingresa un correo válido de tu cuenta.")
+            return
+        }
+        val generation = ++emailRecoveryGeneration
+        _authState.value = AuthState.Loading
         viewModelScope.launch {
-            val normalizedEmail = email.trim().lowercase()
-            if (normalizedEmail.isBlank()) {
-                _authState.value = AuthState.Error("Ingresa el correo de tu cuenta.")
-                return@launch
+            // Save the address before sending, so an in-flight email is still usable after process death.
+            val pending = EmailRecoveryDraft(normalizedEmail, expiresAt = System.currentTimeMillis() + 15 * 60_000L,
+                resendAt = System.currentTimeMillis() + 60_000)
+            _emailRecovery.value = pending
+            val result = runCatching {
+                persistEmailRecovery(pending)
+                authRepository.requestLocalFallbackPasswordReset(normalizedEmail).getOrThrow()
             }
-
-            _authState.value = AuthState.Loading
-            val result = authRepository.requestLocalFallbackPasswordReset(normalizedEmail)
-            _authState.value = result.fold(
-                onSuccess = {
-                    if (it.delivery == "disabled") {
-                        AuthState.Error("El correo de recuperación aún no está habilitado. Si guardaste un código fuera del teléfono, vuelve y toca «Tengo un código guardado». Sin código ni otra sesión, el equipo debe verificar que la cuenta es tuya.")
-                    } else {
-                        AuthState.MigrationPasswordCodeSent(
-                            email = normalizedEmail,
-                            resetToken = it.resetToken,
-                            delivery = it.delivery,
-                            expiresInMinutes = it.expiresInMinutes
-                        )
-                    }
-                },
-                onFailure = {
-                    AuthState.Error(mapAuthError(it))
+            if (generation != emailRecoveryGeneration) return@launch
+            result.fold(onSuccess = { response ->
+                if (response.delivery == "disabled") {
+                    clearEmailRecovery()
+                    _authState.value = AuthState.Error("El envío por correo no está disponible. Usa la ayuda para recuperar tu cuenta.")
+                } else if (response.codeLength == 6) {
+                    val next = pending.copy(expiresAt = System.currentTimeMillis() + (response.expiresInMinutes ?: 15) * 60_000L)
+                    _emailRecovery.value = next
+                    runCatching { persistEmailRecovery(next) }
+                    _authState.value = AuthState.Idle
+                } else {
+                    clearEmailRecovery()
+                    _authState.value = AuthState.MigrationPasswordCodeSent(normalizedEmail, response.resetToken, response.delivery, response.expiresInMinutes)
                 }
-            )
+            }, onFailure = { _authState.value = AuthState.Error(mapAuthError(it)) })
         }
     }
 
@@ -455,6 +520,9 @@ class AuthViewModel @Inject constructor(
             val result = authRepository.confirmLocalFallbackPasswordReset(resetToken, newPassword)
             _authState.value = result.fold(
                 onSuccess = {
+                    emailRecoveryGeneration += 1
+                    _emailRecovery.value = null
+                    runCatching { persistEmailRecovery(null) }
                     _isUserLoggedIn.value = true
                     _currentUserId.value = it.id
                     _assistedRecoveryCaseId.value = null
@@ -463,8 +531,12 @@ class AuthViewModel @Inject constructor(
                     AuthState.Success(it)
                 },
                 onFailure = {
-                    if (it is LocalFallbackPasswordChangedNeedsTwoFactorException)
+                    if (it is LocalFallbackPasswordChangedNeedsTwoFactorException) {
+                        emailRecoveryGeneration += 1
+                        _emailRecovery.value = null
+                        runCatching { persistEmailRecovery(null) }
                         AuthState.PasswordChangedNeedsTwoFactor
+                    }
                     else AuthState.Error(mapAuthError(it))
                 }
             )

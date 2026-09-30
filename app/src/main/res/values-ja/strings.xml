@@ -80,4 +80,15 @@
     <string name="auth_recovery_lost_email">メールにもアクセスできません</string>
     <string name="auth_recovery_email_code_hint">Novvinのメールに記載されたコードをすべて貼り付けてください。</string>
     <string name="auth_recovery_save_and_sign_in">パスワードを保存してログイン</string>
+    <string name="auth_email_password_step">3/3 · 新しいパスワードを設定</string>
+    <string name="auth_email_code_step">2/3 · メールを確認</string>
+    <string name="auth_email_code_sent_hint">登録済みのメールアドレスには6桁のコードが届きます。迷惑メールも確認してください。有効期限は15分です。</string>
+    <string name="auth_email_six_digit_code">6桁のコード</string>
+    <string name="auth_email_copy_code_hint">最新のNovvinメールから6桁のコードをコピーしてください。</string>
+    <string name="auth_email_paste_code">コードを貼り付け</string>
+    <string name="auth_email_verify_code">コードを確認</string>
+    <string name="auth_email_code_verified">✓ メール確認済み</string>
+    <string name="auth_email_password_hint">8文字以上を使用してください。</string>
+    <string name="auth_email_password_mismatch">パスワードが一致しません。</string>
+    <string name="auth_email_change_email">別のメールを使用</string>
 </resources>

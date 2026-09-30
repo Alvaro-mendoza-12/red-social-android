@@ -90,4 +90,15 @@
     <string name="auth_recovery_lost_email">También perdí acceso al correo</string>
     <string name="auth_recovery_email_code_hint">Copia el código completo del correo de Novvin.</string>
     <string name="auth_recovery_save_and_sign_in">Guardar contraseña y entrar</string>
+    <string name="auth_email_password_step">3 de 3 · Crea tu nueva contraseña</string>
+    <string name="auth_email_code_step">2 de 3 · Verifica tu correo</string>
+    <string name="auth_email_code_sent_hint">Si ese correo está registrado, recibirás un código de seis dígitos. Revisa también spam. Es válido durante 15 minutos.</string>
+    <string name="auth_email_six_digit_code">Código de 6 dígitos</string>
+    <string name="auth_email_copy_code_hint">Copia el código de seis dígitos del último correo de Novvin.</string>
+    <string name="auth_email_paste_code">Pegar código</string>
+    <string name="auth_email_verify_code">Verificar código</string>
+    <string name="auth_email_code_verified">✓ Correo verificado</string>
+    <string name="auth_email_password_hint">Usa al menos 8 caracteres.</string>
+    <string name="auth_email_password_mismatch">Las contraseñas no coinciden.</string>
+    <string name="auth_email_change_email">Usar otro correo</string>
 </resources>
