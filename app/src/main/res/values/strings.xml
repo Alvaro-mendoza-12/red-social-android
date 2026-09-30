@@ -90,4 +90,12 @@
     <string name="auth_hide_confirmation">Ocultar confirmación</string>
     <string name="auth_show_confirmation">Mostrar confirmación</string>
     <string name="auth_remove_account">Quitar</string>
+    <string name="auth_recovery_email_intro">Escribe el correo de tu cuenta. Te enviaremos un código para crear una contraseña nueva.</string>
+    <string name="auth_recovery_send_email_code">Enviar código a mi correo</string>
+    <string name="auth_recovery_resend_email_code">Enviar otro código</string>
+    <string name="auth_recovery_resend_wait">Puedes reenviar en %1$d s</string>
+    <string name="auth_recovery_email_sent">Si el correo está registrado, recibirás un código. Revisa también spam. Cópialo aquí antes de %1$d minutos. Cada nuevo código reemplaza al anterior.</string>
+    <string name="auth_recovery_lost_email">También perdí acceso al correo</string>
+    <string name="auth_recovery_email_code_hint">Copia el código completo del correo de Novvin.</string>
+    <string name="auth_recovery_save_and_sign_in">Guardar contraseña y entrar</string>
 </resources>

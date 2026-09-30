@@ -386,10 +386,11 @@ class AuthViewModel @Inject constructor(
     }
 
     fun requestMigratedPasswordCode(email: String) {
+        if (_authState.value is AuthState.Loading) return
         viewModelScope.launch {
             val normalizedEmail = email.trim().lowercase()
             if (normalizedEmail.isBlank()) {
-                _authState.value = AuthState.Error("Ingresa el correo de la cuenta migrada.")
+                _authState.value = AuthState.Error("Ingresa el correo de tu cuenta.")
                 return@launch
             }
 

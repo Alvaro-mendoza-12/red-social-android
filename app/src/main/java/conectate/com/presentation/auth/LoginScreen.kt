@@ -45,6 +45,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.absoluteValue
+import kotlinx.coroutines.delay
 
 private fun formatSuspensionDateForUi(raw: String?): String {
     var value = raw?.trim().orEmpty()
@@ -83,6 +84,7 @@ fun LoginScreen(
     var migrationConfirmPassword by rememberSaveable { mutableStateOf("") }
     var recoveryCodeRequired by rememberSaveable { mutableStateOf(false) }
     var migrationInfo by rememberSaveable { mutableStateOf("") }
+    var emailCodeCooldown by rememberSaveable { mutableIntStateOf(0) }
     var passwordFlowMode by rememberSaveable { mutableStateOf("migration") }
     var assistedIdentifier by rememberSaveable { mutableStateOf("") }
     var assistedContact by rememberSaveable { mutableStateOf("") }
@@ -123,6 +125,13 @@ fun LoginScreen(
     LaunchedEffect(authErrorText, suspendedState) {
         if (isSuspensionError) {
             showSuspendedDialog = true
+        }
+    }
+
+    LaunchedEffect(emailCodeCooldown) {
+        if (emailCodeCooldown > 0) {
+            delay(1_000)
+            emailCodeCooldown -= 1
         }
     }
 
@@ -168,11 +177,10 @@ fun LoginScreen(
                 migrationEmail = resolvedEmail
                 migrationDisplayName = ""
                 migrationToken = state.resetToken.orEmpty()
-                migrationNewPassword = ""
-                migrationConfirmPassword = ""
+                emailCodeCooldown = 60
                 recoveryCodeRequired = state.resetToken.isNullOrBlank()
                 migrationInfo = if (state.resetToken.isNullOrBlank()) {
-                    "Si el correo está registrado, recibirás un código de recuperación. Cópialo aquí antes de ${state.expiresInMinutes ?: 30} minutos."
+                    context.getString(R.string.auth_recovery_email_sent, state.expiresInMinutes ?: 30)
                 } else {
                     "Solicitud verificada por el servidor. Crea ahora una contraseña nueva; el permiso vence en ${state.expiresInMinutes ?: 30} minutos."
                 }
@@ -749,47 +757,17 @@ fun LoginScreen(
         } else if (loginType == "email" || loginType == "recovery") {
             val recovering = loginType == "recovery"
             val usingSavedCode = recovering && passwordFlowMode == "saved_code"
-            // Email Login Form
             if (recovering) {
                 Text(
-                    text = stringResource(R.string.auth_recovery_intro),
+                    text = stringResource(if (usingSavedCode) R.string.auth_recovery_backup_explanation else R.string.auth_recovery_email_intro),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 20.dp),
                 )
-                Button(
-                    onClick = {
-                        assistedIdentifier = email.trim()
-                        assistedCodeStage = false
-                        migrationEmail = ""
-                        migrationToken = ""
-                        migrationNewPassword = ""
-                        migrationConfirmPassword = ""
-                        loginType = "assisted"
-                        viewModel.resetAuthState()
-                    },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(18.dp),
-                ) { Text(stringResource(R.string.auth_assisted_recovery_button)) }
-                Spacer(modifier = Modifier.height(12.dp))
-                if (!usingSavedCode && migrationEmail.isBlank()) {
-                    OutlinedButton(
-                        onClick = { passwordFlowMode = "saved_code" },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        shape = RoundedCornerShape(18.dp),
-                    ) { Text(stringResource(R.string.auth_saved_code)) }
-                    Text(
-                        stringResource(R.string.auth_recovery_backup_explanation),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 12.dp),
-                    )
-                }
             }
 
             // Email Field
-            if (!recovering || usingSavedCode || migrationEmail.isNotBlank()) {
-                if (recovering) Spacer(modifier = Modifier.height(20.dp))
+            run {
                 OutlinedTextField(
                 value = email,
                 onValueChange = {
@@ -809,7 +787,7 @@ fun LoginScreen(
                 },
                 label = {
                     Text(
-                        if (recovering) stringResource(R.string.auth_recovery_saved_code_email_label)
+                        if (usingSavedCode) stringResource(R.string.auth_recovery_saved_code_email_label)
                         else stringResource(R.string.auth_account_email)
                     )
                 },
@@ -817,6 +795,7 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 singleLine = true,
+                enabled = authState !is AuthState.Loading,
                 isError = !emailIsValid,
                 supportingText = {
                     if (!emailIsValid) Text(stringResource(R.string.auth_invalid_email))
@@ -917,6 +896,41 @@ fun LoginScreen(
             }
 
             if (recovering) {
+                if (migrationEmail.isBlank() && !usingSavedCode) {
+                    Button(
+                        onClick = { viewModel.requestMigratedPasswordCode(email) },
+                        enabled = authState !is AuthState.Loading && email.isNotBlank() && emailIsValid && emailCodeCooldown == 0,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("recovery_send_email"),
+                        shape = RoundedCornerShape(18.dp),
+                    ) {
+                        if (authState is AuthState.Loading) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                        } else {
+                            Text(stringResource(if (emailCodeCooldown > 0) R.string.auth_recovery_resend_wait else R.string.auth_recovery_send_email_code, emailCodeCooldown))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            assistedIdentifier = email.trim()
+                            assistedCodeStage = false
+                            migrationToken = ""
+                            migrationNewPassword = ""
+                            migrationConfirmPassword = ""
+                            loginType = "assisted"
+                            viewModel.resetAuthState()
+                        },
+                        enabled = authState !is AuthState.Loading,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                        shape = RoundedCornerShape(18.dp),
+                    ) { Text(stringResource(R.string.auth_recovery_lost_email)) }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TextButton(
+                        onClick = { passwordFlowMode = "saved_code" },
+                        enabled = authState !is AuthState.Loading,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text(stringResource(R.string.auth_saved_code)) }
+                }
                 if (migrationEmail.isBlank() && usingSavedCode) {
                     Text(stringResource(R.string.auth_recovery_code_instruction),
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -979,7 +993,7 @@ fun LoginScreen(
                     recoveryCodeHint = if (passwordFlowMode == "saved_code") {
                         "Escribe un código que guardaste antes de perder el acceso."
                     } else {
-                        "Copia el código recibido en tu correo."
+                        stringResource(R.string.auth_recovery_email_code_hint)
                     },
                     info = migrationInfo,
                     isLoading = authState is AuthState.Loading,
@@ -988,7 +1002,7 @@ fun LoginScreen(
                     onRecoveryCodeChange = { migrationToken = it.trim() },
                     canSubmit = migrationToken.isNotBlank(),
                     submitLabel = if (passwordFlowMode == "reset") {
-                        "Guardar nueva contraseña y entrar"
+                        stringResource(R.string.auth_recovery_save_and_sign_in)
                     } else {
                         "Guardar contraseña y entrar"
                     },
@@ -1024,6 +1038,17 @@ fun LoginScreen(
                     }
                 )
 
+                if (recovering && passwordFlowMode == "reset") {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.requestMigratedPasswordCode(migrationEmail) },
+                        enabled = authState !is AuthState.Loading && emailCodeCooldown == 0,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("recovery_resend_email"),
+                    ) {
+                        Text(if (emailCodeCooldown > 0) stringResource(R.string.auth_recovery_resend_wait, emailCodeCooldown)
+                            else stringResource(R.string.auth_recovery_resend_email_code))
+                    }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
             }
 

@@ -72,4 +72,12 @@
     <string name="auth_hide_confirmation">隱藏確認密碼</string>
     <string name="auth_show_confirmation">顯示確認密碼</string>
     <string name="auth_remove_account">移除</string>
+    <string name="auth_recovery_email_intro">輸入帳戶電子郵件，我們將寄送用於設定新密碼的驗證碼。</string>
+    <string name="auth_recovery_send_email_code">寄送驗證碼到信箱</string>
+    <string name="auth_recovery_resend_email_code">重新寄送驗證碼</string>
+    <string name="auth_recovery_resend_wait">%1$d 秒後可重新寄送</string>
+    <string name="auth_recovery_email_sent">如果信箱已註冊，你將收到驗證碼。請檢查垃圾郵件，並在 %1$d 分鐘內貼上驗證碼。新驗證碼會使舊驗證碼失效。</string>
+    <string name="auth_recovery_lost_email">我也無法存取信箱</string>
+    <string name="auth_recovery_email_code_hint">貼上 Novvin 郵件中的完整驗證碼。</string>
+    <string name="auth_recovery_save_and_sign_in">儲存密碼並登入</string>
 </resources>

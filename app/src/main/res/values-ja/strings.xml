@@ -72,4 +72,12 @@
     <string name="auth_hide_confirmation">確認入力を隠す</string>
     <string name="auth_show_confirmation">確認入力を表示</string>
     <string name="auth_remove_account">削除</string>
+    <string name="auth_recovery_email_intro">アカウントのメールアドレスを入力してください。新しいパスワードを設定するためのコードを送信します。</string>
+    <string name="auth_recovery_send_email_code">メールにコードを送信</string>
+    <string name="auth_recovery_resend_email_code">別のコードを送信</string>
+    <string name="auth_recovery_resend_wait">%1$d 秒後に再送信できます</string>
+    <string name="auth_recovery_email_sent">登録済みのメールアドレスにはコードが届きます。迷惑メールも確認し、%1$d 分以内に貼り付けてください。新しいコードを発行すると以前のコードは無効になります。</string>
+    <string name="auth_recovery_lost_email">メールにもアクセスできません</string>
+    <string name="auth_recovery_email_code_hint">Novvinのメールに記載されたコードをすべて貼り付けてください。</string>
+    <string name="auth_recovery_save_and_sign_in">パスワードを保存してログイン</string>
 </resources>
