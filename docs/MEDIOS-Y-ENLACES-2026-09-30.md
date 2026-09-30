@@ -332,3 +332,37 @@ la cuenta activa. SHA-256 de la APK instalada:
 `ea6afa713e89a881ac320b641888c12ebbac47c7528b19f9c0b4134d3575a768`.
 La repetición confirma los casos enumerados, no todos los apartados de la app,
 escucha por dos personas ni disponibilidad futura del proveedor del túnel.
+
+### Batalla de dos equipos con 9.0.16 y cierre de la pasada
+
+Se instaló la misma APK y la APK de pruebas en el emulador, y se repitió el
+ensayo coordinado con dos cuentas sintéticas nuevas. Ambas instrumentaciones
+aprobaron. El anfitrión mantuvo su captura original mientras el SDK publicaba
+video; micrófono/cámara, pausa, reemplazo por captura trasera y reconexión sin
+reemplazar la sala aprobaron de nuevo.
+
+| Receptor, 9.0.16 | Imagen dibujada | RTP de audio | FPS recibidos | Inicio hasta primera imagen |
+|---|---|---|---|---|
+| Anfitrión, Motorola | Sí | Sí | 11,20 | 5,281 s |
+| Invitado, emulador | Sí | Sí | 20,00 | 14,735 s |
+
+El tiempo incluye negociación, renderizado y espera del otro dispositivo;
+no mide el retardo de un fotograma extremo a extremo. La primera imagen del
+invitado conserva variación y sigue como observación. RTP recibido no acredita
+escucha por dos personas ni mezcla audible entre los dos motores de audio.
+El indicador de continuidad de captura se exige solo al anfitrión, que tenía
+la cámara original del directo antes de iniciar la colaboración.
+
+Registro: `build/shared-capture-9.0.16-duet.log`, complementado con los registros
+individuales de anfitrión/invitado. La batalla terminó. El primer intento de
+borrar el LIVE de prueba recibió la protección de directo todavía activo:
+se verificaron dueño y título sintético, se cerró su estado y entonces se
+eliminó. Las dos cuentas temporales se retiraron mediante su endpoint de
+eliminación propio, comprobando antes identidad, correo sintético y nombre.
+Se borraron las credenciales de prueba de las cachés de ambos equipos y del
+archivo local. El emulador se cerró y el Motorola volvió a Mensajes, conservando
+su cuenta activa y sus datos; se inspeccionó la captura de pantalla de entrada.
+
+La caída pública y las falsas alarmas de diagnóstico recibieron además una
+corrección de monitor desplegada y probada en el servidor. Detalles en
+[entrada pública y monitor](ENTRADA-PUBLICA-Y-MONITOR-2026-09-30.md).
