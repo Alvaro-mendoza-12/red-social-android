@@ -12,4 +12,5 @@
     <external-cache-path
         name="shared_external_moment_captures"
         path="file-provider/moment-captures/" />
+    <cache-path name="private_recovery_evidence" path="file-provider/recovery-evidence/" />
 </paths>

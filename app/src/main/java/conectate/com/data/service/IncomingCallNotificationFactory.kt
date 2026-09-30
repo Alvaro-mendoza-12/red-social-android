@@ -45,7 +45,7 @@ object IncomingCallNotificationFactory {
     ): Notification {
         val notificationId = invite.callId.hashCode()
 
-        var pending = PendingIntent.getActivity(
+        val pending = PendingIntent.getActivity(
             context,
             notificationId,
             buildIncomingCallActivityIntent(context, invite, avatarBytes),
@@ -92,8 +92,7 @@ object IncomingCallNotificationFactory {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setAutoCancel(false)
-            .setOnlyAlertOnce(false)
-            .setSilent(true)
+            .setOnlyAlertOnce(true)
             .setLargeIcon(avatarBitmap)
             .setColor(ContextCompat.getColor(context, R.color.red_primary))
             .setColorized(true)

@@ -905,6 +905,8 @@ fun SettingsScreen(
 
             // Section: Soporte y Ayuda
             SettingsSection(title = "Soporte y Ayuda") {
+                conectate.com.presentation.calls.IncomingCallPermissionCard()
+                Spacer(modifier = Modifier.height(12.dp))
                 OutlinedButton(onClick = { mainNavController.navigate(Screen.AccountRecoveryHelp.route) },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
                     Text("Ayudar a recuperar una cuenta")

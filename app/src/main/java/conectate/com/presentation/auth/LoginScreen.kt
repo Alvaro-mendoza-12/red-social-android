@@ -1,5 +1,8 @@
 package conectate.com.presentation.auth
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
 import android.util.Patterns
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -114,6 +117,11 @@ fun LoginScreen(
     val accountSwitchMessage by viewModel.accountSwitchMessage.collectAsStateWithLifecycle()
     val appealSubmitting by viewModel.appealSubmitting.collectAsStateWithLifecycle()
     val appealMessage by viewModel.appealMessage.collectAsStateWithLifecycle()
+    val recoveryEvidence by viewModel.recoveryEvidence.collectAsStateWithLifecycle()
+    val evidencePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach { uri -> runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } }
+        viewModel.selectRecoveryEvidence(uris)
+    }
     val assistedRecoverySubmitting by viewModel.assistedRecoverySubmitting.collectAsStateWithLifecycle()
     val assistedRecoveryMessage by viewModel.assistedRecoveryMessage.collectAsStateWithLifecycle()
     val assistedRecoveryCaseId by viewModel.assistedRecoveryCaseId.collectAsStateWithLifecycle()
@@ -652,7 +660,7 @@ fun LoginScreen(
                             HorizontalDivider()
                             Text("3 · Explica lo que recuerdas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(
-                                "Cuéntanos cuándo entraste por última vez, contactos o publicaciones que ayuden a reconocer tu cuenta. No escribas contraseñas ni envíes documentos.",
+                                "Cuéntanos cuándo entraste por última vez, contactos o publicaciones que ayuden a reconocer tu cuenta. Puedes adjuntar pruebas que ayuden a reconocer tu cuenta. No incluyas contraseñas ni códigos de acceso.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -665,6 +673,18 @@ fun LoginScreen(
                                 minLines = 3,
                                 maxLines = 5,
                             )
+                            Text("Evidencias (opcional)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text("Hasta cinco archivos de 8 MB: capturas, PDF, texto, audio o video. Solo el equipo autorizado podrá abrirlos; se eliminan después de 30 días.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            recoveryEvidence.forEach { file ->
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(file.name, modifier = Modifier.weight(1f), maxLines = 2)
+                                    TextButton(onClick = { viewModel.removeRecoveryEvidence(file.uri) }, enabled = !assistedRecoverySubmitting) { Text("Quitar") }
+                                }
+                            }
+                            OutlinedButton(onClick = { evidencePicker.launch(arrayOf("image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf", "text/plain", "video/mp4", "video/webm", "audio/*")) },
+                                enabled = !assistedRecoverySubmitting && recoveryEvidence.size < 5,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Adjuntar evidencia (${recoveryEvidence.size}/5)") }
                             val missing = when {
                                 assistedIdentifier.trim().length < 3 -> "Escribe el correo o usuario de tu cuenta."
                                 !assistedContactValid -> "Escribe un ${if (assistedContactType == "email") "correo válido" else "número de WhatsApp válido"}."

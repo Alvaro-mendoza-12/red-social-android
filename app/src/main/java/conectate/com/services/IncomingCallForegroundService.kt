@@ -55,6 +55,9 @@ class IncomingCallForegroundService : Service() {
             startForeground(currentNotificationId, buildNotification(invite, avatarBitmap))
         } catch (e: Exception) {
             android.util.Log.e("IncomingCallService", "Failed to start foreground service", e)
+            // Do not ring invisibly when Android could not publish the call controls.
+            stopIncomingCallUi()
+            return START_NOT_STICKY
         }
         startLoopingRingtone()
 

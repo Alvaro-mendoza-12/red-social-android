@@ -44,6 +44,7 @@ import conectate.com.data.model.VideoComment
 import conectate.com.data.model.VoiceParticipant
 import conectate.com.data.model.VoiceRoom
 import conectate.com.data.supabase.SupabaseConfig
+import io.ktor.client.plugins.timeout
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.forms.MultiPartFormDataContent
@@ -161,6 +162,10 @@ data class AdminUserPage(
     val total: Int = 0
 )
 
+data class RecoveryUploadEvidence(val name: String, val mime: String, val bytes: ByteArray)
+
+data class AdminRecoveryEvidence(val id: String, val name: String, val mime: String, val size: Int)
+
 data class AdminRecoveryCase(
     val id: String,
     val identifier: String,
@@ -175,6 +180,7 @@ data class AdminRecoveryCase(
     val candidateEmail: String,
     val contactVerified: Boolean,
     val createdAt: String,
+    val evidence: List<AdminRecoveryEvidence> = emptyList(),
 )
 
 data class AdminRecoveryAccount(
@@ -1751,6 +1757,7 @@ class LocalFallbackApiClient @Inject constructor(
         description: String,
         contactType: String = "other",
         profileHint: String = "",
+        evidence: List<RecoveryUploadEvidence> = emptyList(),
     ): Result<LocalFallbackAssistedRecoveryResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Novvin no configurado."))
         val endpoint = RuntimeBackendEndpoint.authenticationEndpoint()
@@ -1758,8 +1765,21 @@ class LocalFallbackApiClient @Inject constructor(
         return try {
             val response = supabaseConfig.httpClient.post("$endpoint/v1/auth/account-recovery/cases") {
                 localHeaders()
-                contentType(ContentType.Application.Json)
-                setBody(LocalFallbackAssistedRecoveryRequest(identifier, alternateContact, description, contactType, profileHint))
+                if (evidence.isEmpty()) {
+                    contentType(ContentType.Application.Json)
+                    setBody(LocalFallbackAssistedRecoveryRequest(identifier, alternateContact, description, contactType, profileHint))
+                } else {
+                    timeout { requestTimeoutMillis = 90_000; socketTimeoutMillis = 30_000 }
+                    setBody(MultiPartFormDataContent(formData {
+                        append("identifier", identifier); append("alternateContact", alternateContact)
+                        append("description", description); append("contactType", contactType); append("profileHint", profileHint)
+                        evidence.forEach { file -> append("evidence", file.bytes, Headers.build {
+                            append(HttpHeaders.ContentType, file.mime)
+                            val safeName = file.name.replace(Regex("[\\\"\r\n]"), "_")
+                            append(HttpHeaders.ContentDisposition, "filename=\"$safeName\"")
+                        }) }
+                    }))
+                }
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
@@ -6499,6 +6519,9 @@ class LocalFallbackApiClient @Inject constructor(
             "MIGRATION_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Tu cuenta migrada necesita una contraseña de al menos 8 caracteres.")
             "INVALID_MIGRATION_TOKEN" -> Exception("El permiso para cambiar la contraseña venció. Verifica otra vez tu contraseña actual.")
             "RESET_TOKEN_AND_PASSWORD_REQUIRED" -> Exception("Ubuntu necesita crear una contraseña de al menos 8 caracteres.")
+            "RECOVERY_EVIDENCE_LIMIT" -> Exception("Adjunta como máximo cinco archivos, de hasta 8 MB cada uno.")
+            "RECOVERY_EVIDENCE_TYPE" -> Exception("Usa imágenes, PDF, texto, audio o video compatibles. No se aceptan archivos vacíos ni ejecutables.")
+            "RECOVERY_EVIDENCE_NOT_FOUND" -> Exception("La evidencia ya no está disponible. Se conserva durante 30 días.")
             "INVALID_OR_EXPIRED_EMAIL_CODE" -> Exception("El código es incorrecto, venció o se agotaron los intentos. Revisa el último correo o pide otro código.")
             "EMAIL_AND_SIX_DIGIT_CODE_REQUIRED" -> Exception("Escribe el correo de tu cuenta y el código de seis dígitos.")
             "INVALID_OR_EXPIRED_RESET_TOKEN" -> Exception("El permiso seguro venció o no es válido. Vuelve a solicitar el cambio.")
@@ -7800,8 +7823,24 @@ class LocalFallbackApiClient @Inject constructor(
                 candidateEmail = textOf(row, "candidate_email"),
                 contactVerified = textOf(row, "contact_verified_at").isNotBlank(),
                 createdAt = textOf(row, "created_at"),
+                evidence = (row["evidence"] as? JsonArray)?.map { item ->
+                    val file = item.jsonObject
+                    AdminRecoveryEvidence(textOf(file, "id"), textOf(file, "name"), textOf(file, "mime"),
+                        file["size"]?.jsonPrimitive?.intOrNull ?: 0)
+                }.orEmpty(),
             )
         }.orEmpty()
+    }
+
+    suspend fun adminDownloadRecoveryEvidence(accessToken: String, caseId: String, evidenceId: String): Result<ByteArray> = runCatching {
+        require(UUID.fromString(caseId).toString() == caseId && UUID.fromString(evidenceId).toString() == evidenceId)
+        val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/account-recovery/cases/$caseId/evidence/$evidenceId") {
+            localHeaders(accessToken)
+        }
+        if (!response.status.isSuccess()) throw toException(response, decodeError(response.bodyAsText()))
+        val data: ByteArray = response.body()
+        check(data.size in 1..(8 * 1024 * 1024)) { "El archivo excede el límite permitido." }
+        data
     }
 
     suspend fun adminFindRecoveryAccounts(accessToken: String, query: String): Result<List<AdminRecoveryAccount>> = runCatching {

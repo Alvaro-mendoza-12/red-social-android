@@ -93,8 +93,8 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 36
-        versionCode = 99
-        versionName = "9.0.2"
+        versionCode = 100
+        versionName = "9.0.3"
         buildConfigField("String", "BUILD_COMMIT", buildCommit.asBuildConfigString())
 
         val props = Properties()
@@ -155,6 +155,9 @@ android {
     // Permite ejecutar validaciones físicas muy dirigidas sin esconder ni
     // modificar la suite androidTest heredada, que se mantiene independiente.
     sourceSets {
+        if (providers.gradleProperty("communicationValidationOnly").orNull == "true") {
+            getByName("androidTest").java.setSrcDirs(listOf("src/communicationValidationTest/java"))
+        }
         if (providers.gradleProperty("audioValidationOnly").orNull == "true") {
             getByName("androidTest").java.setSrcDirs(
                 listOf("src/audioValidationTest/java")

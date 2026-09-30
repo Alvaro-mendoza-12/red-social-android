@@ -922,6 +922,7 @@ fun AdminPanelScreen(
                                         viewModel.findRecoveryAccounts(recovery.identifier)
                                     }
                                 },
+                                onLoadEvidence = { evidenceId -> viewModel.downloadRecoveryEvidence(recovery.id, evidenceId) },
                                 onSearch = viewModel::findRecoveryAccounts,
                                 onAction = { action, account, evidence, resetTwoFactor ->
                                     viewModel.recoveryAction(recovery.id, action, account, evidence, resetTwoFactor)
@@ -945,6 +946,7 @@ private fun AdminRecoveryCard(
     expanded: Boolean,
     onToggle: () -> Unit,
     onSearch: (String) -> Unit,
+    onLoadEvidence: suspend (String) -> Result<ByteArray>,
     onAction: (String, String, String, Boolean) -> Unit,
 ) {
     val context = LocalContext.current
@@ -1049,6 +1051,7 @@ private fun AdminRecoveryCard(
                 HorizontalDivider()
                 Text("Lo que cuenta la persona", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(recovery.description, style = MaterialTheme.typography.bodyMedium)
+                RecoveryEvidenceSection(recovery.evidence, onLoadEvidence)
                 if (recovery.profileHint.isNotBlank()) Text(
                     "Perfil recordado: ${recovery.profileHint}",
                     style = MaterialTheme.typography.bodySmall,

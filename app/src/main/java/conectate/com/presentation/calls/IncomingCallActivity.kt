@@ -13,6 +13,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -310,16 +316,18 @@ private fun IncomingCallScreen(
     var isHandling by remember { mutableStateOf(false) }
     var scope = rememberCoroutineScope()
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .padding(horizontal = 24.dp, vertical = 28.dp)
+            .systemBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 20.dp)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .align(Alignment.Center),
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = maxHeight),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
@@ -333,7 +341,7 @@ private fun IncomingCallScreen(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Llamada entrante",
+                    text = if (invite.isVideo) "Videollamada entrante" else "Llamada entrante",
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White.copy(alpha = 0.8f)
                 )
@@ -368,8 +376,8 @@ private fun IncomingCallScreen(
             }
 
             Row(
-                modifier = Modifier.padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
@@ -382,14 +390,13 @@ private fun IncomingCallScreen(
                         }
                     },
                     enabled = !isHandling,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB3261E), contentColor = Color.White)
                 ) {
                     androidx.compose.material3.Icon(Icons.Default.CallEnd, contentDescription = null)
                     Spacer(modifier = Modifier.width(10.dp))
                     Text("Rechazar")
                 }
-
-                Spacer(modifier = Modifier.width(20.dp))
 
                 Button(
                     onClick = {
@@ -401,11 +408,12 @@ private fun IncomingCallScreen(
                         }
                     },
                     enabled = !isHandling,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF236D36), contentColor = Color.White)
                 ) {
                     androidx.compose.material3.Icon(Icons.Default.Call, contentDescription = null)
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("Aceptar")
+                    Text("Contestar")
                 }
             }
         }

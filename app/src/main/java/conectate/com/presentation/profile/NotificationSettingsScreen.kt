@@ -304,6 +304,7 @@ private fun NotificationDigestSettingsContent(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        conectate.com.presentation.calls.IncomingCallPermissionCard()
         SettingsSwitchRow(
             title = "Avisos de momentos",
             description = "Desactivados por defecto. Si los activas, recibirás avisos de momentos de personas que sigues; desaparecen al vencer el momento.",

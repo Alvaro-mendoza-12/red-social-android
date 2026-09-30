@@ -383,6 +383,11 @@ class AdminPanelViewModel @Inject constructor(
             }
     }
 
+    suspend fun downloadRecoveryEvidence(caseId: String, evidenceId: String): Result<ByteArray> = runCatching {
+        val token = authService.ensureValidAccessToken().getOrThrow()
+        localFallbackApiClient.adminDownloadRecoveryEvidence(token, caseId, evidenceId).getOrThrow()
+    }
+
     fun refreshRecoveryCases() {
         viewModelScope.launch {
             authService.ensureValidAccessToken().onSuccess { loadRecoveryCases(it) }

@@ -62,6 +62,7 @@ const {
 } = require('./scheduled-message-jobs')
 const { processDueNotificationDigests } = require('./notification-digest-routes')
 const { createRequestObservabilityMiddleware, safeErrorLogDetails } = require('./request-observability')
+const { receiveRecoveryEvidence, ensureRecoveryEvidenceSchema, persistRecoveryEvidence, registerRecoveryEvidenceDownload } = require('./recovery-evidence')
 const { createPasswordResetMailer } = require('./password-reset-mailer')
 const { createEmailRecoveryStore, CODE_MINUTES } = require('./password-reset-email-code')
 const {
@@ -1410,6 +1411,7 @@ async function ensureAuthMetadataColumns(executor = pool) {
     CREATE INDEX IF NOT EXISTS idx_fallback_account_recovery_cases_pending
     ON fallback_account_recovery_cases(created_at DESC) WHERE status = 'pending'
   `)
+  await ensureRecoveryEvidenceSchema(executor)
   await executor.query(`
     ALTER TABLE fallback_password_reset_tokens
     ADD COLUMN IF NOT EXISTS recovery_case_id UUID
@@ -2030,6 +2032,8 @@ app.get(['/v1/admin/account-recovery/cases', '/v1/data/admin/account-recovery/ca
               c.contact_type, c.profile_hint,
               COALESCE(c.user_id, c.candidate_user_id) AS candidate_user_id,
               c.contact_verified_at,
+              COALESCE((SELECT json_agg(json_build_object('id', e.id, 'name', e.name, 'mime', e.mime, 'size', e.size) ORDER BY e.created_at)
+                FROM fallback_recovery_evidence e WHERE e.case_id=c.id AND e.expires_at>NOW()), '[]'::json) AS evidence,
               u.email AS candidate_email, u.display_name AS candidate_name,
               o.profile->>'username' AS candidate_username
        FROM fallback_account_recovery_cases c
@@ -2198,8 +2202,12 @@ app.post(['/v1/admin/account-recovery/cases/:id/reject', '/v1/data/admin/account
   }
 })
 
-app.post('/v1/auth/account-recovery/cases', async (req, res, next) => {
+registerRecoveryEvidenceDownload(app, { pool, recoveryAdminRequired, recordAudit })
+
+app.post('/v1/auth/account-recovery/cases', receiveRecoveryEvidence, async (req, res, next) => {
+  let client
   try {
+    if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const identifier = cleanText(req.body?.identifier, 160)
     const alternateContact = cleanText(req.body?.alternateContact, 240)
     const description = cleanText(req.body?.description, 1000)
@@ -2226,17 +2234,23 @@ app.post('/v1/auth/account-recovery/cases', async (req, res, next) => {
       [normalizedIdentifier],
     )
     const candidateUserId = candidates.rows.length === 1 ? candidates.rows[0].id : null
-    const { rows } = await pool.query(
+    client = await pool.connect()
+    await client.query('BEGIN')
+    const { rows } = await client.query(
       `INSERT INTO fallback_account_recovery_cases
          (identifier, alternate_contact, description, contact_type, profile_hint, candidate_user_id)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
       [identifier, alternateContact, description, contactType, profileHint || null, candidateUserId],
     )
     res.set('Cache-Control', 'no-store')
-    return res.status(202).json({ ok: true, caseId: rows[0].id })
+    await persistRecoveryEvidence(client, rows[0].id, req.files)
+    await client.query('COMMIT')
+    req.recoveryEvidenceCommitted = true
+    return res.status(202).json({ ok: true, caseId: rows[0].id, evidenceCount: req.files?.length || 0 })
   } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
     return next(error)
-  }
+  } finally { client?.release() }
 })
 
 app.post('/v1/auth/account-recovery/cases/:id/confirm-contact', async (req, res, next) => {

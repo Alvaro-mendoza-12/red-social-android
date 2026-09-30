@@ -14,6 +14,8 @@ La interfaz normal de recuperación no muestra el formulario de revisión manual
 
 No se concede a la app acceso al buzón del usuario ni se lee Gmail. «Pegar código» utiliza el portapapeles solo tras una acción del usuario; la verificación automática se refiere a completar el campo de seis dígitos, no a interceptar correos.
 
+Actualización del 30/09: la carga de evidencias ya está implementada, desplegada y probada en la entrega [Evidencias privadas y controles de llamadas](EVIDENCIAS-Y-LLAMADAS-2026-09-30.md). El texto anterior describe el alcance histórico de la versión 9.0.2.
+
 ## Persistencia y presentación
 
 - `EmailRecoveryDraftStore` guarda correo, etapa, código o permiso verificado y fechas en preferencias cifradas mediante Android Keystore.

@@ -26,7 +26,8 @@ class FileProviderPathContractTest {
             setOf(
                 "file-provider/crops/",
                 "file-provider/challenges/",
-                "file-provider/moment-captures/"
+                "file-provider/moment-captures/",
+                "file-provider/recovery-evidence/"
             ),
             paths
         )

@@ -196,6 +196,7 @@ fun CallHistoryScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            IncomingCallPermissionCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

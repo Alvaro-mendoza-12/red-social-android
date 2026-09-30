@@ -481,17 +481,38 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    private val _recoveryEvidence = MutableStateFlow<List<RecoveryEvidenceSelection>>(emptyList())
+    val recoveryEvidence: StateFlow<List<RecoveryEvidenceSelection>> = _recoveryEvidence.asStateFlow()
+    fun selectRecoveryEvidence(uris: List<Uri>) {
+        if (_assistedRecoverySubmitting.value) return
+        val nextUris = (_recoveryEvidence.value.map { it.uri } + uris).distinct()
+        if (nextUris.size > 5) { _assistedRecoveryMessage.value = "Adjunta como máximo cinco archivos."; return }
+        _assistedRecoverySubmitting.value = true
+        viewModelScope.launch {
+            try {
+                _recoveryEvidence.value = withContext(Dispatchers.IO) { nextUris.map { readRecoveryEvidenceMetadata(context, it) } }
+                _assistedRecoveryMessage.value = null
+            } catch (error: Exception) { _assistedRecoveryMessage.value = error.message ?: "No se pudo seleccionar el archivo." }
+            finally { _assistedRecoverySubmitting.value = false }
+        }
+    }
+    fun removeRecoveryEvidence(uri: Uri) { if (!_assistedRecoverySubmitting.value) _recoveryEvidence.value = _recoveryEvidence.value.filterNot { it.uri == uri } }
+
     fun requestAssistedRecovery(identifier: String, alternateContact: String, description: String, contactType: String, profileHint: String) {
         if (_assistedRecoverySubmitting.value) return
         viewModelScope.launch {
             _assistedRecoverySubmitting.value = true
             _assistedRecoveryMessage.value = null
-            val result = localFallbackApiClient.requestAssistedRecovery(
-                identifier.trim(), alternateContact.trim(), description.trim(), contactType, profileHint.trim()
-            )
+            val result = runCatching {
+                val files = withContext(Dispatchers.IO) { _recoveryEvidence.value.map { loadRecoveryEvidence(context, it) } }
+                localFallbackApiClient.requestAssistedRecovery(
+                    identifier.trim(), alternateContact.trim(), description.trim(), contactType, profileHint.trim(), files
+                ).getOrThrow()
+            }
             _assistedRecoveryMessage.value = result.fold(
                 onSuccess = {
                     _assistedRecoveryCaseId.value = it.caseId
+                    _recoveryEvidence.value = emptyList()
                     context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE)
                         .edit().putString("case_id", it.caseId).apply()
                     "Solicitud recibida. Un administrador revisará la cuenta y, si confirma que te pertenece, enviará un código al contacto indicado para que crees una contraseña nueva."
@@ -544,6 +565,7 @@ class AuthViewModel @Inject constructor(
     }
 
     fun startNewAssistedRecoveryRequest() {
+        _recoveryEvidence.value = emptyList()
         _assistedRecoveryCaseId.value = null
         _assistedRecoveryMessage.value = null
         context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE)
