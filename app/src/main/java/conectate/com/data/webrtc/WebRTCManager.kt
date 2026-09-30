@@ -173,6 +173,7 @@ class WebRTCManager(
     }
 
     private var currentUserId: String = ""
+    private val deviceTier by lazy { conectate.com.util.AppPerformanceProfiles.detect(context).tier }
     private var localSocketId: String = ""
     
     private var factory: PeerConnectionFactory? = null
@@ -281,6 +282,7 @@ class WebRTCManager(
     private var activeNetworkHandle: Long? = connectivityManager.activeNetwork?.networkHandle
     private var networkCallbackRegistered = false
     private var networkRecoveryJob: Job? = null
+    private val networkRecoveryGeneration = java.util.concurrent.atomic.AtomicLong()
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val currentHandle = network.networkHandle
@@ -391,6 +393,9 @@ class WebRTCManager(
     }
 
     private fun hardResetInternal() {
+        networkRecoveryGeneration.incrementAndGet()
+        networkRecoveryJob?.cancel()
+        networkRecoveryJob = null
         Log.w("WebRTCManager", "🔥 Performing STABILIZED RESET of media engine...")
         // Keep the factory and ADM alive; quick re-entry can otherwise leave
         // device camera/audio drivers locked. Every native release is best-effort
@@ -586,6 +591,7 @@ class WebRTCManager(
     }
     
     private fun destroyInternal() {
+        networkRecoveryGeneration.incrementAndGet()
         Log.d("WebRTCManager", "Internal cleanup starting...")
         unregisterNetworkHandoffMonitor()
         networkRecoveryJob?.cancel()
@@ -686,6 +692,7 @@ class WebRTCManager(
      */
     fun recoverAfterNetworkChange(reason: String = "network-handoff") {
         if (peerConnections.isEmpty()) return
+        val recoveryGeneration = networkRecoveryGeneration.incrementAndGet()
         networkRecoveryJob?.cancel()
         networkRecoveryJob = asyncScope.launch {
             // Coalesce the short burst of callbacks produced by Wi-Fi/mobile
@@ -698,6 +705,9 @@ class WebRTCManager(
             awaitManagedIceIfNeeded()
 
             executor.execute {
+                // Cancellation cannot retract work already queued on the native executor.
+                // A departed session or a newer handoff must invalidate that work.
+                if (networkRecoveryGeneration.get() != recoveryGeneration) return@execute
                 val servers = currentIceServersSnapshot()
                 peerConnections.forEach { (peerKey, pc) ->
                     if (pc.signalingState() == PeerConnection.SignalingState.CLOSED) {
@@ -780,13 +790,14 @@ class WebRTCManager(
     }
 
     private fun updateLocalVideoSenders(track: VideoTrack?) {
-        peerConnections.forEach { (_, pc) ->
+        peerConnections.forEach { (peerKey, pc) ->
             pc.transceivers
                 .filter { it.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO }
                 .forEach { transceiver ->
                     transceiver.sender.setTrack(track, false)
                     transceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
                 }
+            setMaxBitrate(pc, peerKey)
         }
     }
 
@@ -2116,8 +2127,9 @@ class WebRTCManager(
                 fun makeEven(value: Int): Int = (value / 2) * 2
 
                 val metrics = context.resources.displayMetrics
-                val defaultFps = if (isScreen) 15 else 24
-                val fps = (targetFps ?: defaultFps).coerceIn(10, 60)
+                val cameraProfile = nativeCameraProfile(deviceTier, targetWidth ?: 960,
+                    targetHeight ?: 540, targetFps ?: 24)
+                val fps = if (isScreen) (targetFps ?: 15).coerceIn(10, 30) else cameraProfile.fps
                 val (finalWidth, finalHeight) = if (isScreen) {
                     // Preserve aspect ratio and fit within the requested bounds.
                     val srcW = metrics.widthPixels.coerceAtLeast(1)
@@ -2129,8 +2141,7 @@ class WebRTCManager(
                     makeEven((srcW * scale).toInt().coerceAtLeast(320)) to
                         makeEven((srcH * scale).toInt().coerceAtLeast(320))
                 } else {
-                    makeEven((targetWidth ?: 960).coerceAtLeast(320)) to
-                        makeEven((targetHeight ?: 540).coerceAtLeast(240))
+                    cameraProfile.width to cameraProfile.height
                 }
 
                 // Reconfiguring an existing camera in place avoids opening two
@@ -2204,12 +2215,7 @@ class WebRTCManager(
                         Triple(makeEven(640), makeEven(360), 12)
                     )
                 } else {
-                    listOf(
-                        Triple(finalWidth, finalHeight, fps),
-                        Triple(makeEven(960), makeEven(540), fps.coerceAtMost(24)),
-                        Triple(makeEven(640), makeEven(480), fps.coerceAtMost(20)),
-                        Triple(makeEven(480), makeEven(360), 15)
-                    )
+                    nativeCameraFallbacks(cameraProfile).map { Triple(it.width, it.height, it.fps) }
                 }.distinct()
 
                 var startedCapture = false
@@ -2719,11 +2725,20 @@ class WebRTCManager(
             if (track.kind() == "video") {
                 val params = sender.parameters
                 if (params.encodings.isNotEmpty()) {
-                    // Capping bitrate: 1.5Mbps for camera, 2.5Mbps for screen share
                     val isScreen = track.id().contains("SCREEN")
-                    val maxBitrate = if (isScreen) 2500 * 1000 else 1500 * 1000
-                    params.encodings[0].maxBitrateBps = maxBitrate
-                    sender.parameters = params
+                    val maxBitrate = if (isScreen) 2_500_000 else when (deviceTier) {
+                        conectate.com.util.AppDeviceTier.LOW -> 600_000
+                        conectate.com.util.AppDeviceTier.BALANCED -> 1_200_000
+                        conectate.com.util.AppDeviceTier.HIGH -> 1_800_000
+                    }
+                    // Moving cameras favor cadence; shared documents favor legibility.
+                    params.degradationPreference = if (isScreen)
+                        RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION else
+                        RtpParameters.DegradationPreference.MAINTAIN_FRAMERATE
+                    params.encodings.forEach { it.maxBitrateBps = maxBitrate }
+                    if (!sender.setParameters(params)) {
+                        Log.w("WebRTC", "Encoder parameters were rejected for $socketId")
+                    }
                     Log.d("WebRTC", "Bitrate restricted to ${maxBitrate/1000}kbps for $socketId")
                 }
             }

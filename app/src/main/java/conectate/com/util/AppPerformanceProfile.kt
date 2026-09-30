@@ -72,7 +72,7 @@ object AppPerformanceProfiles {
                 voiceMaxFloatingReactions = 4,
                 voiceCameraWidth = 640,
                 voiceCameraHeight = 360,
-                voiceCameraFps = 15,
+                voiceCameraFps = 24,
                 voiceScreenWidth = 960,
                 voiceScreenHeight = 540,
                 voiceScreenFps = 12,

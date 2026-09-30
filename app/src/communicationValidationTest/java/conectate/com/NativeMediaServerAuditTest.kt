@@ -693,6 +693,25 @@ class NativeMediaServerAuditTest {
             val candidates=listOf("localCandidateId","remoteCandidateId").mapNotNull { selected?.members?.get(it)?.toString()?.let(stats.statsMap::get)?.members?.get("candidateType") }
             val report=JSONObject().put("flow",flow).put("relayOnly",relayOnly).put("firstFrameMs",firstFrameMs).put("receivedFps",fps).put("frames",frames.get())
                 .put("captureFps",capturedFps).put("candidateTypes",JSONArray(candidates)).put("rttSeconds",selected?.members?.get("currentRoundTripTime"))
+            if (InstrumentationRegistry.getArguments().getString("auditNetworkRecovery") == "true") {
+                val originalTrack = first.manager.localVideoTrack.value
+                first.manager.setAudioEnabled(false)
+                val recoveryFrom = frames.get()
+                val recoveryAt = System.nanoTime()
+                first.manager.recoverAfterNetworkChange("qa-recovery")
+                waitUntil("ICE recovery did not deliver new video frames", 35) {
+                    frames.get() > recoveryFrom + 20 && first.manager.peerConnectionStates.value.values.any {
+                        it == PeerConnection.IceConnectionState.CONNECTED || it == PeerConnection.IceConnectionState.COMPLETED
+                    }
+                }
+                assertSame("Recovery replaced the camera", originalTrack, first.manager.localVideoTrack.value)
+                val muteField = WebRTCManager::class.java.getDeclaredField("outgoingAudioEnabled").apply { isAccessible = true }
+                assertFalse("Recovery reset the mute choice", muteField.getBoolean(first.manager))
+                first.manager.setAudioEnabled(true)
+                report.put("iceRecoveryMs", (System.nanoTime() - recoveryAt) / 1_000_000)
+                    .put("recoveryPreservedCameraAndMute", true)
+                    .put("physicalNetworkHandoffTested", false)
+            }
             first.manager.setVideoEnabled(false)
             Thread.sleep(500)
             first.manager.setVideoEnabled(true)
