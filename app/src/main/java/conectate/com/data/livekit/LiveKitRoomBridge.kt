@@ -23,6 +23,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -56,15 +57,22 @@ class LiveKitRoomBridge @Inject constructor(
     val state: StateFlow<State> = _state.asStateFlow()
     private val _remoteVideos = MutableStateFlow<List<RemoteVideo>>(emptyList())
     val remoteVideos: StateFlow<List<RemoteVideo>> = _remoteVideos.asStateFlow()
+    private val _errors = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val errors = _errors.asSharedFlow()
 
     private var room: Room? = null
     private var eventsJob: Job? = null
+    private var publishingRole: Boolean = false
+    private var connectionIdentity: Triple<String, String, String>? = null
+    private var sharedVideoSource: StateFlow<org.webrtc.VideoTrack?>? = null
+    private val desiredMedia = java.util.concurrent.atomic.AtomicReference(false to false)
     private val rendererBindings = java.util.concurrent.ConcurrentHashMap<TextureViewRenderer, VideoTrack>()
 
     suspend fun connect(
         session: LiveSfuSession,
         publishAudio: Boolean,
-        publishCamera: Boolean
+        publishCamera: Boolean,
+        existingVideo: StateFlow<org.webrtc.VideoTrack?>? = null
     ): Result<Unit> = mutex.withLock {
         val wsUrl = session.wsUrl.trim()
         val token = session.token.trim()
@@ -72,7 +80,18 @@ class LiveKitRoomBridge @Inject constructor(
             return@withLock Result.failure(IllegalArgumentException("La sesión LiveKit no es válida."))
         }
 
+        val identity = Triple(wsUrl, session.roomName.trim(), session.role)
+        val current = room
+        if (current != null && current.state == Room.State.CONNECTED && identity.second.isNotBlank() &&
+            connectionIdentity == identity && sharedVideoSource === existingVideo
+        ) {
+            desiredMedia.set(publishAudio to publishCamera)
+            return@withLock runCatching { if (publishingRole) applyMediaLocked(current) }
+        }
+
         disconnectLocked()
+        desiredMedia.set(publishAudio to publishCamera)
+        publishingRole = session.role == "host" || session.role == "guest"
         _state.value = State.CONNECTING
         val quality = liveCollaborationQualityProfile(AppPerformanceProfiles.detect(context).tier)
         val candidate = LiveKit.create(
@@ -139,13 +158,28 @@ class LiveKitRoomBridge @Inject constructor(
 
         runCatching {
             candidate.connect(wsUrl, token)
-            if (session.role == "host" || session.role == "guest") {
-                val audioChanged = candidate.localParticipant.setMicrophoneEnabled(publishAudio)
-                check(!publishAudio || audioChanged) { "No se pudo activar el micrófono del directo. Revisa su permiso e inténtalo de nuevo." }
-                val cameraChanged = candidate.localParticipant.setCameraEnabled(publishCamera)
-                check(!publishCamera || cameraChanged) { "No se pudo activar la cámara del directo. Revisa su permiso e inténtalo de nuevo." }
+            if (publishingRole) {
+                if (existingVideo != null) {
+                    val sharedTrack = candidate.localParticipant.createVideoTrack(
+                        name = "live-selected-source",
+                        capturer = ExistingLiveVideoCapturer(existingVideo)
+                    )
+                    try {
+                        sharedTrack.start()
+                        sharedTrack.startCapture()
+                        check(candidate.localParticipant.publishVideoTrack(sharedTrack)) {
+                            "No se pudo compartir la imagen del directo con la batalla."
+                        }
+                    } catch (error: Throwable) {
+                        runCatching { sharedTrack.stop(); sharedTrack.dispose() }
+                        throw error
+                    }
+                }
+                applyMediaLocked(candidate)
             }
             _state.value = State.CONNECTED
+            connectionIdentity = identity
+            sharedVideoSource = existingVideo
         }.onFailure {
             disconnectLocked()
         }
@@ -157,6 +191,29 @@ class LiveKitRoomBridge @Inject constructor(
 
     suspend fun disconnectAwait() = mutex.withLock {
         disconnectLocked()
+    }
+
+    /** Latest controls win even when the user changes them while connecting. */
+    fun updateMediaEnabled(audio: Boolean, video: Boolean) {
+        desiredMedia.set(audio to video)
+        scope.launch {
+            mutex.withLock {
+                val current = room ?: return@withLock
+                if (!publishingRole) return@withLock
+                runCatching { applyMediaLocked(current) }.onFailure { error ->
+                    android.util.Log.e("LiveKitRoomBridge", "Could not update collaboration controls", error)
+                    _errors.tryEmit("No se pudo actualizar la cámara o el micrófono de la batalla. Inténtalo de nuevo.")
+                }
+            }
+        }
+    }
+
+    private suspend fun applyMediaLocked(candidate: Room) {
+        val (audio, video) = desiredMedia.get()
+        val audioChanged = candidate.localParticipant.setMicrophoneEnabled(audio)
+        check(!audio || audioChanged) { "No se pudo activar el micrófono del directo. Revisa su permiso e inténtalo de nuevo." }
+        val cameraChanged = candidate.localParticipant.setCameraEnabled(video)
+        check(!video || cameraChanged) { "No se pudo activar la cámara del directo. Revisa su permiso e inténtalo de nuevo." }
     }
 
     fun attachRenderer(video: RemoteVideo, renderer: TextureViewRenderer): Boolean {
@@ -182,6 +239,9 @@ class LiveKitRoomBridge @Inject constructor(
         eventsJob = null
         val departedRoom = room
         room = null
+        publishingRole = false
+        connectionIdentity = null
+        sharedVideoSource = null
         // Renderers must relinquish the old room's EGL context before it is released.
         rendererBindings.keys.toList().forEach { renderer ->
             rendererBindings.remove(renderer)?.let { track -> runCatching { track.removeRenderer(renderer) } }

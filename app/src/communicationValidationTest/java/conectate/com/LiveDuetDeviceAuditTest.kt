@@ -62,14 +62,38 @@ class LiveDuetDeviceAuditTest {
             }
             return false
         }
+        val existingCapture = if (role == "host" && arguments.getString("auditExistingCamera") == "true") {
+            conectate.com.data.webrtc.WebRTCManager(context, object : conectate.com.data.webrtc.SignalingEvents {
+                override fun onSendOffer(targetSocketId: String, offer: JSONObject) = Unit
+                override fun onSendAnswer(targetSocketId: String, answer: JSONObject) = Unit
+                override fun onSendIceCandidate(targetSocketId: String, candidate: JSONObject) = Unit
+            })
+        } else null
+        val existingFrames = AtomicInteger()
+        val existingSink = org.webrtc.VideoSink { existingFrames.incrementAndGet() }
+        var existingTrack: org.webrtc.VideoTrack? = null
         val bridge = LiveKitRoomBridge(context)
         val frames = AtomicInteger()
         val rendered = CountDownLatch(1)
         var renderer: io.livekit.android.renderer.TextureViewRenderer? = null
         var video: LiveKitRoomBridge.RemoteVideo? = null
         try {
+            existingCapture?.let { manager ->
+                val ready = CountDownLatch(1)
+                var success = false
+                manager.startVideo(false, isFront = true, targetWidth = 640, targetHeight = 360,
+                    targetFps = 24, onComplete = { success = it; ready.countDown() })
+                assertTrue("Existing camera setup timed out", ready.await(15, TimeUnit.SECONDS))
+                assertTrue("Existing camera failed", success)
+                existingTrack = manager.localVideoTrack.value
+                assertNotNull(existingTrack)
+                existingTrack!!.addSink(existingSink)
+                val firstCaptureDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
+                while (existingFrames.get() == 0 && System.nanoTime() < firstCaptureDeadline) Thread.sleep(100)
+                assertTrue("Existing camera has no frames", existingFrames.get() > 0)
+            }
             val started = System.nanoTime()
-            runBlocking { withTimeout(35_000) { bridge.connect(session, true, true).getOrThrow() } }
+            runBlocking { withTimeout(35_000) { bridge.connect(session, true, true, existingCapture?.localVideoTrack).getOrThrow() } }
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(40)
             while (bridge.remoteVideos.value.isEmpty() && System.nanoTime() < deadline) Thread.sleep(100)
             assertTrue("No guest/host video track", bridge.remoteVideos.value.isNotEmpty())
@@ -88,10 +112,14 @@ class LiveDuetDeviceAuditTest {
             val firstFrameMs = (System.nanoTime() - started) / 1_000_000
             File(folder,"sfu-ready-$role.json").writeText(JSONObject().put("scopeId",liveId).toString())
             assertTrue("Coordinator did not start both media samples",waitForPhase("sfu-sample-now.json",40))
+            val existingBefore = existingFrames.get()
             val before = frames.get(); val sample = System.nanoTime(); Thread.sleep(10_000)
             val fps = (frames.get() - before) * 1_000_000_000.0 / (System.nanoTime() - sample)
+            if (existingCapture != null) assertTrue("Battle interrupted existing broadcast capture", existingFrames.get() > existingBefore)
             val roomField = bridge.javaClass.getDeclaredField("room").apply { isAccessible = true }
             val room = roomField.get(bridge) as io.livekit.android.room.Room
+            runBlocking { bridge.connect(session, true, true, existingCapture?.localVideoTrack).getOrThrow() }
+            assertSame("Duplicate connection replaced the active room", room, roomField.get(bridge))
             val statsReady = CountDownLatch(2)
             val reports = java.util.concurrent.ConcurrentLinkedQueue<livekit.org.webrtc.RTCStatsReport>()
             room.getSubscriberRTCStats { reports.add(it); statsReady.countDown() }
@@ -115,14 +143,58 @@ class LiveDuetDeviceAuditTest {
                     .put("inbound",statsDetails).toString(2))
             assertTrue("No incoming audio on $role", audio)
             assertTrue("Duet image is too slow: $fps", fps >= 8)
+            if (existingCapture != null) {
+                fun waitForCamera(muted: Boolean): Boolean {
+                    val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)
+                    while (System.nanoTime() < until) {
+                        val pubs = room.localParticipant.trackPublications.values
+                        if (pubs.any { it.source == io.livekit.android.room.track.Track.Source.CAMERA && it.muted == muted } &&
+                            pubs.any { it.source == io.livekit.android.room.track.Track.Source.MICROPHONE && it.muted == muted }) return true
+                        Thread.sleep(100)
+                    }
+                    return false
+                }
+                val localTrack = room.localParticipant.getTrackPublication(io.livekit.android.room.track.Track.Source.CAMERA)?.track
+                    as io.livekit.android.room.track.LocalVideoTrack
+                val sharedFrames = AtomicInteger()
+                val sharedSink = livekit.org.webrtc.VideoSink { sharedFrames.incrementAndGet() }
+                localTrack.addRenderer(sharedSink)
+                try {
+                    bridge.updateMediaEnabled(false, false)
+                    assertTrue("Collaboration controls did not mute both publications", waitForCamera(true))
+                    val nativeBefore = existingFrames.get()
+                    Thread.sleep(500)
+                    assertTrue("Muting battle stopped native broadcast", existingFrames.get() > nativeBefore)
+                    runBlocking { existingCapture.stopVideoAwait() }
+                    val ready = CountDownLatch(1)
+                    var started = false
+                    existingCapture.startVideo(false, isFront = false, targetWidth = 640, targetHeight = 360,
+                        targetFps = 24, onComplete = { started = it; ready.countDown() })
+                    assertTrue("Replacement capture timed out", ready.await(15, TimeUnit.SECONDS))
+                    assertTrue("Replacement capture failed", started)
+                    bridge.updateMediaEnabled(true, true)
+                    assertTrue("Collaboration controls did not resume both publications", waitForCamera(false))
+                    val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                    while(sharedFrames.get() < 5 && System.nanoTime() < until) Thread.sleep(100)
+                    assertTrue("Shared capture did not follow the replacement native track", sharedFrames.get() >= 5)
+                } finally {
+                    localTrack.removeRenderer(sharedSink)
+                }
+            }
             File(context.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }, "sfu-duet-$role.json")
                 .writeText(JSONObject().put("scopeId", liveId).put("role", role).put("audioReceived", audio)
-                    .put("rendered", true).put("receivedFps", fps).put("firstFrameMs", firstFrameMs).toString(2))
+                    .put("rendered", true).put("existingBroadcastPreserved",existingCapture != null).put("controlsAndReplacementCapture",existingCapture != null).put("receivedFps", fps).put("firstFrameMs", firstFrameMs).toString(2))
         } finally {
             File(folder,"sfu-done-$role.json").writeText(JSONObject().put("scopeId",liveId).toString())
             waitForPhase("sfu-stop-now.json",20)
             instrumentation.runOnMainSync { if (video != null && renderer != null) bridge.detachRenderer(video!!, renderer!!) }
             runBlocking { bridge.disconnectAwait() }
+            existingTrack?.let { runCatching { it.removeSink(existingSink) } }
+            existingCapture?.let { manager ->
+                val closed = CountDownLatch(1)
+                manager.destroy { closed.countDown() }
+                assertTrue("Existing camera did not close", closed.await(15, TimeUnit.SECONDS))
+            }
         }
     }
 }

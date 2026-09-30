@@ -148,7 +148,7 @@ fun LiveHostScreen(
                 liveId = liveId,
                 role = "host",
                 publishAudio = micEnabled,
-                publishCamera = isVideoEnabled,
+                publishCamera = isVideoEnabled && !isPaused,
             ).onFailure {
                 AppFeedbackBus.showError("No se pudo conectar la sala compartida de batalla.")
             }

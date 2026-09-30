@@ -186,6 +186,7 @@ class LiveRepository @Inject constructor(
     private var lastGhostReconciliationUserId: String? = null
     @Volatile
     private var connectedLiveKitLiveId: String? = null
+    private var followHostCollaborationControls = false
 
     // Live stats (host-side)
     private val _audienceStats = MutableStateFlow(conectate.com.data.model.LiveAudienceStats())
@@ -347,11 +348,15 @@ class LiveRepository @Inject constructor(
             }
         }
         scope.launch {
+            liveKitRoomBridge.errors.collect { message -> _runtimeErrors.emit(message) }
+        }
+        scope.launch {
             liveKitRoomBridge.state.collect { state ->
                 if (state == LiveKitRoomBridge.State.DISCONNECTED) {
                     val liveId = connectedLiveKitLiveId
                     if (!liveId.isNullOrBlank()) {
                         connectedLiveKitLiveId = null
+                        followHostCollaborationControls = false
                         val token = localAccessToken()
                         if (token.isNotBlank()) {
                             localFallbackApiClient.updateLiveParticipantState(token, liveId, "disconnected")
@@ -897,7 +902,14 @@ class LiveRepository @Inject constructor(
             ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
         val session = localFallbackApiClient.issueLiveSfuSession(token, normalizedId, role)
             .getOrElse { return@withContext Result.failure(it) }
-        val connected = liveKitRoomBridge.connect(session, publishAudio, publishCamera)
+        val followControls = conectate.com.data.livekit.shouldFollowLiveHostControls(
+            role, publishAudio, publishCamera,
+            _battleState.value.status == LiveBattleStatus.ACTIVE && _battleState.value.opponentLiveId.isNotBlank()
+        )
+        val existingVideo = webRTCManager?.localVideoTrack.takeIf {
+            followControls && _activeSession.value?.role == LiveRole.HOST
+        }
+        val connected = liveKitRoomBridge.connect(session, publishAudio, publishCamera, existingVideo)
         if (connected.isFailure) {
             runCatching {
                 localFallbackApiClient.updateLiveParticipantState(token, normalizedId, "disconnected")
@@ -919,12 +931,15 @@ class LiveRepository @Inject constructor(
             )
         }
         connectedLiveKitLiveId = normalizedId
+        followHostCollaborationControls = followControls
+        if (followControls) emitLiveState()
         Result.success(Unit)
     }
 
     fun disconnectLiveKit() {
         val liveId = connectedLiveKitLiveId
         connectedLiveKitLiveId = null
+        followHostCollaborationControls = false
         liveKitRoomBridge.disconnect()
         if (!liveId.isNullOrBlank()) scope.launch {
             val token = localAccessToken()
@@ -3638,6 +3653,7 @@ class LiveRepository @Inject constructor(
             }
         val collaborationLiveId = connectedLiveKitLiveId
         connectedLiveKitLiveId = null
+        followHostCollaborationControls = false
         if (!collaborationLiveId.isNullOrBlank()) {
             runCatching {
                 val token = localAccessToken()
@@ -4091,6 +4107,13 @@ class LiveRepository @Inject constructor(
     private fun emitLiveState() {
         var session = _activeSession.value ?: return
         if (session.role != LiveRole.HOST) return
+
+        if (followHostCollaborationControls && connectedLiveKitLiveId == session.stream.id) {
+            liveKitRoomBridge.updateMediaEnabled(
+                audio = _isMicEnabled.value,
+                video = _isVideoEnabled.value && !_isPaused.value
+            )
+        }
 
         var payload = org.json.JSONObject().apply {
             put("liveId", session.stream.id)

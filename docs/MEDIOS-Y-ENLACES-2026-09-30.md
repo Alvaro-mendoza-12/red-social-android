@@ -137,3 +137,47 @@ SHA-256: `8fc67ad35a91bf0265c2be5c6fae83751a7ebc54ff511c93d306ce63bd59d4d2`.
 
 No se certifica conversación escuchada por personas, carga alta ni cero retardo.
 Referencia: [opciones de captura del SDK LiveKit Android](https://github.com/livekit/client-sdk-android/blob/v2.27.0/livekit-android-sdk/src/main/java/io/livekit/android/room/track/LocalVideoTrackOptions.kt).
+
+
+## Transición con captura de directo ya activa
+
+Se amplió el ensayo de dos equipos iniciando antes la captura nativa del anfitrión,
+como ocurre al pasar de directo a batalla. Con la implementación anterior se
+reprodujo una interrupción: la pista original dejó de entregar fotogramas cuando
+el SDK abrió su propia cámara. El invitado sí veía la cámara nueva; eso ocultaba
+el fallo a los espectadores que seguían usando la transmisión original.
+
+La colaboración recibe ahora las imágenes de la captura existente mediante un
+capturador de SDK que conserva rotación, planos I420 y la propiedad de sus buffers.
+No abre una segunda cámara ni libera la pista del directo. Sigue los cambios de
+pista al apagar/encender o cambiar de fuente. El cierre retira el observador.
+
+Los controles de pausa, video y micrófono del anfitrión actualizan también las
+publicaciones de batalla. Los cambios durante la conexión conservan el último
+estado solicitado y los fallos muestran un aviso. La aceptación de una batalla
+respeta un micrófono apagado y un directo pausado. La preparación para recibir
+invitados conserva sus publicaciones apagadas. Pedir conexión dos veces para
+la misma sala, rol y captura conserva la instancia ya conectada.
+
+La repetición aprobó en ambos dispositivos. La captura original continuó
+entregando fotogramas durante la colaboración y durante el silencio de sus
+publicaciones. Apagar/encender cámara y micrófono actualizó las publicaciones;
+una nueva captura trasera reemplazó la pista original y llegó al capturador
+compartido. Pedir conexión de nuevo conservó la misma instancia de sala.
+
+| Receptor | Imagen dibujada | RTP de audio | FPS recibidos | Inicio hasta primera imagen |
+|---|---|---|---|---|
+| Anfitrión, Motorola | Sí | Sí | 11,10 | 5,405 s |
+| Invitado, emulador | Sí | Sí | 20,00 | 14,370 s |
+
+La prueba comprueba continuidad de la captura nativa; no añade otro espectador
+P2P durante la batalla ni acredita mezcla audible de ambos transportes. La
+negociación P2P entre dos equipos se verificó por separado. El arranque frío del
+invitado sigue siendo una observación; no se afirma cero retardo ni una mejora
+de ese tiempo. El primer intento de repetición esperaba solo un segundo antes
+de comprobar la captura inicial; se corrigió la espera a fotogramas reales.
+
+915 pruebas unitarias aprobadas, cero fallidas/omitidas. Compilación completa
+aprobada. APK instalada: `9.0.14-debug`, código `111`, sin borrar datos ni cambiar
+la sesión del Motorola.
+SHA-256: `fabb92ac7773975ef292cecf5c57497f54a9d407a4fef655a5dcf4b71bf6d2f2`.

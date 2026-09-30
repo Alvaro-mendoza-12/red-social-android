@@ -396,8 +396,8 @@ class LiveSessionViewModel @Inject constructor(
                         liveRepository.connectLiveKit(
                             liveId = liveId,
                             role = "host",
-                            publishAudio = true,
-                            publishCamera = isVideoEnabled.value,
+                            publishAudio = isMicEnabled.value,
+                            publishCamera = isVideoEnabled.value && !isPaused.value,
                         ).onFailure { error ->
                             _uiError.value = error.toUserFacingMessage("La batalla inició, pero no se pudo abrir la sala compartida.")
                         }
