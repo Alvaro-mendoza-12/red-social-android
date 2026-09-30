@@ -9,7 +9,7 @@ test('first-message trigger binds the durable notification to the exact message'
 })
 
 test('relay publishes the existing notification to its recipient without a second insert', async () => {
-  const notification = { id: 'n', recipient_id: 'recipient', actor_id: 'sender', type: 'friend_request', extra_data: { message_id: 'message', chat_id: 'chat' } }
+  const notification = { id: 'n', recipient_id: 'recipient', actor_id: 'sender', type: 'friend_request', created_at: new Date('2026-09-29T12:00:00Z'), extra_data: { message_id: 'message', chat_id: 'chat' } }
   const calls = []
   const sent = []
   const count = await publishAutomaticFriendRequest({ query: async (sql, args) => {
@@ -22,6 +22,7 @@ test('relay publishes the existing notification to its recipient without a secon
   assert.equal(sent[0][0], 'user:recipient')
   assert.equal(sent[0][1].event, 'notification')
   assert.equal(sent[0][1].notification.id, 'n')
+  assert.equal(sent[0][1].notification.created_at, '2026-09-29T12:00:00.000Z')
 })
 
 test('ordinary messages and incomplete identifiers do not relay old requests', async () => {

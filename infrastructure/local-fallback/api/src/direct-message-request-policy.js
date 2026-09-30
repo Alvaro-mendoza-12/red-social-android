@@ -127,9 +127,14 @@ async function publishAutomaticFriendRequest(pool, { senderId, chatId, messageId
     [senderId, chatId, messageId],
   )
   const send = publish || require('./realtime-publish').publishRealtimeEvent
-  await Promise.all(rows.map((notification) => send(`user:${notification.recipient_id}`, {
-    event: 'notification', notification, extraData: notification.extra_data || {},
-  })))
+  await Promise.all(rows.map((row) => {
+    // PostgreSQL timestamps are Dates. Convert them before the storage URL
+    // canonicalizer walks the envelope, so Android receives ISO strings.
+    const notification = JSON.parse(JSON.stringify(row))
+    return send(`user:${notification.recipient_id}`, {
+      event: 'notification', notification, extraData: notification.extra_data || {},
+    })
+  }))
   return rows.length
 }
 
