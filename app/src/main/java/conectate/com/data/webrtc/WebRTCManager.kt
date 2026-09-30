@@ -216,6 +216,8 @@ class WebRTCManager(
     val debugInfo = _debugInfo.asStateFlow()
 
     private val peerConnections = ConcurrentHashMap<String, PeerConnection>()
+    private val deferredPeerDisposals = DeferredNativeDisposals<PeerConnection>()
+    @Volatile private var outgoingAudioEnabled = true
     private val remoteUserIds = ConcurrentHashMap<String, String>()
     private val remoteAudioTracks = ConcurrentHashMap<String, AudioTrack>()
     private var remoteAudioPlaybackEnabled: Boolean = true
@@ -395,6 +397,7 @@ class WebRTCManager(
         // so one vendor failure cannot strand the remaining resources.
         peerConnections.values.toList().forEach { peer -> runCatching { peer.dispose() } }
         peerConnections.clear()
+        drainDeferredPeerDisposals()
             
             // 2. Clear state maps
             remoteAudioTracks.clear()
@@ -437,23 +440,10 @@ class WebRTCManager(
      * Returns true only if factory exists and we have active peer connections or are ready to accept them.
      */
     fun isHealthy(): Boolean {
-        // If factory is dead, we are dead.
-        if (factory == null) return false
-        
-        // If we have peer connections, check if any are failed.
-        if (peerConnections.isNotEmpty()) {
-             val hasFailures = peerConnections.values.any { 
-                 it.connectionState() == PeerConnection.PeerConnectionState.FAILED ||
-                 it.connectionState() == PeerConnection.PeerConnectionState.CLOSED
-             }
-             if (hasFailures) return false
+        if (factory == null || localAudioTrack == null) return false
+        return _peerConnectionStates.value.values.none {
+            it == PeerConnection.IceConnectionState.FAILED || it == PeerConnection.IceConnectionState.CLOSED
         }
-        
-        // v7.2.5: Check if track is disposed
-        var track = localAudioTrack
-        if (track == null || track.state() == MediaStreamTrack.State.ENDED) return false
-        
-        return true
     }
 
     /**
@@ -578,6 +568,8 @@ class WebRTCManager(
                 managedIceRefreshJob?.cancel()
                 managedIceRefreshJob = null
 
+                drainDeferredPeerDisposals()
+                drainDeferredVideoCleanups()
                 localAudioTrack?.dispose()
                 localAudioTrack = null
                 localAudioSource?.dispose()
@@ -619,6 +611,7 @@ class WebRTCManager(
         
         peerConnections.values.forEach { it.dispose() }
         peerConnections.clear()
+        drainDeferredPeerDisposals()
         disconnectRecoveryJobs.values.forEach { it.cancel() }
         disconnectRecoveryJobs.clear()
         offerRetryJobs.values.forEach { it.cancel() }
@@ -642,13 +635,7 @@ class WebRTCManager(
         // A source swap can leave the replaced native pipeline in the short
         // renderer-detach grace window. Drain those objects before the EGL
         // context and factory disappear, even when the user exits immediately.
-        val deferredCleanups = synchronized(deferredVideoCleanupLock) {
-            deferredVideoCleanups.toList().also { deferredVideoCleanups.clear() }
-        }
-        deferredCleanups.forEach { cleanup ->
-            runCatching { cleanup.track?.dispose() }
-            releaseVideoPipeline(cleanup.capturer, cleanup.helper, cleanup.source)
-        }
+        drainDeferredVideoCleanups()
 
         // Audio sources are proxies owned by the factory's signaling thread.
         // Release them while that thread still exists, before disposing the factory.
@@ -2463,9 +2450,28 @@ class WebRTCManager(
     }
 
     private fun disposePeerAfterRendererDetach(peer: PeerConnection) {
+        deferredPeerDisposals.add(peer)
         asyncScope.launch {
             delay(rendererDetachGraceMs)
-            runCatching { executor.execute { runCatching { peer.dispose() } } }
+            runCatching {
+                executor.execute {
+                    if (deferredPeerDisposals.claim(peer)) runCatching { peer.dispose() }
+                }
+            }
+        }
+    }
+
+    private fun drainDeferredPeerDisposals() {
+        deferredPeerDisposals.drain().forEach { peer -> runCatching { peer.dispose() } }
+    }
+
+    private fun drainDeferredVideoCleanups() {
+        val pending = synchronized(deferredVideoCleanupLock) {
+            deferredVideoCleanups.toList().also { deferredVideoCleanups.clear() }
+        }
+        pending.forEach { cleanup ->
+            runCatching { cleanup.track?.dispose() }
+            releaseVideoPipeline(cleanup.capturer, cleanup.helper, cleanup.source)
         }
     }
     
@@ -2473,6 +2479,7 @@ class WebRTCManager(
     fun setAudioEnabled(e: Boolean) { 
         executor.execute { 
             try {
+                outgoingAudioEnabled = e
                 localAudioTrack?.setEnabled(e)
                 peerConnections.values.forEach { pc ->
                     pc.setAudioRecording(e)
@@ -2530,43 +2537,35 @@ class WebRTCManager(
      * v22.0: Now attempts to fetch real stats from active peer connections.
      */
     fun getLocalAudioLevel(): Double {
-        return try {
-            var track = localAudioTrack ?: return 0.0
-            if (track.state() == MediaStreamTrack.State.ENDED) return 0.0
-            if (!track.enabled()) return 0.0
-            
-            // If no peer connections, we can't get real WebRTC stats, so we return 0.1 as "active/listening"
-            if (peerConnections.isEmpty()) return 0.1
-            
-            // We'll return the highest level among all active senders
-            _lastLocalLevel
-        } catch (e: Exception) {
-            0.0
-        }
+        // UI polling must not dereference a native track while the media
+        // executor is disposing it. Only read cached Java/Kotlin state here.
+        if (factory == null || localAudioTrack == null || !outgoingAudioEnabled) return 0.0
+        return if (peerConnections.isEmpty()) 0.1 else _lastLocalLevel
     }
 
-    private var _lastLocalLevel: Double = 0.0
+    @Volatile private var _lastLocalLevel: Double = 0.0
 
-    // This should be called by a timer or during stats collection
     private fun updateLocalAudioLevelFromStats() {
-        if (peerConnections.isEmpty()) return
-        
-        // Get stats from the first stable connection
-        var pc = peerConnections.values.firstOrNull { it.iceConnectionState() == PeerConnection.IceConnectionState.CONNECTED }
-            ?: peerConnections.values.firstOrNull() ?: return
-            
-        pc.getStats { reports ->
-            var maxLevel = 0.0
-            for (report in reports.statsMap.values) {
-                if (report.type == "media-source" && report.members["kind"] == "audio") {
-                    var level = report.members["audioLevel"] as? Double ?: 0.0
-                    if (level > maxLevel) maxLevel = level
+        if (executor.isShutdown) return
+        runCatching {
+            executor.execute {
+                val entry = peerConnections.entries.firstOrNull {
+                    it.value.iceConnectionState() == PeerConnection.IceConnectionState.CONNECTED
+                } ?: peerConnections.entries.firstOrNull() ?: return@execute
+                val peerId = entry.key
+                val pc = entry.value
+                runCatching {
+                    pc.getStats { reports ->
+                        if (peerConnections[peerId] !== pc) return@getStats
+                        _lastLocalLevel = reports.statsMap.values
+                            .filter { it.type == "media-source" && it.members["kind"] == "audio" }
+                            .maxOfOrNull { (it.members["audioLevel"] as? Number)?.toDouble() ?: 0.0 } ?: 0.0
+                    }
                 }
             }
-            _lastLocalLevel = maxLevel
         }
     }
-    
+
     fun setSpeakerphoneOn(on: Boolean) { 
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager

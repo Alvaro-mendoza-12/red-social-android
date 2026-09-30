@@ -181,3 +181,68 @@ de comprobar la captura inicial; se corrigió la espera a fotogramas reales.
 aprobada. APK instalada: `9.0.14-debug`, código `111`, sin borrar datos ni cambiar
 la sesión del Motorola.
 SHA-256: `fabb92ac7773975ef292cecf5c57497f54a9d407a4fef655a5dcf4b71bf6d2f2`.
+
+
+## Regresión encadenada y liberación de memoria
+
+La pasada completa de 9.0.14 aprobó pantallas, llamada real por FCM, captura de
+llamada/directo/sala y reproducción de dos videos con avance/reanudación. Al
+entrar después a pantalla compartida se produjo un SIGSEGV en el hilo nativo de
+señalización. La prueba de pantalla aislada volvió a aprobar (25,451 s). Esa
+pasada encadenada no se registra como aprobada.
+
+La inspección encontró consultas de estadísticas y salud que accedían a objetos
+nativos fuera del ejecutor de medios mientras podían liberarse. También había
+pares retirados del mapa pendientes de liberación por el tiempo de separación
+del renderizador: no estaban incluidos al liberar o recortar el motor.
+
+Se serializan las consultas de estadísticas con el cierre, la UI lee estado
+almacenado y cada objeto pendiente conserva un dueño hasta que el cierre o la
+tarea retrasada lo reclame. El reset recoge los pares pendientes; el cierre y
+recorte recogen también las fuentes de video diferidas antes de liberar la
+fábrica. La biblioteca no contiene símbolos: no se atribuye la traza exacta a
+una sola condición, aunque se corrigieron estas carreras y se repitió el ensayo.
+
+### Repetición final en 9.0.15
+
+- Compilación de app, APK de pruebas y 918 pruebas unitarias aprobadas, sin
+  fallos, errores ni omisiones.
+- Motorola: 16 ciclos con pares WebRTC nativos reales, salida rápida, reset,
+  recorte de memoria y reentrada. Se comprobó que no quedaban pares pendientes,
+  que la fábrica volvía a estar disponible y que las consultas concurrentes de
+  nivel de audio/salud no cerraban el proceso. Este ensayo es de ciclo de vida;
+  no transmite una conversación ni sustituye las pruebas de red.
+- Secuencia completa en Motorola: 11 pruebas ejecutadas aprobadas y una omitida
+  porque requiere coordinación de dos dispositivos. Incluye cuatro pruebas de
+  interfaz, cámara/audio en sala y directo, llamada forzada por TURN, llamada
+  real por FCM contestada fuera de la app, dos videos con avance/reanudación,
+  pantalla compartida después de esas sesiones e historial aislado por cuenta.
+  La pantalla compartida volvió a entregar imágenes cambiantes tras apagarse
+  y encenderse. La secuencia terminó sin el cierre nativo observado en 9.0.14.
+- Los primeros fotogramas de los dos videos llegaron en 776 y 241 ms. Son
+  muestras con caché caliente; no se comparan como mejora de red frente a la
+  primera reproducción.
+- La prueba adicional de batalla se repitió entre Motorola y emulador. Los dos
+  SDK dibujaron imagen y recibieron RTP de audio. En el anfitrión se mantuvo la
+  captura original del directo y se comprobaron pausa de publicaciones, cámara,
+  micrófono, sustitución por captura trasera y conexión repetida sin otra sala.
+
+| Receptor, 9.0.15 | Imagen dibujada | RTP de audio | FPS recibidos | Inicio hasta primera imagen |
+|---|---|---|---|---|
+| Anfitrión, Motorola | Sí | Sí | 11,10 | 5,140 s |
+| Invitado, emulador | Sí | Sí | 20,00 | 11,420 s |
+
+El tiempo de arranque del invitado sigue siendo una observación pendiente.
+Estos tiempos incluyen iniciar cámaras/SDK y esperar al otro dispositivo;
+no son una medida del retardo entre lo capturado y lo escuchado/visto.
+No se certifica audio escuchado por dos personas, mezcla de micrófono entre
+P2P y SFU, alto número de participantes ni la totalidad de la aplicación.
+
+Artefactos locales de la pasada: `build/media-lifecycle-final-build.log`,
+`build/media-lifecycle-device-9.0.15.log`,
+`build/communication-final-complete-9.0.15.log` y
+`build/shared-capture-9.0.15-duet.log`. Los dos últimos se complementan: la
+prueba de dos equipos necesita parámetros y se ejecuta por separado.
+
+APK instalada en ambos equipos sin borrar datos: `9.0.15-debug`, código `112`.
+SHA-256: `0737d52b6d68b6865256e0f4a6982bf48488b2cef9a231645abd8263e2a6e846`.

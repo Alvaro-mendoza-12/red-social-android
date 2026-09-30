@@ -246,6 +246,8 @@ class NativeMediaServerAuditTest {
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     @Test(timeout=120_000) fun publishedVideosRenderSeekAndResumeOnTheHandset() {
+        Assume.assumeTrue("Published-video audit requires isolated fixture accounts",
+            InstrumentationRegistry.getArguments().getString("mediaFixtureAccounts") == "true")
         compose.setContent { MaterialTheme { Text("Verificando reproducción de videos del servidor") } }
         val fixture=checkNotNull(suppliedAccounts()).first()
         val feed=request("/v1/data/videos?limit=10",fixture)
