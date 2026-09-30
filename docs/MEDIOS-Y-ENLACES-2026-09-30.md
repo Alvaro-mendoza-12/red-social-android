@@ -55,7 +55,7 @@ APK 9.0.11-debug, código 108. Instalación sin borrar datos en Motorola y emula
 - Los eventos de un socket anterior, la observación de otro motor y las tareas de audio retrasadas se descartan al cerrar o sustituir la llamada. El cierre invalida la sesión antes del reset; el periodo de espera por un participante tampoco puede terminar una llamada posterior.
 - Se repitió la llamada real por FCM, contestando desde SystemUI: conectó y mantuvo la cuenta. Tras colgar y esperar dos segundos, el repositorio quedó sin llamada y sin pares ICE. La muestra previa de esta pasada midió 2,226 s hasta la notificación y 5,294 s desde pulsar hasta conexión. Son muestras, no garantía de latencia.
 - El puente LiveKit libera la sala y retira sus renderizadores antes de liberar EGL. Al desconectar un participante retira sus pistas por SID; dos nombres visibles iguales ya no son una identidad compartida.
-- Prueba con SDK LiveKit real y servidor activo: imagen decodificada/dibujada, 20,00 FPS recibidos y reconexión de la misma instancia a una nueva sala/pista. Inicio combinado de anfitrión, cámara, receptor y renderizador: 8,977 s. La primera muestra fue 10,639 s; no se atribuye esa diferencia a una optimización de red.
+- Prueba con SDK LiveKit real y servidor activo: imagen decodificada/dibujada, 20,00 FPS recibidos y reconexión de la misma instancia del puente a una nueva sesión/pista. Inicio combinado de anfitrión, cámara, receptor y renderizador: 8,977 s. La primera muestra fue 10,639 s; no se atribuye esa diferencia a una optimización de red.
 - API real de colaboración: solicitud de invitado, aceptación, tokens con roles host/guest/viewer, inicio/final de batalla y rechazo de duplicado aprobados. Esto comprueba el flujo del servidor; no certifica la imagen/audio de una batalla completa con varias personas.
 - Pantalla compartida en una sala real, mediante consentimiento MediaProjection y servicio de la app: imagen cambiante recibida (15 valores de brillo), audio entrante, apagado/encendido y nuevos fotogramas después. Primer fotograma 4,213 s; 11,01 FPS recibidos. La prueba controla explícitamente el reloj de animación de Compose; no interpreta una pantalla estática como un fallo de transmisión.
 - Ocho pruebas instrumentadas ejecutadas de interfaz, cámara/directos/sala/relay y videos aprobadas, con tres ensayos especiales omitidos por requerir parámetros. Los especiales de push, pantalla y SFU se ejecutaron por separado y aprobaron; la prueba de dos dispositivos ya descrita también es independiente.
@@ -74,3 +74,33 @@ Se midió captura local a 640×480, sin espectador, servidor ni codificador de e
 En estas condiciones el límite aparece antes de la red. Aumentar el valor solicitado de 24 a 30 no mejoró la captura; no se cambió a ciegas el bitrate ni se certifica una causa concreta (iluminación, exposición o controlador). Debe repetirse con iluminación conocida y medir retardo con una referencia visible. La prueba no graba ni publica imágenes.
 
 Referencia de pantalla: [MediaProjection y consentimiento por sesión en Android](https://developer.android.com/media/grow/media-projection).
+
+## Historial por cuenta y versión 9.0.12
+
+Se detectó una lista local de llamadas común a todas las cuentas del teléfono. Ahora
+la lectura, escritura, borrado individual y borrado completo usan el ID de la cuenta.
+El registro asíncrono de una llamada conserva el dueño capturado al terminar; no
+puede almacenarse como llamada de una cuenta seleccionada después. La lectura
+observa los cambios de sesión y de DataStore.
+
+Los registros anteriores no guardaban el dueño: permanecen archivados en su clave
+original, pero no se muestran ni se migran a una cuenta sin poder atribuirlos.
+No se borraron los datos personales ni las sesiones. Solo se retiraron registros
+de QA cuyo interlocutor era una de las dos cuentas sintéticas de esta auditoría.
+
+- 908 pruebas unitarias aprobadas, cero fallidas/omitidas.
+- Prueba en Motorola con DataStore real: una entrada de otra cuenta no fue visible;
+  una entrada del dueño sí; se retiraron únicamente entradas de las cuentas QA y
+  se comprobó que la sesión personal conservó su identidad.
+- Llamada real por FCM repetida en 9.0.12: contestación, conexión y cierre sin
+  reaparición de pares ICE aprobados.
+- Diez consultas y controles de acceso por HTTPS público aprobados: 189–469 ms.
+  Es una muestra de lecturas/autorización, no una prueba de carga.
+
+APK instalada: `9.0.12-debug`, código `109`.
+SHA-256: `555b7b3a88c892dd79a87f6c0648a68b7df726f5e7308b800f33450c52b95eb4`.
+
+La prueba adicional de medios de batalla entre Motorola y emulador encontró
+7,70 FPS recibidos por el anfitrión y ausencia de audio entrante en el invitado.
+No se considera aprobada; se está separando el comportamiento del emulador,
+la publicación de audio y la configuración de captura del SDK.

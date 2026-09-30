@@ -1941,7 +1941,8 @@ class CallRepository @Inject constructor(
                     reason.ifBlank { "Llamada finalizada" }
                 },
                 isVideo = callSnapshot.isVideo
-            )
+            ),
+            ownerId = currentUserId
         )
 
         if (!callSnapshot.initiatorUserId.equals(currentUserId, ignoreCase = true)) {
@@ -1987,6 +1988,7 @@ class CallRepository @Inject constructor(
         invite: CallInvite,
         reason: String
     ) {
+        val ownerId = authService.getCurrentUserId()
         var normalizedContextType = invite.contextType.trim().lowercase().ifBlank { "dm" }
         var historyTitle = when (normalizedContextType) {
             "dm" -> invite.callerName.ifBlank { invite.title.ifBlank { "Llamada" } }
@@ -2010,7 +2012,8 @@ class CallRepository @Inject constructor(
                 status = mapCallHistoryStatus(reason, wasConnected = false),
                 statusLabel = reason.ifBlank { "Llamada finalizada" },
                 isVideo = invite.isVideo
-            )
+            ),
+            ownerId = ownerId
         )
     }
 

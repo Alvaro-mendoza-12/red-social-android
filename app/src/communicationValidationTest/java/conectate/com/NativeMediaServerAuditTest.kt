@@ -1,5 +1,6 @@
 package conectate.com
 
+import androidx.datastore.preferences.core.edit
 import android.Manifest
 import android.app.NotificationManager
 import android.content.pm.PackageManager
@@ -21,6 +22,7 @@ import conectate.com.data.model.CallConnectionState
 import conectate.com.services.IncomingCallForegroundService
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import io.socket.client.IO
 import io.socket.client.Socket
 import okhttp3.MediaType.Companion.toMediaType
@@ -411,6 +413,43 @@ class NativeMediaServerAuditTest {
     @Test(timeout=180_000) fun screenShareDeliversChangingFramesThroughTheVoiceServer() {
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("auditScreenShare")=="true")
         audit("voice",false,isScreen=true)
+    }
+
+    @Test(timeout=30_000) fun historyIsIsolatedAndOnlyAuditArtifactsAreCleaned() {
+        Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("auditCleanup")=="true")
+        val auth=EntryPointAccessors.fromApplication(context,MessageNotificationReceiverEntryPoint::class.java).authService()
+        val owner=checkNotNull(auth.getCurrentUserId())
+        val fixtures=checkNotNull(suppliedAccounts())
+        val isolatedPeers=fixtures.map { it.id }.toSet()
+        val repo=EntryPointAccessors.fromApplication(context,IncomingCallReceiverEntryPoint::class.java).callRepository()
+        assertNull("An active call must not be cleaned",repo.activeCall.value)
+        val field=repo.javaClass.getDeclaredField("callHistoryRepository").apply { isAccessible=true }
+        val history=field.get(repo) as conectate.com.data.repository.CallHistoryRepository
+        val entry=conectate.com.data.model.CallHistoryEntry(callId=UUID.randomUUID().toString(),
+            title="Prueba de aislamiento temporal",subtitle="QA",contextType="dm",statusLabel="Finalizada",peerUserId=fixtures.first().id)
+        runBlocking {
+            history.record(entry,ownerId=fixtures.first().id)
+            val visible=history.entries.first()
+            assertFalse("Another account's history was exposed",visible.any { it.id==entry.id })
+            history.record(entry.copy(id=UUID.randomUUID().toString()),ownerId=owner)
+            assertTrue("Owner's history was not visible",history.entries.first().any { it.callId==entry.callId })
+        }
+        val accessor=Class.forName("conectate.com.data.repository.CallHistoryRepositoryKt").declaredMethods
+            .first { it.name.contains("getCallHistoryDataStore") && it.parameterCount==1 }.apply { isAccessible=true }
+        @Suppress("UNCHECKED_CAST")
+        val store=accessor.invoke(null,context) as androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>
+        val serializer=kotlinx.serialization.builtins.ListSerializer(conectate.com.data.model.CallHistoryEntry.serializer())
+        val codec=kotlinx.serialization.json.Json { ignoreUnknownKeys=true;encodeDefaults=true }
+        runBlocking { store.edit { prefs ->
+            prefs.asMap().keys.filter { it.name=="entries_json" || it.name.startsWith("entries_json:") }.forEach { key ->
+                val stringKey=androidx.datastore.preferences.core.stringPreferencesKey(key.name)
+                val entries=runCatching { codec.decodeFromString(serializer,prefs[stringKey].orEmpty()) }.getOrNull() ?: return@forEach
+                val kept=entries.filterNot { it.peerUserId in isolatedPeers }
+                if(kept.size!=entries.size) prefs[stringKey]=codec.encodeToString(serializer,kept)
+            }
+        } }
+        assertEquals("Cleaning changed the owner session",owner,auth.getCurrentUserId())
+        runBlocking { assertFalse(history.entries.first().any { it.peerUserId in isolatedPeers }) }
     }
 
     private fun confirmProjectionConsent() {
