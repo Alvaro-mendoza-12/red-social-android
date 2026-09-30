@@ -1,6 +1,6 @@
 const crypto = require('crypto')
 const { loadCollectionReceipts, isCollectionMessageUnread, projectCollectionReceipt } = require('./collection-read-state')
-const bcrypt = require('bcryptjs')
+const bcrypt = require('bcrypt')
 const { moderatePublicComment } = require('./content-moderation')
 const { mergeProfileRows } = require('./profile-merge')
 const { callAiService, createFixedWindowRateLimiter } = require('./ai-routes')

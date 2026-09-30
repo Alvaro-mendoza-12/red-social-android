@@ -21,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -97,9 +99,9 @@ fun CreateVoiceRoomScreen(
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 // ID Display Card
-                if (!createdRoomCode.isNullOrBlank()) Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    onClick = {
+                if (!createdRoomCode.isNullOrBlank()) VoiceRoomCodeCard(
+                    code = createdRoomCode.orEmpty(),
+                    onCopy = {
                         createdRoomCode?.let { code ->
                             clipboardScope.launch {
                                 clipboard.setClipEntry(
@@ -109,23 +111,7 @@ fun CreateVoiceRoomScreen(
                             }
                         }
                     }
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = createdRoomCode.orEmpty(),
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            letterSpacing = 2.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copiar código de sala")
-                    }
-                }
+                )
                 
                 Spacer(modifier = Modifier.height(32.dp))
                 
@@ -285,6 +271,27 @@ fun CreateVoiceRoomScreen(
                         Text("Crear Sala")
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun VoiceRoomCodeCard(code: String, onCopy: () -> Unit, modifier: Modifier = Modifier) {
+    Card(onClick = onCopy, modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(16.dp)) {
+            val density = LocalDensity.current
+            // Fit the entire short code even with enlarged text; never hide digits.
+            val fontSize = minOf(32f, (maxWidth.value - 40f).coerceAtLeast(1f) /
+                (code.length.coerceAtLeast(1) * 0.68f * density.fontScale)).sp
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(code, modifier = Modifier.weight(1f), fontSize = fontSize,
+                    fontFamily = FontFamily.Monospace, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    maxLines = 1, softWrap = false,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.width(16.dp))
+                Icon(Icons.Default.ContentCopy, contentDescription = "Copiar código de sala")
             }
         }
     }

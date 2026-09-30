@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -17,6 +18,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import conectate.com.data.model.VoiceParticipant
 import conectate.com.presentation.voicerooms.ParticipantCard
 import conectate.com.presentation.voicerooms.ReactionPicker
+import conectate.com.presentation.messages.VoiceRoomCodeCard
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
@@ -67,8 +69,30 @@ class VoiceRoomLayoutAuditTest {
         compose.onNodeWithTag("voice_reaction_picker").assertDoesNotExist()
     }
 
+    @Test fun sevenDigitCodeFitsWithDoubleTextAndCanBeCopied() {
+        var copied = false
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                MaterialTheme { Box(Modifier.fillMaxSize().padding(24.dp)) {
+                    VoiceRoomCodeCard("7654321", { copied = true }, Modifier.requiredWidth(280.dp))
+                } }
+            }
+        }
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithText("7654321", useUnmergedTree = true)
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertEquals(1, layouts.single().lineCount)
+        assertFalse(layouts.single().hasVisualOverflow)
+        screenshot("voice-short-code-double-text")
+        compose.onNodeWithText("7654321").performClick()
+        assertTrue(copied)
+    }
+
     private fun screenshot(name: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.waitForIdleSync()
+        Thread.sleep(600)
         val folder = instrumentation.targetContext.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }
         instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
             File(folder, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }

@@ -1,4 +1,4 @@
-const bcrypt = require('bcryptjs')
+const bcrypt = require('bcrypt')
 const cors = require('cors')
 const crypto = require('crypto')
 const express = require('express')
