@@ -3,6 +3,15 @@ set -euo pipefail
 
 : "${TURN_HOST:?TURN_HOST is required}"
 : "${TURN_EXTERNAL_IP:?TURN_EXTERNAL_IP is required}"
+# A NAT deployment must explicitly supply its actual local interface address.
+# Wildcard relay bindings plus a public-IP mapping can translate a same-server
+# relay peer to 0.0.0.0 and reject legitimate TURN-to-TURN media with STUN 403.
+TURN_LOCAL_IP="${TURN_LOCAL_IP:-$TURN_EXTERNAL_IP}"
+
+if ! ip -o -4 addr show | awk '{print $4}' | cut -d/ -f1 | grep -Fxq -- "$TURN_LOCAL_IP"; then
+  echo "TURN_LOCAL_IP must be an IPv4 address configured on this server" >&2
+  exit 1
+fi
 
 TURN_MIN_PORT="${TURN_MIN_PORT:-49160}"
 TURN_MAX_PORT="${TURN_MAX_PORT:-49200}"
@@ -65,8 +74,9 @@ fi
 cat > /etc/turnserver.conf <<EOF
 listening-port=3478
 tls-listening-port=${TURN_TLS_PORT}
-listening-ip=0.0.0.0
-external-ip=${TURN_EXTERNAL_IP}
+listening-ip=${TURN_LOCAL_IP}
+relay-ip=${TURN_LOCAL_IP}
+external-ip=${TURN_EXTERNAL_IP}/${TURN_LOCAL_IP}
 realm=${TURN_HOST}
 server-name=${TURN_HOST}
 

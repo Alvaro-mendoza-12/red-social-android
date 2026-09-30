@@ -1,11 +1,11 @@
 # WebRTC/TURN de Conéctate — estado operativo 2026
 
-Actualizado el 22 de julio de 2026. Este documento reemplaza la referencia antigua a Hostinger.
+Actualizado el 30 de septiembre de 2026. Proyecto: `feature/live-gifts`.
 
 ## Arquitectura activa
 
-- API y signaling: mini-PC Ubuntu, publicado por Cloudflare Tunnel en
-  `https://recognition-milk-overall-western.trycloudflare.com`.
+- API y signaling: mini-PC Ubuntu, publicado por Tailscale Funnel en
+  `https://conectate.tail9b267c.ts.net`.
 - Namespaces Socket.IO: `/` para salas de voz, `/call` para llamadas y `/live`
   para emitir/ver directos.
 - TURN público: VPS IONOS Ubuntu `198.251.72.174`.
@@ -18,7 +18,7 @@ Actualizado el 22 de julio de 2026. Este documento reemplaza la referencia antig
 - Certificado: Let's Encrypt, con renovación de Certbot y hook que actualiza las
   copias legibles por Coturn y reinicia el servicio.
 
-El túnel Cloudflare transporta API y signaling. El audio/video WebRTC atraviesa
+El acceso HTTPS transporta API y signaling. El audio/video WebRTC atraviesa
 directamente Internet o el VPS TURN; no viaja por el túnel HTTP.
 
 ## Configuración del VPS
@@ -28,7 +28,8 @@ configuración efectiva usa:
 
 - `use-auth-secret` y `static-auth-secret`;
 - `realm=turn.198-251-72-174.sslip.io`;
-- `external-ip=198.251.72.174`;
+- `listening-ip=198.251.72.174`, `relay-ip=198.251.72.174`;
+- `external-ip=198.251.72.174/198.251.72.174` (la IP pública está asignada a la interfaz);
 - `listening-port=3478` y `tls-listening-port=443`;
 - `cert=/etc/turnserver/tls-fullchain.pem`;
 - `pkey=/etc/turnserver/tls-privkey.pem`;
@@ -77,6 +78,29 @@ turn:turn.198-251-72-174.sslip.io:3478?transport=udp
 
 ## Cliente Android
 
+### Fallo de retransmisión corregido el 30/09
+
+La configuración anterior enlazaba a `0.0.0.0` sin `relay-ip`. Coturn anunciaba
+una dirección pública, pero al crear permisos entre dos allocations del mismo
+servidor terminaba rechazando el destino con `403 Forbidden IP`. Se reprodujo
+con dos clientes de `turnutils_uclient`, por UDP, TCP y TLS.
+
+Se fijaron explícitamente las direcciones de escucha y relay y el par pública/local.
+Se guardó un respaldo privado antes de reiniciar Coturn. Se conservaron los bloqueos
+de destinos privados, loopback y multicast. Tras el cambio, UDP y TCP entregaron
+10/10 paquetes; TLS también pudo enlazar canales, aunque una muestra corta perdió
+4/10 paquetes. Una repetición dio el mismo resultado en ese cliente de prueba.
+Se realizó además una comprobación independiente: dos conexiones TLS con validación
+del certificado, permisos TURN reales y 40 mensajes sintéticos en ambos sentidos.
+Se recibieron 40/40, con promedio de 134,1 ms por entrega y máximo de 135,5 ms
+(mini-PC → VPS → mini-PC). Esto confirma el transporte de esa muestra; no certifica
+TLS bajo carga ni explica por sí solo la pérdida observada en `turnutils_uclient`.
+
+`scripts/provision-turn-vps.sh` reproduce el arreglo y verifica que `TURN_LOCAL_IP`
+exista en el servidor. Para un servidor con NAT, debe suministrarse la dirección
+local real junto con `TURN_EXTERNAL_IP`; no usar la dirección pública como local
+si no está asignada a la interfaz.
+
 `WebRTCManager` renueva las credenciales antes de que expiren y fuerza una
 renovación/reinicio ICE si la conexión falla. Llamadas, salas y directos usan la
 misma fuente administrada de servidores ICE. Los repositorios no deben declarar
@@ -92,12 +116,13 @@ ICE state: CONNECTED o COMPLETED
 
 Si solo aparecen candidatos `HOST`/`SRFLX`, revisar credenciales, firewall y
 rango relay. Si signaling conecta pero ICE termina en `FAILED`, verificar que el
-APK instalado sea el nuevo y revisar Coturn, no el túnel Cloudflare.
+APK instalado sea el nuevo y revisar Coturn y las rutas de medios.
 
 ## Límites actuales
 
-Llamadas, salas y directos usan una malla WebRTC. Funciona para llamadas 1 a 1 y
+Las llamadas, salas y el transporte básico de directos usan una malla WebRTC. Funciona para llamadas 1 a 1 y
 grupos pequeños, pero el anfitrión de un directo envía una copia por espectador.
-Para directos masivos se necesita un SFU (por ejemplo LiveKit/mediasoup/Janus),
-no un plan TURN más grande. El rango actual tiene 41 puertos relay y está pensado
+La integración LiveKit está habilitada para invitados y batallas; ello no demuestra
+que todos los espectadores de los directos básicos usen el SFU. Para directos masivos
+debe verificarse ese transporte. El rango actual tiene 41 puertos relay y está pensado
 para la etapa de prueba/beta; se debe ampliar antes de concurrencia alta.
