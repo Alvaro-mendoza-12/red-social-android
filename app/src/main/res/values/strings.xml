@@ -112,4 +112,9 @@
     <string name="notification_friend_accepted">Aceptó tu solicitud de amistad</string>
     <string name="notification_friend_requested">Te envió una solicitud de amistad</string>
     <string name="notification_followed">Empezó a seguirte</string>
+    <string name="room_link_back">Página anterior</string>
+    <string name="room_link_retry">Volver a intentar</string>
+    <string name="room_link_close">Cerrar enlace</string>
+    <string name="room_link_error">No se pudo abrir el enlace</string>
+    <string name="room_link_error_hint">Comprueba tu conexión o vuelve a intentarlo. Puedes cerrar esta ventana y seguir en la sala.</string>
 </resources>

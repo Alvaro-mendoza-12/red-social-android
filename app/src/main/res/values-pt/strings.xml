@@ -94,4 +94,9 @@
     <string name="notification_friend_accepted">Aceitou sua solicitação de amizade</string>
     <string name="notification_friend_requested">Enviou uma solicitação de amizade</string>
     <string name="notification_followed">Começou a seguir você</string>
+    <string name="room_link_back">Página anterior</string>
+    <string name="room_link_retry">Tentar novamente</string>
+    <string name="room_link_close">Fechar link</string>
+    <string name="room_link_error">Não foi possível abrir o link</string>
+    <string name="room_link_error_hint">Verifique sua conexão ou tente novamente. Você pode fechar esta janela e continuar na sala.</string>
 </resources>

@@ -39,6 +39,20 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class CommunicationUiAuditTest {
     @get:Rule val compose = createComposeRule()
+    @Test fun roomLinksOfferRetryAndCloseWhenThePageCannotLoad() {
+        val opened=mutableStateOf(true)
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        compose.setContent { MaterialTheme {
+            if(opened.value) conectate.com.presentation.voicerooms.VoiceRoomLinkDialog(
+                "https://novvin-qa-does-not-exist.invalid",onDismiss={ opened.value=false })
+        } }
+        compose.waitUntil(30_000) { compose.onAllNodesWithTag("room_link_error").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("room_link_retry").assertIsEnabled().performClick()
+        compose.waitUntil(30_000) { compose.onAllNodesWithTag("room_link_error").fetchSemanticsNodes().isNotEmpty() }
+        screenshot("voice-room-link-error-retry")
+        compose.onNodeWithContentDescription(context.getString(R.string.room_link_close)).performClick()
+        compose.onNodeWithTag("room_link_error").assertDoesNotExist()
+    }
     private fun screenshot(name: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.waitForIdleSync()

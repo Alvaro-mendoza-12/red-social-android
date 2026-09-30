@@ -61,7 +61,8 @@ class WebRTCManager(
     private val context: Context,
     private val signalingEvents: SignalingEvents,
     private val accessTokenProvider: (() -> String?)? = null,
-    private val failureReporter: ((metric: String, throwable: Throwable) -> Unit)? = null
+    private val failureReporter: ((metric: String, throwable: Throwable) -> Unit)? = null,
+    private val iceTransportPolicy: PeerConnection.IceTransportsType = PeerConnection.IceTransportsType.ALL
 ) {
     private val cameraSwitchInProgress = AtomicBoolean(false)
 
@@ -649,14 +650,16 @@ class WebRTCManager(
             releaseVideoPipeline(cleanup.capturer, cleanup.helper, cleanup.source)
         }
 
+        // Audio sources are proxies owned by the factory's signaling thread.
+        // Release them while that thread still exists, before disposing the factory.
+        localAudioSource?.dispose()
+        localAudioSource = null
+
         factory?.dispose()
         factory = null
 
         audioDeviceModule?.release()
         audioDeviceModule = null
-
-        localAudioSource?.dispose()
-        localAudioSource = null
 
         rootEglBase?.release()
         rootEglBase = null
@@ -705,10 +708,7 @@ class WebRTCManager(
 
             ensureLocalTracks()
             refreshManagedIceServers(force = true)
-            activeManagedIceRefreshLatch()?.await(
-                managedIceWaitTimeoutMs,
-                java.util.concurrent.TimeUnit.MILLISECONDS
-            )
+            awaitManagedIceIfNeeded()
 
             executor.execute {
                 val servers = currentIceServersSnapshot()
@@ -808,7 +808,8 @@ class WebRTCManager(
     }
 
     private fun getOrAddAudioTransceiver(pc: PeerConnection): RtpTransceiver {
-        return pc.transceivers.find { it.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO }
+        return pc.transceivers.filter { it.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO }
+            .let { transceivers -> transceivers.firstOrNull { it.mid != null } ?: transceivers.firstOrNull() }
             ?: pc.addTransceiver(
                 MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO,
                 RtpTransceiver.RtpTransceiverInit(
@@ -819,7 +820,8 @@ class WebRTCManager(
     }
 
     private fun getOrAddVideoTransceiver(pc: PeerConnection): RtpTransceiver {
-        return pc.transceivers.find { it.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO }
+        return pc.transceivers.filter { it.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO }
+            .let { transceivers -> transceivers.firstOrNull { it.mid != null } ?: transceivers.firstOrNull() }
             ?: pc.addTransceiver(
                 MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
                 RtpTransceiver.RtpTransceiverInit(
@@ -1177,6 +1179,12 @@ class WebRTCManager(
         var map = _peerConnectionStates.value.toMutableMap()
         map[requestedKey] = PeerConnection.IceConnectionState.NEW
         _peerConnectionStates.value = map
+
+        // The answerer adopts the remote offer's m-lines before attaching local
+        // tracks. Pre-creating transceivers on both peers can strand its camera
+        // and microphone on extra, unassociated m-lines: ICE connects but the
+        // initial answer transmits no image or voice.
+        if (isPolite(ruid, rsid)) return pc
         
         // v24.2: Standard Transceiver Setup
         // 1. Audio: Always SEND_RECV to ensure we can talk and hear
@@ -1234,6 +1242,20 @@ class WebRTCManager(
     private fun activeManagedIceRefreshLatch(): java.util.concurrent.CountDownLatch? {
         return synchronized(managedIceRefreshLock) {
             managedIceRefreshLatch.takeIf { it.count > 0 }
+        }
+    }
+
+    private fun managedIceNeedsRefreshBeforeConnecting(): Boolean = synchronized(dynamicIceServers) {
+        shouldAwaitManagedIceRefresh(
+            hasServers = dynamicIceServers.isNotEmpty(),
+            expiresAtEpochSeconds = managedIceExpiresAtEpochSeconds,
+            nowEpochSeconds = System.currentTimeMillis() / 1_000L
+        )
+    }
+
+    private fun awaitManagedIceIfNeeded() {
+        if (hasManagedTurnConfigured && managedIceNeedsRefreshBeforeConnecting()) {
+            activeManagedIceRefreshLatch()?.await(managedIceWaitTimeoutMs, TimeUnit.MILLISECONDS)
         }
     }
 
@@ -1373,7 +1395,7 @@ class WebRTCManager(
         return PeerConnection.RTCConfiguration(servers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
-            iceTransportsType = PeerConnection.IceTransportsType.ALL
+            iceTransportsType = iceTransportPolicy
 
             // v17.2: Force Modern Policies for better NAT traversal
             bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
@@ -1408,13 +1430,13 @@ class WebRTCManager(
             if (
                 refreshLatch == null &&
                 hasManagedTurnConfigured &&
-                synchronized(dynamicIceServers) { dynamicIceServers.isEmpty() }
+                managedIceNeedsRefreshBeforeConnecting()
             ) {
-                Log.w("WebRTC", "⌛ createPeerConnection: managed TURN is empty; forcing refresh before creating peer...")
+                Log.w("WebRTC", "⌛ createPeerConnection: managed TURN is absent or expired; refreshing before creating peer...")
                 refreshManagedIceServers(force = true)
                 refreshLatch = activeManagedIceRefreshLatch()
             }
-            if (refreshLatch != null) {
+            if (refreshLatch != null && managedIceNeedsRefreshBeforeConnecting()) {
                 Log.w("WebRTC", "⌛ createPeerConnection: Waiting for managed TURN refresh...")
                 refreshLatch.await(managedIceWaitTimeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
             }
@@ -1528,13 +1550,18 @@ class WebRTCManager(
                         
                         // v7.2.6: Reinforce transceivers to ensure local track is still active
                         var pc = peerConnections[socketId]
-                        val audioTransceiver = pc?.let(::getOrAddAudioTransceiver)
+                        // getTransceivers() disposes its previous Java wrappers.
+                        // Snapshot the sender's native identity before reading it again.
+                        val primaryAudioSenderId = pc?.let(::getOrAddAudioTransceiver)?.sender?.id()
                         pc?.transceivers?.forEach { t ->
                             if (t.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO) {
-                                if (t === audioTransceiver && t.direction == RtpTransceiver.RtpTransceiverDirection.RECV_ONLY) {
+                                // Native getters create new Java wrappers. Reference
+                                // equality would clear every microphone sender here.
+                                val primaryAudio = isSameMediaSender(t.sender.id(), primaryAudioSenderId)
+                                if (primaryAudio && t.direction == RtpTransceiver.RtpTransceiverDirection.RECV_ONLY) {
                                     t.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
                                 }
-                                t.sender.setTrack(if (t === audioTransceiver) localAudioTrack else null, false)
+                                t.sender.setTrack(if (primaryAudio) localAudioTrack else null, false)
                             } else if (t.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) {
                                 var activeVideoTrack = activeOutgoingVideoTrack()
                                 t.sender.setTrack(activeVideoTrack, false)
@@ -1607,10 +1634,7 @@ class WebRTCManager(
                                 // credential used by the original allocation. Refresh it
                                 // before ICE restart instead of reusing stale ICE servers.
                                 refreshManagedIceServers(force = true)
-                                activeManagedIceRefreshLatch()?.await(
-                                    managedIceWaitTimeoutMs,
-                                    java.util.concurrent.TimeUnit.MILLISECONDS
-                                )
+                                awaitManagedIceIfNeeded()
                                 delay(500)
                                 executor.execute retryPeerConnection@{
                                     val activePc = peerConnections[socketId] ?: return@retryPeerConnection
@@ -1707,8 +1731,15 @@ class WebRTCManager(
                 Log.d("WebRTC", "Remote Description (OFFER) SET successfully for $socketId")
                 cancelGlareRecovery(socketId)
                 ignoreOffer[socketId] = false
-                isSettingRemoteOfferPending[socketId] = false
                 makingOffer[socketId] = false
+                getOrAddAudioTransceiver(pc).apply {
+                    sender.setTrack(localAudioTrack, false)
+                    direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
+                }
+                getOrAddVideoTransceiver(pc).apply {
+                    sender.setTrack(activeOutgoingVideoTrack(), false)
+                    direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
+                }
                 drainIceQueue(socketId, pc)
                 createAnswer(socketId, pc)
             }
@@ -1940,6 +1971,7 @@ class WebRTCManager(
             override fun onCreateSuccess(d: SessionDescription?) {
                 var desc = d
                 if (desc == null) {
+                    isSettingRemoteOfferPending[socketId] = false
                     Log.e("WebRTC", "Local Answer CREATE returned null desc ($socketId)")
                     return
                 }
@@ -1947,6 +1979,7 @@ class WebRTCManager(
                 Log.d("WebRTC", "Local Answer CREATED for $socketId")
                 pc.setLocalDescription(object : SdpObserverAdapter() {
                     override fun onSetSuccess() {
+                        isSettingRemoteOfferPending[socketId] = false
                         Log.d("WebRTC", "Local Answer SET for $socketId")
                         // v24.3: Apply Bitrate control after setting local description
                         setMaxBitrate(pc, socketId)
@@ -1956,10 +1989,16 @@ class WebRTCManager(
                             put("userId", currentUserId)
                         })
                     }
-                    override fun onSetFailure(s: String?) { Log.e("WebRTC", "Local Answer SET FAILED: $s ($socketId)") }
+                    override fun onSetFailure(s: String?) {
+                        isSettingRemoteOfferPending[socketId] = false
+                        Log.e("WebRTC", "Local Answer SET FAILED: $s ($socketId)")
+                    }
                 }, preferredDesc)
             }
-            override fun onCreateFailure(s: String?) { Log.e("WebRTC", "Local Answer CREATE FAILED: $s ($socketId)") }
+            override fun onCreateFailure(s: String?) {
+                isSettingRemoteOfferPending[socketId] = false
+                Log.e("WebRTC", "Local Answer CREATE FAILED: $s ($socketId)")
+            }
         }, constraints)
     }
 
@@ -2387,9 +2426,9 @@ class WebRTCManager(
         return null
     }
 
-    fun destroy() {
+    fun destroy(onComplete: () -> Unit = {}) {
         executor.execute {
-            destroyInternal()
+            try { destroyInternal() } finally { onComplete() }
         }
     }
 

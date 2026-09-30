@@ -7,9 +7,6 @@ import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.view.ViewGroup
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1982,55 +1979,6 @@ fun ChatBubble(
     }
     openedLink?.let { link ->
         VoiceRoomLinkDialog(link = link, onDismiss = { openedLink = null })
-    }
-}
-
-@Composable
-private fun VoiceRoomLinkDialog(link: String, onDismiss: () -> Unit) {
-    var webView by remember(link) { mutableStateOf<WebView?>(null) }
-    DisposableEffect(link) {
-        onDispose {
-            webView?.stopLoading()
-            webView?.destroy()
-            webView = null
-        }
-    }
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.86f),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(Uri.parse(link).host.orEmpty(), modifier = Modifier.weight(1f), maxLines = 1)
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Cerrar enlace")
-                    }
-                }
-                AndroidView(
-                    factory = { context ->
-                        WebView(context).apply {
-                            settings.javaScriptEnabled = true
-                            settings.allowFileAccess = false
-                            settings.allowContentAccess = false
-                            settings.domStorageEnabled = true
-                            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                            webViewClient = object : WebViewClient() {
-                                override fun shouldOverrideUrlLoading(
-                                    view: WebView?, request: WebResourceRequest?
-                                ): Boolean = request?.url?.scheme !in listOf("http", "https")
-                            }
-                            loadUrl(link)
-                            webView = this
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().weight(1f)
-                )
-            }
-        }
     }
 }
 
