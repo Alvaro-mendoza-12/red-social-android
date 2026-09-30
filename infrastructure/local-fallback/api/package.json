@@ -85,6 +85,7 @@
     "verify:moment-music-e2e": "node scripts/verify-moment-music-e2e.js",
     "verify:social-read-paths": "node scripts/verify-social-read-paths.js",
     "verify:messaging-read-paths": "node scripts/verify-messaging-read-paths.js",
+    "verify:public-ingress": "node scripts/verify-public-ingress.js",
     "verify:live-moderation-e2e": "node scripts/verify-live-moderation-e2e.js",
     "verify:live-replay-e2e": "node scripts/verify-live-replay-e2e.js",
     "verify:post-remix-e2e": "node scripts/verify-post-remix-e2e.js",

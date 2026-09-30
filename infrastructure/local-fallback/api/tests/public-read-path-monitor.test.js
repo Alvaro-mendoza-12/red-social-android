@@ -7,6 +7,13 @@ const test = require('node:test')
 
 const script = path.resolve(__dirname, '../../scripts/monitor-public-read-paths.sh')
 
+test('the monitor checks public TLS independently of private host routing', () => {
+  const source = fs.readFileSync(script, 'utf8')
+  assert.match(source, /run_probe public-ingress verify-public-ingress\.js/)
+  assert.match(source, /--entrypoint node/)
+  assert.match(source, /"scripts\/\$script"/)
+})
+
 function bashPath(value) {
   if (process.platform !== 'win32') return value
   const normalized = value.replaceAll('\\', '/')
@@ -14,7 +21,7 @@ function bashPath(value) {
   return match ? `/mnt/${match[1].toLowerCase()}/${match[2]}` : normalized
 }
 
-function runMonitor(fixture, dockerExit) {
+function runMonitor(fixture, dockerExit, failedScript = '') {
   const bashExecutable = process.platform === 'win32'
     ? path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'bash.exe')
     : 'bash'
@@ -27,6 +34,7 @@ function runMonitor(fixture, dockerExit) {
     env: {
       ...process.env,
       FAKE_DOCKER_EXIT: String(dockerExit),
+      FAKE_DOCKER_FAIL_SCRIPT: failedScript,
       PATH: environmentPath,
       PUBLIC_MONITOR_FAILURE_THRESHOLD: '3',
       PUBLIC_MONITOR_LOCK: bashPath(path.join(fixture.root, 'monitor.lock')),
@@ -52,7 +60,12 @@ test('public read-path monitor tolerates isolated failures and alerts on the thi
 case "$*" in
   *"compose exec"*) printf 'header.payload.signature' ;;
   *"compose images"*) printf 'sha256:fake-api-image\\n' ;;
-  *" run "*) exit "\${FAKE_DOCKER_EXIT:-0}" ;;
+  run*)
+    if [ -z "\${FAKE_DOCKER_FAIL_SCRIPT:-}" ]; then exit "\${FAKE_DOCKER_EXIT:-0}"; fi
+    case "$*" in
+      *"\${FAKE_DOCKER_FAIL_SCRIPT}"*) exit "\${FAKE_DOCKER_EXIT:-0}" ;;
+      *) exit 0 ;;
+    esac ;;
   *) exit 0 ;;
 esac
 `)
@@ -62,6 +75,7 @@ esac
     const healthy = runMonitor(fixture, 0)
     assert.equal(healthy.status, 0, healthy.stderr)
     assert.match(healthy.stdout, /PUBLIC_READ_PATHS_OK=/)
+    assert.equal((healthy.stdout.match(/PUBLIC_READ_PATHS_PROBE=/g) || []).length, 3)
     assert.match(fs.readFileSync(path.join(state, 'public-read-paths.status'), 'utf8'), /status=ok/)
 
     const first = runMonitor(fixture, 1)
@@ -72,6 +86,14 @@ esac
     assert.equal(third.status, 1)
     assert.match(third.stdout, /consecutive_failures=3/)
     assert.match(fs.readFileSync(path.join(state, 'public-read-paths.status'), 'utf8'), /status=degraded/)
+
+    // Private application reads succeeding cannot hide failed public ingress.
+    assert.equal(runMonitor(fixture, 0).status, 0)
+    assert.equal(runMonitor(fixture, 1, 'verify-public-ingress.js').status, 0)
+    assert.equal(runMonitor(fixture, 1, 'verify-public-ingress.js').status, 0)
+    const publicFailure = runMonitor(fixture, 1, 'verify-public-ingress.js')
+    assert.equal(publicFailure.status, 1, publicFailure.stdout)
+    assert.match(publicFailure.stdout, /probes=public-ingress/)
   } finally {
     fs.rmSync(root, { force: true, recursive: true })
   }

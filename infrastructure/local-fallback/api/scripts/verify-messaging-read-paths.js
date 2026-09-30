@@ -29,6 +29,15 @@ function selectChatItem(inbox) {
     : null
 }
 
+async function verifyMessagingImages({ payload, timeoutMs, maxMs, verifyImageImpl = verifyImage }) {
+  const imageUrls = selectImageUrls(payload, 2)
+  const images = []
+  for (const sourceUrl of imageUrls) images.push(await verifyImageImpl({ sourceUrl, timeoutMs, maxMs }))
+  // Profiles without photos are valid. State the missing coverage explicitly;
+  // an available image that fails to download must still fail the verification.
+  return { images, avatarDelivery: images.length ? 'verified' : 'not-exercised-no-avatar-url' }
+}
+
 async function main() {
   const baseUrl = cleanBaseUrl(process.env.SMOKE_API_BASE_URL || defaultBaseUrl)
   const timeoutMs = positiveInteger(process.env.SMOKE_TIMEOUT_MS, defaultTimeoutMs)
@@ -143,12 +152,9 @@ async function main() {
     }
   }
 
-  const imageUrls = selectImageUrls([currentProfile.body, inboxes.chats, peerProfile?.body], 2)
-  if (requireContent) assert(imageUrls.length > 0, 'messaging/profile paths returned no avatar URL to verify')
-  const images = []
-  for (const sourceUrl of imageUrls) {
-    images.push(await verifyImage({ sourceUrl, timeoutMs, maxMs: maxImageMs }))
-  }
+  const { images, avatarDelivery } = await verifyMessagingImages({
+    payload: [currentProfile.body, inboxes.chats, peerProfile?.body], timeoutMs, maxMs: maxImageMs,
+  })
 
   console.log(JSON.stringify({
     ok: true,
@@ -158,6 +164,7 @@ async function main() {
     checks,
     chat: chatEvidence,
     images,
+    avatarDelivery,
   }, null, 2))
   })
 }
@@ -169,4 +176,4 @@ if (require.main === module || truthy(process.env.SMOKE_FORCE_RUN)) {
   })
 }
 
-module.exports = { opaqueRef, selectChatItem }
+module.exports = { opaqueRef, selectChatItem, verifyMessagingImages }

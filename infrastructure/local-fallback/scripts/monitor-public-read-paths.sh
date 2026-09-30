@@ -64,11 +64,11 @@ run_probe() {
       --cap-drop ALL --security-opt no-new-privileges \
       --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
       --mount type=bind,src="$ROOT_DIR/api/scripts",dst=/usr/src/app/scripts,readonly \
-      --entrypoint npm \
+      --entrypoint node \
       -e SMOKE_API_BASE_URL="$public_url" \
       -e SMOKE_ACCESS_TOKEN="$access_token" \
       -e SMOKE_REQUIRE_CONTENT=true \
-      "$api_image" run "$script" >"$output" 2>&1; then
+      "$api_image" "scripts/$script" >"$output" 2>&1; then
     elapsed_ms=$(( $(date +%s%3N) - started_ms ))
     evidence_tmp="$STATE_DIR/public-$name.latest.log.tmp.$$"
     tail -n 160 "$output" > "$evidence_tmp"
@@ -87,8 +87,10 @@ run_probe() {
   fi
 }
 
-run_probe social verify:social-read-paths
-run_probe messaging verify:messaging-read-paths
+# This is independent of the host's MagicDNS/private Tailscale route.
+run_probe public-ingress verify-public-ingress.js
+run_probe social verify-social-read-paths.js
+run_probe messaging verify-messaging-read-paths.js
 
 timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 if [ "${#failed[@]}" -eq 0 ]; then
