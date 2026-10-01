@@ -224,6 +224,11 @@ Retiros económicos permanecen fuera del alcance previamente acordado. No se hic
 
 ## Prioridades restantes
 
+Actualización del 01/10: la caída local de cámara se corrigió a 30 FPS en ambas cámaras del
+Motorola y se repitieron LIVE/sala/llamada entre redes. PK y el arranque aún necesitan mejoras;
+ver [mediciones y cambios posteriores](34-cadencia-live-salas-2026-10-01.md). El Motorola no
+anuncia formatos de 60 FPS para esta captura. Se conservan debajo los resultados históricos.
+
 1. **P1:** completar pruebas físicas de comunicaciones y entrega de correo; firmar/verificar el
    release con la clave original; medir capacidad de LIVE/TURN y cadencia real. No prometer cero delay.
 2. **P1:** reducir los peores casos por encima de un segundo y cerrar despliegue sin errores transitorios;

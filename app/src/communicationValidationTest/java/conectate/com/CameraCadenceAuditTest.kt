@@ -51,7 +51,8 @@ class CameraCadenceAuditTest {
                     Thread.sleep(8_000)
                     val fps = (frames.get() - before) * 1_000_000_000.0 / (System.nanoTime() - started)
                     reports.put(JSONObject().put("front", front).put("requestedFps", requested).put("captureFps", fps))
-                    assertTrue("Camera produced almost no frames: $fps", fps >= 8)
+                    val minimum = InstrumentationRegistry.getArguments().getString("minimumCameraFps")?.toDoubleOrNull() ?: 8.0
+                    assertTrue("Camera is below the requested audit threshold: $fps < $minimum", fps >= minimum)
                 }
             } finally {
                 track?.let { runCatching { it.removeSink(sink) } }

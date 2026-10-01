@@ -1,0 +1,26 @@
+{
+  "versionCode": 117,
+  "versionName": "9.0.20",
+  "apkBytes": 272954839,
+  "apkSha256": "5a27fdd9cd92abea9c7c839bc528c187b03646e6673361e15e0a9ec036b6b8ac",
+  "unitTests": [
+    {
+      "name": "conectate.com.data.webrtc.StableCameraFpsSelectorTest",
+      "tests": "10",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "conectate.com.data.webrtc.NativeCameraProfileTest",
+      "tests": "10",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    }
+  ],
+  "nativeLocalTests": 2,
+  "crossNetworkTests": 6,
+  "pkGuestMinimumFpsTest": "failed, 23.79 < 25",
+  "backup": "/home/alvaro/conectate-backups/20261001T045412Z"
+}

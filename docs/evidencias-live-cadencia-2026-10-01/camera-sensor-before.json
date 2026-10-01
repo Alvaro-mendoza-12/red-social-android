@@ -1,0 +1,567 @@
+{
+  "cameras": [
+    {
+      "id": "0",
+      "facing": 1,
+      "hardwareLevel": 0,
+      "aeFpsRanges": [
+        [
+          10,
+          10
+        ],
+        [
+          5,
+          15
+        ],
+        [
+          15,
+          15
+        ],
+        [
+          5,
+          20
+        ],
+        [
+          20,
+          20
+        ],
+        [
+          5,
+          24
+        ],
+        [
+          24,
+          24
+        ],
+        [
+          5,
+          30
+        ],
+        [
+          30,
+          30
+        ]
+      ],
+      "formats": [
+        {
+          "width": 4608,
+          "height": 3456,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 3264,
+          "height": 2448,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 3264,
+          "height": 1836,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 3264,
+          "height": 1632,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 3200,
+          "height": 1440,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 2448,
+          "height": 2448,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 2304,
+          "height": 1728,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1920,
+          "height": 960,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1920,
+          "height": 864,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1600,
+          "height": 1200,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1600,
+          "height": 720,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1440,
+          "height": 1080,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1280,
+          "height": 1280,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1280,
+          "height": 720,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 960,
+          "height": 720,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 800,
+          "height": 600,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 720,
+          "height": 720,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 720,
+          "height": 480,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 640,
+          "height": 480,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 352,
+          "height": 288,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 320,
+          "height": 240,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 320,
+          "height": 144,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 240,
+          "height": 240,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 288,
+          "height": 144,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 256,
+          "height": 144,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 176,
+          "height": 144,
+          "minFps": 0,
+          "maxFps": 30000
+        }
+      ]
+    },
+    {
+      "id": "1",
+      "facing": 0,
+      "hardwareLevel": 0,
+      "aeFpsRanges": [
+        [
+          5,
+          15
+        ],
+        [
+          15,
+          15
+        ],
+        [
+          5,
+          20
+        ],
+        [
+          20,
+          20
+        ],
+        [
+          5,
+          30
+        ],
+        [
+          15,
+          30
+        ],
+        [
+          30,
+          30
+        ]
+      ],
+      "formats": [
+        {
+          "width": 2592,
+          "height": 1944,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 2304,
+          "height": 1728,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1920,
+          "height": 960,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1920,
+          "height": 864,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1600,
+          "height": 1200,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1600,
+          "height": 720,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1440,
+          "height": 1080,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1280,
+          "height": 1280,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 1280,
+          "height": 720,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 960,
+          "height": 720,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 800,
+          "height": 600,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 720,
+          "height": 720,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 720,
+          "height": 480,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 640,
+          "height": 480,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 352,
+          "height": 288,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 320,
+          "height": 240,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 320,
+          "height": 144,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 240,
+          "height": 240,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 288,
+          "height": 144,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 256,
+          "height": 144,
+          "minFps": 0,
+          "maxFps": 30000
+        },
+        {
+          "width": 176,
+          "height": 144,
+          "minFps": 0,
+          "maxFps": 30000
+        }
+      ]
+    }
+  ],
+  "encoders": [
+    {
+      "name": "c2.unisoc.avc.encoder",
+      "hardware": true,
+      "types": [
+        "video/avc"
+      ]
+    },
+    {
+      "name": "OMX.sprd.h264.encoder",
+      "hardware": true,
+      "types": [
+        "video/avc"
+      ]
+    },
+    {
+      "name": "c2.unisoc.hevc.encoder",
+      "hardware": true,
+      "types": [
+        "video/hevc"
+      ]
+    },
+    {
+      "name": "OMX.sprd.h265.encoder",
+      "hardware": true,
+      "types": [
+        "video/hevc"
+      ]
+    },
+    {
+      "name": "c2.unisoc.jpeg.encoder",
+      "hardware": true,
+      "types": [
+        "video/jpeg"
+      ]
+    },
+    {
+      "name": "c2.android.av1.encoder",
+      "hardware": false,
+      "types": [
+        "video/av01"
+      ]
+    },
+    {
+      "name": "c2.android.avc.encoder",
+      "hardware": false,
+      "types": [
+        "video/avc"
+      ]
+    },
+    {
+      "name": "OMX.google.h264.encoder",
+      "hardware": false,
+      "types": [
+        "video/avc"
+      ]
+    },
+    {
+      "name": "c2.android.h263.encoder",
+      "hardware": false,
+      "types": [
+        "video/3gpp"
+      ]
+    },
+    {
+      "name": "OMX.google.h263.encoder",
+      "hardware": false,
+      "types": [
+        "video/3gpp"
+      ]
+    },
+    {
+      "name": "c2.android.hevc.encoder",
+      "hardware": false,
+      "types": [
+        "video/hevc"
+      ]
+    },
+    {
+      "name": "c2.android.mpeg4.encoder",
+      "hardware": false,
+      "types": [
+        "video/mp4v-es"
+      ]
+    },
+    {
+      "name": "OMX.google.mpeg4.encoder",
+      "hardware": false,
+      "types": [
+        "video/mp4v-es"
+      ]
+    },
+    {
+      "name": "c2.android.vp8.encoder",
+      "hardware": false,
+      "types": [
+        "video/x-vnd.on2.vp8"
+      ]
+    },
+    {
+      "name": "OMX.google.vp8.encoder",
+      "hardware": false,
+      "types": [
+        "video/x-vnd.on2.vp8"
+      ]
+    },
+    {
+      "name": "c2.android.vp9.encoder",
+      "hardware": false,
+      "types": [
+        "video/x-vnd.on2.vp9"
+      ]
+    },
+    {
+      "name": "OMX.google.vp9.encoder",
+      "hardware": false,
+      "types": [
+        "video/x-vnd.on2.vp9"
+      ]
+    }
+  ],
+  "samples": [
+    {
+      "api": "Camera2Enumerator",
+      "front": false,
+      "requestedFps": 30,
+      "rawFps": 9.999590024808654,
+      "width": 640,
+      "height": 480
+    },
+    {
+      "api": "Camera2Enumerator",
+      "front": false,
+      "requestedFps": 60,
+      "rawFps": 8.599654696345047,
+      "width": 640,
+      "height": 480
+    },
+    {
+      "api": "Camera2Enumerator",
+      "front": true,
+      "requestedFps": 30,
+      "rawFps": 19.998910535349893,
+      "width": 640,
+      "height": 480
+    },
+    {
+      "api": "Camera2Enumerator",
+      "front": true,
+      "requestedFps": 60,
+      "rawFps": 19.999336805992044,
+      "width": 640,
+      "height": 480
+    },
+    {
+      "api": "Camera1Enumerator",
+      "front": false,
+      "requestedFps": 30,
+      "rawFps": 9.99941134865308,
+      "width": 640,
+      "height": 480
+    },
+    {
+      "api": "Camera1Enumerator",
+      "front": false,
+      "requestedFps": 60,
+      "rawFps": 9.999170998730008,
+      "width": 640,
+      "height": 480
+    },
+    {
+      "api": "Camera1Enumerator",
+      "front": true,
+      "requestedFps": 30,
+      "rawFps": 19.99767567015686,
+      "width": 640,
+      "height": 480
+    },
+    {
+      "api": "Camera1Enumerator",
+      "front": true,
+      "requestedFps": 60,
+      "rawFps": 0,
+      "width": 640,
+      "height": 480
+    }
+  ]
+}

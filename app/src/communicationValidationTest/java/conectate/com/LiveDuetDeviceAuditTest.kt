@@ -84,7 +84,7 @@ class LiveDuetDeviceAuditTest {
                 val ready = CountDownLatch(1)
                 var success = false
                 manager.startVideo(false, isFront = true, targetWidth = 640, targetHeight = 360,
-                    targetFps = 24, onComplete = { success = it; ready.countDown() })
+                    targetFps = 60, onComplete = { success = it; ready.countDown() })
                 assertTrue("Existing camera setup timed out", ready.await(15, TimeUnit.SECONDS))
                 assertTrue("Existing camera failed", success)
                 existingTrack = manager.localVideoTrack.value
@@ -155,7 +155,8 @@ class LiveDuetDeviceAuditTest {
                     .put("publishedTracks",room.localParticipant.trackPublications.values.map { it.kind.toString()+":"+it.muted })
                     .put("inbound",statsDetails).toString(2))
             assertTrue("No incoming audio on $role", audio)
-            assertTrue("Duet image is too slow: $fps", fps >= 8)
+            val minimumRemoteFps = arguments.getString("minimumRemoteFps")?.toDoubleOrNull() ?: 8.0
+            assertTrue("Duet image is too slow: $fps < $minimumRemoteFps", fps >= minimumRemoteFps)
             if (existingCapture != null) {
                 fun waitForCamera(muted: Boolean): Boolean {
                     val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)
@@ -182,7 +183,7 @@ class LiveDuetDeviceAuditTest {
                     val ready = CountDownLatch(1)
                     var started = false
                     existingCapture.startVideo(false, isFront = false, targetWidth = 640, targetHeight = 360,
-                        targetFps = 24, onComplete = { started = it; ready.countDown() })
+                        targetFps = 60, onComplete = { started = it; ready.countDown() })
                     assertTrue("Replacement capture timed out", ready.await(15, TimeUnit.SECONDS))
                     assertTrue("Replacement capture failed", started)
                     bridge.updateMediaEnabled(true, true)

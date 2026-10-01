@@ -1,0 +1,18 @@
+{
+  "receivedFps": 24.899573564923212,
+  "audioReceived": true,
+  "publishedTracks": "[audio:false, video:false]",
+  "inbound": [
+    {
+      "kind": "audio",
+      "packetsReceived": 75,
+      "bytesReceived": 3213
+    },
+    {
+      "kind": "video",
+      "packetsReceived": 328,
+      "bytesReceived": 137726,
+      "framesDecoded": 276
+    }
+  ]
+}

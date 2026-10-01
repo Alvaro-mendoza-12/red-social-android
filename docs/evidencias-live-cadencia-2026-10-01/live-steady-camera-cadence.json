@@ -1,0 +1,22 @@
+[
+  {
+    "front": false,
+    "requestedFps": 30,
+    "captureFps": 29.99852793098645
+  },
+  {
+    "front": false,
+    "requestedFps": 60,
+    "captureFps": 29.999383302677447
+  },
+  {
+    "front": true,
+    "requestedFps": 30,
+    "captureFps": 29.99940637924642
+  },
+  {
+    "front": true,
+    "requestedFps": 60,
+    "captureFps": 29.999045531617963
+  }
+]

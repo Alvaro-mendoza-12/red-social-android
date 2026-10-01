@@ -49,6 +49,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 36. [Destacados del perfil y plan de diferenciales — 2026-09-17](31-perfil-destacados-y-diferenciales-2026-09-17.md)
 37. [Permisos de stickers y cierre de destacados — 2026-09-18](32-permisos-stickers-y-cierre-destacados-2026-09-18.md)
 38. [Fluidez y auditoría por módulos — 2026-09-30](33-fluidez-y-auditoria-modulos-2026-09-30.md)
+39. [Cadencia de LIVE, salas, llamadas y PK — 2026-10-01](34-cadencia-live-salas-2026-10-01.md)
 
 ## Reglas para quien trabaje en este proyecto
 

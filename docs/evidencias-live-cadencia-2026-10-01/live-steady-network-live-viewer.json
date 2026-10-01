@@ -1,0 +1,47 @@
+{
+  "scopeId": "c130ec47-e54e-494a-86e3-c1cf1fc6af02",
+  "flow": "live",
+  "role": "viewer",
+  "transport": "wifi",
+  "bidirectionalVideo": false,
+  "audioReceived": true,
+  "receivedFps": 28.653630983786904,
+  "firstFrameMs": 3541,
+  "candidateTypes": [
+    "relay",
+    "prflx"
+  ],
+  "rttSeconds": 0.316,
+  "captureFps": 0,
+  "videoStats": [
+    {
+      "direction": "inbound-rtp",
+      "framesPerSecond": 14,
+      "framesDecoded": 433,
+      "framesDropped": 15,
+      "totalDecodeTime": 2.908,
+      "freezeCount": 1,
+      "totalFreezesDuration": 0.45,
+      "packetsLost": -1,
+      "packetsReceived": 603,
+      "nackCount": 11,
+      "pliCount": 1,
+      "jitterBufferDelay": 53.290074999999995,
+      "jitterBufferEmittedCount": 439,
+      "totalProcessingDelay": 57.919936,
+      "frameWidth": 352,
+      "frameHeight": 288,
+      "decoderImplementation": "c2.goldfish.vp8.decoder",
+      "codec": "video/VP8"
+    },
+    {
+      "direction": "outbound-rtp",
+      "framesEncoded": 0,
+      "keyFramesEncoded": 0,
+      "totalEncodeTime": 0,
+      "nackCount": 0,
+      "pliCount": 0,
+      "codec": "video/VP8"
+    }
+  ]
+}

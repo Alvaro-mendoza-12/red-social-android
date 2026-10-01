@@ -284,6 +284,21 @@ class LiveKitRoomBridge @Inject constructor(
     }
 
     private suspend fun enableCamera(candidate: Room, enabled: Boolean) {
+        if (enabled && candidate.localParticipant.getTrackPublication(io.livekit.android.room.track.Track.Source.CAMERA) == null) {
+            val track = candidate.localParticipant.createVideoTrack(
+                name = "live-camera", capturer = createSteadyCollaborationCamera(context)
+            )
+            try {
+                track.start()
+                track.startCapture()
+                check(candidate.localParticipant.publishVideoTrack(track)) {
+                    "No se pudo compartir la cámara del directo."
+                }
+            } catch (error: Throwable) {
+                runCatching { track.stop(); track.dispose() }
+                throw error
+            }
+        }
         val changed = candidate.localParticipant.setCameraEnabled(enabled)
         check(!enabled || changed) { "No se pudo activar la cámara del directo. Revisa su permiso e inténtalo de nuevo." }
     }

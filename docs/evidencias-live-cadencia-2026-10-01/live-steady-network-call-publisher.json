@@ -1,0 +1,51 @@
+{
+  "scopeId": "e6cac688-dc58-45b5-a7bb-9b5a14851e39",
+  "flow": "call",
+  "role": "publisher",
+  "transport": "cellular",
+  "bidirectionalVideo": true,
+  "audioReceived": true,
+  "receivedFps": 25.189551004796463,
+  "firstFrameMs": 3513,
+  "candidateTypes": [
+    "relay",
+    "relay"
+  ],
+  "rttSeconds": 0.311,
+  "captureFps": 29.58771929755818,
+  "videoStats": [
+    {
+      "direction": "inbound-rtp",
+      "framesPerSecond": 26,
+      "framesDecoded": 381,
+      "framesDropped": 6,
+      "totalDecodeTime": 1.8439999999999999,
+      "freezeCount": 2,
+      "totalFreezesDuration": 0.96,
+      "packetsLost": 0,
+      "packetsReceived": 398,
+      "nackCount": 0,
+      "pliCount": 0,
+      "jitterBufferDelay": 11.968463999999999,
+      "jitterBufferEmittedCount": 387,
+      "totalProcessingDelay": 14.18826,
+      "frameWidth": 320,
+      "frameHeight": 240,
+      "decoderImplementation": "c2.unisoc.vp8.decoder",
+      "codec": "video/VP8"
+    },
+    {
+      "direction": "outbound-rtp",
+      "framesPerSecond": 30,
+      "framesEncoded": 465,
+      "keyFramesEncoded": 2,
+      "totalEncodeTime": 3.686,
+      "nackCount": 7,
+      "pliCount": 0,
+      "frameWidth": 352,
+      "frameHeight": 288,
+      "encoderImplementation": "libvpx",
+      "codec": "video/VP8"
+    }
+  ]
+}

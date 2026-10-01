@@ -334,7 +334,7 @@ class NativeMediaServerAuditTest {
             endpoint.connect()
             if(role=="publisher" || bothCameras) {
                 val started=CountDownLatch(1); var ok=false
-                endpoint.manager.startVideo(false,isFront=false,targetWidth=640,targetHeight=480,targetFps=if(flow=="live") 60 else 24,onComplete={ok=it;started.countDown()})
+                endpoint.manager.startVideo(false,isFront=false,targetWidth=640,targetHeight=480,targetFps=60,onComplete={ok=it;started.countDown()})
                 assertTrue(started.await(15,TimeUnit.SECONDS));assertTrue(ok)
                 localTrack=endpoint.manager.localVideoTrack.value
                 localTrack?.addSink(localSink)
@@ -384,7 +384,8 @@ class NativeMediaServerAuditTest {
                 .put("candidateTypes",JSONArray(types)).put("rttSeconds",pair?.members?.get("currentRoundTripTime"))
                 .put("captureFps",captureFps).put("videoStats",videoStats)
             File(folder,"cross-device-$flow-$role.json").writeText(report.toString(2))
-            if(role=="viewer" || bothCameras) assertTrue("Second-device video is too slow",fps>=8)
+            val minimumRemoteFps = args.getString("minimumRemoteFps")?.toDoubleOrNull() ?: 8.0
+            if(role=="viewer" || bothCameras) assertTrue("Second-device video is too slow: $fps < $minimumRemoteFps",fps>=minimumRemoteFps)
             if(flow=="call") assertTrue("Call must cross the public TURN server",types.contains("relay"))
         } finally {
             localTrack?.let { runCatching { it.removeSink(localSink) } }

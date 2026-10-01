@@ -1,0 +1,6 @@
+Novvin includes adapted Camera2Session implementations from the WebRTC project.
+Sources: https://webrtc.googlesource.com/src/+/refs/branch-heads/7151/sdk/android/src/java/org/webrtc/Camera2Session.java
+and https://webrtc.googlesource.com/src/+/refs/branch-heads/7559/sdk/android/src/java/org/webrtc/Camera2Session.java
+Adaptation: NovvinCamera2Session / NovvinCamera2Capturer; prefer advertised steady AE FPS ranges.
+The original SDK capture lifecycle, orientation, focus and stabilization remain in these sessions.
+BSD license and patent grant are included alongside this notice.

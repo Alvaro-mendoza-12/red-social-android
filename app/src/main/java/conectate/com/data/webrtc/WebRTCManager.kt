@@ -2128,7 +2128,7 @@ class WebRTCManager(
 
                 val metrics = context.resources.displayMetrics
                 val requestedCameraProfile = nativeCameraProfile(deviceTier, targetWidth ?: 960,
-                    targetHeight ?: 540, targetFps ?: 24)
+                    targetHeight ?: 540, targetFps ?: 60)
                 val cameraProfile = if (isScreen) requestedCameraProfile else
                     supportedNativeCameraProfile(requestedCameraProfile, supportedCameraFormats(isFront))
                 val fps = if (isScreen) (targetFps ?: 15).coerceIn(10, 30) else cameraProfile.fps
@@ -2413,7 +2413,10 @@ class WebRTCManager(
             } + enumerator.deviceNames
 
             preferredDevices.distinct().forEach { deviceName ->
-                var capturer = runCatching { enumerator.createCapturer(deviceName, null) }.getOrNull()
+                val capturer = runCatching {
+                    if (enumerator is Camera2Enumerator) NovvinCamera2Capturer(context, deviceName, null)
+                    else enumerator.createCapturer(deviceName, null)
+                }.getOrNull()
                 if (capturer != null) {
                     Log.i("WebRTCManager", "Using camera capturer: $deviceName (${enumerator.javaClass.simpleName})")
                     return capturer

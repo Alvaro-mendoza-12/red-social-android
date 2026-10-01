@@ -1,0 +1,50 @@
+{
+  "scopeId": "20b3417a-0574-4c18-960c-9468ad5ffb6e",
+  "flow": "voice",
+  "role": "publisher",
+  "transport": "cellular",
+  "bidirectionalVideo": true,
+  "audioReceived": true,
+  "receivedFps": 25.18694104122636,
+  "firstFrameMs": 5230,
+  "candidateTypes": [
+    "prflx",
+    "relay"
+  ],
+  "rttSeconds": 0.291,
+  "captureFps": 30.05107896365407,
+  "videoStats": [
+    {
+      "direction": "inbound-rtp",
+      "framesDecoded": 391,
+      "framesDropped": 12,
+      "totalDecodeTime": 1.414,
+      "freezeCount": 0,
+      "totalFreezesDuration": 0,
+      "packetsLost": 0,
+      "packetsReceived": 417,
+      "nackCount": 0,
+      "pliCount": 0,
+      "jitterBufferDelay": 45.855976,
+      "jitterBufferEmittedCount": 403,
+      "totalProcessingDelay": 38.495509999999996,
+      "frameWidth": 320,
+      "frameHeight": 240,
+      "decoderImplementation": "c2.unisoc.vp8.decoder",
+      "codec": "video/VP8"
+    },
+    {
+      "direction": "outbound-rtp",
+      "framesPerSecond": 30,
+      "framesEncoded": 525,
+      "keyFramesEncoded": 2,
+      "totalEncodeTime": 4.258,
+      "nackCount": 18,
+      "pliCount": 0,
+      "frameWidth": 352,
+      "frameHeight": 288,
+      "encoderImplementation": "libvpx",
+      "codec": "video/VP8"
+    }
+  ]
+}
