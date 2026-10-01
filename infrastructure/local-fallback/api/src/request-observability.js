@@ -20,6 +20,8 @@ function safeErrorLogDetails(error, options = {}) {
 }
 
 function routeName(req) {
+  if (req.observabilityRoute === '/rest/v1/rpc/delete_own_account' ||
+      req.observabilityRoute === '/rest/v1/rpc/:operation') return req.observabilityRoute
   const base = typeof req.baseUrl === 'string' ? req.baseUrl : ''
   const route = req.route?.path
   if (typeof route === 'string') return `${base}${route}` || '/'

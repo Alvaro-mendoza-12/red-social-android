@@ -5315,15 +5315,13 @@ async function purgeCompatIdentityRows(client, identityValues) {
      WHERE lower(c.row_id) = ANY($1::text[])
         OR EXISTS (
           SELECT 1
-          FROM jsonb_each_text(c.row) AS field(key, value)
-          WHERE field.key = ANY($2::text[])
-            AND lower(field.value) = ANY($1::text[])
-        )
-        OR EXISTS (
-          SELECT 1
-          FROM jsonb_each_text(c.row) AS field(key, value)
-          WHERE field.key = ANY($3::text[])
-            AND lower(field.value) LIKE ANY($4::text[])
+          -- Keep unrelated payloads as JSONB. Expanding every body/media value
+          -- to text twice made account cleanup stall on legacy chat rows.
+          FROM jsonb_each(c.row) AS field(key, value)
+          WHERE (field.key = ANY($2::text[])
+                 AND lower(field.value #>> '{}') = ANY($1::text[]))
+             OR (field.key = ANY($3::text[])
+                 AND lower(field.value::text) LIKE ANY($4::text[]))
         )`,
     [identityValues, IDENTITY_REFERENCE_FIELDS, IDENTITY_ARRAY_FIELDS, patterns],
   )
@@ -5959,6 +5957,9 @@ function registerPostgrestCompatRoutes(app, { pool, authOptional }) {
   app.post(rpcRoute, authOptional, async (req, res, next) => {
     try {
       const rpcName = safeIdentifier(req.params[0])
+      // Fixed labels identify slow RPCs without logging user identifiers or query data.
+      req.observabilityRoute = rpcName === 'delete_own_account'
+        ? '/rest/v1/rpc/delete_own_account' : '/rest/v1/rpc/:operation'
       if (!rpcName) return res.status(404).json({ error: 'NOT_FOUND' })
       if (rpcName !== 'resolve_login_email') {
         if (!requireRouteAuth(req, res)) return
@@ -6065,6 +6066,7 @@ module.exports = {
     parsePollOptions,
     prepareInsertRow,
     purgeImportedIdentityRows,
+    purgeCompatIdentityRows,
     readSpecificRows,
     rowId,
     sendVirtualGiftRpc,

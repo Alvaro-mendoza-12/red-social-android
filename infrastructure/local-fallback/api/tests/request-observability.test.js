@@ -49,6 +49,11 @@ async function run() {
     assert.equal(JSON.stringify(warnings).includes('private-value'), false)
     assert.equal(JSON.stringify(warnings).includes('hidden'), false)
     assert.equal(routeName({ baseUrl: '', route: { path: '/users/:id' } }), '/users/:id')
+    assert.equal(routeName({ observabilityRoute: '/rest/v1/rpc/delete_own_account', route: { path: /^\/rpc\/(.*)$/ } }),
+      '/rest/v1/rpc/delete_own_account')
+    assert.equal(routeName({ observabilityRoute: '/rest/v1/rpc/:operation', route: { path: /^\/rpc\/(.*)$/ } }),
+      '/rest/v1/rpc/:operation')
+    assert.equal(routeName({ observabilityRoute: '/users/private-value?secret=hidden' }), 'unmatched')
   } finally {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
   }
