@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -100,7 +101,7 @@ fun VideoEditorScreen(
     val timelineThumbnails by viewModel.timelineThumbnails.collectAsState()
     val isPreparingTimeline by viewModel.isPreparingTimeline.collectAsState()
     val isImportingLut by viewModel.isImportingLut.collectAsState()
-    var lutTargetClipId by remember { mutableStateOf<Long?>(null) }
+    var lutTargetClipId by rememberSaveable { mutableStateOf<Long?>(null) }
     val colorLutPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val target = lutTargetClipId
         lutTargetClipId = null
@@ -110,11 +111,14 @@ fun VideoEditorScreen(
     var showTextDialog by remember { mutableStateOf(false) }
     var currentEditingText by remember { mutableStateOf("") }
     var showStickerPicker by remember { mutableStateOf(false) }
-    var activeCategory by remember { mutableStateOf(EditorCategory.EDIT) }
+    var activeCategory by rememberSaveable { mutableStateOf(EditorCategory.EDIT) }
     var showQualityMenu by remember { mutableStateOf(false) }
     val videoClipPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
+        contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
+        if (uris.any { !retainVideoDocumentAccess(context, it) }) {
+            AppFeedbackBus.show("Al restaurar la edición, Android podría pedirte seleccionar de nuevo un archivo.")
+        }
         viewModel.addVideoClips(context, uris)
     }
 
@@ -551,7 +555,7 @@ fun VideoEditorScreen(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         SubToolItem(Icons.Default.VideoLibrary, "Añadir") {
-                                            videoClipPickerLauncher.launch("video/*")
+                                            videoClipPickerLauncher.launch(arrayOf("video/*"))
                                         }
                                         SubToolItem(Icons.Default.ContentCut, "Dividir") {
                                             selectedClipId?.let { viewModel.splitClip(context, it, currentTimeMs) }
@@ -660,11 +664,13 @@ fun VideoEditorScreen(
                                 
                                 // File picker launcher
                                 val audioPickerLauncher = rememberLauncherForActivityResult(
-                                    contract = ActivityResultContracts.GetContent()
+                                    contract = ActivityResultContracts.OpenDocument()
                                 ) { uri: Uri? ->
-                                    uri?.let { 
+                                    uri?.let {
+                                        if (!retainVideoDocumentAccess(context, it)) {
+                                            AppFeedbackBus.show("Al restaurar la edición, Android podría pedirte seleccionar de nuevo el audio.")
+                                        }
                                         viewModel.addMusicTrack(context, it)
-                                        android.util.Log.d("VideoEditor", "Audio file selected: $it")
                                     }
                                 }
                                 
@@ -677,7 +683,7 @@ fun VideoEditorScreen(
                                 ) {
                                     // Add music button
                                     SubToolItem(Icons.Default.MusicNote, if (musicClip != null) "Cambiar" else "Añadir") {
-                                        audioPickerLauncher.launch("audio/*")
+                                        audioPickerLauncher.launch(arrayOf("audio/*"))
                                     }
                                     
                                     Spacer(Modifier.height(8.dp))

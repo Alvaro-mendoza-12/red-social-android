@@ -642,7 +642,7 @@ fun VideoUploadScreen(
     var confirmNewDraft by remember { mutableStateOf(false) }
     var chapterTitle by rememberSaveable { mutableStateOf("") }
     var chapterTime by rememberSaveable { mutableStateOf("") }
-    var thumbnailToCrop by remember { mutableStateOf<Uri?>(null) }
+    var thumbnailToCrop by rememberSaveable { mutableStateOf<Uri?>(null) }
     val sourceEntry = navController.previousBackStackEntry
     var pendingSoundUrl by rememberSaveable {
         mutableStateOf(sourceEntry?.savedStateHandle?.get<String>(conectate.com.presentation.video.PENDING_VIDEO_SOUND_URL))
@@ -757,9 +757,12 @@ fun VideoUploadScreen(
 
     val selectionScope = rememberCoroutineScope()
     val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { selectedUri ->
+            if (!retainVideoDocumentAccess(context, selectedUri)) {
+                AppFeedbackBus.show("Al restaurar la edición, Android podría pedirte seleccionar de nuevo el video.")
+            }
             selectionScope.launch {
                 val mustEdit = viewModel.setVideoUri(selectedUri, context) ?: return@launch
                 if (mustEdit || selectedSound != null) {
@@ -775,8 +778,11 @@ fun VideoUploadScreen(
     }
 
     val thumbnailPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? -> thumbnailToCrop = uri }
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { retainVideoDocumentAccess(context, it) }
+        thumbnailToCrop = uri
+    }
 
     thumbnailToCrop?.let { sourceUri ->
         conectate.com.presentation.components.SimpleImageCropDialog(
@@ -899,7 +905,7 @@ fun VideoUploadScreen(
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.Gray.copy(alpha = 0.2f))
                         .clickable {
-                            if (videoUri == null) videoPickerLauncher.launch("video/*")
+                            if (videoUri == null) videoPickerLauncher.launch(arrayOf("video/*"))
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -1054,7 +1060,7 @@ fun VideoUploadScreen(
                     }
 
                     TextButton(
-                        onClick = { videoPickerLauncher.launch("video/*") },
+                        onClick = { videoPickerLauncher.launch(arrayOf("video/*")) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.SwapHoriz, contentDescription = null)
@@ -1070,7 +1076,7 @@ fun VideoUploadScreen(
                         .height(120.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.Gray.copy(alpha = 0.2f))
-                        .clickable { thumbnailPickerLauncher.launch("image/*") },
+                        .clickable { thumbnailPickerLauncher.launch(arrayOf("image/*")) },
                     contentAlignment = Alignment.Center
                 ) {
                     if (thumbnailUri != null) {
