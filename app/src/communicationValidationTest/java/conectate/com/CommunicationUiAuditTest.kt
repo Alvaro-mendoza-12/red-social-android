@@ -122,12 +122,16 @@ class CommunicationUiAuditTest {
         val id=invite.callId.hashCode()
         try {
             // Verify visibility outside the app, not just the Notification object.
-            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("input keyevent KEYCODE_HOME").close()
+            val automation=InstrumentationRegistry.getInstrumentation().uiAutomation
+            fun shell(command: String) {
+                // Consume the descriptor so the shell command finishes before inspecting windows.
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).use { it.readBytes() }
+            }
+            shell("input keyevent KEYCODE_HOME")
             Thread.sleep(500)
             manager.notify(id,notification)
             Thread.sleep(1_500)
             screenshot("incoming-call-notification-background")
-            val automation=InstrumentationRegistry.getInstrumentation().uiAutomation
             val serviceInfo=automation.serviceInfo
             val previousFlags=serviceInfo.flags
             serviceInfo.flags=previousFlags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
@@ -140,12 +144,21 @@ class CommunicationUiAuditTest {
             val answerVisible = try {
                 // OEM heads-up overlays may be excluded from accessibility.
                 // Check the persistent call notification in the shade as well.
-                automation.executeShellCommand("cmd statusbar expand-notifications").close()
-                Thread.sleep(700)
-                val labels=automation.windows.flatMap { window -> nodeLabels(window.root) }
-                labels.any { text -> listOf("Contestar","Answer","Responder").any { text.contains(it,ignoreCase=true) } }
+                fun hasAnswer(): Boolean {
+                    val labels=automation.windows.flatMap { window -> nodeLabels(window.root) } + nodeLabels(automation.rootInActiveWindow)
+                    return labels.any { text -> listOf("Contestar","Answer","Responder").any { text.contains(it,ignoreCase=true) } }
+                }
+                var visible=hasAnswer()
+                if (!visible) shell("cmd statusbar expand-notifications")
+                val deadline=android.os.SystemClock.elapsedRealtime()+5_000L
+                while (!visible && android.os.SystemClock.elapsedRealtime()<deadline) {
+                    runCatching { automation.waitForIdle(100L, 800L) }
+                    visible=hasAnswer()
+                    if (!visible) Thread.sleep(150)
+                }
+                visible
             } finally {
-                automation.executeShellCommand("cmd statusbar collapse").close()
+                shell("cmd statusbar collapse")
                 serviceInfo.flags=previousFlags; automation.serviceInfo=serviceInfo
             }
             assertTrue("Android did not display an answer control outside the app; inspect call channel permissions",answerVisible)
