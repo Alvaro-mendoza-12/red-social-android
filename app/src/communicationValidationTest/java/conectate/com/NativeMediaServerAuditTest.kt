@@ -324,6 +324,9 @@ class NativeMediaServerAuditTest {
         val folder=context.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }
         val readyFile=File(folder,"cross-device-ready.json")
         var remoteTrack: VideoTrack?=null
+        var localTrack: VideoTrack?=null
+        val localFrames=AtomicInteger()
+        val localSink=VideoSink { localFrames.incrementAndGet() }
         val frames=AtomicInteger()
         val sink=VideoSink { frames.incrementAndGet() }
         try {
@@ -331,8 +334,10 @@ class NativeMediaServerAuditTest {
             endpoint.connect()
             if(role=="publisher" || bothCameras) {
                 val started=CountDownLatch(1); var ok=false
-                endpoint.manager.startVideo(false,isFront=false,targetWidth=640,targetHeight=480,targetFps=24,onComplete={ok=it;started.countDown()})
+                endpoint.manager.startVideo(false,isFront=false,targetWidth=640,targetHeight=480,targetFps=if(flow=="live") 60 else 24,onComplete={ok=it;started.countDown()})
                 assertTrue(started.await(15,TimeUnit.SECONDS));assertTrue(ok)
+                localTrack=endpoint.manager.localVideoTrack.value
+                localTrack?.addSink(localSink)
             }
             when(flow) {
                 "live" -> endpoint.join("join-live",if(role=="publisher") "viewer-count" else "host-info",JSONObject().put("liveId",scopeId).put("role",if(role=="publisher") "host" else "viewer"))
@@ -354,7 +359,7 @@ class NativeMediaServerAuditTest {
                 waitUntil("Second device received no picture",40) { frames.get()>0 }
             } else waitUntil("Second device did not connect",40) { endpoint.manager.peerConnectionStates.value.values.any { it in listOf(PeerConnection.IceConnectionState.CONNECTED,PeerConnection.IceConnectionState.COMPLETED) } }
             val firstFrameMs=(System.nanoTime()-started)/1_000_000
-            val before=frames.get(); val sample=System.nanoTime(); Thread.sleep(15_000)
+            val before=frames.get(); val localBefore=localFrames.get(); val sample=System.nanoTime(); Thread.sleep(15_000)
             val stats=endpoint.stats()
             val audio=stats.statsMap.values.any { it.type=="inbound-rtp" && it.members["kind"]=="audio" && ((it.members["packetsReceived"] as? Number)?.toLong() ?: 0)>0 }
             assertTrue("No incoming audio on $role",audio)
@@ -362,13 +367,27 @@ class NativeMediaServerAuditTest {
             val pair=selectedId?.let(stats.statsMap::get)
             val types=listOf("localCandidateId","remoteCandidateId").mapNotNull { pair?.members?.get(it)?.toString()?.let(stats.statsMap::get)?.members?.get("candidateType") }
             val fps=(frames.get()-before)*1_000_000_000.0/(System.nanoTime()-sample)
+            val captureFps=(localFrames.get()-localBefore)*1_000_000_000.0/(System.nanoTime()-sample)
+            val safeStatFields=listOf("framesPerSecond","framesDecoded","framesDropped","framesEncoded","keyFramesEncoded",
+                "totalDecodeTime","totalEncodeTime","freezeCount","totalFreezesDuration","packetsLost","packetsReceived",
+                "nackCount","pliCount","jitterBufferDelay","jitterBufferEmittedCount","totalProcessingDelay",
+                "frameWidth","frameHeight","decoderImplementation","encoderImplementation")
+            val videoStats=JSONArray(stats.statsMap.values.filter {
+                it.type in listOf("inbound-rtp","outbound-rtp") && it.members["kind"]=="video"
+            }.map { stat -> JSONObject().put("direction",stat.type).apply {
+                safeStatFields.forEach { key -> stat.members[key]?.let { put(key,it) } }
+                val codec=stat.members["codecId"]?.toString()?.let(stats.statsMap::get)?.members?.get("mimeType")
+                codec?.let { put("codec",it) }
+            } })
             val report=JSONObject().put("scopeId",scopeId).put("flow",flow).put("role",role).put("transport",transport)
                 .put("bidirectionalVideo",bothCameras).put("audioReceived",audio).put("receivedFps",fps).put("firstFrameMs",firstFrameMs)
                 .put("candidateTypes",JSONArray(types)).put("rttSeconds",pair?.members?.get("currentRoundTripTime"))
+                .put("captureFps",captureFps).put("videoStats",videoStats)
             File(folder,"cross-device-$flow-$role.json").writeText(report.toString(2))
             if(role=="viewer" || bothCameras) assertTrue("Second-device video is too slow",fps>=8)
             if(flow=="call") assertTrue("Call must cross the public TURN server",types.contains("relay"))
         } finally {
+            localTrack?.let { runCatching { it.removeSink(localSink) } }
             remoteTrack?.let { runCatching { it.removeSink(sink) } }
             endpoint.close();peerFile.delete();readyFile.delete()
         }
