@@ -12,6 +12,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
 import androidx.media3.common.Effect
@@ -55,6 +56,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -89,7 +92,13 @@ private fun createEditorExportFile(context: Context, prefix: String): File {
 }
 
 @HiltViewModel
-class VideoEditorViewModel @Inject constructor() : ViewModel() {
+class VideoEditorViewModel @Inject constructor(private val savedStateHandle: SavedStateHandle) : ViewModel() {
+
+    private val restoredDraft = EditorDraftState.fromBundle(savedStateHandle["editor_draft"])
+    private var initialInputUri: String? = savedStateHandle["editor_input_uri"]
+    private var sourcePreparationJob: Job? = null
+    private var sourcePreparationGeneration = 0
+    private var positionCheckpointSecond = -1L
 
     private val _isExporting = MutableStateFlow(false)
     val isExporting = _isExporting.asStateFlow()
@@ -100,19 +109,19 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     private val _exportStage = MutableStateFlow(EditorExportStage.IDLE)
     val exportStage = _exportStage.asStateFlow()
 
-    private val _timeline = MutableStateFlow(EditorTimeline())
+    private val _timeline = MutableStateFlow(restoredDraft?.timeline ?: EditorTimeline())
     val timeline = _timeline.asStateFlow()
 
-    private val _selectedClipId = MutableStateFlow<Long?>(null)
+    private val _selectedClipId = MutableStateFlow(restoredDraft?.selectedClipId)
     val selectedClipId = _selectedClipId.asStateFlow()
 
-    private val _currentTimeMs = MutableStateFlow(0L)
+    private val _currentTimeMs = MutableStateFlow(restoredDraft?.positionMs ?: 0L)
     val currentTimeMs = _currentTimeMs.asStateFlow()
 
     private val _performanceProfile = MutableStateFlow<VideoPerformanceProfile?>(null)
     val performanceProfile = _performanceProfile.asStateFlow()
 
-    private val _selectedExportQuality = MutableStateFlow(ExportQuality.AUTO)
+    private val _selectedExportQuality = MutableStateFlow(restoredDraft?.quality ?: ExportQuality.AUTO)
     val selectedExportQuality = _selectedExportQuality.asStateFlow()
 
     private val _editorHint = MutableStateFlow<String?>(null)
@@ -128,6 +137,25 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
     private var thumbnailJob: Job? = null
     private var thumbnailRequestId = 0
 
+    init {
+        viewModelScope.launch {
+            combine(_timeline, _selectedClipId, _selectedExportQuality) { timeline, selected, quality ->
+                EditorDraftState(timeline, selected, _currentTimeMs.value, quality)
+            }.collect { saveDraft(it) }
+        }
+    }
+
+    private fun saveDraft(draft: EditorDraftState = EditorDraftState(_timeline.value, _selectedClipId.value,
+        _currentTimeMs.value, _selectedExportQuality.value)) {
+        val bundle = draft.toBundle()
+        if (bundle != null) savedStateHandle["editor_draft"] = bundle
+        else {
+            savedStateHandle.remove<android.os.Bundle>("editor_draft")
+            _editorHint.value = "Esta edición es demasiado grande para restaurarla al reiniciar. Exporta antes de salir."
+        }
+        savedStateHandle["editor_input_uri"] = initialInputUri
+    }
+
     fun getPlayer(context: Context): ExoPlayer {
         if (exoPlayer == null) {
             getOrInitProfile(context)
@@ -142,6 +170,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                     }
                 })
             }
+            if (_timeline.value.tracks.isNotEmpty()) syncTimelineWithPlayer()
         }
         return exoPlayer!!
     }
@@ -150,6 +179,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         super.onCleared()
         thumbnailRequestId += 1
         thumbnailJob?.cancel()
+        sourcePreparationJob?.cancel()
         exoPlayer?.release()
         exoPlayer = null
         _timelineThumbnails.value.forEach { thumbnail ->
@@ -200,11 +230,18 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
             ?.clips
             .orEmpty()
         val existingInitialUri = existingVideoClips.firstOrNull()?.uri?.toString()
-        if (!shouldInitializeEditorTimeline(existingInitialUri, existingVideoClips.isNotEmpty(), uri.toString())) {
+        if (initialInputUri == uri.toString() && _timeline.value.tracks.isNotEmpty() ||
+            !shouldInitializeEditorTimeline(existingInitialUri, existingVideoClips.isNotEmpty(), uri.toString())) {
             return
         }
+        initialInputUri = uri.toString()
+        val generation = ++sourcePreparationGeneration
+        sourcePreparationJob?.cancel()
+        sourcePreparationJob = viewModelScope.launch {
         val profile = getOrInitProfile(context)
-        val durationMs = resolveDurationMs(context, uri)
+        _isPreparingTimeline.value = true
+        val durationMs = withContext(Dispatchers.IO) { resolveDurationMs(context.applicationContext, uri) }
+        if (generation != sourcePreparationGeneration) return@launch
         val initialDurationMs = durationMs.coerceAtMost(MAX_EXPORT_DURATION_MS)
         val mainTrack = EditorTrack(type = TrackType.VIDEO)
         val initialClip = EditorClip(
@@ -223,10 +260,14 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         syncTimelineWithPlayer()
         loadTimelineThumbnails(context.applicationContext, uri, 0L, initialDurationMs, profile)
         _editorHint.value = "Modo ${profile.label}"
+        saveDraft()
+        }
     }
 
     fun addVideoClips(context: Context, uris: List<Uri>) {
-        val candidates = uris
+        val generation = sourcePreparationGeneration
+        viewModelScope.launch {
+        val candidates = withContext(Dispatchers.IO) { uris
             .distinctBy(Uri::toString)
             .map { uri ->
                 val sourceDurationMs = resolveDurationMs(context, uri)
@@ -237,13 +278,14 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                     sourceDurationMs = sourceDurationMs
                 )
             }
-        if (candidates.isEmpty()) return
+        }
+        if (generation != sourcePreparationGeneration || candidates.isEmpty()) return@launch
 
         val current = _timeline.value
         val updated = current.appendVideoClipsWithinLimit(candidates, MAX_EXPORT_DURATION_MS)
         if (updated == current) {
             _editorHint.value = "El proyecto ya ocupa los 45 segundos. Recorta o elimina un clip para añadir otro."
-            return
+            return@launch
         }
 
         _timeline.value = updated
@@ -261,7 +303,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
                 ?.id
             syncTimelineWithPlayer()
             _editorHint.value = "No se pudieron añadir esos clips a la vista previa."
-            return
+            return@launch
         }
         updated.tracks.firstOrNull { it.type == TrackType.VIDEO }
             ?.clips?.lastOrNull()?.let { selected ->
@@ -280,6 +322,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         } else {
             val added = (currentCount - previousCount).coerceAtLeast(0)
             "$added clip${if (added == 1) "" else "s"} añadido${if (added == 1) "" else "s"}"
+        }
+        saveDraft()
         }
     }
 
@@ -412,6 +456,7 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         val relativePosition = (safeTime - clip.startMs).coerceIn(0L, clip.durationMs)
         player.seekTo(index, relativePosition)
         _currentTimeMs.value = clip.startMs + relativePosition
+        saveDraft()
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -474,6 +519,8 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
         val clip = clips.getOrNull(player.currentMediaItemIndex) ?: return
         _currentTimeMs.value = (clip.startMs + player.currentPosition)
             .coerceIn(clip.startMs, clip.endMs)
+        val second = _currentTimeMs.value / 1_000L
+        if (second != positionCheckpointSecond) { positionCheckpointSecond = second; saveDraft() }
     }
 
     fun duplicateClip(@Suppress("UNUSED_PARAMETER") context: Context, clipId: Long) {
@@ -550,9 +597,17 @@ class VideoEditorViewModel @Inject constructor() : ViewModel() {
 
     fun updateClipTrim(context: Context, clipId: Long, trimStartMs: Long, trimEndMs: Long) {
         val clip = findClipById(clipId) ?: return
+        if (clip.sourceDurationMs <= 0L) {
+            val sourceUri = clip.uri ?: return
+            viewModelScope.launch {
+                val duration = withContext(Dispatchers.IO) { resolveDurationMs(context.applicationContext, sourceUri) }
+                if (findClipById(clipId)?.uri != sourceUri) return@launch
+                _timeline.value = _timeline.value.updateClip(clipId) { it.copy(sourceDurationMs = duration) }
+                updateClipTrim(context, clipId, trimStartMs, trimEndMs)
+            }
+            return
+        }
         val sourceDuration = clip.sourceDurationMs
-            .takeIf { it > 0L }
-            ?: resolveDurationMs(context, clip.uri ?: return)
         val otherVideoDurationMs = _timeline.value.tracks
             .firstOrNull { it.type == TrackType.VIDEO }
             ?.clips
