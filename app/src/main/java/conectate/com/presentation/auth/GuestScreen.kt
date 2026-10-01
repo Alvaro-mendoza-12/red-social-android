@@ -20,7 +20,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -264,7 +265,8 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
         val photos = remember(content.id, content.mediaUrl, content.mediaUrls) { guestPhotos(content) }
         val photoPager = rememberPagerState(pageCount = { photos.size })
         val photoScope = rememberCoroutineScope()
-        val photoHeight = (LocalConfiguration.current.screenHeightDp - 320).coerceIn(140, 300).dp
+        val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
+        val photoHeight = (windowHeight - 320.dp).coerceIn(140.dp, 300.dp)
         AlertDialog(
             onDismissRequest = viewModel::clearPreviewContent,
             title = { Text(content.userName) },
@@ -554,12 +556,13 @@ private fun guestPhotos(content: GuestContent): List<String> =
 private fun GuestVideoPlayer(url: String) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val playerHeight = (LocalConfiguration.current.screenHeightDp - 220).coerceIn(140, 420).dp
+    val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
+    val playerHeight = (windowHeight - 220.dp).coerceIn(140.dp, 420.dp)
     var failed by remember(url) { mutableStateOf(false) }
     var buffering by remember(url) { mutableStateOf(true) }
     val player = remember(url) {
-        ExoPlayer.Builder(context.applicationContext).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+        conectate.com.util.CachedVideoPlayback.create(context).apply {
+            setMediaItem(conectate.com.util.UbuntuMedia.mediaItem(url))
         }
     }
     DisposableEffect(player, lifecycleOwner) {

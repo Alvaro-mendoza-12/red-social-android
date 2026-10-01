@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.*
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -30,7 +30,7 @@ internal fun rememberStickerKeyboardPanel(
     val focus = LocalFocusManager.current
     val requester = remember { FocusRequester() }
     val density = LocalDensity.current
-    val screenHeight = LocalConfiguration.current.screenHeightDp
+    val windowHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() }
     val imeHeight = WindowInsets.ime.getBottom(density)
     var lastKeyboardHeight by remember { mutableStateOf(280.dp) }
     LaunchedEffect(imeHeight, visible) {
@@ -52,7 +52,7 @@ internal fun rememberStickerKeyboardPanel(
         runCatching { requester.requestFocus() }
         keyboard?.show()
     }
-    val availableHeight = screenHeight.dp - if (visible) with(density) { imeHeight.toDp() } else 0.dp
+    val availableHeight = windowHeight - if (visible) with(density) { imeHeight.toDp() } else 0.dp
     return StickerKeyboardPanel(
         height = lastKeyboardHeight.coerceIn(120.dp, (availableHeight * 0.45f).coerceAtLeast(120.dp)),
         inputFocusRequester = requester,
