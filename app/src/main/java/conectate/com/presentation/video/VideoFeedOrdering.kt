@@ -3,6 +3,15 @@ package conectate.com.presentation.video
 import conectate.com.data.model.Video
 import conectate.com.data.repository.stableAccountVideoOrder
 
+/** A late personalized page may reorder unseen videos, but never the current position. */
+internal fun mergeRankedPageAfterDisplayedPrefix(
+    currentPage: List<Video>, rankedPage: List<Video>, displayedIds: Set<String>,
+): List<Video> {
+    val lastDisplayedIndex = currentPage.indexOfLast { it.id.trim().lowercase() in displayedIds }
+    val stablePrefix = currentPage.take(lastDisplayedIndex + 1)
+    return (stablePrefix + rankedPage).distinctBy { it.id.trim().lowercase() }
+}
+
 /**
  * Orders only the presentation of a recommendation page.
  *

@@ -4,6 +4,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class CollectionMessageSyncSupportTest {
+    @Test fun `attachment and poll previews name the content instead of generic multimedia`() {
+        assertEquals("🧩 Sticker", CollectionMessageSyncSupport.buildMetadataPreview("sticker", ""))
+        assertEquals("📊 Encuesta", CollectionMessageSyncSupport.buildMetadataPreview("poll", "¿Cuándo?"))
+        assertEquals("📷 Foto", CollectionMessageSyncSupport.buildMetadataPreview("image", "Comentario"))
+        assertEquals("📎 Archivo", CollectionMessageSyncSupport.buildMetadataPreview("document", "plan.pdf"))
+        assertEquals("Hola", CollectionMessageSyncSupport.buildMetadataPreview("text", "Hola"))
+    }
     @Test
     fun `fresh receipt replaces stale in-memory status without duplicating messages`() {
         val merged = CollectionMessageSyncSupport.mergeActiveMessages(

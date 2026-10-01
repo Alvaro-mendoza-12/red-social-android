@@ -1,0 +1,78 @@
+{
+  "checks": [
+    {
+      "name": "registration",
+      "status": 201,
+      "ms": 460,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 108,
+      "error": null
+    },
+    {
+      "name": "registration",
+      "status": 201,
+      "ms": 292,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 54,
+      "error": null
+    },
+    {
+      "name": "registration",
+      "status": 201,
+      "ms": 267,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 72,
+      "error": null
+    },
+    {
+      "name": "regular-account-cannot-broadcast",
+      "status": 403,
+      "ms": 25,
+      "error": "ADMIN_CAPABILITY_REQUIRED"
+    },
+    {
+      "name": "anonymous-admin-access-denied",
+      "status": 401,
+      "ms": 19,
+      "error": "AUTH_REQUIRED"
+    },
+    {
+      "name": "cleanup-owned-account",
+      "status": 200,
+      "ms": 387,
+      "error": null
+    },
+    {
+      "name": "cleanup-owned-account",
+      "status": 200,
+      "ms": 268,
+      "error": null
+    },
+    {
+      "name": "cleanup-owned-account",
+      "status": 200,
+      "ms": 237,
+      "error": null
+    }
+  ],
+  "accountCount": 3,
+  "rankingCount": 3,
+  "orderFingerprints": [
+    "0f4709d8f547b159",
+    "0f4709d8f547b159",
+    "0f4709d8f547b159"
+  ],
+  "cleaned": true
+}

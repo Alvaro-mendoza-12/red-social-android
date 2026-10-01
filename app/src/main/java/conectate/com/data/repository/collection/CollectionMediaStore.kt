@@ -83,8 +83,11 @@ internal class CollectionMediaStore(
         preferredMediaType: String,
         primaryBucket: String,
         fallbackBucket: String? = null,
-        filePrefix: String
+        filePrefix: String,
+        accountId: String = "",
+        messageId: String = ""
     ): Result<String> = withContext(Dispatchers.IO) {
+        conectate.com.core.messaging.MessageUploadProgress.update(accountId, messageId, 0f)
         try {
             val header = context.contentResolver.openInputStream(sourceUri)?.use { input ->
                 val buffer = ByteArray(512)
@@ -109,10 +112,14 @@ internal class CollectionMediaStore(
                 fileName = fileName,
                 sourceUri = sourceUri,
                 sizeBytes = sizeBytes,
-                contentType = normalized.mimeType
+                contentType = normalized.mimeType,
+                onProgress = { conectate.com.core.messaging.MessageUploadProgress.update(accountId, messageId, it) }
             )
         } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
             Result.failure(error)
+        } finally {
+            conectate.com.core.messaging.MessageUploadProgress.finish(accountId, messageId)
         }
     }
 
@@ -178,7 +185,8 @@ internal class CollectionMediaStore(
         fileName: String,
         sourceUri: Uri,
         sizeBytes: Long,
-        contentType: String
+        contentType: String,
+        onProgress: (Float) -> Unit = {}
     ): Result<String> {
         val primary = storageService.uploadFileFromUri(
             bucketName = primaryBucket,
@@ -187,7 +195,7 @@ internal class CollectionMediaStore(
             sizeBytes = sizeBytes,
             contentType = contentType,
             allowOverwrite = true,
-            onProgress = {}
+            onProgress = onProgress
         )
         if (primary.isSuccess) {
             val remoteKey = primary.getOrThrow().Key ?: fileName
@@ -203,7 +211,7 @@ internal class CollectionMediaStore(
             sizeBytes = sizeBytes,
             contentType = contentType,
             allowOverwrite = true,
-            onProgress = {}
+            onProgress = onProgress
         )
         return if (fallback.isSuccess) {
             val remoteKey = fallback.getOrThrow().Key ?: fileName

@@ -537,6 +537,7 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
             fallback = " te envió una advertencia sobre tu video"
         )
         "notification_digest" -> " preparó tu resumen de actividad"
+        "system_announcement" -> " · ${n.content.orEmpty()}"
         else -> notificationContentAction(
             notification = n,
             actor = actor,

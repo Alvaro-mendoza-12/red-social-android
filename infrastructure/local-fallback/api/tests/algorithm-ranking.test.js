@@ -229,6 +229,28 @@ function testRefreshSeedOnlyAffectsEnabledExploration() {
   assert.deepEqual(rankedIds(disabled), ['one', 'two', 'three', 'four'])
 }
 
+function testExplorationVariesColdAccountsDespiteSmallFreshnessDifferences() {
+  const base = {
+    surface: 'video',
+    diversityLimits: { maxPerCreator: 20, maxPerSubtopic: 20, maxPerDuplicate: 20 },
+    candidates: Array.from({ length: 20 }, (_, index) => candidate(`fresh-${index}`, {
+      feedSignals: { new_content: 0.8 + index / 10000 },
+    })),
+  }
+  const orders = ['account-a:refresh', 'account-b:refresh', 'account-c:refresh'].map(sessionSeed => {
+    const first = rankedIds(rank({ ...base, sessionSeed }))
+    assert.deepEqual(rankedIds(rank({ ...base, sessionSeed })), first, 'Same session must be stable')
+    return first.join(',')
+  })
+  assert.equal(new Set(orders).size, 3)
+  const disabled = { ...base, feedMix: { new_content: 100, exploration: 0 } }
+  assert.deepEqual(rankedIds(rank({ ...disabled, sessionSeed: 'a' })), rankedIds(rank({ ...disabled, sessionSeed: 'b' })))
+  const preferred = rank({ ...base, sessionSeed: 'a', preferences: [
+    { surface: 'video', dimension: 'content', subjectKey: 'fresh-0', score: 100 },
+  ] })
+  assert.equal(rankedIds(preferred)[0], 'fresh-0', 'Direct choices must outrank exploration')
+}
+
 function testPrivateDataFieldsNeverAffectResult() {
   const base = {
     surface: 'video',
@@ -416,6 +438,7 @@ Promise.resolve()
   .then(testApiPermissionAliasesPermitOnlyTheirOptedInSource)
   .then(testZeroTrendAndExplorationWeightsAreRespected)
   .then(testRefreshSeedOnlyAffectsEnabledExploration)
+  .then(testExplorationVariesColdAccountsDespiteSmallFreshnessDifferences)
   .then(testPrivateDataFieldsNeverAffectResult)
   .then(testDiversityLimitsCreatorSubtopicAndDuplicate)
   .then(testExplicitPreferencePrecedesCreatorDiversityLimit)

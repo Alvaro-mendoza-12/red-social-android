@@ -7726,6 +7726,32 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun loadSystemAnnouncements(accessToken: String? = null): Result<List<SystemAnnouncement>> = runCatching {
+        check(isConfigured) { "Servidor no configurado." }
+        val response = supabaseConfig.httpClient.get("$baseUrl${if (accessToken == null) "/v1/system/announcements" else "/v1/admin/system/announcements"}") {
+            if (accessToken != null) localHeaders(accessToken)
+            parameter("versionCode", BuildConfig.VERSION_CODE)
+            timeout { requestTimeoutMillis = 2_500; connectTimeoutMillis = 2_000; socketTimeoutMillis = 2_500 }
+        }
+        check(response.status.isSuccess()) { "No se pudieron cargar los avisos: HTTP ${response.status.value}" }
+        json.decodeFromString(SystemAnnouncementEnvelope.serializer(), response.bodyAsText()).items
+    }.onFailure { if (it is CancellationException) throw it }
+
+    suspend fun publishSystemAnnouncement(accessToken: String, notice: PublishSystemAnnouncement): Result<Unit> = runCatching {
+        val response = supabaseConfig.httpClient.post("$baseUrl/v1/admin/system/announcements") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(PublishSystemAnnouncement.serializer(), notice))
+        }
+        check(response.status.isSuccess()) { "No se pudo publicar el aviso: HTTP ${response.status.value}" }
+    }.onFailure { if (it is CancellationException) throw it }
+
+    suspend fun revokeSystemAnnouncement(accessToken: String, id: String): Result<Unit> = runCatching {
+        require(id.matches(Regex("[a-fA-F0-9-]{36}")))
+        val response = supabaseConfig.httpClient.delete("$baseUrl/v1/admin/system/announcements/$id") { localHeaders(accessToken) }
+        check(response.status.isSuccess()) { "No se pudo retirar el aviso: HTTP ${response.status.value}" }
+    }.onFailure { if (it is CancellationException) throw it }
+
     suspend fun adminGetCatalog(accessToken: String): Result<AdminCatalog> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return runCatching {

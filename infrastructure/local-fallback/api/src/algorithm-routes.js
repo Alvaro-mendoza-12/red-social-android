@@ -880,17 +880,9 @@ async function upsertTrustedContentClassification(client, input) {
   // from interleaving two topic sets.
   const finalState = await client.query(
     `WITH locked_classification AS (
-       UPDATE fallback_algorithm_content_classifications
-          SET creator_id = $2,
-              language_code = $3,
-              format_key = $4,
-              audio_key = $5,
-              community_id = $6,
-              classifier_version = $7,
-              safety_state = 'unknown',
-              updated_at = NOW()
+       SELECT id FROM fallback_algorithm_content_classifications
         WHERE id = $1::uuid
-        RETURNING id
+        FOR UPDATE
      ), deleted_topics AS (
        DELETE FROM fallback_algorithm_content_topics
         WHERE classification_id IN (SELECT id FROM locked_classification)
@@ -911,7 +903,13 @@ async function upsertTrustedContentClassification(client, input) {
        RETURNING classification_id
      )
      UPDATE fallback_algorithm_content_classifications
-        SET safety_state = $9,
+        SET creator_id = $2,
+            language_code = $3,
+            format_key = $4,
+            audio_key = $5,
+            community_id = $6,
+            classifier_version = $7,
+            safety_state = $9,
             classified_at = NOW(),
             updated_at = NOW()
       WHERE id IN (SELECT id FROM locked_classification)

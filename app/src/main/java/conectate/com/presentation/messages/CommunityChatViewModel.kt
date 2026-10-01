@@ -145,6 +145,7 @@ class CommunityChatViewModel @Inject constructor(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    private val pollVoteMutex = kotlinx.coroutines.sync.Mutex()
     private val _pollStates = MutableStateFlow<Map<String, List<MessagePollOptionState>>>(emptyMap())
     val pollStates: StateFlow<Map<String, List<MessagePollOptionState>>> = _pollStates.asStateFlow()
     private val pollRetryJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
@@ -549,6 +550,21 @@ class CommunityChatViewModel @Inject constructor(
         }
     }
 
+    fun retryMessage(message: conectate.com.data.model.Message) {
+        if (!authService.getCurrentUserId().equals(ownerAccountId, true)) return
+        if (_isSending.value || message.sender_id != ownerAccountId || message.deleted_for_all ||
+            message.status !in setOf("failed", "sending", "pending")) return
+        val destination = communityId
+        viewModelScope.launch {
+            _isSending.value = true
+            try {
+                communityRepository.retryMessage(message.id, destination).onFailure {
+                    _errorMessage.value = it.toUserFacingMessage("No se pudo reenviar el mensaje.")
+                }
+            } finally { _isSending.value = false }
+        }
+    }
+
     fun sendMediaMessage(
         uri: android.net.Uri,
         context: android.content.Context,
@@ -849,11 +865,15 @@ class CommunityChatViewModel @Inject constructor(
 
     fun votePollOption(pollId: String, optionId: String, selected: Boolean = true) {
         viewModelScope.launch {
+            pollVoteMutex.lock()
+            try {
+            if (!authService.getCurrentUserId().equals(ownerAccountId, true)) return@launch
             val previous = _pollStates.value[pollId]
             if (!previous.isNullOrEmpty()) {
                 _pollStates.update { it + (pollId to applyOptimisticPollVote(previous, optionId, selected)) }
             }
             val result = communityRepository.votePollOption(pollId, optionId, selected)
+            if (!authService.getCurrentUserId().equals(ownerAccountId, true)) return@launch
             if (result.isSuccess) {
                 _pollStates.update { it + (pollId to result.getOrThrow()) }
             } else {
@@ -863,6 +883,7 @@ class CommunityChatViewModel @Inject constructor(
                 _errorMessage.value = result.exceptionOrNull()
                     .toUserFacingMessage("No se pudo registrar tu voto.")
             }
+            } finally { pollVoteMutex.unlock() }
         }
     }
 
@@ -881,11 +902,13 @@ class CommunityChatViewModel @Inject constructor(
                 _errorMessage.value = it.message ?: "No se pudo cargar quién votó."
                 emptyList()
             }
+            val profiles = userRepository.getUsersByIds(voters.map { it.userId }).getOrDefault(emptyList())
+            val resolvedVoters = resolvePollVoterIdentities(voters, profiles)
             _pollOptionVoters.update { current ->
                 if (current == null || current.pollId != pollId || current.optionId != option.optionId) {
                     current
                 } else {
-                    current.copy(voters = voters, isLoading = false)
+                    current.copy(voters = resolvedVoters, isLoading = false)
                 }
             }
         }

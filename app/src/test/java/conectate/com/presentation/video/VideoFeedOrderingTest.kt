@@ -7,6 +7,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VideoFeedOrderingTest {
+    @Test fun `late ranking keeps displayed prefix and reorders only unseen items`() {
+        val current = listOf("a", "b", "c", "d").map { Video(id = it) }
+        val ranked = listOf("d", "c", "b", "a", "e").map { Video(id = it) }
+        val result = mergeRankedPageAfterDisplayedPrefix(current, ranked, setOf("b"))
+        assertEquals(listOf("a", "b", "d", "c", "e"), result.map { it.id })
+    }
+
+    @Test fun `ranking arriving before playback uses the personalized order`() {
+        val current = listOf(Video(id = "a"), Video(id = "b"))
+        val ranked = listOf(Video(id = "b"), Video(id = "a"))
+        assertEquals(ranked, mergeRankedPageAfterDisplayedPrefix(current, ranked, emptySet()))
+    }
+
+    @Test fun `fallback order varies between accounts for the same session`() {
+        val videos = (1..20).map { Video(id = "video-$it") }
+        val orders = (1..3).map { account ->
+            orderVideosForFeedSession(videos, "account-$account", "same-session").map { it.id }
+        }
+        assertEquals(3, orders.toSet().size)
+    }
     @Test
     fun `same session remains stable`() {
         val videos = listOf(Video(id = "a"), Video(id = "b"), Video(id = "c"))

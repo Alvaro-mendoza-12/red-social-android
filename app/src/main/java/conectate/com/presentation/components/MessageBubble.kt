@@ -425,7 +425,9 @@ fun MessageBubble(
     currentUserId: String? = null,
     onReactionClick: (String) -> Unit = {},
     onOpenContactChat: (ChatContactPayload) -> Unit = {},
-    onAddToDeviceContacts: (ChatContactPayload) -> Unit = {}
+    onAddToDeviceContacts: (ChatContactPayload) -> Unit = {},
+    uploadProgress: Float? = null,
+    onRetrySend: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var showDocument by remember(message.id, message.media_url) { mutableStateOf(false) }
@@ -1118,6 +1120,9 @@ fun MessageBubble(
                 Spacer(modifier = Modifier.height(2.dp))
                 
                 // Timestamp and status
+                if (isFromCurrentUser && !message.deleted_for_all && onRetrySend != null) {
+                    conectate.com.presentation.messages.MessageDeliveryControls(message.status, uploadProgress, onRetrySend)
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End,

@@ -204,7 +204,7 @@ fun PollMessageCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                                 if (option.votedByMe) {
                                     Icon(Icons.Default.Check, contentDescription = null, tint = textColor, modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.size(4.dp))
@@ -218,7 +218,7 @@ fun PollMessageCard(
                                     onClick = { onVote(option.optionId, !option.votedByMe) },
                                     enabled = !isClosed
                                 ) {
-                                    Text(if (option.votedByMe) "Quitar" else "Votar", style = MaterialTheme.typography.labelSmall)
+                                    Text(if (option.votedByMe) "Quitar voto" else "Votar", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -231,6 +231,15 @@ fun PollMessageCard(
                             trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
                         )
                     }
+                }
+
+                if (!isClosed) {
+                    Text(
+                        if (allowsMultiple) "Puedes votar varias opciones o quitar tu voto."
+                        else "Puedes cambiar de opción o quitar tu voto.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor,
+                    )
                 }
 
                 Row(

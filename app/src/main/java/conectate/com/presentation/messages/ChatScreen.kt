@@ -133,6 +133,7 @@ fun ChatScreen(
     val messageText by viewModel.messageText.collectAsState()
     val otherUserReactive by viewModel.otherUserMetadata.collectAsState()
     val isSending by viewModel.isSending.collectAsState()
+    val transfers by conectate.com.core.messaging.MessageUploadProgress.transfers.collectAsState()
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMessages by viewModel.selectedMessages.collectAsState()
     val isBlocked by viewModel.isBlocked.collectAsState()
@@ -552,11 +553,11 @@ fun ChatScreen(
                 }
 
                 if (selectedMessage?.deleted_for_all != true) {
-                    if (selectedMessage?.content_type == "sticker" && selectedMessage?.status == "failed" &&
+                    if (selectedMessage?.status in setOf("failed", "sending", "pending") &&
                         selectedMessage?.sender_id == currentUserId) {
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable {
-                                selectedMessage?.let(viewModel::retryFailedSticker)
+                                selectedMessage?.let(viewModel::retryMessage)
                                 viewModel.dismissMessageActions()
                             }.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -1207,6 +1208,8 @@ fun ChatScreen(
                                     val isSelected = selectedMessages.contains(message.id)
                                     MessageBubble(
                                         message = message,
+                                        uploadProgress = transfers[conectate.com.core.messaging.MessageUploadProgress.key(currentUserId, message.id)],
+                                        onRetrySend = { viewModel.retryMessage(message) },
                                         isFromCurrentUser = message.sender_id == currentUserId,
                                     isSelected = isSelected,
                                     onLongClick = {

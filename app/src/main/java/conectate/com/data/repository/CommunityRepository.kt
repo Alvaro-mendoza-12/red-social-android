@@ -853,11 +853,7 @@ class CommunityRepository @Inject constructor(
                     communityDao.updateMetadata(cleanId, 
                         buildConversationBackgroundPreview(msg.content_type, msg.content)
                             ?: buildCallEventPreview(msg.content_type, msg.content)
-                            ?: when(msg.content_type) {
-                            "text" -> msg.content
-                            "poll" -> "📊 ${msg.content}"
-                            else -> "Archivo multimedia"
-                        },
+                            ?: CollectionMessageSyncSupport.buildMetadataPreview(msg.content_type, msg.content),
                         msg.created_at
                     )
                     
@@ -2421,7 +2417,7 @@ class CommunityRepository @Inject constructor(
             onQueued()
             val preview = buildConversationBackgroundPreview(contentType, finalContent)
                 ?: buildCallEventPreview(contentType, finalContent)
-                ?: if (contentType == "text") finalContent else "Multimedia"
+                ?: CollectionMessageSyncSupport.buildMetadataPreview(contentType, finalContent)
             communityDao.updateMetadataIfNewer(cleanId, preview, now)
 
             try {
@@ -2445,7 +2441,9 @@ class CommunityRepository @Inject constructor(
                     preferredMediaType = contentType,
                     primaryBucket = "community-media",
                     fallbackBucket = "communities",
-                    filePrefix = "media_comm"
+                    filePrefix = "media_comm",
+                    accountId = senderId,
+                    messageId = msgId
                 )
                 outgoingMediaUrl = uploadResult.getOrElse { error ->
                     val retryable = CollectionRepositorySupport.isRetryableNetworkError(
@@ -2757,10 +2755,28 @@ class CommunityRepository @Inject constructor(
             (cleanBody.contains("could not find the function") || cleanBody.contains("undefined function"))
     }
 
-    private suspend fun retryPendingCommunityMessages(maxBatch: Int = 40) {
+    suspend fun retryMessage(messageId: String, communityId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val actor = authService.getCurrentUserId()?.trim()?.lowercase() ?: error("Inicia sesión de nuevo.")
+            val session = captureSessionSnapshot(actor)
+            val pending = communityDao.getMessageById(messageId) ?: error("El mensaje ya no está disponible.")
+            check(pending.sender_id.equals(actor, true) && pending.community_id.equals(communityId, true) && !pending.deleted_for_all) {
+                "No puedes reenviar este mensaje."
+            }
+            if (pending.is_synced) return@runCatching
+            check(isSessionSnapshotValid(session, "community-manual-retry")) { "La cuenta cambió." }
+            communityDao.insertMessages(listOf(pending.copy(status = "sending", is_synced = false, pending_action = "send")))
+            if (!isSessionSnapshotValid(session, "community-manual-retry-persisted")) return@runCatching
+            updateCommunityMessageInFlow(communityId, pending.toDomain().copy(status = "sending"))
+            retryPendingCommunityMessages(targetMessageId = messageId)
+        }.onFailure { if (it is CancellationException) throw it }
+    }
+
+    private suspend fun retryPendingCommunityMessages(maxBatch: Int = 40, targetMessageId: String? = null) {
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
         val session = captureSessionSnapshot(userId)
-        val pending = communityDao.getPendingOutgoingMessages(maxBatch)
+        val pending = if (targetMessageId == null) communityDao.getPendingOutgoingMessages(maxBatch)
+            else listOfNotNull(communityDao.getMessageById(targetMessageId)).filter { !it.is_synced && it.pending_action == "send" }
         if (!isSessionSnapshotValid(session, "community-pending-loaded")) return
         if (pending.isEmpty()) return
 
@@ -2776,7 +2792,9 @@ class CommunityRepository @Inject constructor(
                     preferredMediaType = pendingEntity.content_type,
                     primaryBucket = "community-media",
                     fallbackBucket = "communities",
-                    filePrefix = "media_comm"
+                    filePrefix = "media_comm",
+                    accountId = userId,
+                    messageId = pendingEntity.id
                 ).getOrElse { error ->
                     android.util.Log.w("CommunityRepository", "Pending community media still unavailable: ${pendingEntity.id}", error)
                     return@forEach

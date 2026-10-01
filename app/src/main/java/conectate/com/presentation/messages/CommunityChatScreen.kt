@@ -101,6 +101,7 @@ fun CommunityChatScreen(
     val audioDurationLabel by viewModel.audioDurationLabel.collectAsState()
     val audioPlaybackSpeed by viewModel.audioPlaybackSpeed.collectAsState()
     val selectedMessage by viewModel.selectedMessage.collectAsState()
+    val transfers by conectate.com.core.messaging.MessageUploadProgress.transfers.collectAsState()
     val favoriteStickerMediaKeys by viewModel.favoriteStickerMediaKeys.collectAsState()
     val reactionPickerMessage by viewModel.reactionPickerMessage.collectAsState()
     val forwardPickerMessage by viewModel.forwardPickerMessage.collectAsState()
@@ -574,6 +575,8 @@ fun CommunityChatScreen(
                                 } else {
                                     MessageBubble(
                                         message = msg,
+                                        uploadProgress = transfers[conectate.com.core.messaging.MessageUploadProgress.key(currentUserId, msg.id)],
+                                        onRetrySend = { viewModel.retryMessage(msg) },
                                         isFromCurrentUser = isFromMe,
                                         senderName = if (!isFromMe) memberProfile?.username ?: msg.sender_name else null,
                                         senderEmail = memberProfile?.email,

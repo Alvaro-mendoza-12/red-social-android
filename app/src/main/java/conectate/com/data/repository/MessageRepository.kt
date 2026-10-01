@@ -1554,7 +1554,10 @@ class MessageRepository @Inject constructor(
                     }
                 }
             },
-            markTerminalFailure = { message -> messageDao.markPendingSendFailed(message.id) }
+            markTerminalFailure = { message ->
+                messageDao.markPendingSendFailed(message.id)
+                updateMessageInFlow(message.chat_id, message.toDomain().copy(status = "failed"))
+            }
         ).run(accountId, maxBatch) { isSessionSnapshotValid(session, "retryPendingMessages") }
     }
 
@@ -1564,6 +1567,41 @@ class MessageRepository @Inject constructor(
         val actor = currentSessionUserId() ?: return@withContext Result.success(0)
         val session = captureSessionSnapshot(actor)
         deletionQueue.retry(actor, maxBatch) { isSessionSnapshotValid(session, "retryPendingDeletes") }
+    }
+
+    /** Reuses the durable outbox item, its attachment and ID after any send failure. */
+    suspend fun retryMessage(messageId: String, chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val accountId = currentSessionUserId() ?: return@withContext Result.failure(Exception("Inicia sesión de nuevo."))
+        val session = captureSessionSnapshot(accountId)
+        messageSendCoordinator.withMessage(messageId) {
+            runCatching {
+                check(isSessionSnapshotValid(session, "manual-retry")) { "La cuenta cambió." }
+                val pending = messageDao.getMessageById(messageId) ?: error("El mensaje ya no está disponible.")
+                check(pending.sender_id.equals(accountId, true) && pending.chat_id.equals(chatId, true)) {
+                    "El mensaje pertenece a otra cuenta o conversación."
+                }
+                check(!pending.deleted_for_all && !isSendCancelledByDeletion(messageId, accountId, session)) {
+                    "No se puede reenviar un mensaje eliminado."
+                }
+                if (pending.is_synced) return@runCatching
+                check(isSessionSnapshotValid(session, "manual-retry-loaded")) { "La cuenta cambió." }
+                messageDao.updateSyncStatus(messageId, "sending", false, "send")
+                if (!isSessionSnapshotValid(session, "manual-retry-persisted")) return@runCatching
+                updateMessageInFlow(chatId, pending.toDomain().copy(status = "sending"))
+                PendingMessageSyncScheduler.enqueue(context, "manual_message_retry")
+                if (!hasValidatedNetwork()) return@runCatching
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                when (syncPendingSendMessage(pending.copy(status = "sending", pending_action = "send"), token, session)) {
+                    PendingSendOutcome.TERMINAL_FAILURE -> {
+                        if (!isSessionSnapshotValid(session, "manual-retry-failed")) return@runCatching
+                        messageDao.markPendingSendFailed(messageId)
+                        updateMessageInFlow(chatId, pending.toDomain().copy(status = "failed"))
+                        error("No se pudo enviar. Puedes intentarlo de nuevo.")
+                    }
+                    else -> Unit
+                }
+            }.onFailure { if (it is CancellationException) throw it }
+        }
     }
 
     private suspend fun isSendCancelledByDeletion(
@@ -1601,7 +1639,9 @@ class MessageRepository @Inject constructor(
                 val upload = uploadChatMedia(
                     cleanChatId = pendingMessage.chat_id,
                     mediaUri = localMediaUri,
-                    mediaType = pendingMessage.content_type
+                    mediaType = pendingMessage.content_type,
+                    messageId = pendingMessage.id,
+                    accountId = pendingMessage.sender_id
                 ).getOrElse { error ->
                     if (error is CancellationException) throw error
                     android.util.Log.w("MessageRepository", "Pending media upload still unavailable for ${pending.id}", error)
@@ -1633,10 +1673,9 @@ class MessageRepository @Inject constructor(
             if (isSendCancelledByDeletion(pending.id, pending.sender_id, session)) return PendingSendOutcome.SKIPPED
             val serverResult = sendMessageToBackend(token = token, msg = pendingMessage)
             requireCurrentSession()
-            val isDuplicate = serverResult.statusCode == 409 ||
-                (serverResult.errorBody?.contains("23505") == true)
-
-            if (!serverResult.isSuccess && !isDuplicate) {
+            // Policy rejection and idempotency conflict both use 409. Only an
+            // explicit successful acknowledgement may turn the local clock into a check.
+            if (!serverResult.isSuccess) {
                 android.util.Log.w(
                     "MessageRepository",
                     "retryPendingMessages server rejected ${pending.id}: ${serverResult.statusCode}"
@@ -1648,7 +1687,7 @@ class MessageRepository @Inject constructor(
                 }
             }
 
-            val serverMessage = if (serverResult.isSuccess) serverResult.message else null
+            val serverMessage = serverResult.message
 
             val syncedMessage = PendingMessageSyncPolicy.acknowledgedMessage(
                 serverMessage = serverMessage,
@@ -2515,7 +2554,7 @@ class MessageRepository @Inject constructor(
 
             if (isSendCancelledByDeletion(id, userId, session)) return Result.success(msg.copy(deleted_for_all = true))
             if (pendingMediaUri != null) {
-                val mediaUpload = uploadChatMedia(cleanId, pendingMediaUri, mediaType)
+                val mediaUpload = uploadChatMedia(cleanId, pendingMediaUri, mediaType, id, userId)
                     .getOrElse { error ->
                         if (error is CancellationException) throw error
                         requireCurrentSession()
@@ -2525,6 +2564,7 @@ class MessageRepository @Inject constructor(
                             return Result.success(msg)
                         }
                         messageDao.markPendingSendFailed(id)
+                        updateMessageInFlow(cleanId, msg.copy(status = "failed"))
                         return Result.failure(Exception(reason))
                     }
                 requireCurrentSession()
@@ -2666,6 +2706,7 @@ class MessageRepository @Inject constructor(
                 // A server-side validation or permission error remains visible, but
                 // must not be auto-retried as if it were a connectivity failure.
                 messageDao.markPendingSendFailed(id)
+                updateMessageInFlow(cleanId, msg.copy(status = "failed"))
 
                 runCatching {
                     operationGuard.audit(
@@ -2698,6 +2739,9 @@ class MessageRepository @Inject constructor(
             }
              // Update Room to FAILED status
             runCatching { messageDao.markPendingSendFailed(id) }
+            if (pending != null && isSessionSnapshotValid(session, "send-failed-flow")) {
+                updateMessageInFlow(cleanId, pending.copy(status = "failed"))
+            }
             var actorId = auditUserId
             if (!actorId.isNullOrBlank()) {
                 runCatching {
@@ -4668,8 +4712,11 @@ class MessageRepository @Inject constructor(
     private suspend fun uploadChatMedia(
         cleanChatId: String,
         mediaUri: Uri,
-        mediaType: String
+        mediaType: String,
+        messageId: String = "",
+        accountId: String = ""
     ): Result<ChatMediaUpload> = withContext(Dispatchers.IO) {
+        conectate.com.core.messaging.MessageUploadProgress.update(accountId, messageId, 0f)
         try {
             val headerBytes = readUriHeaderBytes(mediaUri)
                 ?: return@withContext Result.failure(Exception("No se pudo leer archivo"))
@@ -4685,7 +4732,7 @@ class MessageRepository @Inject constructor(
                     sizeBytes = sizeBytes,
                     contentType = mimeType,
                     allowOverwrite = false,
-                    onProgress = {}
+                    onProgress = { conectate.com.core.messaging.MessageUploadProgress.update(accountId, messageId, it) }
                 )
             } else {
                 val bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
@@ -4718,7 +4765,10 @@ class MessageRepository @Inject constructor(
                 )
             )
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             Result.failure(error)
+        } finally {
+            conectate.com.core.messaging.MessageUploadProgress.finish(accountId, messageId)
         }
     }
 

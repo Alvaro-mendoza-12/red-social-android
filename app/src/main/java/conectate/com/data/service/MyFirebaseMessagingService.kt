@@ -537,7 +537,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     return
                 }
                 if (body.isNotBlank()) {
-                    sendSystemNotification(title, body)
+                    sendSystemNotification(title, body, data["notification_id"]?.takeIf { type == "system_announcement" })
                 }
             }
         } catch (e: Exception) {
@@ -849,7 +849,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     @OptIn(ExperimentalFoundationApi::class)
-    private fun sendSystemNotification(title: String, body: String) {
+    private fun sendSystemNotification(title: String, body: String, stableId: String? = null) {
         var channelId = getString(R.string.system_notification_channel_id)
         var intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -860,6 +860,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setOnlyAlertOnce(stableId != null)
             .setAutoCancel(true)
             .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
             .setContentIntent(pendingIntent)
@@ -872,7 +874,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             }
             notificationManager.createNotificationChannel(channel)
         }
-        notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
+        if (stableId.isNullOrBlank()) notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
+        else notificationManager.notify("system:$stableId", stableId.hashCode(), notificationBuilder.build())
     }
 
     private fun getAvatarBitmap(url: String?): Bitmap? {

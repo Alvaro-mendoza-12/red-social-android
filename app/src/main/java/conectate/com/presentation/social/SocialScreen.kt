@@ -236,6 +236,7 @@ fun SocialScreen(
     var automaticFeedRecoveryAttempts by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
+        viewModel.selectFeedMode(SocialFeedMode.DISCOVER)
         notificationViewModel.updateUnreadCount()
         viewModel.refreshLives()
         // Moments auto-load in ViewModel init - no manual call needed

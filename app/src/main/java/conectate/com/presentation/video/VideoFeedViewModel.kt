@@ -162,6 +162,7 @@ class VideoFeedViewModel @Inject constructor(
     private val shareRequestsInFlight = mutableSetOf<String>()
     private val focusedVideoIds = mutableSetOf<String>()
     private val focusedVideosById = linkedMapOf<String, Video>()
+    private val displayedForYouIds = linkedSetOf<String>()
     private var previousInitialForYouOrder: List<String> = emptyList()
     private var lastOrderedForYouSessionId: String? = null
 
@@ -722,6 +723,7 @@ class VideoFeedViewModel @Inject constructor(
                 _isLoading.value = true
                 currentPage = 0
                 isLastPage = false
+                displayedForYouIds.clear()
                 resetAuthoritativeFeedState()
                 val cachedVideos = videoRepository.getCachedPublicVideos(requestSessionId)
                 if (_forYouVideos.value.isEmpty() && cachedVideos.isNotEmpty() && generation == accountGeneration) {
@@ -732,10 +734,11 @@ class VideoFeedViewModel @Inject constructor(
                     )
                     isLastPage = cachedVideos.size < pageSize
                 }
-                // The public catalog is the fastest first-screen fallback.
-                // Only wait for the personalized page when cached video is
-                // already visible, so a cold install never sits on a spinner.
-                if (!forceLegacy && _forYouVideos.value.isNotEmpty()) {
+                // Request personalization on cold installs too. The catalog
+                // loads independently, so recommendation latency never delays
+                // the first usable video. Late ranking keeps already seen items.
+                if (!forceLegacy) launch {
+                    try {
                     val page = withTimeoutOrNull(VIDEO_AUTHORITATIVE_REQUEST_TIMEOUT_MS) {
                         algorithmRepository.loadVideoRecommendationPage(
                             cursor = null,
@@ -755,13 +758,18 @@ class VideoFeedViewModel @Inject constructor(
                         authoritativeExplanations.putAll(page.explanationsByCandidateId)
                         mergeInitialForYouPage(
                             focusedVideos = focusedVideosById.values,
-                            loadedPage = page.items,
+                            loadedPage = mergeRankedPageAfterDisplayedPrefix(
+                                _forYouVideos.value, page.items, displayedForYouIds,
+                            ),
                             sessionId = requestSessionId,
                         )
                         isLastPage = !page.hasMore
                         if (generation == accountGeneration && requestSessionId == feedSessionId) _isLoading.value = false
                         loadFollowedUsers()
-                        return@launch
+                    }
+                    } catch (error: CancellationException) { throw error }
+                    catch (error: Exception) {
+                        android.util.Log.w("VideoFeedVM", "Personalized feed unavailable; keeping catalog", error)
                     }
                 }
                 try {
@@ -772,7 +780,7 @@ class VideoFeedViewModel @Inject constructor(
                         feedSessionId = requestSessionId,
                         emitLocalSnapshotFirst = true,
                     ).collect { newVideos ->
-                        if (generation != accountGeneration || requestSessionId != feedSessionId) return@collect
+                        if (generation != accountGeneration || requestSessionId != feedSessionId || authoritativeFeedActive) return@collect
                         // Ignore a provisional empty disk-cache emission. The
                         // same flow will emit the network catalog next; keeping
                         // loading active prevents the empty-state flash.
@@ -1079,6 +1087,9 @@ class VideoFeedViewModel @Inject constructor(
         isActuallyPlaying: Boolean,
         elapsedRealtimeMs: Long
     ) {
+        if (isActuallyPlaying && !videoId.isNullOrBlank() && _forYouVideos.value.any { it.id == videoId }) {
+            displayedForYouIds += videoId.trim().lowercase()
+        }
         if (!playbackViewTracker.sample(videoId, isActuallyPlaying, elapsedRealtimeMs)) return
         val cleanVideoId = videoId?.trim()?.takeIf { it.isNotEmpty() } ?: return
 

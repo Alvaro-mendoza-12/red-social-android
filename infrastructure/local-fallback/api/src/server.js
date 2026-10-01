@@ -41,6 +41,7 @@ const {
 } = require('./storage-routes')
 const { registerAiRoutes } = require('./ai-routes')
 const { pushNotificationsStatus } = require('./push-notifications')
+const { ensureSystemAnnouncementSchema, registerSystemAnnouncementRoutes, createAnnouncementWorker } = require('./system-announcements')
 const { accountSuspendedPayload, findActiveSuspension } = require('./account-status')
 const { appAdminHasCapability } = require('./admin-moderation-routes')
 const { ADMIN_CAPABILITY } = require('./admin-capabilities')
@@ -3733,6 +3734,21 @@ async function deleteExternalAuthUser(userId) {
   throw deleteError
 }
 
+const runSystemAnnouncementDeliveries = createAnnouncementWorker(pool)
+registerSystemAnnouncementRoutes(app, { pool, runWorker: runSystemAnnouncementDeliveries,
+  adminRequired: async (req, res, next) => {
+    try {
+      req.auth = await authenticateClientRequest(req)
+      if (await findActiveSuspension(pool, req.auth.sub)) return res.status(403).json({ error: 'ACCOUNT_SUSPENDED' })
+      const capability = req.method === 'GET' ? ADMIN_CAPABILITY.SYSTEM_READ : ADMIN_CAPABILITY.SYSTEM_MANAGE
+      if (!(await authenticatedUserHasAdminCapability(req, capability))) return res.status(403).json({ error: 'ADMIN_CAPABILITY_REQUIRED', capability })
+      return next()
+    } catch (error) {
+      if (isPublicAuthError(error)) return res.status(error.status).json({ error: error.code })
+      return next(error)
+    }
+  },
+})
 registerStorageRoutes(app, { pool, authRequired })
 registerDataRoutes(app, {
   pool,
@@ -3789,6 +3805,7 @@ if (process.env.ROUTE_CHECK_ONLY === '1') {
 
 let server
 let passwordMailTimer
+let systemAnnouncementTimer
 let scheduledMessageTimer
 let notificationDigestTimer
 let communityEventReminderTimer
@@ -3815,12 +3832,17 @@ withSchemaInitializationLock({
     await ensurePasswordMailOutboxSchema(client)
     await ensureLocalStorageTables(client)
     await ensureLocalDataTables(client)
+    await ensureSystemAnnouncementSchema(client)
     await ensureScheduledMessageTables(client)
     await ensurePostgrestCompatTables(client)
     await ensureGooglePlayRtdnTables(client)
   },
 })
   .then(() => {
+    const deliverSystemNotices = () => runSystemAnnouncementDeliveries().catch(() => console.warn('System announcement delivery will retry'))
+    deliverSystemNotices()
+    systemAnnouncementTimer = setInterval(deliverSystemNotices, 5_000)
+    systemAnnouncementTimer.unref()
     server = app.listen(port, '0.0.0.0', () => {
       console.log(`${serviceName} ${version} listening on ${port}`)
     })
@@ -3960,6 +3982,7 @@ withSchemaInitializationLock({
   })
 
 async function shutdown(signal) {
+  if (systemAnnouncementTimer) clearInterval(systemAnnouncementTimer)
   console.log(`received ${signal}, shutting down`)
   if (scheduledMessageTimer) clearInterval(scheduledMessageTimer)
   if (notificationDigestTimer) clearInterval(notificationDigestTimer)

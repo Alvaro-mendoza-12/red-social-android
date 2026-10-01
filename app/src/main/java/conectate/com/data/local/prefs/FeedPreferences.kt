@@ -22,9 +22,7 @@ class FeedPreferences @Inject constructor(
     @ApplicationContext context: Context
 ) {
     private val preferences = context.getSharedPreferences("social_feed_preferences", Context.MODE_PRIVATE)
-    private val _mode = MutableStateFlow(
-        SocialFeedMode.fromStorage(preferences.getString(KEY_MODE, null))
-    )
+    private val _mode = MutableStateFlow(SocialFeedMode.DISCOVER)
     val mode: StateFlow<SocialFeedMode> = _mode
     private val _mutedCreatorIds = MutableStateFlow(
         preferences.getStringSet(KEY_MUTED_CREATORS, emptySet()).orEmpty().toSet()
@@ -39,7 +37,6 @@ class FeedPreferences @Inject constructor(
     val mutedTerms: StateFlow<Set<String>> = _mutedTerms
 
     fun setMode(mode: SocialFeedMode) {
-        preferences.edit().putString(KEY_MODE, mode.storageValue).apply()
         _mode.value = mode
     }
 

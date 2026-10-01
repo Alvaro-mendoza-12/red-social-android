@@ -136,7 +136,9 @@ async function testTrustedUpsertBecomesAllowedOnlyAfterTopics() {
     const finalIndex = statements.findIndex((entry) => /UPDATE fallback_algorithm_content_classifications/.test(entry.sql))
     assert.ok(guardIndex >= 0 && finalIndex > guardIndex)
     assert.match(statements[guardIndex].sql, /'unknown'/)
-    assert.match(statements[finalIndex].sql, /deleted_topics[\s\S]*inserted_topics[\s\S]*SET safety_state = \$9/)
+    assert.match(statements[finalIndex].sql, /locked_classification AS \( SELECT id[\s\S]*FOR UPDATE/)
+    assert.equal((statements[finalIndex].sql.match(/UPDATE fallback_algorithm_content_classifications/g) || []).length, 1)
+    assert.match(statements[finalIndex].sql, /deleted_topics[\s\S]*inserted_topics[\s\S]*SET creator_id[\s\S]*safety_state = \$9/)
     assert.equal(statements[finalIndex].values[8], 'allowed')
   })
 }

@@ -117,7 +117,8 @@ class ShareDestinationViewModel @Inject constructor(
 
     fun sendIncomingShare(
         payload: IncomingSharePayload,
-        destinationKeys: Set<String>
+        destinationKeys: Set<String>,
+        caption: String? = null
     ) {
         if (_actionState.value is ShareActionState.Running) return
         val selected = destinations.value.filter { destinationKeys.contains(it.key) }
@@ -131,7 +132,7 @@ class ShareDestinationViewModel @Inject constructor(
             )
             return
         }
-        val effectiveText = payload.text?.trim().takeUnless { it.isNullOrBlank() }
+        val effectiveText = caption?.trim() ?: payload.text?.trim().takeUnless { it.isNullOrBlank() }
             ?: payload.subject?.trim().takeUnless { it.isNullOrBlank() }
         if (payload.items.isEmpty() && effectiveText.isNullOrBlank()) {
             _actionState.value = ShareActionState.Failed(

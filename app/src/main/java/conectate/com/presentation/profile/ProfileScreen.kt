@@ -1161,8 +1161,6 @@ fun ProfileScreen(
                                             Text(if (isFollowing) "Siguiendo" else "Seguir")
                                         }
 
-                                        Spacer(modifier = Modifier.width(8.dp))
-
                                         val friendStatus by viewModel.friendStatus.collectAsState()
                                         
                                         var showUnfriendDialog by remember { mutableStateOf(false) }
@@ -1197,10 +1195,11 @@ fun ProfileScreen(
                                                     FriendStatus.FRIENDS -> showUnfriendDialog = true
                                                 }
                                             },
-                                            modifier = Modifier.weight(1f),
+                                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                             shape = RoundedCornerShape(12.dp),
                                             colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (friendStatus == FriendStatus.NONE || friendStatus == FriendStatus.PENDING_RECEIVED) MaterialTheme.colorScheme.primary else Color.Gray
+                                                containerColor = if (friendStatus == FriendStatus.NONE || friendStatus == FriendStatus.PENDING_RECEIVED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
+                                                contentColor = if (friendStatus == FriendStatus.NONE || friendStatus == FriendStatus.PENDING_RECEIVED) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
                                             )
                                         ) {
                                             Text(
@@ -1210,15 +1209,18 @@ fun ProfileScreen(
                                                     FriendStatus.PENDING_RECEIVED -> "Responder"
                                                     FriendStatus.FRIENDS -> "Amigos"
                                                 },
-                                                maxLines = 1,
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                fontSize = 12.sp
+                                                textAlign = TextAlign.Center
                                             )
                                         }
-                                        IconButton(onClick = { navController.navigate(Screen.Chat.createRoute(user.id)) }) {
-                                            Icon(Icons.Default.Email, "Mensaje", tint = MaterialTheme.colorScheme.primary)
-                                        }
                                     }
+                                }
+
+                                if (!isOwnProfile) {
+                                    Spacer(Modifier.height(8.dp))
+                                    ProfileMessageButton(onClick = {
+                                        navController.navigate(Screen.Chat.createRoute(user.id))
+                                    })
                                 }
 
                                 if (isOwnProfile) {

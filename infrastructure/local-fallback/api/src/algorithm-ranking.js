@@ -1,5 +1,7 @@
 'use strict'
 
+const { createHash } = require('node:crypto')
+
 /**
  * Pure, server-side ranking kernel for the future Novvin algorithm rollout.
  *
@@ -16,7 +18,7 @@
  *   raw age used for ranking.
  */
 
-const RANKING_VERSION = 'novvin-authoritative-ranking-v1'
+const RANKING_VERSION = 'novvin-authoritative-ranking-v2'
 
 const PREFERENCE_DIMENSIONS = Object.freeze([
   'content',
@@ -436,12 +438,7 @@ function explorationScore(candidate, feedMix) {
 function seededUnitInterval(seed, candidateId) {
   const value = `${String(seed || '')}:${String(candidateId || '')}`
   if (!String(seed || '').trim() || !String(candidateId || '').trim()) return 0
-  let hash = 2166136261
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-  return (hash >>> 0) / 0xFFFFFFFF
+  return createHash('sha256').update(value).digest().readUInt32BE(0) / 0xFFFFFFFF
 }
 
 function sessionExplorationScore(candidate, feedMix, sessionSeed) {
@@ -551,7 +548,11 @@ function compareCandidates(left, right) {
   const values = [
     [left.explicit.score, right.explicit.score],
     [left.creator.score, right.creator.score],
-    [left.feedMix, right.feedMix],
+    // Exploration must contribute to the mix. As a tie breaker it never ran
+    // when freshness differed slightly, giving new accounts the same feed.
+    // Its configured weight bounds the variation; direct preferences and
+    // creator choices above still take priority, and zero disables it.
+    [left.feedMix + left.sessionExploration, right.feedMix + right.sessionExploration],
     [left.inferred.score, right.inferred.score],
     [left.diversity.priority, right.diversity.priority],
     [left.sessionExploration, right.sessionExploration],

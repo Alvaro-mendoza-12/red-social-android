@@ -76,6 +76,7 @@ internal fun isClusterableMediaGridMessage(message: Message): Boolean {
     return isGalleryMediaType(normalizedType) &&
         normalizedType != "sticker" &&
         !message.media_url.isNullOrBlank() &&
+        message.status.lowercase() !in setOf("sending", "pending", "failed") &&
         !message.deleted_for_all
 }
 

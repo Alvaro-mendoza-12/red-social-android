@@ -44,10 +44,20 @@ internal object CollectionMessageSyncSupport {
     }
 
     fun buildMetadataPreview(contentType: String?, content: String?): String {
-        return if (contentType == "text") {
-            content.orEmpty()
-        } else {
-            "Archivo multimedia"
+        return when (contentType?.trim()?.lowercase()) {
+            "text" -> content.orEmpty()
+            "image" -> "📷 Foto"
+            "video" -> "🎥 Video"
+            "audio" -> "🎤 Audio"
+            "sticker" -> "🧩 Sticker"
+            "gif" -> "🌀 GIF"
+            "poll" -> "📊 Encuesta"
+            "document", "file" -> "📎 Archivo"
+            "contact" -> "👤 Contacto"
+            "location" -> "📍 Ubicación"
+            "view_once_image" -> "👁️ Foto ver una vez"
+            "view_once_video" -> "👁️ Video ver una vez"
+            else -> content.orEmpty().ifBlank { "Archivo multimedia" }
         }
     }
 

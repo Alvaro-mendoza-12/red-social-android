@@ -7,8 +7,8 @@ const INTRO_ERRORS = new Set([
 ])
 
 async function ensureDirectMessageRequestPolicy(pool) {
-  // Existing conversations keep their previous behavior. Only chats created
-  // after this column is installed receive the introductory-message limit.
+  // Creating a conversation requests friendship once. Pending friendship does
+  // not block the conversation; explicit rejection and blocks still do.
   await pool.query(`ALTER TABLE fallback_chats ADD COLUMN IF NOT EXISTS intro_policy_started_at TIMESTAMPTZ`)
   await pool.query(`ALTER TABLE fallback_chats ALTER COLUMN intro_policy_started_at SET DEFAULT NOW()`)
   await pool.query(`
@@ -73,12 +73,6 @@ async function ensureDirectMessageRequestPolicy(pool) {
           AND lower(sender_id) = lower(NEW.sender_id)
           AND lower(receiver_id) = lower(recipient)
       ) THEN RAISE EXCEPTION 'FRIEND_REQUEST_REJECTED'; END IF;
-
-      IF EXISTS (
-        SELECT 1 FROM fallback_messages
-        WHERE lower(chat_id) = lower(NEW.chat_id)
-          AND lower(sender_id) = lower(NEW.sender_id)
-      ) THEN RAISE EXCEPTION 'FRIEND_REQUEST_PENDING'; END IF;
 
       INSERT INTO fallback_friends(sender_id, receiver_id, status)
       VALUES (NEW.sender_id, recipient, 'pending')

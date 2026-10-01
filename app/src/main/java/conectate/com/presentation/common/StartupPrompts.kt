@@ -35,14 +35,17 @@ private const val NOTIFICATION_PERMISSION_PROMPTED_KEY = "notification_permissio
 
 @SuppressLint("InlinedApi") // ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT is only reached on API 34+.
 @Composable
-fun StartupPrompts() {
+fun StartupPrompts(owner: String? = null) {
     val context = LocalContext.current
     val disableStartupPrompts = remember(context) {
         context.getSharedPreferences(TEST_RUNTIME_PREFS, Context.MODE_PRIVATE)
             .getBoolean(DISABLE_STARTUP_PROMPTS_KEY, false)
     }
 
-    if (disableStartupPrompts) return
+    if (disableStartupPrompts) {
+        SystemAnnouncementHost(owner)
+        return
+    }
 
     val preferences = remember(context) { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
     var notificationPromptDone by remember {
@@ -82,6 +85,10 @@ fun StartupPrompts() {
     }
 
     var showBatteryDialog by remember { mutableStateOf(false) }
+    var noticesAllowed by remember { mutableStateOf(false) }
+    LaunchedEffect(notificationPromptDone) {
+        if (notificationPromptDone) { delay(3_500); noticesAllowed = true }
+    }
 
     LaunchedEffect(notificationPromptDone) {
         if (!notificationPromptDone) return@LaunchedEffect
@@ -165,7 +172,10 @@ fun StartupPrompts() {
         return
     }
 
-    if (!showBatteryDialog) return
+    if (!showBatteryDialog) {
+        if (noticesAllowed) SystemAnnouncementHost(owner)
+        return
+    }
 
     BatteryOptimizationDialog(
         brandName = DeviceUtils.getBatteryOptimizationGuideName(),

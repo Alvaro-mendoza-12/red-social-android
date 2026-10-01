@@ -13,6 +13,7 @@ internal fun inboxMessagePreview(message: Message?): String = when {
         "sticker" -> "Sticker"
         "contact" -> "Contacto"
         "location" -> "Ubicación"
+        "poll" -> "Encuesta"
         "document", "file" -> "Archivo"
         else -> message.content
     }

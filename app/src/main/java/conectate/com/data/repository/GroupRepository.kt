@@ -632,11 +632,7 @@ class GroupRepository @Inject constructor(
                     groupDao.updateMetadata(cleanId, 
                         buildConversationBackgroundPreview(msg.content_type, msg.content)
                             ?: buildCallEventPreview(msg.content_type, msg.content)
-                            ?: when(msg.content_type) {
-                            "text" -> msg.content
-                            "poll" -> "📊 ${msg.content}"
-                            else -> "Archivo multimedia"
-                        },
+                            ?: CollectionMessageSyncSupport.buildMetadataPreview(msg.content_type, msg.content),
                         msg.created_at
                     )
                     
@@ -1494,7 +1490,7 @@ class GroupRepository @Inject constructor(
             onQueued()
             val preview = buildConversationBackgroundPreview(contentType, finalContent)
                 ?: buildCallEventPreview(contentType, finalContent)
-                ?: if (contentType == "text") finalContent else "Multimedia"
+                ?: CollectionMessageSyncSupport.buildMetadataPreview(contentType, finalContent)
             groupDao.updateMetadataIfNewer(cleanId, preview, now)
 
             try {
@@ -1518,7 +1514,9 @@ class GroupRepository @Inject constructor(
                     preferredMediaType = contentType,
                     primaryBucket = "group-media",
                     fallbackBucket = "groups",
-                    filePrefix = "media_group"
+                    filePrefix = "media_group",
+                    accountId = userId,
+                    messageId = msgId
                 )
                 outgoingMediaUrl = uploadResult.getOrElse { error ->
                     val retryable = CollectionRepositorySupport.isRetryableNetworkError(
@@ -1718,10 +1716,28 @@ class GroupRepository @Inject constructor(
             (cleanBody.contains("could not find the function") || cleanBody.contains("undefined function"))
     }
 
-    private suspend fun retryPendingGroupMessages(maxBatch: Int = 40) {
+    suspend fun retryMessage(messageId: String, groupId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val actor = authService.getCurrentUserId()?.trim()?.lowercase() ?: error("Inicia sesión de nuevo.")
+            val session = captureSessionSnapshot(actor)
+            val pending = groupDao.getMessageById(messageId) ?: error("El mensaje ya no está disponible.")
+            check(pending.sender_id.equals(actor, true) && pending.group_id.equals(groupId, true) && !pending.deleted_for_all) {
+                "No puedes reenviar este mensaje."
+            }
+            if (pending.is_synced) return@runCatching
+            check(isSessionSnapshotValid(session, "group-manual-retry")) { "La cuenta cambió." }
+            groupDao.updateMessageSyncStatus(messageId, "sending", false, "send")
+            if (!isSessionSnapshotValid(session, "group-manual-retry-persisted")) return@runCatching
+            updateGroupMessageInFlow(groupId, pending.toDomain().copy(status = "sending"))
+            retryPendingGroupMessages(targetMessageId = messageId)
+        }.onFailure { if (it is CancellationException) throw it }
+    }
+
+    private suspend fun retryPendingGroupMessages(maxBatch: Int = 40, targetMessageId: String? = null) {
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
         val session = captureSessionSnapshot(userId)
-        val pending = groupDao.getPendingOutgoingMessages(maxBatch)
+        val pending = if (targetMessageId == null) groupDao.getPendingOutgoingMessages(maxBatch)
+            else listOfNotNull(groupDao.getMessageById(targetMessageId)).filter { !it.is_synced && it.pending_action == "send" }
         if (!isSessionSnapshotValid(session, "group-pending-loaded")) return
         if (pending.isEmpty()) return
 
@@ -1737,7 +1753,9 @@ class GroupRepository @Inject constructor(
                     preferredMediaType = pendingEntity.content_type,
                     primaryBucket = "group-media",
                     fallbackBucket = "groups",
-                    filePrefix = "media_group"
+                    filePrefix = "media_group",
+                    accountId = userId,
+                    messageId = pendingEntity.id
                 ).getOrElse { error ->
                     android.util.Log.w("GroupRepository", "Pending group media still unavailable: ${pendingEntity.id}", error)
                     return@forEach

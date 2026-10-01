@@ -87,7 +87,13 @@ data class VideoViewIncrement(val recorded: Boolean, val totalViews: Int?)
 internal fun stableAccountVideoOrder(accountId: String, videoId: String): Int {
     val account = accountId.trim().lowercase().ifBlank { "guest" }
     val video = videoId.trim().lowercase()
-    return "$account:$video".hashCode() and Int.MAX_VALUE
+    // String.hashCode is linear: changing a seed can shift all scores by the
+    // same amount and preserve the entire order. A digest mixes seed and ID.
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+        .digest("$account:$video".toByteArray(Charsets.UTF_8))
+    return ((digest[0].toInt() and 0x7f) shl 24) or
+        ((digest[1].toInt() and 0xff) shl 16) or
+        ((digest[2].toInt() and 0xff) shl 8) or (digest[3].toInt() and 0xff)
 }
 
 internal fun publishedVideoMatchesRetry(

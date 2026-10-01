@@ -1,0 +1,176 @@
+{
+  "base": "https://conectate.tail9b267c.ts.net",
+  "checks": [
+    {
+      "name": "register-owned-fixture",
+      "status": 201,
+      "ms": 464,
+      "error": null
+    },
+    {
+      "name": "register-owned-fixture",
+      "status": 201,
+      "ms": 281,
+      "error": null
+    },
+    {
+      "name": "first-message-before",
+      "status": 201,
+      "ms": 30,
+      "error": null
+    },
+    {
+      "name": "upload-fixture.png",
+      "status": 201,
+      "ms": 29,
+      "error": null
+    },
+    {
+      "name": "second-photo-before",
+      "status": 409,
+      "ms": 39,
+      "error": "FRIEND_REQUEST_PENDING"
+    },
+    {
+      "name": "second-photo-after",
+      "status": 409,
+      "ms": 506,
+      "error": "FRIEND_REQUEST_PENDING"
+    },
+    {
+      "name": "second-photo-after",
+      "status": 201,
+      "ms": 259,
+      "error": null
+    },
+    {
+      "name": "idempotent-photo-retry",
+      "status": 200,
+      "ms": 89,
+      "error": null
+    },
+    {
+      "name": "upload-fixture.pdf",
+      "status": 201,
+      "ms": 60,
+      "error": null
+    },
+    {
+      "name": "third-file-after",
+      "status": 201,
+      "ms": 132,
+      "error": null
+    },
+    {
+      "name": "recipient-reads-attachments",
+      "status": 404,
+      "ms": 25,
+      "error": "NOT_FOUND"
+    },
+    {
+      "name": "second-photo-after",
+      "status": 200,
+      "ms": 264
+    },
+    {
+      "name": "idempotent-photo-retry",
+      "status": 200,
+      "ms": 221,
+      "error": null
+    },
+    {
+      "name": "upload-fixture.pdf",
+      "status": 201,
+      "ms": 98,
+      "error": null
+    },
+    {
+      "name": "third-file-after",
+      "status": 201,
+      "ms": 156,
+      "error": null
+    },
+    {
+      "name": "recipient-reads-attachments",
+      "status": 200,
+      "ms": 107,
+      "error": null
+    },
+    {
+      "name": "second-photo-after",
+      "status": 200,
+      "ms": 285
+    },
+    {
+      "name": "idempotent-photo-retry",
+      "status": 200,
+      "ms": 88,
+      "error": null
+    },
+    {
+      "name": "upload-fixture.pdf",
+      "status": 201,
+      "ms": 20,
+      "error": null
+    },
+    {
+      "name": "third-file-after",
+      "status": 201,
+      "ms": 50,
+      "error": null
+    },
+    {
+      "name": "recipient-reads-attachments",
+      "status": 200,
+      "ms": 194,
+      "error": null
+    },
+    {
+      "name": "one-automatic-friend-request",
+      "status": 200,
+      "ms": 47,
+      "error": null
+    },
+    {
+      "name": "foreign-media-rejected",
+      "status": 403,
+      "ms": 55,
+      "error": "CHAT_MEDIA_REFERENCE_FORBIDDEN"
+    },
+    {
+      "name": "recipient-rejects-request",
+      "status": 200,
+      "ms": 54,
+      "error": null
+    },
+    {
+      "name": "explicit-rejection-enforced",
+      "status": 409,
+      "ms": 98,
+      "error": "FRIEND_REQUEST_REJECTED"
+    },
+    {
+      "name": "recipient-blocks",
+      "status": 200,
+      "ms": 46,
+      "error": null
+    },
+    {
+      "name": "explicit-block-enforced",
+      "status": 403,
+      "ms": 42,
+      "error": "CHAT_BLOCKED_BY_RECIPIENT"
+    },
+    {
+      "name": "delete-owned-fixture",
+      "status": 200,
+      "ms": 586
+    },
+    {
+      "name": "delete-owned-fixture",
+      "status": 200,
+      "ms": 276
+    }
+  ],
+  "cleaned": true
+}

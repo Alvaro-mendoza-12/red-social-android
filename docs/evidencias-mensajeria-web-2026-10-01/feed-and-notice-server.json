@@ -1,0 +1,247 @@
+{
+  "checks": [
+    {
+      "name": "registration",
+      "status": 201,
+      "ms": 623,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 121,
+      "error": null
+    },
+    {
+      "name": "same-session-stability",
+      "status": 200,
+      "ms": 49,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 55,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 53,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 65,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 56,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 60,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 45,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 49,
+      "error": null
+    },
+    {
+      "name": "registration",
+      "status": 201,
+      "ms": 275,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 157,
+      "error": null
+    },
+    {
+      "name": "same-session-stability",
+      "status": 200,
+      "ms": 329,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 34,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 47,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 53,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 44,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 28,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 42,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 30,
+      "error": null
+    },
+    {
+      "name": "registration",
+      "status": 201,
+      "ms": 300,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 34,
+      "error": null
+    },
+    {
+      "name": "same-session-stability",
+      "status": 200,
+      "ms": 48,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 51,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 43,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 45,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 47,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 49,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 46,
+      "error": null
+    },
+    {
+      "name": "personalized-first-page",
+      "status": 200,
+      "ms": 45,
+      "error": null
+    },
+    {
+      "name": "regular-account-cannot-broadcast",
+      "status": 403,
+      "ms": 20,
+      "error": "ADMIN_CAPABILITY_REQUIRED"
+    },
+    {
+      "name": "anonymous-admin-access-denied",
+      "status": 401,
+      "ms": 21,
+      "error": "AUTH_REQUIRED"
+    },
+    {
+      "name": "cleanup-owned-account",
+      "status": 200,
+      "ms": 310,
+      "error": null
+    },
+    {
+      "name": "cleanup-owned-account",
+      "status": 200,
+      "ms": 212,
+      "error": null
+    },
+    {
+      "name": "cleanup-owned-account",
+      "status": 200,
+      "ms": 235,
+      "error": null
+    }
+  ],
+  "accountCount": 3,
+  "rankingCount": 24,
+  "eligiblePageSizes": [
+    2
+  ],
+  "distinctOrders": 2,
+  "orderFingerprints": [
+    "b0f6ff73cebb77fc",
+    "b0f6ff73cebb77fc",
+    "0f4709d8f547b159",
+    "b0f6ff73cebb77fc",
+    "b0f6ff73cebb77fc",
+    "0f4709d8f547b159",
+    "b0f6ff73cebb77fc",
+    "b0f6ff73cebb77fc",
+    "b0f6ff73cebb77fc",
+    "b0f6ff73cebb77fc",
+    "b0f6ff73cebb77fc",
+    "0f4709d8f547b159",
+    "0f4709d8f547b159",
+    "b0f6ff73cebb77fc",
+    "b0f6ff73cebb77fc",
+    "0f4709d8f547b159",
+    "0f4709d8f547b159",
+    "b0f6ff73cebb77fc",
+    "0f4709d8f547b159",
+    "0f4709d8f547b159",
+    "b0f6ff73cebb77fc",
+    "b0f6ff73cebb77fc",
+    "b0f6ff73cebb77fc",
+    "b0f6ff73cebb77fc"
+  ],
+  "cleaned": true
+}

@@ -8,6 +8,7 @@ const ADMIN_CAPABILITY = Object.freeze({
   MODERATION_MANAGE: 'admin.moderation.manage',
   READ: 'admin.read',
   SYSTEM_READ: 'admin.system.read',
+  SYSTEM_MANAGE: 'admin.system.manage',
   USERS_DELETE: 'admin.users.delete',
 })
 
@@ -26,6 +27,7 @@ const LEVEL_CAPABILITIES = Object.freeze({
     ADMIN_CAPABILITY.CATALOG_MANAGE,
     ADMIN_CAPABILITY.FINANCE_MANAGE,
     ADMIN_CAPABILITY.SYSTEM_READ,
+    ADMIN_CAPABILITY.SYSTEM_MANAGE,
   ]),
 })
 

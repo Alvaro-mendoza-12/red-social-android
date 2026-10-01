@@ -691,6 +691,7 @@ fun AdminPanelScreen(
                 Tab(selected = selectedTabIndex == 4, onClick = { selectedTabIndex = 4 }, text = { Text("Videos") })
                 Tab(selected = selectedTabIndex == 5, onClick = { selectedTabIndex = 5 }, text = { Text("Apelaciones") })
                 Tab(selected = selectedTabIndex == 6, onClick = { selectedTabIndex = 6; viewModel.refreshRecoveryCases() }, text = { Text("Recuperaciones (${recoveryCases.count { it.status == "pending" }})") })
+                if ("admin.system.read" in adminAccess.capabilities) Tab(selected = selectedTabIndex == 7, onClick = { selectedTabIndex = 7 }, text = { Text("Avisos") })
             }
 
             if (!errorMessage.isNullOrBlank()) {
@@ -722,6 +723,9 @@ fun AdminPanelScreen(
             val adminListState = key(selectedTabIndex) { rememberLazyListState() }
             LazyColumn(state = adminListState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 when (selectedTabIndex) {
+                    7 -> item(key = "system-announcements") {
+                        Column { SystemAnnouncementAdminSection(adminAccess) }
+                    }
                     0 -> {
                         item(key = "admin-summary") { AdminSummary(stats, systemHealth, isLoading) }
                     }
