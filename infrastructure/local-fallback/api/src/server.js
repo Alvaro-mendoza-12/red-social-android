@@ -66,6 +66,7 @@ const { processDueNotificationDigests } = require('./notification-digest-routes'
 const { createRequestObservabilityMiddleware, safeErrorLogDetails } = require('./request-observability')
 const { receiveRecoveryEvidence, ensureRecoveryEvidenceSchema, persistRecoveryEvidence, registerRecoveryEvidenceDownload } = require('./recovery-evidence')
 const { createPasswordResetMailer } = require('./password-reset-mailer')
+const { createPasswordMailOutbox, ensurePasswordMailOutboxSchema } = require('./password-reset-mail-outbox')
 const { createEmailRecoveryStore, CODE_MINUTES } = require('./password-reset-email-code')
 const {
   hashPasswordRecoveryCode,
@@ -682,7 +683,14 @@ function hashPasswordResetToken(token) {
   return crypto.createHash('sha256').update(String(token || '').trim()).digest('hex')
 }
 
-const emailRecoveryStore = createEmailRecoveryStore({ pool, secret: twoFactorEncryptionSecret, makeToken: createPasswordResetToken, hashToken: hashPasswordResetToken })
+const passwordResetMailOutbox = passwordResetMailer ? createPasswordMailOutbox({
+  pool, secret: twoFactorEncryptionSecret, mailer: passwordResetMailer,
+  onError: (code) => console.error('[auth] recovery mail worker failed', code),
+}) : null
+const emailRecoveryStore = createEmailRecoveryStore({ pool, secret: twoFactorEncryptionSecret,
+  makeToken: createPasswordResetToken, hashToken: hashPasswordResetToken,
+  enqueueMail: passwordResetMailOutbox?.enqueue,
+})
 
 function createAuthRefreshToken() {
   return crypto.randomBytes(48).toString('base64url')
@@ -2859,6 +2867,7 @@ app.post('/v1/auth/change-password', authRequired, requireBcryptPasswordLength('
 
 app.post('/v1/auth/password-reset/request', async (req, res, next) => {
   try {
+    const started = Date.now()
     const email = normalizeEmail(req.body?.email)
     const numericCode = req.body?.codeFormat === 'numeric' && passwordResetDelivery === 'smtp'
     const baseResponse = {
@@ -2867,9 +2876,17 @@ app.post('/v1/auth/password-reset/request', async (req, res, next) => {
       expiresInMinutes: numericCode ? CODE_MINUTES : passwordResetTokenTtlMinutes,
       ...(numericCode ? { codeLength: 6 } : {}),
     }
+    const reply = async (body = baseResponse) => {
+      // Same minimum budget for known/unknown emails; SMTP latency cannot reveal account existence.
+      if (passwordResetDelivery === 'smtp') {
+        const remaining = Math.max(0, 120 - (Date.now() - started))
+        if (remaining) await new Promise((resolve) => setTimeout(resolve, remaining))
+      }
+      return res.json(body)
+    }
 
     if (!isValidEmail(email) || passwordResetDelivery === 'disabled') {
-      return res.json(baseResponse)
+      return reply()
     }
 
     const { rows } = await pool.query(
@@ -2881,20 +2898,24 @@ app.post('/v1/auth/password-reset/request', async (req, res, next) => {
     )
 
     if (!rows[0]) {
-      return res.json(baseResponse)
+      return reply()
     }
 
     const row = rows[0]
     if (numericCode) {
-      const code = await emailRecoveryStore.issue(row.id, email)
-      try { await passwordResetMailer.deliver(email, code, CODE_MINUTES) }
-      catch (error) { console.error('[auth] password reset email failed', error?.code || error?.name || 'unknown') }
-      return res.json(baseResponse)
+      await emailRecoveryStore.issue(row.id, email)
+      passwordResetMailOutbox.wake()
+      return reply()
     }
     // Preserve long-token support for installed clients and manual recovery.
     const token = createPasswordResetToken()
     const tokenHash = hashPasswordResetToken(token)
-    await emailRecoveryStore.issueLegacy(row.id, tokenHash, passwordResetTokenTtlMinutes)
+    await emailRecoveryStore.issueLegacy(row.id, tokenHash, passwordResetTokenTtlMinutes,
+      passwordResetMailOutbox ? { email, token } : undefined)
+    if (passwordResetMailOutbox) {
+      passwordResetMailOutbox.wake()
+      return reply()
+    }
 
     let delivery
     try {
@@ -2903,7 +2924,7 @@ app.post('/v1/auth/password-reset/request', async (req, res, next) => {
       // Keep the same public response for an unknown account and a mail outage.
       // The token remains unusable without the email and the next request revokes it.
       console.error('[auth] password reset delivery failed', error?.code || error?.name || 'unknown')
-      return res.json(baseResponse)
+      return reply()
     }
     await recordAudit('auth_password_reset_requested', row.id, {
       email,
@@ -3767,6 +3788,7 @@ if (process.env.ROUTE_CHECK_ONLY === '1') {
 }
 
 let server
+let passwordMailTimer
 let scheduledMessageTimer
 let notificationDigestTimer
 let communityEventReminderTimer
@@ -3790,6 +3812,7 @@ withSchemaInitializationLock({
   ),
   task: async (client) => {
     await ensureAuthMetadataColumns(client)
+    await ensurePasswordMailOutboxSchema(client)
     await ensureLocalStorageTables(client)
     await ensureLocalDataTables(client)
     await ensureScheduledMessageTables(client)
@@ -3801,6 +3824,11 @@ withSchemaInitializationLock({
     server = app.listen(port, '0.0.0.0', () => {
       console.log(`${serviceName} ${version} listening on ${port}`)
     })
+    if (passwordResetMailOutbox) {
+      passwordResetMailOutbox.wake()
+      passwordMailTimer = setInterval(passwordResetMailOutbox.wake, 1_000)
+      passwordMailTimer.unref?.()
+    }
     // Match the Android upload budget while retaining strict header and idle
     // connection limits. TUS chunks normally complete much sooner; this also
     // protects the rolling-deployment fallback that still sends one PUT.
@@ -3942,6 +3970,8 @@ async function shutdown(signal) {
   if (creatorPayoutTimer) clearInterval(creatorPayoutTimer)
   if (rateLimitCleanupTimer) clearInterval(rateLimitCleanupTimer)
   if (resumableUploadCleanupTimer) clearInterval(resumableUploadCleanupTimer)
+  if (passwordMailTimer) clearInterval(passwordMailTimer)
+  await passwordResetMailOutbox?.stop()
   liveDrawGuessReconciler?.stop()
   if (!server) {
     await pool.end()
