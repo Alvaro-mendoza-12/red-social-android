@@ -37,6 +37,7 @@ import conectate.com.data.model.LiveGiftEvent
 import conectate.com.data.model.GiftReceipt
 import conectate.com.data.model.VirtualGift
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.livekit.shouldClearPreviousCollaborationParticipant
 import conectate.com.data.livekit.LiveCollaborationConnectionGate
 import conectate.com.data.livekit.LiveKitRoomBridge
@@ -68,6 +69,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,6 +97,8 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.coroutines.flow.onSubscription
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import conectate.com.services.LiveForegroundService
@@ -115,6 +119,7 @@ class LiveRepository @Inject constructor(
     private val authService: AuthService,
     private val userRepository: UserRepository,
     private val localFallbackApiClient: LocalFallbackApiClient,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val liveKitRoomBridge: LiveKitRoomBridge,
     private val storageService: StorageService,
     private val livePreferences: LivePreferences,
@@ -665,10 +670,48 @@ class LiveRepository @Inject constructor(
             if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
             val normalizedId = normalizeLiveSessionId(liveId)
                 ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
-            localFallbackApiClient.loadLiveGuestInvitations(token, normalizedId).onSuccess {
-                _guestInvitations.value = it
+            val userId = authService.getCurrentUserId()?.trim().orEmpty()
+            localFallbackApiClient.loadLiveGuestInvitations(token, normalizedId).onSuccess { invitations ->
+                currentCoroutineContext().ensureActive()
+                if (userId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
+                    _guestInvitations.update { mergeLiveInvitations(it, invitations, normalizedId, userId) }
+                }
             }
         }
+
+    /** Shares the authenticated user channel with notifications. The caller's
+     * polling job owns this collector; cancelling it leaves other users of the
+     * channel subscribed. Periodic reads still reconcile missed events. */
+    suspend fun observeLiveInvitationUpdates(liveId: String) {
+        if (!usesUbuntuPersistence()) return
+        val normalizedId = normalizeLiveSessionId(liveId) ?: return
+        val userId = authService.getCurrentUserId()?.trim().orEmpty()
+        val token = localAccessToken()
+        if (userId.isBlank() || token.isBlank()) return
+        ubuntuRealtimeClient.events.onSubscription {
+            currentCoroutineContext().ensureActive()
+            if (!userId.equals(authService.getCurrentUserId()?.trim(), ignoreCase = true)) {
+                throw CancellationException("The active account changed before LIVE subscription")
+            }
+            ubuntuRealtimeClient.updateAccessToken(token)
+            ubuntuRealtimeClient.subscribe("user:${userId.lowercase()}")
+        }.collect { envelope ->
+            if (isLiveInvitationChannelReady(envelope, userId, authService.getCurrentUserId())) {
+                // Reconcile anything sent while the socket was opening or offline.
+                refreshGuestInvitations(normalizedId)
+                return@collect
+            }
+            if (!isLiveInvitationUpdate(envelope, normalizedId, userId, authService.getCurrentUserId())) return@collect
+            val invitation = runCatching {
+                supabaseConfig.json.decodeFromJsonElement<LiveGuestInvitation>(envelope.payload.getValue("invitation"))
+            }.getOrNull() ?: return@collect
+            _guestInvitations.update { current ->
+                if (userId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
+                    mergeLiveInvitations(current, listOf(invitation), normalizedId, userId)
+                } else current
+            }
+        }
+    }
 
     suspend fun inviteLiveGuest(liveId: String, inviteeUserId: String): Result<LiveGuestInvitation> =
         withContext(Dispatchers.IO) {
@@ -677,7 +720,7 @@ class LiveRepository @Inject constructor(
             val normalizedId = normalizeLiveSessionId(liveId)
                 ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
             localFallbackApiClient.inviteLiveGuest(token, normalizedId, inviteeUserId).onSuccess { invitation ->
-                _guestInvitations.update { current -> listOf(invitation) + current.filterNot { it.id == invitation.id } }
+                _guestInvitations.update { mergeLiveInvitations(it, listOf(invitation), normalizedId, authService.getCurrentUserId().orEmpty()) }
             }
         }
 
@@ -688,9 +731,7 @@ class LiveRepository @Inject constructor(
             val normalizedId = normalizeLiveSessionId(liveId)
                 ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
             localFallbackApiClient.requestToJoinLive(token, normalizedId).onSuccess { invitation ->
-                _guestInvitations.update { current ->
-                    listOf(invitation) + current.filterNot { it.id == invitation.id }
-                }
+                _guestInvitations.update { mergeLiveInvitations(it, listOf(invitation), normalizedId, authService.getCurrentUserId().orEmpty()) }
             }
         }
 
@@ -728,7 +769,7 @@ class LiveRepository @Inject constructor(
             invitationId,
             if (accept) "accepted" else "rejected"
         ).onSuccess { invitation ->
-            _guestInvitations.update { current -> current.map { if (it.id == invitation.id) invitation else it } }
+            _guestInvitations.update { mergeLiveInvitations(it, listOf(invitation), normalizedId, authService.getCurrentUserId().orEmpty()) }
         }
     }
 
@@ -1283,8 +1324,18 @@ class LiveRepository @Inject constructor(
             _isVideoEnabled.value = _currentSource.value != LiveSource.AUDIO
             screenCaptureActive = false
             stopAdaptiveQualityMonitor()
-            var profile = userRepository.getUserById(currentUserId).getOrNull()
-            val viewerName = profile?.displayName ?: profile?.username ?: "Usuario"
+            // Display metadata is not an access check. The authoritative LIVE
+            // read above remains remote; a profile refresh must not delay media.
+            val profile = try {
+                userRepository.getCachedUserById(currentUserId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) { null }
+            currentCoroutineContext().ensureActive()
+            if (!currentUserId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
+                throw CancellationException("The active account changed during LIVE startup")
+            }
+            val viewerName = profile?.displayName ?: "Usuario"
             val viewerAvatar = profile?.avatar_url
 
             connectSocket(
@@ -3513,6 +3564,8 @@ class LiveRepository @Inject constructor(
                 _eglBaseContext.value = manager.getEglBaseContext()
             }
             true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             android.util.Log.e("LiveRepository", "initializeWebRTC failed", e)
             _isMediaReady.value = false

@@ -1,7 +1,7 @@
 # NoWi — Documentación oficial del proyecto
 
 Fecha base: 2026-08-24
-Última actualización de la fuente canónica: 2026-09-30 (Bogotá; evidencias del servidor también fechadas 2026-10-01 UTC)
+Última actualización de la fuente canónica: 2026-10-01 (Bogotá; cada evidencia indica su fecha y alcance)
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
@@ -50,6 +50,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 37. [Permisos de stickers y cierre de destacados — 2026-09-18](32-permisos-stickers-y-cierre-destacados-2026-09-18.md)
 38. [Fluidez y auditoría por módulos — 2026-09-30](33-fluidez-y-auditoria-modulos-2026-09-30.md)
 39. [Cadencia de LIVE, salas, llamadas y PK — 2026-10-01](34-cadencia-live-salas-2026-10-01.md)
+40. [Arranque, invitaciones LIVE y recuperación por correo — 2026-10-01](35-arranque-invitaciones-y-recuperacion-correo-2026-10-01.md)
 
 ## Reglas para quien trabaje en este proyecto
 

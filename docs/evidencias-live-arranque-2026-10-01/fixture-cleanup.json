@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "ownedTemporaryAccountsDeleted": 3,
+  "deletedSessionHttpStatus": 401,
+  "allIdentitiesCheckedBeforeDeletion": true,
+  "ownerAccountChanged": false
+}

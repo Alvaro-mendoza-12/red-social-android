@@ -224,6 +224,10 @@ Retiros económicos permanecen fuera del alcance previamente acordado. No se hic
 
 ## Prioridades restantes
 
+La comprobación real posterior de recepción del correo, cambio de contraseña e inicio de sesión
+en el servidor está en [35](35-arranque-invitaciones-y-recuperacion-correo-2026-10-01.md), junto a
+la corrección de invitaciones LIVE. Sigue pendiente el ciclo físico completo del usuario.
+
 Actualización del 01/10: la caída local de cámara se corrigió a 30 FPS en ambas cámaras del
 Motorola y se repitieron LIVE/sala/llamada entre redes. PK y el arranque aún necesitan mejoras;
 ver [mediciones y cambios posteriores](34-cadencia-live-salas-2026-10-01.md). El Motorola no

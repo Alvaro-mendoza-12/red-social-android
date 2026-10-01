@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "branch": "feature/live-gifts",
+  "versionCode": 117,
+  "versionName": "9.0.20-debug",
+  "unitTestClasses": 228,
+  "unitTests": {
+    "tests": 1026,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "androidInstrumentationTests": 6,
+  "androidInstrumentationFailures": 0,
+  "apiUnitTests": {
+    "tests": 333,
+    "pass": 331,
+    "fail": 0,
+    "skipped": 2
+  },
+  "mailParserUnitTests": 5,
+  "lintErrors": 0,
+  "lintWarnings": 268,
+  "apkSha256": "a6881960f34e62bd7267c40ffda7c5f77b05a1e63c41c8f1b6ae0d369d6b93ee",
+  "apkSource": "Working tree before delivery commit",
+  "physicalPhoneAvailableThisRun": false,
+  "webModifiedOrDeployed": false
+}

@@ -24,6 +24,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -300,14 +301,17 @@ class LiveSessionViewModel @Inject constructor(
         collaborationPollingJob = viewModelScope.launch(Dispatchers.IO) {
             previousPolling?.join()
             ensureActive()
-            pollLiveCollaboration(
-                refreshInvitations = { liveRepository.refreshGuestInvitations(normalizedId) },
-                refreshCapabilities = { liveRepository.getLiveCollaborationCapabilities() },
-                refreshRoom = { liveRepository.refreshActiveLiveStream(normalizedId) },
-                refreshBattle = { liveRepository.refreshActiveBattle(normalizedId) },
-                refreshSupporters = { liveRepository.refreshLiveSupporters(normalizedId) },
-                refreshGifts = { liveRepository.refreshLiveGiftEvents(normalizedId) }
-            )
+            coroutineScope {
+                launch { liveRepository.observeLiveInvitationUpdates(normalizedId) }
+                pollLiveCollaboration(
+                    refreshInvitations = { liveRepository.refreshGuestInvitations(normalizedId) },
+                    refreshCapabilities = { liveRepository.getLiveCollaborationCapabilities() },
+                    refreshRoom = { liveRepository.refreshActiveLiveStream(normalizedId) },
+                    refreshBattle = { liveRepository.refreshActiveBattle(normalizedId) },
+                    refreshSupporters = { liveRepository.refreshLiveSupporters(normalizedId) },
+                    refreshGifts = { liveRepository.refreshLiveGiftEvents(normalizedId) }
+                )
+            }
         }
     }
 

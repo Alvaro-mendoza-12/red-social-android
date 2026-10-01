@@ -467,6 +467,8 @@ class NotificationRepository @Inject constructor(
             ubuntuRealtimeClient.updateAccessToken(token)
             ubuntuRealtimeClient.subscribe("user:$userId")
             ubuntuRealtimeClient.events.collect { envelope ->
+                if (!envelope.channel.equals("user:$userId", ignoreCase = true) ||
+                    !userId.equals(authService.getCurrentUserId()?.trim(), ignoreCase = true)) return@collect
                 if (envelope.event == "account_deleted") {
                     AccountDeletedEvents.notifyAccountDeleted()
                     return@collect

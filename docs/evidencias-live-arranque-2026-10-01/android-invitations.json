@@ -1,0 +1,10 @@
+{
+  "liveId": "225b7ac5-4854-4e8a-9f92-e63697ac792e",
+  "passed": true,
+  "acceptedEventMs": 311,
+  "coldSocketReconciliationMs": 1393,
+  "pendingAttempts": 1,
+  "pollingUsed": false,
+  "lateSnapshotPreservedAcceptance": true,
+  "ownerLoginUnchanged": true
+}

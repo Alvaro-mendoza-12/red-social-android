@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
 const { publishRealtimeEvent } = require('./realtime-publish')
+const { publishLiveCollaborationEvent } = require('./live-collaboration-events')
 const { drawGuessEnabled } = require('./live-draw-guess-routes')
 const { netWithdrawableGiftAmount } = require('./economic-provenance')
 const { constantTimeSecretEqual } = require('./request-security')
@@ -703,14 +704,6 @@ async function activeGuestCount(pool, liveId, excludeUserId = '') {
     [liveId, String(excludeUserId || '').trim()],
   )
   return Number(rows[0]?.count || 0)
-}
-
-async function publishLiveCollaborationEvent(liveId, payload) {
-  await publishRealtimeEvent(`live-collaboration:${liveId}`, {
-    event: 'live_collaboration',
-    liveId,
-    ...(payload || {}),
-  })
 }
 
 async function appendModerationAudit(pool, {

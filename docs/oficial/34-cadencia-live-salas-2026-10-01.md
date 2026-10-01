@@ -134,6 +134,11 @@ archivos de fixture de ambos dispositivos y del PC. Wi-Fi del Motorola quedó re
 
 ## Producción y siguiente etapa
 
+Actualización posterior: la recepción real del código por Gmail, el ciclo de cambio/login del
+servidor y las mejoras de invitaciones se documentan en
+[35](35-arranque-invitaciones-y-recuperacion-correo-2026-10-01.md). Conservamos debajo los
+pendientes identificados al cerrar esta tanda de medios; no todos han sido resueltos.
+
 Siguen abiertas las pruebas de larga duración y carga, correo recibido y recuperación física,
 llamada real con teléfono bloqueado, firma de release original y paridad web/Vercel.
 Una prueba de captura local no certifica esos flujos ni garantiza 60 FPS en todos los equipos.

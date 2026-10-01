@@ -36,7 +36,7 @@
     "test:admin": "node --test tests/admin-capabilities.test.js && node tests/admin-moderation-routes.test.js",
     "test:proximity": "node tests/proximity-routes.test.js",
     "test:live-moderation": "node tests/live-moderation-routes.test.js",
-    "test:live-collaboration": "node tests/live-collaboration-routes.test.js && node tests/live-battle-scoring.test.js && node tests/livekit-admin.test.js",
+    "test:live-collaboration": "node --test tests/live-collaboration-events.test.js && node tests/live-collaboration-routes.test.js && node tests/live-battle-scoring.test.js && node tests/livekit-admin.test.js",
     "test:live-follower-notifications": "node tests/live-follower-notifications.test.js",
     "test:live-points": "node tests/live-points-routes.test.js",
     "test:live-draw-guess": "node tests/live-draw-guess-routes.test.js",

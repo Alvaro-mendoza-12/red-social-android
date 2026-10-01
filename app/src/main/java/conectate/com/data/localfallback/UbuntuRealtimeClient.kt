@@ -48,12 +48,15 @@ class UbuntuRealtimeClient @Inject constructor() {
 
     @Volatile
     private var accessToken: String = ""
+    @Volatile private var socketGeneration = 0L
 
+    @Synchronized
     fun updateAccessToken(token: String) {
         val clean = token.trim()
         if (clean == accessToken) return
         accessToken = clean
         if (clean.isBlank()) {
+            socketGeneration++
             val previous = socket
             socket = null
             previous?.close(1000, "session-ended")
@@ -114,27 +117,30 @@ class UbuntuRealtimeClient @Inject constructor() {
     private fun ensureConnected() {
         if (socket != null) return
         val url = wsUrl() ?: return
+        val generation = ++socketGeneration
+        val connectionToken = accessToken
         val request = Request.Builder()
             .url(url)
-            .header("Authorization", "Bearer $accessToken")
+            .header("Authorization", "Bearer $connectionToken")
             .build()
         socket = client.newWebSocket(
             request,
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
+                    if (generation != socketGeneration || connectionToken != accessToken) return
                     subscribedChannels.forEach { channel ->
                         webSocket.send("""{"type":"subscribe","channel":"$channel"}""")
                     }
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
-                    handleMessage(text)
+                    if (generation != socketGeneration || connectionToken != accessToken) return
+                    handleMessage(text, generation, connectionToken)
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     Log.w(TAG, "socket failure", t)
-                    if (socket !== webSocket) return
-                    socket = null
+                    if (!detachCurrentSocket(webSocket, generation, connectionToken)) return
                     scope.launch {
                         RuntimeBackendEndpoint.refreshAfterEndpointFailure()
                         delay(900)
@@ -143,8 +149,7 @@ class UbuntuRealtimeClient @Inject constructor() {
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    if (socket !== webSocket) return
-                    socket = null
+                    if (!detachCurrentSocket(webSocket, generation, connectionToken)) return
                     scope.launch {
                         delay(900)
                         ensureConnected()
@@ -155,7 +160,16 @@ class UbuntuRealtimeClient @Inject constructor() {
     }
 
     @Synchronized
+    private fun detachCurrentSocket(webSocket: WebSocket, generation: Long, connectionToken: String): Boolean {
+        if (socket !== webSocket || socketGeneration != generation || accessToken != connectionToken) return false
+        socketGeneration++
+        socket = null
+        return true
+    }
+
+    @Synchronized
     private fun reconnect() {
+        socketGeneration++
         val previous = socket
         socket = null
         previous?.close(1000, "token-refresh")
@@ -166,15 +180,17 @@ class UbuntuRealtimeClient @Inject constructor() {
         socket?.send(raw)
     }
 
-    private fun handleMessage(text: String) {
+    private fun handleMessage(text: String, generation: Long, connectionToken: String) {
         runCatching {
             val root = json.parseToJsonElement(text).jsonObject
-            if (root["type"]?.jsonPrimitive?.contentOrNull != "event") return
+            val type = root["type"]?.jsonPrimitive?.contentOrNull
+            if (type != "event" && type != "subscribed") return
             val channel = root["channel"]?.jsonPrimitive?.contentOrNull.orEmpty()
             val payload = root["payload"]?.jsonObject ?: JsonObject(emptyMap())
-            val event = payload["event"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val event = if (type == "subscribed") "subscription_ready" else payload["event"]?.jsonPrimitive?.contentOrNull.orEmpty()
             if (channel.isBlank()) return
             scope.launch {
+                if (generation != socketGeneration || connectionToken != accessToken) return@launch
                 _events.emit(UbuntuRealtimeEnvelope(channel = channel, event = event, payload = payload))
             }
         }.onFailure {

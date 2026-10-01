@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "pendingEventMs": [
+    32.55099999999999,
+    32.88290000000001
+  ],
+  "acceptedEventMs": [
+    33.33230000000003,
+    34.362300000000005
+  ],
+  "unrelatedAccountReceivedInvitation": false,
+  "roomPrivateSubscriptionDenied": true,
+  "pollingUsed": false
+}
