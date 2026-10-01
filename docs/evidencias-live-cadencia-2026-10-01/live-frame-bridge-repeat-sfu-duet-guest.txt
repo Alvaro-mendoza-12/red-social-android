@@ -1,0 +1,41 @@
+INSTRUMENTATION_STATUS: class=conectate.com.LiveDuetDeviceAuditTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+conectate.com.LiveDuetDeviceAuditTest:
+INSTRUMENTATION_STATUS: test=hostAndGuestReceiveActualAudioAndVideoDuringBattle
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=conectate.com.LiveDuetDeviceAuditTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: Duet image is too slow: 7.999523868339357 < 25.0
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at conectate.com.LiveDuetDeviceAuditTest.hostAndGuestReceiveActualAudioAndVideoDuringBattle(LiveDuetDeviceAuditTest.kt:170)
+
+INSTRUMENTATION_STATUS: stream=
+Error in hostAndGuestReceiveActualAudioAndVideoDuringBattle(conectate.com.LiveDuetDeviceAuditTest):
+java.lang.AssertionError: Duet image is too slow: 7.999523868339357 < 25.0
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at conectate.com.LiveDuetDeviceAuditTest.hostAndGuestReceiveActualAudioAndVideoDuringBattle(LiveDuetDeviceAuditTest.kt:170)
+
+INSTRUMENTATION_STATUS: test=hostAndGuestReceiveActualAudioAndVideoDuringBattle
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 21.364
+There was 1 failure:
+1) hostAndGuestReceiveActualAudioAndVideoDuringBattle(conectate.com.LiveDuetDeviceAuditTest)
+java.lang.AssertionError: Duet image is too slow: 7.999523868339357 < 25.0
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at conectate.com.LiveDuetDeviceAuditTest.hostAndGuestReceiveActualAudioAndVideoDuringBattle(LiveDuetDeviceAuditTest.kt:170)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+
+INSTRUMENTATION_CODE: -1

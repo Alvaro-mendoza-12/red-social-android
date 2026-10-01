@@ -1,0 +1,45 @@
+{
+  "receivedFps": 7.999523868339357,
+  "audioReceived": true,
+  "existingCaptureFps": 0,
+  "publishedTracks": "[audio:false, video:false]",
+  "inbound": [
+    {
+      "kind": "audio",
+      "packetsReceived": 65,
+      "bytesReceived": 1170
+    },
+    {
+      "kind": "video",
+      "packetsReceived": 1021,
+      "bytesReceived": 1007917,
+      "framesDecoded": 82
+    }
+  ],
+  "videoStats": [
+    {
+      "direction": "inbound-rtp",
+      "framesPerSecond": 17,
+      "framesDecoded": 82,
+      "framesDropped": 261,
+      "frameWidth": 360,
+      "frameHeight": 640,
+      "totalDecodeTime": 0.7859999999999999,
+      "decoderImplementation": "c2.goldfish.vp8.decoder",
+      "freezeCount": 2,
+      "totalFreezesDuration": 3.646,
+      "codec": "video/VP8"
+    },
+    {
+      "direction": "outbound-rtp",
+      "framesPerSecond": 29,
+      "framesEncoded": 397,
+      "frameWidth": 360,
+      "frameHeight": 640,
+      "totalEncodeTime": 0.402,
+      "encoderImplementation": "libvpx",
+      "qualityLimitationReason": "none",
+      "codec": "video/VP8"
+    }
+  ]
+}

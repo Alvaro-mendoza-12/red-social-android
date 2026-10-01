@@ -1,0 +1,10 @@
+{
+  "temporaryAccountsDeleted": 2,
+  "identitiesVerified": 2,
+  "oldTokenHttpStatuses": [
+    401,
+    401
+  ],
+  "deviceFixtureCachesRemoved": true,
+  "wifiRestored": true
+}

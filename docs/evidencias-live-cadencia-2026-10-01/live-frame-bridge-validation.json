@@ -1,0 +1,21 @@
+{
+  "tests": 1015,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "suiteClasses": 227,
+  "lintErrors": 0,
+  "lintWarnings": 268,
+  "dispatcherTests": 8,
+  "apkSha256": "a305dbda84c812b1c9281a91fa626064e009806311c220d7bdafe026959187fe",
+  "nativeRegressionTestsPassed": 7,
+  "sfuRuns": 5,
+  "sfuRunsPassed": 4,
+  "sfuRunsFailed": 1,
+  "longSampleSeconds": 30,
+  "longSampleMinimumFps": 25,
+  "longSampleMaximumGapLimitMs": 500,
+  "firstFrameAndLongTermStabilityStillOpen": true,
+  "versionCode": 117,
+  "versionName": "9.0.20"
+}

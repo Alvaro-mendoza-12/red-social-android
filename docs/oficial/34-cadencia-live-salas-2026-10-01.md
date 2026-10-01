@@ -76,13 +76,70 @@ falló el umbral de 25, aunque recibió audio e imagen. Se conserva como fallo y
 la conversión síncrona del puente de cuadros compartidos. El arranque sigue por encima de
 un segundo en estas redes; no queda cerrado por corregir la cadencia.
 
+### Puente de cuadros compartidos y repeticiones de PK
+
+La conversión entre los dos SDK pasa a un trabajador dedicado. El callback de la cámara
+retiene y entrega el cuadro; la cola mantiene un cuadro en proceso y como máximo uno pendiente.
+Los cuadros pendientes antiguos se liberan, y el cambio de fuente o la salida invalida los
+cuadros de la generación anterior. Ocho tests comprueban propiedad/liberación, rechazo del
+trabajador, errores de conversión y cierre concurrente con 401 cuadros.
+
+La suite completa terminó con **1.015 tests, cero fallos, errores u omisiones**, en 227 clases.
+Lint terminó con cero errores y 268 advertencias existentes. La nueva APK mantuvo 30 FPS en
+ambas cámaras al repetir el diagnóstico local. Otros seis tests físicos pasaron: cuatro de
+layout de salas, 16 ciclos de salida/reentrada dentro de un test y tres ciclos de cancelación
+y reintento de SFU dentro de otro. Se revisaron las cuatro capturas sintéticas de layout.
+
+Las repeticiones usan Motorola en `CELLULAR` y emulador en `WIFI`, comprobados antes y después:
+
+| PK con puente asíncrono | Host recibe | Invitado recibe | Resultado |
+|---|---:|---:|---|
+| Primera ejecución | 28,30 FPS | 28,80 FPS | Pasó |
+| Repetición | 28,40 FPS | 8,00 FPS | Falló el umbral de 25 FPS del invitado |
+| Con métricas ampliadas | 28,60 FPS | 29,70 FPS | Pasó |
+| Repetición con métricas | 28,40 FPS | 28,00 FPS | Pasó |
+| Muestra continua de 30 segundos | 28,57 FPS | 29,60 FPS | Pasó 25 FPS y máximo 500 ms sin cuadros en ambos equipos |
+
+En la ejecución fallida la cámara original siguió a 30 FPS y el emisor informó 29 FPS
+codificados, con `qualityLimitationReason=none`. El invitado registró 261 cuadros descartados y
+3,646 s acumulados de congelamiento. Esa ejecución todavía no incluía contadores ampliados
+de jitter/pérdidas: no demuestra la causa de la caída. Los nuevos contadores se conservan junto
+con las pruebas positivas y negativas. No se atribuye el fallo al servidor o al decodificador
+sin reproducirlo con esas métricas.
+
+Los primeros cuadros del invitado tardaron 3,940–4,819 s en las ejecuciones completas, más la
+petición de sesión. Los 12–15 s del host incluyen esperar que el coordinador arranque el otro
+test y publique al invitado; no son una medición de arranque equivalente. Hubo paquetes de
+audio en ambas direcciones. Los tests del host comprobaron mute/reanudación y reemplazo de
+cámara manteniendo la captura original; no había un tercer espectador P2P recibiendo el LIVE
+original durante la batalla. Sigue pendiente esa prueba de carga simultánea y la escucha humana.
+
+La estabilidad de PK sigue abierta, aunque la captura local está corregida. Se añadió medición
+por segundo y del mayor intervalo sin cuadros, para que una media alta no oculte un corte.
+En la muestra continua, el host recibió 25–30 cuadros por segundo y el invitado 28–31
+(la llegada puede agruparse entre segundos). Los máximos intervalos fueron 183,236 y 171,245 ms.
+El SDK informó cero pérdidas pendientes al tomar la muestra y el invitado emitió 92 NACK;
+ese contador muestra que hubo solicitudes de recuperación. El SDK contó un congelamiento de
+243 ms en el invitado durante la sesión completa. No equivale a latencia visual medida ni
+elimina la ejecución anterior que cayó a 8 FPS. También faltan pruebas prolongadas, más
+dispositivos y carga con espectadores simultáneos.
+
 Antes de crear las dos cuentas temporales se verificó el respaldo
 `/home/alvaro/conectate-backups/20261001T045412Z` (PostgreSQL, storage y estado de AI; hashes y
 lectura de artefactos correctos). Los nueve servicios estaban saludables y los 93 archivos
 JavaScript de la API desplegada coincidían con la fuente local. No se cambió el backend.
+Al cerrar esta tanda se borraron únicamente las dos identidades temporales, verificando antes
+sus IDs y correos de creación. Sus tokens pasaron a responder HTTP 401 y se retiraron los
+archivos de fixture de ambos dispositivos y del PC. Wi-Fi del Motorola quedó restaurado.
 
 ## Producción y siguiente etapa
 
 Siguen abiertas las pruebas de larga duración y carga, correo recibido y recuperación física,
 llamada real con teléfono bloqueado, firma de release original y paridad web/Vercel.
 Una prueba de captura local no certifica esos flujos ni garantiza 60 FPS en todos los equipos.
+
+La firma seguirá el proceso manual del propietario en Android Studio. Se encontró el archivo
+`D:\Novvin llave\llaves de mi apk conecta` (sin extensión; cabecera DER compatible con PKCS12).
+La ruta indicada inicialmente, `D:\llaves de mi apk conecta`, no existe. No se han leído claves
+privadas ni contraseñas, no se ha creado una llave sustituta y no se ha firmado un AAB con ese
+archivo. La identidad de subida debe comprobarse con la firma original al generar el bundle.

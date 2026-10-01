@@ -1,0 +1,30 @@
+{
+  "before": [
+    {
+      "device": "ZY22JSH8CF",
+      "activeNetworkTransports": [
+        "CELLULAR"
+      ]
+    },
+    {
+      "device": "emulator-5554",
+      "activeNetworkTransports": [
+        "WIFI"
+      ]
+    }
+  ],
+  "after": [
+    {
+      "device": "ZY22JSH8CF",
+      "activeNetworkTransports": [
+        "CELLULAR"
+      ]
+    },
+    {
+      "device": "emulator-5554",
+      "activeNetworkTransports": [
+        "WIFI"
+      ]
+    }
+  ]
+}

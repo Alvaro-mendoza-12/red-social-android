@@ -1,0 +1,135 @@
+{
+  "receivedFps": 29.596972821619804,
+  "audioReceived": true,
+  "existingCaptureFps": 0,
+  "sampleDurationMs": 30000,
+  "maximumFrameGapMs": 171.2446,
+  "perSecondFrames": [
+    29,
+    29,
+    30,
+    30,
+    29,
+    30,
+    29,
+    31,
+    28,
+    30,
+    29,
+    29,
+    30,
+    28,
+    30,
+    30,
+    30,
+    30,
+    30,
+    30,
+    30,
+    30,
+    30,
+    30,
+    28,
+    30,
+    31,
+    28,
+    30,
+    30
+  ],
+  "publishedTracks": "[audio:false, video:false]",
+  "inbound": [
+    {
+      "kind": "audio",
+      "packetsReceived": 164,
+      "bytesReceived": 2993
+    },
+    {
+      "kind": "video",
+      "packetsReceived": 3375,
+      "bytesReceived": 3299041,
+      "framesDecoded": 978
+    }
+  ],
+  "videoStats": [
+    {
+      "direction": "inbound-rtp",
+      "framesPerSecond": 29,
+      "framesDecoded": 978,
+      "framesDropped": 43,
+      "frameWidth": 360,
+      "frameHeight": 640,
+      "totalDecodeTime": 7.925,
+      "decoderImplementation": "c2.goldfish.vp8.decoder",
+      "freezeCount": 1,
+      "totalFreezesDuration": 0.243,
+      "packetsLost": 0,
+      "jitter": 0.012,
+      "jitterBufferDelay": 71.25771499999999,
+      "jitterBufferEmittedCount": 1022,
+      "jitterBufferTargetDelay": 35.386417,
+      "keyFramesDecoded": 2,
+      "nackCount": 92,
+      "pliCount": 2,
+      "firCount": 0,
+      "totalProcessingDelay": 68.215415,
+      "codec": "video/VP8"
+    },
+    {
+      "direction": "outbound-rtp",
+      "framesPerSecond": 29,
+      "framesEncoded": 960,
+      "frameWidth": 360,
+      "frameHeight": 640,
+      "totalEncodeTime": 1.908,
+      "encoderImplementation": "libvpx",
+      "qualityLimitationReason": "none",
+      "keyFramesEncoded": 3,
+      "nackCount": 0,
+      "pliCount": 2,
+      "firCount": 0,
+      "retransmittedPacketsSent": 0,
+      "retransmittedBytesSent": 0,
+      "codec": "video/VP8"
+    }
+  ],
+  "connections": [
+    {
+      "currentRoundTripTime": 0.128,
+      "bytesSent": 3334,
+      "bytesReceived": 447554,
+      "localCandidateType": "prflx",
+      "localCandidateProtocol": "udp",
+      "remoteCandidateType": "host",
+      "remoteCandidateProtocol": "udp"
+    },
+    {
+      "currentRoundTripTime": 0.099,
+      "availableOutgoingBitrate": 300000,
+      "bytesSent": 15093,
+      "bytesReceived": 2984517,
+      "localCandidateType": "prflx",
+      "localCandidateProtocol": "udp",
+      "remoteCandidateType": "host",
+      "remoteCandidateProtocol": "udp"
+    },
+    {
+      "currentRoundTripTime": 0.092,
+      "availableOutgoingBitrate": 1644000,
+      "bytesSent": 492738,
+      "bytesReceived": 10248,
+      "localCandidateType": "prflx",
+      "localCandidateProtocol": "udp",
+      "remoteCandidateType": "host",
+      "remoteCandidateProtocol": "udp"
+    },
+    {
+      "currentRoundTripTime": 0.095,
+      "bytesSent": 0,
+      "bytesReceived": 149,
+      "localCandidateType": "srflx",
+      "localCandidateProtocol": "udp",
+      "remoteCandidateType": "host",
+      "remoteCandidateProtocol": "udp"
+    }
+  ]
+}

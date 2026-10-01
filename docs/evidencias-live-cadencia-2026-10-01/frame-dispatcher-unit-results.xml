@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="conectate.com.data.livekit.LatestFrameDispatcherTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-10-01T05:45:18.329Z" hostname="ALVARO" time="0.017">
+  <properties/>
+  <testcase name="clearingReleasesPendingFrameWithoutProcessing" classname="conectate.com.data.livekit.LatestFrameDispatcherTest" time="0.002"/>
+  <testcase name="closedQueueReleasesPendingAndFutureFramesExactlyOnce" classname="conectate.com.data.livekit.LatestFrameDispatcherTest" time="0.002"/>
+  <testcase name="nextFrameCanArriveWhileProcessingWithoutAnotherDrainTask" classname="conectate.com.data.livekit.LatestFrameDispatcherTest" time="0.001"/>
+  <testcase name="closeDuringProcessingDropsPendingButReleasesActiveFrame" classname="conectate.com.data.livekit.LatestFrameDispatcherTest" time="0.001"/>
+  <testcase name="aBurstKeepsOnlyNewestPendingFrameAndSchedulesOnce" classname="conectate.com.data.livekit.LatestFrameDispatcherTest" time="0.002"/>
+  <testcase name="concurrentBurstAndShutdownReleaseEveryOwnedFrameOnce" classname="conectate.com.data.livekit.LatestFrameDispatcherTest" time="0.003"/>
+  <testcase name="processingFailureDoesNotLeakOrStrandNextFrame" classname="conectate.com.data.livekit.LatestFrameDispatcherTest" time="0.003"/>
+  <testcase name="rejectedWorkerReleasesFrameAndClosesQueue" classname="conectate.com.data.livekit.LatestFrameDispatcherTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

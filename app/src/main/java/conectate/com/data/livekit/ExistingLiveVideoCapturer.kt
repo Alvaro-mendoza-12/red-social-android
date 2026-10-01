@@ -1,6 +1,8 @@
 package conectate.com.data.livekit
 
 import android.content.Context
+import android.os.Handler
+import android.os.HandlerThread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,36 +32,58 @@ internal class ExistingLiveVideoCapturer(
     private var observer: CapturerObserver? = null
     @Volatile private var capturing = false
     @Volatile private var disposed = false
+    private var captureGeneration = 0L
     private val reportedFailure = AtomicBoolean(false)
+    private data class PendingFrame(val frame: org.webrtc.VideoFrame, val generation: Long)
+    private val frameThread = HandlerThread("LiveFrameBridge").apply { start() }
+    private val frameHandler = Handler(frameThread.looper)
+    private val frames = LatestFrameDispatcher<PendingFrame>(
+        executor = java.util.concurrent.Executor { task ->
+            check(frameHandler.post(task)) { "The shared frame worker is closed" }
+        },
+        process = ::forwardFrame,
+        release = { it.frame.release() },
+        onFailure = ::report,
+    )
     private val sink = org.webrtc.VideoSink { frame ->
         synchronized(frameLock) {
-            if (!capturing || disposed) return@VideoSink
-            val receiver = observer ?: return@VideoSink
-            val planes = try {
-                frame.buffer.toI420() ?: return@VideoSink
-            } catch (error: Exception) {
-                report(error)
-                return@VideoSink
+            if (!capturing || disposed || observer == null) return@VideoSink
+            frame.retain()
+            frames.submit(PendingFrame(frame, captureGeneration))
+        }
+    }
+
+    private fun forwardFrame(pending: PendingFrame) {
+        val frame = pending.frame
+        if (synchronized(frameLock) { !capturing || disposed || pending.generation != captureGeneration }) return
+        val planes = try {
+            frame.buffer.toI420() ?: return
+        } catch (error: Exception) {
+            report(error)
+            return
+        }
+        val converted = try {
+            livekit.org.webrtc.JavaI420Buffer.wrap(
+                planes.width, planes.height,
+                planes.dataY, planes.strideY, planes.dataU, planes.strideU,
+                planes.dataV, planes.strideV, Runnable { planes.release() }
+            )
+        } catch (error: Exception) {
+            planes.release()
+            report(error)
+            return
+        }
+        val shared = livekit.org.webrtc.VideoFrame(converted, frame.rotation, frame.timestampNs)
+        try {
+            synchronized(frameLock) {
+                if (capturing && !disposed && pending.generation == captureGeneration) {
+                    observer?.onFrameCaptured(shared)
+                }
             }
-            val converted = try {
-                livekit.org.webrtc.JavaI420Buffer.wrap(
-                    planes.width, planes.height,
-                    planes.dataY, planes.strideY, planes.dataU, planes.strideU,
-                    planes.dataV, planes.strideV, Runnable { planes.release() }
-                )
-            } catch (error: Exception) {
-                planes.release()
-                report(error)
-                return@VideoSink
-            }
-            val shared = livekit.org.webrtc.VideoFrame(converted, frame.rotation, frame.timestampNs)
-            try {
-                receiver.onFrameCaptured(shared)
-            } catch (error: Exception) {
-                report(error)
-            } finally {
-                shared.release()
-            }
+        } catch (error: Exception) {
+            report(error)
+        } finally {
+            shared.release()
         }
     }
 
@@ -73,6 +97,7 @@ internal class ExistingLiveVideoCapturer(
             if (capturing) return
             synchronized(frameLock) {
                 capturing = true
+                captureGeneration++
                 observer?.onCapturerStarted(true)
             }
             bindLocked(source.value)
@@ -90,6 +115,8 @@ internal class ExistingLiveVideoCapturer(
         synchronized(frameLock) {
             if (!capturing) return
             capturing = false
+            captureGeneration++
+            frames.clearPending()
             observer?.onCapturerStopped()
         }
         synchronized(bindingLock) {
@@ -101,6 +128,7 @@ internal class ExistingLiveVideoCapturer(
 
     private fun bindLocked(track: org.webrtc.VideoTrack?) {
         if (boundTrack === track) return
+        synchronized(frameLock) { captureGeneration++; frames.clearPending() }
         boundTrack?.let { previous -> runCatching { previous.removeSink(sink) } }
         boundTrack = null
         if (track != null) {
@@ -114,6 +142,8 @@ internal class ExistingLiveVideoCapturer(
         stopCapture()
         synchronized(bindingLock) { disposed = true }
         synchronized(frameLock) { observer = null }
+        frames.close()
+        frameThread.quitSafely()
         scope.cancel()
     }
 

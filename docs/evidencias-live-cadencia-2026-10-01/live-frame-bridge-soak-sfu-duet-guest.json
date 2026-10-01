@@ -1,0 +1,20 @@
+{
+  "scopeId": "cac28235-315d-4db4-8abb-7e964006b241",
+  "role": "guest",
+  "audioReceived": true,
+  "rendered": true,
+  "existingBroadcastPreserved": false,
+  "controlsAndReplacementCapture": false,
+  "receivedFps": 29.596972821619804,
+  "firstFrameMs": 4010,
+  "connectMs": 2110,
+  "sessionRequestMs": 967,
+  "subscribeAndRenderMs": 1900,
+  "startup": {
+    "roomCreationMs": 481,
+    "signalingMs": 710,
+    "audioMs": 893,
+    "videoMs": 675,
+    "totalMs": 2108
+  }
+}

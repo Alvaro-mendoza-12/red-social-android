@@ -1,0 +1,92 @@
+{
+  "receivedFps": 27.997635599673607,
+  "audioReceived": true,
+  "existingCaptureFps": 0,
+  "publishedTracks": "[audio:false, video:false]",
+  "inbound": [
+    {
+      "kind": "audio",
+      "packetsReceived": 65,
+      "bytesReceived": 1170
+    },
+    {
+      "kind": "video",
+      "packetsReceived": 807,
+      "bytesReceived": 639078,
+      "framesDecoded": 378
+    }
+  ],
+  "videoStats": [
+    {
+      "direction": "inbound-rtp",
+      "framesPerSecond": 30,
+      "framesDecoded": 378,
+      "framesDropped": 24,
+      "frameWidth": 360,
+      "frameHeight": 640,
+      "totalDecodeTime": 3.3609999999999998,
+      "decoderImplementation": "c2.goldfish.vp8.decoder",
+      "freezeCount": 2,
+      "totalFreezesDuration": 0.86,
+      "packetsLost": 0,
+      "jitter": 0.008,
+      "jitterBufferDelay": 31.769838,
+      "jitterBufferEmittedCount": 402,
+      "jitterBufferTargetDelay": 15.74321,
+      "keyFramesDecoded": 2,
+      "nackCount": 58,
+      "pliCount": 3,
+      "firCount": 0,
+      "totalProcessingDelay": 34.633918,
+      "codec": "video/VP8"
+    },
+    {
+      "direction": "outbound-rtp",
+      "framesPerSecond": 29,
+      "framesEncoded": 372,
+      "frameWidth": 360,
+      "frameHeight": 640,
+      "totalEncodeTime": 0.725,
+      "encoderImplementation": "libvpx",
+      "qualityLimitationReason": "none",
+      "keyFramesEncoded": 4,
+      "nackCount": 0,
+      "pliCount": 2,
+      "firCount": 0,
+      "retransmittedPacketsSent": 0,
+      "retransmittedBytesSent": 0,
+      "codec": "video/VP8"
+    }
+  ],
+  "connections": [
+    {
+      "currentRoundTripTime": 0.098,
+      "availableOutgoingBitrate": 300000,
+      "bytesSent": 8836,
+      "bytesReceived": 673214,
+      "localCandidateType": "prflx",
+      "localCandidateProtocol": "udp",
+      "remoteCandidateType": "host",
+      "remoteCandidateProtocol": "udp"
+    },
+    {
+      "currentRoundTripTime": 0.105,
+      "bytesSent": 0,
+      "bytesReceived": 149,
+      "localCandidateType": "srflx",
+      "localCandidateProtocol": "udp",
+      "remoteCandidateType": "host",
+      "remoteCandidateProtocol": "udp"
+    },
+    {
+      "currentRoundTripTime": 0.094,
+      "availableOutgoingBitrate": 428679,
+      "bytesSent": 337721,
+      "bytesReceived": 5148,
+      "localCandidateType": "prflx",
+      "localCandidateProtocol": "udp",
+      "remoteCandidateType": "host",
+      "remoteCandidateProtocol": "udp"
+    }
+  ]
+}

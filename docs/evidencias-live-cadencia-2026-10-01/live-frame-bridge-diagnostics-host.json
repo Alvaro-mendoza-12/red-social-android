@@ -1,0 +1,45 @@
+{
+  "receivedFps": 28.299613404641203,
+  "audioReceived": true,
+  "existingCaptureFps": 29.99957898890843,
+  "publishedTracks": "[audio:false, video:false]",
+  "inbound": [
+    {
+      "kind": "audio",
+      "packetsReceived": 64,
+      "bytesReceived": 1890
+    },
+    {
+      "kind": "video",
+      "packetsReceived": 345,
+      "bytesReceived": 132855,
+      "framesDecoded": 301
+    }
+  ],
+  "videoStats": [
+    {
+      "direction": "inbound-rtp",
+      "framesPerSecond": 29,
+      "framesDecoded": 301,
+      "framesDropped": 6,
+      "frameWidth": 360,
+      "frameHeight": 640,
+      "totalDecodeTime": 1.276,
+      "decoderImplementation": "c2.unisoc.vp8.decoder",
+      "freezeCount": 1,
+      "totalFreezesDuration": 0.21,
+      "codec": "video/VP8"
+    },
+    {
+      "direction": "outbound-rtp",
+      "framesPerSecond": 29,
+      "framesEncoded": 703,
+      "frameWidth": 360,
+      "frameHeight": 640,
+      "totalEncodeTime": 5.326,
+      "encoderImplementation": "libvpx",
+      "qualityLimitationReason": "none",
+      "codec": "video/VP8"
+    }
+  ]
+}

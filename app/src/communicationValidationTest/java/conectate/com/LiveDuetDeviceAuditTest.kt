@@ -76,6 +76,7 @@ class LiveDuetDeviceAuditTest {
         var existingTrack: org.webrtc.VideoTrack? = null
         val bridge = LiveKitRoomBridge(context)
         val frames = AtomicInteger()
+        val frameTimes = java.util.concurrent.ConcurrentLinkedQueue<Long>()
         val rendered = CountDownLatch(1)
         var renderer: io.livekit.android.renderer.TextureViewRenderer? = null
         var video: LiveKitRoomBridge.RemoteVideo? = null
@@ -116,6 +117,7 @@ class LiveDuetDeviceAuditTest {
             instrumentation.runOnMainSync {
                 renderer = object : io.livekit.android.renderer.TextureViewRenderer(context) {
                     override fun onFrame(frame: livekit.org.webrtc.VideoFrame) {
+                        frameTimes.add(System.nanoTime())
                         frames.incrementAndGet(); super.onFrame(frame)
                     }
                 }
@@ -128,8 +130,17 @@ class LiveDuetDeviceAuditTest {
             File(folder,"sfu-ready-$role.json").writeText(JSONObject().put("scopeId",liveId).toString())
             assertTrue("Coordinator did not start both media samples",waitForPhase("sfu-sample-now.json",40))
             val existingBefore = existingFrames.get()
-            val before = frames.get(); val sample = System.nanoTime(); Thread.sleep(10_000)
-            val fps = (frames.get() - before) * 1_000_000_000.0 / (System.nanoTime() - sample)
+            val sampleMs = (arguments.getString("sampleDurationMs")?.toLongOrNull() ?: 10_000L).coerceIn(10_000L, 60_000L)
+            val before = frames.get(); val sample = System.nanoTime(); Thread.sleep(sampleMs)
+            val sampleEnd = System.nanoTime()
+            val fps = (frames.get() - before) * 1_000_000_000.0 / (sampleEnd - sample)
+            val existingCaptureFps = (existingFrames.get() - existingBefore) * 1_000_000_000.0 / (sampleEnd - sample)
+            val sampleFrames = frameTimes.filter { it in sample..sampleEnd }.sorted()
+            val maximumFrameGapMs = (listOf(sample) + sampleFrames + sampleEnd).zipWithNext { a, b -> b - a }
+                .maxOrNull()!!.toDouble() / 1_000_000.0
+            val perSecondFrames = (0 until (sampleMs / 1_000).toInt()).map { second ->
+                sampleFrames.count { (it - sample) / 1_000_000_000L == second.toLong() }
+            }
             if (existingCapture != null) assertTrue("Battle interrupted existing broadcast capture", existingFrames.get() > existingBefore)
             runBlocking { bridge.connect(session, true, true, existingCapture?.localVideoTrack).getOrThrow() }
             assertSame("Duplicate connection replaced the active room", room, roomField.get(bridge))
@@ -150,13 +161,42 @@ class LiveDuetDeviceAuditTest {
                     .put("packetsReceived",it.members["packetsReceived"]).put("bytesReceived",it.members["bytesReceived"])
                     .put("framesDecoded",it.members["framesDecoded"])
             })
+            val videoFields = listOf("framesPerSecond", "framesEncoded", "framesDecoded", "framesDropped",
+                "frameWidth", "frameHeight", "totalEncodeTime", "totalDecodeTime", "encoderImplementation",
+                "decoderImplementation", "qualityLimitationReason", "freezeCount", "totalFreezesDuration",
+                "packetsLost", "jitter", "jitterBufferDelay", "jitterBufferEmittedCount", "jitterBufferTargetDelay",
+                "keyFramesEncoded", "keyFramesDecoded", "nackCount", "pliCount", "firCount",
+                "retransmittedPacketsSent", "retransmittedBytesSent", "totalProcessingDelay")
+            val videoDetails = JSONArray(incomingStats.filter {
+                it.type in listOf("inbound-rtp", "outbound-rtp") && it.members["kind"] == "video"
+            }.map { stat -> JSONObject().put("direction", stat.type).apply {
+                videoFields.forEach { field -> stat.members[field]?.let { put(field, it) } }
+                stat.members["codecId"]?.toString()?.let { id -> incomingStats.firstOrNull { it.id == id } }
+                    ?.members?.get("mimeType")?.let { put("codec", it) }
+            } })
+            val connections = JSONArray(incomingStats.filter {
+                it.type == "candidate-pair" && it.members["state"] == "succeeded" && it.members["nominated"] == true
+            }.map { pair -> JSONObject().apply {
+                listOf("currentRoundTripTime", "availableOutgoingBitrate", "bytesSent", "bytesReceived")
+                    .forEach { key -> pair.members[key]?.let { put(key, it) } }
+                listOf("localCandidateId", "remoteCandidateId").forEach { key ->
+                    val candidate = incomingStats.firstOrNull { it.id == pair.members[key] }
+                    candidate?.members?.get("candidateType")?.let { put(key.removeSuffix("Id") + "Type", it) }
+                    candidate?.members?.get("protocol")?.let { put(key.removeSuffix("Id") + "Protocol", it) }
+                }
+            } })
             File(context.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }, "sfu-diagnostics-$role.json")
-                .writeText(JSONObject().put("receivedFps",fps).put("audioReceived",audio)
+                .writeText(JSONObject().put("receivedFps",fps).put("audioReceived",audio).put("existingCaptureFps", existingCaptureFps)
+                    .put("sampleDurationMs", sampleMs).put("maximumFrameGapMs", maximumFrameGapMs)
+                    .put("perSecondFrames", JSONArray(perSecondFrames))
                     .put("publishedTracks",room.localParticipant.trackPublications.values.map { it.kind.toString()+":"+it.muted })
-                    .put("inbound",statsDetails).toString(2))
+                    .put("inbound",statsDetails).put("videoStats", videoDetails).put("connections", connections).toString(2))
             assertTrue("No incoming audio on $role", audio)
             val minimumRemoteFps = arguments.getString("minimumRemoteFps")?.toDoubleOrNull() ?: 8.0
             assertTrue("Duet image is too slow: $fps < $minimumRemoteFps", fps >= minimumRemoteFps)
+            arguments.getString("maximumFrameGapMs")?.toDoubleOrNull()?.let { maximum ->
+                assertTrue("Duet image stalled: $maximumFrameGapMs ms > $maximum ms", maximumFrameGapMs <= maximum)
+            }
             if (existingCapture != null) {
                 fun waitForCamera(muted: Boolean): Boolean {
                     val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)

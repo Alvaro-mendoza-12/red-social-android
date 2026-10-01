@@ -1,0 +1,95 @@
+INSTRUMENTATION_STATUS: class=conectate.com.LiveKitCancellationDeviceAuditTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=
+conectate.com.LiveKitCancellationDeviceAuditTest:
+INSTRUMENTATION_STATUS: test=cancellingSignalingAllowsACleanRetry
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=conectate.com.LiveKitCancellationDeviceAuditTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=cancellingSignalingAllowsACleanRetry
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=conectate.com.VoiceRoomLayoutAuditTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=
+conectate.com.VoiceRoomLayoutAuditTest:
+INSTRUMENTATION_STATUS: test=reactionsOpenNearTheBottomAndCloseExplicitly
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=conectate.com.VoiceRoomLayoutAuditTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=reactionsOpenNearTheBottomAndCloseExplicitly
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=conectate.com.VoiceRoomLayoutAuditTest
+INSTRUMENTATION_STATUS: current=3
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=largeTextReactionsRemainScrollableAndDismissible
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=conectate.com.VoiceRoomLayoutAuditTest
+INSTRUMENTATION_STATUS: current=3
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=largeTextReactionsRemainScrollableAndDismissible
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=conectate.com.VoiceRoomLayoutAuditTest
+INSTRUMENTATION_STATUS: current=4
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=mutedBadgeRemainsVisibleBeyondTheAvatarEdge
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=conectate.com.VoiceRoomLayoutAuditTest
+INSTRUMENTATION_STATUS: current=4
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=mutedBadgeRemainsVisibleBeyondTheAvatarEdge
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=conectate.com.VoiceRoomLayoutAuditTest
+INSTRUMENTATION_STATUS: current=5
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=sevenDigitCodeFitsWithDoubleTextAndCanBeCopied
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=conectate.com.VoiceRoomLayoutAuditTest
+INSTRUMENTATION_STATUS: current=5
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=sevenDigitCodeFitsWithDoubleTextAndCanBeCopied
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=conectate.com.MediaLifecycleDeviceAuditTest
+INSTRUMENTATION_STATUS: current=6
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=
+conectate.com.MediaLifecycleDeviceAuditTest:
+INSTRUMENTATION_STATUS: test=rapidReentryDrainsDeferredNativePeersBeforeMemoryTrim
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=conectate.com.MediaLifecycleDeviceAuditTest
+INSTRUMENTATION_STATUS: current=6
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=6
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=rapidReentryDrainsDeferredNativePeersBeforeMemoryTrim
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 39.413
+
+OK (6 tests)
+
+
+INSTRUMENTATION_CODE: -1
