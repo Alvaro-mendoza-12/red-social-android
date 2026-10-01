@@ -7,6 +7,7 @@ import conectate.com.data.model.*
 import conectate.com.data.repository.MessageRepository
 import conectate.com.data.repository.PlayMatchRepository
 import conectate.com.data.repository.UserRepository
+import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -15,6 +16,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
@@ -55,6 +59,7 @@ class PlayMatchViewModel @Inject constructor(
     private val repository: PlayMatchRepository,
     private val userRepository: UserRepository,
     private val messageRepository: MessageRepository,
+    private val authService: AuthService,
 ) : ViewModel() {
     private val _state = MutableStateFlow(PlayMatchUiState())
     val state: StateFlow<PlayMatchUiState> = _state.asStateFlow()
@@ -62,16 +67,32 @@ class PlayMatchViewModel @Inject constructor(
     private var inboxJob: Job? = null
     private var catalogSearchJob: Job? = null
     private var homeJob: Job? = null
-    private val discovery = PlayMatchDiscoveryController(viewModelScope, _state) { query ->
+    private val accountTasks = PlayMatchAccountTasks(viewModelScope)
+    private fun newDiscovery() = PlayMatchDiscoveryController(accountTasks.scope, _state) { query ->
         repository.players(query.text, query.game, query.platform, query.region, query.cursor, query.availableNow)
     }
+    private var discovery = newDiscovery()
     private var catalogRequestGeneration: Long = 0
 
-    init { refreshHome() }
+    init {
+        viewModelScope.launch {
+            authService.currentSession.map { it?.user?.id }.distinctUntilChanged().collect { id ->
+                accountTasks.reset()
+                pollingJob = null
+                inboxJob = null
+                catalogSearchJob = null
+                homeJob = null
+                catalogRequestGeneration++
+                discovery = newDiscovery()
+                _state.value = PlayMatchUiState(isLoading = id != null)
+                if (id != null) refreshHome()
+            }
+        }
+    }
 
     fun refreshHome() {
         if (homeJob?.isActive == true) return
-        homeJob = viewModelScope.launch {
+        homeJob = accountTasks.scope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             val capabilities = boundedRequest { repository.capabilities() }.getOrElse {
                 fail(it)
@@ -128,7 +149,7 @@ class PlayMatchViewModel @Inject constructor(
 
     fun loadMore() = discovery.loadMore()
     fun loadProfile() {
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             val capabilities = repository.capabilities().getOrElse { return@launch fail(it) }
             if (!capabilities.enabled) {
@@ -150,7 +171,7 @@ class PlayMatchViewModel @Inject constructor(
     fun uploadGamerAvatar(uri: Uri, onUploaded: (String, String) -> Unit) {
         if (_state.value.isWorking) return
         _state.update { it.copy(isWorking = true, error = null) }
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             userRepository.uploadProfileAvatarMedia(uri).fold(
                 onSuccess = { upload ->
                     onUploaded(upload.url, upload.mediaType)
@@ -169,7 +190,7 @@ class PlayMatchViewModel @Inject constructor(
         }
         if (profile.photos.size >= 4 || _state.value.isWorking) return
         _state.update { it.copy(isWorking = true, error = null, message = null) }
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             userRepository.uploadProfileImage(uri).fold(
                 onSuccess = { uploadedUrl ->
                     repository.updateProfile(profile.asUpdateRequest(photos = profile.photos + uploadedUrl)).fold(
@@ -195,7 +216,7 @@ class PlayMatchViewModel @Inject constructor(
             request = { repository.updateProfile(profile.asUpdateRequest(photos = profile.photos.filterNot { it == url })) },
             onSuccess = { response ->
                 _state.update { it.copy(profile = response.profile, preferences = response.preferences) }
-                viewModelScope.launch { userRepository.deleteUploadedProfileMedia(url) }
+                accountTasks.scope.launch { userRepository.deleteUploadedProfileMedia(url) }
             },
         )
     }
@@ -229,7 +250,7 @@ class PlayMatchViewModel @Inject constructor(
                 isCatalogSelectionLoading = false,
             )
         }
-        catalogSearchJob = viewModelScope.launch {
+        catalogSearchJob = accountTasks.scope.launch {
             delay(if (normalized.isBlank()) 0 else 350)
             repository.searchGames(normalized).fold(
                 onSuccess = { response ->
@@ -254,7 +275,7 @@ class PlayMatchViewModel @Inject constructor(
         catalogSearchJob?.cancel()
         val generation = ++catalogRequestGeneration
         _state.update { it.copy(isCatalogLoading = true, catalogError = null) }
-        catalogSearchJob = viewModelScope.launch {
+        catalogSearchJob = accountTasks.scope.launch {
             repository.searchGames(query, force = true).fold(
                 onSuccess = { response ->
                     if (generation == catalogRequestGeneration) _state.update { it.copy(
@@ -274,7 +295,7 @@ class PlayMatchViewModel @Inject constructor(
         val generation = catalogRequestGeneration
         val query = _state.value.catalogQuery
         _state.update { it.copy(isCatalogLoadingMore = true, catalogError = null) }
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             repository.searchGames(query, cursor).fold(
                 onSuccess = { response ->
                     if (generation != catalogRequestGeneration) return@fold
@@ -291,7 +312,7 @@ class PlayMatchViewModel @Inject constructor(
 
     fun selectCatalogGame(game: PlayMatchGameCatalogItem) {
         _state.update { it.copy(selectedCatalogGame = game, catalogError = null, isCatalogSelectionLoading = true) }
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             repository.gameConfiguration(game.id).fold(
                 onSuccess = { response -> _state.update { it.copy(selectedCatalogGame = response.game, isCatalogSelectionLoading = false) } },
                 onFailure = { error -> _state.update { it.copy(isCatalogSelectionLoading = false, catalogError = PlayMatchUiPolicy.safeError(error)) } },
@@ -309,7 +330,7 @@ class PlayMatchViewModel @Inject constructor(
     })
 
     fun loadPlayer(id: String) {
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             _state.update { it.copy(isLoading = true, error = null, playerDetail = null) }
             repository.player(id).fold(
                 onSuccess = { player -> _state.update { it.copy(isLoading = false, playerDetail = player) } },
@@ -324,7 +345,7 @@ class PlayMatchViewModel @Inject constructor(
     fun startMatchmaking(criteria: PlayMatchCriteria = PlayMatchCriteria()) {
         if (_state.value.isWorking) return
         _state.update { it.copy(isWorking = true, error = null, message = null) }
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             repository.start(criteria).fold(
                 onSuccess = { response ->
                     _state.update { it.copy(isWorking = false, session = response.session) }
@@ -337,7 +358,7 @@ class PlayMatchViewModel @Inject constructor(
 
     fun loadSession(id: String) {
         pollingJob?.cancel()
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             repository.session(id).fold(
                 onSuccess = { response ->
@@ -355,7 +376,7 @@ class PlayMatchViewModel @Inject constructor(
         if (_state.value.isWorking) return
         pollingJob?.cancel()
         _state.update { it.copy(isWorking = true, message = null, error = null) }
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             boundedRequest { repository.cancel(current.id) }.fold(
                 onSuccess = { response ->
                     if (_state.value.session?.id != current.id) return@fold
@@ -405,7 +426,7 @@ class PlayMatchViewModel @Inject constructor(
 
     private fun pollSession(id: String) {
         pollingJob?.cancel()
-        pollingJob = viewModelScope.launch {
+        pollingJob = accountTasks.scope.launch {
             while (true) {
                 delay(2_000)
                 val result = repository.session(id)
@@ -424,16 +445,16 @@ class PlayMatchViewModel @Inject constructor(
     }
 
     private fun refreshConnections() {
-        viewModelScope.launch { repository.connections().onSuccess { value -> _state.update { it.copy(connections = value.items) } } }
+        accountTasks.scope.launch { repository.connections().onSuccess { value -> _state.update { it.copy(connections = value.items) } } }
     }
 
     private fun refreshMatchInbox() {
-        viewModelScope.launch { repository.matches().onSuccess { value -> _state.update { it.copy(matches = value.items) } } }
+        accountTasks.scope.launch { repository.matches().onSuccess { value -> _state.update { it.copy(matches = value.items) } } }
     }
 
     private fun startInboxPolling() {
         if (inboxJob?.isActive == true) return
-        inboxJob = viewModelScope.launch {
+        inboxJob = accountTasks.scope.launch {
             while (true) {
                 delay(15_000)
                 repository.connections().onSuccess { response -> _state.update { it.copy(connections = response.items) } }
@@ -443,9 +464,11 @@ class PlayMatchViewModel @Inject constructor(
     }
 
     private fun <T> work(message: String, request: suspend () -> Result<T>, onSuccess: (T) -> Unit) {
-        if (_state.value.isWorking) return
+        if (_state.value.isWorking) {
+            return
+        }
         _state.update { it.copy(isWorking = true, error = null, message = null) }
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             boundedRequest(request).fold(
                 onSuccess = { value -> onSuccess(value); _state.update { it.copy(isWorking = false, message = message) } },
                 onFailure = { fail(it, loading = false) },
@@ -467,6 +490,7 @@ class PlayMatchViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        accountTasks.close()
         pollingJob?.cancel()
         inboxJob?.cancel()
         catalogSearchJob?.cancel()

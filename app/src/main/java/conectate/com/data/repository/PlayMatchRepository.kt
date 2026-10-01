@@ -7,6 +7,8 @@ import java.util.UUID
 import java.util.LinkedHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 @Singleton
 class PlayMatchRepository @Inject constructor(
@@ -80,8 +82,16 @@ class PlayMatchRepository @Inject constructor(
     suspend fun decideMatch(id: String, decision: String, reason: String = "") = withToken { api.decideMatch(it, id, PlayMatchDecisionRequest(decision, reason)) }
 
     private suspend fun <T> withToken(block: suspend (String) -> Result<T>): Result<T> {
+        val accountId = authService.getCurrentUserId()
         val token = authService.getAccessTokenAwait()
             ?: return Result.failure(IllegalStateException("Necesitas iniciar sesión para usar Juegos."))
-        return block(token)
+        currentCoroutineContext().ensureActive()
+        if (accountId == null || accountId != authService.getCurrentUserId()) {
+            return Result.failure(IllegalStateException("La cuenta activa cambió. Vuelve a abrir Juegos."))
+        }
+        val result = block(token)
+        currentCoroutineContext().ensureActive()
+        if (accountId != authService.getCurrentUserId()) return Result.failure(IllegalStateException("La cuenta activa cambió."))
+        return result
     }
 }
