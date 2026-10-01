@@ -1256,6 +1256,13 @@ function registerPlayMatchRoutes(app, {
         return res.status(404).json({ error: 'CONNECTION_NOT_FOUND' })
       }
       const userId = localUserId(ctx.user)
+      // Replays need the same authorization as the original decision. Checking
+      // status first would expose an accepted/rejected row to any signed-in user.
+      const authorizedActor = decision === 'CANCEL' ? row.requester_user_id : row.recipient_user_id
+      if (authorizedActor !== userId) {
+        await client.query('ROLLBACK')
+        return res.status(403).json({ error: 'NOT_ALLOWED' })
+      }
       if (row.status !== 'PENDING') {
         const expectedStatus = decision === 'ACCEPT' ? 'ACCEPTED' : decision === 'REJECT' ? 'REJECTED' : 'CANCELLED'
         if (row.status === expectedStatus) {
@@ -1264,14 +1271,6 @@ function registerPlayMatchRoutes(app, {
         }
         await client.query('ROLLBACK')
         return res.status(409).json({ error: 'CONNECTION_NOT_PENDING' })
-      }
-      if (decision === 'CANCEL' && row.requester_user_id !== userId) {
-        await client.query('ROLLBACK')
-        return res.status(403).json({ error: 'NOT_ALLOWED' })
-      }
-      if (decision !== 'CANCEL' && row.recipient_user_id !== userId) {
-        await client.query('ROLLBACK')
-        return res.status(403).json({ error: 'NOT_ALLOWED' })
       }
       const status = decision === 'ACCEPT' ? 'ACCEPTED' : decision === 'REJECT' ? 'REJECTED' : 'CANCELLED'
       const updated = await client.query(
