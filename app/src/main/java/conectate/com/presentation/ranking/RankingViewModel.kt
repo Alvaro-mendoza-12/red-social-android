@@ -16,6 +16,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.*
 import conectate.com.data.repository.VideoRepository
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -38,24 +42,63 @@ class RankingViewModel @Inject constructor(
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    private val _usersMetric = MutableStateFlow("followers")
+    val usersMetric = _usersMetric.asStateFlow()
+    private val _myRank = MutableStateFlow<Int?>(null)
+    val myRank = _myRank.asStateFlow()
+    private val _error = MutableStateFlow<String?>(null)
+    val error = _error.asStateFlow()
+    private var loadJob: Job? = null
+    private var statsJob: Job? = null
+    private var loadRevision = 0L
     private val postMutationsInFlight = mutableSetOf<String>()
 
     init {
+        viewModelScope.launch {
+            authService.currentSession.map { it?.user?.id }.distinctUntilChanged().collect {
+                _users.value = emptyList()
+                _videos.value = emptyList()
+                _posts.value = emptyList()
+                _myRank.value = null
+                loadData()
+            }
+        }
+    }
+
+    fun selectUsersMetric(metric: String) {
+        if (metric !in setOf("followers", "following", "posts") || metric == _usersMetric.value) return
+        _usersMetric.value = metric
         loadData()
     }
 
     fun loadData() {
-        viewModelScope.launch {
+        val revision = ++loadRevision
+        loadJob?.cancel()
+        statsJob?.cancel()
+        loadJob = viewModelScope.launch {
             _isLoading.value = true
+            _error.value = null
             try {
-                repository.getTopUsers().onSuccess { _users.value = it }
-                repository.getTopPosts().onSuccess { _posts.value = it }
-                repository.getTopVideos().onSuccess { baseVideos ->
+                coroutineScope {
+                val userRequest = async { repository.getUserRanking(_usersMetric.value) }
+                val postRequest = async { repository.getTopPosts() }
+                val videoRequest = async { repository.getTopVideos() }
+                val userResult = userRequest.await()
+                val postResult = postRequest.await()
+                val videoResult = videoRequest.await()
+                if (revision != loadRevision) return@coroutineScope
+                userResult.onSuccess { _users.value = it.users; _myRank.value = it.myRank }
+                postResult.onSuccess { _posts.value = it }
+                if (listOf(userResult, postResult, videoResult).any { it.isFailure }) {
+                    _error.value = "No se pudo actualizar todo el ranking. Puedes reintentar."
+                }
+                videoResult.onSuccess { baseVideos ->
                     _videos.value = baseVideos
                     
                     // Observe stats for each video in real-time from local Room cache
+                    statsJob = viewModelScope.launch {
                     baseVideos.forEach { video ->
-                        viewModelScope.launch {
+                        launch {
                             videoRepository.getVideoStatsFlow(video.id).collect { stats ->
                                 if (stats != null) {
                                     _videos.value = _videos.value.map { v ->
@@ -72,11 +115,16 @@ class RankingViewModel @Inject constructor(
                             }
                         }
                     }
+                    }
                 }
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.e("RankingViewModel", "Error loading ranking data", e)
+                _error.value = "No se pudo actualizar el ranking."
             } finally {
-                _isLoading.value = false
+                if (revision == loadRevision) _isLoading.value = false
             }
         }
     }

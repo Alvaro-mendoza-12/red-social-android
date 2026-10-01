@@ -332,6 +332,8 @@ fun VideoFeedScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
+    val searchError by viewModel.searchError.collectAsState()
+    val searchTopics by viewModel.searchTopics.collectAsState()
     
     val currentUserId by viewModel.currentUserId.collectAsState()
     val isProfileFeed = viewModel.isProfileFeed
@@ -1783,7 +1785,20 @@ fun VideoFeedScreen(
                           }) { Text("Reintentar") }
                       }
                   }
-            } else if ((isLoading || initialEmptyGraceActive) && currentVideos.isEmpty()) {
+            } else if (isSearchMode && searchQuery.trim().length < 2) {
+                Column(Modifier.fillMaxSize().padding(top = 76.dp, bottom = 80.dp).verticalScroll(rememberScrollState())) {
+                    Text("Descubre temas", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
+                    Text("Basados en videos públicos de este mes de tu feed", color = Color.White.copy(alpha = .7f), modifier = Modifier.padding(horizontal = 16.dp))
+                    searchTopics.forEach { topic ->
+                        TextButton(onClick = { viewModel.onSearchQueryChanged(topic.query) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                            Icon(Icons.Default.Search, contentDescription = null, tint = Color.White)
+                            Text(topic.query, color = Color.White, modifier = Modifier.weight(1f).padding(12.dp))
+                            Text(topic.label, color = Color.White.copy(alpha = .6f))
+                        }
+                    }
+                    if (searchTopics.isEmpty()) Text("Busca por tema, etiqueta o comentario", color = Color.White, modifier = Modifier.padding(16.dp))
+                }
+            } else if ((isLoading || initialEmptyGraceActive || isSearching) && currentVideos.isEmpty()) {
                  Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Color.White)
                 }
@@ -1823,7 +1838,7 @@ fun VideoFeedScreen(
                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
                           Text(
                               text = if (isProfileFeed) "Este perfil todavía no tiene videos publicados"
-                                     else if (isSearchMode) "No se encontraron videos para \"$searchQuery\""
+                                     else if (isSearchMode) searchError ?: "No se encontraron videos para \"$searchQuery\""
                                      else if (selectedTab == 0) "Sé el primero en subir un video" 
                                      else "Sigue personas para ver su contenido",
                               color = Color.White,
@@ -1943,6 +1958,7 @@ fun VideoFeedScreen(
                                 selectedVideoForReport = reportedVideo
                             },
                             onSoundClick = { soundVideo -> selectedSound = soundVideo },
+                            onRelatedSearch = { query -> viewModel.toggleSearchMode(true); viewModel.onSearchQueryChanged(query) },
                             hasPlaybackError = exhaustedPlaybackVideoId == video.id,
                             onRetryPlayback = {
                                 automaticPlaybackAttempts[video.id] = 0
@@ -2118,7 +2134,7 @@ fun VideoFeedScreen(
                         onValueChange = { viewModel.onSearchQueryChanged(it) },
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp)
+                            .heightIn(min = 52.dp)
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(26.dp)),
                         placeholder = { Text("¿Qué quieres ver?", color = Color.White.copy(alpha = 0.5f)) },
                         colors = TextFieldDefaults.colors(
@@ -2144,6 +2160,7 @@ fun VideoFeedScreen(
             }
             
             // Keep the create action on the same toolbar row as LIVE, tabs and search.
+            if (!isSearchMode) {
             Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -2231,6 +2248,7 @@ fun VideoFeedScreen(
                     )
                     }
                 }
+            }
             }
         }
     }
@@ -2407,6 +2425,7 @@ fun VideoItem(
     onSoundClick: (Video) -> Unit,
     hasPlaybackError: Boolean,
     onRetryPlayback: () -> Unit,
+    onRelatedSearch: (String) -> Unit = {},
 ) {
     // Live Stats Observation (Optimized: only collect when selected)
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -2960,6 +2979,15 @@ fun VideoItem(
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2
             )
+            videoRelatedTopic(video)?.let { topic ->
+                Row(Modifier.fillMaxWidth().clickable { onRelatedSearch(topic) }.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Text("Buscar: $topic", color = Color.White, style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(start = 6.dp))
+                }
+            }
             Text(
                 text = formatVideoMonthYear(video.created_at),
                 color = Color.White.copy(alpha = 0.7f),

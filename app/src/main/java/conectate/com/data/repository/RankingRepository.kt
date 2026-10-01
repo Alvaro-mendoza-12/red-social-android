@@ -16,7 +16,10 @@ import io.ktor.client.call.body
 import conectate.com.data.supabase.AuthService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
+
+data class UserRankingSnapshot(val users: List<User>, val myRank: Int?, val myProfile: User?, val total: Int?)
 
 @Singleton
 class RankingRepository @Inject constructor(
@@ -27,14 +30,16 @@ class RankingRepository @Inject constructor(
 
 
 
-    suspend fun getTopUsers(filter: String = "followers"): Result<List<User>> = withContext(Dispatchers.IO) {
+    suspend fun getTopUsers(filter: String = "followers"): Result<List<User>> = getUserRanking(filter).map { it.users }
+
+    suspend fun getUserRanking(filter: String = "followers"): Result<UserRankingSnapshot> = withContext(Dispatchers.IO) {
         try {
             if (supabaseConfig.isLocalFallbackPrimary) {
                 val token = authService.getAccessToken()
                     ?: return@withContext Result.failure(Exception("No access token available"))
                 val response = supabaseConfig.httpClient.get("${localFallbackApiClient.baseUrl}/v1/data/profiles/ranking") {
                     header("Authorization", "Bearer $token")
-                    parameter("metric", if (filter == "posts") "posts" else "followers")
+                    parameter("metric", filter.takeIf { it in setOf("followers", "following", "posts") } ?: "followers")
                     parameter("limit", "100")
                 }
                 if (!response.status.isSuccess()) {
@@ -51,18 +56,16 @@ class RankingRepository @Inject constructor(
                         }.getOrNull()
                     }
                     .orEmpty()
-                    .sortedByDescending {
-                        when (filter) {
-                            "posts" -> it.post_count ?: 0
-                            else -> it.followers_count ?: 0
-                        }
-                    }
-                return@withContext Result.success(users)
+                val myProfile = (root["myProfile"] as? JsonObject)?.let { item ->
+                    runCatching { supabaseConfig.json.decodeFromJsonElement<User>(item.normalizedStorageUrls()) }.getOrNull()
+                }
+                return@withContext Result.success(UserRankingSnapshot(users,
+                    root["myRank"]?.jsonPrimitive?.intOrNull, myProfile, root["total"]?.jsonPrimitive?.intOrNull))
             }
 
             var orderColumn = when (filter) {
-                "likes" -> "likes_count" // Assuming these columns exist or we count them
-                "views" -> "views_count" // Assuming mostly for video creators
+                "posts" -> "post_count"
+                "following" -> "following_count"
                 else -> "followers_count"
             }
             
@@ -77,10 +80,12 @@ class RankingRepository @Inject constructor(
             
             if (response.status.isSuccess()) {
                 val users: List<User> = response.body()
-                Result.success(users)
+                Result.success(UserRankingSnapshot(users, null, null, null))
             } else {
                 Result.failure(Exception("Error fetching top users"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }

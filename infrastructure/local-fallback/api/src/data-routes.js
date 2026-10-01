@@ -48,6 +48,7 @@ const { ensureVideoCollectionTables, registerVideoCollectionRoutes } = require('
 const { validVideoPublishAttemptId, sameVideoPublishPayload } = require('./video-publish-attempt')
 const { normalizeVideoChapters } = require('./video-chapters')
 const { ensureVoiceRoomCodes } = require('./voice-room-identity')
+const { normalizeVideoSearch, videoTextMatchesQuery, matchingVisibleCommentVideoIds, escapedSearchLike } = require('./video-search-policy')
 
 const AUTO_VERIFY_FOLLOWER_THRESHOLD = 100_000
 
@@ -1695,6 +1696,31 @@ function importedVideoCommentRows(rows, videoIds = null) {
       const videoId = videoIdOf(row)
       return videoId && (!filterIds || filterIds.has(videoId))
     })
+}
+
+async function searchVisibleVideoCommentIds(pool, videoIds, identity, query) {
+  const ids = Array.from(cleanSet(videoIds))
+  if (!ids.length || normalizeVideoSearch(query).length < 2) return new Set()
+  const viewerIds = Array.from(cleanSet(identity?.values || []))
+  const [local, imported, reports] = await Promise.all([
+    pool.query(
+      `SELECT id::text, video_id, content
+       FROM fallback_video_comments
+       WHERE lower(video_id) = ANY($1::text[]) AND is_deleted = FALSE
+         AND lower(regexp_replace(normalize(content, NFD), U&'[\\0300-\\036F]', '', 'g')) LIKE $2
+       ORDER BY created_at DESC LIMIT 10000`,
+      [ids, escapedSearchLike(query)],
+    ),
+    importedVideoCommentsByIds(pool, ids, 10000),
+    pool.query(
+      `SELECT lower(comment_id) AS comment_id FROM fallback_video_comment_reports
+       WHERE lower(video_id) = ANY($1::text[]) AND lower(reporter_id) = ANY($2::text[])`,
+      [ids, viewerIds],
+    ),
+  ])
+  const visibleRows = [...local.rows, ...importedVideoCommentRows(imported, ids)]
+    .map((row) => ({ ...row, video_id: videoIdOf(row) }))
+  return matchingVisibleCommentVideoIds(visibleRows, query, ids, new Set(reports.rows.map((row) => row.comment_id)))
 }
 
 function videoCommentCountsFromRows(rows) {
@@ -4171,7 +4197,7 @@ function profileSearchCard(profile) {
   }
 }
 
-function rankPublicProfiles({ profiles, follows, posts, metric = 'followers', limit = 100 }) {
+function rankPublicProfiles({ profiles, follows, posts, metric = 'followers', limit = 100, includeAll = false }) {
   const cleanMetric = new Set(['followers', 'following', 'posts']).has(metric) ? metric : 'followers'
   const boundedLimit = Math.max(1, Math.min(Number(limit) || 100, 250))
   const profilesByKey = new Map()
@@ -4227,9 +4253,9 @@ function rankPublicProfiles({ profiles, follows, posts, metric = 'followers', li
       const field = cleanMetric === 'posts' ? 'post_count' : `${cleanMetric}_count`
       const delta = numberOf(b, [field], 0) - numberOf(a, [field], 0)
       if (delta !== 0) return delta
-      return toMillis(b.updated_at) - toMillis(a.updated_at)
+      return toMillis(b.updated_at) - toMillis(a.updated_at) || String(a.id).localeCompare(String(b.id))
     })
-    .slice(0, boundedLimit)
+    .slice(0, includeAll ? undefined : boundedLimit)
 }
 
 async function currentUserOwnsStorageObject(pool, currentUserId, rawUrl, allowedBuckets) {
@@ -7250,15 +7276,19 @@ function registerDataRoutes(app, {
         viewerIds: identity.ids,
         isFollowing: Array.from(profileAliasSet(profile)).some((id) => followedIds.has(id)),
       }))
-      const items = rankPublicProfiles({
+      const ranking = rankPublicProfiles({
         profiles: visibleProfiles,
         follows,
         posts: [...importedPosts, ...fallbackPosts],
         metric,
         limit,
+        includeAll: true,
       })
+      const myIndex = ranking.findIndex((profile) => Array.from(profileAliasSet(profile)).some((id) => identity.ids.has(id)))
+      const items = ranking.slice(0, limit)
       setPrivateShortCache(res, 10)
-      res.json({ items, metric, limit })
+      res.json({ items, metric, limit, myRank: myIndex < 0 ? null : myIndex + 1,
+        myProfile: myIndex < 0 ? null : ranking[myIndex], total: ranking.length })
     } catch (error) {
       next(error)
     }
@@ -12160,7 +12190,7 @@ function registerDataRoutes(app, {
       const requestedUserId = normalizeId(req.query.userId || req.query.user_id || '')
       const requestedSharedBy = normalizeId(req.query.sharedBy || req.query.shared_by || '')
       const requestedFavoritedBy = normalizeId(req.query.favoritedBy || req.query.favorited_by || '')
-      const searchQuery = cleanText(req.query.q || req.query.query || '', 120).toLowerCase()
+      const searchQuery = normalizeVideoSearch(cleanText(req.query.q || req.query.query || '', 120))
       const requestedSoundId = normalizeId(req.query.soundId || req.query.sound_id || '')
       const recommended = /^(1|true|yes)$/i.test(String(req.query.recommended || ''))
       const followingOnly = /^(1|true|yes)$/i.test(String(req.query.followingOnly || req.query.following_only || ''))
@@ -12195,7 +12225,7 @@ function registerDataRoutes(app, {
       ])
       const mergedVideos = mergeRowsById([...importedVideos, ...fallbackVideos])
       let followingOwnerIds = new Set()
-      if (followingOnly) {
+      if (followingOnly || searchQuery) {
         const [importedFollowing, fallbackFollowing] = await Promise.all([
           importedRowsByFieldValues(
             pool,
@@ -12220,7 +12250,7 @@ function registerDataRoutes(app, {
         ...mergedVideos.flatMap((row) => Array.from(videoOwnerIds(row))),
       ])
       const publicProfiles = await publicProfilesByIds(pool, profileCandidateIds)
-      if (followingOnly) {
+      if (followingOnly || searchQuery) {
         // Imported follow records may use a Supabase alias while the video
         // row uses the local UUID (or the reverse). Expand the allow-list with
         // every public-profile alias before filtering rows.
@@ -12275,6 +12305,19 @@ function registerDataRoutes(app, {
       }
       const mergedVideoIds = mergedVideos.map((row) => textOf(row, ['id'], '')).filter(Boolean)
       const deletedVideoIds = await localVideoDeletionIds(pool, mergedVideoIds)
+      const searchProfilesById = searchQuery ? indexProfiles(publicProfiles) : new Map()
+      const searchCandidateIds = new Set(mergedVideos.filter((row) => {
+        if (!searchQuery) return false
+        if (deletedVideoIds.has(normalizeId(textOf(row, ['id'], '')))) return false
+        if (!boolOf(row, ['is_public', 'isPublic'], true) && !rowMatchesAny(row, ['user_id', 'userId'], identity.ids)) return false
+        const owner = searchProfilesById.get(normalizeId(textOf(row, ['user_id', 'userId'], '')))
+        return !owner || profileVisibleToViewer(owner, { viewerIds: identity.ids,
+          isFollowing: Array.from(profileAliasSet(owner)).some((id) => followingOwnerIds.has(id)) })
+      }).map((row) => normalizeId(textOf(row, ['id'], ''))))
+      // Candidate membership and final video visibility stay independent of comment matches.
+      const commentMatchIds = searchQuery.length >= 2
+        ? await searchVisibleVideoCommentIds(pool, searchCandidateIds, identity, searchQuery)
+        : new Set()
       const followingVisibleOwnerIds = new Set([...identity.ids, ...followingOwnerIds])
       let videos = mergedVideos.filter((row) => {
         if (deletedVideoIds.has(normalizeId(textOf(row, ['id'], '')))) return false
@@ -12285,12 +12328,8 @@ function registerDataRoutes(app, {
           if (!videoMatchesSound(row, requestedSoundId)) return false
         }
         if (searchQuery) {
-          const haystack = [
-            textOf(row, ['title', 'caption'], ''),
-            textOf(row, ['description', 'content'], ''),
-            ...arrayOf(row, ['tags']),
-          ].join(' ').toLowerCase()
-          if (!haystack.includes(searchQuery)) return false
+          if (!searchCandidateIds.has(normalizeId(textOf(row, ['id'], '')))) return false
+          if (!videoTextMatchesQuery(row, searchQuery) && !commentMatchIds.has(normalizeId(textOf(row, ['id'], '')))) return false
         }
         if (
           followingOnly &&
@@ -14840,6 +14879,7 @@ module.exports = {
   profileClearFields,
   profilePatchFromBody,
   rankPublicProfiles,
+  searchVisibleVideoCommentIds,
   reportedVideoCommentIds,
   sameStorageObjectReference,
   storageObjectExists,

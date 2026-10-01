@@ -124,6 +124,12 @@ class VideoFeedViewModel @Inject constructor(
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
+    private val _searchError = MutableStateFlow<String?>(null)
+    val searchError = _searchError.asStateFlow()
+    private val _searchTopics = MutableStateFlow<List<VideoDiscoveryTopic>>(emptyList())
+    internal val searchTopics = _searchTopics.asStateFlow()
+    private var searchRevision = 0L
+
     private var searchJob: Job? = null
     private var mentionSearchJob: Job? = null
     private val playbackViewTracker = RealPlaybackViewTracker()
@@ -340,6 +346,9 @@ class VideoFeedViewModel @Inject constructor(
         clearSoundVideos()
         _searchQuery.value = ""
         _searchResults.value = emptyList()
+        _searchTopics.value = emptyList()
+        _searchError.value = null
+        searchRevision++
         _isSearchMode.value = false
         _isSearching.value = false
         _commentsSheetOpen.value = false
@@ -630,34 +639,51 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun onSearchQueryChanged(query: String) {
-        _searchQuery.value = query
+        _searchQuery.value = query.take(120)
+        val clean = normalizedVideoSearch(query)
+        val revision = ++searchRevision
         searchJob?.cancel()
-        if (query.isBlank()) {
+        _searchError.value = null
+        if (clean.length < 2) {
             _searchResults.value = emptyList()
             _isSearching.value = false
             return
         }
 
         val generation = accountGeneration
+        _isSearching.value = true
         searchJob = viewModelScope.launch {
-            delay(500) // Debounce search
+            delay(250)
             try {
-                _isSearching.value = true
-                videoRepository.searchVideos(query).onSuccess { videos ->
-                    if (generation != accountGeneration) return@onSuccess
+                videoRepository.searchVideos(clean).onSuccess { videos ->
+                    if (generation != accountGeneration || revision != searchRevision || !_isSearchMode.value) return@onSuccess
                     _searchResults.value = videos
                     _isSearching.value = false
                 }.onFailure {
-                    if (generation == accountGeneration) _isSearching.value = false
+                    if (generation == accountGeneration && revision == searchRevision) {
+                        _isSearching.value = false
+                        _searchError.value = "No se pudo buscar. Revisa la conexión y vuelve a intentarlo."
+                    }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
-                if (generation == accountGeneration) _isSearching.value = false
+                if (generation == accountGeneration && revision == searchRevision) {
+                    _isSearching.value = false
+                    _searchError.value = "No se pudo completar la búsqueda."
+                }
             }
         }
     }
 
     fun toggleSearchMode(enabled: Boolean) {
         _isSearchMode.value = enabled
+        searchRevision++
+        searchJob?.cancel()
+        _isSearching.value = false
+        _searchError.value = null
+        _searchResults.value = emptyList()
+        if (enabled) _searchTopics.value = videoDiscoveryTopics(_forYouVideos.value)
         if (!enabled) {
             _searchQuery.value = ""
             _searchResults.value = emptyList()

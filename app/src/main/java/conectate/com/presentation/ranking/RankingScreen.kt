@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -34,6 +37,9 @@ fun RankingScreen(
     val videos by viewModel.videos.collectAsState()
     val posts by viewModel.posts.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val usersMetric by viewModel.usersMetric.collectAsState()
+    val myRank by viewModel.myRank.collectAsState()
+    val loadError by viewModel.error.collectAsState()
 
     Scaffold(
         topBar = {
@@ -57,27 +63,53 @@ fun RankingScreen(
                     )
                 }
             }
+            if (selectedTab == 0) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("followers" to "Seguidores", "following" to "Siguiendo", "posts" to "Publicaciones").forEach { (metric, label) ->
+                        FilterChip(selected = usersMetric == metric, onClick = { viewModel.selectUsersMetric(metric) }, label = { Text(label) })
+                    }
+                }
+                Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+                    Text("Los 100 primeros · " + (myRank?.let { "Tu puesto: #$it" } ?: "Tu puesto aún no está disponible"),
+                        Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
+                }
+            }
+            loadError?.let { message ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(message, Modifier.weight(1f), color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = viewModel::loadData) { Text("Reintentar") }
+                }
+            }
+            if (isLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
             
             Box(modifier = Modifier.fillMaxSize()) {
-                if (isLoading) {
+                if (isLoading && users.isEmpty() && videos.isEmpty() && posts.isEmpty()) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         when (selectedTab) {
                             0 -> { // Users
-                                items(users) { user ->
+                                itemsIndexed(users, key = { _, user -> user.id }) { index, user ->
+                                    Text("#${index + 1}", Modifier.padding(start = 16.dp, top = 8.dp),
+                                        style = MaterialTheme.typography.labelLarge)
                                     UserItem(
                                         user = user,
                                         onClick = { navController.navigate(Screen.UserProfile.createRoute(user.id)) },
                                         trailingContent = {
                                             Column(horizontalAlignment = Alignment.End) {
                                                 Text(
-                                                    text = "${user.followers_count}",
+                                                    text = when (usersMetric) {
+                                                        "posts" -> "${user.post_count ?: 0}"
+                                                        "following" -> "${user.following_count ?: 0}"
+                                                        else -> "${user.followers_count ?: 0}"
+                                                    },
                                                     style = MaterialTheme.typography.titleMedium,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Text(
-                                                    text = "Seguidores",
+                                                    text = when (usersMetric) { "posts" -> "Publicaciones"; "following" -> "Siguiendo"; else -> "Seguidores" },
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                                 )
