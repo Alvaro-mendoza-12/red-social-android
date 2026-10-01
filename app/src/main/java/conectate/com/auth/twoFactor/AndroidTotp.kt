@@ -6,7 +6,7 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * RFC 6238 TOTP compatible with Google Authenticator (HMAC-SHA1, 30s, 6 digits).
- * Pure Android APIs ù no desktop JVM SecureRandom providers.
+ * Pure Android APIs with no desktop JVM SecureRandom providers.
  */
 internal object AndroidTotp {
     private const val TIME_STEP_SECONDS = 30L
