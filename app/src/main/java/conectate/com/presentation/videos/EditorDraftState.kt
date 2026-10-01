@@ -31,6 +31,7 @@ internal data class EditorDraftState(
                     putFloat("fontSize", clip.fontSize); putFloat("brightness", clip.brightness)
                     putFloat("contrast", clip.contrast); putFloat("saturation", clip.saturation)
                     putString("filterType", clip.filterType.name); putString("aspectRatio", clip.aspectRatio.name)
+                    putString("customLutId", clip.customLutId); putString("customLutTitle", clip.customLutTitle)
                     putFloat("originalAudioVolume", clip.originalAudioVolume); putFloat("musicVolume", clip.musicVolume)
                 } }))
             } }))
@@ -63,6 +64,7 @@ internal data class EditorDraftState(
                         fontSize = clip.getFloat("fontSize"), brightness = clip.getFloat("brightness"),
                         contrast = clip.getFloat("contrast"), saturation = clip.getFloat("saturation"),
                         filterType = FilterType.valueOf(clip.getString("filterType")!!),
+                        customLutId = clip.getString("customLutId"), customLutTitle = clip.getString("customLutTitle"),
                         aspectRatio = AspectRatio.valueOf(clip.getString("aspectRatio")!!),
                         originalAudioVolume = clip.getFloat("originalAudioVolume"), musicVolume = clip.getFloat("musicVolume"),
                     )

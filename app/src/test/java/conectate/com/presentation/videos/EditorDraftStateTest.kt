@@ -18,7 +18,8 @@ class EditorDraftStateTest {
         val video = EditorClip(7, uri = Uri.parse("content://media/qa/7"), startMs = 900, durationMs = 2400,
             sourceDurationMs = 50_000, startOffsetMs = 7000, speed = 1.5f, volume = .4f,
             brightness = .2f, contrast = 1.3f, saturation = .7f, filterType = FilterType.SEPIA,
-            aspectRatio = AspectRatio.RATIO_9_16, originalAudioVolume = .3f, musicVolume = .9f)
+            aspectRatio = AspectRatio.RATIO_9_16, originalAudioVolume = .3f, musicVolume = .9f,
+            customLutId = "a".repeat(64), customLutTitle = "Mi filtro")
         val text = EditorClip(8, type = ClipType.TEXT, text = "Mi edición", x = 17f, y = 44f, color = 123, fontSize = 30f)
         val sticker = EditorClip(9, type = ClipType.STICKER, resId = 45)
         val draft = EditorDraftState(EditorTimeline(listOf(EditorTrack(1, TrackType.VIDEO, listOf(video)),

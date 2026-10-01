@@ -99,6 +99,13 @@ fun VideoEditorScreen(
     val exportStage by viewModel.exportStage.collectAsState()
     val timelineThumbnails by viewModel.timelineThumbnails.collectAsState()
     val isPreparingTimeline by viewModel.isPreparingTimeline.collectAsState()
+    val isImportingLut by viewModel.isImportingLut.collectAsState()
+    var lutTargetClipId by remember { mutableStateOf<Long?>(null) }
+    val colorLutPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val target = lutTargetClipId
+        lutTargetClipId = null
+        if (uri != null && target != null) viewModel.importColorLut(context, target, uri)
+    }
 
     var showTextDialog by remember { mutableStateOf(false) }
     var currentEditingText by remember { mutableStateOf("") }
@@ -757,6 +764,12 @@ fun VideoEditorScreen(
                                             .horizontalScroll(rememberScrollState()),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        SubToolItem(Icons.Default.FileOpen, if (isImportingLut) "Importando…" else "Importar .cube") {
+                                            if (!isImportingLut && !isExporting) {
+                                                lutTargetClipId = clip.id
+                                                colorLutPicker.launch(arrayOf("*/*"))
+                                            }
+                                        }
                                         SubToolItem(Icons.Default.Contrast, "Original") {
                                             viewModel.applyFilter(context, clip.id, FilterType.NONE)
                                         }
@@ -774,6 +787,9 @@ fun VideoEditorScreen(
                                         }
                                         SubToolItem(Icons.Default.Colorize, "Alta S.") {
                                             viewModel.applyFilter(context, clip.id, FilterType.HIGH_SATURATION)
+                                        }
+                                        SubToolItem(Icons.Default.DeleteSweep, "Limpiar filtros") {
+                                            viewModel.clearUnusedColorLuts(context)
                                         }
                                     }
                                 } else {

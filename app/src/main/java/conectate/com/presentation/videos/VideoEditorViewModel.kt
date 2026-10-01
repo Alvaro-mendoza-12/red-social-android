@@ -31,6 +31,7 @@ import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.RgbFilter
+import androidx.media3.effect.SingleColorLut
 import androidx.media3.effect.TimestampWrapper
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.transformer.AudioEncoderSettings
@@ -132,6 +133,11 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
 
     private val _isPreparingTimeline = MutableStateFlow(false)
     val isPreparingTimeline = _isPreparingTimeline.asStateFlow()
+    private val _isImportingLut = MutableStateFlow(false)
+    val isImportingLut = _isImportingLut.asStateFlow()
+    private val importedLuts = java.util.concurrent.ConcurrentHashMap<String, CubeColorLut>()
+    private var lutRestoreJob: Job? = null
+    private var lutImportJob: Job? = null
 
     private var exoPlayer: ExoPlayer? = null
     private var thumbnailJob: Job? = null
@@ -163,6 +169,12 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
                 playWhenReady = false
                 repeatMode = Player.REPEAT_MODE_OFF
                 addListener(object : Player.Listener {
+                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                        previewVideoClips().getOrNull(currentMediaItemIndex)?.let { clip ->
+                            _selectedClipId.value = clip.id
+                            syncSelectedClipPreview()
+                        }
+                    }
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e("VideoEditorPreview", "Preview decoder error code=${error.errorCode}", error)
                         _editorHint.value = "No se pudo previsualizar este fragmento. El proyecto sigue guardado."
@@ -170,7 +182,18 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
                     }
                 })
             }
-            if (_timeline.value.tracks.isNotEmpty()) syncTimelineWithPlayer()
+            if (_timeline.value.tracks.isNotEmpty()) {
+                if (_timeline.value.tracks.flatMap { it.clips }.any { it.customLutId != null }) {
+                    val appContext = context.applicationContext
+                    lutRestoreJob = viewModelScope.launch {
+                        try {
+                            loadImportedLuts(appContext, _timeline.value)
+                            syncTimelineWithPlayer()
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { _editorHint.value = "No se encontró el filtro guardado. Vuelve a importarlo o elige Original." }
+                    }
+                } else syncTimelineWithPlayer()
+            }
         }
         return exoPlayer!!
     }
@@ -180,6 +203,9 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
         thumbnailRequestId += 1
         thumbnailJob?.cancel()
         sourcePreparationJob?.cancel()
+        lutRestoreJob?.cancel()
+        lutImportJob?.cancel()
+        importedLuts.clear()
         exoPlayer?.release()
         exoPlayer = null
         _timelineThumbnails.value.forEach { thumbnail ->
@@ -473,6 +499,11 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
             player.volume = 1f
             return
         }
+        if (clip.customLutId != null && !importedLuts.containsKey(clip.customLutId)) {
+            player.pause()
+            _editorHint.value = "Preparando el filtro guardado…"
+            return
+        }
         val effects = mutableListOf<Effect>()
         clip.aspectRatio.ratio?.let { ratio ->
             effects += Presentation.createForAspectRatio(
@@ -706,6 +737,7 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun exportVideo(context: Context, onSuccess: (Uri) -> Unit, onError: (String) -> Unit) {
         if (_isExporting.value) return
+        if (_isImportingLut.value) { onError("Espera a que termine de importarse el filtro."); return }
         val timeline = _timeline.value
         if (timeline.tracks.none { it.type == TrackType.VIDEO && it.clips.any { clip -> clip.uri != null } }) {
             onError("No hay clips de video para exportar")
@@ -722,6 +754,7 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
             _exportProgress.value = 0f
             _exportStage.value = EditorExportStage.PREPARING
             try {
+                loadImportedLuts(context.applicationContext, timeline)
                 val primary = resolveExportConfig(profile, _selectedExportQuality.value)
                 val fallback = ExportConfig("safe", 720, minOf(profile.autoExportBitrate, 1_800_000), 96_000)
                 val attempts = if (primary == fallback) listOf(primary) else listOf(primary, fallback)
@@ -783,6 +816,11 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
                         onError(userFacingExportError(lastError))
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _exportStage.value = EditorExportStage.FAILED
+                withContext(Dispatchers.Main) { onError("No se pudo preparar el proyecto. Revisa los archivos y filtros e intenta otra vez.") }
             } finally {
                 _isExporting.value = false
             }
@@ -1231,6 +1269,10 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun buildColorEffects(clip: EditorClip): List<Effect> {
         val effects = mutableListOf<Effect>()
+        clip.customLutId?.let { id ->
+            val lut = importedLuts[id] ?: error("El filtro importado no está preparado.")
+            effects += SingleColorLut.createFromCube(lut.colors)
+        }
         if (abs(clip.brightness) > 0.01f) {
             effects += Brightness(clip.brightness.coerceIn(-1f, 1f))
         }
@@ -1325,8 +1367,58 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
     }
 
     fun applyFilter(@Suppress("UNUSED_PARAMETER") context: Context, clipId: Long, filterType: FilterType) {
-        _timeline.value = _timeline.value.updateClip(clipId) { it.copy(filterType = filterType) }
+        lutImportJob?.cancel()
+        _timeline.value = _timeline.value.updateClip(clipId) { it.copy(filterType = filterType, customLutId = null, customLutTitle = null) }
         syncSelectedClipPreview()
+    }
+
+    private suspend fun loadImportedLuts(context: Context, timeline: EditorTimeline) = withContext(Dispatchers.IO) {
+        val ids = timeline.tracks.flatMap { it.clips }.mapNotNull { it.customLutId }.distinct()
+        require(ids.size <= 8) { "El proyecto admite hasta ocho filtros importados." }
+        val store = CubeColorLutStore(context)
+        ids.forEach { id -> if (!importedLuts.containsKey(id)) importedLuts[id] = store.load(id) }
+    }
+
+    fun importColorLut(context: Context, clipId: Long, uri: Uri) {
+        if (_isExporting.value || _isImportingLut.value || findClipById(clipId)?.type != ClipType.VIDEO) return
+        _isImportingLut.value = true
+        _editorHint.value = "Importando filtro…"
+        val appContext = context.applicationContext
+        lutImportJob = viewModelScope.launch {
+            try {
+                val (id, lut) = withContext(Dispatchers.IO) { CubeColorLutStore(appContext).import(uri) }
+                val currentIds = _timeline.value.tracks.flatMap { it.clips }.filter { it.id != clipId }.mapNotNull { it.customLutId }.toSet()
+                require(id in currentIds || currentIds.size < 8) { "El proyecto admite hasta ocho filtros importados." }
+                importedLuts[id] = lut
+                _timeline.value = _timeline.value.updateClip(clipId) {
+                    it.copy(filterType = FilterType.NONE, customLutId = id, customLutTitle = lut.title)
+                }
+                importedLuts.keys.retainAll(_timeline.value.tracks.flatMap { it.clips }.mapNotNull { it.customLutId }.toSet())
+                syncSelectedClipPreview()
+                _editorHint.value = "Filtro añadido: ${lut.title}"
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                _editorHint.value = if (error is IllegalArgumentException || error is IllegalStateException) error.message
+                    else "No se pudo importar. Usa un filtro .cube 3D SDR de hasta 33 puntos."
+            }
+            finally { _isImportingLut.value = false }
+        }
+    }
+
+    fun clearUnusedColorLuts(context: Context) {
+        if (_isExporting.value || _isImportingLut.value) return
+        val ids = _timeline.value.tracks.flatMap { it.clips }.mapNotNull { it.customLutId }.toSet()
+        val appContext = context.applicationContext
+        _isImportingLut.value = true
+        lutImportJob = viewModelScope.launch {
+            try {
+                val count = withContext(Dispatchers.IO) { CubeColorLutStore(appContext).discardUnused(ids) }
+                importedLuts.keys.retainAll(ids)
+                _editorHint.value = "$count filtro(s) sin usar eliminados. Los filtros de este proyecto se conservaron."
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _editorHint.value = "No se pudo liberar el espacio de filtros." }
+            finally { _isImportingLut.value = false }
+        }
     }
 
     fun setAspectRatio(@Suppress("UNUSED_PARAMETER") context: Context, clipId: Long, aspectRatio: AspectRatio) {
@@ -1424,6 +1516,8 @@ data class EditorClip(
     val contrast: Float = 1f,
     val saturation: Float = 1f,
     val filterType: FilterType = FilterType.NONE,
+    val customLutId: String? = null,
+    val customLutTitle: String? = null,
     val aspectRatio: AspectRatio = AspectRatio.ORIGINAL,
     val originalAudioVolume: Float = 1.0f,
     val musicVolume: Float = 1.0f
@@ -1523,6 +1617,7 @@ internal fun EditorClip.isLosslessTrimConfiguration(): Boolean {
         abs(contrast - 1f) <= 0.01f &&
         abs(saturation - 1f) <= 0.01f &&
         filterType == FilterType.NONE &&
+        customLutId == null &&
         aspectRatio == AspectRatio.ORIGINAL
 }
 
