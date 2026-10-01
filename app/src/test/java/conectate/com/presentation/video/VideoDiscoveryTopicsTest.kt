@@ -11,7 +11,9 @@ class VideoDiscoveryTopicsTest {
             Video(id = "1", tags = listOf("#Música", "@correo.gmail.com"), views = 12, created_at = "2026-09-20T00:00:00Z"),
             Video(id = "2", tags = listOf("musica"), views = 4, created_at = "2026-09-21T00:00:00Z"),
             Video(id = "3", tags = listOf("privado"), isPublic = false),
-            Video(id = "4", tags = listOf("antiguo"), created_at = "2026-08-01T00:00:00Z")), Instant.parse("2026-09-30T12:00:00Z"))
+            Video(id = "4", tags = listOf("antiguo"), created_at = "2026-08-01T00:00:00Z"),
+            Video(id = "5", tags = listOf("sin fecha")),
+            Video(id = "6", tags = listOf("futuro"), created_at = "2026-10-01T00:00:00Z")), Instant.parse("2026-09-30T12:00:00Z"))
         assertEquals(1, topics.size)
         assertEquals("musica", normalizedVideoSearch(topics.first().query))
         assertEquals("Tema del mes", topics.first().label)

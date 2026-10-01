@@ -21,7 +21,7 @@ internal fun videoDiscoveryTopics(videos: List<Video>, now: Instant = Instant.no
     val topics = linkedMapOf<String, Pair<String, Long>>()
     videos.filter { it.isPublic }.forEach { video ->
         val created = runCatching { Instant.parse(video.created_at) }.getOrNull()
-        if (created != null && created < month) return@forEach
+        if (created == null || created < month || created > now) return@forEach
         video.tags.take(12).forEach tagLoop@ { tag ->
             val display = tag.trim().removePrefix("#")
             if (!display.matches(Regex("[\\p{L}\\p{N}_ -]{2,48}"))) return@tagLoop

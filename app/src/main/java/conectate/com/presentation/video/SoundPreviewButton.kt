@@ -10,6 +10,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -103,7 +105,10 @@ internal fun SoundPreviewButton(sourceUrls: List<String>, onPlayingSource: (Stri
             if (player?.playbackState == Player.STATE_IDLE) player.prepare()
             player?.play()
         }
-    }, enabled = player != null) {
+    }, enabled = player != null, modifier = Modifier.semantics {
+        contentDescription = if (isLoading) "Cancelar carga del sonido" else if (failed) "Reintentar escuchar sonido"
+            else if (isPlaying) "Pausar sonido" else "Escuchar sonido"
+    }) {
         if (isLoading) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
         } else {
