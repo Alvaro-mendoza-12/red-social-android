@@ -277,7 +277,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                         android.util.Log.d(TAG, "Call notifications disabled by user preference.")
                         return
                     }
-                    sendIncomingCallNotification(invite)
+                    sendIncomingCallNotification(invite, effectiveAccountTarget)
                 }
                 return
             }
@@ -894,7 +894,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         }
     }
 
-    private fun sendIncomingCallNotification(invite: conectate.com.data.model.CallInvite) {
+    private fun sendIncomingCallNotification(invite: conectate.com.data.model.CallInvite, accountTarget: NotificationAccountTarget?) {
+        val notificationStarted = android.os.SystemClock.elapsedRealtime()
         var notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         IncomingCallNotificationFactory.ensureChannel(this)
         notificationManager.notify(
@@ -903,13 +904,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 context = this,
                 invite = invite,
                 avatarBitmap = null,
-                avatarBytes = null
+                avatarBytes = null,
+                accountTarget = accountTarget,
             )
         )
 
         val serviceStarted = runCatching {
             // Start the ringing notification immediately. Avatar loading can happen after the UI is already visible.
-            IncomingCallForegroundService.start(this, invite, null)
+            IncomingCallForegroundService.start(this, invite, null, accountTarget)
         }.onFailure { error ->
             android.util.Log.e(TAG, "Incoming call foreground service failed: ${error.message}", error)
         }.isSuccess
@@ -917,6 +919,12 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         serviceScope.launch {
             var avatarBitmap = getAvatarBitmap(invite.callerAvatarUrl)
             var avatarBytes = avatarBitmap?.toNotificationAvatarBytes()
+            if (!canRefreshIncomingCallAvatar(
+                notificationStillVisible = notificationManager.activeNotifications.any { it.id == invite.callId.hashCode() },
+                recentlyCancelled = wasCallRecentlyCancelled(invite.callId),
+                hasActiveCall = callRepository.activeCall.value != null,
+                elapsedMs = android.os.SystemClock.elapsedRealtime() - notificationStarted,
+            )) return@launch
             if (avatarBitmap != null || avatarBytes != null) {
                 notificationManager.notify(
                     invite.callId.hashCode(),
@@ -924,14 +932,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                         context = this@MyFirebaseMessagingService,
                         invite = invite,
                         avatarBitmap = avatarBitmap,
-                        avatarBytes = avatarBytes
+                        avatarBytes = avatarBytes,
+                        accountTarget = accountTarget,
                     )
                 )
-                runCatching {
-                    IncomingCallForegroundService.start(this@MyFirebaseMessagingService, invite, avatarBytes)
-                }.onFailure { error ->
-                    android.util.Log.w(TAG, "Incoming call avatar refresh failed: ${error.message}")
-                }
+                // Updating the same notification is enough; restarting the service resets its ring timeout.
             }
         }
 
@@ -945,7 +950,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         if (!notificationsGranted) {
             runCatching {
-                startActivity(buildIncomingCallIntent(invite, null))
+                startActivity(buildIncomingCallIntent(invite, null).putNotificationAccountTarget(accountTarget))
             }.onFailure { error ->
                 android.util.Log.w(TAG, "Incoming call fullscreen fallback failed: ${error.message}")
             }

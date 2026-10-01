@@ -17,6 +17,9 @@ import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.CallInvite
 import conectate.com.data.service.IncomingCallNotificationFactory
 import conectate.com.presentation.calls.IncomingCallActivity
+import conectate.com.util.NotificationAccountTarget
+import conectate.com.util.notificationAccountTargetFromIntent
+import conectate.com.util.putNotificationAccountTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -52,7 +55,7 @@ class IncomingCallForegroundService : Service() {
         currentNotificationId = invite.callId.hashCode()
         val avatarBitmap = intent.toAvatarBitmapOrNull()
         try {
-            startForeground(currentNotificationId, buildNotification(invite, avatarBitmap))
+            startForeground(currentNotificationId, buildNotification(invite, avatarBitmap, notificationAccountTargetFromIntent(intent)))
         } catch (e: Exception) {
             android.util.Log.e("IncomingCallService", "Failed to start foreground service", e)
             // Do not ring invisibly when Android could not publish the call controls.
@@ -83,12 +86,13 @@ class IncomingCallForegroundService : Service() {
         stopSelf()
     }
 
-    private fun buildNotification(invite: CallInvite, avatarBitmap: Bitmap?): Notification {
+    private fun buildNotification(invite: CallInvite, avatarBitmap: Bitmap?, accountTarget: NotificationAccountTarget?): Notification {
         return IncomingCallNotificationFactory.build(
             context = this,
             invite = invite,
             avatarBitmap = avatarBitmap,
-            avatarBytes = avatarBitmap?.toNotificationAvatarBytes()
+            avatarBytes = avatarBitmap?.toNotificationAvatarBytes(),
+            accountTarget = accountTarget,
         )
     }
 
@@ -131,7 +135,7 @@ class IncomingCallForegroundService : Service() {
         private const val ACTION_SHOW = "conectate.com.action.SHOW_INCOMING_CALL"
         private const val ACTION_STOP = "conectate.com.action.STOP_INCOMING_CALL"
 
-        fun start(context: Context, invite: CallInvite, avatarBytes: ByteArray?) {
+        fun start(context: Context, invite: CallInvite, avatarBytes: ByteArray?, accountTarget: NotificationAccountTarget? = null) {
             val intent = Intent(context, IncomingCallForegroundService::class.java).apply {
                 action = ACTION_SHOW
                 putExtra("call_id", invite.callId)
@@ -142,6 +146,7 @@ class IncomingCallForegroundService : Service() {
                 putExtra("call_context_type", invite.contextType)
                 putExtra("call_context_id", invite.contextId ?: "")
                 putExtra("call_is_video", invite.isVideo)
+                putNotificationAccountTarget(accountTarget)
                 avatarBytes?.let {
                     putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
                 }

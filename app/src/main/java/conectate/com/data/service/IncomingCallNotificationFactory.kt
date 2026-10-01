@@ -15,6 +15,8 @@ import androidx.core.graphics.drawable.IconCompat
 import conectate.com.R
 import conectate.com.data.model.CallInvite
 import conectate.com.presentation.calls.IncomingCallActivity
+import conectate.com.util.NotificationAccountTarget
+import conectate.com.util.putNotificationAccountTarget
 
 object IncomingCallNotificationFactory {
 
@@ -41,14 +43,15 @@ object IncomingCallNotificationFactory {
         context: Context,
         invite: CallInvite,
         avatarBitmap: Bitmap?,
-        avatarBytes: ByteArray?
+        avatarBytes: ByteArray?,
+        accountTarget: NotificationAccountTarget? = null,
     ): Notification {
         val notificationId = invite.callId.hashCode()
 
         val pending = PendingIntent.getActivity(
             context,
             notificationId,
-            buildIncomingCallActivityIntent(context, invite, avatarBytes),
+            buildIncomingCallActivityIntent(context, invite, avatarBytes, accountTarget),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -58,7 +61,7 @@ object IncomingCallNotificationFactory {
         val acceptPending = PendingIntent.getActivity(
             context,
             notificationId + 1,
-            buildIncomingCallActivityIntent(context, invite, avatarBytes).apply {
+            buildIncomingCallActivityIntent(context, invite, avatarBytes, accountTarget).apply {
                 putExtra(IncomingCallActivity.EXTRA_AUTO_ACCEPT, true)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -70,6 +73,7 @@ object IncomingCallNotificationFactory {
             Intent(context, IncomingCallActionReceiver::class.java).apply {
                 action = IncomingCallActionReceiver.ACTION_DECLINE
                 copyInviteExtras(invite, avatarBytes)
+                putNotificationAccountTarget(accountTarget)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -86,7 +90,7 @@ object IncomingCallNotificationFactory {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(invite.callerName.ifBlank { "Novvin" })
             .setContentText(if (invite.isVideo) "Videollamada entrante" else "Llamada entrante")
-            .setSubText("Novvin")
+            .setSubText(accountTarget?.presentableLabel()?.let { "Novvin · $it" } ?: "Novvin")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -107,11 +111,13 @@ object IncomingCallNotificationFactory {
     private fun buildIncomingCallActivityIntent(
         context: Context,
         invite: CallInvite,
-        avatarBytes: ByteArray?
+        avatarBytes: ByteArray?,
+        accountTarget: NotificationAccountTarget?,
     ): Intent {
         return Intent(context, IncomingCallActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             copyInviteExtras(invite, avatarBytes)
+            putNotificationAccountTarget(accountTarget)
         }
     }
 }

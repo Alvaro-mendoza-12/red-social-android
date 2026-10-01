@@ -63,6 +63,8 @@ import conectate.com.MainActivity
 import conectate.com.data.local.prefs.ThemePreferences
 import conectate.com.data.model.CallInvite
 import conectate.com.data.repository.CallRepository
+import conectate.com.data.service.IncomingCallAccountRouter
+import conectate.com.util.notificationAccountTargetFromIntent
 import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.common.toUserFacingMessage
 import conectate.com.presentation.components.CircularProfileImage
@@ -74,6 +76,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dagger.Lazy
 import javax.inject.Inject
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.util.concurrent.atomic.AtomicBoolean
 
 @AndroidEntryPoint
@@ -81,6 +84,9 @@ class IncomingCallActivity : ComponentActivity() {
 
     @Inject
     lateinit var callRepositoryProvider: Lazy<CallRepository>
+
+    @Inject
+    lateinit var accountRouter: Lazy<IncomingCallAccountRouter>
 
     @Inject
     lateinit var themePreferences: ThemePreferences
@@ -163,6 +169,7 @@ class IncomingCallActivity : ComponentActivity() {
                     IncomingCallScreen(
                         invite = current,
                         callerAvatarBitmap = callerAvatar,
+                        accountLabel = notificationAccountTargetFromIntent(intent)?.presentableLabel(),
                         onAccept = { acceptInvite(current) },
                         onDecline = { declineInvite(current) }
                     )
@@ -217,6 +224,15 @@ class IncomingCallActivity : ComponentActivity() {
         lifecycleScope.launch {
             clearIncomingCallNotification(invite.callId)
             IncomingCallForegroundService.stop(this@IncomingCallActivity)
+            val accountReady = runCatching {
+                withTimeout(12_000L) { accountRouter.get().prepareAnswer(notificationAccountTargetFromIntent(intent)).getOrThrow() }
+            }
+            if (accountReady.isFailure) {
+                AppFeedbackBus.showError(accountReady.exceptionOrNull()?.toUserFacingMessage("No se pudo abrir la cuenta de esta llamada.")
+                    ?: "No se pudo abrir la cuenta de esta llamada.")
+                finish()
+                return@launch
+            }
             val result = callRepository.acceptIncomingCall(invite)
             if (result.isFailure) {
                 AppFeedbackBus.showError(
@@ -250,7 +266,9 @@ class IncomingCallActivity : ComponentActivity() {
         lifecycleScope.launch {
             clearIncomingCallNotification(invite.callId)
             IncomingCallForegroundService.stop(this@IncomingCallActivity)
-            callRepository.declineIncomingCall(invite)
+            runCatching {
+                withTimeout(8_000L) { accountRouter.get().decline(invite, notificationAccountTargetFromIntent(intent)).getOrThrow() }
+            }.onFailure { AppFeedbackBus.showError("Se cerró la llamada, pero no se pudo avisar al llamante.") }
             finish()
         }
     }
@@ -310,7 +328,8 @@ internal fun IncomingCallScreen(
     invite: CallInvite,
     callerAvatarBitmap: Bitmap?,
     onAccept: () -> Unit,
-    onDecline: () -> Unit
+    onDecline: () -> Unit,
+    accountLabel: String? = null,
 ) {
     BackHandler(enabled = true) {
         // Require explicit action
@@ -344,6 +363,10 @@ internal fun IncomingCallScreen(
                     color = Color.White
                 )
                 Spacer(modifier = Modifier.height(6.dp))
+                accountLabel?.let {
+                    Text("Para: $it", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
                 Text(
                     text = if (invite.isVideo) "Videollamada entrante" else "Llamada entrante",
                     style = MaterialTheme.typography.titleMedium,

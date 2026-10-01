@@ -8,6 +8,8 @@ import conectate.com.data.model.CallInvite
 import conectate.com.data.repository.CallRepository
 import conectate.com.presentation.calls.IncomingCallActivity
 import conectate.com.services.IncomingCallForegroundService
+import conectate.com.util.notificationAccountTargetFromIntent
+import conectate.com.util.putNotificationAccountTarget
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -15,6 +17,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 class IncomingCallActionReceiver : BroadcastReceiver() {
 
@@ -41,6 +44,7 @@ class IncomingCallActionReceiver : BroadcastReceiver() {
                         putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
                     }
                     putExtra(IncomingCallActivity.EXTRA_AUTO_ACCEPT, true)
+                    putNotificationAccountTarget(notificationAccountTargetFromIntent(intent))
                 }
             )
             return
@@ -54,15 +58,18 @@ class IncomingCallActionReceiver : BroadcastReceiver() {
                     appContext,
                     IncomingCallReceiverEntryPoint::class.java
                 )
-                val callRepository = entryPoint.callRepository()
 
                 val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                 notificationManager?.cancel(invite.callId.hashCode())
                 IncomingCallForegroundService.stop(appContext)
 
                 if (intent.action == ACTION_DECLINE) {
-                    callRepository.declineIncomingCall(invite)
+                    withTimeout(8_000L) {
+                        entryPoint.incomingCallAccountRouter().decline(invite, notificationAccountTargetFromIntent(intent))
+                    }.onFailure { android.util.Log.w("IncomingCallAction", "Could not deliver decline response") }
                 }
+            } catch (_: Exception) {
+                android.util.Log.w("IncomingCallAction", "Decline response interrupted")
             } finally {
                 pendingResult.finish()
             }
@@ -79,6 +86,7 @@ class IncomingCallActionReceiver : BroadcastReceiver() {
 @InstallIn(SingletonComponent::class)
 interface IncomingCallReceiverEntryPoint {
     fun callRepository(): CallRepository
+    fun incomingCallAccountRouter(): IncomingCallAccountRouter
 }
 
 private fun Intent.toInviteOrNull(): CallInvite? {
