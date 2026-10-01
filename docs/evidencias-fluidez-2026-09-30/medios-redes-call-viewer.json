@@ -1,0 +1,14 @@
+{
+  "flow": "call",
+  "role": "viewer",
+  "transport": "wifi",
+  "bidirectionalVideo": true,
+  "audioReceived": true,
+  "receivedFps": 9.931463569791926,
+  "firstFrameMs": 3055,
+  "candidateTypes": [
+    "relay",
+    "relay"
+  ],
+  "rttSeconds": 0.287
+}

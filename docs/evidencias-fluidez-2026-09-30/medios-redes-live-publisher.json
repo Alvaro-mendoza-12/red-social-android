@@ -1,0 +1,14 @@
+{
+  "flow": "live",
+  "role": "publisher",
+  "transport": "cellular",
+  "bidirectionalVideo": false,
+  "audioReceived": true,
+  "receivedFps": 0,
+  "firstFrameMs": 2408,
+  "candidateTypes": [
+    "prflx",
+    "relay"
+  ],
+  "rttSeconds": 0.305
+}

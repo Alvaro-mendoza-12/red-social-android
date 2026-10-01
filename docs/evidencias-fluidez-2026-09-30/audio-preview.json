@@ -1,0 +1,59 @@
+{
+  "results": [
+    {
+      "sourceIndex": 0,
+      "measurements": [
+        {
+          "mode": "baseline",
+          "tapToAudioMs": 2970,
+          "preparationMs": 0,
+          "audioPositionAdvanced": true,
+          "pauseVerified": true
+        },
+        {
+          "mode": "cold",
+          "tapToAudioMs": 1772,
+          "preparationMs": 0,
+          "audioPositionAdvanced": true,
+          "pauseVerified": true
+        },
+        {
+          "mode": "prepared",
+          "tapToAudioMs": 125,
+          "preparationMs": 163,
+          "audioPositionAdvanced": true,
+          "pauseVerified": true
+        }
+      ]
+    },
+    {
+      "sourceIndex": 1,
+      "measurements": [
+        {
+          "mode": "baseline",
+          "tapToAudioMs": 1491,
+          "preparationMs": 0,
+          "audioPositionAdvanced": true,
+          "pauseVerified": true
+        },
+        {
+          "mode": "cold",
+          "tapToAudioMs": 1683,
+          "preparationMs": 0,
+          "audioPositionAdvanced": true,
+          "pauseVerified": true
+        },
+        {
+          "mode": "prepared",
+          "tapToAudioMs": 174,
+          "preparationMs": 164,
+          "audioPositionAdvanced": true,
+          "pauseVerified": true
+        }
+      ]
+    }
+  ],
+  "fixtureDeleted": true,
+  "device": "Android emulator",
+  "measurement": "ExoPlayer audio position advancing; muted output"
+}

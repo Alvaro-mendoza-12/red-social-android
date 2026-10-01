@@ -13,7 +13,7 @@ ssh -i "$env:USERPROFILE\.ssh\conectate_mini_ed25519" alvaro@192.168.18.22
 Desde fuera de casa usando Tailscale:
 
 ```powershell
-ssh -i "$env:alvaro\.ssh\conectate_mini_ed25519" alvaro@100.91.84.2
+ssh -i "$env:USERPROFILE\.ssh\conectate_mini_ed25519" alvaro@100.91.84.2
 ```
 
 Si la clave falla y pide password, revisar ruta real de la llave. En PowerShell, `$env:USERPROFILE` funciona; dentro de Ubuntu/bash no.
@@ -31,10 +31,15 @@ Debe mostrar:
 ```text
 docker=active
 stack=active
-cloudflare=active
+ingreso HTTPS activo (Tailscale Funnel actualmente)
 READY LOCAL ok:true
 READY PUBLIC ok:true
 ```
+
+Al 30/09/2026, verificar además `tailscale funnel status` y consultar
+`https://conectate.tail9b267c.ts.net/ready` desde una conexión pública.
+El texto `cloudflare=active` de los scripts históricos no describe el ingreso
+vigente. El documento 33 contiene las evidencias y límites de la auditoría actual.
 
 ## Identidad verificable del release
 
@@ -609,3 +614,16 @@ Ante un fallo de Tailscale, comprobar la vía LAN documentada antes de concluir
 que el mini-PC o la aplicación están desconectados. No reiniciar contenedores
 saludables como sustituto de diagnosticar DNS/túnel.
 
+
+## Comprobar la fuente del API después de actualizarlo
+
+Desde la raíz del repositorio activo, con una clave SSH ya configurada:
+
+```powershell
+python infrastructure/local-fallback/scripts/verify-api-source-provenance.py --ssh-target alvaro@192.168.18.22 --identity "$env:USERPROFILE/.ssh/conectate_mini_ed25519" --output build/api-source-provenance.json
+```
+
+La comparación es de solo lectura: SHA-256 normalizado de `api/src/*.js` y `/ready`.
+Debe indicar `ok:true`, sin archivos diferentes ni adicionales. No lee `.env`, contraseñas
+ni filas de usuarios. No certifica esquema, configuración, otros servicios ni el commit
+completo del stack. El marcador de release y la comparación de código se informan por separado.

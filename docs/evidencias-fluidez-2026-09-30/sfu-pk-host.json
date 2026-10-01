@@ -1,0 +1,20 @@
+{
+  "role": "host",
+  "audioReceived": true,
+  "rendered": true,
+  "existingBroadcastPreserved": true,
+  "controlsAndReplacementCapture": true,
+  "receivedFps": 8.299869410684678,
+  "firstFrameMs": 16822,
+  "connectMs": 3101,
+  "sessionRequestMs": 1265,
+  "subscribeAndRenderMs": 13721,
+  "startup": {
+    "roomCreationMs": 393,
+    "signalingMs": 2260,
+    "audioMs": 437,
+    "videoMs": 309,
+    "totalMs": 3098
+  },
+  "timingLimit": "Host firstFrameMs includes sequential coordinator wait before guest starts; not time from an already published guest."
+}

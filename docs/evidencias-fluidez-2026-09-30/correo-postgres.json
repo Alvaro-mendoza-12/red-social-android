@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "atomicCodeAndMail": true,
+  "encryptedAtRest": true,
+  "transientRetry": true,
+  "supersededMailCancelled": true,
+  "payloadWipedAfterSend": true,
+  "deletedUserJobsRemoved": true,
+  "actualEmailsSent": 0,
+  "scope": "Isolated PostgreSQL schema rolled back; fake SMTP"
+}

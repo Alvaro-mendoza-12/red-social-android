@@ -1,0 +1,23 @@
+{
+  "role": "guest",
+  "audioReceived": true,
+  "rendered": true,
+  "existingBroadcastPreserved": false,
+  "controlsAndReplacementCapture": false,
+  "receivedFps": 19.89682904235552,
+  "firstFrameMs": 3574,
+  "connectMs": 2289,
+  "sessionRequestMs": 957,
+  "subscribeAndRenderMs": 1285,
+  "startup": {
+    "roomCreationMs": 740,
+    "signalingMs": 809,
+    "audioMs": 707,
+    "videoMs": 382,
+    "totalMs": 2287
+  },
+  "hostOnlyAssertions": [
+    "existingBroadcastPreserved",
+    "controlsAndReplacementCapture"
+  ]
+}

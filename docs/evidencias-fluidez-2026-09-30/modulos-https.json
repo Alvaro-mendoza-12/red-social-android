@@ -1,0 +1,412 @@
+{
+  "ok": true,
+  "cleanupVerified": true,
+  "scope": "Forced public HTTPS/SNI, HTTP/1.1 reads with one isolated account; not every UI option or capacity certification",
+  "checks": [
+    {
+      "name": "isolated-registration",
+      "status": 201,
+      "expected": 201,
+      "ms": 1457,
+      "ok": true,
+      "appMs": 306.2
+    },
+    {
+      "name": "health",
+      "status": 200,
+      "expected": 200,
+      "ms": 234,
+      "ok": true,
+      "appMs": 0.5
+    },
+    {
+      "name": "ready",
+      "status": 200,
+      "expected": 200,
+      "ms": 236,
+      "ok": true,
+      "appMs": 1.6
+    },
+    {
+      "name": "account",
+      "status": 200,
+      "expected": 200,
+      "ms": 255,
+      "ok": true,
+      "appMs": 7.3
+    },
+    {
+      "name": "profile",
+      "status": 200,
+      "expected": 200,
+      "ms": 428,
+      "ok": true,
+      "appMs": 197.4
+    },
+    {
+      "name": "profile-search",
+      "status": 200,
+      "expected": 200,
+      "ms": 507,
+      "ok": true,
+      "appMs": 271.6
+    },
+    {
+      "name": "notifications",
+      "status": 200,
+      "expected": 200,
+      "ms": 291,
+      "ok": true,
+      "appMs": 60.4
+    },
+    {
+      "name": "friends",
+      "status": 200,
+      "expected": 200,
+      "ms": 236,
+      "ok": true,
+      "appMs": 6.2
+    },
+    {
+      "name": "messages-inbox",
+      "status": 200,
+      "expected": 200,
+      "ms": 399,
+      "ok": true,
+      "appMs": 167.1
+    },
+    {
+      "name": "saved-messages",
+      "status": 200,
+      "expected": 200,
+      "ms": 325,
+      "ok": true,
+      "appMs": 92.8
+    },
+    {
+      "name": "communities",
+      "status": 200,
+      "expected": 200,
+      "ms": 279,
+      "ok": true,
+      "appMs": 45.5
+    },
+    {
+      "name": "social-feed",
+      "status": 200,
+      "expected": 200,
+      "ms": 368,
+      "ok": true,
+      "appMs": 134.7
+    },
+    {
+      "name": "moments",
+      "status": 200,
+      "expected": 200,
+      "ms": 308,
+      "ok": true,
+      "appMs": 76.9
+    },
+    {
+      "name": "saved-collections",
+      "status": 200,
+      "expected": 200,
+      "ms": 291,
+      "ok": true,
+      "appMs": 59.8
+    },
+    {
+      "name": "videos",
+      "status": 200,
+      "expected": 200,
+      "ms": 431,
+      "ok": true,
+      "appMs": 155
+    },
+    {
+      "name": "video-collections",
+      "status": 200,
+      "expected": 200,
+      "ms": 264,
+      "ok": true,
+      "appMs": 30.4
+    },
+    {
+      "name": "video-comment-search",
+      "status": 200,
+      "expected": 200,
+      "ms": 442,
+      "ok": true,
+      "appMs": 211.5
+    },
+    {
+      "name": "ranking-followers",
+      "status": 200,
+      "expected": 200,
+      "ms": 1031,
+      "ok": true,
+      "appMs": 526.6
+    },
+    {
+      "name": "ranking-posts",
+      "status": 200,
+      "expected": 200,
+      "ms": 551,
+      "ok": true,
+      "appMs": 58.1
+    },
+    {
+      "name": "watch-later",
+      "status": 200,
+      "expected": 200,
+      "ms": 245,
+      "ok": true,
+      "appMs": 9.3
+    },
+    {
+      "name": "video-history",
+      "status": 200,
+      "expected": 200,
+      "ms": 241,
+      "ok": true,
+      "appMs": 8.9
+    },
+    {
+      "name": "voice-rooms",
+      "status": 200,
+      "expected": 200,
+      "ms": 295,
+      "ok": true,
+      "appMs": 63.1
+    },
+    {
+      "name": "live-capabilities",
+      "status": 200,
+      "expected": 200,
+      "ms": 234,
+      "ok": true,
+      "appMs": 5.3
+    },
+    {
+      "name": "live-directory",
+      "status": 200,
+      "expected": 200,
+      "ms": 256,
+      "ok": true,
+      "appMs": 16.4
+    },
+    {
+      "name": "live-replays",
+      "status": 200,
+      "expected": 200,
+      "ms": 242,
+      "ok": true,
+      "appMs": 8.5
+    },
+    {
+      "name": "challenge-directory",
+      "status": 200,
+      "expected": 200,
+      "ms": 238,
+      "ok": true,
+      "appMs": 9.5
+    },
+    {
+      "name": "owned-challenges",
+      "status": 200,
+      "expected": 200,
+      "ms": 235,
+      "ok": true,
+      "appMs": 6.5
+    },
+    {
+      "name": "games-capabilities",
+      "status": 200,
+      "expected": 200,
+      "ms": 235,
+      "ok": true,
+      "appMs": 5.9
+    },
+    {
+      "name": "games-catalog",
+      "status": 200,
+      "expected": 200,
+      "ms": 574,
+      "ok": true,
+      "appMs": 93.3
+    },
+    {
+      "name": "games-connections",
+      "status": 200,
+      "expected": 200,
+      "ms": 237,
+      "ok": true,
+      "appMs": 8.1
+    },
+    {
+      "name": "games-matches",
+      "status": 200,
+      "expected": 200,
+      "ms": 235,
+      "ok": true,
+      "appMs": 6.6
+    },
+    {
+      "name": "socialization-capabilities",
+      "status": 200,
+      "expected": 200,
+      "ms": 235,
+      "ok": true,
+      "appMs": 6.4
+    },
+    {
+      "name": "algorithm-capabilities",
+      "status": 200,
+      "expected": 200,
+      "ms": 235,
+      "ok": true,
+      "appMs": 5.1
+    },
+    {
+      "name": "algorithm-profiles",
+      "status": 200,
+      "expected": 200,
+      "ms": 252,
+      "ok": true,
+      "appMs": 22.1
+    },
+    {
+      "name": "creator-analytics",
+      "status": 200,
+      "expected": 200,
+      "ms": 239,
+      "ok": true,
+      "appMs": 10
+    },
+    {
+      "name": "music-categories",
+      "status": 200,
+      "expected": 200,
+      "ms": 235,
+      "ok": true,
+      "appMs": 6.4
+    },
+    {
+      "name": "music-library",
+      "status": 200,
+      "expected": 200,
+      "ms": 244,
+      "ok": true,
+      "appMs": 14
+    },
+    {
+      "name": "notification-digest",
+      "status": 200,
+      "expected": 200,
+      "ms": 240,
+      "ok": true,
+      "appMs": 11.7
+    },
+    {
+      "name": "ranking-own-position",
+      "status": 200,
+      "expected": 200,
+      "ms": 501,
+      "ok": true,
+      "appMs": 17.2
+    },
+    {
+      "name": "socialization-feature-state",
+      "status": 200,
+      "expected": 200,
+      "ms": 263,
+      "ok": true,
+      "appMs": 26.6
+    },
+    {
+      "name": "socialization-disabled-as-configured",
+      "status": 404,
+      "expected": 404,
+      "ms": 235,
+      "ok": true,
+      "appMs": 6,
+      "errorCode": "SOCIALIZATION_DISABLED"
+    },
+    {
+      "name": "admin-access-denied",
+      "status": 403,
+      "expected": 403,
+      "ms": 240,
+      "ok": true,
+      "appMs": 11.5,
+      "errorCode": "ADMIN_REQUIRED"
+    },
+    {
+      "name": "messages-require-auth",
+      "status": 401,
+      "expected": 401,
+      "ms": 230,
+      "ok": true,
+      "appMs": 0.8,
+      "errorCode": "AUTH_REQUIRED"
+    },
+    {
+      "name": "live-gifts-require-auth",
+      "status": 401,
+      "expected": 401,
+      "ms": 228,
+      "ok": true,
+      "appMs": 0.5,
+      "errorCode": "AUTH_REQUIRED"
+    },
+    {
+      "name": "unknown-email-recovery",
+      "status": 200,
+      "expected": 200,
+      "ms": 361,
+      "ok": true,
+      "appMs": 128.7
+    },
+    {
+      "name": "invalid-email-recovery",
+      "status": 200,
+      "expected": 200,
+      "ms": 357,
+      "ok": true,
+      "appMs": 127.4
+    },
+    {
+      "name": "fixture-delete",
+      "status": 200,
+      "expected": 200,
+      "ms": 1224,
+      "ok": true,
+      "appMs": 994.6
+    },
+    {
+      "name": "deleted-session-invalid",
+      "status": 401,
+      "expected": 401,
+      "ms": 231,
+      "ok": true,
+      "appMs": 1.8,
+      "errorCode": "ACCOUNT_DELETED"
+    }
+  ],
+  "p95Ms": 574,
+  "overOneSecond": [
+    {
+      "name": "isolated-registration",
+      "ms": 1457
+    },
+    {
+      "name": "ranking-followers",
+      "ms": 1031
+    },
+    {
+      "name": "fixture-delete",
+      "ms": 1224
+    }
+  ],
+  "actualRecoveryEmailsSent": 0
+}

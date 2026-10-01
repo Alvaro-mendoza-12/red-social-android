@@ -1,0 +1,14 @@
+{
+  "flow": "live",
+  "role": "viewer",
+  "transport": "wifi",
+  "bidirectionalVideo": false,
+  "audioReceived": true,
+  "receivedFps": 9.663955282946114,
+  "firstFrameMs": 2963,
+  "candidateTypes": [
+    "relay",
+    "prflx"
+  ],
+  "rttSeconds": 0.281
+}

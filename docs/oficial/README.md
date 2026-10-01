@@ -1,7 +1,7 @@
 # NoWi — Documentación oficial del proyecto
 
 Fecha base: 2026-08-24
-Última actualización de la fuente canónica: 2026-09-18
+Última actualización de la fuente canónica: 2026-09-30 (Bogotá; evidencias del servidor también fechadas 2026-10-01 UTC)
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
@@ -48,6 +48,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 35. [Identidades sin conexión y retención por cuenta — 2026-09-17](30-identidades-offline-por-cuenta-2026-09-17.md)
 36. [Destacados del perfil y plan de diferenciales — 2026-09-17](31-perfil-destacados-y-diferenciales-2026-09-17.md)
 37. [Permisos de stickers y cierre de destacados — 2026-09-18](32-permisos-stickers-y-cierre-destacados-2026-09-18.md)
+38. [Fluidez y auditoría por módulos — 2026-09-30](33-fluidez-y-auditoria-modulos-2026-09-30.md)
 
 ## Reglas para quien trabaje en este proyecto
 
@@ -69,7 +70,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 - **APK/App Android**: cliente principal de producción.
 - **Backend Ubuntu**: backend propio desplegado en la mini PC con Ubuntu Server.
 - **Mini PC / servidor**: máquina física que aloja Docker, PostgreSQL, API, realtime, signaling, nginx edge, backups y servicios 24/7.
-- **Cloudflare Tunnel nombrado**: túnel HTTP público estable usado para superar CGNAT sin abrir puertos. Es la ruta exigida en producción.
+- **Ingreso público actual**: HTTPS mediante Tailscale Funnel en `https://conectate.tail9b267c.ts.net`, comprobado desde IPv4 público sin usar la LAN ni la IP privada de Tailscale. Los documentos de Cloudflare describen el despliegue anterior y una alternativa operativa; no prueban la configuración vigente.
 - **DuckDNS TXT discovery**: mecanismo firmado y temporal de transición/recuperación; no sustituye el hostname API estable.
 - **TURN/STUN**: infraestructura para que WebRTC pueda conectar audio/video/pantalla entre redes distintas.
 - **CGNAT**: restricción del proveedor de internet que impide exponer puertos públicos directamente desde el router.

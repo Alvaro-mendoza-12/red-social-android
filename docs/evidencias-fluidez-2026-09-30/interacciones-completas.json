@@ -1,0 +1,787 @@
+{
+  "date": "2026-10-01T03:15:43.498Z",
+  "origin": "https://conectate.tail9b267c.ts.net",
+  "forcedPublicIpv4": true,
+  "localFixtureBootstrap": true,
+  "scope": "Isolated backend interactions; not full visual/device certification",
+  "sections": [
+    {
+      "name": "login-and-permanent-identity",
+      "ok": true
+    },
+    {
+      "name": "direct-message-reply-edit-delete-and-auto-friend",
+      "ok": true
+    },
+    {
+      "name": "groups-history-reply-edit-permissions",
+      "ok": true
+    },
+    {
+      "name": "communities-history-reply-edit-permissions",
+      "ok": true
+    },
+    {
+      "name": "stickers-deduplication-remove-and-cross-account-copy",
+      "ok": true
+    },
+    {
+      "name": "video-publish-comment-search-and-private-visibility",
+      "ok": true
+    },
+    {
+      "name": "social-private-gallery-comments-reactions-and-moment-privacy",
+      "ok": true
+    },
+    {
+      "name": "playmatch-versioning-idempotency-and-recipient-authorization",
+      "ok": true
+    }
+  ],
+  "checks": [
+    {
+      "label": "verify-isolated-fixture-owner",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 854,
+      "appMs": 8.8
+    },
+    {
+      "label": "verify-isolated-fixture-member",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 241,
+      "appMs": 7.4
+    },
+    {
+      "label": "verify-isolated-fixture-outsider",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 243,
+      "appMs": 8
+    },
+    {
+      "label": "correct-password",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 522,
+      "appMs": 288.9
+    },
+    {
+      "label": "incorrect-password",
+      "status": 401,
+      "expected": 401,
+      "ok": true,
+      "ms": 500,
+      "appMs": 268.7
+    },
+    {
+      "label": "permanent-username",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 275,
+      "appMs": 40.6
+    },
+    {
+      "label": "editable-display-name",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 303,
+      "appMs": 68.5
+    },
+    {
+      "label": "create-direct-chat",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 301,
+      "appMs": 67
+    },
+    {
+      "label": "send-direct-message",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 284,
+      "appMs": 50.1
+    },
+    {
+      "label": "auto-friend-incoming",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 243,
+      "appMs": 9.6
+    },
+    {
+      "label": "auto-friend-outgoing",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 242,
+      "appMs": 7.3
+    },
+    {
+      "label": "reply-direct-message",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 275,
+      "appMs": 42.6
+    },
+    {
+      "label": "reject-foreign-message-edit",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 246,
+      "appMs": 12.6
+    },
+    {
+      "label": "edit-own-message",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 261,
+      "appMs": 24.5
+    },
+    {
+      "label": "delete-message-for-self",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 249,
+      "appMs": 17.7
+    },
+    {
+      "label": "recipient-hidden-message",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 312,
+      "appMs": 81.4
+    },
+    {
+      "label": "sender-retained-message",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 276,
+      "appMs": 44
+    },
+    {
+      "label": "delete-message-for-everyone",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 251,
+      "appMs": 18.9
+    },
+    {
+      "label": "cancel-auto-friend",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 241,
+      "appMs": 10.5
+    },
+    {
+      "label": "create-groups",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 247,
+      "appMs": 14
+    },
+    {
+      "label": "groups-send",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 339,
+      "appMs": 107.2
+    },
+    {
+      "label": "groups-invite",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 306,
+      "appMs": 73.5
+    },
+    {
+      "label": "groups-private-invite-preview",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 299,
+      "appMs": 66.8
+    },
+    {
+      "label": "groups-join-invite",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 250,
+      "appMs": 16.1
+    },
+    {
+      "label": "groups-history",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 288,
+      "appMs": 57.5
+    },
+    {
+      "label": "groups-foreign-edit",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 287,
+      "appMs": 55.3
+    },
+    {
+      "label": "groups-nonowner-delete",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 243,
+      "appMs": 11.6
+    },
+    {
+      "label": "groups-outsider-read",
+      "status": 404,
+      "expected": 404,
+      "ok": true,
+      "ms": 243,
+      "appMs": 11.5
+    },
+    {
+      "label": "create-communities",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 240,
+      "appMs": 10.1
+    },
+    {
+      "label": "communities-send",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 335,
+      "appMs": 102.6
+    },
+    {
+      "label": "community-owner-adds-member",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 300,
+      "appMs": 68.5
+    },
+    {
+      "label": "communities-history",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 277,
+      "appMs": 45.4
+    },
+    {
+      "label": "communities-foreign-edit",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 297,
+      "appMs": 65.6
+    },
+    {
+      "label": "communities-nonowner-delete",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 242,
+      "appMs": 11
+    },
+    {
+      "label": "communities-outsider-read",
+      "status": 404,
+      "expected": 404,
+      "ok": true,
+      "ms": 241,
+      "appMs": 10.1
+    },
+    {
+      "label": "upload-chat-media",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 249,
+      "appMs": 18.5
+    },
+    {
+      "label": "favorite-sticker-0",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 263,
+      "appMs": 31.4
+    },
+    {
+      "label": "favorite-sticker-1",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 247,
+      "appMs": 10.7
+    },
+    {
+      "label": "sticker-list-owner",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 243,
+      "appMs": 12.7
+    },
+    {
+      "label": "sticker-list-other-account",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 248,
+      "appMs": 13.7
+    },
+    {
+      "label": "sticker-create-recipient-chat",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 304,
+      "appMs": 72
+    },
+    {
+      "label": "sticker-send-to-other-account",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 268,
+      "appMs": 34.3
+    },
+    {
+      "label": "sticker-recipient-saves-once",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 261,
+      "appMs": 29.9
+    },
+    {
+      "label": "sticker-recipient-own-favorites",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 245,
+      "appMs": 12.6
+    },
+    {
+      "label": "sticker-create-forward-chat",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 294,
+      "appMs": 62.1
+    },
+    {
+      "label": "sticker-forward-from-recipient-account",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 277,
+      "appMs": 44
+    },
+    {
+      "label": "remove-sticker-favorite",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 243,
+      "appMs": 10
+    },
+    {
+      "label": "sticker-list-after-remove",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 256,
+      "appMs": 21.3
+    },
+    {
+      "label": "upload-videos",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 1432,
+      "appMs": 1073.2
+    },
+    {
+      "label": "publish-private-video",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 272,
+      "appMs": 39.1
+    },
+    {
+      "label": "private-video-rejects-other-account",
+      "status": 404,
+      "expected": 404,
+      "ok": true,
+      "ms": 239,
+      "appMs": 8.9
+    },
+    {
+      "label": "own-video-comment",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 311,
+      "appMs": 79.2
+    },
+    {
+      "label": "find-video-through-comment",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 300,
+      "appMs": 68.4
+    },
+    {
+      "label": "comment-search-hides-private-video",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 303,
+      "appMs": 66.6
+    },
+    {
+      "label": "delete-video-comment",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 247,
+      "appMs": 16.3
+    },
+    {
+      "label": "deleted-comment-not-searchable",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 292,
+      "appMs": 62.2
+    },
+    {
+      "label": "delete-owned-video",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 259,
+      "appMs": 26.3
+    },
+    {
+      "label": "upload-post-media",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 258,
+      "appMs": 23.9
+    },
+    {
+      "label": "upload-post-media",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 256,
+      "appMs": 20.9
+    },
+    {
+      "label": "social-private-gallery",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 249,
+      "appMs": 12
+    },
+    {
+      "label": "social-gallery-retains-all-images",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 434,
+      "appMs": 201.1
+    },
+    {
+      "label": "social-private-gallery-hidden",
+      "status": 404,
+      "expected": 404,
+      "ok": true,
+      "ms": 264,
+      "appMs": 28.7
+    },
+    {
+      "label": "social-own-comment",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 343,
+      "appMs": 112.3
+    },
+    {
+      "label": "social-own-comment-edit",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 239,
+      "appMs": 8.3
+    },
+    {
+      "label": "social-own-reaction",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 351,
+      "appMs": 120.2
+    },
+    {
+      "label": "social-own-reaction-remove",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 279,
+      "appMs": 45.2
+    },
+    {
+      "label": "social-gallery-delete",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 299,
+      "appMs": 68.6
+    },
+    {
+      "label": "upload-moment-media",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 274,
+      "appMs": 17.7
+    },
+    {
+      "label": "moment-private-publish",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 247,
+      "appMs": 15.1
+    },
+    {
+      "label": "moment-self-view-not-counted",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 251,
+      "appMs": 10
+    },
+    {
+      "label": "moment-private-outsider-view-rejected",
+      "status": 404,
+      "expected": 404,
+      "ok": true,
+      "ms": 242,
+      "appMs": 10.2
+    },
+    {
+      "label": "moment-private-outsider-reaction-rejected",
+      "status": 404,
+      "expected": 404,
+      "ok": true,
+      "ms": 246,
+      "appMs": 9.2
+    },
+    {
+      "label": "moment-private-delete",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 249,
+      "appMs": 14.9
+    },
+    {
+      "label": "moment-chats-audience-publish",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 260,
+      "appMs": 25.1
+    },
+    {
+      "label": "moment-chats-view-0",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 267,
+      "appMs": 19.8
+    },
+    {
+      "label": "moment-chats-view-1",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 257,
+      "appMs": 18.7
+    },
+    {
+      "label": "moment-unique-viewer",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 257,
+      "appMs": 25.1
+    },
+    {
+      "label": "moment-chats-delete",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 250,
+      "appMs": 18.2
+    },
+    {
+      "label": "gaming-profile",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 256,
+      "appMs": 18.5
+    },
+    {
+      "label": "gaming-profile-update",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 252,
+      "appMs": 15.2
+    },
+    {
+      "label": "gaming-profile-reject-stale-version",
+      "status": 409,
+      "expected": 409,
+      "ok": true,
+      "ms": 247,
+      "appMs": 12.9
+    },
+    {
+      "label": "gaming-connect",
+      "status": 201,
+      "expected": 201,
+      "ok": true,
+      "ms": 265,
+      "appMs": 17.5
+    },
+    {
+      "label": "gaming-connect-idempotent",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 252,
+      "appMs": 6.9
+    },
+    {
+      "label": "gaming-foreign-pending-decision",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 248,
+      "appMs": 6.7
+    },
+    {
+      "label": "gaming-accept-recipient",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 247,
+      "appMs": 8.8
+    },
+    {
+      "label": "gaming-foreign-replay-decision",
+      "status": 403,
+      "expected": 403,
+      "ok": true,
+      "ms": 242,
+      "appMs": 6.4
+    },
+    {
+      "label": "gaming-recipient-replay-decision",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 242,
+      "appMs": 7.8
+    },
+    {
+      "label": "cleanup-owned-room",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 264,
+      "appMs": 25.2
+    },
+    {
+      "label": "cleanup-owned-room",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 263,
+      "appMs": 23.7
+    },
+    {
+      "label": "cleanup-isolated-account",
+      "ok": false,
+      "transportFailure": true,
+      "ms": 12027
+    },
+    {
+      "label": "cleanup-isolated-account",
+      "status": 200,
+      "expected": 200,
+      "ok": true,
+      "ms": 10917,
+      "appMs": 10065.8
+    },
+    {
+      "label": "verify-revoked-account-token",
+      "status": 401,
+      "expected": 401,
+      "ok": true,
+      "ms": 236,
+      "appMs": 2.1
+    },
+    {
+      "label": "cleanup-isolated-account",
+      "ok": false,
+      "transportFailure": true,
+      "ms": 12004
+    }
+  ],
+  "cleanupVerified": false,
+  "actualEmailsSent": 0,
+  "p95Ms": 434,
+  "ok": false
+}

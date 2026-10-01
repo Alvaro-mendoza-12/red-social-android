@@ -1,0 +1,17 @@
+{
+  "unitClasses": 225,
+  "unitTests": 997,
+  "unitFailures": 0,
+  "unitErrors": 0,
+  "unitSkipped": 0,
+  "lintErrors": 0,
+  "lintWarnings": 268,
+  "completeAndroidBuildSucceeded": true,
+  "androidBuildLog": "fluidity-document-access-quality.log",
+  "apkSha256": "6a4d351988e322b31cc2e885fccfea6329a277a9e81517a31d6f53de4a720e50",
+  "apkBytes": 272954612,
+  "backendTests": 330,
+  "backendPassed": 328,
+  "backendFailed": 0,
+  "backendSkipped": 2
+}

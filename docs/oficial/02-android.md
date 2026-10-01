@@ -17,8 +17,8 @@ Estado observado:
 - `compileSdk`: 36
 - `minSdk`: 24
 - `targetSdk`: 36
-- `versionCode`: 66
-- `versionName`: 3.3.4
+- `versionCode`: 117
+- `versionName`: 9.0.20 (incremento pendiente por indicación del propietario)
 - Java/Kotlin target: 17
 - Runtime de Gradle soportado: JDK 17–21. JDK 22+ se rechaza antes de compilar; el target de bytecode permanece en 17.
 - Android Gradle Plugin: 8.13.2
@@ -30,7 +30,7 @@ Estado observado:
 
 El proyecto apunta a Android 16/API 36. La compilación automatizada verifica compatibilidad de código, pero no reemplaza la prueba física de edge-to-edge, gesto predictivo atrás, teclado, permisos multimedia, foreground services, rotación y ventanas grandes.
 
-La puerta local se ejecuta con `:app:qualityGateDebug`. Un release exige la clave original de subida de Play mediante `keystore.properties` o `NOVVIN_UPLOAD_*`; `NOVVIN_AUDIT_BUILD=true` sólo sirve para validar R8 y empaquetado con una llave efímera y nunca produce un artefacto publicable.
+La puerta local se ejecuta con `:app:qualityGateDebug`. Un release exige la clave original de subida de Play mediante `keystore.properties` o `NOVVIN_UPLOAD_*`. No existe una excepción de firma habilitada por `NOVVIN_AUDIT_BUILD`; no usar una llave efímera como sustituto de la clave original. La sesión del 30/09/2026 no dispone de la configuración original para firmar un AAB publicable.
 
 ## Secrets de build
 
@@ -39,7 +39,7 @@ La app requiere `secrets.properties`.
 Ejemplo base:
 
 ```properties
-FALLBACK_API_URL=https://conectate-alvaro.duckdns.org
+FALLBACK_API_URL=https://conectate.tail9b267c.ts.net
 BACKEND_DISCOVERY_HOST=conectate-alvaro.duckdns.org
 BACKEND_CONFIG_URL=
 BACKEND_DISCOVERY_PUBLIC_KEY=PEGA_SPKI_DER_BASE64

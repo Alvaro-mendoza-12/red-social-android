@@ -1,0 +1,351 @@
+{
+  "ok": false,
+  "cleanupVerified": true,
+  "scope": "Forced public HTTPS/SNI, HTTP/1.1 reads with one isolated account; not every UI option or capacity certification",
+  "checks": [
+    {
+      "name": "isolated-registration",
+      "status": 201,
+      "expected": 201,
+      "ms": 1452,
+      "ok": true
+    },
+    {
+      "name": "health",
+      "status": 200,
+      "expected": 200,
+      "ms": 232,
+      "ok": true
+    },
+    {
+      "name": "ready",
+      "status": 200,
+      "expected": 200,
+      "ms": 234,
+      "ok": true
+    },
+    {
+      "name": "account",
+      "status": 200,
+      "expected": 200,
+      "ms": 265,
+      "ok": true
+    },
+    {
+      "name": "profile",
+      "status": 200,
+      "expected": 200,
+      "ms": 508,
+      "ok": true
+    },
+    {
+      "name": "profile-search",
+      "status": 200,
+      "expected": 200,
+      "ms": 510,
+      "ok": true
+    },
+    {
+      "name": "notifications",
+      "status": 200,
+      "expected": 200,
+      "ms": 252,
+      "ok": true
+    },
+    {
+      "name": "friends",
+      "status": 200,
+      "expected": 200,
+      "ms": 266,
+      "ok": true
+    },
+    {
+      "name": "messages-inbox",
+      "status": 200,
+      "expected": 200,
+      "ms": 397,
+      "ok": true
+    },
+    {
+      "name": "saved-messages",
+      "status": 200,
+      "expected": 200,
+      "ms": 321,
+      "ok": true
+    },
+    {
+      "name": "communities",
+      "status": 200,
+      "expected": 200,
+      "ms": 298,
+      "ok": true
+    },
+    {
+      "name": "social-feed",
+      "status": 200,
+      "expected": 200,
+      "ms": 341,
+      "ok": true
+    },
+    {
+      "name": "moments",
+      "status": 200,
+      "expected": 200,
+      "ms": 333,
+      "ok": true
+    },
+    {
+      "name": "saved-collections",
+      "status": 200,
+      "expected": 200,
+      "ms": 255,
+      "ok": true
+    },
+    {
+      "name": "videos",
+      "status": 200,
+      "expected": 200,
+      "ms": 479,
+      "ok": true
+    },
+    {
+      "name": "video-collections",
+      "status": 200,
+      "expected": 200,
+      "ms": 303,
+      "ok": true
+    },
+    {
+      "name": "video-comment-search",
+      "status": 200,
+      "expected": 200,
+      "ms": 289,
+      "ok": true
+    },
+    {
+      "name": "ranking-followers",
+      "status": 200,
+      "expected": 200,
+      "ms": 600,
+      "ok": true
+    },
+    {
+      "name": "ranking-posts",
+      "status": 200,
+      "expected": 200,
+      "ms": 527,
+      "ok": true
+    },
+    {
+      "name": "watch-later",
+      "status": 200,
+      "expected": 200,
+      "ms": 244,
+      "ok": true
+    },
+    {
+      "name": "video-history",
+      "status": 200,
+      "expected": 200,
+      "ms": 245,
+      "ok": true
+    },
+    {
+      "name": "voice-rooms",
+      "status": 200,
+      "expected": 200,
+      "ms": 302,
+      "ok": true
+    },
+    {
+      "name": "live-capabilities",
+      "status": 200,
+      "expected": 200,
+      "ms": 250,
+      "ok": true
+    },
+    {
+      "name": "live-directory",
+      "status": 200,
+      "expected": 200,
+      "ms": 241,
+      "ok": true
+    },
+    {
+      "name": "live-replays",
+      "status": 200,
+      "expected": 200,
+      "ms": 239,
+      "ok": true
+    },
+    {
+      "name": "challenge-directory",
+      "status": 200,
+      "expected": 200,
+      "ms": 277,
+      "ok": true
+    },
+    {
+      "name": "owned-challenges",
+      "status": 200,
+      "expected": 200,
+      "ms": 240,
+      "ok": true
+    },
+    {
+      "name": "games-capabilities",
+      "status": 200,
+      "expected": 200,
+      "ms": 235,
+      "ok": true
+    },
+    {
+      "name": "games-catalog",
+      "status": 200,
+      "expected": 200,
+      "ms": 587,
+      "ok": true
+    },
+    {
+      "name": "games-connections",
+      "status": 502,
+      "expected": 200,
+      "ms": 233,
+      "ok": false
+    },
+    {
+      "name": "games-matches",
+      "status": 502,
+      "expected": 200,
+      "ms": 228,
+      "ok": false
+    },
+    {
+      "name": "socialization-capabilities",
+      "status": 200,
+      "expected": 200,
+      "ms": 237,
+      "ok": true
+    },
+    {
+      "name": "algorithm-capabilities",
+      "status": 200,
+      "expected": 200,
+      "ms": 241,
+      "ok": true
+    },
+    {
+      "name": "algorithm-profiles",
+      "status": 200,
+      "expected": 200,
+      "ms": 263,
+      "ok": true
+    },
+    {
+      "name": "creator-analytics",
+      "status": 200,
+      "expected": 200,
+      "ms": 250,
+      "ok": true
+    },
+    {
+      "name": "music-categories",
+      "status": 200,
+      "expected": 200,
+      "ms": 241,
+      "ok": true
+    },
+    {
+      "name": "music-library",
+      "status": 200,
+      "expected": 200,
+      "ms": 244,
+      "ok": true
+    },
+    {
+      "name": "notification-digest",
+      "status": 200,
+      "expected": 200,
+      "ms": 245,
+      "ok": true
+    },
+    {
+      "name": "ranking-own-position",
+      "status": 200,
+      "expected": 200,
+      "ms": 600,
+      "ok": true
+    },
+    {
+      "name": "socialization-feature-state",
+      "status": 200,
+      "expected": 200,
+      "ms": 246,
+      "ok": true
+    },
+    {
+      "name": "socialization-disabled-as-configured",
+      "status": 404,
+      "expected": 404,
+      "ms": 235,
+      "ok": true
+    },
+    {
+      "name": "admin-access-denied",
+      "status": 403,
+      "expected": 403,
+      "ms": 254,
+      "ok": true
+    },
+    {
+      "name": "messages-require-auth",
+      "status": 401,
+      "expected": 401,
+      "ms": 236,
+      "ok": true
+    },
+    {
+      "name": "live-gifts-require-auth",
+      "status": 401,
+      "expected": 401,
+      "ms": 232,
+      "ok": true
+    },
+    {
+      "name": "unknown-email-recovery",
+      "status": 200,
+      "expected": 200,
+      "ms": 361,
+      "ok": true
+    },
+    {
+      "name": "invalid-email-recovery",
+      "status": 200,
+      "expected": 200,
+      "ms": 358,
+      "ok": true
+    },
+    {
+      "name": "fixture-delete",
+      "status": 200,
+      "expected": 200,
+      "ms": 803,
+      "ok": true
+    },
+    {
+      "name": "deleted-session-invalid",
+      "status": 401,
+      "expected": 401,
+      "ms": 247,
+      "ok": true
+    }
+  ],
+  "p95Ms": 600,
+  "overOneSecond": [
+    {
+      "name": "isolated-registration",
+      "ms": 1452
+    }
+  ],
+  "actualRecoveryEmailsSent": 0
+}

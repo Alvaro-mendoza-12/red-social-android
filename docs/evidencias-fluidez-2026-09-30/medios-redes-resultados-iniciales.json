@@ -1,0 +1,17 @@
+{
+  "flows": [
+    {
+      "flow": "live",
+      "passed": true
+    },
+    {
+      "flow": "voice",
+      "passed": false
+    },
+    {
+      "flow": "call",
+      "passed": true
+    }
+  ],
+  "wifiRestored": true
+}

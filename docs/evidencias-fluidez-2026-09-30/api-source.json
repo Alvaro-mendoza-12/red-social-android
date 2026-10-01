@@ -1,0 +1,17 @@
+{
+  "scope": "API src JavaScript only; excludes configuration, schema and other services",
+  "ok": true,
+  "sourceFiles": 93,
+  "matched": 93,
+  "different": [],
+  "extra": [],
+  "ready": true,
+  "checkedAtUtc": "2026-10-01T04:16:43.964436+00:00",
+  "releaseMetadata": {
+    "release": "conectate-mini-pc-20260928T105528Z",
+    "commit": "52f948e5c2e5",
+    "sourceDigest": "8093cd32c3224536594c1dc26d67fbd9d3ba0cbf817d77fb16a4a95a414a44a8",
+    "deployedAtUtc": "2026-09-28T11:00:34Z",
+    "environment": "production"
+  }
+}

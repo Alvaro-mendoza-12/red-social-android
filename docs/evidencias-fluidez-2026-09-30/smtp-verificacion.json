@@ -1,0 +1,7 @@
+{
+  "smtpAuthenticationVerified": true,
+  "tlsRequired": true,
+  "elapsedMs": 2731,
+  "actualEmailsSent": 0,
+  "inboxReceipt": "not-tested"
+}

@@ -32,8 +32,11 @@ Servicios:
 | `api` | `conectate-local-fallback-api-main` | API principal Node/Express |
 | `edge` | `conectate-local-fallback-edge-main` | nginx reverse proxy |
 | `realtime-gateway` | `conectate-local-fallback-realtime-main` | realtime |
-| `signaling` | `conectate-local-fallback-signaling-main` | WebRTC/Socket.IO |
+| `signaling` | `conectate-local-fallback-signaling-1` | WebRTC/Socket.IO |
 | `coturn` | `conectate-local-fallback-coturn-main` | TURN opcional |
+| `signaling-redis` | `conectate-local-fallback-signaling-redis-main` | Coordinación y límites distribuidos |
+| `ai-chatbot` | `conectate-local-fallback-ai-main` | Servicio de IA local |
+| `office-preview` | `conectate-local-fallback-office-preview-1` | Conversión y vista previa de documentos |
 
 ## Puertos internos esperados
 
@@ -45,9 +48,11 @@ Servicios:
 | Edge | `127.0.0.1:3080` | `8080` |
 | PostgreSQL | `127.0.0.1:5433` | `5432` |
 
-El público entra por un Cloudflare Tunnel **nombrado** hacia nginx edge. El
-servicio esperado es `novvin-cloudflared.service`; los Quick Tunnels manuales
-son una transición temporal que no se debe usar como base de producción.
+El ingreso público comprobado el 30/09/2026 es Tailscale Funnel en
+`https://conectate.tail9b267c.ts.net`. Cloudflare nombrado describe la operación
+anterior y una alternativa; comprobar `tailscale funnel status`, `/health` y
+`/ready` antes de diagnosticar el ingreso actual. No usar Quick Tunnels como
+origen estable de la aplicación.
 
 ## nginx edge
 

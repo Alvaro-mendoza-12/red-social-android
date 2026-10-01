@@ -1,0 +1,41 @@
+{
+  "containers": [
+    {
+      "name": "conectate-local-fallback-api-main",
+      "status": "Up 49 minutes (healthy)"
+    },
+    {
+      "name": "conectate-local-fallback-signaling-1",
+      "status": "Up 2 hours (healthy)"
+    },
+    {
+      "name": "conectate-local-fallback-realtime-main",
+      "status": "Up 2 hours (healthy)"
+    },
+    {
+      "name": "conectate-local-fallback-office-preview-1",
+      "status": "Up 13 hours (healthy)"
+    },
+    {
+      "name": "conectate-local-fallback-edge-main",
+      "status": "Up 49 minutes (healthy)"
+    },
+    {
+      "name": "conectate-local-fallback-ai-main",
+      "status": "Up 2 days (healthy)"
+    },
+    {
+      "name": "conectate-local-fallback-signaling-redis-main",
+      "status": "Up 2 days (healthy)"
+    },
+    {
+      "name": "conectate-local-fallback-coturn-main",
+      "status": "Up 4 days (healthy)"
+    },
+    {
+      "name": "conectate-local-fallback-db-main",
+      "status": "Up 4 days (healthy)"
+    }
+  ],
+  "healthy": 9
+}

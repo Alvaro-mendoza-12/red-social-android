@@ -1,0 +1,583 @@
+{
+  "scope": "New isolated account only; no personal account or media",
+  "totalMs": 428,
+  "queries": [
+    {
+      "operation": "SELECT",
+      "table": "fallback_users",
+      "ms": 4
+    },
+    {
+      "operation": "BEGIN",
+      "table": null,
+      "ms": 1
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_users",
+      "ms": 1
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_storage_objects",
+      "ms": 3
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_chats",
+      "ms": 9
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_collection_rooms",
+      "ms": 3
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_voice_rooms",
+      "ms": 3
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_posts",
+      "ms": 3
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_videos",
+      "ms": 4
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_moments",
+      "ms": 3
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_live_streams",
+      "ms": 3
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_challenge_submissions",
+      "ms": 3
+    },
+    {
+      "operation": "SELECT",
+      "table": "fallback_random_chat_sessions",
+      "ms": 2
+    },
+    {
+      "operation": "INSERT",
+      "table": "fallback_deleted_identities",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_saved_messages",
+      "ms": 4
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_message_pins",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_message_pin_events",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_post_comment_reactions",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_post_comments",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_post_reactions",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_saved_posts",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_saved_collections",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_shares",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_follows",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_reports",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_notifications",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_notification_digest_preferences",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_fcm_tokens",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_messages",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_room_messages",
+      "ms": 0
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_collection_message_receipts",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_collection_members",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_collection_read_states",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_collection_invites",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_voice_room_participants",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_video_comment_reactions",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_video_comments",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_video_likes",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_video_favorites",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_video_collections",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_video_views",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_video_playback_history",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_video_watch_later",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_video_comment_reports",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_challenge_votes",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_challenge_submissions",
+      "ms": 0
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_friends",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_moment_views",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_live_comments",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_proximity_presence",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_random_bottle_availability",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_random_chat_bottles",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_random_chat_queue",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_random_chat_messages",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_chat_participants",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_chat_hidden",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_nicknames",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_user_blocks",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_moderation_appeals",
+      "ms": 3
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_moderation_decisions",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_profile_moderation",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_video_reports",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_view_once_consumptions",
+      "ms": 1
+    },
+    {
+      "operation": "SELECT",
+      "table": "columns",
+      "ms": 27
+    },
+    {
+      "operation": "DELETE",
+      "table": "challenge_submissions",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "challenge_submissions_with_votes",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "challenge_votes",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "challenges_master",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "chat_participants",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "chat_translation_settings",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "chats",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "communities",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "community_members",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "community_message_receipts",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "community_messages",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "follows",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "friends",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "group_members",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "group_message_receipts",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "group_messages",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "groups",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "live_comments",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "live_streams",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "media_registry",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "message_poll_votes",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "message_polls",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "messages",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "moment_views",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "moments",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "nicknames",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "notifications",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "post_comments",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "post_likes",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "posts",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "profile_login_emails",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "profiles",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "reports",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "scheduled_message_jobs",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "security_audit_events",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "security_rate_limit_state",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "security_rate_limit_windows",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "shares",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "user_badges",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "user_sticker_favorites",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "users",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "video_comments",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "video_likes",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "video_reports",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "videos",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "voice_access_requests",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "voice_rooms",
+      "ms": 1
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_compat_rows",
+      "ms": 192
+    },
+    {
+      "operation": "INSERT",
+      "table": "fallback_audit_events",
+      "ms": 2
+    },
+    {
+      "operation": "DELETE",
+      "table": "fallback_users",
+      "ms": 24
+    },
+    {
+      "operation": "COMMIT",
+      "table": null,
+      "ms": 1
+    }
+  ],
+  "revoked": true,
+  "actualEmailsSent": 0
+}

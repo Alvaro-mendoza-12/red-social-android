@@ -1,9 +1,11 @@
 # 00 — Contexto y estado actual
 
 Conéctate es una red social móvil orientada a producción y con una versión histórica
-distribuida. El backend propio en Ubuntu Server sobre una mini PC sigue en transición
-operativa: la auditoría vigente no certifica que la rama actual esté desplegada ni que
-el acceso público tenga todavía un origen estable. La aplicación está orientada a
+distribuida. La rama de trabajo es `feature/live-gifts` en `D:\red social - live-gifts`.
+El backend propio en Ubuntu Server sobre una mini PC tiene un ingreso HTTPS comprobado
+en `https://conectate.tail9b267c.ts.net` mediante Tailscale Funnel. Las comprobaciones
+del 30/09/2026 cubren nueve contenedores saludables y recorridos públicos descritos
+en el documento 33. No equivalen a certificar cada opción de todos los clientes. La aplicación está orientada a
 usuarios reales, no solo pruebas internas, por lo que cualquier cambio debe tratarse
 como producción.
 
@@ -23,8 +25,8 @@ El proyecto pasó por varias etapas:
    - El backend propio se migró a Ubuntu Server.
    - La mini PC se volvió el servidor principal de Conéctate.
    - Se usa Docker Compose para levantar PostgreSQL, API, signaling, realtime, nginx edge y TURN local opcional.
-   - Debido a CGNAT, el acceso público HTTP debe entrar por un Cloudflare Tunnel
-     nombrado y un hostname HTTPS estable. El descubrimiento firmado por DuckDNS
+   - Debido a CGNAT, el acceso público HTTP entra actualmente por Tailscale Funnel
+     y un hostname HTTPS estable. Cloudflare nombrado permanece como alternativa histórica. El descubrimiento firmado por DuckDNS
      queda como compatibilidad de transición y recuperación, no como ruta
      primaria de producción.
 
@@ -40,8 +42,8 @@ Estos puntos se observan directamente en el código/configuración local:
   - `targetSdk`: 36.
   - Android Gradle Plugin: 8.13.2.
   - Gradle wrapper: 8.13.
-  - `versionCode`: 68.
-  - `versionName`: 3.3.6.
+  - `versionCode`: 117.
+  - `versionName`: 9.0.20. El incremento está pendiente por indicación del propietario.
   - Backend principal configurado por `FALLBACK_API_URL` y `BACKEND_DISCOVERY_HOST`.
 
 - Backend:
@@ -78,7 +80,7 @@ El estado saludable debe mostrar:
 
 - `docker=active`
 - `stack=active`
-- `cloudflare=active` mediante el servicio de sistema `novvin-cloudflared.service`
+- ingreso público HTTPS y configuración de `tailscale funnel status` correctos; `cloudflare=active` pertenece al runbook anterior
 - contenedores `api`, `db`, `edge`, `realtime-gateway`, `signaling` en `healthy`
 - `READY LOCAL` con `ok:true`
 - `READY PUBLIC` con `ok:true`

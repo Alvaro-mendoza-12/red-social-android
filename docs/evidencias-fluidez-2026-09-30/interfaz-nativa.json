@@ -1,0 +1,45 @@
+{
+  "scope": "Synthetic native UI and local filter export; no human listening, push or cross-network certification",
+  "motorola": {
+    "model": "moto g04",
+    "tests": 6,
+    "passed": true,
+    "seconds": 23.163,
+    "appUpdatedWithoutClearingData": true
+  },
+  "emulator": {
+    "uiTests": 10,
+    "uiPassed": true,
+    "uiSeconds": 40.657,
+    "filterExportTests": 1,
+    "filterExportPassed": true,
+    "filterExportSeconds": 20.991
+  },
+  "screenshots": [
+    {
+      "name": "motorola-voice-muted-badge.png",
+      "sha256": "04ae864101d8fd68187e7c385dd6efcc26fa4a86ba324b3c09bae3273efb99a5",
+      "visuallyInspected": true
+    },
+    {
+      "name": "motorola-voice-reactions-bottom.png",
+      "sha256": "8314eb81759c5b8d9ece43b65f8e62a66469ed2302cb529eeaa63406dd468dcb",
+      "visuallyInspected": true
+    },
+    {
+      "name": "motorola-voice-short-code-double-text.png",
+      "sha256": "06cbfe18a970a98f452202debf0a3a80595b4768ab3580dfc2659d7c2d25d4d5",
+      "visuallyInspected": true
+    },
+    {
+      "name": "motorola-editor-imported-color-lut.png",
+      "sha256": "2faab1301472392a7ad4fca2457b0451ce9a3651128f7b3e219a8006f95679f9",
+      "visuallyInspected": true
+    },
+    {
+      "name": "motorola-incoming-narrow-double-text.png",
+      "sha256": "13c6eb7d437451d9de392e7c2e1d0ec33e87af34bed5c35fd0c9def4de11e68c",
+      "visuallyInspected": true
+    }
+  ]
+}

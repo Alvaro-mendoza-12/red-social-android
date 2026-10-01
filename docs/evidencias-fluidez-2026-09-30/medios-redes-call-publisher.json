@@ -1,0 +1,14 @@
+{
+  "flow": "call",
+  "role": "publisher",
+  "transport": "cellular",
+  "bidirectionalVideo": true,
+  "audioReceived": true,
+  "receivedFps": 8.530351894023685,
+  "firstFrameMs": 3112,
+  "candidateTypes": [
+    "relay",
+    "relay"
+  ],
+  "rttSeconds": 0.309
+}

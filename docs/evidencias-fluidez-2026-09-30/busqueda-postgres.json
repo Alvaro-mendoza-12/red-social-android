@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "accents": true,
+  "literalWildcards": true,
+  "reportedExcluded": true,
+  "deletedExcluded": true,
+  "candidateMembershipEnforced": true,
+  "scope": "Isolated PostgreSQL schema rolled back"
+}

@@ -1,0 +1,14 @@
+{
+  "flow": "voice",
+  "role": "publisher",
+  "transport": "cellular",
+  "bidirectionalVideo": true,
+  "audioReceived": true,
+  "receivedFps": 7.196273498043326,
+  "firstFrameMs": 8321,
+  "candidateTypes": [
+    "prflx",
+    "relay"
+  ],
+  "rttSeconds": 0.294
+}

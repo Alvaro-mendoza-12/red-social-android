@@ -55,9 +55,16 @@ En backend:
 
 Infraestructura:
 
-- Cloudflare Tunnel nombrado para HTTP/WebSocket.
+- Ingreso público observado el 30/09/2026: Tailscale Funnel en
+  `https://conectate.tail9b267c.ts.net` para HTTP/WebSocket.
+- Cloudflare Tunnel nombrado queda como alternativa histórica; verificar el
+  ingreso activo antes de ejecutar los scripts de despliegue anteriores.
 - TURN externo recomendado si hay CGNAT.
 - coturn local disponible solo si puede exponerse públicamente.
+
+Mediciones, correcciones recientes y límites de certificación están en
+[la auditoría de fluidez](33-fluidez-y-auditoria-modulos-2026-09-30.md).
+Solicitar 60 FPS al capturador no demuestra recibir 60 FPS en otro dispositivo.
 
 ## Por qué Cloudflare Tunnel no basta para WebRTC media
 

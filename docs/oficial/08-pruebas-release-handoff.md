@@ -2,6 +2,11 @@
 
 Este documento define cómo probar, publicar y entregar el proyecto a otro equipo o IA.
 
+La evidencia vigente del 30/09/2026 está en
+[Fluidez y auditoría por módulos](33-fluidez-y-auditoria-modulos-2026-09-30.md).
+La versión se mantiene en 117 / 9.0.20. La entrega móvil completa para producción,
+las pruebas físicas finales, el AAB con firma original y la paridad web continúan abiertos.
+
 ## Estados permitidos
 
 Usar siempre una de estas etiquetas:
@@ -301,12 +306,11 @@ python tools/verify_android_page_size.py app/build/outputs/bundle/release/app-re
 python tools/performance_budget_check.py --artifacts app/build/outputs/bundle/release/app-release.aab
 ```
 
-Para un smoke local firmado con una clave **efímera**, definir además
-`NOVVIN_AUDIT_BUILD=true`. Esto hace que
-`uploadCrashlyticsMappingFileRelease` quede en `SKIPPED` y evita subir a
-Crashlytics un mapa que no corresponde al binario de Play. Nunca definir esa
-variable en el workflow de producción. El artefacto de smoke debe moverse fuera
-de `app/build/outputs/` y nombrarse `AUDIT-NOT-FOR-PLAY`.
+`NOVVIN_AUDIT_BUILD=true` evita subir un mapping de ensayo a Crashlytics;
+**no sustituye la clave original ni habilita por sí solo la firma release**.
+`verifyReleaseSigningConfiguration` debe seguir fallando si falta la configuración
+original. Para ensayos locales se usa debug. Nunca publicar un artefacto firmado
+con una clave de prueba ni configurar ese flag en el workflow de producción.
 
 La línea Android validada para 3.3.4/66 es Kotlin 2.2.10, KSP
 2.2.10-2.0.2, Media3 1.11.0, Compose BOM 2026.06.00, Room 2.8.4 y Hilt

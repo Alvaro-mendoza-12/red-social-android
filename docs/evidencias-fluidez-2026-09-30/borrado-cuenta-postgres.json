@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "temporaryTableRolledBack": true,
+  "scalarAndLegacyArrayOwnershipPreserved": true,
+  "unrelatedPayloadPreserved": true,
+  "actualEmailsSent": 0
+}

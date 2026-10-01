@@ -1,0 +1,3836 @@
+{
+  "scope": "Inventory of main source files only; lexical counts, not functional coverage or line-by-line certification",
+  "androidFiles": 784,
+  "backendFiles": 93,
+  "webFiles": 120,
+  "totalLines": 334164,
+  "areas": {
+    "android/MainActivity": {
+      "files": 1,
+      "lines": 328,
+      "functionDeclarations": 18
+    },
+    "android/SocialApp": {
+      "files": 1,
+      "lines": 269,
+      "functionDeclarations": 4
+    },
+    "android/analytics/enterprise": {
+      "files": 1,
+      "lines": 251,
+      "functionDeclarations": 12
+    },
+    "android/auth/twoFactor": {
+      "files": 4,
+      "lines": 499,
+      "functionDeclarations": 36
+    },
+    "android/core/concurrency": {
+      "files": 3,
+      "lines": 55,
+      "functionDeclarations": 2
+    },
+    "android/core/crash": {
+      "files": 2,
+      "lines": 143,
+      "functionDeclarations": 9
+    },
+    "android/core/features": {
+      "files": 1,
+      "lines": 6,
+      "functionDeclarations": 0
+    },
+    "android/core/feed": {
+      "files": 3,
+      "lines": 568,
+      "functionDeclarations": 29
+    },
+    "android/core/logging": {
+      "files": 2,
+      "lines": 42,
+      "functionDeclarations": 8
+    },
+    "android/core/media": {
+      "files": 14,
+      "lines": 1720,
+      "functionDeclarations": 92
+    },
+    "android/core/messaging": {
+      "files": 3,
+      "lines": 122,
+      "functionDeclarations": 8
+    },
+    "android/core/moderation": {
+      "files": 1,
+      "lines": 320,
+      "functionDeclarations": 9
+    },
+    "android/core/network": {
+      "files": 5,
+      "lines": 310,
+      "functionDeclarations": 12
+    },
+    "android/core/observability": {
+      "files": 1,
+      "lines": 256,
+      "functionDeclarations": 10
+    },
+    "android/core/production": {
+      "files": 1,
+      "lines": 102,
+      "functionDeclarations": 8
+    },
+    "android/core/profile": {
+      "files": 1,
+      "lines": 93,
+      "functionDeclarations": 5
+    },
+    "android/core/repository": {
+      "files": 1,
+      "lines": 95,
+      "functionDeclarations": 1
+    },
+    "android/core/result": {
+      "files": 2,
+      "lines": 70,
+      "functionDeclarations": 0
+    },
+    "android/core/security": {
+      "files": 2,
+      "lines": 310,
+      "functionDeclarations": 13
+    },
+    "android/core/stability": {
+      "files": 1,
+      "lines": 155,
+      "functionDeclarations": 10
+    },
+    "android/core/telemetry": {
+      "files": 3,
+      "lines": 46,
+      "functionDeclarations": 2
+    },
+    "android/core/testing": {
+      "files": 1,
+      "lines": 129,
+      "functionDeclarations": 11
+    },
+    "android/data/algorithm": {
+      "files": 2,
+      "lines": 552,
+      "functionDeclarations": 23
+    },
+    "android/data/analytics": {
+      "files": 1,
+      "lines": 110,
+      "functionDeclarations": 8
+    },
+    "android/data/auth": {
+      "files": 1,
+      "lines": 21,
+      "functionDeclarations": 0
+    },
+    "android/data/cache": {
+      "files": 1,
+      "lines": 77,
+      "functionDeclarations": 5
+    },
+    "android/data/documents": {
+      "files": 2,
+      "lines": 288,
+      "functionDeclarations": 10
+    },
+    "android/data/gaming": {
+      "files": 1,
+      "lines": 143,
+      "functionDeclarations": 25
+    },
+    "android/data/livekit": {
+      "files": 7,
+      "lines": 567,
+      "functionDeclarations": 28
+    },
+    "android/data/local": {
+      "files": 48,
+      "lines": 4393,
+      "functionDeclarations": 346
+    },
+    "android/data/localfallback": {
+      "files": 14,
+      "lines": 9651,
+      "functionDeclarations": 395
+    },
+    "android/data/model": {
+      "files": 53,
+      "lines": 3723,
+      "functionDeclarations": 53
+    },
+    "android/data/music": {
+      "files": 7,
+      "lines": 1377,
+      "functionDeclarations": 59
+    },
+    "android/data/observability": {
+      "files": 1,
+      "lines": 205,
+      "functionDeclarations": 5
+    },
+    "android/data/payout": {
+      "files": 1,
+      "lines": 135,
+      "functionDeclarations": 7
+    },
+    "android/data/points": {
+      "files": 1,
+      "lines": 178,
+      "functionDeclarations": 12
+    },
+    "android/data/recommendations": {
+      "files": 2,
+      "lines": 468,
+      "functionDeclarations": 25
+    },
+    "android/data/repository": {
+      "files": 105,
+      "lines": 50693,
+      "functionDeclarations": 1762
+    },
+    "android/data/service": {
+      "files": 7,
+      "lines": 1601,
+      "functionDeclarations": 37
+    },
+    "android/data/signaling": {
+      "files": 2,
+      "lines": 55,
+      "functionDeclarations": 2
+    },
+    "android/data/socialization": {
+      "files": 1,
+      "lines": 131,
+      "functionDeclarations": 7
+    },
+    "android/data/supabase": {
+      "files": 7,
+      "lines": 3580,
+      "functionDeclarations": 128
+    },
+    "android/data/sync": {
+      "files": 3,
+      "lines": 431,
+      "functionDeclarations": 10
+    },
+    "android/data/voice": {
+      "files": 1,
+      "lines": 167,
+      "functionDeclarations": 20
+    },
+    "android/data/webrtc": {
+      "files": 11,
+      "lines": 3635,
+      "functionDeclarations": 187
+    },
+    "android/di": {
+      "files": 5,
+      "lines": 214,
+      "functionDeclarations": 24
+    },
+    "android/domain/sync": {
+      "files": 4,
+      "lines": 28,
+      "functionDeclarations": 6
+    },
+    "android/presentation/algorithm": {
+      "files": 3,
+      "lines": 1425,
+      "functionDeclarations": 46
+    },
+    "android/presentation/analytics": {
+      "files": 4,
+      "lines": 1020,
+      "functionDeclarations": 35
+    },
+    "android/presentation/auth": {
+      "files": 16,
+      "lines": 5210,
+      "functionDeclarations": 104
+    },
+    "android/presentation/calls": {
+      "files": 9,
+      "lines": 2283,
+      "functionDeclarations": 51
+    },
+    "android/presentation/common": {
+      "files": 11,
+      "lines": 1694,
+      "functionDeclarations": 34
+    },
+    "android/presentation/components": {
+      "files": 51,
+      "lines": 12239,
+      "functionDeclarations": 178
+    },
+    "android/presentation/documents": {
+      "files": 12,
+      "lines": 2591,
+      "functionDeclarations": 89
+    },
+    "android/presentation/gaming": {
+      "files": 6,
+      "lines": 2059,
+      "functionDeclarations": 105
+    },
+    "android/presentation/home": {
+      "files": 3,
+      "lines": 957,
+      "functionDeclarations": 18
+    },
+    "android/presentation/legal": {
+      "files": 2,
+      "lines": 207,
+      "functionDeclarations": 4
+    },
+    "android/presentation/live": {
+      "files": 34,
+      "lines": 15835,
+      "functionDeclarations": 343
+    },
+    "android/presentation/media": {
+      "files": 2,
+      "lines": 268,
+      "functionDeclarations": 4
+    },
+    "android/presentation/messages": {
+      "files": 83,
+      "lines": 27002,
+      "functionDeclarations": 688
+    },
+    "android/presentation/navigation": {
+      "files": 5,
+      "lines": 1860,
+      "functionDeclarations": 44
+    },
+    "android/presentation/posts": {
+      "files": 2,
+      "lines": 1163,
+      "functionDeclarations": 34
+    },
+    "android/presentation/profile": {
+      "files": 21,
+      "lines": 12033,
+      "functionDeclarations": 227
+    },
+    "android/presentation/proximity": {
+      "files": 2,
+      "lines": 1776,
+      "functionDeclarations": 52
+    },
+    "android/presentation/ranking": {
+      "files": 2,
+      "lines": 403,
+      "functionDeclarations": 6
+    },
+    "android/presentation/search": {
+      "files": 3,
+      "lines": 370,
+      "functionDeclarations": 6
+    },
+    "android/presentation/settings": {
+      "files": 7,
+      "lines": 2013,
+      "functionDeclarations": 52
+    },
+    "android/presentation/social": {
+      "files": 41,
+      "lines": 12754,
+      "functionDeclarations": 244
+    },
+    "android/presentation/socialization": {
+      "files": 2,
+      "lines": 374,
+      "functionDeclarations": 11
+    },
+    "android/presentation/theme": {
+      "files": 6,
+      "lines": 674,
+      "functionDeclarations": 14
+    },
+    "android/presentation/video": {
+      "files": 25,
+      "lines": 7203,
+      "functionDeclarations": 205
+    },
+    "android/presentation/videos": {
+      "files": 16,
+      "lines": 8823,
+      "functionDeclarations": 222
+    },
+    "android/presentation/voicerooms": {
+      "files": 16,
+      "lines": 5740,
+      "functionDeclarations": 122
+    },
+    "android/presentation/wallet": {
+      "files": 15,
+      "lines": 4524,
+      "functionDeclarations": 114
+    },
+    "android/services": {
+      "files": 5,
+      "lines": 1252,
+      "functionDeclarations": 51
+    },
+    "android/ui/performance": {
+      "files": 1,
+      "lines": 686,
+      "functionDeclarations": 68
+    },
+    "android/util": {
+      "files": 35,
+      "lines": 4028,
+      "functionDeclarations": 161
+    },
+    "android/widgets": {
+      "files": 2,
+      "lines": 95,
+      "functionDeclarations": 4
+    },
+    "backend/account-status": {
+      "files": 1,
+      "lines": 101,
+      "functionDeclarations": 5
+    },
+    "backend/admin-capabilities": {
+      "files": 1,
+      "lines": 77,
+      "functionDeclarations": 4
+    },
+    "backend/admin-moderation-routes": {
+      "files": 1,
+      "lines": 2473,
+      "functionDeclarations": 49
+    },
+    "backend/ai-routes": {
+      "files": 1,
+      "lines": 213,
+      "functionDeclarations": 11
+    },
+    "backend/algorithm-candidate-provider": {
+      "files": 1,
+      "lines": 536,
+      "functionDeclarations": 30
+    },
+    "backend/algorithm-content-ingestion": {
+      "files": 1,
+      "lines": 281,
+      "functionDeclarations": 16
+    },
+    "backend/algorithm-local-fallback-candidate-source": {
+      "files": 1,
+      "lines": 893,
+      "functionDeclarations": 29
+    },
+    "backend/algorithm-ranking": {
+      "files": 1,
+      "lines": 784,
+      "functionDeclarations": 41
+    },
+    "backend/algorithm-recommendation-bootstrap": {
+      "files": 1,
+      "lines": 69,
+      "functionDeclarations": 3
+    },
+    "backend/algorithm-recommendation-routes": {
+      "files": 1,
+      "lines": 468,
+      "functionDeclarations": 23
+    },
+    "backend/algorithm-routes": {
+      "files": 1,
+      "lines": 1416,
+      "functionDeclarations": 44
+    },
+    "backend/backfill-algorithm-classifications": {
+      "files": 1,
+      "lines": 32,
+      "functionDeclarations": 1
+    },
+    "backend/canonicalize-storage-urls": {
+      "files": 1,
+      "lines": 140,
+      "functionDeclarations": 10
+    },
+    "backend/client-auth-session": {
+      "files": 1,
+      "lines": 56,
+      "functionDeclarations": 3
+    },
+    "backend/collection-read-state": {
+      "files": 1,
+      "lines": 43,
+      "functionDeclarations": 4
+    },
+    "backend/community-music-policy": {
+      "files": 1,
+      "lines": 17,
+      "functionDeclarations": 1
+    },
+    "backend/content-moderation": {
+      "files": 1,
+      "lines": 72,
+      "functionDeclarations": 3
+    },
+    "backend/conversation-activity-routes": {
+      "files": 1,
+      "lines": 103,
+      "functionDeclarations": 7
+    },
+    "backend/creator-analytics-routes": {
+      "files": 1,
+      "lines": 768,
+      "functionDeclarations": 26
+    },
+    "backend/creator-payout-routes": {
+      "files": 1,
+      "lines": 1189,
+      "functionDeclarations": 35
+    },
+    "backend/data-routes": {
+      "files": 1,
+      "lines": 14923,
+      "functionDeclarations": 253
+    },
+    "backend/direct-message-request-policy": {
+      "files": 1,
+      "lines": 141,
+      "functionDeclarations": 3
+    },
+    "backend/distributed-rate-limit": {
+      "files": 1,
+      "lines": 118,
+      "functionDeclarations": 7
+    },
+    "backend/document-preview-routes": {
+      "files": 1,
+      "lines": 86,
+      "functionDeclarations": 3
+    },
+    "backend/economic-provenance": {
+      "files": 1,
+      "lines": 124,
+      "functionDeclarations": 6
+    },
+    "backend/game-catalog-providers": {
+      "files": 1,
+      "lines": 433,
+      "functionDeclarations": 21
+    },
+    "backend/gift-safety-config": {
+      "files": 1,
+      "lines": 23,
+      "functionDeclarations": 2
+    },
+    "backend/google-play-rtdn": {
+      "files": 1,
+      "lines": 313,
+      "functionDeclarations": 16
+    },
+    "backend/guest-mode-routes": {
+      "files": 1,
+      "lines": 396,
+      "functionDeclarations": 12
+    },
+    "backend/import-all-csv": {
+      "files": 1,
+      "lines": 309,
+      "functionDeclarations": 16
+    },
+    "backend/import-csv": {
+      "files": 1,
+      "lines": 241,
+      "functionDeclarations": 12
+    },
+    "backend/import-supabase-storage": {
+      "files": 1,
+      "lines": 482,
+      "functionDeclarations": 28
+    },
+    "backend/live-battle-scoring": {
+      "files": 1,
+      "lines": 64,
+      "functionDeclarations": 3
+    },
+    "backend/live-draw-guess-routes": {
+      "files": 1,
+      "lines": 1437,
+      "functionDeclarations": 40
+    },
+    "backend/live-follower-notifications": {
+      "files": 1,
+      "lines": 436,
+      "functionDeclarations": 16
+    },
+    "backend/live-gift-events": {
+      "files": 1,
+      "lines": 59,
+      "functionDeclarations": 2
+    },
+    "backend/live-points-routes": {
+      "files": 1,
+      "lines": 753,
+      "functionDeclarations": 17
+    },
+    "backend/live-routes": {
+      "files": 1,
+      "lines": 2515,
+      "functionDeclarations": 39
+    },
+    "backend/livekit-admin": {
+      "files": 1,
+      "lines": 76,
+      "functionDeclarations": 6
+    },
+    "backend/message-insert-store": {
+      "files": 1,
+      "lines": 67,
+      "functionDeclarations": 2
+    },
+    "backend/message-markers-routes": {
+      "files": 1,
+      "lines": 364,
+      "functionDeclarations": 9
+    },
+    "backend/message-media-access": {
+      "files": 1,
+      "lines": 33,
+      "functionDeclarations": 3
+    },
+    "backend/moment-music-reference": {
+      "files": 1,
+      "lines": 42,
+      "functionDeclarations": 2
+    },
+    "backend/moment-music-renderer": {
+      "files": 1,
+      "lines": 332,
+      "functionDeclarations": 12
+    },
+    "backend/moment-timestamps": {
+      "files": 1,
+      "lines": 19,
+      "functionDeclarations": 1
+    },
+    "backend/moments-routes": {
+      "files": 1,
+      "lines": 1555,
+      "functionDeclarations": 32
+    },
+    "backend/music-library-routes": {
+      "files": 1,
+      "lines": 98,
+      "functionDeclarations": 4
+    },
+    "backend/music-provider-adapters": {
+      "files": 1,
+      "lines": 225,
+      "functionDeclarations": 13
+    },
+    "backend/music-routes": {
+      "files": 1,
+      "lines": 1370,
+      "functionDeclarations": 30
+    },
+    "backend/new-password-policy": {
+      "files": 1,
+      "lines": 18,
+      "functionDeclarations": 1
+    },
+    "backend/notification-digest-routes": {
+      "files": 1,
+      "lines": 579,
+      "functionDeclarations": 24
+    },
+    "backend/password-recovery-codes": {
+      "files": 1,
+      "lines": 27,
+      "functionDeclarations": 3
+    },
+    "backend/password-reset-email-code": {
+      "files": 1,
+      "lines": 82,
+      "functionDeclarations": 5
+    },
+    "backend/password-reset-mail-outbox": {
+      "files": 1,
+      "lines": 125,
+      "functionDeclarations": 10
+    },
+    "backend/password-reset-mailer": {
+      "files": 1,
+      "lines": 46,
+      "functionDeclarations": 1
+    },
+    "backend/playmatch-candidate-constraints": {
+      "files": 1,
+      "lines": 46,
+      "functionDeclarations": 4
+    },
+    "backend/playmatch-catalog": {
+      "files": 1,
+      "lines": 484,
+      "functionDeclarations": 12
+    },
+    "backend/playmatch-catalog-sync": {
+      "files": 1,
+      "lines": 200,
+      "functionDeclarations": 6
+    },
+    "backend/playmatch-routes": {
+      "files": 1,
+      "lines": 1548,
+      "functionDeclarations": 38
+    },
+    "backend/postgrest-compat-routes": {
+      "files": 1,
+      "lines": 6089,
+      "functionDeclarations": 153
+    },
+    "backend/profile-merge": {
+      "files": 1,
+      "lines": 83,
+      "functionDeclarations": 3
+    },
+    "backend/proximity-routes": {
+      "files": 1,
+      "lines": 1288,
+      "functionDeclarations": 29
+    },
+    "backend/public-profile-share": {
+      "files": 1,
+      "lines": 194,
+      "functionDeclarations": 9
+    },
+    "backend/push-notifications": {
+      "files": 1,
+      "lines": 190,
+      "functionDeclarations": 6
+    },
+    "backend/realtime-publish": {
+      "files": 1,
+      "lines": 72,
+      "functionDeclarations": 3
+    },
+    "backend/reconcile-storage-owners": {
+      "files": 1,
+      "lines": 68,
+      "functionDeclarations": 2
+    },
+    "backend/recovery-evidence": {
+      "files": 1,
+      "lines": 97,
+      "functionDeclarations": 7
+    },
+    "backend/request-observability": {
+      "files": 1,
+      "lines": 70,
+      "functionDeclarations": 5
+    },
+    "backend/request-security": {
+      "files": 1,
+      "lines": 146,
+      "functionDeclarations": 12
+    },
+    "backend/rewrite-supabase-storage-urls": {
+      "files": 1,
+      "lines": 176,
+      "functionDeclarations": 11
+    },
+    "backend/scheduled-message-jobs": {
+      "files": 1,
+      "lines": 428,
+      "functionDeclarations": 15
+    },
+    "backend/schema-initializer": {
+      "files": 1,
+      "lines": 67,
+      "functionDeclarations": 2
+    },
+    "backend/server": {
+      "files": 1,
+      "lines": 3987,
+      "functionDeclarations": 69
+    },
+    "backend/socialization-cards-bootstrap": {
+      "files": 1,
+      "lines": 41,
+      "functionDeclarations": 2
+    },
+    "backend/socialization-cards-routes": {
+      "files": 1,
+      "lines": 346,
+      "functionDeclarations": 25
+    },
+    "backend/socialization-local-fallback-source": {
+      "files": 1,
+      "lines": 364,
+      "functionDeclarations": 12
+    },
+    "backend/socialization-routes": {
+      "files": 1,
+      "lines": 378,
+      "functionDeclarations": 19
+    },
+    "backend/socialization-safe-candidate-provider": {
+      "files": 1,
+      "lines": 378,
+      "functionDeclarations": 22
+    },
+    "backend/sticker-media-policy": {
+      "files": 1,
+      "lines": 59,
+      "functionDeclarations": 5
+    },
+    "backend/storage-reference-audit": {
+      "files": 1,
+      "lines": 504,
+      "functionDeclarations": 23
+    },
+    "backend/storage-routes": {
+      "files": 1,
+      "lines": 1862,
+      "functionDeclarations": 60
+    },
+    "backend/storage-url-canonicalization": {
+      "files": 1,
+      "lines": 55,
+      "functionDeclarations": 5
+    },
+    "backend/system-health": {
+      "files": 1,
+      "lines": 204,
+      "functionDeclarations": 7
+    },
+    "backend/two-factor": {
+      "files": 1,
+      "lines": 120,
+      "functionDeclarations": 11
+    },
+    "backend/username-policy": {
+      "files": 1,
+      "lines": 84,
+      "functionDeclarations": 5
+    },
+    "backend/video-chapters": {
+      "files": 1,
+      "lines": 22,
+      "functionDeclarations": 1
+    },
+    "backend/video-collections-routes": {
+      "files": 1,
+      "lines": 297,
+      "functionDeclarations": 7
+    },
+    "backend/video-history-routes": {
+      "files": 1,
+      "lines": 127,
+      "functionDeclarations": 5
+    },
+    "backend/video-publish-attempt": {
+      "files": 1,
+      "lines": 26,
+      "functionDeclarations": 2
+    },
+    "backend/video-search-policy": {
+      "files": 1,
+      "lines": 34,
+      "functionDeclarations": 4
+    },
+    "backend/video-watch-later-routes": {
+      "files": 1,
+      "lines": 121,
+      "functionDeclarations": 5
+    },
+    "backend/voice-room-identity": {
+      "files": 1,
+      "lines": 42,
+      "functionDeclarations": 1
+    },
+    "backend/web-session-security": {
+      "files": 1,
+      "lines": 83,
+      "functionDeclarations": 6
+    },
+    "web/App": {
+      "files": 2,
+      "lines": 477,
+      "functionDeclarations": 4
+    },
+    "web/components": {
+      "files": 8,
+      "lines": 1303,
+      "functionDeclarations": 7
+    },
+    "web/components/modern": {
+      "files": 7,
+      "lines": 844,
+      "functionDeclarations": 11
+    },
+    "web/core": {
+      "files": 19,
+      "lines": 2921,
+      "functionDeclarations": 167
+    },
+    "web/core/api": {
+      "files": 1,
+      "lines": 715,
+      "functionDeclarations": 0
+    },
+    "web/core/auth": {
+      "files": 7,
+      "lines": 1568,
+      "functionDeclarations": 64
+    },
+    "web/core/hooks": {
+      "files": 1,
+      "lines": 529,
+      "functionDeclarations": 0
+    },
+    "web/core/pwa": {
+      "files": 1,
+      "lines": 366,
+      "functionDeclarations": 10
+    },
+    "web/core/utils": {
+      "files": 1,
+      "lines": 6,
+      "functionDeclarations": 1
+    },
+    "web/features/calls": {
+      "files": 6,
+      "lines": 2187,
+      "functionDeclarations": 12
+    },
+    "web/features/feed": {
+      "files": 1,
+      "lines": 117,
+      "functionDeclarations": 5
+    },
+    "web/features/games": {
+      "files": 3,
+      "lines": 379,
+      "functionDeclarations": 10
+    },
+    "web/features/help": {
+      "files": 2,
+      "lines": 27,
+      "functionDeclarations": 1
+    },
+    "web/features/live": {
+      "files": 3,
+      "lines": 835,
+      "functionDeclarations": 21
+    },
+    "web/features/messages": {
+      "files": 8,
+      "lines": 6403,
+      "functionDeclarations": 114
+    },
+    "web/features/moments": {
+      "files": 3,
+      "lines": 867,
+      "functionDeclarations": 21
+    },
+    "web/features/notifications": {
+      "files": 1,
+      "lines": 624,
+      "functionDeclarations": 15
+    },
+    "web/features/novvin": {
+      "files": 5,
+      "lines": 1152,
+      "functionDeclarations": 22
+    },
+    "web/features/profile": {
+      "files": 5,
+      "lines": 2483,
+      "functionDeclarations": 42
+    },
+    "web/features/proximity": {
+      "files": 1,
+      "lines": 431,
+      "functionDeclarations": 9
+    },
+    "web/features/realtime": {
+      "files": 1,
+      "lines": 398,
+      "functionDeclarations": 0
+    },
+    "web/features/reels": {
+      "files": 3,
+      "lines": 2541,
+      "functionDeclarations": 48
+    },
+    "web/features/reports": {
+      "files": 2,
+      "lines": 72,
+      "functionDeclarations": 3
+    },
+    "web/features/search": {
+      "files": 1,
+      "lines": 261,
+      "functionDeclarations": 4
+    },
+    "web/features/social": {
+      "files": 3,
+      "lines": 443,
+      "functionDeclarations": 11
+    },
+    "web/features/spaces": {
+      "files": 2,
+      "lines": 90,
+      "functionDeclarations": 3
+    },
+    "web/features/voice": {
+      "files": 4,
+      "lines": 2147,
+      "functionDeclarations": 29
+    },
+    "web/index": {
+      "files": 1,
+      "lines": 7227,
+      "functionDeclarations": 0
+    },
+    "web/layout": {
+      "files": 1,
+      "lines": 1150,
+      "functionDeclarations": 10
+    },
+    "web/main": {
+      "files": 1,
+      "lines": 28,
+      "functionDeclarations": 0
+    },
+    "web/ml/enterprise": {
+      "files": 1,
+      "lines": 805,
+      "functionDeclarations": 1
+    },
+    "web/pages": {
+      "files": 2,
+      "lines": 187,
+      "functionDeclarations": 2
+    },
+    "web/pages/admin": {
+      "files": 1,
+      "lines": 2136,
+      "functionDeclarations": 31
+    },
+    "web/pages/auth": {
+      "files": 3,
+      "lines": 1115,
+      "functionDeclarations": 19
+    },
+    "web/pages/challenges": {
+      "files": 2,
+      "lines": 1173,
+      "functionDeclarations": 13
+    },
+    "web/pages/feed": {
+      "files": 2,
+      "lines": 925,
+      "functionDeclarations": 14
+    },
+    "web/styles": {
+      "files": 4,
+      "lines": 4333,
+      "functionDeclarations": 0
+    },
+    "web/testSetup": {
+      "files": 1,
+      "lines": 4,
+      "functionDeclarations": 0
+    }
+  },
+  "declaredHttpRoutes": [
+    {
+      "method": "GET",
+      "path": "/v1/moderation/decision",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1453,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/moderation/appeals",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1483,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/admin/access",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1564,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/admin/catalog",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1574,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/admin/badges",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1589,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/admin/users",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1638,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/admin/users/:id",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1697,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/admin/badges/:id",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1720,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/admin/users/:id/access",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1808,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/admin/users/:id/decorations",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1891,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/admin/users/:id",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1947,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/admin/stats",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 1981,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/admin/suspended-profiles",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 2048,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/admin/moderation/appeals",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 2103,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/admin/moderation/appeals/:id",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 2161,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/admin/reports",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 2265,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/admin/video-reports",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 2278,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/admin/suspend",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 2291,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/admin/unsuspend",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 2380,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/admin/reports/:id/status",
+      "source": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "line": 2428,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/ai/health",
+      "source": "infrastructure/local-fallback/api/src/ai-routes.js",
+      "line": 167,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/ai/chat",
+      "source": "infrastructure/local-fallback/api/src/ai-routes.js",
+      "line": 175,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/ai/feedback",
+      "source": "infrastructure/local-fallback/api/src/ai-routes.js",
+      "line": 191,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/recommendations",
+      "source": "infrastructure/local-fallback/api/src/algorithm-recommendation-routes.js",
+      "line": 326,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/algorithm/capabilities",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 975,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/algorithm/profiles",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 987,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/algorithm/profiles",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 1008,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/algorithm/profiles/:profileId/config",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 1030,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/algorithm/config",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 1044,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/algorithm/profiles/:profileId",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 1058,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/algorithm/profiles/:profileId/preferences",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 1110,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/algorithm/profiles/:profileId/preferences/:preferenceId",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 1164,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/algorithm/profiles/:profileId/feed-mix/:surface",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 1196,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/algorithm/profiles/:profileId/data-permissions",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 1260,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/algorithm/profiles/:profileId/temporary-preferences",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 1307,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/algorithm/profiles/:profileId/temporary-preferences/:preferenceId",
+      "source": "infrastructure/local-fallback/api/src/algorithm-routes.js",
+      "line": 1359,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/chats/:chatId/read-visible",
+      "source": "infrastructure/local-fallback/api/src/conversation-activity-routes.js",
+      "line": 44,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/creator/analytics/video/:contentId",
+      "source": "infrastructure/local-fallback/api/src/creator-analytics-routes.js",
+      "line": 732,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/creator/analytics/live/:contentId",
+      "source": "infrastructure/local-fallback/api/src/creator-analytics-routes.js",
+      "line": 733,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/creator/analytics/content",
+      "source": "infrastructure/local-fallback/api/src/creator-analytics-routes.js",
+      "line": 734,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/creator/payouts/summary",
+      "source": "infrastructure/local-fallback/api/src/creator-payout-routes.js",
+      "line": 824,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/creator/payouts/account",
+      "source": "infrastructure/local-fallback/api/src/creator-payout-routes.js",
+      "line": 838,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/creator/payouts/requests",
+      "source": "infrastructure/local-fallback/api/src/creator-payout-routes.js",
+      "line": 898,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/creator/payouts/requests/:requestId/cancel",
+      "source": "infrastructure/local-fallback/api/src/creator-payout-routes.js",
+      "line": 985,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/admin/creator-payouts/accounts/:creatorId/verify",
+      "source": "infrastructure/local-fallback/api/src/creator-payout-routes.js",
+      "line": 1020,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/admin/creator-payouts/requests/:requestId/decision",
+      "source": "infrastructure/local-fallback/api/src/creator-payout-routes.js",
+      "line": 1050,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/webhooks/paypal/payouts",
+      "source": "infrastructure/local-fallback/api/src/creator-payout-routes.js",
+      "line": 1102,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/translate",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 6804,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/profile/me",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 6836,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/profile/me",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 6923,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/profile/login-emails",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7109,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/profile/login-emails",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7126,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/profile/login-emails/:email",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7162,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/presence",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7177,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/profiles/search",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7226,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/profiles/ranking",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7257,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/profiles/:profileId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7297,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/follows",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7429,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/profiles/:profileId/follow",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7501,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/profiles/:profileId/follow",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7542,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/reports/users",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7562,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/reports/content",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7617,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/profiles/:profileId/block",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7708,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/profiles/:profileId/block",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7721,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/profiles/:profileId/block",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7741,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/notifications",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7760,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/notifications",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7814,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/notifications/:notificationId/read",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7840,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/notifications/read-all",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7861,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/notifications/fcm-tokens",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7879,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/notifications/:notificationId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7897,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/notifications",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7913,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/notifications/fcm-tokens",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7928,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/search/semantic",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 7949,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/saved-collections",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8011,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/saved-collections",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8140,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/saved-collections/:collectionId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8177,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/saved-collections/:collectionId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8210,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/saved-collections/:collectionId/items",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8227,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/saved-collections/:collectionId/items/:postId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8275,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/feed",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8294,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/feed/posts",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8397,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/feed/posts/:postId/remix-permission",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8490,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/feed/posts/:postId/remix",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8532,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/feed/posts/:postId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8660,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/feed/posts/:postId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8674,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/feed/posts/:postId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8758,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/feed/posts/:postId/comments",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8818,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/feed/comments/:commentId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8881,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/feed/comments/:commentId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 8949,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/feed/comments/:commentId/reaction",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9012,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/feed/comments/:commentId/reaction",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9043,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/feed/posts/:postId/reactions",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9061,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/feed/posts/:postId/thread-summary",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9120,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/feed/posts/:postId/reaction",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9212,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/feed/posts/:postId/reaction",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9253,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/feed/posts/:postId/share",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9272,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/feed/posts/:postId/share",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9307,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/support/admins/:alias",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9330,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/messages/inbox",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9377,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/chats",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9721,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/chats/:chatId/clear",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9839,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/messages/chats/:chatId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9870,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/messages/chats/:chatId/preferences",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9912,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/chats/:chatId/read",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 9961,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/messages/communities/explore",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10160,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/messages/communities/:roomId/roles",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10218,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/messages/communities/:roomId/channels",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10279,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/communities/:roomId/channels/:channelId/voice-room",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10308,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/communities/:roomId/channels",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10422,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/messages/communities/:roomId/channels/:channelId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10453,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/communities/:roomId/channels/:channelId/pause",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10492,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/messages/communities/:roomId/channels/:channelId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10539,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/messages/communities/:roomId/member-profiles",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10579,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/messages/communities/:roomId/member-profile",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10605,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/messages/communities/:roomId/events",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10680,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/communities/:roomId/events",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10706,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/messages/communities/:roomId/events/:eventId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10749,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/messages/communities/:roomId/events/:eventId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10818,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/messages/communities/:roomId/events/:eventId/attendance",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10841,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/groups/:roomId/invites",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10948,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/groups/:roomId/join-invite",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 10991,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/messages/groups/:roomId/member-settings",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 11048,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/voice/rooms",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 11661,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/voice/rooms",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 11780,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/voice/rooms/:roomId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 11821,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/voice/rooms/:roomId/join",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 11859,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/voice/rooms/:roomId/stage/request",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 11956,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/voice/rooms/:roomId/stage/participants/:userId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12012,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/voice/rooms/:roomId/leave",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12105,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/voice/rooms/:roomId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12140,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/videos",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12182,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/videos/:videoId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12539,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/videos/:videoId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12567,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/videos/publish-attempt/:attemptId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12660,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/videos",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12681,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/videos/:videoId/reaction",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12859,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/:videoId/reaction",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12897,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/videos/:videoId/favorite",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12913,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/:videoId/favorite",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12939,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/videos/:videoId/view",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 12962,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/videos/:videoId/share",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13011,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/:videoId/share",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13080,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/:videoId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13129,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/videos/:videoId/comments",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13194,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/videos/:videoId/comments",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13229,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/videos/comments/:commentId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13329,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/videos/comments/:commentId/reaction",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13357,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/comments/:commentId/reaction",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13386,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/videos/comments/:commentId/report",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13408,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/comments/:commentId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13445,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/challenges/active",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13559,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/challenges/master",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13572,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/challenges/master/mine",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13594,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/challenges/master/:challengeId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13606,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/challenges/:activeChallengeId/submissions",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13623,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/challenges/:activeChallengeId/submissions",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13665,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/challenges/:activeChallengeId/submissions/me",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13703,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/challenges/:activeChallengeId/participation",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13728,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/challenges/submissions/:submissionId/vote",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13748,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/friends",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13788,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/friends",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13818,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/friends/:requestId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13840,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/friends/:requestId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13863,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/friends/users/:targetUserId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13883,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/typing",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13905,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/messages/nicknames/:targetUserId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13942,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/messages/nicknames/:targetUserId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13974,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/messages/chats/:chatId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 13992,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/chats/:chatId/messages",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 14060,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/messages/chats/:chatId/messages/:messageId",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 14211,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/chats/:chatId/messages/:messageId/delete",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 14284,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/messages/chats/:chatId/messages/:messageId/reactions",
+      "source": "infrastructure/local-fallback/api/src/data-routes.js",
+      "line": 14390,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/documents/preview",
+      "source": "infrastructure/local-fallback/api/src/document-preview-routes.js",
+      "line": 36,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/guest/session",
+      "source": "infrastructure/local-fallback/api/src/guest-mode-routes.js",
+      "line": 187,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/guest/videos",
+      "source": "infrastructure/local-fallback/api/src/guest-mode-routes.js",
+      "line": 192,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/guest/posts",
+      "source": "infrastructure/local-fallback/api/src/guest-mode-routes.js",
+      "line": 218,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/guest/moments",
+      "source": "infrastructure/local-fallback/api/src/guest-mode-routes.js",
+      "line": 245,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/guest/:kind/:id/comments",
+      "source": "infrastructure/local-fallback/api/src/guest-mode-routes.js",
+      "line": 287,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/guest/profiles/search",
+      "source": "infrastructure/local-fallback/api/src/guest-mode-routes.js",
+      "line": 329,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/guest/profiles/:id",
+      "source": "infrastructure/local-fallback/api/src/guest-mode-routes.js",
+      "line": 384,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/games/draw-guess",
+      "source": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+      "line": 606,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/games/draw-guess/:gameId/accept",
+      "source": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+      "line": 715,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/games/draw-guess/:gameId/start",
+      "source": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+      "line": 783,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/games/draw-guess/current",
+      "source": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+      "line": 879,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/games/draw-guess/:gameId",
+      "source": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+      "line": 945,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/games/draw-guess/:gameId/draw",
+      "source": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+      "line": 988,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/games/draw-guess/:gameId/guesses",
+      "source": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+      "line": 1056,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/games/draw-guess/:gameId/advance",
+      "source": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+      "line": 1227,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/games/draw-guess/:gameId/cancel",
+      "source": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+      "line": 1267,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/gifts",
+      "source": "infrastructure/local-fallback/api/src/live-gift-events.js",
+      "line": 29,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/points/session",
+      "source": "infrastructure/local-fallback/api/src/live-points-routes.js",
+      "line": 242,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/points/heartbeat",
+      "source": "infrastructure/local-fallback/api/src/live-points-routes.js",
+      "line": 290,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/live/:liveId/points/settings",
+      "source": "infrastructure/local-fallback/api/src/live-points-routes.js",
+      "line": 415,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/points/balance",
+      "source": "infrastructure/local-fallback/api/src/live-points-routes.js",
+      "line": 459,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/points/rewards",
+      "source": "infrastructure/local-fallback/api/src/live-points-routes.js",
+      "line": 493,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/points/rewards",
+      "source": "infrastructure/local-fallback/api/src/live-points-routes.js",
+      "line": 517,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/points/redeem",
+      "source": "infrastructure/local-fallback/api/src/live-points-routes.js",
+      "line": 550,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/points/redemptions",
+      "source": "infrastructure/local-fallback/api/src/live-points-routes.js",
+      "line": 652,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/live/:liveId/points/redemptions/:redemptionId",
+      "source": "infrastructure/local-fallback/api/src/live-points-routes.js",
+      "line": 679,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/capabilities",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 772,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/sfu-token",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 793,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/participants/state",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 874,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/guests/invitations",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 925,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/guests/requests",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 964,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/guests/invitations",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 997,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/live/:liveId/guests/invitations/:invitationId",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1033,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/guests/:guestUserId/remove",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1105,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/guests/:guestUserId/mute",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1185,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/battles/candidates",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1238,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/battles",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1275,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/battles/current",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1358,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/battles/:battleId/respond",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1387,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/battles/:battleId",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1448,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/battles/:battleId/end",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1476,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/internal/live/battles/:battleId/events",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1515,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/internal/live/:liveId/terminate",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1594,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1644,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/replays",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1695,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1747,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/supporters",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1774,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1826,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/live/:liveId/state",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 1905,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/replay",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2009,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/live/:liveId/replay",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2028,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/live/:liveId/replay",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2080,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/chapters",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2106,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/live/:liveId/chapters/:chapterId",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2150,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/live/:liveId",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2172,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/moderation",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2189,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/live/:liveId/moderation/settings",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2209,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/live/:liveId/moderators/:userId",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2265,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/live/:liveId/moderators/:userId",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2298,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/moderation/actions",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2326,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/live/:liveId/comments",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2389,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/live/:liveId/comments",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2420,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/live/:liveId/comments/:commentId",
+      "source": "infrastructure/local-fallback/api/src/live-routes.js",
+      "line": 2473,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/messages/markers/:kind/:roomId/access",
+      "source": "infrastructure/local-fallback/api/src/message-markers-routes.js",
+      "line": 143,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/messages/markers/:kind/:roomId",
+      "source": "infrastructure/local-fallback/api/src/message-markers-routes.js",
+      "line": 147,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/messages/saved",
+      "source": "infrastructure/local-fallback/api/src/message-markers-routes.js",
+      "line": 151,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/messages/markers/:kind/:roomId/:messageId/pin",
+      "source": "infrastructure/local-fallback/api/src/message-markers-routes.js",
+      "line": 288,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/messages/markers/:kind/:roomId/:messageId/pin",
+      "source": "infrastructure/local-fallback/api/src/message-markers-routes.js",
+      "line": 319,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/messages/markers/:kind/:roomId/:messageId/saved",
+      "source": "infrastructure/local-fallback/api/src/message-markers-routes.js",
+      "line": 338,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/messages/markers/:kind/:roomId/:messageId/saved",
+      "source": "infrastructure/local-fallback/api/src/message-markers-routes.js",
+      "line": 352,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/moments/notification-preferences",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 957,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/moments/notification-preferences",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 971,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/moments/feed",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 989,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/moments",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 1001,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/moments/:momentId/music",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 1202,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/moments/:momentId/music",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 1296,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/moments/:momentId/reaction",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 1329,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/moments/:momentId/reaction",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 1350,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/moments/:momentId/view",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 1366,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/moments/:momentId/viewers",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 1425,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/moments/:momentId",
+      "source": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "line": 1492,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/my",
+      "source": "infrastructure/local-fallback/api/src/music-library-routes.js",
+      "line": 78,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/music/:trackId",
+      "source": "infrastructure/local-fallback/api/src/music-library-routes.js",
+      "line": 85,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/terms",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 637,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/catalog/categories",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 646,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/catalog/search",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 662,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/catalog/tracks/:trackKey",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 724,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/catalog/tracks/:trackKey/moments",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 743,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/catalog/:trackKey/not-interested",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 765,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/catalog/:trackKey/play-events",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 780,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/catalog/:trackKey/favorite",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 807,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/music/catalog/:trackKey/favorite",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 826,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/catalog/:trackKey/report",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 841,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/upload",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 866,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/music/:trackId",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 967,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/:trackId/publish",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 997,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/:trackId/status",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1055,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/dashboard",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1065,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/search",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1081,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/recommendations",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1111,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/tracks/:trackId",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1178,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/:trackId/favorite",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1188,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/music/:trackId/favorite",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1199,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/artists/:artistId/follow",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1209,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/music/artists/:artistId/follow",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1219,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/:trackId/listens",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1229,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/listens/:sessionId/complete",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1248,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/:trackId/report",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1271,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/:trackId/takedown",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1290,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/music/admin/moderation-queue",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1306,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/music/admin/:trackId/moderate",
+      "source": "infrastructure/local-fallback/api/src/music-routes.js",
+      "line": 1317,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/notification-digest/preferences",
+      "source": "infrastructure/local-fallback/api/src/notification-digest-routes.js",
+      "line": 480,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/notification-digest/preferences",
+      "source": "infrastructure/local-fallback/api/src/notification-digest-routes.js",
+      "line": 491,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/notification-digest",
+      "source": "infrastructure/local-fallback/api/src/notification-digest-routes.js",
+      "line": 545,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/games/search",
+      "source": "infrastructure/local-fallback/api/src/playmatch-catalog.js",
+      "line": 256,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/games/popular",
+      "source": "infrastructure/local-fallback/api/src/playmatch-catalog.js",
+      "line": 274,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/games/:gameId/config",
+      "source": "infrastructure/local-fallback/api/src/playmatch-catalog.js",
+      "line": 285,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/admin/catalog/stats",
+      "source": "infrastructure/local-fallback/api/src/playmatch-catalog.js",
+      "line": 297,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/playmatch/admin/catalog/sync",
+      "source": "infrastructure/local-fallback/api/src/playmatch-catalog.js",
+      "line": 319,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/playmatch/admin/games",
+      "source": "infrastructure/local-fallback/api/src/playmatch-catalog.js",
+      "line": 344,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/playmatch/admin/games/:gameId",
+      "source": "infrastructure/local-fallback/api/src/playmatch-catalog.js",
+      "line": 375,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/playmatch/admin/games/:gameId/rank-schema",
+      "source": "infrastructure/local-fallback/api/src/playmatch-catalog.js",
+      "line": 402,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/playmatch/admin/games/:gameId/roles",
+      "source": "infrastructure/local-fallback/api/src/playmatch-catalog.js",
+      "line": 445,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/capabilities",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 794,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/catalog",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 816,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/profile",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 839,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/playmatch/profile",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 851,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/playmatch/games",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 935,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/playmatch/games/:userGameId",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1003,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/playmatch/availability",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1018,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/playmatch/preferences",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1056,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/players",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1102,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/players/:playerId",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1143,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/playmatch/connections",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1163,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/connections",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1213,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/playmatch/connections/:connectionId/decision",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1244,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/playmatch/matchmaking/sessions",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1295,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/matchmaking/sessions/:sessionId",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1369,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/playmatch/matchmaking/sessions/:sessionId/cancel",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1405,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/playmatch/matches",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1425,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/playmatch/matches/:matchId/decision",
+      "source": "infrastructure/local-fallback/api/src/playmatch-routes.js",
+      "line": 1457,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/proximity/presence",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 543,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/proximity/presence",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 592,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/proximity/nearby",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 605,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/proximity/random/match",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 658,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/proximity/random/status",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 743,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/proximity/random/sessions",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 763,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/proximity/random/queue",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 777,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/proximity/random/availability",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 793,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/proximity/random/availability",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 847,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/proximity/random/bottles",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 879,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/proximity/random/bottles/outgoing",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 936,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/proximity/random/bottles/incoming",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 967,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/proximity/random/bottles/:bottleId/respond",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 990,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/proximity/random/bottles/:bottleId",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 1098,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/proximity/random/sessions/:sessionId",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 1120,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/proximity/random/sessions/:sessionId/messages",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 1135,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/proximity/random/sessions/:sessionId/messages",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 1175,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/proximity/random/sessions/:sessionId/reveal",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 1236,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/proximity/random/sessions/:sessionId",
+      "source": "infrastructure/local-fallback/api/src/proximity-routes.js",
+      "line": 1259,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/account-recovery/cases",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 341,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/account-recovery/cases/:id/confirm-contact",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 350,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 1727,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 1731,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/ready",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 1741,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/system/health",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 1785,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/upstream/supabase",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 1806,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/sync/status",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 1868,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/sync/import-supabase-users",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 1892,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/users/set-local-password",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 1954,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/account-recovery/cases",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2217,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/account-recovery/cases/:id/confirm-contact",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2266,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/auth/username/availability",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2294,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/register",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2315,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/login",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2406,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/refresh",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2507,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/logout",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2593,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/auth/password-recovery-codes/status",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2625,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/password-recovery-codes/rotate",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2637,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/auth/2fa/status",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2675,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/2fa/setup",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2687,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/2fa/enable",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2709,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/2fa/disable",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2762,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/change-password",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2790,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/password-reset/request",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2868,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/password-reset/verify",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2944,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/password-reset/confirm",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 2959,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/password-recovery-codes/confirm",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3063,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/complete-migrated-password-reset",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3142,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/auth/me",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3210,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/web-session/refresh",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3230,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/web-session/upgrade",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3300,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/auth/web-session",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3326,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/web-login-pairing",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3495,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/functions/v1/web-login-pairing",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3496,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/auth/web-sessions",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3498,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/auth/web-sessions",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3515,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/auth/web-sessions/:sessionId",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3533,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/activate-local-password",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3561,
+      "middlewareHint": "review route context"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/auth/sync-to-supabase",
+      "source": "infrastructure/local-fallback/api/src/server.js",
+      "line": 3633,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/socialization/cards",
+      "source": "infrastructure/local-fallback/api/src/socialization-cards-routes.js",
+      "line": 277,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/socialization/capabilities",
+      "source": "infrastructure/local-fallback/api/src/socialization-routes.js",
+      "line": 307,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/socialization/preferences",
+      "source": "infrastructure/local-fallback/api/src/socialization-routes.js",
+      "line": 319,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/socialization/preferences",
+      "source": "infrastructure/local-fallback/api/src/socialization-routes.js",
+      "line": 333,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/storage/buckets",
+      "source": "infrastructure/local-fallback/api/src/storage-routes.js",
+      "line": 1331,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/storage/upload",
+      "source": "infrastructure/local-fallback/api/src/storage-routes.js",
+      "line": 1344,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/storage/objects",
+      "source": "infrastructure/local-fallback/api/src/storage-routes.js",
+      "line": 1384,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/videos/collections",
+      "source": "infrastructure/local-fallback/api/src/video-collections-routes.js",
+      "line": 66,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/videos/collections",
+      "source": "infrastructure/local-fallback/api/src/video-collections-routes.js",
+      "line": 82,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/videos/collections/:collectionId",
+      "source": "infrastructure/local-fallback/api/src/video-collections-routes.js",
+      "line": 109,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/collections/:collectionId",
+      "source": "infrastructure/local-fallback/api/src/video-collections-routes.js",
+      "line": 128,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/videos/collections/:collectionId/items",
+      "source": "infrastructure/local-fallback/api/src/video-collections-routes.js",
+      "line": 142,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/videos/collections/:collectionId/items/:videoId",
+      "source": "infrastructure/local-fallback/api/src/video-collections-routes.js",
+      "line": 184,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/collections/:collectionId/items/:videoId",
+      "source": "infrastructure/local-fallback/api/src/video-collections-routes.js",
+      "line": 214,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/data/videos/collections/:collectionId/items/reorder",
+      "source": "infrastructure/local-fallback/api/src/video-collections-routes.js",
+      "line": 231,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/data/videos/collections/:collectionId/items/:videoId/move",
+      "source": "infrastructure/local-fallback/api/src/video-collections-routes.js",
+      "line": 263,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/videos/history/list",
+      "source": "infrastructure/local-fallback/api/src/video-history-routes.js",
+      "line": 49,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/videos/history/:videoId",
+      "source": "infrastructure/local-fallback/api/src/video-history-routes.js",
+      "line": 83,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/history/:videoId",
+      "source": "infrastructure/local-fallback/api/src/video-history-routes.js",
+      "line": 103,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/history",
+      "source": "infrastructure/local-fallback/api/src/video-history-routes.js",
+      "line": 116,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/data/videos/watch-later/list",
+      "source": "infrastructure/local-fallback/api/src/video-watch-later-routes.js",
+      "line": 52,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/data/videos/watch-later/:videoId",
+      "source": "infrastructure/local-fallback/api/src/video-watch-later-routes.js",
+      "line": 89,
+      "middlewareHint": "authRequired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/data/videos/watch-later/:videoId",
+      "source": "infrastructure/local-fallback/api/src/video-watch-later-routes.js",
+      "line": 106,
+      "middlewareHint": "authRequired"
+    }
+  ],
+  "encodingIssues": []
+}
