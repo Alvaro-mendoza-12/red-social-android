@@ -27,8 +27,8 @@ foreach ($path in @($fallbackSource, $signalingSource, $auditScript, $healthAudi
 if ($TrustedWebOrigin -notmatch '^https://[A-Za-z0-9.-]+(?::[0-9]+)?$') {
   throw "TrustedWebOrigin debe ser un origen HTTPS sin ruta: $TrustedWebOrigin"
 }
-if ($StablePublicBaseUrl -and $StablePublicBaseUrl -notmatch '^https://[A-Za-z0-9.-]+\.ts\.net:8443$') {
-  throw "StablePublicBaseUrl debe ser el origen Tailscale Funnel HTTPS del puerto 8443"
+if ($StablePublicBaseUrl -and $StablePublicBaseUrl -notmatch '^https://[A-Za-z0-9.-]+\.ts\.net(?::443|:8443)?$') {
+  throw "StablePublicBaseUrl debe ser un origen Tailscale Funnel HTTPS en 443 o 8443"
 }
 
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
@@ -99,6 +99,32 @@ try {
   Write-Host "==> Verificando servidor"
   Invoke-Remote "hostname; test -d ~/conectate-local-fallback; test -s ~/conectate-local-fallback/.env"
 
+  # Preflight may update .env. Back up its original state before any mutation.
+  if (-not $SkipBackup) {
+    Write-Host "==> Backup antes de modificar configuracion o fuentes"
+    Invoke-Remote "cd ~/conectate-local-fallback && ./scripts/backup-ubuntu-primary.sh"
+  } else {
+    Write-Host "==> Reutilizando backup reciente y verificando sus hashes"
+    Invoke-Remote @'
+set -Eeuo pipefail
+latest="$(readlink -f "$HOME/conectate-backups/latest")"
+test -n "$latest" -a -d "$latest"
+if [ -z "$(find "$latest" -maxdepth 0 -mmin -30 -print -quit)" ]; then
+  echo "ERROR: -SkipBackup solo acepta un backup completo de los últimos 30 minutos" >&2
+  exit 1
+fi
+(
+  cd "$latest"
+  test -s postgres.dump
+  test -s storage.tar.gz
+  test -s ai-chatbot-data.tar.gz
+  test -s metadata.json
+  sha256sum -c SHA256SUMS
+)
+echo "RECENT_BACKUP_REUSED=$latest"
+'@
+  }
+
   Write-Host "==> Preflight de secretos y origenes de produccion"
   $preflight = @'
 set -Eeuo pipefail
@@ -160,31 +186,6 @@ echo PRODUCTION_PREFLIGHT_OK
 '@
   Invoke-Remote $preflight.Replace('__TRUSTED_WEB_ORIGIN__', $TrustedWebOrigin).Replace('__STABLE_PUBLIC_BASE_URL__', $StablePublicBaseUrl)
 
-  if (-not $SkipBackup) {
-    Write-Host "==> Backup antes de desplegar"
-    Invoke-Remote "cd ~/conectate-local-fallback && ./scripts/backup-ubuntu-primary.sh"
-  } else {
-    Write-Host "==> Reutilizando backup reciente y verificando sus hashes"
-    Invoke-Remote @'
-set -Eeuo pipefail
-latest="$(readlink -f "$HOME/conectate-backups/latest")"
-test -n "$latest" -a -d "$latest"
-if [ -z "$(find "$latest" -maxdepth 0 -mmin -30 -print -quit)" ]; then
-  echo "ERROR: -SkipBackup solo acepta un backup completo de los últimos 30 minutos" >&2
-  exit 1
-fi
-(
-  cd "$latest"
-  test -s postgres.dump
-  test -s storage.tar.gz
-  test -s ai-chatbot-data.tar.gz
-  test -s metadata.json
-  sha256sum -c SHA256SUMS
-)
-echo "RECENT_BACKUP_REUSED=$latest"
-'@
-  }
-
   Write-Host "==> Subiendo fuentes actuales"
   Copy-Remote $fallbackArchive "/tmp/local-fallback-source.tar.gz"
   Copy-Remote $signalingArchive "/tmp/signaling-source.tar.gz"
@@ -241,11 +242,18 @@ rm -f /tmp/local-fallback-source.tar.gz /tmp/signaling-source.tar.gz /tmp/backen
     Invoke-Remote "cd ~/conectate-local-fallback && ${ephemeralOriginOverride}./scripts/deploy-stack-safely.sh --skip-build"
   }
 
-  Write-Host "==> Reiniciando tunnel y validando"
+  Write-Host "==> Validando ingreso publico y servicios"
   Invoke-Remote @'
 set -Eeuo pipefail
-systemctl --user restart conectate-cloudflare-tunnel.service
-sleep 20
+cd ~/conectate-local-fallback
+public_origin="$(sed -n 's/^PUBLIC_BASE_URL=//p' .env | tail -1 | tr -d '\r"')"
+if [[ "$public_origin" =~ ^https://[A-Za-z0-9.-]+\.ts\.net(:443|:8443)?$ ]]; then
+  # The current ingress uses Funnel. Restarting Cloudflare can overwrite it.
+  curl -4 -fsS --max-time 10 "$public_origin/ready" >/dev/null
+else
+  systemctl --user restart conectate-cloudflare-tunnel.service
+  sleep 20
+fi
 ~/bin/conectate-status
 ~/audit-mini-pc-drift.sh | sed -n '1,180p'
 '@
@@ -318,5 +326,12 @@ exit 1
   Write-Host ""
   Write-Host "DEPLOY_MINI_PC_OK=$release" -ForegroundColor Green
 } finally {
-  Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+  $resolvedTemporary = [IO.Path]::GetFullPath($tmp)
+  $expectedParent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\', '/')
+  if ([IO.Path]::GetDirectoryName($resolvedTemporary).TrimEnd('\', '/') -eq $expectedParent -and
+      [IO.Path]::GetFileName($resolvedTemporary) -match '^conectate-deploy-[a-f0-9]{32}$') {
+    Remove-Item -LiteralPath $resolvedTemporary -Recurse -Force -ErrorAction SilentlyContinue
+  } else {
+    throw "Se rechazo limpiar una ruta temporal fuera del destino de despliegue."
+  }
 }
