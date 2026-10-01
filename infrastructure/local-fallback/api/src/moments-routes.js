@@ -679,6 +679,48 @@ async function profileFor(pool, userId, profilesById) {
   return normalized
 }
 
+async function visibleMomentForInteraction(pool, identity, requestedId, now = Date.now()) {
+  const id = normalizeId(requestedId)
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)) return null
+  const [local, deleted] = await Promise.all([
+    pool.query(`SELECT id::text, user_id, visibility, visibility_type, audience_ids, excluded_ids, expires_at
+                FROM fallback_moments WHERE lower(id::text) = $1 LIMIT 1`, [id]),
+    pool.query(`SELECT 1 FROM fallback_moment_deletions WHERE lower(moment_id) = $1 LIMIT 1`, [id]),
+  ])
+  if (deleted.rows.length) return null
+  const row = local.rows[0] || (await importedRows(pool, 'moments', 5000)).find(item => normalizeId(item.id) === id)
+  if (!row || !normalizeId(textOf(row, ['user_id'], ''))) return null
+  const expiresAt = momentTimestamp(row.expires_at)
+  if ((textOf(row, ['expires_at'], '') && !expiresAt) || (expiresAt && Date.parse(expiresAt) <= now)) return null
+  const ownerId = normalizeId(row.user_id)
+  const audience = textOf(row, ['visibility'], 'all').toLowerCase()
+  const legacyType = textOf(row, ['visibility_type'], 'public').toLowerCase()
+  if (identity.ids.has(ownerId) || legacyType === 'private' || legacyType === 'silent' ||
+      !['followers', 'following', 'chats'].includes(audience)) {
+    return momentAudienceAllows({ row, identityIds: identity.ids }) ? row : null
+  }
+  let followRows = []
+  let chatRows = []
+  if (audience === 'chats') {
+    const chats = await pool.query(
+      `SELECT participants, is_group FROM fallback_chats
+       WHERE $1 = ANY(participants) AND participants && $2::text[] AND is_group = FALSE LIMIT 1`,
+      [ownerId, Array.from(identity.ids)],
+    )
+    chatRows = chats.rows
+  } else {
+    const [localFollows, importedFollows] = await Promise.all([
+      pool.query(`SELECT follower_id, following_id FROM fallback_follows
+                  WHERE (lower(follower_id) = $1 AND lower(following_id) = ANY($2::text[]))
+                     OR (lower(following_id) = $1 AND lower(follower_id) = ANY($2::text[]))`,
+        [ownerId, Array.from(identity.ids)]),
+      importedRows(pool, 'follows', 20_000),
+    ])
+    followRows = [...localFollows.rows, ...importedFollows]
+  }
+  return momentAudienceAllows({ row, identityIds: identity.ids, followRows, chatRows }) ? row : null
+}
+
 async function buildMomentsFeed(pool, identity) {
   const now = Date.now()
   const { rows: localRows } = await pool.query(
@@ -1290,11 +1332,9 @@ function registerMomentsRoutes(
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
       const momentId = normalizeId(req.params.momentId)
-      const { rows: momentRows } = await pool.query(
-        `SELECT id::text FROM fallback_moments WHERE lower(id::text) = $1 LIMIT 1`,
-        [momentId],
-      )
-      if (!momentRows[0]) return res.status(404).json({ error: 'MOMENT_NOT_FOUND' })
+      if (!(await visibleMomentForInteraction(pool, identity, momentId))) {
+        return res.status(404).json({ error: 'MOMENT_NOT_FOUND' })
+      }
       await pool.query(
         `INSERT INTO fallback_moment_reactions(moment_id, user_id, reaction)
          VALUES ($1::uuid, $2, 'like')
@@ -1331,14 +1371,9 @@ function registerMomentsRoutes(
       const momentId = textOf(req.params, ['momentId'], '')
       if (!momentId) return res.status(400).json({ error: 'MOMENT_ID_REQUIRED' })
 
-      const { rows: momentRows } = await pool.query(
-        `SELECT id::text, user_id
-         FROM fallback_moments
-         WHERE lower(id::text) = $1
-         LIMIT 1`,
-        [normalizeId(momentId)],
-      )
-      const ownerId = normalizeId(textOf(momentRows[0] || {}, ['user_id'], ''))
+      const moment = await visibleMomentForInteraction(pool, identity, momentId)
+      if (!moment) return res.status(404).json({ error: 'MOMENT_NOT_FOUND' })
+      const ownerId = normalizeId(moment.user_id)
       if (ownerId && identity.ids.has(ownerId)) {
         await pool.query(
           `DELETE FROM fallback_moment_views
@@ -1505,6 +1540,7 @@ module.exports = {
   ensureMomentsTables,
   registerMomentsRoutes,
   buildMomentsFeed,
+  visibleMomentForInteraction,
   momentAudienceAllows,
   mergeMomentOwnerProfile,
   normalizedApprovedMusicLicense,

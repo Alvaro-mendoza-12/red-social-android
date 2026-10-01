@@ -29,6 +29,15 @@ async function main() {
   } })
   const checks = []
   const accounts = []
+  // A reviewed local bootstrap can supply brand-new synthetic fixtures when the
+  // public registration limit has been exercised. Never accept real accounts.
+  const fixtures = process.env.MOBILE_AUDIT_FIXTURE_FILE
+    ? JSON.parse(fs.readFileSync(process.env.MOBILE_AUDIT_FIXTURE_FILE, 'utf8')).accounts : []
+  assert(Array.isArray(fixtures) && (fixtures.length === 0 || fixtures.length === 3), 'FIXTURE_COUNT')
+  for (const account of fixtures) {
+    assert(/^mobile-interactions\.[a-f0-9-]{36}@example\.invalid$/.test(account.email), 'SYNTHETIC_EMAIL_REQUIRED')
+    assert(/^[a-f0-9-]{36}$/.test(account.id) && account.token && account.password, 'SYNTHETIC_FIXTURE_REQUIRED')
+  }
   const ownedRooms = []
   const sections = []
   let cleanupOk = true
@@ -69,6 +78,14 @@ async function main() {
     catch { sections.push({ name, ok: false, error: 'STATUS_OR_CONTRACT_FAILED' }) }
   }
   async function register(label) {
+    if (fixtures.length) {
+      const account = fixtures.shift()
+      const me = await request(`verify-isolated-fixture-${label}`, '/v1/auth/me', { token: account.token })
+      assert.equal(me.user?.id, account.id)
+      assert.equal(me.user?.email, account.email)
+      accounts.push(account)
+      return account
+    }
     const email = `mobile-interactions.${crypto.randomUUID()}@example.invalid`
     const password = `QA-${crypto.randomUUID()}-only`
     const auth = await request(`register-${label}`, '/v1/auth/register', {
@@ -219,6 +236,46 @@ async function main() {
       assert(!after.items.some(v => v.id === id), 'DELETED_COMMENT_SEARCH')
       await request('delete-owned-video', `/v1/data/videos/${id}`, { token: owner.token, method: 'DELETE' })
     })
+    await section('social-private-gallery-comments-reactions-and-moment-privacy', async () => {
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1cAAAAASUVORK5CYII=', 'base64')
+      const first = await upload(owner, 'post-media', png, 'png', 'image/png')
+      const second = await upload(owner, 'post-media', png, 'png', 'image/png')
+      const created = await request('social-private-gallery', '/v1/data/feed/posts', {
+        token: owner.token, method: 'POST', expected: 201,
+        body: { content: 'Galería sintética', visibility: 'private', mediaUrls: [first, second], mediaType: 'image' },
+      })
+      const base = `/v1/data/feed/posts/${created.post.id}`
+      const detail = await request('social-gallery-retains-all-images', base, { token: owner.token })
+      assert.equal(detail.post.media_urls.length, 2)
+      await request('social-private-gallery-hidden', base, { token: outsider.token, expected: 404 })
+      const comment = await request('social-own-comment', `${base}/comments`, {
+        token: owner.token, method: 'POST', expected: 201, body: { content: 'Comentario sintético' },
+      })
+      await request('social-own-comment-edit', `/v1/data/feed/comments/${comment.comment.id}`, {
+        token: owner.token, method: 'PATCH', body: { content: 'Comentario sintético actualizado' },
+      })
+      await request('social-own-reaction', `${base}/reaction`, { token: owner.token, method: 'POST', body: { reactionType: 'LIKE' } })
+      await request('social-own-reaction-remove', `${base}/reaction`, { token: owner.token, method: 'DELETE' })
+      await request('social-gallery-delete', base, { token: owner.token, method: 'DELETE' })
+      const momentUrl = await upload(owner, 'moment-media', png, 'png', 'image/png')
+      const moment = await request('moment-private-publish', '/v1/data/moments', {
+        token: owner.token, method: 'POST', expected: 201,
+        body: { mediaUrl: momentUrl, mediaType: 'image', caption: 'Momento sintético', durationHours: 1, visibility: 'private' },
+      })
+      const ownView = await request('moment-self-view-not-counted', `/v1/data/moments/${moment.moment.id}/view`, { token: owner.token, method: 'POST', body: {} })
+      assert.equal(ownView.self_view_ignored, true)
+      await request('moment-private-outsider-view-rejected', `/v1/data/moments/${moment.moment.id}/view`, { token: outsider.token, method: 'POST', body: {}, expected: 404 })
+      await request('moment-private-outsider-reaction-rejected', `/v1/data/moments/${moment.moment.id}/reaction`, { token: outsider.token, method: 'POST', body: {}, expected: 404 })
+      await request('moment-private-delete', `/v1/data/moments/${moment.moment.id}`, { token: owner.token, method: 'DELETE' })
+      const shared = await request('moment-chats-audience-publish', '/v1/data/moments', {
+        token: owner.token, method: 'POST', expected: 201,
+        body: { mediaUrl: momentUrl, mediaType: 'image', caption: 'Momento sintético para chats', durationHours: 1, visibility: 'chats' },
+      })
+      for (let i = 0; i < 2; i++) await request(`moment-chats-view-${i}`, `/v1/data/moments/${shared.moment.id}/view`, { token: member.token, method: 'POST', body: {} })
+      const viewers = await request('moment-unique-viewer', `/v1/data/moments/${shared.moment.id}/viewers`, { token: owner.token })
+      assert.equal(viewers.items.length, 1)
+      await request('moment-chats-delete', `/v1/data/moments/${shared.moment.id}`, { token: owner.token, method: 'DELETE' })
+    })
     await section('playmatch-versioning-idempotency-and-recipient-authorization', async () => {
       const current = await request('gaming-profile', '/v1/data/playmatch/profile', { token: owner.token })
       const body = { expectedVersion: current.profile.version, gamerDisplayName: 'QA gamer', timezone: 'America/Bogota', discoverable: false }
@@ -247,6 +304,7 @@ async function main() {
     agent.destroy()
     const times = checks.filter(c => c.ok && !c.label.startsWith('cleanup')).map(c => c.ms).sort((a, b) => a - b)
     const result = { date: new Date().toISOString(), origin: origin.origin, forcedPublicIpv4: true,
+      localFixtureBootstrap: Boolean(process.env.MOBILE_AUDIT_FIXTURE_FILE),
       scope: 'Isolated backend interactions; not full visual/device certification', sections, checks,
       cleanupVerified: cleanupOk && accounts.length > 0, actualEmailsSent: 0,
       p95Ms: times.length ? times[Math.ceil(times.length * .95) - 1] : null,
