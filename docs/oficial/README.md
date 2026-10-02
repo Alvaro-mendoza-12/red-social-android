@@ -1,7 +1,7 @@
 # NoWi — Documentación oficial del proyecto
 
 Fecha base: 2026-08-24
-Última actualización de la fuente canónica: 2026-10-01 (Bogotá; cada evidencia indica su fecha y alcance)
+Última actualización de la fuente canónica: 2026-10-02 (Bogotá; cada evidencia indica su fecha y alcance)
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
@@ -60,6 +60,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 47. [Móvil: citas y reintentos de documentos — 2026-10-02](42-movil-citas-y-reintentos-2026-10-02.md)
 48. [Móvil: negociación de llamadas y documentos internos — 2026-10-02](43-movil-arranque-llamadas-y-documentos-2026-10-02.md)
 49. [Móvil: preparación de red y llamada con la tablet bloqueada — 2026-10-02](44-movil-preparacion-red-y-llamada-bloqueada-2026-10-02.md)
+50. [Móvil: señalización durante el timbre y cancelación física — 2026-10-02](45-movil-senalizacion-durante-timbre-2026-10-02.md)
 
 ## Reglas para quien trabaje en este proyecto
 

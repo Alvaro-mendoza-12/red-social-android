@@ -118,6 +118,9 @@ class CallRepository @Inject constructor(
     private val scope = newSafeScope("CallRepository", Dispatchers.IO)
 
     private var socket: Socket? = null
+    private data class PreparedIncomingSocket(val socket: Socket, val context: PreparedCallSignalingContext)
+    private var preparedIncomingSocket: PreparedIncomingSocket? = null
+    private var preparedIncomingSocketExpiryJob: Job? = null
     private val _webRTCManager = MutableStateFlow<WebRTCManager?>(null)
     private var webRTCManager: WebRTCManager?
         get() = _webRTCManager.value
@@ -189,6 +192,11 @@ class CallRepository @Inject constructor(
     suspend fun ensureSubscribedToCallUserChannel(userId: String) = withContext(Dispatchers.IO) {
         val normalizedUserId = userId.trim()
         if (normalizedUserId.isBlank()) return@withContext
+        synchronized(this@CallRepository) {
+            if (preparedIncomingSocket?.context?.userId?.let { it != normalizedUserId } == true) {
+                discardPreparedIncomingSocket()
+            }
+        }
 
         if (supabaseConfig.isLocalFallbackPrimary) {
             val channelName = "user:$normalizedUserId"
@@ -282,6 +290,11 @@ class CallRepository @Inject constructor(
         val safeAction = action.trim().lowercase()
         if (safeAction in setOf("cancel", "decline", "busy", "end", "ended", "collision", "missed")) {
             callCancellationGuard.mark(callId)
+            synchronized(this) {
+                if (preparedIncomingSocket?.context?.callId.equals(callId, ignoreCase = true)) {
+                    discardPreparedIncomingSocket()
+                }
+            }
             IncomingCallForegroundService.stop(context, callId)
             if (_incomingInvite.value?.callId.equals(callId, ignoreCase = true)) dismissIncomingInvite()
         }
@@ -646,6 +659,7 @@ class CallRepository @Inject constructor(
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
 
         _incomingInvite.value = null
+        discardPreparedIncomingSocket()
         callTonePlayer.stopAll()
         try {
             recordIncomingInviteOutcome(invite, "Llamada rechazada")
@@ -875,6 +889,7 @@ class CallRepository @Inject constructor(
 
     fun dismissIncomingInvite() {
         _incomingInvite.value = null
+        discardPreparedIncomingSocket()
         callTonePlayer.stopIncomingRingtone()
     }
 
@@ -885,8 +900,88 @@ class CallRepository @Inject constructor(
         if (existing != null && !existing.callId.equals(invite.callId, ignoreCase = true)) return
         clearEndedCallSummary()
         _incomingInvite.value = invite
-        scope.launch { SignalingNetwork.prepare(SignalingConfig.BASE_URL) }
+        scope.launch {
+            prepareIncomingCallSignaling(invite)
+            SignalingNetwork.prepare(SignalingConfig.BASE_URL)
+        }
         startForegroundIncomingRingtone()
+    }
+
+    @Synchronized
+    private fun discardPreparedIncomingSocket() {
+        preparedIncomingSocketExpiryJob?.cancel()
+        preparedIncomingSocketExpiryJob = null
+        val prepared = preparedIncomingSocket.also { preparedIncomingSocket = null }
+        runCatching { prepared?.socket?.off(); prepared?.socket?.disconnect() }
+            .onFailure { Log.w(TAG, "Could not close optional incoming signaling preparation", it) }
+    }
+
+    @Synchronized
+    private fun prepareIncomingCallSignaling(invite: CallInvite) {
+        if (_activeCall.value != null || callCancellationGuard.contains(invite.callId) ||
+            !_incomingInvite.value?.callId.equals(invite.callId, ignoreCase = true)) return
+        val userId = authService.getCurrentUserId()?.trim().orEmpty()
+        val token = authService.getAccessToken()?.trim().orEmpty()
+        if (userId.isBlank() || token.isBlank()) return
+        val endpoint = signalingUrl
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (preparedIncomingSocket?.context?.matches(invite.callId, userId, endpoint, token, now) == true) return
+        discardPreparedIncomingSocket()
+        runCatching {
+            val plan = CallSignalingTransportPlan(pollingFallback = false)
+            val options = IO.Options().apply {
+                forceNew = true
+                reconnection = false
+                timeout = plan.timeoutMs
+                transports = plan.transports
+                attachSignalingAffinity("call", invite.callId)
+                attachBearerToken(token)
+            }
+            val prepared = PreparedIncomingSocket(
+                IO.socket(endpoint, options),
+                PreparedCallSignalingContext(invite.callId, userId, endpoint, token, now),
+            )
+            preparedIncomingSocket = prepared
+            prepared.socket.on(Socket.EVENT_CONNECT) {
+                Log.i(TAG, "Incoming signaling prepared; waiting for acceptance without joining media")
+            }
+            prepared.socket.on(Socket.EVENT_CONNECT_ERROR) {
+                synchronized(this@CallRepository) {
+                    if (preparedIncomingSocket === prepared) discardPreparedIncomingSocket()
+                }
+            }
+            preparedIncomingSocketExpiryJob = scope.launch {
+                delay(PreparedCallSignalingContext.LIFETIME_MS)
+                synchronized(this@CallRepository) {
+                    if (preparedIncomingSocket === prepared) discardPreparedIncomingSocket()
+                }
+            }
+            prepared.socket.connect()
+        }.onFailure {
+            discardPreparedIncomingSocket()
+            Log.w(TAG, "Optional incoming signaling preparation failed", it)
+        }
+    }
+
+    @Synchronized
+    private fun takePreparedIncomingSocket(callId: String, userId: String, endpoint: String): Socket? {
+        val prepared = preparedIncomingSocket ?: return null
+        val token = authService.getAccessToken()?.trim().orEmpty()
+        if (!prepared.context.matches(callId, userId, endpoint, token, android.os.SystemClock.elapsedRealtime())) {
+            discardPreparedIncomingSocket()
+            return null
+        }
+        preparedIncomingSocket = null
+        preparedIncomingSocketExpiryJob?.cancel()
+        preparedIncomingSocketExpiryJob = null
+        prepared.socket.off()
+        // Restore normal recovery for the accepted call after optional warm-up.
+        prepared.socket.io().reconnection(true)
+        prepared.socket.io().reconnectionAttempts(SOCKET_RECONNECT_ATTEMPTS)
+        prepared.socket.io().reconnectionDelay(SOCKET_RECONNECT_DELAY_MS)
+        prepared.socket.io().reconnectionDelayMax(SOCKET_RECONNECT_DELAY_MAX_MS)
+        Log.i(TAG, "Reusing incoming signaling preparation after acceptance")
+        return prepared.socket
     }
 
     internal fun incomingCallDisposition(invite: CallInvite): IncomingCallDisposition {
@@ -1170,7 +1265,9 @@ class CallRepository @Inject constructor(
             }
             val endpointBaseUrl = conectate.com.data.localfallback.RuntimeBackendEndpoint.baseUrl
             val signalingEndpoint = signalingUrl
-            val createdSocket = IO.socket(signalingEndpoint, options)
+            val createdSocket = (if (!pollingFallback) {
+                takePreparedIncomingSocket(callId, userId, signalingEndpoint)
+            } else null) ?: IO.socket(signalingEndpoint, options)
             socket = createdSocket
             fun isCurrentCallSocket() = socket === createdSocket &&
                 canRefreshCallMedia(_activeCall.value, callId)
@@ -1217,9 +1314,11 @@ class CallRepository @Inject constructor(
                 }
             }
 
-            createdSocket.on(Socket.EVENT_CONNECT) {
-                if (!isCurrentCallSocket()) return@on
+            val joinedSocketId = java.util.concurrent.atomic.AtomicReference<String?>(null)
+            fun joinConnectedSocket() {
+                if (!isCurrentCallSocket() || !createdSocket.connected()) return
                 var sid = createdSocket.id() ?: ""
+                if (sid.isBlank() || joinedSocketId.getAndSet(sid) == sid) return
 
                 // IDENTITY DIAGNOSTIC: Log what userId is being sent vs what authService reports
                 val authCurrentId = authService.getCurrentUserId().orEmpty()
@@ -1440,13 +1539,15 @@ class CallRepository @Inject constructor(
 
             createdSocket.on(Socket.EVENT_DISCONNECT) {
                 if (!isCurrentCallSocket()) return@on
+                joinedSocketId.set(null)
                 android.util.Log.w(
                     "CallRepository",
                     "Call signaling socket disconnected; preserving any active WebRTC media path while Socket.IO reconnects."
                 )
             }
 
-            createdSocket.connect()
+            createdSocket.on(Socket.EVENT_CONNECT) { joinConnectedSocket() }
+            if (createdSocket.connected()) joinConnectedSocket() else createdSocket.connect()
         } catch (e: Exception) {
             android.util.Log.e("CallRepository", "Failed to setup call socket", e)
         }
@@ -1667,6 +1768,7 @@ class CallRepository @Inject constructor(
 
     @Synchronized
     private fun endCallInternal(reason: String) {
+        discardPreparedIncomingSocket()
         var callSnapshot = _activeCall.value
         if (callSnapshot?.connectionState == CallConnectionState.ENDED) return
         callSnapshot?.let { callCancellationGuard.mark(it.callId) }

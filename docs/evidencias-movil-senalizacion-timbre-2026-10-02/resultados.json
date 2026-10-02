@@ -1,0 +1,115 @@
+{
+  "suites": 240,
+  "tests": 1077,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "apk_sha256": {
+    "debug": "62ce4be1a0200a25703444e563087c37a3000a747d8dbf886b6237a3c19f4c98",
+    "audit": "3a66260a701f8929ef7168996dbba030a7e79c2a40a32c16256a706f7fb16ca5"
+  },
+  "installed_preserving_data": {
+    "mobile": true,
+    "tablet_audit": true
+  },
+  "apk_generated_startup_class_verified": {
+    "debug": true,
+    "audit": true
+  },
+  "samples": {
+    "prepared_call": {
+      "mobile": {
+        "network": "LTE",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 3502,
+        "ui_marker_to_media_ms": 8384,
+        "initialization_to_media_ms": 7688,
+        "offers": 1,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 13556.0,
+        "audio_received_packets": 382.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      },
+      "tablet": {
+        "network": "Wi-Fi",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 1358,
+        "ui_marker_to_media_ms": 3779,
+        "initialization_to_media_ms": 2787,
+        "offers": 0,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 12881.0,
+        "audio_received_packets": 363.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      }
+    },
+    "slow_polling_cancelled_by_probe": {
+      "mobile": {
+        "network": "LTE",
+        "connected": false,
+        "ui_marker_to_signaling_ms": null,
+        "ui_marker_to_media_ms": null,
+        "initialization_to_media_ms": null,
+        "offers": 1,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": null,
+        "audio_received_packets": null,
+        "audio_lost_packets": null,
+        "fatal_java_exception": false
+      },
+      "tablet": {
+        "network": "Wi-Fi",
+        "connected": false,
+        "ui_marker_to_signaling_ms": 10646,
+        "ui_marker_to_media_ms": null,
+        "initialization_to_media_ms": null,
+        "offers": 0,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": null,
+        "audio_received_packets": null,
+        "audio_lost_packets": null,
+        "fatal_java_exception": false
+      }
+    },
+    "second_connected_call": {
+      "mobile": {
+        "network": "LTE",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 2483,
+        "ui_marker_to_media_ms": 9359,
+        "initialization_to_media_ms": null,
+        "offers": 1,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 18100.0,
+        "audio_received_packets": 510.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      },
+      "tablet": {
+        "network": "Wi-Fi",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 1620,
+        "ui_marker_to_media_ms": 3972,
+        "initialization_to_media_ms": null,
+        "offers": 0,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 19733.0,
+        "audio_received_packets": 556.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      }
+    }
+  },
+  "cancel_without_accept": {
+    "incoming_ui_seen": true,
+    "accepted": false,
+    "caller_hung_up": true,
+    "incoming_service_remaining": false,
+    "receiver_joined_room": false,
+    "receiver_initialized_media": false,
+    "both_processes_survived": true
+  },
+  "subsecond_start_verified": false
+}
