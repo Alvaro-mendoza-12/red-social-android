@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-02",
+  "device": "NovvinMediaTest emulator, Android 15 / API 35",
+  "physical_devices_used": false,
+  "android_version_code": 117,
+  "android_version": "9.0.20-debug",
+  "unit": {
+    "suites": 242,
+    "tests": 1091,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "instrumentation": {
+    "tests": 7,
+    "failures": 0,
+    "seconds": 16.816,
+    "large_font_scale": 2.0
+  },
+  "apk_sha256": "c8145c4f88625deafc909f9c64404fda8e54a354365283a1d3a83893d340e6e2",
+  "sticker_queue": {
+    "survived_emulator_restart_and_apk_update": {
+      "emulator-sticker-after-install-02oct": {
+        "same_original_id": true,
+        "status": "sending",
+        "synced": false,
+        "pending_send": true
+      },
+      "emulator-sticker-before-reconnect-after-02oct": {
+        "same_original_id": true,
+        "status": "sending",
+        "synced": false,
+        "pending_send": true
+      },
+      "emulator-sticker-reconnected-02oct": {
+        "same_original_id": true,
+        "status": "sent",
+        "synced": true,
+        "pending_send": false
+      }
+    },
+    "before_network": {
+      "scope": "own QA conversation; original pending sticker ID",
+      "copies": 0,
+      "status": null,
+      "is_sticker": null,
+      "qa_recipient_is_member": true
+    },
+    "after_network": {
+      "scope": "own QA conversation; original pending sticker ID",
+      "copies": 1,
+      "status": "sent",
+      "is_sticker": true,
+      "qa_recipient_is_member": true
+    },
+    "automatic_send_without_manual_retry": true
+  },
+  "layout": {
+    "broken_pending_label_reproduced_before": true,
+    "broken_label_absent_after": true,
+    "pending_clock_visible_after": true
+  },
+  "favorites": {
+    "recents_tiles_after_remove": 0,
+    "favorite_tiles_after_remove": 0,
+    "favorite_tiles_after_restore": 1
+  },
+  "new_online_send": {
+    "status": "sent",
+    "synced": true,
+    "panel_stayed_open": true,
+    "timing_from_android_logs": {
+      "created_from_created_ms": 0,
+      "saved_from_created_ms": 30,
+      "acknowledged_from_created_ms": 2570
+    }
+  },
+  "limitations": [
+    "One emulator network path; not different physical networks.",
+    "No whole-app or sub-second latency certification.",
+    "Failed retry callback and geometry verified by UI tests; terminal network rejection retry is not an end-to-end test in this block."
+  ]
+}

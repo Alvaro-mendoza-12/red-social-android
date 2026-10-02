@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -784,13 +785,15 @@ fun MessageBubble(
                         }
                     }
                     "sticker" -> {
+                        Box(
+                            modifier = Modifier.size(112.dp).clip(RoundedCornerShape(10.dp)).testTag("sticker_artwork"),
+                            contentAlignment = Alignment.Center,
+                        ) {
                         if (!message.media_url.isNullOrBlank()) {
-                            Box(modifier = Modifier.clip(RoundedCornerShape(10.dp))) {
                                 SubcomposeAsyncImage(
                                     model = mediaPreviewRequest,
                                     contentDescription = "Sticker",
-                                    modifier = Modifier
-                                        .sizeIn(maxWidth = 112.dp, maxHeight = 112.dp),
+                                    modifier = Modifier.fillMaxSize(),
                                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                                     loading = {
                                         Box(
@@ -816,12 +819,15 @@ fun MessageBubble(
                                         }
                                     }
                                 )
-                            }
                         } else {
                             Text(
                                 text = message.content.ifBlank { "🧩" },
                                 fontSize = 34.sp
                             )
+                        }
+                        if (isFromCurrentUser && onRetrySend != null) {
+                            conectate.com.presentation.messages.StickerDeliveryOverlay(message.status, uploadProgress, onRetrySend)
+                        }
                         }
                     }
                     "video" -> {
@@ -1122,7 +1128,7 @@ fun MessageBubble(
                 Spacer(modifier = Modifier.height(2.dp))
                 
                 // Timestamp and status
-                if (isFromCurrentUser && !message.deleted_for_all && onRetrySend != null) {
+                if (isFromCurrentUser && !isStickerMessage && !message.deleted_for_all && onRetrySend != null) {
                     conectate.com.presentation.messages.MessageDeliveryControls(message.status, uploadProgress, onRetrySend)
                 }
                 Row(
@@ -1165,7 +1171,7 @@ fun MessageBubble(
                                     Constants.MESSAGE_STATUS_DELIVERED, "received" -> Icons.Default.DoneAll to Color(0xFFB0BEC5)
                                     Constants.MESSAGE_STATUS_SENT -> Icons.Default.Done to metadataColor
                                     "failed" -> Icons.Default.Warning to MaterialTheme.colorScheme.error
-                                    "sending" -> Icons.Default.AccessTime to metadataColor
+                                    "sending", "pending" -> Icons.Default.AccessTime to metadataColor
                                     else -> Icons.Default.Done to metadataColor
                         }
                         
