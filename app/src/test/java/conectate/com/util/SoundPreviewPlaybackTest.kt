@@ -8,7 +8,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], application = conectate.com.test.UnitTestApplication::class)
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class SoundPreviewPlaybackTest {
     @Test fun previewKeepsSourceAndStableVideoCacheKey() {

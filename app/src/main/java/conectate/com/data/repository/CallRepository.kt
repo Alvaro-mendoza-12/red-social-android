@@ -24,6 +24,7 @@ import conectate.com.data.model.CallInvite
 import conectate.com.data.model.CallParticipant
 import conectate.com.data.model.CallReactionEvent
 import conectate.com.data.signaling.SignalingConfig
+import conectate.com.data.signaling.SignalingNetwork
 import conectate.com.data.signaling.attachBearerToken
 import conectate.com.data.signaling.attachSignalingAffinity
 import conectate.com.data.supabase.AuthService
@@ -393,12 +394,6 @@ class CallRepository @Inject constructor(
             )
         )
 
-        prepareCallAudioSession()
-        startService()
-        connectSocket(callId, currentUserId, callerName, callerAvatar)
-        callTonePlayer.startRingback()
-        scheduleOutgoingRingTimeout(callId)
-
         // Fire-and-forget invites
         scope.launch {
             // WhatsApp-like: write a "call started" message in group/community so late joiners can tap to join.
@@ -463,6 +458,25 @@ class CallRepository @Inject constructor(
                     }
             } }
         }
+
+        // Invitation delivery runs alongside native media initialization.
+        val started = synchronized(this@CallRepository) {
+            if (!canRefreshCallMedia(_activeCall.value, callId)) {
+                false
+            } else {
+                // A very fast decline/cancellation must not resurrect native
+                // audio or a foreground service after the call already ended.
+                prepareCallAudioSession()
+                startService()
+                connectSocket(callId, currentUserId, callerName, callerAvatar)
+                if (_activeCall.value?.connectionState == CallConnectionState.RINGING_OUTGOING) {
+                    callTonePlayer.startRingback()
+                    scheduleOutgoingRingTimeout(callId)
+                }
+                true
+            }
+        }
+        if (!started) return@withContext Result.failure(Exception("La llamada ya finalizó."))
 
         Result.success(callId)
     }
@@ -871,6 +885,7 @@ class CallRepository @Inject constructor(
         if (existing != null && !existing.callId.equals(invite.callId, ignoreCase = true)) return
         clearEndedCallSummary()
         _incomingInvite.value = invite
+        scope.launch { SignalingNetwork.prepare(SignalingConfig.BASE_URL) }
         startForegroundIncomingRingtone()
     }
 
@@ -1123,10 +1138,12 @@ class CallRepository @Inject constructor(
         }
     }
 
+    @Synchronized
     private fun connectSocket(
         callId: String, userId: String, name: String, avatarUrl: String?,
         pollingFallback: Boolean = false, resetMedia: Boolean = true,
     ) {
+        if (!canRefreshCallMedia(_activeCall.value, callId)) return
         try {
             socket?.off()
             socket?.disconnect()

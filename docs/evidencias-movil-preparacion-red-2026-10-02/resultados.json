@@ -1,0 +1,78 @@
+{
+  "suites": 239,
+  "tests": 1073,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "apk_sha256": {
+    "debug": "b0240f8b505e6274dac1bee6b9e6bfeaf375ab67c52f724e166f741ce8a623b2",
+    "audit": "26a4e41f6df87cbfd775b2a83e695c7dbfc06bce0c617e5f278c29f210e62720"
+  },
+  "apk_generated_injector_verified": {
+    "debug": true,
+    "audit": true
+  },
+  "installed_preserving_data": {
+    "mobile": true,
+    "tablet_audit": true
+  },
+  "call": {
+    "mobile": {
+      "network": "LTE",
+      "connected": true,
+      "ui_marker_to_signaling_ms": 3717,
+      "ui_marker_to_media_ms": 10504,
+      "initialization_to_media_ms": 9781,
+      "offers": 1,
+      "ice_disconnected_events": 0,
+      "audio_received_bytes": 9864.0,
+      "audio_received_packets": 278.0,
+      "audio_lost_packets": 0.0,
+      "fatal_java_exception": false
+    },
+    "tablet": {
+      "network": "Wi-Fi",
+      "connected": true,
+      "ui_marker_to_signaling_ms": 2515,
+      "ui_marker_to_media_ms": 5176,
+      "initialization_to_media_ms": 4246,
+      "offers": 0,
+      "ice_disconnected_events": 0,
+      "audio_received_bytes": 10325.0,
+      "audio_received_packets": 291.0,
+      "audio_lost_packets": -1.0,
+      "fatal_java_exception": false
+    }
+  },
+  "locked_recipient_incoming_ui_accepted": true,
+  "documents_native": {
+    "folder": true,
+    "subfolder": true,
+    "search": true,
+    "pdf_filter": true,
+    "word_empty_state": true
+  },
+  "server_healthy_services": 9,
+  "pc_ready_head_samples": [
+    {
+      "status": 200,
+      "elapsed_ms": 721
+    },
+    {
+      "status": 200,
+      "elapsed_ms": 50
+    },
+    {
+      "status": 200,
+      "elapsed_ms": 36
+    },
+    {
+      "status": 200,
+      "elapsed_ms": 56
+    },
+    {
+      "status": 200,
+      "elapsed_ms": 34
+    }
+  ]
+}

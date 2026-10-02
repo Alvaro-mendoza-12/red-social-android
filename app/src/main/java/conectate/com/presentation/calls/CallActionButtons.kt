@@ -28,6 +28,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import conectate.com.data.repository.CallRepository
+import conectate.com.data.signaling.SignalingConfig
+import conectate.com.data.signaling.SignalingNetwork
 import conectate.com.presentation.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -36,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 
 data class CallLaunchUiState(
     val isStarting: Boolean = false,
@@ -51,6 +54,10 @@ class CallLauncherViewModel @Inject constructor(
 
     private val _navigation = Channel<String>(Channel.BUFFERED)
     val navigation = _navigation.receiveAsFlow()
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) { SignalingNetwork.prepare(SignalingConfig.BASE_URL) }
+    }
 
     fun startCall(
         title: String,

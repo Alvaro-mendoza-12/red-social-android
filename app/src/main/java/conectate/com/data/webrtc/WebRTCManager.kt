@@ -18,6 +18,7 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.signaling.SignalingConfig
+import conectate.com.data.signaling.SignalingNetwork
 import io.socket.client.Socket
 import org.json.JSONObject
 import org.json.JSONArray
@@ -78,8 +79,7 @@ class WebRTCManager(
         // handset speaker makes echo cancellation less effective on some devices.
         private const val REMOTE_AUDIO_GAIN = 1.0
         private val turnHttpClient by lazy {
-            OkHttpClient.Builder()
-                .dns(PublicBackendDns)
+            SignalingNetwork.client.newBuilder()
                 .connectTimeout(8, TimeUnit.SECONDS)
                 .readTimeout(8, TimeUnit.SECONDS)
                 .callTimeout(10, TimeUnit.SECONDS)

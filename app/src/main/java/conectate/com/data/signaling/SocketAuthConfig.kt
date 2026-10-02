@@ -1,12 +1,9 @@
 package conectate.com.data.signaling
 
-import conectate.com.core.network.PublicBackendDns
 import io.socket.client.IO
-import okhttp3.OkHttpClient
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-private val signalingClient = OkHttpClient.Builder().dns(PublicBackendDns).build()
 
 fun IO.Options.attachBearerToken(accessToken: String?) {
     val token = accessToken?.trim().orEmpty()
@@ -27,8 +24,8 @@ fun IO.Options.attachSignalingAffinity(scope: String, rawScopeId: String) {
         StandardCharsets.UTF_8.toString()
     )
     query = "affinity=$value"
-    callFactory = signalingClient
-    webSocketFactory = signalingClient
+    callFactory = SignalingNetwork.client
+    webSocketFactory = SignalingNetwork.client
 }
 
 

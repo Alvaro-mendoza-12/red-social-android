@@ -59,6 +59,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 46. [Móvil: lectura inmediata y archivos entre redes — 2026-10-02](41-movil-confirmaciones-y-archivos-2026-10-02.md)
 47. [Móvil: citas y reintentos de documentos — 2026-10-02](42-movil-citas-y-reintentos-2026-10-02.md)
 48. [Móvil: negociación de llamadas y documentos internos — 2026-10-02](43-movil-arranque-llamadas-y-documentos-2026-10-02.md)
+49. [Móvil: preparación de red y llamada con la tablet bloqueada — 2026-10-02](44-movil-preparacion-red-y-llamada-bloqueada-2026-10-02.md)
 
 ## Reglas para quien trabaje en este proyecto
 
