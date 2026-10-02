@@ -427,7 +427,8 @@ fun MessageBubble(
     onOpenContactChat: (ChatContactPayload) -> Unit = {},
     onAddToDeviceContacts: (ChatContactPayload) -> Unit = {},
     uploadProgress: Float? = null,
-    onRetrySend: (() -> Unit)? = null
+    onRetrySend: (() -> Unit)? = null,
+    replySenderName: String? = null,
 ) {
     val context = LocalContext.current
     var showDocument by remember(message.id, message.media_url) { mutableStateOf(false) }
@@ -625,12 +626,13 @@ fun MessageBubble(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
-                            val displayName = when {
-                                quoted.sender_id == message.sender_id -> "Tú"
-                                isFromCurrentUser && quoted.sender_id != message.sender_id -> senderName ?: "Usuario"
-                                !isFromCurrentUser && quoted.sender_id != message.sender_id -> "Usuario" // Fallback
-                                else -> "Usuario"
-                            }
+                            val displayName = quotedMessageAuthor(
+                                quotedSenderId = quoted.sender_id,
+                                currentUserId = currentUserId,
+                                quotedSenderName = replySenderName ?: quoted.sender_name,
+                                messageSenderId = message.sender_id,
+                                messageSenderName = senderName ?: message.sender_name,
+                            )
                             
                             Text(
                                 text = displayName,

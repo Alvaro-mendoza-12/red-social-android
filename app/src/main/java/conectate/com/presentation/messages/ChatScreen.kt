@@ -1208,6 +1208,11 @@ fun ChatScreen(
                                     val isSelected = selectedMessages.contains(message.id)
                                     MessageBubble(
                                         message = message,
+                                        replySenderName = message.reply_to?.let { quoted ->
+                                            if (quoted.sender_id != currentUserId) {
+                                                currentNickname ?: state.otherUser?.displayName ?: state.otherUser?.username
+                                            } else null
+                                        },
                                         uploadProgress = transfers[conectate.com.core.messaging.MessageUploadProgress.key(currentUserId, message.id)],
                                         onRetrySend = { viewModel.retryMessage(message) },
                                         isFromCurrentUser = message.sender_id == currentUserId,

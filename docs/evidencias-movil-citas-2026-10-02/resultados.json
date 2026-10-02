@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-02",
+  "versionCode": 117,
+  "versionName": "9.0.20",
+  "unit": {
+    "errors": 0,
+    "failures": 0,
+    "suites": 238,
+    "tests": 1067,
+    "skipped": 0
+  },
+  "apkSha256": {
+    "audit": "d0730e528b9ae66a0e71dc19aab6c212bf85873d6dd9d4e8b2f55aeaf5fb01f0",
+    "debug": "45d82c113ae2072ab0a06bcfe3fdf78bf03e6bcf0992eeb9ea99c3cb2a7a9cbe"
+  },
+  "physical": {
+    "newDocumentFilenameVisibleOnReceiver": true,
+    "quoteAuthorOtherVisible": true,
+    "fileIntegrity": [
+      {
+        "copies": 1,
+        "bytes": 4194306,
+        "byte_integrity": true,
+        "status": "read"
+      },
+      {
+        "copies": 1,
+        "bytes": 2203,
+        "byte_integrity": true,
+        "status": "read"
+      }
+    ],
+    "previousOfflineRetryVisible": true,
+    "previousRetryClearedAfterDelivery": true,
+    "quoteAuthorOwnIsYou": true
+  },
+  "productionCertification": false
+}

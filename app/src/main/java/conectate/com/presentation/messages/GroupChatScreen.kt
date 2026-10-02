@@ -496,6 +496,7 @@ fun GroupChatScreen(
                                 } else {
                                     MessageBubble(
                                         message = msg,
+                                        replySenderName = msg.reply_to?.sender_id?.let { memberProfiles[it]?.displayName },
                                         uploadProgress = transfers[conectate.com.core.messaging.MessageUploadProgress.key(currentUserId, msg.id)],
                                         onRetrySend = { viewModel.retryMessage(msg) },
                                         isFromCurrentUser = isFromMe,

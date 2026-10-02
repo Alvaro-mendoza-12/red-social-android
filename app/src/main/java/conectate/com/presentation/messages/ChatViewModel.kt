@@ -827,7 +827,16 @@ class ChatViewModel @Inject constructor(
                 }
 
                 val cid = chatId ?: return@launch
-                val outboundContent = content.trim().ifBlank { defaultMediaCaption(messageType) }
+                val outboundContent = if (messageType in setOf("document", "file")) {
+                    val providerName = withContext(Dispatchers.IO) {
+                        runCatching {
+                            context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                                if (cursor.moveToFirst()) cursor.getString(0) else null
+                            }
+                        }.getOrNull() ?: uri.lastPathSegment
+                    }
+                    conectate.com.util.documentMessageLabel(content, providerName)
+                } else content.trim().ifBlank { defaultMediaCaption(messageType) }
                 val result = messageRepository.sendMessage(
                     chatId = cid,
                     content = outboundContent,
@@ -927,7 +936,7 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun sendDocumentMessage(uri: Uri, caption: String = "📎 Archivo") {
+    fun sendDocumentMessage(uri: Uri, caption: String = "") {
         sendMediaMessage(uri = uri, messageType = "document", content = caption)
     }
 
