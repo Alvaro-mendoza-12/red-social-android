@@ -1,0 +1,16 @@
+{
+  "server_bytes": 4194306,
+  "backup_verified": "/home/alvaro/conectate-backups/20261002T050154Z",
+  "reply_to_sticker_preserved": true,
+  "test_file_bytes": 4194306,
+  "has_media": true,
+  "tests": {
+    "total": 355,
+    "skipped": 2,
+    "passed": 353,
+    "failed": 0
+  },
+  "status": "read",
+  "native_upload_indicator": "Subiendo 0 %",
+  "type": "document"
+}

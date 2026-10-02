@@ -55,3 +55,35 @@ test('typing authorization requires current membership, including public communi
   access = { room: { creator_id: 'me' }, roomMembers: [] }
   assert.equal(await authorize({}, {}, identity, 'group', id), true)
 })
+
+test('visible receipt endpoint publishes committed read updates without waiting for realtime delivery', async () => {
+  let handler
+  const published = []
+  const chat = { id }
+  const participantRows = [{ user_id: 'me' }, { user_id: 'sender' }]
+  registerVisibleMessageReadRoute({ post: (_path, _auth, route) => { handler = route } }, {
+    pool: { query: async () => ({ rows: [{ id }] }) }, authRequired: () => {},
+    getCurrentUser: async () => ({ id: 'me' }), userIdentity: () => identity,
+    privateChatAccessContext: async () => ({ chat, participantRows, hasAccess: true }),
+    publishReadReceipts: (receipt) => { published.push(receipt); return new Promise(() => {}) },
+  })
+  const res = { json(body) { this.body = body } }
+  await handler({ body: { messageIds: [id] }, params: { chatId: id } }, res, assert.fail)
+  await new Promise(setImmediate)
+  assert.deepEqual(res.body.messageIds, [id])
+  assert.equal(published.length, 1)
+  assert.deepEqual(published[0], { chatId: id, messageIds: [id], chat, participantRows, identity })
+})
+
+test('empty visible receipts do not publish any message event', async () => {
+  let handler
+  registerVisibleMessageReadRoute({ post: (_path, _auth, route) => { handler = route } }, {
+    pool: { query: () => assert.fail('empty mutation') }, authRequired: () => {},
+    getCurrentUser: async () => ({ id: 'me' }), userIdentity: () => identity,
+    privateChatAccessContext: async () => ({ chat: { id }, hasAccess: true }),
+    publishReadReceipts: () => assert.fail('empty publication'),
+  })
+  const res = { json(body) { this.body = body } }
+  await handler({ body: { messageIds: [] }, params: { chatId: id } }, res, assert.fail)
+  assert.deepEqual(res.body.messageIds, [])
+})

@@ -56,6 +56,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 43. [Web publicada: autenticación y avisos — 2026-10-01](38-web-autenticacion-avisos-2026-10-01.md)
 44. [Móvil: cancelación de llamadas y adjuntos simultáneos — 2026-10-01](39-movil-llamadas-y-adjuntos-2026-10-01.md)
 45. [Móvil: mensajes físicos, notas de voz y galería — 2026-10-01](40-movil-pruebas-fisicas-mensajes-2026-10-01.md)
+46. [Móvil: lectura inmediata y archivos entre redes — 2026-10-02](41-movil-confirmaciones-y-archivos-2026-10-02.md)
 
 ## Reglas para quien trabaje en este proyecto
 

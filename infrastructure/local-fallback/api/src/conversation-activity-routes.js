@@ -40,7 +40,10 @@ function createConversationActivityAuthorizer({ privateChatAccessContext, loadCo
   }
 }
 
-function registerVisibleMessageReadRoute(app, { pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext }) {
+function registerVisibleMessageReadRoute(app, {
+  pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,
+  publishReadReceipts = async () => {},
+}) {
   app.post('/v1/data/messages/chats/:chatId/read-visible', authRequired, async (req, res, next) => {
     try {
       let ids
@@ -52,9 +55,16 @@ function registerVisibleMessageReadRoute(app, { pool, authRequired, getCurrentUs
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
-      const { chat, hasAccess } = await privateChatAccessContext(pool, chatId, identity)
+      const { chat, participantRows, hasAccess } = await privateChatAccessContext(pool, chatId, identity)
       if (!chat || !hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
       const messageIds = await markSelectedMessagesRead(pool, chatId, identity, ids)
+      // The database result is authoritative; publishing is best effort and must
+      // not make acknowledging a visible message wait for the realtime gateway.
+      if (messageIds.length) {
+        void Promise.resolve().then(() => publishReadReceipts({
+          chatId, messageIds, chat, participantRows, identity,
+        })).catch(() => console.warn('[message-read-receipts] publication failed'))
+      }
       return res.json({ ok: true, chatId, messageIds, lastReadAt: null })
     } catch (error) {
       next(error)

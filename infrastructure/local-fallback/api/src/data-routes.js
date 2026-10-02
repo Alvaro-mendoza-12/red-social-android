@@ -6698,8 +6698,15 @@ function registerDataRoutes(app, {
   signStorageObjectReference = (_req, value) => value,
 }) {
   const { createConversationActivityAuthorizer, registerVisibleMessageReadRoute, registerVisibleCollectionReadRoutes } = require('./conversation-activity-routes')
+  const { publishChatMessageEvent, publishRealtimeEvent } = require('./realtime-publish')
+  const { createMessageReadReceiptPublisher } = require('./message-read-receipts')
   const mayPublishConversationActivity = createConversationActivityAuthorizer({ privateChatAccessContext, loadCollectionRoomAccess })
-  registerVisibleMessageReadRoute(app, { pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext })
+  registerVisibleMessageReadRoute(app, {
+    pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,
+    publishReadReceipts: createMessageReadReceiptPublisher({
+      pool, normalizeMessageRow, recipientIdsForChat, publishChatMessageEvent,
+    }),
+  })
   registerVisibleCollectionReadRoutes(app, { pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext, loadCollectionRoomAccess })
   registerMessageMarkerRoutes(app, {
     pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,
@@ -6718,7 +6725,6 @@ function registerDataRoutes(app, {
     pool, authRequired, getCurrentUser, userIdentity, videoRowsByIds,
     localVideoDeletionIds, visibleVideoForIdentity,
   })
-  const { publishChatMessageEvent, publishRealtimeEvent } = require('./realtime-publish')
   const { registerMomentsRoutes } = require('./moments-routes')
   const { registerMusicRoutes } = require('./music-routes')
   const { registerAdminModerationRoutes } = require('./admin-moderation-routes')

@@ -1,0 +1,13 @@
+{
+  "event": "message",
+  "action": "updated",
+  "type": "text",
+  "status": "read",
+  "created_event_to_read_event_ms": null,
+  "full_message_content_preserved": true,
+  "physical_reader": "Motorola LTE",
+  "physical_sender": "Tablet Wi-Fi",
+  "measurement": "PC realtime events; separate native UI captures verify sent/read",
+  "created_event_observed": false,
+  "native_sender_read_visible": true
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "service": "ai-chatbot",
+    "health": "healthy",
+    "state": "running"
+  },
+  {
+    "service": "api",
+    "health": "healthy",
+    "state": "running"
+  },
+  {
+    "service": "coturn",
+    "health": "healthy",
+    "state": "running"
+  },
+  {
+    "service": "db",
+    "health": "healthy",
+    "state": "running"
+  },
+  {
+    "service": "edge",
+    "health": "healthy",
+    "state": "running"
+  },
+  {
+    "service": "office-preview",
+    "health": "healthy",
+    "state": "running"
+  },
+  {
+    "service": "realtime-gateway",
+    "health": "healthy",
+    "state": "running"
+  },
+  {
+    "service": "signaling",
+    "health": "healthy",
+    "state": "running"
+  },
+  {
+    "service": "signaling-redis",
+    "health": "healthy",
+    "state": "running"
+  }
+]
