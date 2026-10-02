@@ -37,6 +37,7 @@ class SocketAuthConfigTest {
         }
         assertEquals(60_000, SignalingNetwork.client.readTimeoutMillis)
         assertEquals(0, SignalingNetwork.client.callTimeoutMillis)
+        assertEquals(16, SignalingNetwork.client.dispatcher.maxRequestsPerHost)
     }
 
     @Test

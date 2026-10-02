@@ -14,6 +14,22 @@ class CallSignalingTransportPlanTest {
         assertEquals(10_000L, CallSignalingTransportPlan(true).timeoutMs)
     }
 
+    @Test fun failedIncomingPreparationSkipsAnotherDirectAttempt() {
+        val plan = CallSignalingTransportPlan(preparationFailed = true)
+        assertTrue(plan.usesPollingFallback)
+        assertArrayEquals(arrayOf("polling", "websocket"), plan.transports)
+        assertEquals(10_000L, plan.timeoutMs)
+    }
+
+    @Test fun explicitFallbackRemainsEnabledWithOrWithoutPreparationFailure() {
+        for (preparationFailed in listOf(false, true)) {
+            val plan = CallSignalingTransportPlan(pollingFallback = true, preparationFailed = preparationFailed)
+            assertTrue(plan.usesPollingFallback)
+            assertArrayEquals(arrayOf("polling", "websocket"), plan.transports)
+        }
+        assertFalse(CallSignalingTransportPlan().usesPollingFallback)
+    }
+
     @Test fun transportArraysCannotMutateFuturePlans() {
         val plan = CallSignalingTransportPlan()
         plan.transports[0] = "polling"

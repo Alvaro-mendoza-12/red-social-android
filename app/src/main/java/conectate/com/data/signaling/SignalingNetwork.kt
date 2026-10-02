@@ -2,6 +2,7 @@ package conectate.com.data.signaling
 
 import conectate.com.core.network.PublicBackendDns
 import okhttp3.OkHttpClient
+import okhttp3.Dispatcher
 import okhttp3.Request
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -11,6 +12,9 @@ internal object SignalingNetwork {
     // TURN derives a bounded request client from this same connection pool.
     val client: OkHttpClient = OkHttpClient.Builder()
         .dns(PublicBackendDns)
+        // Each polling namespace needs a receive GET and a send POST. Leave
+        // capacity for call/voice/LIVE and a connection being handed over.
+        .dispatcher(Dispatcher().apply { maxRequestsPerHost = 16 })
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 

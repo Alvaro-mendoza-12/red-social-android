@@ -120,6 +120,7 @@ class CallRepository @Inject constructor(
     private var socket: Socket? = null
     private data class PreparedIncomingSocket(val socket: Socket, val context: PreparedCallSignalingContext)
     private var preparedIncomingSocket: PreparedIncomingSocket? = null
+    private var preparedIncomingSocketFailureContext: PreparedCallSignalingContext? = null
     private var preparedIncomingSocketExpiryJob: Job? = null
     private val _webRTCManager = MutableStateFlow<WebRTCManager?>(null)
     private var webRTCManager: WebRTCManager?
@@ -193,7 +194,8 @@ class CallRepository @Inject constructor(
         val normalizedUserId = userId.trim()
         if (normalizedUserId.isBlank()) return@withContext
         synchronized(this@CallRepository) {
-            if (preparedIncomingSocket?.context?.userId?.let { it != normalizedUserId } == true) {
+            val preparedUser = preparedIncomingSocket?.context?.userId ?: preparedIncomingSocketFailureContext?.userId
+            if (preparedUser?.let { it != normalizedUserId } == true) {
                 discardPreparedIncomingSocket()
             }
         }
@@ -291,7 +293,8 @@ class CallRepository @Inject constructor(
         if (safeAction in setOf("cancel", "decline", "busy", "end", "ended", "collision", "missed")) {
             callCancellationGuard.mark(callId)
             synchronized(this) {
-                if (preparedIncomingSocket?.context?.callId.equals(callId, ignoreCase = true)) {
+                if (preparedIncomingSocket?.context?.callId.equals(callId, ignoreCase = true) ||
+                    preparedIncomingSocketFailureContext?.callId.equals(callId, ignoreCase = true)) {
                     discardPreparedIncomingSocket()
                 }
             }
@@ -911,6 +914,7 @@ class CallRepository @Inject constructor(
     private fun discardPreparedIncomingSocket() {
         preparedIncomingSocketExpiryJob?.cancel()
         preparedIncomingSocketExpiryJob = null
+        preparedIncomingSocketFailureContext = null
         val prepared = preparedIncomingSocket.also { preparedIncomingSocket = null }
         runCatching { prepared?.socket?.off(); prepared?.socket?.disconnect() }
             .onFailure { Log.w(TAG, "Could not close optional incoming signaling preparation", it) }
@@ -926,6 +930,7 @@ class CallRepository @Inject constructor(
         val endpoint = signalingUrl
         val now = android.os.SystemClock.elapsedRealtime()
         if (preparedIncomingSocket?.context?.matches(invite.callId, userId, endpoint, token, now) == true) return
+        if (preparedIncomingSocketFailureContext?.matches(invite.callId, userId, endpoint, token, now) == true) return
         discardPreparedIncomingSocket()
         runCatching {
             val plan = CallSignalingTransportPlan(pollingFallback = false)
@@ -947,7 +952,20 @@ class CallRepository @Inject constructor(
             }
             prepared.socket.on(Socket.EVENT_CONNECT_ERROR) {
                 synchronized(this@CallRepository) {
-                    if (preparedIncomingSocket === prepared) discardPreparedIncomingSocket()
+                    if (preparedIncomingSocket === prepared) {
+                        discardPreparedIncomingSocket()
+                        // Do not repeat an already failed WebSocket attempt after
+                        // acceptance. The failure remains bound to this session.
+                        preparedIncomingSocketFailureContext = prepared.context
+                        preparedIncomingSocketExpiryJob = scope.launch {
+                            delay((PreparedCallSignalingContext.LIFETIME_MS -
+                                (android.os.SystemClock.elapsedRealtime() - prepared.context.preparedAtMs)).coerceAtLeast(0L))
+                            synchronized(this@CallRepository) {
+                                if (preparedIncomingSocketFailureContext === prepared.context) discardPreparedIncomingSocket()
+                            }
+                        }
+                        Log.i(TAG, "Incoming direct signaling preparation failed; keeping fallback for acceptance")
+                    }
                 }
             }
             preparedIncomingSocketExpiryJob = scope.launch {
@@ -1251,7 +1269,19 @@ class CallRepository @Inject constructor(
             }
             refreshAudioSession()
 
-            val transportPlan = CallSignalingTransportPlan(pollingFallback)
+            val endpointBaseUrl = conectate.com.data.localfallback.RuntimeBackendEndpoint.baseUrl
+            val signalingEndpoint = signalingUrl
+            val preparationFailed = preparedIncomingSocketFailureContext?.matches(
+                callId, userId, signalingEndpoint, authService.getAccessToken()?.trim().orEmpty(),
+                android.os.SystemClock.elapsedRealtime(),
+            ) == true
+            val transportPlan = CallSignalingTransportPlan(pollingFallback, preparationFailed)
+            if (preparedIncomingSocketFailureContext != null) {
+                preparedIncomingSocketExpiryJob?.cancel()
+                preparedIncomingSocketExpiryJob = null
+            }
+            preparedIncomingSocketFailureContext = null
+            if (preparationFailed) Log.i(TAG, "Starting compatible call transport after failed preparation")
             val options = IO.Options().apply {
                 forceNew = true
                 reconnection = true
@@ -1263,9 +1293,7 @@ class CallRepository @Inject constructor(
                 attachSignalingAffinity("call", callId)
                 attachBearerToken(authService.getAccessToken())
             }
-            val endpointBaseUrl = conectate.com.data.localfallback.RuntimeBackendEndpoint.baseUrl
-            val signalingEndpoint = signalingUrl
-            val createdSocket = (if (!pollingFallback) {
+            val createdSocket = (if (!transportPlan.usesPollingFallback) {
                 takePreparedIncomingSocket(callId, userId, signalingEndpoint)
             } else null) ?: IO.socket(signalingEndpoint, options)
             socket = createdSocket
@@ -1274,7 +1302,7 @@ class CallRepository @Inject constructor(
 
             createdSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
                 if (!isCurrentCallSocket()) return@on
-                if (!pollingFallback) {
+                if (!transportPlan.usesPollingFallback) {
                     // Java's client does not automatically try polling when
                     // a direct WebSocket handshake fails. Keep the media
                     // engine and auth/affinity while changing transport once.
@@ -1344,7 +1372,7 @@ class CallRepository @Inject constructor(
                     }
                 )
                 android.util.Log.i("CallRepository", "📤 join-call EMITTED for call=$callId sid=$sid")
-                Log.i(TAG, "Call signaling connected (${if (pollingFallback) "polling fallback" else "direct WebSocket"})")
+                Log.i(TAG, "Call signaling connected (${if (transportPlan.usesPollingFallback) "polling fallback" else "direct WebSocket"})")
 
                 // Now do WebRTC/audio setup in a protected block
                 try {

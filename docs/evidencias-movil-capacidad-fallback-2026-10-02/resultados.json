@@ -1,0 +1,189 @@
+{
+  "date": "2026-10-02",
+  "android_version": {
+    "versionCode": 117,
+    "baseVersionName": "9.0.20"
+  },
+  "build": {
+    "suites": 240,
+    "tests": 1079,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "sha256": {
+      "debug": "aa3de1179e5f0bdbc5c77e00f312d7edf5628149d5a188c6e1d1fd394909774f",
+      "audit": "467a692eccc1680fdc748e20a63e1f9c10de14591486146eed12a9d4816883b6"
+    }
+  },
+  "internal_authentication": {
+    "scope": "signaling container to internal API; QA authentication only",
+    "samples": [
+      {
+        "http_status": 200,
+        "duration_ms": 41.5
+      },
+      {
+        "http_status": 200,
+        "duration_ms": 8.9
+      },
+      {
+        "http_status": 200,
+        "duration_ms": 8.6
+      },
+      {
+        "http_status": 200,
+        "duration_ms": 7.1
+      },
+      {
+        "http_status": 200,
+        "duration_ms": 7.4
+      },
+      {
+        "http_status": 200,
+        "duration_ms": 9.1
+      }
+    ]
+  },
+  "calls": {
+    "reference_first": {
+      "mobile": {
+        "network": "LTE",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 2534,
+        "ui_marker_to_media_ms": 8977,
+        "initialization_to_media_ms": null,
+        "offers": 1,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 23389.0,
+        "audio_received_packets": 659.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      },
+      "tablet": {
+        "network": "Wi-Fi",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 1042,
+        "ui_marker_to_media_ms": 3625,
+        "initialization_to_media_ms": null,
+        "offers": 0,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 19449.0,
+        "audio_received_packets": 548.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      }
+    },
+    "reference_repeat": {
+      "mobile": {
+        "network": "LTE",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 2580,
+        "ui_marker_to_media_ms": 10668,
+        "initialization_to_media_ms": null,
+        "offers": 1,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 18384.0,
+        "audio_received_packets": 518.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      },
+      "tablet": {
+        "network": "Wi-Fi",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 1009,
+        "ui_marker_to_media_ms": 3556,
+        "initialization_to_media_ms": null,
+        "offers": 0,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 26407.0,
+        "audio_received_packets": 744.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      }
+    },
+    "updated_first": {
+      "mobile": {
+        "network": "LTE",
+        "connected": true,
+        "ui_marker_to_signaling_ms": null,
+        "ui_marker_to_media_ms": null,
+        "initialization_to_media_ms": 10129,
+        "offers": 1,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 27295.0,
+        "audio_received_packets": 769.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      },
+      "tablet": {
+        "network": "Wi-Fi",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 1390,
+        "ui_marker_to_media_ms": 3944,
+        "initialization_to_media_ms": 2976,
+        "offers": 0,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 23815.0,
+        "audio_received_packets": 671.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      }
+    },
+    "updated_repeat": {
+      "mobile": {
+        "network": "LTE",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 2339,
+        "ui_marker_to_media_ms": 9608,
+        "initialization_to_media_ms": null,
+        "offers": 1,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 20621.0,
+        "audio_received_packets": 581.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      },
+      "tablet": {
+        "network": "Wi-Fi",
+        "connected": true,
+        "ui_marker_to_signaling_ms": 1019,
+        "ui_marker_to_media_ms": 3453,
+        "initialization_to_media_ms": null,
+        "offers": 0,
+        "ice_disconnected_events": 0,
+        "audio_received_bytes": 24135.0,
+        "audio_received_packets": 680.0,
+        "audio_lost_packets": 0.0,
+        "fatal_java_exception": false
+      }
+    }
+  },
+  "cancellation": {
+    "incoming_service_remaining": false,
+    "active_call_service_remaining": false,
+    "recipient_joined": false,
+    "recipient_media_initialized": false,
+    "recipient_media_connected": false
+  },
+  "controls_observed": [
+    {
+      "action": "Mic",
+      "status": "pressed in native call UI"
+    },
+    {
+      "action": "Mic",
+      "status": "pressed in native call UI"
+    },
+    {
+      "action": "Altavoz",
+      "status": "pressed in native call UI"
+    },
+    {
+      "action": "Altavoz",
+      "status": "pressed in native call UI"
+    }
+  ],
+  "cold_start_mobile_ms": 6109,
+  "physical_websocket_failure_reproduced_after_update": false,
+  "subsecond_connection_verified": false
+}
