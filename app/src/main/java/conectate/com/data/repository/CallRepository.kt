@@ -169,7 +169,7 @@ class CallRepository @Inject constructor(
     private var socketEndpointRecoveryJob: Job? = null
     private var callEverHadRemoteParticipant: Boolean = false
     private var hasConnectedMediaPath: Boolean = false
-    private var callSetupStartedAtMs: Long? = null
+    private var callSetupTiming: CallSetupTiming? = null
     private var callSetupMetricCallId: String? = null
 
     private val pendingInvitees = mutableSetOf<String>()
@@ -378,7 +378,7 @@ class CallRepository @Inject constructor(
         pendingInvitees.addAll(invitedUserIds.map { it.trim() }.filter { it.isNotBlank() }.distinct())
         callEverHadRemoteParticipant = false
         hasConnectedMediaPath = false
-        callSetupStartedAtMs = System.currentTimeMillis()
+        callSetupTiming = CallSetupTiming(android.os.SystemClock.elapsedRealtime(), CallSetupOrigin.OUTGOING)
         callSetupMetricCallId = callId
         clearEndedCallSummary()
 
@@ -518,7 +518,7 @@ class CallRepository @Inject constructor(
         pendingInvitees.clear()
         callEverHadRemoteParticipant = false
         hasConnectedMediaPath = false
-        callSetupStartedAtMs = System.currentTimeMillis()
+        callSetupTiming = CallSetupTiming(android.os.SystemClock.elapsedRealtime(), CallSetupOrigin.JOINING)
         callSetupMetricCallId = callId.trim()
         clearEndedCallSummary()
         var normalizedContextType = contextType.trim().lowercase().ifBlank { "dm" }
@@ -579,7 +579,7 @@ class CallRepository @Inject constructor(
         pendingInvitees.clear()
         callEverHadRemoteParticipant = false
         hasConnectedMediaPath = false
-        callSetupStartedAtMs = System.currentTimeMillis()
+        callSetupTiming = CallSetupTiming(android.os.SystemClock.elapsedRealtime(), CallSetupOrigin.INCOMING)
         callSetupMetricCallId = invite.callId
         clearEndedCallSummary()
         var normalizedContextType = invite.contextType.trim().lowercase().ifBlank { "dm" }
@@ -1373,11 +1373,12 @@ class CallRepository @Inject constructor(
                 )
                 android.util.Log.i("CallRepository", "📤 join-call EMITTED for call=$callId sid=$sid")
                 Log.i(TAG, "Call signaling connected (${if (transportPlan.usesPollingFallback) "polling fallback" else "direct WebSocket"})")
+                logCallSetupStage(callId, "signaling")
 
                 // Now do WebRTC/audio setup in a protected block
                 try {
                     webRTCManager?.setCurrentUser(userId, sid)
-                    webRTCManager?.refreshManagedIceServers(force = true)
+                    webRTCManager?.refreshManagedIceServers()
                     refreshAudioSession()
                 } catch (e: Exception) {
                     android.util.Log.e("CallRepository", "❌ WebRTC/audio setup failed AFTER join-call was sent", e)
@@ -1635,6 +1636,12 @@ class CallRepository @Inject constructor(
     }
 
     private fun initializeWebRTC(userId: String) {
+        val mediaCallId = _activeCall.value?.callId ?: return
+        fun emitCurrentCallSignal(event: String, payload: org.json.JSONObject) {
+            if (!authService.getCurrentUserId().equals(userId, ignoreCase = true) ||
+                !canRefreshCallMedia(_activeCall.value, mediaCallId)) return
+            socket?.emit(event, payload)
+        }
         var events = object : conectate.com.data.webrtc.SignalingEvents {
             override fun onSendOffer(targetSocketId: String, offer: org.json.JSONObject) {
                 var data = org.json.JSONObject().apply {
@@ -1642,7 +1649,7 @@ class CallRepository @Inject constructor(
                     put("offer", offer)
                     put("userId", userId)
                 }
-                socket?.emit("offer", data)
+                emitCurrentCallSignal("offer", data)
             }
 
             override fun onSendAnswer(targetSocketId: String, answer: org.json.JSONObject) {
@@ -1651,7 +1658,7 @@ class CallRepository @Inject constructor(
                     put("answer", answer)
                     put("userId", userId)
                 }
-                socket?.emit("answer", data)
+                emitCurrentCallSignal("answer", data)
             }
 
             override fun onSendIceCandidate(targetSocketId: String, candidate: org.json.JSONObject) {
@@ -1660,7 +1667,7 @@ class CallRepository @Inject constructor(
                     put("candidate", candidate)
                     put("userId", userId)
                 }
-                socket?.emit("ice-candidate", data)
+                emitCurrentCallSignal("ice-candidate", data)
             }
         }
 
@@ -1678,13 +1685,14 @@ class CallRepository @Inject constructor(
                 }
             )
         } else {
+            webRTCManager?.setSignalingEvents(events)
             webRTCManager?.hardReset()
         }
         webRTCManager?.let(::observeWebRtcState)
+        webRTCManager?.setCurrentUser(userId, "")
         webRTCManager?.refreshManagedIceServers()
         webRTCManager?.ensureLocalTracks()
         webRTCManager?.setRemoteAudioPlaybackEnabled(true)
-        webRTCManager?.setCurrentUser(userId, "")
         if (hasMicrophonePermission()) {
             webRTCManager?.setAudioEnabled(!_isMuted.value)
         }
@@ -1747,34 +1755,47 @@ class CallRepository @Inject constructor(
     }
 
     private fun recordCallSetupSuccess(call: ActiveCall) {
-        var startedAt = callSetupStartedAtMs ?: return
+        val timing = callSetupTiming ?: return
         if (!call.callId.equals(callSetupMetricCallId, ignoreCase = true)) return
+        logCallSetupStage(call.callId, "media")
         appMetrics.recordLatency(
             metric = "call_connect",
-            durationMs = System.currentTimeMillis() - startedAt,
+            durationMs = timing.elapsedMs(android.os.SystemClock.elapsedRealtime()),
             attributes = mapOf(
                 "call_id" to call.callId,
                 "context_type" to call.contextType.trim().lowercase().ifBlank { "dm" },
+                "origin" to timing.origin.name.lowercase(),
+                "includes_ringing" to timing.origin.includesRinging.toString(),
                 "participant_count" to _participants.value.size.toString()
             )
         )
-        callSetupStartedAtMs = null
+        callSetupTiming = null
         callSetupMetricCallId = null
     }
 
+    private fun logCallSetupStage(callId: String, stage: String) {
+        val timing = callSetupTiming ?: return
+        if (!callId.equals(callSetupMetricCallId, ignoreCase = true)) return
+        Log.i(TAG, "Call startup: origin=${timing.origin.name.lowercase()} stage=$stage " +
+            "elapsed_ms=${timing.elapsedMs(android.os.SystemClock.elapsedRealtime())} " +
+            "includes_ringing=${timing.origin.includesRinging}")
+    }
+
     private fun recordCallSetupFailureIfPending(call: ActiveCall, reason: String) {
-        var startedAt = callSetupStartedAtMs ?: return
+        val timing = callSetupTiming ?: return
         if (!call.callId.equals(callSetupMetricCallId, ignoreCase = true)) return
         appMetrics.recordFailure(
             metric = "call_connect",
             attributes = mapOf(
                 "call_id" to call.callId,
                 "context_type" to call.contextType.trim().lowercase().ifBlank { "dm" },
-                "elapsed_ms" to (System.currentTimeMillis() - startedAt).toString(),
+                "elapsed_ms" to timing.elapsedMs(android.os.SystemClock.elapsedRealtime()).toString(),
+                "origin" to timing.origin.name.lowercase(),
+                "includes_ringing" to timing.origin.includesRinging.toString(),
                 "reason" to reason.trim().lowercase().replace(' ', '_')
             )
         )
-        callSetupStartedAtMs = null
+        callSetupTiming = null
         callSetupMetricCallId = null
     }
 
@@ -1828,7 +1849,7 @@ class CallRepository @Inject constructor(
         pendingInvitees.clear()
         callEverHadRemoteParticipant = false
         hasConnectedMediaPath = false
-        callSetupStartedAtMs = null
+        callSetupTiming = null
         callSetupMetricCallId = null
         webRtcStateObservationJob?.cancel()
         webRtcStateObservationJob = null

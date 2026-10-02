@@ -60,7 +60,7 @@ interface SignalingEvents {
  */
 class WebRTCManager(
     private val context: Context,
-    private val signalingEvents: SignalingEvents,
+    signalingEvents: SignalingEvents,
     private val accessTokenProvider: (() -> String?)? = null,
     private val failureReporter: ((metric: String, throwable: Throwable) -> Unit)? = null,
     private val iceTransportPolicy: PeerConnection.IceTransportsType = PeerConnection.IceTransportsType.ALL
@@ -256,6 +256,8 @@ class WebRTCManager(
     private val selfHostedTurnUrl: String get() = SignalingConfig.TURN_CREDENTIALS_URL.trim()
     private val hasManagedTurnConfigured: Boolean get() = selfHostedTurnUrl.isNotBlank()
     private val dynamicIceServers = mutableListOf<PeerConnection.IceServer>()
+    @Volatile private var signalingEvents: SignalingEvents = signalingEvents
+    private val managedIceSessionGeneration = java.util.concurrent.atomic.AtomicLong(0L)
     private val managedIceRefreshLock = Any()
     @Volatile
     private var managedIceRefreshLatch = java.util.concurrent.CountDownLatch(0)
@@ -370,9 +372,24 @@ class WebRTCManager(
     }
 
     fun setCurrentUser(userId: String, socketId: String) {
+        if (shouldDiscardManagedIceForAccountChange(currentUserId, userId)) {
+            synchronized(managedIceRefreshLock) {
+                synchronized(dynamicIceServers) {
+                    managedIceSessionGeneration.incrementAndGet()
+                    dynamicIceServers.clear()
+                    managedIceExpiresAtEpochSeconds = 0L
+                }
+                managedIceRefreshLatch.countDown()
+                managedIceRefreshLatch = java.util.concurrent.CountDownLatch(0)
+            }
+            managedIceRefreshJob?.cancel()
+            Log.i("WebRTC", "Discarded managed TURN credentials after media account changed")
+        }
         this.currentUserId = userId
         this.localSocketId = socketId
     }
+
+    fun setSignalingEvents(events: SignalingEvents) { signalingEvents = events }
 
     /**
      * Hard Reset - Purges all hardware and software WebRTC state.
@@ -1226,8 +1243,12 @@ class WebRTCManager(
     }
 
     private fun beginManagedIceRefresh(force: Boolean): java.util.concurrent.CountDownLatch? {
-        if (!force && synchronized(dynamicIceServers) { dynamicIceServers.isNotEmpty() }) {
-            Log.d("WebRTC", "Skipping managed TURN refresh because ICE servers are already loaded.")
+        val shouldRefresh = synchronized(dynamicIceServers) {
+            shouldRefreshManagedIce(force, dynamicIceServers.isNotEmpty(), managedIceExpiresAtEpochSeconds,
+                System.currentTimeMillis() / 1_000L)
+        }
+        if (!shouldRefresh) {
+            Log.d("WebRTC", "Reusing managed TURN credentials while they remain valid.")
             return null
         }
 
@@ -1268,10 +1289,10 @@ class WebRTCManager(
         }
     }
 
-    private fun fetchManagedIceServers() {
+    private fun fetchManagedIceServers(generation: Long) {
         var loaded = false
         try {
-            loaded = fetchSelfHostedIceServers()
+            loaded = fetchSelfHostedIceServers(generation)
         } catch (e: Exception) {
             reportFailure("webrtc_turn_refresh", "Managed TURN refresh failed", e)
         } finally {
@@ -1279,7 +1300,7 @@ class WebRTCManager(
                 "WebRTC",
                 "Managed TURN setup finished. Using ${if (dynamicIceServers.isNotEmpty()) "managed TURN + fallback" else "fallback ICE only"}"
             )
-            if (!loaded && hasManagedTurnConfigured) {
+            if (!loaded && hasManagedTurnConfigured && generation == managedIceSessionGeneration.get()) {
                 scheduleManagedIceRefresh(managedIceRefreshRetryMs)
             }
         }
@@ -1307,17 +1328,18 @@ class WebRTCManager(
         }
 
         var refreshLatch = beginManagedIceRefresh(force) ?: return
+        val generation = managedIceSessionGeneration.get()
         Log.i("WebRTC", "Refreshing managed TURN configuration (force=$force)")
         asyncScope.launch {
             try {
-                fetchManagedIceServers()
+                fetchManagedIceServers(generation)
             } finally {
                 finishManagedIceRefresh(refreshLatch)
             }
         }
     }
 
-    private fun fetchSelfHostedIceServers(): Boolean {
+    private fun fetchSelfHostedIceServers(generation: Long): Boolean {
         try {
             if (selfHostedTurnUrl.isBlank()) {
                 Log.i("WebRTC", "Skipping self-hosted TURN fetch because endpoint is not configured.")
@@ -1338,7 +1360,7 @@ class WebRTCManager(
             turnHttpClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val jsonResponse = JSONObject(response.body?.string().orEmpty())
-                    val loaded = loadIceServersFromEnvelope(jsonResponse)
+                    val loaded = loadIceServersFromEnvelope(jsonResponse, generation, token)
                     if (!loaded) {
                         Log.e("WebRTC", "Self-hosted TURN response did not include any ICE servers.")
                     }
@@ -1352,7 +1374,7 @@ class WebRTCManager(
         return false
     }
 
-    private fun loadIceServersFromEnvelope(jsonResponse: JSONObject): Boolean {
+    private fun loadIceServersFromEnvelope(jsonResponse: JSONObject, generation: Long, requestToken: String): Boolean {
         var envelope = when {
             jsonResponse.has("iceServers") -> jsonResponse
             jsonResponse.optJSONObject("v")?.has("iceServers") == true -> jsonResponse.optJSONObject("v")
@@ -1365,9 +1387,13 @@ class WebRTCManager(
             return false
         }
 
-        managedIceExpiresAtEpochSeconds = envelope.optLong("expiresAtEpochSeconds", 0L)
-
         synchronized(dynamicIceServers) {
+            if (!acceptsManagedIceResponse(generation, managedIceSessionGeneration.get(), requestToken,
+                    accessTokenProvider?.invoke()?.trim().orEmpty())) {
+                Log.i("WebRTC", "Discarded TURN response from a previous media session")
+                return false
+            }
+            managedIceExpiresAtEpochSeconds = envelope.optLong("expiresAtEpochSeconds", 0L)
             dynamicIceServers.clear()
             val iceServersObj = envelope.get("iceServers")
             if (iceServersObj is org.json.JSONArray) {

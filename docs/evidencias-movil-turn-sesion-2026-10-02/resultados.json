@@ -1,0 +1,203 @@
+{
+  "date": "2026-10-02",
+  "android_version_code": 117,
+  "android_version": "9.0.20",
+  "build": {
+    "suites": 241,
+    "tests": 1087,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "sha256": {
+      "debug": "5eb3a80e6eff9e70e23f0b164021046b1c33ef273eb4f604c7bfc1f46d2207f2",
+      "audit": "aed59fa4d59aa776f399e8a515c83ae751cef63300b0cb3e594972a4d6c476b0"
+    }
+  },
+  "samples": [
+    {
+      "name": "call-turn-session-first-02oct",
+      "transport": {
+        "mobile": {
+          "network": "LTE",
+          "connected": true,
+          "ui_marker_to_signaling_ms": 3820,
+          "ui_marker_to_media_ms": 10297,
+          "initialization_to_media_ms": 9460,
+          "offers": 1,
+          "ice_disconnected_events": 0,
+          "audio_received_bytes": 19413.0,
+          "audio_received_packets": 547.0,
+          "audio_lost_packets": 0.0,
+          "fatal_java_exception": false
+        },
+        "tablet": {
+          "network": "Wi-Fi",
+          "connected": true,
+          "ui_marker_to_signaling_ms": 1277,
+          "ui_marker_to_media_ms": 3808,
+          "initialization_to_media_ms": 2889,
+          "offers": 0,
+          "ice_disconnected_events": 0,
+          "audio_received_bytes": 21508.0,
+          "audio_received_packets": 606.0,
+          "audio_lost_packets": 0.0,
+          "fatal_java_exception": false
+        }
+      },
+      "native": {
+        "mobile": {
+          "native_stages": [
+            {
+              "origin": "outgoing",
+              "stage": "signaling",
+              "elapsed_ms": 3567,
+              "includes_ringing": true
+            },
+            {
+              "origin": "outgoing",
+              "stage": "media",
+              "elapsed_ms": 10048,
+              "includes_ringing": true
+            }
+          ],
+          "turn_requests": 1,
+          "forced_turn_refreshes": 1,
+          "reused_valid_turn_credentials": true,
+          "ice_disconnected_events": 0,
+          "rtt_ms_samples": [
+            307,
+            293,
+            295
+          ]
+        },
+        "tablet": {
+          "native_stages": [
+            {
+              "origin": "incoming",
+              "stage": "signaling",
+              "elapsed_ms": 1006,
+              "includes_ringing": false
+            },
+            {
+              "origin": "incoming",
+              "stage": "media",
+              "elapsed_ms": 3542,
+              "includes_ringing": false
+            }
+          ],
+          "turn_requests": 1,
+          "forced_turn_refreshes": 1,
+          "reused_valid_turn_credentials": true,
+          "ice_disconnected_events": 0,
+          "rtt_ms_samples": [
+            327,
+            296,
+            289,
+            327,
+            296,
+            289,
+            327,
+            296,
+            289
+          ]
+        }
+      }
+    },
+    {
+      "name": "call-turn-session-repeat-02oct",
+      "transport": {
+        "mobile": {
+          "network": "LTE",
+          "connected": true,
+          "ui_marker_to_signaling_ms": 2430,
+          "ui_marker_to_media_ms": 9035,
+          "initialization_to_media_ms": null,
+          "offers": 1,
+          "ice_disconnected_events": 0,
+          "audio_received_bytes": 25717.0,
+          "audio_received_packets": 688.0,
+          "audio_lost_packets": 0.0,
+          "fatal_java_exception": false
+        },
+        "tablet": {
+          "network": "Wi-Fi",
+          "connected": true,
+          "ui_marker_to_signaling_ms": 1078,
+          "ui_marker_to_media_ms": 3595,
+          "initialization_to_media_ms": null,
+          "offers": 0,
+          "ice_disconnected_events": 0,
+          "audio_received_bytes": 27674.0,
+          "audio_received_packets": 772.0,
+          "audio_lost_packets": 0.0,
+          "fatal_java_exception": false
+        }
+      },
+      "native": {
+        "mobile": {
+          "native_stages": [
+            {
+              "origin": "outgoing",
+              "stage": "signaling",
+              "elapsed_ms": 2162,
+              "includes_ringing": true
+            },
+            {
+              "origin": "outgoing",
+              "stage": "media",
+              "elapsed_ms": 8769,
+              "includes_ringing": true
+            }
+          ],
+          "turn_requests": 0,
+          "forced_turn_refreshes": 0,
+          "reused_valid_turn_credentials": true,
+          "ice_disconnected_events": 0,
+          "rtt_ms_samples": [
+            296,
+            297,
+            299
+          ]
+        },
+        "tablet": {
+          "native_stages": [
+            {
+              "origin": "incoming",
+              "stage": "signaling",
+              "elapsed_ms": 766,
+              "includes_ringing": false
+            },
+            {
+              "origin": "incoming",
+              "stage": "media",
+              "elapsed_ms": 3292,
+              "includes_ringing": false
+            }
+          ],
+          "turn_requests": 0,
+          "forced_turn_refreshes": 0,
+          "reused_valid_turn_credentials": true,
+          "ice_disconnected_events": 0,
+          "rtt_ms_samples": [
+            282,
+            304,
+            276,
+            290,
+            282,
+            304,
+            276,
+            305,
+            282,
+            304,
+            276,
+            296,
+            282,
+            304,
+            276,
+            305
+          ]
+        }
+      }
+    }
+  ]
+}
