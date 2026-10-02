@@ -8,6 +8,7 @@ import { isUbuntuPrimary } from '../../core/ubuntuBackend'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { SystemAnnouncementAdmin } from './SystemAnnouncementAdmin'
 
 type VideoReport = {
   id: string
@@ -1300,6 +1301,8 @@ export function AdminModerationPage() {
         <h2>Moderación Admin</h2>
         <p>Panel web unificado de reportes, suspensiones y eventos.</p>
       </header>
+
+      {adminAccess?.capabilities.includes('admin.system.read') && <SystemAnnouncementAdmin canManage={adminAccess.capabilities.includes('admin.system.manage')} />}
 
       <div className="row-actions">
         <span className="folder-tag">Nivel: {adminAccess?.isOwner ? 'owner' : (adminAccess?.accessLevel || 'none')}</span>

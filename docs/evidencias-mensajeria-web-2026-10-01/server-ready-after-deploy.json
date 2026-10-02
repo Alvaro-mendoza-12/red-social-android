@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "service": "conectate-local-fallback",
+  "version": "0.1.0",
+  "release": {
+    "release": "conectate-mini-pc-20261002T021921Z",
+    "commit": "eaa86df",
+    "sourceDigest": "deac3d6f1ba59bd509ec817322f13db289c48b7cb2e8b8e338944c2386b20682",
+    "deployedAtUtc": "2026-10-01T21:19:21.611754-05:00",
+    "environment": "production"
+  },
+  "capabilities": [
+    "admin_users_v1",
+    "hard_delete_suspended_users_v1",
+    "image_variants_v1",
+    "profile_ranking_v1",
+    "system_health_v1",
+    "feed_modes_v1",
+    "saved_collections_v1",
+    "moderation_appeals_v1",
+    "notification_digest_v1",
+    "community_roles_v1",
+    "community_channels_v1",
+    "community_member_profiles_v1",
+    "community_events_v1",
+    "voice_room_stage_v1",
+    "anonymous_bottles_v1",
+    "community_music_v1",
+    "moment_music_v1",
+    "moment_music_aac_lc_v1",
+    "image_moments_exact_6s_v1",
+    "video_sound_identity_v1",
+    "video_feed_session_v1",
+    "video_feed_live_v1",
+    "message_markers_v1",
+    "video_watch_later_v1",
+    "video_collections_v1"
+  ],
+  "databaseTime": "2026-10-02T02:21:40.878Z",
+  "pushNotifications": {
+    "configured": true,
+    "provider": "firebase-cloud-messaging",
+    "errorCode": null
+  }
+}

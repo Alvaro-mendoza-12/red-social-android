@@ -20,9 +20,7 @@ const renderApp = () => {
   )
 }
 
-root.render(<div role="status" aria-live="polite">Conectando con Novvin…</div>)
-const startupDeadline = window.setTimeout(renderApp, 4_000)
-void initializeRuntimeBackend().catch(() => {}).finally(() => {
-  window.clearTimeout(startupDeadline)
-  renderApp()
-})
+// A configured or cached backend is available synchronously. Discovery and
+// readiness reconcile in the background instead of holding the first screen.
+renderApp()
+void initializeRuntimeBackend().catch(() => {})

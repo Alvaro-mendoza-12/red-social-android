@@ -467,6 +467,9 @@
   padding: 0.85rem;
 }
 
+.email-recovery-card { align-content: start; gap: 1rem; min-height: 0; }
+.email-recovery-card p { margin: 0; overflow-wrap: anywhere; }
+
 .content-pane .status-shell {
   min-height: min(40vh, 320px);
   padding: 0.75rem;

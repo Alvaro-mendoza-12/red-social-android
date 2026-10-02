@@ -15,6 +15,8 @@ export type FallbackUser = {
   id: string
   email: string
   displayName?: string
+  username?: string
+  publicId?: number | string
   avatarUrl?: string | null
   supabaseUserId?: string | null
   syncSource?: string
@@ -475,7 +477,7 @@ export function fallbackSessionToUser(session: FallbackSession | null): User | n
   const fallbackUser = session.user
   const userId = fallbackUser.supabaseUserId?.trim() || fallbackUser.id
   const createdAt = fallbackUser.accountCreatedAt || fallbackUser.createdAt || session.savedAt || new Date().toISOString()
-  const displayName = fallbackUser.displayName?.trim() || fallbackUser.email.split('@')[0] || 'Usuario'
+  const displayName = fallbackUser.displayName?.trim() || 'Usuario'
 
   return {
     id: userId,
@@ -493,6 +495,8 @@ export function fallbackSessionToUser(session: FallbackSession | null): User | n
     user_metadata: {
       display_name: displayName,
       full_name: displayName,
+      username: fallbackUser.username || '',
+      public_id: fallbackUser.publicId ?? '',
       avatar_url: fallbackUser.avatarUrl ?? null,
       fallback_auth: true,
       local_fallback_id: fallbackUser.id,
@@ -576,6 +580,7 @@ export async function signUpWithFallbackAuth(params: {
   email: string
   password: string
   displayName: string
+  username?: string
 }): Promise<User> {
   if (!isFallbackAuthConfigured) {
     throw new Error('El servidor Ubuntu no está configurado para esta web.')
@@ -593,6 +598,7 @@ export async function signUpWithFallbackAuth(params: {
       email: normalizeEmail(params.email),
       password: params.password,
       displayName: params.displayName.trim(),
+      username: params.username,
       client: 'web',
     }),
   })
@@ -605,6 +611,9 @@ export async function signUpWithFallbackAuth(params: {
     }
     if (code === 'PASSWORD_TOO_SHORT') {
       throw new Error('La contraseña debe tener al menos 8 caracteres.')
+    }
+    if (code.startsWith('USERNAME_')) {
+      throw new Error('El identificador no está disponible o no es válido. Elige otro.')
     }
     throw new Error(code || 'No se pudo crear la cuenta en el servidor Ubuntu.')
   }
@@ -674,11 +683,20 @@ export async function requestFallbackPasswordReset(email: string): Promise<{
   delivery?: string
   resetToken?: string
   expiresInMinutes?: number
+  codeLength?: number
 }> {
   return fallbackApiJson('/v1/auth/password-reset/request', {
     method: 'POST',
     auth: false,
-    body: JSON.stringify({ email: normalizeEmail(email) }),
+    webSession: true,
+    body: JSON.stringify({ email: normalizeEmail(email), codeFormat: 'numeric', client: 'web' }),
+  })
+}
+
+export async function verifyFallbackPasswordReset(email: string, code: string): Promise<{ resetToken: string }> {
+  return fallbackApiJson('/v1/auth/password-reset/verify', {
+    method: 'POST', auth: false, webSession: true,
+    body: JSON.stringify({ email: normalizeEmail(email), code, client: 'web' }),
   })
 }
 

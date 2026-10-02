@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
-import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import { fallbackApiJson, isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import { signUpAndBootstrapProfile } from '../../core/auth/sessionBootstrap'
 import { supabase } from '../../core/supabase'
 import { friendlyError } from '../../core/utils'
@@ -14,8 +14,29 @@ export function RegisterPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState(''), [usernameEdited, setUsernameEdited] = useState(false)
+  const [availability, setAvailability] = useState<{ username: string; available: boolean; suggestions: string[] } | null>(null)
+  const [checking, setChecking] = useState(false), [usernameError, setUsernameError] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!usernameEdited) setUsername(displayName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_.-]/g, '').slice(0, 24))
+  }, [displayName, usernameEdited])
+  useEffect(() => {
+    setAvailability(null); setUsernameError('')
+    if (!username) { setChecking(false); return }
+    if (!/^[a-z0-9_.-]{3,24}$/.test(username)) { setChecking(false); setUsernameError('Usa entre 3 y 24 caracteres: letras, números, punto o guion.'); return }
+    const abort = new AbortController()
+    setChecking(true)
+    const timer = window.setTimeout(() => {
+      void fallbackApiJson<{ username: string; available: boolean; suggestions: string[] }>(`/v1/auth/username/availability?username=${encodeURIComponent(username)}&name=${encodeURIComponent(displayName)}`, { auth: false, signal: abort.signal })
+        .then(value => { if (!abort.signal.aborted) setAvailability(value) })
+        .catch(() => { if (!abort.signal.aborted) setUsernameError('No se pudo comprobar. Revisa tu conexión y vuelve a escribirlo.') })
+        .finally(() => { if (!abort.signal.aborted) setChecking(false) })
+    }, 300)
+    return () => { window.clearTimeout(timer); abort.abort() }
+  }, [username, displayName])
 
   if (!client && !isFallbackAuthConfigured) {
     return (
@@ -28,6 +49,8 @@ export function RegisterPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (loading || !availability?.available || availability.username !== username) return
+    if (new TextEncoder().encode(password).length > 72) { setError('La contraseña supera el máximo de 72 bytes. Usa una más corta.'); return }
     setLoading(true)
     setError(null)
     try {
@@ -35,6 +58,7 @@ export function RegisterPage() {
         email,
         password,
         displayName,
+        username,
       })
       navigate('/app/messages', { replace: true })
     } catch (caught) {
@@ -81,14 +105,27 @@ export function RegisterPage() {
               <input
                 type="text"
                 required
+                disabled={loading}
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
               />
             </label>
             <label>
+              Identificador único
+              <input type="text" value={username} autoComplete="username" required disabled={loading} maxLength={24} aria-describedby="username-availability" aria-invalid={Boolean(usernameError || availability && !availability.available)}
+                onChange={event => { setUsernameEdited(true); setAvailability(null); setUsername(event.target.value.toLowerCase().replace(/^@/, '')) }} />
+              <small>Será tu @ permanente. Tu nombre visible puede repetirse.</small>
+            </label>
+            <p id="username-availability" role="status" style={{ color: availability?.available && availability.username === username ? 'var(--app-green, #218c52)' : usernameError || availability ? '#e05b67' : undefined }}>
+              {checking ? 'Comprobando disponibilidad…' : usernameError || (availability && availability.username === username ? availability.available ? '✓ Disponible. Será tu identificador permanente.' : '✕ Este identificador no está disponible. Elige otro.' : '')}
+            </p>
+            {availability && !availability.available && <div className="row-actions" aria-label="Identificadores sugeridos">{availability.suggestions.map(suggestion =>
+              <button type="button" className="ghost-btn" key={suggestion} onClick={() => { setUsernameEdited(true); setAvailability(null); setUsername(suggestion) }}>@{suggestion}</button>)}</div>}
+            <label>
               Correo
               <input
                 type="email"
+                disabled={loading}
                 required
                 value={email}
                 autoComplete="email"
@@ -99,6 +136,7 @@ export function RegisterPage() {
               Contraseña
               <input
                 type="password"
+                disabled={loading}
                 required
                 minLength={8}
                 value={password}
@@ -107,7 +145,7 @@ export function RegisterPage() {
               />
             </label>
             {error ? <p className="error-text">{error}</p> : null}
-            <button className="primary-btn" disabled={loading} type="submit">
+            <button className="primary-btn" disabled={loading || checking || !availability?.available || availability.username !== username} type="submit">
               {loading ? 'Creando...' : 'Crear cuenta'}
             </button>
           </div>

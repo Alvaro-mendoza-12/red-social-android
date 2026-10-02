@@ -11,7 +11,6 @@ import {
   isMigratedAccountPasswordSetupRequired,
   isMigratedPasswordResetRequired,
   persistFallbackSession,
-  requestFallbackPasswordReset,
 } from '../../core/auth/fallbackAuth'
 import { signInWithResolvedEmail } from '../../core/auth/sessionBootstrap'
 import {
@@ -66,7 +65,7 @@ export function LoginPage() {
   const [migrationSetupToken, setMigrationSetupToken] = useState('')
   const [legacyResetEmail, setLegacyResetEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [info, setInfo] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(searchParams.get('passwordChanged') === '1' ? 'Contraseña cambiada. Inicia sesión y verifica tu segundo factor para entrar.' : null)
   const [migratedPasswordReset, setMigratedPasswordReset] = useState<{
     email: string
     migrationToken: string
@@ -78,7 +77,7 @@ export function LoginPage() {
   const [fallbackResetConfirmPassword, setFallbackResetConfirmPassword] = useState('')
   const [activatingMigratedPassword, setActivatingMigratedPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [requestingMigrationReset, setRequestingMigrationReset] = useState(false)
+  const [requestingMigrationReset] = useState(false)
   const [confirmingMigrationReset, setConfirmingMigrationReset] = useState(false)
   const [qrPairing, setQrPairing] = useState<WebLoginPairing | null>(null)
   const [creatingQr, setCreatingQr] = useState(false)
@@ -360,28 +359,7 @@ export function LoginPage() {
       return
     }
 
-    setRequestingMigrationReset(true)
-    setError(null)
-    setInfo(null)
-    try {
-      if (isFallbackAuthConfigured) {
-        const reset = await requestFallbackPasswordReset(normalizedEmail)
-        if (!reset.resetToken) {
-          throw new Error(
-            'Ubuntu no devolvió el permiso seguro automáticamente. Reinicia el servidor y vuelve a intentarlo.',
-          )
-        }
-        setMigrationSetupToken(reset.resetToken)
-        setInfo('Listo. Ahora crea tu nueva contraseña para entrar con normalidad.')
-        return
-      }
-
-      throw new Error('El cambio de contraseña necesita el servidor Ubuntu configurado.')
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo preparar el cambio de contraseña en Ubuntu'))
-    } finally {
-      setRequestingMigrationReset(false)
-    }
+    navigate(`/forgot-password?email=${encodeURIComponent(normalizedEmail)}`)
   }
 
   async function requestMigrationPasswordReset() {
@@ -571,6 +549,7 @@ export function LoginPage() {
               <button className="primary-btn" disabled={loading} type="submit">
                 {loading ? 'Entrando...' : 'Iniciar sesión'}
               </button>
+              <Link to={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}>Olvidé mi contraseña</Link>
             </form>
           ) : null}
 

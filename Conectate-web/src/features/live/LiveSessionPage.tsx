@@ -114,7 +114,7 @@ function sourceFrom(value: string | null | undefined): LiveSource {
 
 function displayNameOf(user: ReturnType<typeof useAuth>['user']): string {
   if (!user) return 'Usuario'
-  return String(user.user_metadata?.display_name || user.user_metadata?.full_name || user.email || 'Usuario').trim()
+  return String(user.user_metadata?.display_name || user.user_metadata?.full_name || 'Usuario').trim()
 }
 
 function avatarOf(user: ReturnType<typeof useAuth>['user']): string {

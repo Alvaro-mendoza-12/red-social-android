@@ -1,6 +1,8 @@
 *
 !Conectate-web
 !Conectate-web/**
+!config
+!config/backend-discovery-public-key.txt
 
 # Nunca incluir secretos ni metadatos locales reintroducidos por la regla anterior.
 Conectate-web/.env

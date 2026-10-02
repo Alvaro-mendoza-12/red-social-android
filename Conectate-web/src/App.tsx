@@ -4,6 +4,8 @@ import { StatusView } from './components/StatusView'
 import { AuthProvider, GuestOnlyRoute, RequireAuth, useAuth } from './core/auth/AuthProvider'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
+import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
+import { SystemAnnouncementHost } from './components/SystemAnnouncementHost'
 import { AppLayout } from './layout/AppLayout'
 import { MarketingLandingPage } from './pages/MarketingLandingPage'
 import './pages/marketing.css'
@@ -147,6 +149,7 @@ function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<RootRoute />} />
+        <Route path="/forgot-password" element={<GuestOnlyRoute><ForgotPasswordPage /></GuestOnlyRoute>} />
         <Route
           path="/login"
           element={
@@ -470,6 +473,7 @@ function AppRouter() {
 export default function App() {
   return (
     <AuthProvider>
+      <SystemAnnouncementHost />
       <AppRouter />
     </AuthProvider>
   )

@@ -1,12 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "npm --prefix Conectate-web ci --legacy-peer-deps",
-  "buildCommand": "npm run vercel:build",
-  "outputDirectory": "Conectate-web/dist",
-  "env": {
-    "VITE_FALLBACK_API_URL": "@vite_fallback_api_url"
-  },
+  "installCommand": "npm ci --legacy-peer-deps",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "headers": [
     {
       "source": "/(.*)",
