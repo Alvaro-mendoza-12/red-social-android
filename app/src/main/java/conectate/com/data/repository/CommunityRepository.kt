@@ -176,6 +176,8 @@ class CommunityRepository @Inject constructor(
         )
     }
 
+    private val messageSendCoordinator = conectate.com.data.repository.message.MessageSendCoordinator()
+
     private var realtimeJob: Job? = null
     private var communityListenerJob: Job? = null
     private var ubuntuRealtimeJob: Job? = null
@@ -2300,11 +2302,52 @@ class CommunityRepository @Inject constructor(
         messageId: String? = null,
         channelId: String? = null,
         onQueued: suspend () -> Unit = {}
+    ): Result<Unit> {
+        val id = messageId?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
+        val account = authService.getCurrentUserId()?.trim()?.lowercase()
+            ?: return Result.failure(Exception("Inicia sesión de nuevo."))
+        val session = captureSessionSnapshot(account)
+        return messageSendCoordinator.withMessage(id) {
+            if (!isSessionSnapshotValid(session, "collection-foreground-send")) {
+                Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+            } else sendCommunityMessageInternal(
+                communityId = communityId,
+                content = content,
+                contentType = contentType,
+                mediaUrl = mediaUrl,
+                replyToId = replyToId,
+                replyTo = replyTo,
+                pollId = pollId,
+                isForwarded = isForwarded,
+                forwardedFromMessageId = forwardedFromMessageId,
+                forwardedFromUserId = forwardedFromUserId,
+                messageId = id,
+                channelId = channelId,
+                onQueued = onQueued
+            )
+        }
+    }
+
+    private suspend fun sendCommunityMessageInternal(
+        communityId: String,
+        content: String,
+        contentType: String = "text",
+        mediaUrl: String? = null,
+        replyToId: String? = null,
+        replyTo: conectate.com.data.model.Message? = null,
+        pollId: String? = null,
+        isForwarded: Boolean = false,
+        forwardedFromMessageId: String? = null,
+        forwardedFromUserId: String? = null,
+        messageId: String? = null,
+        channelId: String? = null,
+        onQueued: suspend () -> Unit = {}
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         try {
             var senderId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("Not authenticated"))
+            val session = captureSessionSnapshot(senderId)
             var cleanId = communityId.trim().lowercase()
             var community = getCommunityById(cleanId)
                 ?: return@withContext Result.failure(Exception("La comunidad ya no está disponible."))
@@ -2415,6 +2458,7 @@ class CommunityRepository @Inject constructor(
             PendingMessageSyncScheduler.enqueue(context, "community_message_pending")
             updateCommunityMessageInFlow(cleanId, msg)
             onQueued()
+            if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
             val preview = buildConversationBackgroundPreview(contentType, finalContent)
                 ?: buildCallEventPreview(contentType, finalContent)
                 ?: CollectionMessageSyncSupport.buildMetadataPreview(contentType, finalContent)
@@ -2450,10 +2494,12 @@ class CommunityRepository @Inject constructor(
                         error as? Exception ?: Exception(error),
                         transientNetworkRetryCodes
                     )
+                    markPendingCommunityMessageFailed(msgId, session)
                     if (retryable) return@withContext Result.success(Unit)
                     communityDao.updateMessageSyncStatus(msgId, isSynced = false, pendingAction = "send")
                     return@withContext Result.failure(error)
                 }
+            if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 msg = msg.copy(media_url = outgoingMediaUrl)
                 communityDao.insertMessages(
                     listOf(CommunityMessageEntity.fromDomain(msg, isSynced = false, pendingAction = "send"))
@@ -2479,6 +2525,7 @@ class CommunityRepository @Inject constructor(
             }
             var result = if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 val token = authService.getAccessTokenAwait()
+            if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 if (token.isNullOrBlank()) {
                     Result.failure(Exception("Sesion Ubuntu no disponible"))
                 } else {
@@ -2496,6 +2543,7 @@ class CommunityRepository @Inject constructor(
                         forwardedFromMessageId = forwardedFromMessageId,
                         forwardedFromUserId = forwardedFromUserId
                     ).map { serverMessage ->
+            if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                         val synced = mergeSyncedCommunityMessageWithLocalState(
                             incoming = acknowledgeCommunityMessage(serverMessage, cleanId).copy(
                                 channel_id = serverMessage.channel_id ?: msg.channel_id,
@@ -2523,7 +2571,7 @@ class CommunityRepository @Inject constructor(
                     }
                 }
             } else {
-                insertCommunityMessageWithRetry(msgId, msgJson)
+                insertCommunityMessageWithRetry(msgId, msgJson, isCurrentSession = { isSessionSnapshotValid(session, "community-foreground-retry") })
             }
             if (result.isFailure) {
                 val syncError = result.exceptionOrNull()
@@ -2566,6 +2614,7 @@ class CommunityRepository @Inject constructor(
                     throwable = syncError,
                     attributes = mapOf("content_type" to contentType)
                 )
+                markPendingCommunityMessageFailed(msgId, session)
                 Result.failure(syncError ?: Exception("No se pudo sincronizar mensaje de comunidad"))
             } else {
                 try {
@@ -2590,6 +2639,8 @@ class CommunityRepository @Inject constructor(
                 )
                 Result.success(Unit)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             appMetrics.recordFailure("community_message_send", e)
             Result.failure(e)
@@ -2729,6 +2780,11 @@ class CommunityRepository @Inject constructor(
                 if (isCurrentSession()) {
                     communityDao.markRetryAttempt(messageId, java.time.Instant.now().toString())
                     communityDao.updateMessageSyncStatus(messageId, isSynced = false, pendingAction = "send")
+                    communityDao.getMessageById(messageId)?.let { row ->
+                        val failed = row.copy(status = "failed")
+                        communityDao.insertMessages(listOf(failed))
+                        updateCommunityMessageInFlow(failed.community_id, failed.toDomain())
+                    }
                 }
             },
             failureMessage = "No se pudo sincronizar mensaje de comunidad"
@@ -2765,13 +2821,22 @@ class CommunityRepository @Inject constructor(
             }
             if (pending.is_synced) return@runCatching
             check(isSessionSnapshotValid(session, "community-manual-retry")) { "La cuenta cambió." }
-            communityDao.insertMessages(listOf(pending.copy(status = "sending", is_synced = false, pending_action = "send")))
-            if (!isSessionSnapshotValid(session, "community-manual-retry-persisted")) return@runCatching
-            updateCommunityMessageInFlow(communityId, pending.toDomain().copy(status = "sending"))
             retryPendingCommunityMessages(targetMessageId = messageId)
+            check(isSessionSnapshotValid(session, "community-manual-retry-complete")) { "La cuenta cambió." }
+            val latest = communityDao.getMessageById(messageId) ?: error("El mensaje ya no está disponible.")
+            check(latest.status != "failed") { "No se pudo reenviar. Revisa tu conexión e inténtalo de nuevo." }
         }.onFailure { if (it is CancellationException) throw it }
     }
 
+
+    private suspend fun markPendingCommunityMessageFailed(messageId: String, session: SessionWriteGuard.Snapshot) {
+        if (!isSessionSnapshotValid(session, "community-pending-failure")) return
+        val current = communityDao.getMessageById(messageId) ?: return
+        if (current.is_synced || current.deleted_for_all || current.pending_action != "send") return
+        val failed = current.copy(status = "failed", retry_count = current.retry_count + 1, last_retry_at = java.time.Instant.now().toString())
+        communityDao.insertMessages(listOf(failed))
+        updateCommunityMessageInFlow(failed.community_id, failed.toDomain())
+    }
     private suspend fun retryPendingCommunityMessages(maxBatch: Int = 40, targetMessageId: String? = null) {
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
         val session = captureSessionSnapshot(userId)
@@ -2783,87 +2848,102 @@ class CommunityRepository @Inject constructor(
         pending.forEach { originalEntity ->
             if (!isSessionSnapshotValid(session, "community-pending-start")) return
             if (originalEntity.sender_id.trim().lowercase() != userId) return@forEach
-            var pendingEntity = originalEntity
-            PendingOutgoingMediaStore.resolve(context, pendingEntity.media_url)?.let { localMediaUri ->
-                val remoteUrl = collectionMediaStore.uploadMessageMediaFromUri(
-                    context = context,
-                    ownerId = pendingEntity.community_id,
-                    sourceUri = localMediaUri,
-                    preferredMediaType = pendingEntity.content_type,
-                    primaryBucket = "community-media",
-                    fallbackBucket = "communities",
-                    filePrefix = "media_comm",
-                    accountId = userId,
-                    messageId = pendingEntity.id
-                ).getOrElse { error ->
-                    android.util.Log.w("CommunityRepository", "Pending community media still unavailable: ${pendingEntity.id}", error)
-                    return@forEach
-                }
-                if (!isSessionSnapshotValid(session, "community-pending-media-uploaded")) return
-                pendingEntity = pendingEntity.copy(media_url = remoteUrl)
+            messageSendCoordinator.withMessage(originalEntity.id) pendingMessage@ {
+                val fresh = communityDao.getMessageById(originalEntity.id) ?: return@pendingMessage
+                if (fresh.is_synced || fresh.pending_action != "send" || fresh.deleted_for_all || !fresh.sender_id.equals(userId, true)) return@pendingMessage
+                if (!isSessionSnapshotValid(session, "community-pending-locked")) return@pendingMessage
+                var pendingEntity = fresh.copy(status = "sending")
                 communityDao.insertMessages(listOf(pendingEntity))
-                if (!isSessionSnapshotValid(session, "community-pending-media-persisted")) return
                 updateCommunityMessageInFlow(pendingEntity.community_id, pendingEntity.toDomain())
-                PendingOutgoingMediaStore.delete(context, localMediaUri)
-            }
+                PendingOutgoingMediaStore.resolve(context, pendingEntity.media_url)?.let { localMediaUri ->
+                    val remoteUrl = collectionMediaStore.uploadMessageMediaFromUri(
+                        context = context,
+                        ownerId = pendingEntity.community_id,
+                        sourceUri = localMediaUri,
+                        preferredMediaType = pendingEntity.content_type,
+                        primaryBucket = "community-media",
+                        fallbackBucket = "communities",
+                        filePrefix = "media_comm",
+                        accountId = userId,
+                        messageId = pendingEntity.id
+                    ).getOrElse { error ->
+                        if (error is CancellationException) throw error
+                        markPendingCommunityMessageFailed(pendingEntity.id, session)
+                        android.util.Log.w("CommunityRepository", "Pending community media still unavailable: ${pendingEntity.id}", error)
+                        return@pendingMessage
+                    }
+                    if (!isSessionSnapshotValid(session, "community-pending-media-uploaded")) return@pendingMessage
+                    pendingEntity = pendingEntity.copy(media_url = remoteUrl)
+                    communityDao.insertMessages(listOf(pendingEntity))
+                    if (!isSessionSnapshotValid(session, "community-pending-media-persisted")) return@pendingMessage
+                    updateCommunityMessageInFlow(pendingEntity.community_id, pendingEntity.toDomain())
+                    PendingOutgoingMediaStore.delete(context, localMediaUri)
+                }
 
-            val payload = buildJsonObject {
-                put("id", pendingEntity.id)
-                put("community_id", pendingEntity.community_id)
-                put("channel_id", pendingEntity.channel_id)
-                put("sender_id", pendingEntity.sender_id)
-                put("content", pendingEntity.content)
-                put("content_type", pendingEntity.content_type)
-                put("media_url", pendingEntity.media_url)
-                put("reply_to_id", pendingEntity.reply_to_id)
-                put("poll_id", pendingEntity.poll_id)
-                put("created_at", pendingEntity.created_at)
-                put("is_forwarded", pendingEntity.is_forwarded)
-                put("forwarded_from_message_id", pendingEntity.forwarded_from_message_id)
-                put("forwarded_from_user_id", pendingEntity.forwarded_from_user_id)
-            }
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                val token = authService.getAccessTokenAwait()
-                if (!token.isNullOrBlank()) {
-                    localFallbackApiClient.sendCommunityMessage(
-                        accessToken = token,
-                        communityId = pendingEntity.community_id,
-                        content = pendingEntity.content,
-                        contentType = pendingEntity.content_type,
-                        mediaUrl = pendingEntity.media_url,
-                        mediaSize = 0L,
-                        replyToId = pendingEntity.reply_to_id,
-                        channelId = pendingEntity.channel_id,
-                        messageId = pendingEntity.id,
-                        isForwarded = pendingEntity.is_forwarded,
-                        forwardedFromMessageId = pendingEntity.forwarded_from_message_id,
-                        forwardedFromUserId = pendingEntity.forwarded_from_user_id
-                    ).onSuccess { serverMessage ->
-                        if (!isSessionSnapshotValid(session, "community-pending-acknowledge")) return@onSuccess
-                        val synced = mergeSyncedCommunityMessageWithLocalState(
-                            incoming = acknowledgeCommunityMessage(serverMessage, pendingEntity.community_id),
-                            local = pendingEntity.toDomain()
-                        )
-                        communityDao.insertMessages(
-                            listOf(
-                                CommunityMessageEntity.fromDomain(
-                                    msg = synced,
-                                    isSynced = true,
-                                    pendingAction = null,
-                                    retryCount = pendingEntity.retry_count,
-                                    lastRetryAt = pendingEntity.last_retry_at
+                val payload = buildJsonObject {
+                    put("id", pendingEntity.id)
+                    put("community_id", pendingEntity.community_id)
+                    put("channel_id", pendingEntity.channel_id)
+                    put("sender_id", pendingEntity.sender_id)
+                    put("content", pendingEntity.content)
+                    put("content_type", pendingEntity.content_type)
+                    put("media_url", pendingEntity.media_url)
+                    put("reply_to_id", pendingEntity.reply_to_id)
+                    put("poll_id", pendingEntity.poll_id)
+                    put("created_at", pendingEntity.created_at)
+                    put("is_forwarded", pendingEntity.is_forwarded)
+                    put("forwarded_from_message_id", pendingEntity.forwarded_from_message_id)
+                    put("forwarded_from_user_id", pendingEntity.forwarded_from_user_id)
+                }
+                if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                    val token = authService.getAccessTokenAwait()
+                    if (!token.isNullOrBlank()) {
+                        if (!isSessionSnapshotValid(session, "community-pending-token")) return@pendingMessage
+                        localFallbackApiClient.sendCommunityMessage(
+                            accessToken = token,
+                            communityId = pendingEntity.community_id,
+                            content = pendingEntity.content,
+                            contentType = pendingEntity.content_type,
+                            mediaUrl = pendingEntity.media_url,
+                            mediaSize = 0L,
+                            replyToId = pendingEntity.reply_to_id,
+                            channelId = pendingEntity.channel_id,
+                            messageId = pendingEntity.id,
+                            isForwarded = pendingEntity.is_forwarded,
+                            forwardedFromMessageId = pendingEntity.forwarded_from_message_id,
+                            forwardedFromUserId = pendingEntity.forwarded_from_user_id
+                        ).onSuccess { serverMessage ->
+                            if (!isSessionSnapshotValid(session, "community-pending-acknowledge")) return@onSuccess
+                            val synced = mergeSyncedCommunityMessageWithLocalState(
+                                incoming = acknowledgeCommunityMessage(serverMessage, pendingEntity.community_id),
+                                local = pendingEntity.toDomain()
+                            )
+                            communityDao.insertMessages(
+                                listOf(
+                                    CommunityMessageEntity.fromDomain(
+                                        msg = synced,
+                                        isSynced = true,
+                                        pendingAction = null,
+                                        retryCount = pendingEntity.retry_count,
+                                        lastRetryAt = pendingEntity.last_retry_at
+                                    )
                                 )
                             )
-                        )
-                        if (!isSessionSnapshotValid(session, "community-pending-acknowledged")) return@onSuccess
-                        updateCommunityMessageInFlow(pendingEntity.community_id, synced)
+                            if (!isSessionSnapshotValid(session, "community-pending-acknowledged")) return@onSuccess
+                            updateCommunityMessageInFlow(pendingEntity.community_id, synced)
+                        }.onFailure { error ->
+                            if (error is CancellationException) throw error
+                            markPendingCommunityMessageFailed(pendingEntity.id, session)
+                        }
+                    } else {
+                        markPendingCommunityMessageFailed(pendingEntity.id, session)
                     }
+                } else {
+                    insertCommunityMessageWithRetry(
+                        pendingEntity.id, payload,
+                        isCurrentSession = { isSessionSnapshotValid(session, "community-pending-retry") }
+                    )
                 }
-            } else {
-                insertCommunityMessageWithRetry(
-                    pendingEntity.id, payload,
-                    isCurrentSession = { isSessionSnapshotValid(session, "community-pending-retry") }
-                )
             }
         }
     }
@@ -2883,10 +2963,14 @@ class CommunityRepository @Inject constructor(
         sourceUri: android.net.Uri,
         contentType: String,
         content: String,
-        channelId: String? = null
+        channelId: String? = null,
+        replyToId: String? = null,
+        replyTo: conectate.com.data.model.Message? = null,
+        onQueued: suspend () -> Unit = {}
     ): Result<Unit> {
         val accountId = authService.getCurrentUserId()?.trim()?.lowercase()
             ?: return Result.failure(Exception("Not authenticated"))
+        val session = captureSessionSnapshot(accountId)
         val messageId = UUID.randomUUID().toString().lowercase()
         val pending = PendingOutgoingMediaStore.persist(
             context = context,
@@ -2896,13 +2980,19 @@ class CommunityRepository @Inject constructor(
             sourceUri = sourceUri,
             preferredMediaType = contentType
         ).getOrElse { return Result.failure(it) }
+        if (!isSessionSnapshotValid(session, "community-media-persisted")) {
+            return Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+        }
         return sendCommunityMessage(
             communityId = communityId,
             content = content,
             contentType = contentType,
             mediaUrl = pending.uri.toString(),
             messageId = messageId,
-            channelId = channelId
+            channelId = channelId,
+            replyToId = replyToId,
+            replyTo = replyTo,
+            onQueued = onQueued
         )
     }
 

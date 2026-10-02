@@ -28,9 +28,11 @@ fun WebRtcVideoView(
         return
     }
 
-    var renderer by remember(sharedEglContext, videoTrack?.id()) { mutableStateOf<SurfaceViewRenderer?>(null) }
+    // id() reads native memory. A queued recomposition can outlive a disposed
+    // track when a call ends; use the Java object's identity as the UI key.
+    var renderer by remember(sharedEglContext, videoTrack) { mutableStateOf<SurfaceViewRenderer?>(null) }
 
-    key(sharedEglContext, videoTrack?.id()) {
+    key(sharedEglContext, videoTrack) {
         AndroidView(
             factory = { ctx ->
                 SurfaceViewRenderer(ctx).also { view ->

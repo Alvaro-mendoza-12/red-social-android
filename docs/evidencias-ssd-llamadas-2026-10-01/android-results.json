@@ -1,0 +1,10 @@
+{
+  "versionCode": 117,
+  "versionName": "9.0.20",
+  "unitTests": 1043,
+  "failures": 0,
+  "errors": 0,
+  "apkSha256": "02d8e20c293776bc575e22e26c481e6ab9f92f9db09668e5d47de3e941be8c2e",
+  "instrumentationTests": 3,
+  "physicalDevicesVerified": false
+}

@@ -1,0 +1,14 @@
+==> Verificando servicios
+==> Exportando PostgreSQL
+==> Exportando storage local
+==> Exportando estado local de Novvin
+==> Verificando artefactos
+BACKUP_OK=/home/alvaro/conectate-backups/20261002T021449Z
+POSTGRES_BYTES=3616557
+STORAGE_BYTES=2209026967
+AI_DATA_BYTES=4695842
+postgres.dump: OK
+storage.tar.gz: OK
+ai-chatbot-data.tar.gz: OK
+docker-compose.yml: OK
+BACKUP_VERIFIED=/home/alvaro/conectate-backups/20261002T021449Z

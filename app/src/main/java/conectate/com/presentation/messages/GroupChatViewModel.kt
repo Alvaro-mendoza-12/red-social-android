@@ -440,6 +440,7 @@ class GroupChatViewModel @Inject constructor(
             else -> "document"
         }
         val normalizedCustomContent = customContent?.trim()
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             _errorMessage.value = null
@@ -458,7 +459,10 @@ class GroupChatViewModel @Inject constructor(
                     groupId = groupId,
                     sourceUri = uri,
                     contentType = resolvedType,
-                    content = content
+                    content = content,
+                    replyToId = replySnapshot.replyTo?.id,
+                    replyTo = replySnapshot.replyTo,
+                    onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
                 )
                 if (sendResult.isFailure) {
                     _errorMessage.value = sendResult.exceptionOrNull()
@@ -473,13 +477,17 @@ class GroupChatViewModel @Inject constructor(
 
     fun sendRecentGif(mediaUrl: String) {
         if (mediaUrl.isBlank() || groupId.isBlank()) return
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             val result = groupRepository.sendGroupMessage(
                 groupId = groupId,
                 content = "🌀 GIF",
                 contentType = "gif",
-                mediaUrl = mediaUrl.trim()
+                mediaUrl = mediaUrl.trim(),
+                replyToId = replySnapshot.replyTo?.id,
+                replyTo = replySnapshot.replyTo,
+                onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
             )
             if (result.isFailure) {
                 _errorMessage.value = result.exceptionOrNull()
@@ -503,6 +511,7 @@ class GroupChatViewModel @Inject constructor(
             _errorMessage.value = "Sticker inválido"
             return
         }
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             _errorMessage.value = null
@@ -510,7 +519,10 @@ class GroupChatViewModel @Inject constructor(
                 groupId = groupId,
                 content = caption,
                 contentType = "sticker",
-                mediaUrl = cleanUrl
+                mediaUrl = cleanUrl,
+                replyToId = replySnapshot.replyTo?.id,
+                replyTo = replySnapshot.replyTo,
+                onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
             )
             if (result.isFailure) {
                 _errorMessage.value = result.exceptionOrNull()
@@ -621,6 +633,7 @@ class GroupChatViewModel @Inject constructor(
             return
         }
 
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             _errorMessage.value = null
@@ -628,7 +641,10 @@ class GroupChatViewModel @Inject constructor(
                 groupId = groupId,
                 content = content.trim(),
                 contentType = contentType,
-                mediaUrl = mediaUrl
+                mediaUrl = mediaUrl,
+                replyToId = replySnapshot.replyTo?.id,
+                replyTo = replySnapshot.replyTo,
+                onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
             )
             if (result.isFailure) {
                 _errorMessage.value = result.exceptionOrNull()

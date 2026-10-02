@@ -591,6 +591,7 @@ class CommunityChatViewModel @Inject constructor(
             else -> "document"
         }
         val normalizedCustomContent = customContent?.trim()
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             _errorMessage.value = null
@@ -610,7 +611,10 @@ class CommunityChatViewModel @Inject constructor(
                     sourceUri = uri,
                     contentType = resolvedType,
                     content = content,
-                    channelId = channel?.id
+                    channelId = channel?.id,
+                    replyToId = replySnapshot.replyTo?.id,
+                    replyTo = replySnapshot.replyTo,
+                    onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
                 )
                 if (sendResult.isFailure) {
                     _errorMessage.value = sendResult.exceptionOrNull()
@@ -627,13 +631,17 @@ class CommunityChatViewModel @Inject constructor(
         if (mediaUrl.isBlank() || communityId.isBlank()) return
         val channel = writableChannelOrNull()
         if (_selectedChannel.value != null && channel == null) return
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             val result = communityRepository.sendCommunityMessage(
                 communityId = communityId,
                 content = "🌀 GIF",
                 contentType = "gif",
                 mediaUrl = mediaUrl.trim(),
-                channelId = channel?.id
+                channelId = channel?.id,
+                replyToId = replySnapshot.replyTo?.id,
+                replyTo = replySnapshot.replyTo,
+                onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
             )
             if (result.isFailure) {
                 android.util.Log.e("CommunityChatVM", "Recent GIF send failed", result.exceptionOrNull())
@@ -657,6 +665,7 @@ class CommunityChatViewModel @Inject constructor(
         }
         val channel = writableChannelOrNull()
         if (_selectedChannel.value != null && channel == null) return
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             _errorMessage.value = null
@@ -665,7 +674,10 @@ class CommunityChatViewModel @Inject constructor(
                 content = caption,
                 contentType = "sticker",
                 mediaUrl = cleanUrl,
-                channelId = channel?.id
+                channelId = channel?.id,
+                replyToId = replySnapshot.replyTo?.id,
+                replyTo = replySnapshot.replyTo,
+                onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
             )
             if (result.isFailure) {
                 _errorMessage.value = result.exceptionOrNull()
@@ -778,6 +790,7 @@ class CommunityChatViewModel @Inject constructor(
             return
         }
 
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             _errorMessage.value = null
@@ -786,7 +799,10 @@ class CommunityChatViewModel @Inject constructor(
                 content = content.trim(),
                 contentType = contentType,
                 mediaUrl = mediaUrl,
-                channelId = channel?.id
+                channelId = channel?.id,
+                replyToId = replySnapshot.replyTo?.id,
+                replyTo = replySnapshot.replyTo,
+                onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
             )
             if (result.isFailure) {
                 _errorMessage.value = result.exceptionOrNull()

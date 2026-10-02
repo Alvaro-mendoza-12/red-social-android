@@ -445,6 +445,7 @@ function sanitizeUser(row) {
     email: row.email,
     hasLocalPassword: Boolean(row.password_enabled && row.password_hash),
     displayName: row.display_name || '',
+    username: row.username || null,
     avatarUrl: row.avatar_url || null,
     supabaseUserId: row.supabase_user_id || null,
     syncSource: row.sync_source || 'local',
@@ -1258,6 +1259,7 @@ async function hasRestoredAuthUsersTable() {
 
 async function hydrateUserRow(row) {
   if (!row) return null
+  row = await require('./auth-public-username').hydrateAuthPublicUsername(pool, row)
   if (!row.supabase_user_id) {
     return { ...row, account_created_at: row.created_at }
   }
@@ -1574,7 +1576,7 @@ async function syncLocalUserToSupabase(user, password, username = null) {
        RETURNING ${userSelectColumns}`,
       [user.id, supabaseUserId],
     )
-    return { attempted: true, ok: true, user: sanitizeUser(rows[0]) }
+    return { attempted: true, ok: true, user: sanitizeUser(await hydrateUserRow(rows[0])) }
   }
 
   return { attempted: true, ok: false, error: 'SUPABASE_USER_ID_MISSING' }
@@ -1636,7 +1638,7 @@ async function upsertImportedSupabaseUser(supabaseUser) {
     [email, displayName, avatarUrl, supabaseUser.id],
   )
 
-  return sanitizeUser(rows[0])
+  return sanitizeUser(await hydrateUserRow(rows[0]))
 }
 
 function createWebLoginQrUrl(pairId, nonce) {
@@ -2373,7 +2375,7 @@ app.post('/v1/auth/register', requireBcryptPasswordLength('password'), async (re
     } finally {
       client.release()
     }
-    let user = sanitizeUser(rows[0])
+    let user = sanitizeUser(await hydrateUserRow(rows[0]))
     const supabaseSync = await syncLocalUserToSupabase(user, password, username)
     if (supabaseSync.ok && supabaseSync.user) {
       user = supabaseSync.user

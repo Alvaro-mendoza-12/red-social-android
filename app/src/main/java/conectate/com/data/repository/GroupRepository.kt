@@ -176,6 +176,8 @@ class GroupRepository @Inject constructor(
         )
     }
 
+    private val messageSendCoordinator = conectate.com.data.repository.message.MessageSendCoordinator()
+
     private var realtimeJob: Job? = null
     private var groupListenerJob: Job? = null
     private var ubuntuRealtimeJob: Job? = null
@@ -1396,11 +1398,50 @@ class GroupRepository @Inject constructor(
         forwardedFromUserId: String? = null,
         messageId: String? = null,
         onQueued: suspend () -> Unit = {}
+    ): Result<Unit> {
+        val id = messageId?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
+        val account = authService.getCurrentUserId()?.trim()?.lowercase()
+            ?: return Result.failure(Exception("Inicia sesión de nuevo."))
+        val session = captureSessionSnapshot(account)
+        return messageSendCoordinator.withMessage(id) {
+            if (!isSessionSnapshotValid(session, "collection-foreground-send")) {
+                Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+            } else sendGroupMessageInternal(
+                groupId = groupId,
+                content = content,
+                replyToId = replyToId,
+                replyTo = replyTo,
+                contentType = contentType,
+                mediaUrl = mediaUrl,
+                pollId = pollId,
+                isForwarded = isForwarded,
+                forwardedFromMessageId = forwardedFromMessageId,
+                forwardedFromUserId = forwardedFromUserId,
+                messageId = id,
+                onQueued = onQueued
+            )
+        }
+    }
+
+    private suspend fun sendGroupMessageInternal(
+        groupId: String,
+        content: String,
+        replyToId: String? = null,
+        replyTo: conectate.com.data.model.Message? = null,
+        contentType: String = "text",
+        mediaUrl: String? = null,
+        pollId: String? = null,
+        isForwarded: Boolean = false,
+        forwardedFromMessageId: String? = null,
+        forwardedFromUserId: String? = null,
+        messageId: String? = null,
+        onQueued: suspend () -> Unit = {}
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         try {
             var userId = authService.getCurrentUserId()?.trim()?.lowercase()
                 ?: return@withContext Result.failure(Exception("No user"))
+            val session = captureSessionSnapshot(userId)
             var cleanId = groupId.trim().lowercase()
 
             val guardDecision = operationGuard.acquire(
@@ -1488,6 +1529,7 @@ class GroupRepository @Inject constructor(
             PendingMessageSyncScheduler.enqueue(context, "group_message_pending")
             updateGroupMessageInFlow(cleanId, msg)
             onQueued()
+            if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
             val preview = buildConversationBackgroundPreview(contentType, finalContent)
                 ?: buildCallEventPreview(contentType, finalContent)
                 ?: CollectionMessageSyncSupport.buildMetadataPreview(contentType, finalContent)
@@ -1523,10 +1565,12 @@ class GroupRepository @Inject constructor(
                         error as? Exception ?: Exception(error),
                         transientNetworkRetryCodes
                     )
+                    markPendingGroupMessageFailed(msgId, session)
                     if (retryable) return@withContext Result.success(Unit)
                     groupDao.updateMessageSyncStatus(msgId, status = "failed", isSynced = false, pendingAction = "send")
                     return@withContext Result.failure(error)
                 }
+            if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 msg = msg.copy(media_url = outgoingMediaUrl)
                 groupDao.insertMessages(
                     listOf(GroupMessageEntity.fromDomain(msg, isSynced = false, pendingAction = "send"))
@@ -1552,6 +1596,7 @@ class GroupRepository @Inject constructor(
 
             val syncResult = if (authService.isLocalFallbackSession()) {
                 val token = authService.getAccessTokenAwait()
+            if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 if (token.isNullOrBlank()) {
                     Result.failure(Exception("Sesion Ubuntu no disponible"))
                 } else {
@@ -1568,6 +1613,7 @@ class GroupRepository @Inject constructor(
                         forwardedFromMessageId = forwardedFromMessageId,
                         forwardedFromUserId = forwardedFromUserId
                     ).map { serverMessage ->
+            if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                         val synced = mergeSyncedGroupMessageWithLocalState(
                             incoming = acknowledgeGroupMessage(serverMessage, cleanId).copy(
                                 reply_to_id = serverMessage.reply_to_id ?: msg.reply_to_id,
@@ -1594,7 +1640,7 @@ class GroupRepository @Inject constructor(
                     }
                 }
             } else {
-                insertGroupMessageWithRetry(msgId, msgJson)
+                insertGroupMessageWithRetry(msgId, msgJson, isCurrentSession = { isSessionSnapshotValid(session, "group-foreground-retry") })
             }
             if (syncResult.isSuccess) {
                 android.util.Log.d("GroupRepository", "✅ [SERVER-ACK] Mensaje $msgId sincronizado")
@@ -1660,8 +1706,11 @@ class GroupRepository @Inject constructor(
                     throwable = syncError,
                     attributes = mapOf("content_type" to contentType)
                 )
+                markPendingGroupMessageFailed(msgId, session)
                 Result.failure(syncError ?: Exception("No se pudo sincronizar mensaje de grupo"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("GroupRepository", "Error sending message", e)
             appMetrics.recordFailure("group_message_send", e)
@@ -1726,13 +1775,22 @@ class GroupRepository @Inject constructor(
             }
             if (pending.is_synced) return@runCatching
             check(isSessionSnapshotValid(session, "group-manual-retry")) { "La cuenta cambió." }
-            groupDao.updateMessageSyncStatus(messageId, "sending", false, "send")
-            if (!isSessionSnapshotValid(session, "group-manual-retry-persisted")) return@runCatching
-            updateGroupMessageInFlow(groupId, pending.toDomain().copy(status = "sending"))
             retryPendingGroupMessages(targetMessageId = messageId)
+            check(isSessionSnapshotValid(session, "group-manual-retry-complete")) { "La cuenta cambió." }
+            val latest = groupDao.getMessageById(messageId) ?: error("El mensaje ya no está disponible.")
+            check(latest.status != "failed") { "No se pudo reenviar. Revisa tu conexión e inténtalo de nuevo." }
         }.onFailure { if (it is CancellationException) throw it }
     }
 
+
+    private suspend fun markPendingGroupMessageFailed(messageId: String, session: SessionWriteGuard.Snapshot) {
+        if (!isSessionSnapshotValid(session, "group-pending-failure")) return
+        val current = groupDao.getMessageById(messageId) ?: return
+        if (current.is_synced || current.deleted_for_all || current.pending_action != "send") return
+        val failed = current.copy(status = "failed", retry_count = current.retry_count + 1, last_retry_at = java.time.Instant.now().toString())
+        groupDao.insertMessages(listOf(failed))
+        updateGroupMessageInFlow(failed.group_id, failed.toDomain())
+    }
     private suspend fun retryPendingGroupMessages(maxBatch: Int = 40, targetMessageId: String? = null) {
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
         val session = captureSessionSnapshot(userId)
@@ -1744,86 +1802,101 @@ class GroupRepository @Inject constructor(
         pending.forEach { originalEntity ->
             if (!isSessionSnapshotValid(session, "group-pending-start")) return
             if (originalEntity.sender_id.trim().lowercase() != userId) return@forEach
-            var pendingEntity = originalEntity
-            PendingOutgoingMediaStore.resolve(context, pendingEntity.media_url)?.let { localMediaUri ->
-                val remoteUrl = collectionMediaStore.uploadMessageMediaFromUri(
-                    context = context,
-                    ownerId = pendingEntity.group_id,
-                    sourceUri = localMediaUri,
-                    preferredMediaType = pendingEntity.content_type,
-                    primaryBucket = "group-media",
-                    fallbackBucket = "groups",
-                    filePrefix = "media_group",
-                    accountId = userId,
-                    messageId = pendingEntity.id
-                ).getOrElse { error ->
-                    android.util.Log.w("GroupRepository", "Pending group media still unavailable: ${pendingEntity.id}", error)
-                    return@forEach
-                }
-                if (!isSessionSnapshotValid(session, "group-pending-media-uploaded")) return
-                pendingEntity = pendingEntity.copy(media_url = remoteUrl)
+            messageSendCoordinator.withMessage(originalEntity.id) pendingMessage@ {
+                val fresh = groupDao.getMessageById(originalEntity.id) ?: return@pendingMessage
+                if (fresh.is_synced || fresh.pending_action != "send" || fresh.deleted_for_all || !fresh.sender_id.equals(userId, true)) return@pendingMessage
+                if (!isSessionSnapshotValid(session, "group-pending-locked")) return@pendingMessage
+                var pendingEntity = fresh.copy(status = "sending")
                 groupDao.insertMessages(listOf(pendingEntity))
-                if (!isSessionSnapshotValid(session, "group-pending-media-persisted")) return
                 updateGroupMessageInFlow(pendingEntity.group_id, pendingEntity.toDomain())
-                PendingOutgoingMediaStore.delete(context, localMediaUri)
-            }
+                PendingOutgoingMediaStore.resolve(context, pendingEntity.media_url)?.let { localMediaUri ->
+                    val remoteUrl = collectionMediaStore.uploadMessageMediaFromUri(
+                        context = context,
+                        ownerId = pendingEntity.group_id,
+                        sourceUri = localMediaUri,
+                        preferredMediaType = pendingEntity.content_type,
+                        primaryBucket = "group-media",
+                        fallbackBucket = "groups",
+                        filePrefix = "media_group",
+                        accountId = userId,
+                        messageId = pendingEntity.id
+                    ).getOrElse { error ->
+                        if (error is CancellationException) throw error
+                        markPendingGroupMessageFailed(pendingEntity.id, session)
+                        android.util.Log.w("GroupRepository", "Pending group media still unavailable: ${pendingEntity.id}", error)
+                        return@pendingMessage
+                    }
+                    if (!isSessionSnapshotValid(session, "group-pending-media-uploaded")) return@pendingMessage
+                    pendingEntity = pendingEntity.copy(media_url = remoteUrl)
+                    groupDao.insertMessages(listOf(pendingEntity))
+                    if (!isSessionSnapshotValid(session, "group-pending-media-persisted")) return@pendingMessage
+                    updateGroupMessageInFlow(pendingEntity.group_id, pendingEntity.toDomain())
+                    PendingOutgoingMediaStore.delete(context, localMediaUri)
+                }
 
-            var payload = buildJsonObject {
-                put("id", pendingEntity.id)
-                put("group_id", pendingEntity.group_id)
-                put("sender_id", pendingEntity.sender_id)
-                put("content", pendingEntity.content)
-                put("content_type", pendingEntity.content_type)
-                put("media_url", pendingEntity.media_url)
-                put("reply_to_id", pendingEntity.reply_to_id)
-                put("poll_id", pendingEntity.poll_id)
-                put("is_forwarded", pendingEntity.is_forwarded)
-                put("forwarded_from_message_id", pendingEntity.forwarded_from_message_id)
-                put("forwarded_from_user_id", pendingEntity.forwarded_from_user_id)
-            }
+                var payload = buildJsonObject {
+                    put("id", pendingEntity.id)
+                    put("group_id", pendingEntity.group_id)
+                    put("sender_id", pendingEntity.sender_id)
+                    put("content", pendingEntity.content)
+                    put("content_type", pendingEntity.content_type)
+                    put("media_url", pendingEntity.media_url)
+                    put("reply_to_id", pendingEntity.reply_to_id)
+                    put("poll_id", pendingEntity.poll_id)
+                    put("is_forwarded", pendingEntity.is_forwarded)
+                    put("forwarded_from_message_id", pendingEntity.forwarded_from_message_id)
+                    put("forwarded_from_user_id", pendingEntity.forwarded_from_user_id)
+                }
 
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                val token = authService.getAccessTokenAwait()
-                if (!token.isNullOrBlank()) {
-                    localFallbackApiClient.sendGroupMessage(
-                        accessToken = token,
-                        groupId = pendingEntity.group_id,
-                        content = pendingEntity.content,
-                        contentType = pendingEntity.content_type,
-                        mediaUrl = pendingEntity.media_url,
-                        mediaSize = 0L,
-                        replyToId = pendingEntity.reply_to_id,
-                        messageId = pendingEntity.id,
-                        isForwarded = pendingEntity.is_forwarded,
-                        forwardedFromMessageId = pendingEntity.forwarded_from_message_id,
-                        forwardedFromUserId = pendingEntity.forwarded_from_user_id
-                    ).onSuccess { serverMessage ->
-                        if (!isSessionSnapshotValid(session, "group-pending-acknowledge")) return@onSuccess
-                        val synced = mergeSyncedGroupMessageWithLocalState(
-                            incoming = acknowledgeGroupMessage(serverMessage, pendingEntity.group_id),
-                            local = pendingEntity.toDomain()
-                        )
-                        groupDao.insertMessages(
-                            listOf(
-                                GroupMessageEntity.fromDomain(
-                                    msg = synced,
-                                    isSynced = true,
-                                    pendingAction = null,
-                                    retryCount = pendingEntity.retry_count,
-                                    lastRetryAt = pendingEntity.last_retry_at
+                if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                    val token = authService.getAccessTokenAwait()
+                    if (!token.isNullOrBlank()) {
+                        if (!isSessionSnapshotValid(session, "group-pending-token")) return@pendingMessage
+                        localFallbackApiClient.sendGroupMessage(
+                            accessToken = token,
+                            groupId = pendingEntity.group_id,
+                            content = pendingEntity.content,
+                            contentType = pendingEntity.content_type,
+                            mediaUrl = pendingEntity.media_url,
+                            mediaSize = 0L,
+                            replyToId = pendingEntity.reply_to_id,
+                            messageId = pendingEntity.id,
+                            isForwarded = pendingEntity.is_forwarded,
+                            forwardedFromMessageId = pendingEntity.forwarded_from_message_id,
+                            forwardedFromUserId = pendingEntity.forwarded_from_user_id
+                        ).onSuccess { serverMessage ->
+                            if (!isSessionSnapshotValid(session, "group-pending-acknowledge")) return@onSuccess
+                            val synced = mergeSyncedGroupMessageWithLocalState(
+                                incoming = acknowledgeGroupMessage(serverMessage, pendingEntity.group_id),
+                                local = pendingEntity.toDomain()
+                            )
+                            groupDao.insertMessages(
+                                listOf(
+                                    GroupMessageEntity.fromDomain(
+                                        msg = synced,
+                                        isSynced = true,
+                                        pendingAction = null,
+                                        retryCount = pendingEntity.retry_count,
+                                        lastRetryAt = pendingEntity.last_retry_at
+                                    )
                                 )
                             )
-                        )
-                        if (!isSessionSnapshotValid(session, "group-pending-acknowledged")) return@onSuccess
-                        updateGroupMessageInFlow(pendingEntity.group_id, synced)
+                            if (!isSessionSnapshotValid(session, "group-pending-acknowledged")) return@onSuccess
+                            updateGroupMessageInFlow(pendingEntity.group_id, synced)
+                        }.onFailure { error ->
+                            if (error is CancellationException) throw error
+                            markPendingGroupMessageFailed(pendingEntity.id, session)
+                        }
+                    } else {
+                        markPendingGroupMessageFailed(pendingEntity.id, session)
                     }
+                } else {
+                    insertGroupMessageWithRetry(
+                        msgId = pendingEntity.id,
+                        payload = payload,
+                        isCurrentSession = { isSessionSnapshotValid(session, "group-pending-retry") }
+                    )
                 }
-            } else {
-                insertGroupMessageWithRetry(
-                    msgId = pendingEntity.id,
-                    payload = payload,
-                    isCurrentSession = { isSessionSnapshotValid(session, "group-pending-retry") }
-                )
             }
         }
     }
@@ -3024,10 +3097,14 @@ class GroupRepository @Inject constructor(
         groupId: String,
         sourceUri: android.net.Uri,
         contentType: String,
-        content: String
+        content: String,
+        replyToId: String? = null,
+        replyTo: conectate.com.data.model.Message? = null,
+        onQueued: suspend () -> Unit = {}
     ): Result<Unit> {
         val accountId = authService.getCurrentUserId()?.trim()?.lowercase()
             ?: return Result.failure(Exception("No user"))
+        val session = captureSessionSnapshot(accountId)
         val messageId = UUID.randomUUID().toString()
         val pending = PendingOutgoingMediaStore.persist(
             context = context,
@@ -3037,16 +3114,21 @@ class GroupRepository @Inject constructor(
             sourceUri = sourceUri,
             preferredMediaType = contentType
         ).getOrElse { return Result.failure(it) }
+        if (!isSessionSnapshotValid(session, "group-media-persisted")) {
+            return Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+        }
         return sendGroupMessage(
             groupId = groupId,
             content = content,
             contentType = contentType,
             mediaUrl = pending.uri.toString(),
-            messageId = messageId
+            messageId = messageId,
+            replyToId = replyToId,
+            replyTo = replyTo,
+            onQueued = onQueued
         )
     }
 }
-
 
 
 

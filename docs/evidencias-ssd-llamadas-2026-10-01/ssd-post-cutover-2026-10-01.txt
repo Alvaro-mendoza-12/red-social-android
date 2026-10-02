@@ -1,0 +1,20 @@
+TARGET              SOURCE         FSTYPE OPTIONS
+/mnt/conectate-fast /dev/nvme0n1p1 ext4   rw,noatime
+TARGET          SOURCE                  FSTYPE OPTIONS
+/var/lib/docker /dev/nvme0n1p1[/docker] ext4   rw,noatime
+TARGET              SOURCE                      FSTYPE OPTIONS
+/var/lib/containerd /dev/nvme0n1p1[/containerd] ext4   rw,noatime
+conectate-local-fallback-api-main Up About a minute (healthy)
+conectate-local-fallback-signaling-1 Up About a minute (healthy)
+conectate-local-fallback-realtime-main Up About a minute (healthy)
+conectate-local-fallback-office-preview-1 Up About a minute (healthy)
+conectate-local-fallback-edge-main Up About a minute (healthy)
+conectate-local-fallback-ai-main Up About a minute (healthy)
+conectate-local-fallback-signaling-redis-main Up About a minute (healthy)
+conectate-local-fallback-coturn-main Up About a minute (healthy)
+conectate-local-fallback-db-main Up About a minute (healthy)
+{"ok":true,"service":"conectate-local-fallback","version":"0.1.0","release":{"release":"conectate-mini-pc-20261001T204219Z","commit":"5c30b81","sourceDigest":"b19792e02225878bb358e046faf5850fb887ec4073831b3830aa9d5572a96bf3","deployedAtUtc":"2026-10-01T20:42:19.436862+00:00","environment":"production"},"capabilities":["admin_users_v1","hard_delete_suspended_users_v1","image_variants_v1","profile_ranking_v1","system_health_v1","feed_modes_v1","saved_collections_v1","moderation_appeals_v1","notification_digest_v1","community_roles_v1","community_channels_v1","community_member_profiles_v1","community_events_v1","voice_room_stage_v1","anonymous_bottles_v1","community_music_v1","moment_music_v1","moment_music_aac_lc_v1","image_moments_exact_6s_v1","video_sound_identity_v1","video_feed_session_v1","video_feed_live_v1","message_markers_v1","video_watch_later_v1","video_collections_v1"],"databaseTime":"2026-10-02T02:07:59.536Z","pushNotifications":{"configured":true,"provider":"firebase-cloud-messaging","errorCode":null}}RequiresMountsFor=/var/lib/containerd /var/lib/docker /mnt/conectate-fast
+
+RequiresMountsFor=/var/lib/docker /mnt/conectate-fast /var/lib/containerd
+Filesystem     Type  Size  Used Avail Use% Mounted on
+/dev/nvme0n1p1 ext4  469G   39G  426G   9% /mnt/conectate-fast

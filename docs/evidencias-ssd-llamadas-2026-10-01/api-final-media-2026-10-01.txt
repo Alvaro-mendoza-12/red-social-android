@@ -1,0 +1,443 @@
+
+> conectate-local-fallback-api@0.1.0 test
+> node --test tests/*.test.js
+
+account status tests passed
+✔ tests\account-status.test.js (313.5846ms)
+✔ admin capabilities default deny for absent, invalid, and unknown access (2.6811ms)
+✔ view is read-only and cannot inherit mutation capabilities (0.3526ms)
+✔ write moderates but cannot manage enterprise catalogs, finance, or system data (0.2944ms)
+✔ full administers services but cannot grant access or delete users (0.2552ms)
+✔ owner-only capabilities are explicit and compatibility fields remain stable (0.4107ms)
+admin moderation route tests passed
+[realtime-publish] {
+  channelRef: '7f0ae9bb751b82e617f3d0e3',
+  code: 'INTERNAL_ERROR',
+  messageRef: 'e2c73a8fd237575c7c613674',
+  message: 'fetch failed'
+}
+✔ tests\admin-moderation-routes.test.js (2873.8187ms)
+ai-routes tests passed
+✔ tests\ai-routes.test.js (778.8622ms)
+algorithm candidate provider tests passed
+✔ tests\algorithm-candidate-provider.test.js (293.8518ms)
+algorithm content ingestion tests passed
+✔ tests\algorithm-content-ingestion.test.js (293.3702ms)
+algorithm local fallback candidate source tests passed
+✔ tests\algorithm-local-fallback-candidate-source.test.js (300.3643ms)
+algorithm ranking tests passed
+✔ tests\algorithm-ranking.test.js (302.263ms)
+algorithm recommendation bootstrap tests passed
+✔ tests\algorithm-recommendation-bootstrap.test.js (305.2231ms)
+algorithm recommendation route tests passed
+✔ tests\algorithm-recommendation-routes.test.js (309.7509ms)
+algorithm routes tests passed
+✔ tests\algorithm-routes.test.js (314.8692ms)
+✔ public handles never reveal the login address (1.5064ms)
+✔ login and registration load the permanent profile username by account id (1.8915ms)
+✔ accounts without a profile handle do not derive one from their email (0.485ms)
+✔ first-message trigger binds the durable notification to the exact message (2.2554ms)
+✔ relay publishes the existing notification to its recipient without a second insert (4.8476ms)
+✔ ordinary messages and incomplete identifiers do not relay old requests (0.3356ms)
+✔ limits in-flight requests and consumes the exact requested count (157.0073ms)
+✔ does not call failed responses successful and records rejected fetches (2.0798ms)
+✔ rejects writes, credentials and unbounded test inputs (1.177ms)
+client auth session tests passed
+✔ tests\client-auth-session.test.js (307.5676ms)
+coin purchase flow tests passed: catalog, idempotency, RTDN credit, refund review, refund/debt reconciliation
+✔ tests\coin-purchase-flow.test.js (1640.5451ms)
+coin purchase ledger contract tests passed
+✔ tests\coin-purchase-ledger.test.js (271.117ms)
+✔ global read status never marks a group or community message read for another account (2.4806ms)
+✔ read cursor survives a returning account while new and offscreen messages remain unread (0.4015ms)
+✔ own and deleted messages never contribute to unread counters (0.3125ms)
+✔ receipt lookup is bound to viewer aliases room and kind (1.6291ms)
+✔ visible writes are idempotent per reader and never advance the whole conversation cursor (1.9818ms)
+✔ public room visibility does not authorize receipts for nonmembers (1.9306ms)
+community event worker tests passed
+✔ tests\community-event-worker.test.js (1628.2166ms)
+✔ uploads accept a complete four-minute track and exactly four thirty (2.5875ms)
+✔ excess duration is rejected for user cropping, never silently clamped (1.5073ms)
+✔ invalid or short metadata cannot authorize an upload (0.6145ms)
+✔ catalog retains original duration, complete URL and cover separately from short preview (2.3159ms)
+✔ account cleanup expands JSONB once and converts only identity fields (4.423ms)
+✔ masks Spanish insults without dropping the comment (24.4163ms)
+✔ blocks threats and suspicious links (1.5659ms)
+✔ masks obfuscated insults without censoring benign compliments (24.809ms)
+✔ visible receipts reject malformed IDs, bound batches and deduplicate (7.3238ms)
+✔ visible receipts constrain chat, sender and IDs without updating global read cursors (1.1364ms)
+✔ visible receipt endpoint rejects another chat before any mutation (0.899ms)
+✔ typing authorization requires current membership, including public communities (0.8856ms)
+creator analytics routes tests passed
+✔ tests\creator-analytics-routes.test.js (296.2736ms)
+creator payout route tests passed
+✔ tests\creator-payout-routes.test.js (332.1448ms)
+✔ patched CSV parser preserves import fields, BOM, quotes and embedded newlines (8.2809ms)
+✔ CSV column names cannot replace the record prototype (2.8977ms)
+data-routes tests passed
+✔ tests\data-routes.test.js (1166.8323ms)
+✔ pending friendship permits subsequent messages while rejection and block remain enforced (2.5899ms)
+✔ legacy pending-policy errors still surface as rejection rather than successful acknowledgement (0.5939ms)
+distributed rate limit tests passed
+✔ tests\distributed-rate-limit.test.js (306.082ms)
+✔ Office format requires both an allowed extension and its container signature (4.1061ms)
+✔ extra conversion fields and multiple files are rejected (213.8169ms)
+✔ non-PDF converter output is rejected (41.9024ms)
+✔ oversized Office uploads are rejected before conversion (346.295ms)
+✔ a stalled upload times out and releases the conversion slot (144.9287ms)
+✔ authenticated conversion returns PDF, bounds options and does not cache private output (16.9697ms)
+✔ authentication runs before file parsing or conversion (15.2522ms)
+✔ unsupported input and malformed conversion fail without exposing converter errors (38.2198ms)
+✔ a busy renderer rejects parallel work and releases its slot afterwards (42.4033ms)
+economic provenance tests passed
+✔ tests\economic-provenance.test.js (268.4146ms)
+gift catalog and limits tests passed
+✔ tests\gift-limits.test.js (1184.428ms)
+[gift] database transaction failed {
+  code: '23514',
+  table: 'fallback_compat_rows',
+  constraint: 'test_creator_earnings_constraint',
+  routine: undefined
+}
+[gift] database transaction failed {
+  code: '23514',
+  table: 'fallback_compat_rows',
+  constraint: 'test_notifications_constraint',
+  routine: undefined
+}
+gift transaction flow tests passed: 24 catalog gifts, valid, promotional non-withdrawable, refund reverses earning/ranking source, insufficient, missing, ended, self, duplicate, concurrent, earning failure, database failure
+✔ tests\gift-transaction-flow.test.js (1376.4307ms)
+google-play-rtdn tests passed
+✔ tests\google-play-rtdn.test.js (415.1113ms)
+✔ detail lookup cannot revive a private local item from an old public import (2.6263ms)
+✔ guest post detail exposes every image URL when storage uses media objects (1.8786ms)
+✔ comments require publicly readable content and include local comments on imported content (178.9377ms)
+✔ guest identity is random, explicit and cannot authenticate as a registered client (4.9517ms)
+✔ guest middleware rejects registered and forged credentials (2.3617ms)
+✔ guest API serves public reads and exposes no mutation route (92.3237ms)
+Supabase storage ownership tests passed
+✔ tests\import-supabase-storage.test.js (814.4659ms)
+﹣ isolated restore waits for the permanent postgres process and retains failure diagnostics (1.8582ms) # bash fixture runs on the Linux target
+live battle scoring tests passed
+✔ tests\live-battle-scoring.test.js (212.9342ms)
+✔ invitation changes go to the host and invitee with no private room broadcast (5.7516ms)
+✔ recipient aliases are deduplicated and unrelated invitations are rejected (1.4677ms)
+✔ room events keep their payload and delivery failures remain recoverable by polling (0.9665ms)
+live collaboration route tests passed
+✔ tests\live-collaboration-routes.test.js (584.6002ms)
+live draw/guess route tests passed (13 suites)
+✔ tests\live-draw-guess-routes.test.js (248.8451ms)
+live follower notification tests passed
+✔ tests\live-follower-notifications.test.js (662.7362ms)
+✔ receipt recovery exposes committed artwork but no wallet or earning details (2.0737ms)
+✔ private gifts are visible only to their sender and receiver (0.4728ms)
+✔ uncommitted, foreign, malformed and reversed receipts never trigger celebrations (0.354ms)
+✔ inaccessible or ended live rejects gift history before querying the ledger (1.275ms)
+✔ host can recover ended session and clients receive stable oldest-first IDs (1.9488ms)
+live internal termination tests passed
+✔ tests\live-internal-termination.test.js (755.0719ms)
+live moderation route tests passed
+✔ tests\live-moderation-routes.test.js (738.9714ms)
+live points route tests passed
+✔ tests\live-points-routes.test.js (590.6118ms)
+livekit admin tests passed
+✔ tests\livekit-admin.test.js (334.9623ms)
+✔ a newly inserted message is returned without a duplicate lookup (5.1709ms)
+✔ a duplicate returns its current edit, read receipt and deletion, not the retry payload (0.8132ms)
+✔ a duplicate not owned in the requested conversation fails with a generic conflict (1.3382ms)
+✔ an unknown scope or forged sender cannot reach storage (0.8772ms)
+✔ database failures propagate instead of acknowledging an unsaved message (0.597ms)
+✔ a failed duplicate lookup is not acknowledged (0.7886ms)
+✔ marker target rejects malformed room and message IDs (4.1173ms)
+✔ a removed group member cannot read saved or pinned markers (2.358ms)
+✔ non-admin member cannot pin a group message (0.9942ms)
+✔ a group chat cannot use the direct-chat marker route to bypass admin policy (1.2378ms)
+✔ pin limit is checked while holding a room-scoped transactional lock (1.6489ms)
+✔ saved list is scoped to the account and hides unavailable message content (1.756ms)
+✔ global saved inbox skips rooms without current access and scopes the query to the account (2.4855ms)
+✔ global saved inbox validates cursor and filters before querying (2.6575ms)
+✔ global saved search filters before pagination and does not reveal deleted matches (1.2083ms)
+✔ global saved search includes an imported message table only when present (1.0856ms)
+✔ global saved type filter is applied before the cursor page is selected (0.9214ms)
+✔ global saved inbox cursor includes the full deterministic ordering key (1.3041ms)
+✔ reusable policy distinguishes tombstone visibility, view-once and account aliases (2.67ms)
+✔ chat: eligible recipient can forward without fetching the whole room history (3.612ms)
+✔ chat: nonmember cannot forward private media (0.8886ms)
+✔ chat: source blocked by either direction cannot grant a new copy (1.6944ms)
+✔ group: eligible recipient can forward without fetching the whole room history (2.5666ms)
+✔ group: nonmember cannot forward private media (1.1452ms)
+✔ group: source blocked by either direction cannot grant a new copy (1.356ms)
+✔ community: eligible recipient can forward without fetching the whole room history (1.3724ms)
+✔ community: nonmember cannot forward private media (1.0501ms)
+✔ community: source blocked by either direction cannot grant a new copy (0.9222ms)
+✔ deleted and view-once forwards cannot bypass checks through storage ownership (1.2758ms)
+✔ public community access still works but deletion of the room revokes it (1.1758ms)
+✔ non-forwarded owned upload remains supported (0.4656ms)
+✔ a saved sticker can be sent again only while its source chat remains accessible (66.678ms)
+✔ labelling another user's stored photo as a sticker does not authorize reuse (0.9127ms)
+✔ legacy visible names receive stable normalized unique handles (5.0859ms)
+✔ legacy handle allocation respects twenty-four character limit (0.5767ms)
+✔ the preexisting official account retains the reserved brand handle (0.4313ms)
+✔ a fifteen second video can keep a chorus two minutes into the full community song (4.8069ms)
+✔ a late selection can end at song end but cannot start past it (1.9625ms)
+✔ a community song survives backend hostname rotation without trusting client metadata (1.4938ms)
+✔ signed, relative and percent-encoding equivalents refer to the selected storage object (0.8607ms)
+✔ another object, owner, bucket, path case or external URL is not the selected song (2.0844ms)
+✔ catalog ID remains authoritative and removed or unapproved tracks stay rejected (0.5926ms)
+✔ moment feed emits ISO timestamps for PostgreSQL Date objects, not JavaScript display strings (10.8854ms)
+✔ missing publication date is not falsely replaced by the current time (1.5744ms)
+✔ expired and malformed expirations do not become permanently visible moments (7.8177ms)
+✔ offset publication timestamps preserve the instant (0.9857ms)
+✔ moment interactions hide private, silent, deleted, expired and invalid IDs (6.7456ms)
+✔ moment interactions keep owner, selected, followers and direct-chat audiences (2.1173ms)
+✔ private moment view and reaction routes never write or notify an outsider (3.4559ms)
+✔ real-catalog diagnostic remains read-only and does not expose track metadata (4.2651ms)
+✔ empty catalog is explicitly skipped rather than a publishing pass (0.5057ms)
+✔ catalog validation failure still rolls back and invalid origins never reach the database (1.8026ms)
+✔ Moment music renderer always targets baseline AAC-LC stereo in M4A (12.4135ms)
+✔ remote renderer input rejects local and non-HTTPS targets (4.1341ms)
+✔ DNS pinning accepts only globally routable unicast addresses (4.1087ms)
+✔ timestamp diagnostic distinguishes missing data, invalid strings and UTC timestamps without logging content (6.0919ms)
+✔ empty feed is counted as zero checked rows, not fabricated publication dates (0.4329ms)
+✔ native database dates retain the exact UTC instant including milliseconds (4.0813ms)
+✔ ISO and PostgreSQL offset strings normalize without depending on server timezone (0.8805ms)
+✔ unknown dates never fabricate a fresh publication time (0.4478ms)
+✔ offsets crossing a year boundary retain the actual date (0.264ms)
+✔ moment push expiry is an ISO string even when PostgreSQL returns a Date (5.6781ms)
+✔ selected moment viewers receive an alert only after opting in (2.1556ms)
+✔ image moments never auto-advance before six seconds (0.5897ms)
+✔ image moment soundtrack metadata is also clamped to the same six seconds (0.6043ms)
+✔ moment audiences enforce follower, following and chat relationships (1.7135ms)
+✔ selected and excluded audiences are applied exactly (0.4433ms)
+✔ owner always sees own moment and legacy private moments remain private (0.6053ms)
+✔ moment owner metadata prefers the latest Novvin profile override (1.8306ms)
+✔ moment music policy accepts only PD or CC0 and Android-playable containers (0.5551ms)
+✔ server revalidates Commons metadata instead of trusting client music fields (5.2306ms)
+✔ local Moment music is accepted only when its storage object belongs to the author (1.3331ms)
+✔ history cursor preserves microseconds and rejects malformed or impossible dates (7.2668ms)
+✔ history restricts owner and removed rows while paging pending and rejected uploads with precise cursor (1.4597ms)
+✔ owner removal locks ownership and hides reuse atomically without deleting media used by moments (1.3775ms)
+✔ removal cannot touch another owner and retries are idempotent (2.026ms)
+✔ failed mutation rolls back and releases its database connection without reporting success (1.5752ms)
+✔ both library endpoints require an identity before querying or mutating (1.0687ms)
+PASS Openverse only accepts matching CC0/Public Domain code and canonical URL
+PASS Openverse adapter rejects unverified and unsafe tracks
+PASS Jamendo adapter does not admit ordinary commercial/CC-BY catalog licenses
+music provider adapter tests completed
+✔ tests\music-provider-adapters.test.js (201.6507ms)
+✔ generated previews keep their database name and disk path aligned (3.4378ms)
+✔ community catalog and publishing routes are mounted (2.8156ms)
+✔ community music identifiers never accept arbitrary URLs or non UUID values (0.9189ms)
+✔ public client mapping preserves authoritative moderation and reuse fields (2.9774ms)
+✔ schema includes rights audit, moderation, anti-abuse listens and reports (3.5502ms)
+✔ production upload fails closed when antivirus is required but unavailable (2.4431ms)
+✔ native bcrypt validates existing bcryptjs hashes and rejects bad passwords (88.6598ms)
+✔ new native hashes keep the existing algorithm and configured cost (608.7234ms)
+✔ new password length is bounded in UTF-8 bytes rather than characters (2.3386ms)
+✔ aliases match route precedence and invalid short input remains delegated (0.621ms)
+✔ every new account password write is guarded while legacy login stays compatible (14.0243ms)
+notification-digest-routes tests passed
+✔ tests\notification-digest-routes.test.js (489.0611ms)
+✔ ephemeral invite reaches the recipient stream without storing social activity (1.9527ms)
+✔ cancel and response retain the same call ID for out of order delivery (0.4967ms)
+✔ ordinary messages do not emit duplicate notification events (0.3382ms)
+✔ unavailable gateway reports failure so push remains an independent channel (0.3534ms)
+✔ password recovery codes are high entropy and shown in a readable format (4.1352ms)
+✔ password recovery hash accepts case and separators without sharing the 2FA hash domain (5.3797ms)
+✔ email codes have exactly six digits; hashing binds the email and preserves leading zeros (5.458ms)
+✔ the code is consumed before a separate password-reset grant is issued (1.8948ms)
+✔ five incorrect attempts lock the code even if a correct guess follows (3.1151ms)
+✔ unknown, expired and malformed codes do not issue a reset grant (0.934ms)
+✔ request serializes on the account, stores a hash and invalidates old grants (1.2102ms)
+✔ encrypted mail is bound to its job and hides the recipient and recovery code (5.4418ms)
+✔ retries are bounded and error diagnostics exclude raw SMTP content (0.8378ms)
+✔ enqueue replaces older deliveries and persists only an authenticated encrypted payload (2.5504ms)
+✔ successful delivery validates the current code and wipes its encrypted payload (1.7434ms)
+✔ superseded or consumed codes are cancelled without sending (1.0542ms)
+✔ transient failures retry while permanent and exhausted failures wipe secrets (4.9ms)
+✔ SMTP recovery requires a configured sender and encrypted connection (2.2997ms)
+✔ SMTP recovery rejects missing credentials and header injection (1.0908ms)
+✔ game and platform must belong to the same user-game entry (2.6748ms)
+✔ a role in another game cannot satisfy the selected game (0.6203ms)
+✔ discovery singular fields and session arrays express the same constraints (0.4981ms)
+✔ multiple games are alternatives but every mandatory field must match one entry (0.7539ms)
+✔ language, region, play style and microphone are mandatory when requested (0.9231ms)
+✔ explicit platform is not relaxed merely because a different game supports cross-play (0.3564ms)
+✔ unfiltered discovery does not require a game while a game constraint does (0.5036ms)
+✔ normalization is shared, bounded, case-insensitive and does not treat false text as true (3.1392ms)
+✔ SQL receives every normalized mandatory filter before its bounded candidate limit (1.4913ms)
+playmatch catalog tests passed
+✔ tests\playmatch-catalog.test.js (330.5237ms)
+✔ outsiders cannot decide or replay any connection state (11.8887ms)
+✔ the wrong participant cannot replay the other participants decision (2.9643ms)
+✔ only the authorized actor receives an idempotent replay (1.6324ms)
+✔ real-schema diagnostic stays read-only and does not print account identifiers (3.386ms)
+✔ empty real database is explicitly skipped rather than counted as verified (0.5871ms)
+✔ diagnostic rolls back when a real candidate query fails (1.2796ms)
+playmatch routes tests passed
+✔ tests\playmatch-routes.test.js (405.7336ms)
+postgrest security tests passed
+✔ tests\postgrest-security.test.js (1157.7166ms)
+production configuration fail-closed tests passed
+✔ tests\production-config.test.js (4629.5148ms)
+profile merge tests passed
+✔ tests\profile-merge.test.js (348.5681ms)
+✔ normalizes supported profile social links (5.013ms)
+✔ rejects look-alike, insecure and malformed links (0.5628ms)
+✔ profile visits are enabled when the owner has not set a preference (1.8713ms)
+✔ an explicit opt-out remains disabled (0.402ms)
+✔ public profiles never expose the email while defaulting visits (0.3997ms)
+proximity route tests passed
+✔ tests\proximity-routes.test.js (322.1962ms)
+✔ private, carrier-grade, loopback, reserved and malformed addresses cannot substitute for public ingress (11.749ms)
+✔ origins with credentials, paths, query, IPs or non-TLS schemes are rejected (1.1028ms)
+✔ DNS replies must answer the requested name and contain public addresses (2.2493ms)
+✔ CNAME chains are accepted only when connected to the requested hostname (0.5478ms)
+✔ health requires an OK body and signaling requires an actual handshake (0.4678ms)
+✔ both public addresses and all three routes are checked without system DNS (2.1911ms)
+✔ one broken public ingress is degraded even when another is reachable (1.2156ms)
+✔ private-only or unavailable DNS never falls back to a private host route (1.3089ms)
+✔ one resolver failure is tolerated if the other returns public answers (1.6048ms)
+✔ oversized DNS answers remain bounded and do not claim complete verification (1.6997ms)
+✔ public mention handles derive from display names without exposing emails (4.9873ms)
+✔ extracts unique public mentions without interpreting email addresses (14.5656ms)
+✔ resolves only a single matching public name, including profile overrides (1.4484ms)
+✔ shared profiles use readable metadata, escape untrusted text and omit private fields (4.4288ms)
+✔ guest web view includes only public and non-sensitive profile posts (6.8018ms)
+✔ profile card is a readable JPEG and escapes profile content (308.8108ms)
+✔ public profile preview does not reveal unavailable profiles (214.0456ms)
+✔ the monitor checks public TLS independently of private host routing (3.8991ms)
+﹣ public read-path monitor tolerates isolated failures and alerts on the third consecutive failure (0.3405ms) # validated on the Linux production target
+[push] Firebase disabled {
+  code: 'INTERNAL_ERROR',
+  messageRef: '05eb04e2943ae3d31c31acf1',
+  message: 'Firebase service account not found at /run/secrets/firebase-service-account.json'
+}
+push notification payload tests passed
+✔ tests\push-notifications.test.js (460.9758ms)
+✔ own position can be computed outside top 100 while the published list remains bounded (41.5906ms)
+✔ hidden profiles cannot appear in rankings or inflate a public position (2.5557ms)
+✔ read-path budgets include the body for JSON, avatars and video ranges (1310.38ms)
+✔ diagnostic selection prefers real accounts over newly used disposable fixtures (2.9069ms)
+✔ monitor uses canonical API origin before a rotating legacy tunnel (0.6794ms)
+✔ realtime delivery has a timeout and deduplicates recipient notifications (4.4226ms)
+✔ failed delivery returns false so callers can recover from persisted state (0.7756ms)
+✔ detect actual file content instead of trusting the declared MIME type (5.8379ms)
+✔ valid evidence uploads and temporary files are removed when not committed (262.2368ms)
+✔ spoofed content, oversized files and more than five files fail without leaving files (288.2184ms)
+✔ authorized administrators can download private dot-directory files; anonymous and wrong-case requests cannot (76.7593ms)
+request-observability tests passed
+✔ tests\request-observability.test.js (869.1046ms)
+request security tests passed
+✔ tests\request-security.test.js (249.83ms)
+scheduled-message-jobs tests passed
+✔ tests\scheduled-message-jobs.test.js (249.0079ms)
+✔ scheduled monitor exercises only the read RPC and accepts a genuinely empty list (124.2891ms)
+✔ scheduled monitor rejects malformed success payload instead of reporting no jobs (27.6133ms)
+✔ scheduled monitor measures completion of a slow body (228.0565ms)
+schema initializer tests passed
+✔ tests\schema-initializer.test.js (274.5083ms)
+✔ service smoke never mutates data or prints identities/tokens (5.3914ms)
+✔ an HTTP failure makes the readiness evidence fail (1.1679ms)
+✔ edge keeps Socket.IO polling requests sticky while allowing signaling replicas (3.8064ms)
+✔ edge preserves Cloudflare visitor IP and public protocol for downstream limits (2.4889ms)
+✔ edge serves authorized storage bytes from a read-only internal mount (1.0915ms)
+✔ edge compresses API metadata without compressing streamed media types (0.8049ms)
+✔ edge access logs never persist query tokens or direct client identifiers (0.9524ms)
+✔ maintained production containers pin runtime patch versions (2.5996ms)
+✔ stateless Node services run non-root with read-only filesystems (6.1926ms)
+✔ signaling Redis is private, authenticated and durable (0.9228ms)
+✔ safe deploy blocks unsupported signaling replica counts by default (2.6115ms)
+✔ full deploy commits release metadata only after validation and can restore it (4.541ms)
+✔ production verifier checks release identity and API metadata (3.6253ms)
+✔ targeted API deploy records an exact artifact digest (2.0137ms)
+✔ quick tunnel rotation preserves a healthy endpoint and reloads edge after container changes (1.8043ms)
+✔ health watchdog holds the compose lock through edge DNS reconciliation (1.5195ms)
+✔ public read-path monitor records degradation without restarting healthy services (2.4653ms)
+✔ all maintained realtime clients send a bounded scope affinity key (12.4112ms)
+socialization cards routes tests passed
+✔ tests\socialization-cards-routes.test.js (229.932ms)
+socialization local fallback source tests passed
+✔ tests\socialization-local-fallback-source.test.js (240.1119ms)
+socialization routes tests passed
+✔ tests\socialization-routes.test.js (241.3458ms)
+socialization safe candidate provider tests passed
+✔ tests\socialization-safe-candidate-provider.test.js (285.196ms)
+✔ a missing module blocks deployment without executing source code (29.2745ms)
+✔ the checked-out API has a complete literal dependency closure (167.2064ms)
+✔ explicit sticker removal stays removed when the request is repeated (1.05ms)
+✔ explicit sticker add stays saved when the request is repeated (0.2057ms)
+✔ older clients retain toggle behavior (0.1346ms)
+✔ a saved message sticker is registered once in a private pack, then removed idempotently (5.2005ms)
+✔ two users saving the same sticker keep separate private catalog entries (1.7358ms)
+✔ an arbitrary media URL cannot be promoted to a saved sticker (1.709ms)
+✔ catalog sticker identity survives tunnel rotation, encoded names and signed URL refresh (2.4114ms)
+✔ private packs require ownership, including the migrated account identity (0.5532ms)
+✔ removed packs and items cannot grant reuse even to their owner (0.2968ms)
+✔ storage identity rejects malformed or ambiguous names and preserves literal plus/percent (0.4197ms)
+✔ externally hosted catalog stickers must match the exact HTTP URL (0.4803ms)
+✔ accessible external catalog stickers can be sent without a local storage row (3.3979ms)
+✔ merged catalog revokes imported public permission when a local pack override is private or deleted (2.1723ms)
+✔ chat: owned uploads and public pack stickers work, strangers' private packs do not (2.8239ms)
+✔ group: owned uploads and public pack stickers work, strangers' private packs do not (1.8026ms)
+✔ community: owned uploads and public pack stickers work, strangers' private packs do not (1.4668ms)
+✔ video comment: owned uploads and public pack stickers work, strangers' private packs do not (2.0796ms)
+✔ pack insertion uses the same revocation policy; forged media is not laundered through a new pack (3.7126ms)
+✔ an authenticated user cannot delete a legacy storage object without an owner (152.0407ms)
+✔ published video and thumbnail objects cannot be deleted through generic storage (34.5909ms)
+storage reference audit tests passed
+✔ tests\storage-reference-audit.test.js (620.4479ms)
+storage-routes tests passed
+✔ tests\storage-routes.test.js (1186.6509ms)
+storage URL canonicalization tests passed
+✔ tests\storage-url-canonicalization.test.js (373.0327ms)
+✔ bounded messages and expiry are required (11.305ms)
+✔ maintenance validates both times and preserves timezone as UTC (0.7222ms)
+✔ update links cannot be overridden with arbitrary downloads (0.5828ms)
+✔ only full administrators can publish global notices (0.6455ms)
+✔ public notice contains no creator identity or delivery recipients (0.432ms)
+✔ global notification and outbox commit atomically and a duplicate does not broadcast twice (1.9853ms)
+✔ delivery retries failures and uses the persisted recipient and notification identity (1.9929ms)
+✔ admin mutations always have the authorization middleware and public reads do not (0.7484ms)
+system health contract tests passed
+✔ tests\system-health.test.js (257.2123ms)
+✔ RFC 6238 SHA1 vector, adjacent clock window and replay prevention (23.4687ms)
+✔ factor secrets are authenticated and recovery codes are random one-use identifiers (6.7829ms)
+✔ visible names may repeat while public handles obey a separate policy (2.6067ms)
+✔ availability checks every stored profile source and excludes the owner (1.9386ms)
+verify-messaging-read-paths tests passed
+✔ profiles without avatar URLs are valid but image delivery is explicitly untested (1.818ms)
+✔ available avatar failures still fail messaging verification (2.1948ms)
+✔ successful avatars report verified coverage (0.7476ms)
+verify-social-read-paths tests passed
+✔ tests\verify-social-read-paths.test.js (484.6276ms)
+✔ video chapters keep ordered millisecond positions inside duration (3.1005ms)
+✔ video chapters reject duplicates, reordering, invalid titles, excess and out-of-range time (0.9166ms)
+✔ collection names are bounded and reject control characters (1.783ms)
+✔ invalid create, collection id and reorder stop before any database mutation (2.3337ms)
+✔ history rejects invalid positions and videos the viewer cannot open (3.1663ms)
+✔ history writes and deletes only the current account playback record (2.2834ms)
+✔ history hides deleted and private video metadata and validates cursor (1.6512ms)
+✔ publish attempt IDs require UUIDs and reject path-like values (1.8049ms)
+✔ an exact retry returns the publication; changed content conflicts (0.8952ms)
+✔ search normalizes hashtags and accents, bounds only the query (2.765ms)
+✔ comment search includes visible comments and excludes deleted, reported and unrelated videos (1.9054ms)
+✔ SQL wildcard characters are literal search text (0.4095ms)
+✔ watch-later mutations are private and reject invisible videos (5.0539ms)
+✔ watch-later list keeps unavailable entries without exposing private metadata (1.5915ms)
+✔ watch-later list validates cursor before querying (0.7025ms)
+✔ watch-later supports oldest-first cursor ordering without mixing sorts (4.1181ms)
+✔ stale signaling disconnect cannot delete a newer voice presence row (7.8824ms)
+✔ short codes are assigned in one locked migration and preserve old aliases (2.2364ms)
+✔ room creation rejects owner changes atomically and assigns server codes (8.7495ms)
+✔ legacy codes and channel aliases remain indexed and resolvable (10.4083ms)
+web session security tests passed
+✔ tests\web-session-security.test.js (183.9725ms)
+ℹ tests 350
+ℹ suites 0
+ℹ pass 348
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 2
+ℹ todo 0
+ℹ duration_ms 7402.7116

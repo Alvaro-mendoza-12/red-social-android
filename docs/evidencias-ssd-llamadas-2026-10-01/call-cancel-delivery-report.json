@@ -1,0 +1,67 @@
+{
+  "base": "https://conectate.tail9b267c.ts.net",
+  "passed": true,
+  "measurements": [
+    {
+      "cycle": 0,
+      "action": "invite",
+      "deliveryMs": 53
+    },
+    {
+      "cycle": 0,
+      "action": "cancel",
+      "deliveryMs": 38
+    },
+    {
+      "cycle": 1,
+      "action": "invite",
+      "deliveryMs": 25
+    },
+    {
+      "cycle": 1,
+      "action": "cancel",
+      "deliveryMs": 34
+    },
+    {
+      "cycle": 2,
+      "action": "invite",
+      "deliveryMs": 29
+    },
+    {
+      "cycle": 2,
+      "action": "cancel",
+      "deliveryMs": 25
+    },
+    {
+      "cycle": 3,
+      "action": "invite",
+      "deliveryMs": 37
+    },
+    {
+      "cycle": 3,
+      "action": "cancel",
+      "deliveryMs": 35
+    },
+    {
+      "cycle": 4,
+      "action": "invite",
+      "deliveryMs": 21
+    },
+    {
+      "cycle": 4,
+      "action": "cancel",
+      "deliveryMs": 40
+    },
+    {
+      "cycle": 5,
+      "action": "cancel",
+      "deliveryMs": 29
+    },
+    {
+      "cycle": 5,
+      "action": "invite",
+      "deliveryMs": 29
+    }
+  ],
+  "failure": null
+}

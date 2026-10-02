@@ -6,4 +6,5 @@ internal class DeferredNativeDisposals<T : Any> {
     @Synchronized fun add(value: T) { entries.add(value) }
     @Synchronized fun claim(value: T): Boolean = entries.remove(value)
     @Synchronized fun drain(): List<T> = entries.toList().also { entries.clear() }
+    @Synchronized fun isEmpty(): Boolean = entries.isEmpty()
 }

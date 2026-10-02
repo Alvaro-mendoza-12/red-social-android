@@ -94,9 +94,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     lateinit var appSettingsPreferences: AppSettingsPreferences
 
     private val serviceScope = newSafeScope("FirebaseMessagingService", Dispatchers.IO)
-    private val callGuardPrefs by lazy {
-        applicationContext.getSharedPreferences(CALL_GUARD_PREFS, Context.MODE_PRIVATE)
-    }
+    private val callCancellationGuard by lazy { CallCancellationGuard(this) }
 
     override fun onNewToken(token: String) {
         android.util.Log.d(TAG, "FCM token refreshed successfully")
@@ -295,9 +293,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     notificationManager.cancel(callId.hashCode())
                     // A late cancel for a losing simultaneous call must never stop
                     // the different call that won collision resolution.
-                    if (cancelsPendingIncoming) {
-                        IncomingCallForegroundService.stop(this)
-                    }
+                    IncomingCallForegroundService.stop(this, callId)
                     if (isTargetingActiveAccount && cancelsPendingIncoming) {
                         callRepository.dismissIncomingInvite()
                     }
@@ -999,42 +995,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun markCallRecentlyCancelled(callId: String) {
-        var cleanId = callId.trim()
-        if (cleanId.isBlank()) return
-        var now = System.currentTimeMillis()
-        pruneOldCallGuards(now)
-        callGuardPrefs.edit()
-            .putLong("$CALL_GUARD_CANCELLED_PREFIX$cleanId", now)
-            .apply()
+        callCancellationGuard.mark(callId)
     }
 
     private fun wasCallRecentlyCancelled(callId: String): Boolean {
-        var cleanId = callId.trim()
-        if (cleanId.isBlank()) return false
-        val key = "$CALL_GUARD_CANCELLED_PREFIX$cleanId"
-        val cancelledAt = callGuardPrefs.getLong(key, 0L)
-        if (cancelledAt <= 0L) return false
-        var now = System.currentTimeMillis()
-        return if (now - cancelledAt <= CALL_GUARD_CANCEL_WINDOW_MS) {
-            true
-        } else {
-            callGuardPrefs.edit().remove(key).apply()
-            false
-        }
-    }
-
-    private fun pruneOldCallGuards(now: Long = System.currentTimeMillis()) {
-        val editor = callGuardPrefs.edit()
-        var changed = false
-        callGuardPrefs.all.forEach { (key, value) ->
-            if (!key.startsWith(CALL_GUARD_CANCELLED_PREFIX)) return@forEach
-            val timestamp = value as? Long ?: return@forEach
-            if (now - timestamp > CALL_GUARD_CANCEL_WINDOW_MS) {
-                editor.remove(key)
-                changed = true
-            }
-        }
-        if (changed) editor.apply()
+        return callCancellationGuard.contains(callId)
     }
 
     private fun isStaleCallInvite(rawCreatedAt: String?): Boolean {
@@ -1071,9 +1036,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     companion object {
         private const val TAG = "MyFirebaseMsgService"
-        private const val CALL_GUARD_PREFS = "call_notification_guard"
-        private const val CALL_GUARD_CANCELLED_PREFIX = "cancelled_call_"
-        private const val CALL_GUARD_CANCEL_WINDOW_MS = 120_000L
         private const val CALL_INVITE_MAX_AGE_MS = 60_000L
         private const val LIVE_NOTIFICATION_GROUP = "novvin_live_notifications"
         private const val LIVE_NOTIFICATION_TAG = "live_started"

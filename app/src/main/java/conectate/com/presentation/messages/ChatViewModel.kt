@@ -808,6 +808,7 @@ class ChatViewModel @Inject constructor(
     fun sendMediaMessage(uri: Uri, messageType: String, content: String = "") {
         if (!ensureNotBlockedForSending()) return
         if (chatId == null) return
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             try {
@@ -832,7 +833,9 @@ class ChatViewModel @Inject constructor(
                     chatId = cid,
                     content = outboundContent,
                     mediaUri = uri,
-                    mediaType = messageType
+                    mediaType = messageType,
+                    replyToId = replySnapshot.replyTo?.id,
+                    onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
                 )
                 if (result.isFailure) {
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())
@@ -859,6 +862,7 @@ class ChatViewModel @Inject constructor(
         if (!ensureNotBlockedForSending()) return
         val mediaItems = items.filter { it.uri != Uri.EMPTY && it.type.isNotBlank() }
         if (mediaItems.isEmpty()) return
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             try {
@@ -891,7 +895,9 @@ class ChatViewModel @Inject constructor(
                         content = outboundContent,
                         mediaUri = outgoing.uri,
                         mediaType = messageType,
-                        allowRapidMediaBatch = mediaItems.size > 1
+                        allowRapidMediaBatch = mediaItems.size > 1,
+                        replyToId = replySnapshot.replyTo?.id,
+                        onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
                     )
                     if (result.isFailure) {
                         failedCount += 1
@@ -968,6 +974,7 @@ class ChatViewModel @Inject constructor(
             conectate.com.presentation.common.AppFeedbackBus.showError("Sticker inválido")
             return
         }
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             try {
@@ -990,7 +997,9 @@ class ChatViewModel @Inject constructor(
                     chatId = cid,
                     content = caption,
                     mediaType = "sticker",
-                    existingMediaUrl = cleanUrl
+                    existingMediaUrl = cleanUrl,
+                    replyToId = replySnapshot.replyTo?.id,
+                    onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
                 )
                 if (result.isFailure) {
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())
@@ -1377,6 +1386,7 @@ class ChatViewModel @Inject constructor(
     ) {
         if (!ensureNotBlockedForSending()) return
         if (_isSending.value) return
+        val replySnapshot = textComposer.captureReply()
         viewModelScope.launch {
             _isSending.value = true
             try {
@@ -1400,7 +1410,9 @@ class ChatViewModel @Inject constructor(
                     chatId = cid,
                     content = content,
                     mediaType = contentType,
-                    existingMediaUrl = mediaUrl
+                    existingMediaUrl = mediaUrl,
+                    replyToId = replySnapshot.replyTo?.id,
+                    onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
                 )
                 if (result.isFailure) {
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())

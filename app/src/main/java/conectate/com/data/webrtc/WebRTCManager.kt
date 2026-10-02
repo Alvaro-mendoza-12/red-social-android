@@ -265,7 +265,12 @@ class WebRTCManager(
     private val managedIceRefreshSkewSeconds = 5 * 60L
     private val managedIceRefreshRetryMs = 30_000L
     
-    private val executor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val executor = MediaTaskExecutor(onFailure = { error ->
+        reportFailure("webrtc_native_task", "Native media task failed", error)
+    })
+    private val destroyRequested = AtomicBoolean(false)
+    private val destructionCallbacks = mutableListOf<() -> Unit>()
+    private var destroyed = false
     
     // Public STUN fallbacks used while managed TURN is loading or if it fails.
     private var iceServers = buildList {
@@ -382,7 +387,7 @@ class WebRTCManager(
 
     suspend fun hardResetAwait() {
         suspendCancellableCoroutine { continuation ->
-            executor.execute {
+            executor.execute(onUnavailable = { if (continuation.isActive) continuation.resume(Unit) }) {
                 val failure = runCatching { hardResetInternal() }.exceptionOrNull()
                 if (continuation.isActive) {
                     if (failure == null) continuation.resume(Unit)
@@ -400,9 +405,10 @@ class WebRTCManager(
         // Keep the factory and ADM alive; quick re-entry can otherwise leave
         // device camera/audio drivers locked. Every native release is best-effort
         // so one vendor failure cannot strand the remaining resources.
-        peerConnections.values.toList().forEach { peer -> runCatching { peer.dispose() } }
+        val peers = peerConnections.values.toList()
         peerConnections.clear()
-        drainDeferredPeerDisposals()
+        _remoteVideoTracks.value = emptyMap()
+        peers.forEach(::disposePeerAfterRendererDetach)
             
             // 2. Clear state maps
             remoteAudioTracks.clear()
@@ -433,9 +439,7 @@ class WebRTCManager(
         val source = localVideoSource.also { localVideoSource = null }
         val track = _localVideoTrackFlow.value
         _localVideoTrackFlow.value = null
-        runCatching { track?.setEnabled(false) }
-        runCatching { track?.dispose() }
-        releaseVideoPipeline(capturer, helper, source)
+        releaseReplacedVideoPipelineAfterRendererDetach(track, capturer, helper, source)
 
         Log.i("WebRTCManager", "✅ Media state cleared and ready for fresh re-entry")
     }
@@ -561,7 +565,8 @@ class WebRTCManager(
                 if (
                     peerConnections.isNotEmpty() ||
                     videoCapturer != null ||
-                    localSocketId.isNotBlank()
+                    localSocketId.isNotBlank() || !deferredPeerDisposals.isEmpty() ||
+                    synchronized(deferredVideoCleanupLock) { deferredVideoCleanups.isNotEmpty() }
                 ) {
                     return@execute
                 }
@@ -575,14 +580,14 @@ class WebRTCManager(
 
                 drainDeferredPeerDisposals()
                 drainDeferredVideoCleanups()
-                localAudioTrack?.dispose()
+                runCatching { localAudioTrack?.dispose() }
                 localAudioTrack = null
-                localAudioSource?.dispose()
+                runCatching { localAudioSource?.dispose() }
                 localAudioSource = null
 
-                factory?.dispose()
+                runCatching { factory?.dispose() }
                 factory = null
-                audioDeviceModule?.release()
+                runCatching { audioDeviceModule?.release() }
                 audioDeviceModule = null
             }
         }.onFailure { error ->
@@ -598,24 +603,24 @@ class WebRTCManager(
         networkRecoveryJob = null
         
         // Stop all captures first
-        videoCapturer?.stopCapture()
-        videoCapturer?.dispose()
+        runCatching { videoCapturer?.stopCapture() }
+        runCatching { videoCapturer?.dispose() }
         videoCapturer = null
         
-        surfaceTextureHelper?.dispose()
+        runCatching { surfaceTextureHelper?.dispose() }
         surfaceTextureHelper = null
         
         val localVideoTrack = _localVideoTrackFlow.value
         _localVideoTrackFlow.value = null
         runCatching { localVideoTrack?.setEnabled(false) }
         runCatching { localVideoTrack?.dispose() }
-        localVideoSource?.dispose()
+        runCatching { localVideoSource?.dispose() }
         localVideoSource = null
         
-        localAudioTrack?.dispose()
+        runCatching { localAudioTrack?.dispose() }
         localAudioTrack = null
         
-        peerConnections.values.forEach { it.dispose() }
+        peerConnections.values.forEach { runCatching { it.dispose() } }
         peerConnections.clear()
         drainDeferredPeerDisposals()
         disconnectRecoveryJobs.values.forEach { it.cancel() }
@@ -645,20 +650,22 @@ class WebRTCManager(
 
         // Audio sources are proxies owned by the factory's signaling thread.
         // Release them while that thread still exists, before disposing the factory.
-        localAudioSource?.dispose()
+        runCatching { localAudioSource?.dispose() }
         localAudioSource = null
 
-        factory?.dispose()
+        runCatching { factory?.dispose() }
         factory = null
 
-        audioDeviceModule?.release()
+        runCatching { audioDeviceModule?.release() }
         audioDeviceModule = null
 
-        rootEglBase?.release()
+        runCatching { rootEglBase?.release() }
         rootEglBase = null
 
         statsScope.cancel()
         managedIceRefreshJob?.cancel()
+        renegotiateJob?.cancel()
+        renegotiateScope.cancel()
         asyncScope.cancel()
         synchronized(liveManagers) { liveManagers.remove(this) }
         executor.shutdown()
@@ -2101,7 +2108,7 @@ class WebRTCManager(
         onProjectionStopped: () -> Unit = {},
         onComplete: (Boolean) -> Unit = {}
     ) {
-        executor.execute {
+        executor.execute(onUnavailable = { onComplete(false) }) {
             var completionSent = false
             val previousCapturer = videoCapturer
             val previousHelper = surfaceTextureHelper
@@ -2321,7 +2328,7 @@ class WebRTCManager(
 
     suspend fun stopVideoAwait() {
         suspendCancellableCoroutine { continuation ->
-            executor.execute {
+            executor.execute(onUnavailable = { if (continuation.isActive) continuation.resume(Unit) }) {
                 val failure = runCatching { stopVideoInternal() }.exceptionOrNull()
                 if (continuation.isActive) {
                     if (failure == null) continuation.resume(Unit)
@@ -2451,8 +2458,30 @@ class WebRTCManager(
     }
 
     fun destroy(onComplete: () -> Unit = {}) {
+        synchronized(destructionCallbacks) {
+            if (destroyed) {
+                runCatching { onComplete() }
+                return
+            }
+            destructionCallbacks += onComplete
+        }
+        if (!destroyRequested.compareAndSet(false, true)) return
         executor.execute {
-            try { destroyInternal() } finally { onComplete() }
+            hardResetInternal()
+            // Publish null/empty tracks before releasing the factory and EGL.
+            // The renderer needs a frame to remove its sinks on the main thread.
+            asyncScope.launch {
+                delay(rendererDetachGraceMs)
+                executor.execute {
+                    try { destroyInternal() } finally {
+                        val callbacks = synchronized(destructionCallbacks) {
+                            destroyed = true
+                            destructionCallbacks.toList().also { destructionCallbacks.clear() }
+                        }
+                        callbacks.forEach { callback -> runCatching { callback() } }
+                    }
+                }
+            }
         }
     }
 

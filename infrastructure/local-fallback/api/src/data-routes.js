@@ -2958,6 +2958,15 @@ async function createLocalNotification(pool, input) {
       updated_at: new Date().toISOString(),
       ephemeral: true,
     }
+    if (input?.deferDispatch !== true) {
+      try {
+        // Foreground clients need cancellation immediately, independently of
+        // FCM delivery. These transient events still stay out of social history.
+        await require('./notification-realtime-envelope').publishEphemeralCallEvent(notification, originalExtraData)
+      } catch (error) {
+        console.error('[realtime] ephemeral call alert failed', safeErrorLogDetails(error))
+      }
+    }
     try {
       const { sendPushForNotification } = require('./push-notifications')
       const pushDelivery = sendPushForNotification(pool, notification, originalExtraData).catch((error) => {

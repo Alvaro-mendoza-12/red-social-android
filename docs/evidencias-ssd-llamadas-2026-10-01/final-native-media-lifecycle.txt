@@ -1,0 +1,6 @@
+
+conectate.com.data.webrtc.MediaTeardownRegressionTest:...
+
+Time: 9.176
+
+OK (3 tests)

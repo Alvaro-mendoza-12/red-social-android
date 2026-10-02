@@ -27,6 +27,15 @@ internal class QueuedMessageComposer<Reply> {
         internal val consumesDraft: Boolean
     )
 
+    class ReplySnapshot<Reply> internal constructor(val replyTo: Reply?, internal val revision: Long)
+
+    fun captureReply(): ReplySnapshot<Reply> = ReplySnapshot(reply.value, replyRevision)
+
+    /** Media preserves the typed draft and clears only the reply it actually queued. */
+    fun queuedReply(snapshot: ReplySnapshot<Reply>) {
+        if (replyRevision == snapshot.revision) updateReply(null)
+    }
+
     fun updateText(value: String) {
         textRevision++
         mutableText.value = value

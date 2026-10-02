@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.CallInvite
 import conectate.com.data.service.IncomingCallNotificationFactory
+import conectate.com.data.service.CallCancellationGuard
 import conectate.com.presentation.calls.IncomingCallActivity
 import conectate.com.util.NotificationAccountTarget
 import conectate.com.util.notificationAccountTargetFromIntent
@@ -52,6 +53,12 @@ class IncomingCallForegroundService : Service() {
             return START_NOT_STICKY
         }
 
+        if (CallCancellationGuard(this).contains(invite.callId)) {
+            if (currentCallId == null || currentCallId == invite.callId) stopIncomingCallUi()
+            return START_NOT_STICKY
+        }
+
+        currentCallId = invite.callId
         currentNotificationId = invite.callId.hashCode()
         val avatarBitmap = intent.toAvatarBitmapOrNull()
         try {
@@ -74,6 +81,7 @@ class IncomingCallForegroundService : Service() {
     }
 
     private fun stopIncomingCallUi() {
+        currentCallId = null
         timeoutJob?.cancel()
         timeoutJob = null
         stopLoopingRingtone()
@@ -127,6 +135,7 @@ class IncomingCallForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        currentCallId = null
         stopLoopingRingtone()
         serviceScope.cancel()
     }
@@ -154,7 +163,10 @@ class IncomingCallForegroundService : Service() {
             ContextCompat.startForegroundService(context, intent)
         }
 
-        fun stop(context: Context) {
+        @Volatile private var currentCallId: String? = null
+
+        fun stop(context: Context, callId: String? = null) {
+            if (callId != null && !callId.equals(currentCallId, ignoreCase = true)) return
             context.stopService(Intent(context, IncomingCallForegroundService::class.java))
         }
     }

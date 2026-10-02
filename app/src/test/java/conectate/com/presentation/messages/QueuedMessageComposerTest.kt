@@ -10,6 +10,30 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class QueuedMessageComposerTest {
+    @Test fun `a queued video or sticker clears its reply and preserves the typed text`() {
+        val composer = QueuedMessageComposer<String>()
+        composer.updateText("Borrador")
+        composer.updateReply("sticker-original")
+        val media = composer.captureReply()
+        assertEquals("sticker-original", media.replyTo)
+        composer.queuedReply(media)
+        assertNull(composer.reply.value)
+        assertEquals("Borrador", composer.text.value)
+    }
+
+    @Test fun `late media upload cannot clear a newer reply or another account draft`() {
+        val composer = QueuedMessageComposer<String>()
+        composer.updateReply("original")
+        val media = composer.captureReply()
+        composer.updateReply("otro")
+        composer.queuedReply(media)
+        assertEquals("otro", composer.reply.value)
+        val previousAccount = composer.captureReply()
+        composer.reset()
+        composer.updateReply("cuenta-nueva")
+        composer.queuedReply(previousAccount)
+        assertEquals("cuenta-nueva", composer.reply.value)
+    }
     @Test fun `local acceptance clears composer and allows another send before server responds`() = runTest {
         val composer = QueuedMessageComposer<String>()
         val localSave = CompletableDeferred<Unit>()

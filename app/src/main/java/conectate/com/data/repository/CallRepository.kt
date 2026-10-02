@@ -29,6 +29,8 @@ import conectate.com.data.signaling.attachSignalingAffinity
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.webrtc.WebRTCManager
+import conectate.com.data.service.CallCancellationGuard
+import conectate.com.services.IncomingCallForegroundService
 import conectate.com.services.CallForegroundService
 import conectate.com.util.CallTonePlayer
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -82,6 +84,7 @@ class CallRepository @Inject constructor(
     private val appMetrics: AppMetrics,
     private val ubuntuRealtimeClient: UbuntuRealtimeClient
 ) {
+    private val callCancellationGuard = CallCancellationGuard(context)
     @Serializable
     private data class CallInviteBroadcastPayload(
         val callId: String,
@@ -276,6 +279,11 @@ class CallRepository @Inject constructor(
 
     fun handleExternalCallResponse(callId: String, action: String, fromUserId: String) {
         val safeAction = action.trim().lowercase()
+        if (safeAction in setOf("cancel", "decline", "busy", "end", "ended", "collision", "missed")) {
+            callCancellationGuard.mark(callId)
+            IncomingCallForegroundService.stop(context, callId)
+            if (_incomingInvite.value?.callId.equals(callId, ignoreCase = true)) dismissIncomingInvite()
+        }
         var call = _activeCall.value
         if (call != null && call.callId == callId) {
             when (safeAction) {
@@ -341,12 +349,9 @@ class CallRepository @Inject constructor(
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
 
-        var profile = loadUserProfileQuick(currentUserId)
-        var callerName = profile?.displayName
-            ?: profile?.username
-            ?: authService.getCurrentUserDisplayName()
-            ?: "Usuario"
-        val callerAvatar = profile?.avatar_url
+        // Names and avatars must not delay the invitation's network request.
+        val callerName = authService.getCurrentUserDisplayName() ?: "Usuario"
+        val callerAvatar: String? = null
 
         var normalizedContextType = contextType.trim().lowercase().ifBlank { "dm" }
         val normalizedContextId = contextId?.trim()?.ifBlank { null }
@@ -361,11 +366,8 @@ class CallRepository @Inject constructor(
         clearEndedCallSummary()
 
         var peerUserId = pendingInvitees.firstOrNull()?.trim()?.ifBlank { null }
-        val peerProfile = peerUserId?.let { loadUserProfileQuick(it) }
-        var peerName = peerProfile?.displayName
-            ?: peerProfile?.username
-            ?: title.ifBlank { null }
-        val peerAvatar = peerProfile?.avatar_url
+        val peerName = title.ifBlank { null }
+        val peerAvatar: String? = null
 
         _activeCall.value = ActiveCall(
             callId = callId,
@@ -400,7 +402,7 @@ class CallRepository @Inject constructor(
         // Fire-and-forget invites
         scope.launch {
             // WhatsApp-like: write a "call started" message in group/community so late joiners can tap to join.
-            runCatching {
+            launch { runCatching {
                 val ctxType = normalizedContextType
                 val ctxId = normalizedContextId
                 if (!ctxId.isNullOrBlank()) {
@@ -429,7 +431,7 @@ class CallRepository @Inject constructor(
                     throwable = error,
                     callId = callId
                 )
-            }
+            } }
 
             val invite = CallInvite(
                 callId = callId,
@@ -441,8 +443,17 @@ class CallRepository @Inject constructor(
                 contextId = contextId,
                 isVideo = isVideo
             )
-            pendingInvitees.forEach { target ->
-                runCatching { sendCallInvite(target, invite) }
+            val targets = pendingInvitees.toList()
+            targets.forEach { target -> launch {
+                if (!canRefreshCallMedia(_activeCall.value, callId)) return@launch
+                runCatching {
+                    sendCallInvite(target, invite)
+                    // The HTTP request can finish after hangup. Deliver cancellation
+                    // again so that a delayed invite cannot leave the recipient ringing.
+                    if (!canRefreshCallMedia(_activeCall.value, callId)) {
+                        sendCallResponse(target, callId, "cancel", currentUserId)
+                    }
+                }
                     .onFailure { error ->
                         logBestEffortFailure(
                             operation = "sendCallInvite(targetUserId=$target)",
@@ -450,7 +461,7 @@ class CallRepository @Inject constructor(
                             callId = invite.callId
                         )
                     }
-            }
+            } }
         }
 
         Result.success(callId)
@@ -518,6 +529,11 @@ class CallRepository @Inject constructor(
     }
 
     suspend fun acceptIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
+        if (callCancellationGuard.contains(invite.callId)) {
+            IncomingCallForegroundService.stop(context, invite.callId)
+            dismissIncomingInvite()
+            return@withContext Result.failure(Exception("Esta llamada ya finalizó."))
+        }
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
@@ -567,6 +583,8 @@ class CallRepository @Inject constructor(
 
         scope.launch {
             runCatching {
+                if (callCancellationGuard.contains(invite.callId) ||
+                    !_activeCall.value?.callId.equals(invite.callId, ignoreCase = true)) return@launch
                 sendCallResponse(
                     targetUserId = invite.callerUserId,
                     callId = invite.callId,
@@ -580,6 +598,10 @@ class CallRepository @Inject constructor(
                     callId = invite.callId
                 )
             }
+        }
+        if (callCancellationGuard.contains(invite.callId)) {
+            if (_activeCall.value?.callId.equals(invite.callId, ignoreCase = true)) endCallInternal("Llamada finalizada")
+            return@withContext Result.failure(Exception("Esta llamada ya finalizó."))
         }
         prepareCallAudioSession()
         startService()
@@ -669,8 +691,9 @@ class CallRepository @Inject constructor(
             return@withContext Result.success(Unit)
         }
 
+        // Capture before endCallInternal clears the participant/invitation state.
+        val targets = buildEndSignalTargets(currentUserId)
         scope.launch {
-            val targets = buildEndSignalTargets(currentUserId)
             targets.forEach { target ->
                 runCatching {
                     sendCallResponse(
@@ -842,6 +865,7 @@ class CallRepository @Inject constructor(
     }
 
     fun presentIncomingInvite(invite: CallInvite) {
+        if (callCancellationGuard.contains(invite.callId)) return
         if (_activeCall.value != null) return
         val existing = _incomingInvite.value
         if (existing != null && !existing.callId.equals(invite.callId, ignoreCase = true)) return
@@ -1614,6 +1638,7 @@ class CallRepository @Inject constructor(
     private fun endCallInternal(reason: String) {
         var callSnapshot = _activeCall.value
         if (callSnapshot?.connectionState == CallConnectionState.ENDED) return
+        callSnapshot?.let { callCancellationGuard.mark(it.callId) }
         // Invalidate delayed audio work before disconnecting/resetting native media.
         _activeCall.value = callSnapshot?.copy(connectionState = CallConnectionState.ENDED)
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
@@ -1883,10 +1908,9 @@ class CallRepository @Inject constructor(
     }
 
     private fun buildEndSignalTargets(currentUserId: String): List<String> {
-        return ((pendingInvitees.toList()) + _participants.value.map { it.userId })
-            .map { it.trim() }
-            .filter { it.isNotBlank() && !it.equals(currentUserId, ignoreCase = true) }
-            .distinct()
+        val call = _activeCall.value
+        return callEndSignalTargets(currentUserId, pendingInvitees.toList(),
+            _participants.value.map { it.userId }, call?.peerUserId, call?.initiatorUserId)
     }
 
     private suspend fun persistCallOutcome(
