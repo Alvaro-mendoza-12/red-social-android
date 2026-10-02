@@ -1,0 +1,38 @@
+{
+  "unit": {
+    "tests": 1057,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 236
+  },
+  "gallery_android": {
+    "device": "moto g04 / Android 14",
+    "tests": 2,
+    "failures": 0,
+    "seconds": 5.168
+  },
+  "build": {
+    "tasks": [
+      "testDebugUnitTest",
+      "assembleDebug",
+      "assembleAudit"
+    ],
+    "result": "BUILD SUCCESSFUL",
+    "seconds": 344
+  },
+  "artifacts": [
+    {
+      "variant": "debug",
+      "bytes": 277454531,
+      "sha256": "fe3ce7138e7aa337d93852247cedf13e2bfa03e2c51c451d0238caba323a2b7e"
+    },
+    {
+      "variant": "audit",
+      "bytes": 273420701,
+      "sha256": "a549b5afff0c7b10c59cbf09fed10d40b07420fc1df08fced3a355d14e2bbc26"
+    }
+  ],
+  "versionCode": 117,
+  "baseVersionName": "9.0.20"
+}

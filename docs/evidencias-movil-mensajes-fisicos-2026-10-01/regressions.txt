@@ -1,0 +1,6 @@
+Antes: 5 pruebas MIME, 2 fallos con el contenedor isom de las notas de voz.
+Después: 1.057 pruebas unitarias, 0 fallos, errores u omisiones.
+Galería Android física: OK (2 tests), Time: 5.168 segundos.
+Reproducción física: MediaPlayer duration=18135 ms; playback complete.
+Reapertura en caché: Pausar audio y progreso 0:01 visibles en UI nativa.
+No se publican grabaciones, fotos de usuarios, tokens, correos ni registros privados.

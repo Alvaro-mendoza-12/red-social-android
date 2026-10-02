@@ -168,6 +168,14 @@ class MediaUploadGuardTest {
     }
 
     @Test
+    fun `accepts generic mp4 container for an aac voice message`() {
+        val header = byteArrayOf(0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109)
+        listOf("chat-media", "group-audio", "community-audio").forEach { bucket ->
+            assertTrue(guard.validateMetadata(bucket, "owner/voice.m4a", 1024, "audio/mp4", header).allowed)
+        }
+    }
+
+    @Test
     fun `profile music accepts flac and enforces its size limit`() {
         val flacHeader = byteArrayOf(
             0x66, 0x4C, 0x61, 0x43, 0x00, 0x00, 0x00, 0x22,

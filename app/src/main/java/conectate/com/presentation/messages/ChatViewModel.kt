@@ -60,10 +60,7 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.MessageDigest
+import conectate.com.util.ChatAudioPlaybackCache
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
@@ -256,6 +253,8 @@ class ChatViewModel @Inject constructor(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var mediaPlayer: android.media.MediaPlayer? = null
+    private val audioPlaybackCache by lazy { ChatAudioPlaybackCache(File(context.cacheDir, "audio_messages")) }
+    private var audioPlaybackGeneration = 0L
     private var progressJob: Job? = null
     private var forwardSearchJob: Job? = null
 
@@ -1452,14 +1451,15 @@ class ChatViewModel @Inject constructor(
         }
 
         // Play new audio
+        stopAudio()
+        val generation = audioPlaybackGeneration
         viewModelScope.launch {
             try {
-                // Stop previous
-                stopAudio()
-
                 val playableUrl = getPlayableUrl(url) ?: return@launch
-                
+                if (generation != audioPlaybackGeneration) return@launch
                 playUrl(playableUrl, cid)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 android.util.Log.e("ChatViewModel", "Error playing audio", e)
                 stopAudio()
@@ -1529,9 +1529,20 @@ class ChatViewModel @Inject constructor(
     }
     
     private fun playUrl(url: String, id: String) {
+        val generation = audioPlaybackGeneration
         viewModelScope.launch {
-            val source = resolveAudioPlaybackSource(url)
-            playResolvedAudioSource(source, id)
+            try {
+                val source = resolveAudioPlaybackSource(url)
+                if (generation != audioPlaybackGeneration) return@launch
+                playResolvedAudioSource(source, id)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (generation != audioPlaybackGeneration) return@launch
+                appMetrics.recordFailure("chat_audio_playback", error)
+                stopAudio()
+                conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo reproducir el audio. Inténtalo de nuevo.")
+            }
         }
     }
 
@@ -1539,27 +1550,7 @@ class ChatViewModel @Inject constructor(
         val cleanUrl = UbuntuMedia.resolveUrl(url) ?: url
         if (!cleanUrl.startsWith("http", ignoreCase = true)) return@withContext cleanUrl
 
-        val cached = audioCacheFile(cleanUrl)
-        if (cached.exists() && cached.length() > 0L) return@withContext cached.absolutePath
-
-        runCatching {
-            cached.parentFile?.mkdirs()
-            val connection = (URL(cleanUrl).openConnection() as HttpURLConnection).apply {
-                conectate.com.data.localfallback.UbuntuStorageUrl.publicRequestHeaders.forEach { (key, value) ->
-                    setRequestProperty(key, value)
-                }
-                connectTimeout = 5000
-                readTimeout = 15000
-            }
-            connection.inputStream.use { input ->
-                FileOutputStream(cached).use { output -> input.copyTo(output) }
-            }
-            connection.disconnect()
-            cached.absolutePath
-        }.getOrElse {
-            android.util.Log.w("ChatViewModel", "Audio cache miss/download failed, streaming remote URL", it)
-            cleanUrl
-        }
+        audioPlaybackCache.download(cleanUrl).absolutePath
     }
 
     private fun playResolvedAudioSource(source: String, id: String) {
@@ -1572,13 +1563,6 @@ class ChatViewModel @Inject constructor(
                         .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
-                if (source.startsWith("http", ignoreCase = true)) {
-                    UbuntuMedia.setDataSource(this, source)
-                    prepareAsync()
-                } else {
-                    setDataSource(source)
-                    prepare()
-                }
                 setOnPreparedListener {
                     _currentPlayingAudioId.value = id
                     _audioDuration.value = duration
@@ -1592,16 +1576,11 @@ class ChatViewModel @Inject constructor(
                 }
                 setOnErrorListener { _, _, _ ->
                     stopAudio()
-                    false
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo reproducir el audio. Inténtalo de nuevo.")
+                    true
                 }
-                if (!source.startsWith("http", ignoreCase = true)) {
-                    _currentPlayingAudioId.value = id
-                    _audioDuration.value = duration
-                    applyAudioPlaybackSpeed(this)
-                    start()
-                    _isAudioPlaying.value = true
-                    startProgressTracker()
-                }
+                setDataSource(source)
+                prepareAsync()
             }
         } catch (e: Exception) {
             android.util.Log.e("ChatViewModel", "Audio message playback failed", e)
@@ -1613,22 +1592,13 @@ class ChatViewModel @Inject constructor(
     private fun cacheAudioFromUri(mediaUrl: String, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
-                val target = audioCacheFile(UbuntuMedia.resolveUrl(mediaUrl) ?: mediaUrl)
-                target.parentFile?.mkdirs()
                 context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(target).use { output -> input.copyTo(output) }
+                    audioPlaybackCache.store(UbuntuMedia.resolveUrl(mediaUrl) ?: mediaUrl, input)
                 }
             }.onFailure {
                 android.util.Log.w("ChatViewModel", "Could not cache sent audio", it)
             }
         }
-    }
-
-    private fun audioCacheFile(url: String): File {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(url.toByteArray())
-            .joinToString("") { "%02x".format(it) }
-        return File(File(context.cacheDir, "audio_messages").apply { mkdirs() }, "$digest.m4a")
     }
 
     private fun startProgressTracker() {
@@ -1682,6 +1652,7 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun stopAudio() {
+        audioPlaybackGeneration++
         progressJob?.cancel()
         _currentPlayingAudioId.value = null
         _isAudioPlaying.value = false

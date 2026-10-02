@@ -204,6 +204,15 @@ android {
             buildConfigField("String", "BUILD_ENVIRONMENT", "\"development\"")
         }
 
+        // Keep Play installations and their private data intact during device QA.
+        create("audit") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa"
+            versionNameSuffix = "-qa"
+            matchingFallbacks += listOf("debug")
+            resValue("string", "app_name", "Novvin QA")
+        }
+
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true

@@ -44,6 +44,9 @@ object MediaPlaybackDataSources {
     fun userAgent(versionName: String = BuildConfig.VERSION_NAME): String =
         "NOVVIN/$versionName (Android)"
 
+    /** Native audio caches must use the same public DNS and pooled TLS policy. */
+    internal fun networkClient(): OkHttpClient = mediaHttpClient
+
     fun httpFactory(includeStorageHeaders: Boolean = true): HttpDataSource.Factory {
         val factory = OkHttpDataSource.Factory(mediaHttpClient)
             .setUserAgent(userAgent())

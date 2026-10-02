@@ -30,7 +30,7 @@ El servidor se volvió a comprobar durante esta revisión: nueve contenedores sa
 
 ## Siguiente validación física
 
-Al comenzar, ADB detectaba solamente el emulador. Después se conectaron y autorizaron el Motorola moto g04 y la Samsung SM-X520. El Motorola recibió la APK 117 / 9.0.20-debug conservando datos y sesión; su red predeterminada es celular. La tablet usa Wi-Fi y mantiene la versión anterior 80 / 3.3.18: Android rechazó actualizarla por firma incompatible. Se encontró el almacén PKCS12 original, alias key0; falta su contraseña para firmar una actualización que conserve los datos. No se desinstaló ni borró ninguna cuenta o aplicación. Las pruebas entre versiones distintas deberán indicarse como tales.
+Al comenzar, ADB detectaba solamente el emulador. Después se conectaron y autorizaron el Motorola moto g04 y la Samsung SM-X520. El Motorola recibió la APK 117 / 9.0.20-debug conservando datos y sesión; su red predeterminada es celular. La tablet usa Wi-Fi y mantiene la versión anterior 80 / 3.3.18: Android rechazó actualizarla por firma incompatible. Se encontró un almacén PKCS12, alias key0, pero la instalación de Play utiliza el certificado de firma de Google Play; la llave de subida por sí sola no garantiza una actualización compatible. No se desinstaló ni borró ninguna cuenta o aplicación. Posteriormente se instaló una variante QA independiente con el mismo código, y las pruebas físicas se documentan en la [revisión 40](40-movil-pruebas-fisicas-mensajes-2026-10-01.md).
 
 Orden solicitado por el usuario:
 

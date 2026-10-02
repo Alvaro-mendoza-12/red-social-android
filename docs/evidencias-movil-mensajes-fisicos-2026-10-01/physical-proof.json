@@ -1,0 +1,84 @@
+{
+  "networks": {
+    "Motorola": "LTE celular; Wi-Fi desactivado",
+    "tablet": "Wi-Fi; hotspot Windows con DNS dividido"
+  },
+  "account_isolation": {
+    "original_tablet_package": "conectate.com",
+    "qa_tablet_package": "conectate.com.qa",
+    "original_data_preserved": true
+  },
+  "messages": [
+    {
+      "type": "text",
+      "status": "read",
+      "sender": "QA tablet",
+      "has_media": false
+    },
+    {
+      "type": "text",
+      "status": "read",
+      "sender": "Motorola",
+      "has_media": false
+    },
+    {
+      "type": "sticker",
+      "status": "read",
+      "sender": "Motorola",
+      "has_media": true
+    },
+    {
+      "type": "audio",
+      "status": "read",
+      "sender": "Motorola",
+      "has_media": true
+    },
+    {
+      "type": "sticker",
+      "status": "read",
+      "sender": "QA tablet",
+      "has_media": true
+    }
+  ],
+  "voice": {
+    "seconds": 18.135,
+    "bytes": 152256,
+    "before_upload_http": 422,
+    "before_upload_mime": "video/mp4",
+    "corrected_upload_mime": "audio/mp4",
+    "retry_delivered_once": true,
+    "upload_total_ms": 2039,
+    "upload_transport_ms": 283,
+    "upload_response_wait_ms": 968,
+    "before_playback": "SocketTimeoutException a IP Tailscale privada en Wi-Fi",
+    "after_playback_complete": true,
+    "after_playback_has_timeout": false,
+    "cached_replay_pause_button": true,
+    "cached_replay_progress": true,
+    "human_listening_quality_verified": false
+  },
+  "photo_reply": {
+    "caption_present": true,
+    "image_type": "image",
+    "photo_status": "read",
+    "reply_status": "sent",
+    "correct_reply_target": true
+  },
+  "favorites": {
+    "fresh_qa_empty": true,
+    "observed_counts": [
+      0,
+      1,
+      0,
+      1
+    ],
+    "removed_tile_disappeared": true,
+    "returned_sticker_status": "read",
+    "duplicate_add_menu_changes_to_remove": true
+  },
+  "cold_launch_ms": {
+    "tablet_qa": 1666,
+    "Motorola": 7579
+  },
+  "readiness": "partial: DM tests only; not whole-app certification"
+}

@@ -172,7 +172,11 @@ fun resolveMediaMeta(
             ?: declared?.takeIf { it.startsWith("video/") }
             ?: guessed?.takeIf { it.startsWith("video/") }
             ?: "video/mp4"
-        "audio" -> inferred
+        // MediaMuxer uses generic MP4 brands (for example isom) for AAC-only
+        // recordings too. ftyp identifies the container, not its track types.
+        // Preserve the voice-message kind, including retries of old .mp4 drafts,
+        // so the backend does not try to remux an audio file as a video.
+        "audio" -> inferred?.let { if (it == "video/mp4") "audio/mp4" else it }
             ?: declared?.takeIf { it.startsWith("audio/") }
             ?: guessed?.takeIf { it.startsWith("audio/") }
             ?: "audio/mpeg"

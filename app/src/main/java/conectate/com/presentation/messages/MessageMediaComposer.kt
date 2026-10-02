@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,7 +47,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -65,6 +67,7 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -98,6 +101,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -139,7 +147,7 @@ data class OutgoingMessageMedia(
     val type: String
 )
 
-private data class DeviceMedia(
+internal data class DeviceMedia(
     val id: Long,
     val uri: Uri,
     val type: String,
@@ -437,8 +445,9 @@ private fun android.view.Window.enableLegacyImeResize() {
     setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MessageGalleryStep(
+internal fun MessageGalleryStep(
     media: List<DeviceMedia>,
     filter: String,
     onFilterChange: (String) -> Unit,
@@ -483,7 +492,7 @@ private fun MessageGalleryStep(
             if (selected.isNotEmpty()) {
                 FloatingActionButton(
                     onClick = onContinue,
-                    modifier = Modifier.size(44.dp),
+                    modifier = Modifier.size(48.dp),
                     containerColor = MaterialTheme.colorScheme.primary
                 ) {
                     Icon(Icons.Default.Done, contentDescription = "Continuar")
@@ -491,9 +500,10 @@ private fun MessageGalleryStep(
             }
         }
 
-        Row(
+        FlowRow(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (allowedTypes.size > 1) {
                 FilterChip("all", "Todo", filter, onFilterChange)
@@ -523,12 +533,18 @@ private fun MessageGalleryStep(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(filtered, key = { "${it.type}-${it.id}" }) { item ->
+                itemsIndexed(filtered, key = { _, item -> "${item.type}-${item.id}" }) { index, item ->
                     val selectedIndex = selected.indexOfFirst { it.uri == item.uri }
                     Box(
                         modifier = Modifier
                             .aspectRatio(1f)
-                            .clickable { onToggle(item) }
+                            .semantics {
+                                contentDescription = "${if (item.type == "video") "Video" else "Foto"} ${index + 1}"
+                                this.selected = selectedIndex >= 0
+                                stateDescription = if (selectedIndex >= 0) "Seleccionado, posición ${selectedIndex + 1}"
+                                    else "Sin seleccionar"
+                            }
+                            .clickable(role = Role.Checkbox) { onToggle(item) }
                     ) {
                         AsyncImage(
                             model = composerThumbnailRequest(LocalContext.current, item),
@@ -593,7 +609,9 @@ private fun FilterChip(
                 tint = if (selected == id) Color.Black else Color.White
             )
         },
-        modifier = if (selected == id) Modifier.background(Color.White, RoundedCornerShape(20.dp)) else Modifier
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = if (selected == id) Color.White else Color.Black,
+        )
     )
 }
 
