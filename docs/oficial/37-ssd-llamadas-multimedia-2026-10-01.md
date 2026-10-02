@@ -55,6 +55,6 @@ Evidencias sin claves ni tokens: [directorio de resultados](../evidencias-ssd-ll
 3. **Mensajería nativa:** probar todas las opciones primero en conversación individual, después grupos y comunidades; carga pesada, pérdida de red, reintento, cambio de cuenta, audio y respuestas multimedia. El transporte API comprobado no certifica cada interacción visual.
 4. **LIVE/salas:** cámara del anfitrión e invitado, micrófono, compartir pantalla, avatar sin cámara y reconexión; medir FPS y retardo en datos móviles frente a Wi-Fi. Los 60 FPS siguen sin estar certificados.
 5. **SSD:** comprobar arranque completo y hacer una restauración aislada del nuevo respaldo. Se verificó servicio tras el cambio, sin borrar la copia anterior.
-6. **Web:** publicar y verificar los cambios terminados de autenticación/avisos; continúa la paridad de todos los módulos. No se declara cerrada la preparación completa para producción.
+6. **Web:** autenticación y avisos publicados en Vercel y comprobados externamente; véase la [auditoría 38](38-web-autenticacion-avisos-2026-10-01.md). Continúa la paridad de todos los módulos. No se declara cerrada la preparación completa para producción.
 
 Para la prueba física, conectar Motorola y tablet desbloqueados, con dos cuentas diferentes y datos móviles/Wi-Fi respectivamente. El usuario inicia sus sesiones; no se necesitan sus contraseñas para operar ADB ni estar logueado localmente en la mini PC para acceder por SSH.

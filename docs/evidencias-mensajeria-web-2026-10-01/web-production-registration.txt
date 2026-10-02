@@ -1,0 +1,49 @@
+### Ran Playwright code
+```js
+await (async (page) => {
+  const tag = crypto.randomUUID().replaceAll('-', '').slice(0, 12);
+  const email = 'qa-web-' + tag + '@example.invalid';
+  const password = crypto.randomUUID() + 'A9!';
+  const base = 'https://conectate.tail9b267c.ts.net';
+  let account;
+  try {
+    await page.goto('https://red-social-android.vercel.app/register');
+    await page.getByLabel('Nombre visible', {exact:true}).fill('QA Web ' + tag);
+    await page.getByLabel('Identificador único').fill('qa_web_' + tag);
+    await page.getByRole('status').filter({hasText:'Disponible. Será tu identificador permanente.'}).waitFor();
+    await page.getByLabel('Correo', {exact:true}).fill(email);
+    await page.getByLabel('Contraseña', {exact:true}).fill(password);
+    const created = page.waitForResponse(response => response.url().endsWith('/v1/auth/register'));
+    await page.getByRole('button',{name:'Crear cuenta',exact:true}).click();
+    const response = await created;
+    if(response.status() !== 201) throw new Error('Registration status ' + response.status());
+    account = await response.json();
+    if(account.user.username !== 'qa_web_' + tag) throw new Error('Permanent username not persisted');
+    await page.waitForURL('**/app/messages');
+    await page.getByRole('link',{name:'Mensajes',exact:true}).first().waitFor();
+  } finally {
+    if (!account) {
+      const recovered = await page.request.post(base + '/v1/auth/login', {
+        data:{email,password,client:'web'}, headers:{Origin:'https://red-social-android.vercel.app','X-Novvin-Web-Session':'web-v1'}
+      });
+      if(recovered.status() === 200) account = await recovered.json();
+    }
+    if(account?.accessToken) {
+      const headers = {Authorization:'Bearer '+account.accessToken};
+      const me = await page.request.get(base+'/v1/auth/me',{headers});
+      const own = await me.json();
+      if(own.user?.id !== account.user.id || own.user?.email !== email) throw new Error('Fixture ownership mismatch');
+      const deleted = await page.request.post(base+'/rest/v1/rpc/delete_own_account',{headers,data:{}});
+      if(deleted.status() !== 200) throw new Error('Fixture cleanup failed');
+    }
+    await page.goto('https://red-social-android.vercel.app/login');
+  }
+}
+)(page);
+```
+### Page
+- Page URL: https://red-social-android.vercel.app/login
+- Page Title: Novvin — conecta y comparte
+- Console: 1 errors, 0 warnings
+### Events
+- New console entries: .playwright-cli\console-2026-10-02T02-12-58-101Z.log#L3

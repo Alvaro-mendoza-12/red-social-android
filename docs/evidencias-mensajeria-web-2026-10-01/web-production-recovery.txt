@@ -1,0 +1,28 @@
+### Ran Playwright code
+```js
+await (async (page) => {
+  await page.context().grantPermissions(['local-network-access'], { origin: 'https://red-social-android.vercel.app' });
+  await page.goto('https://red-social-android.vercel.app/forgot-password');
+  await page.getByLabel('Correo de tu cuenta').fill('qa-not-an-account@example.invalid');
+  const request = page.waitForResponse(response => response.url().includes('/password-reset/request'));
+  await page.getByRole('button', { name: 'Enviar código', exact: true }).click();
+  const response = await request;
+  if (response.status() !== 200) throw new Error('Recovery request status ' + response.status());
+  await page.getByLabel('Código de seis dígitos').waitFor();
+  await page.screenshot({ path: 'output/playwright/email-recovery-code-web-390.png', fullPage: true });
+  await page.getByLabel('Código de seis dígitos').fill('000000');
+  const invalid = page.waitForResponse(response => response.url().includes('/password-reset/verify'));
+  await page.getByRole('button', { name: 'Verificar código' }).click();
+  if ((await invalid).status() !== 401) throw new Error('Invalid code accepted');
+  await page.getByRole('alert').filter({hasText:'El código no es válido'}).waitFor();
+  await page.reload();
+  await page.getByLabel('Código de seis dígitos').waitFor();
+  if (await page.getByLabel('Código de seis dígitos').inputValue() !== '') throw new Error('OTP was persisted');
+}
+)(page);
+```
+### Page
+- Page URL: https://red-social-android.vercel.app/forgot-password
+- Page Title: Novvin — conecta y comparte
+### Events
+- New console entries: .playwright-cli\console-2026-10-02T02-12-58-101Z.log#L4

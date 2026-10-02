@@ -1,0 +1,26 @@
+{
+  "checked_at_utc": "2026-10-02T02:36:30.2803121Z",
+  "source_commit": "0aad395",
+  "production_url": "https://red-social-android.vercel.app",
+  "deployment_id": "dpl_4VY82BDwT2sq25Gbbv7UapG2RWqa",
+  "deployment_state": "READY",
+  "frontend_interception_removed": true,
+  "public_http_status": 200,
+  "javascript_asset": "index-BArKT5Dq.js",
+  "registration": {
+    "status": 201,
+    "permanent_handle_verified": true,
+    "landed_in_messages": true,
+    "owned_fixture_deleted": true
+  },
+  "recovery": {
+    "request_status": 200,
+    "incorrect_code_status": 401,
+    "visible_error": true,
+    "reload_keeps_code_step": true,
+    "otp_not_persisted": true,
+    "real_email_delivery_tested_in_this_browser_run": false
+  },
+  "mobile_version_code": 117,
+  "mobile_version_name": "9.0.20"
+}

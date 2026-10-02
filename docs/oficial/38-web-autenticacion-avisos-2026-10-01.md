@@ -29,6 +29,18 @@ Android conserva versión 117 / 9.0.20. Backend de esta revisión: `eaa86df`.
 
 Estas comprobaciones usaron el frontend compilado servido localmente en el origen de Vercel mediante interceptación de archivos, con la **API real**, sin interceptar el backend. La comprobación del despliegue externo debe hacerse eliminando esa interceptación.
 
+## Publicación y comprobación externa completadas
+
+El bloque se publicó desde el commit `0aad395` en [Novvin web](https://red-social-android.vercel.app). Vercel confirmó `READY` y destino producción para el despliegue `dpl_4VY82BDwT2sq25Gbbv7UapG2RWqa`.
+
+Se eliminó la interceptación del frontend antes de repetir las pruebas. El origen público respondió HTTP 200 y entregó el nuevo archivo JavaScript `index-BArKT5Dq.js`.
+
+- Registro en la web desplegada: HTTP 201, identificador permanente confirmado en la respuesta y navegación a Mensajes. La cuenta ficticia se eliminó tras comprobar su ID y correo propios.
+- Recuperación en la web desplegada: solicitud para dirección ficticia HTTP 200; código incorrecto HTTP 401 con explicación visible; al recargar se conserva el paso y el campo de código queda vacío.
+- Se conserva la limitación: este ensayo de producción no comprueba recepción y uso de un correo real en Gmail. La comprobación SMTP anterior y las pruebas unitarias de cambio de contraseña se documentan por separado.
+
+La evidencia externa está en `web-production-verification.json` y `email-recovery-production-390.png` dentro del directorio de evidencias. La publicación completa este bloque; la paridad de todos los módulos continúa pendiente. El siguiente trabajo se centra en la aplicación móvil, según la indicación del usuario.
+
 Las pruebas unitarias comprueban los tres pasos, error y cambio de contraseña, conservación de espacios en la contraseña, validación UTF-8 y segundo factor. Esta revisión de navegador todavía no demuestra recepción y uso de un correo real en Gmail con el frontend desplegado; la entrega SMTP comprobada anteriormente no sustituye esa comprobación completa. `autocomplete="one-time-code"` permite ayuda del navegador cuando existe, sin prometer lectura automática de Gmail.
 
 ## Evidencia y límites
