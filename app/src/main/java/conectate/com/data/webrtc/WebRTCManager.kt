@@ -1141,7 +1141,7 @@ class WebRTCManager(
             var peerKey = resolvePeerKey(rsid, ruid) ?: rsid.ifBlank { ruid }
             
             if (shouldSkipExistingPeerOffer(reusedExistingPeer, restartExistingPeer, pc.iceConnectionState())) {
-                Log.d("WebRTCManager", "Preserving established viewer media while promoting guest")
+                Log.d("WebRTCManager", "Preserving existing peer negotiation and media")
                 return@execute
             }
             val isPolite = isPolite(ruid, rsid)

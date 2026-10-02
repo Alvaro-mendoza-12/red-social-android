@@ -43,13 +43,14 @@ fun DocumentPickerSheet(
     var folderUri by rememberSaveable { mutableStateOf<String?>(null) }
     var removingFolder by remember { mutableStateOf<AvailableDocumentFolder?>(null) }
     var permissionError by remember { mutableStateOf<String?>(null) }
+    var addingDocuments by rememberSaveable { mutableStateOf(false) }
     val folder = state.catalog.folders.firstOrNull { it.uri == folderUri }
     val activeFolderUri = folder?.uri
     val addFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri?.let(viewModel::addFolder)
     }
-    val addDocument = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let(viewModel::addDocument)
+    val addDocuments = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) viewModel.addDocuments(uris)
     }
     val documents by produceState<List<AvailableDocument>>(emptyList(), state.catalog.documents, query, category, activeFolderUri) {
         value = withContext(Dispatchers.Default) { filterDocuments(state.catalog.documents, category, query, activeFolderUri) }
@@ -66,10 +67,13 @@ fun DocumentPickerSheet(
                     if (folder != null) folderUri = folder.parentUri else onDismiss()
                 }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, if (folder != null) "Carpeta anterior" else "Cerrar documentos") }
                 Text("Documentos", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                IconButton(onClick = { addingDocuments = true }, enabled = !state.loading) {
+                    Icon(Icons.Default.Add, "Agregar documentos")
+                }
                 IconButton(onClick = viewModel::refresh, enabled = !state.loading) { Icon(Icons.Default.Refresh, "Actualizar documentos") }
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Cerrar selector") }
             }
-            Text("Elige un archivo directamente o autoriza una carpeta para organizar muchos documentos.", style = MaterialTheme.typography.bodySmall)
+            Text("Selecciona un documento para verlo o enviarlo.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
                 value = query, onValueChange = { query = it.take(120) }, modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                 singleLine = true, label = { Text("Buscar nombre o carpeta") },
@@ -84,29 +88,8 @@ fun DocumentPickerSheet(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(folder?.path ?: "Todas las carpetas", modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelLarge)
-                Button(
-                    onClick = {
-                        permissionError = null
-                        // The catalog classifies the result afterwards, so the
-                        // picker must accept every provider document type
-                        // (including ODT/ODS/ODP and vendor-specific formats).
-                        runCatching { addDocument.launch(arrayOf("*/*")) }
-                            .onFailure { permissionError = "No se pudo abrir el selector de documentos." }
-                    },
-                    enabled = !state.loading,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.InsertDriveFile, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Elegir archivo")
-                }
-                OutlinedButton(onClick = {
-                    permissionError = null
-                    runCatching { addFolder.launch(null) }.onFailure { permissionError = "No se pudo abrir el permiso de carpetas de Android." }
-                }, enabled = !state.loading, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-                    Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Carpeta")
+                TextButton(onClick = { addingDocuments = true }, enabled = !state.loading) {
+                    Text("Agregar")
                 }
             }
             if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -132,7 +115,7 @@ fun DocumentPickerSheet(
                 }
                 if (documents.isEmpty() && !state.loading) item {
                     Text(
-                        if (state.catalog.folders.isEmpty()) "Todavía no hay documentos. Pulsa «Elegir archivo» para autorizar uno o «Carpeta» para explorar una carpeta."
+                        if (state.catalog.folders.isEmpty()) "Tus documentos aparecerán aquí. Agrega una carpeta una vez para explorar sus archivos dentro de Novvin."
                         else "No hay documentos que coincidan. Prueba otra categoría o cambia la búsqueda.",
                         modifier = Modifier.padding(vertical = 24.dp), style = MaterialTheme.typography.bodyMedium,
                     )
@@ -158,6 +141,34 @@ fun DocumentPickerSheet(
                 }
             }
         }
+    }
+    if (addingDocuments) {
+        AlertDialog(
+            onDismissRequest = { addingDocuments = false },
+            title = { Text("Tus documentos en Novvin") },
+            text = { Text("Autoriza una carpeta una vez y luego busca, abre y selecciona sus documentos aquí. Android te pedirá elegir la carpeta para dar permiso. También puedes agregar archivos sueltos o de la nube.") },
+            confirmButton = {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        addingDocuments = false
+                        permissionError = null
+                        runCatching { addFolder.launch(null) }
+                            .onFailure { permissionError = "No se pudo pedir acceso a la carpeta. Intenta agregar archivos." }
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.FolderOpen, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Agregar carpeta")
+                    }
+                    OutlinedButton(onClick = {
+                        addingDocuments = false
+                        permissionError = null
+                        runCatching { addDocuments.launch(arrayOf("*/*")) }
+                            .onFailure { permissionError = "No se pudo pedir acceso a los documentos. Inténtalo de nuevo." }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Agregar archivos") }
+                    TextButton(onClick = { addingDocuments = false }, modifier = Modifier.fillMaxWidth()) { Text("Cancelar") }
+                }
+            },
+        )
     }
     removingFolder?.let { removing ->
         AlertDialog(onDismissRequest = { removingFolder = null }, title = { Text("Quitar acceso a esta carpeta") },

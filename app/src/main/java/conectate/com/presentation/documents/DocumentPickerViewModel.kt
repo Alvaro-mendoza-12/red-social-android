@@ -30,6 +30,7 @@ class DocumentPickerViewModel @Inject constructor(private val repository: Docume
     fun refresh() = load()
     fun addFolder(uri: Uri) = load { repository.grantTree(uri) }
     fun addDocument(uri: Uri) = load { repository.addDocument(uri) }
+    fun addDocuments(uris: List<Uri>) = load { uris.distinct().forEach { repository.addDocument(it) } }
     fun removeFolder(uri: Uri) = load { repository.forgetTree(uri) }
 
     private fun load(beforeScan: suspend () -> Unit = {}) {

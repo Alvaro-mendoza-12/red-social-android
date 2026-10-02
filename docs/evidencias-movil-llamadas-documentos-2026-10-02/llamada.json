@@ -1,0 +1,28 @@
+{
+  "mobile": {
+    "network": "LTE",
+    "connected": true,
+    "ui_marker_to_signaling_ms": 3579,
+    "ui_marker_to_media_ms": 11260,
+    "initialization_to_media_ms": 10505,
+    "offers": 1,
+    "ice_disconnected_events": 0,
+    "audio_received_bytes": 35353.0,
+    "audio_received_packets": 996.0,
+    "audio_lost_packets": 0.0,
+    "fatal_java_exception": false
+  },
+  "tablet": {
+    "network": "Wi-Fi",
+    "connected": true,
+    "ui_marker_to_signaling_ms": 2499,
+    "ui_marker_to_media_ms": 4981,
+    "initialization_to_media_ms": 4079,
+    "offers": 0,
+    "ice_disconnected_events": 0,
+    "audio_received_bytes": 37235.0,
+    "audio_received_packets": 1049.0,
+    "audio_lost_packets": 0.0,
+    "fatal_java_exception": false
+  }
+}

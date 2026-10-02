@@ -23,4 +23,12 @@ class LiveGuestPeerNegotiationPolicyTest {
         assertFalse(shouldSkipExistingPeerOffer(true, false, IceConnectionState.CLOSED))
         assertFalse(shouldSkipExistingPeerOffer(true, false, null))
     }
+
+    @Test fun repeatedAudioRefreshesPreserveAnOfferInProgressAndConnectedMedia() {
+        val states = listOf(IceConnectionState.NEW, IceConnectionState.CHECKING,
+            IceConnectionState.CONNECTED, IceConnectionState.COMPLETED)
+        repeat(12) {
+            states.forEach { assertTrue(shouldSkipExistingPeerOffer(true, false, it)) }
+        }
+    }
 }

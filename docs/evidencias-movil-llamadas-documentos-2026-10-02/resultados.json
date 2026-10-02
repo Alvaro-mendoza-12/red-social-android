@@ -1,0 +1,18 @@
+{
+  "documentListNativeVerified": true,
+  "versionCode": 117,
+  "apkSha256": {
+    "audit": "fee111284f17068367c19c0eebc09220c7f65ed113e8a8c1266cbb8d69980342",
+    "debug": "26dcaa226debdb3e1d864e0cdb62b67f696b43ba5462587ccb5670ae20dd781a"
+  },
+  "documentPermissionExplanationNativeVerified": true,
+  "productionCertification": false,
+  "versionName": "9.0.20",
+  "unit": {
+    "suites": 239,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1071
+  }
+}

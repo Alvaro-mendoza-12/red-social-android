@@ -1123,33 +1123,31 @@ class CallRepository @Inject constructor(
         }
     }
 
-    private fun connectSocket(callId: String, userId: String, name: String, avatarUrl: String?) {
+    private fun connectSocket(
+        callId: String, userId: String, name: String, avatarUrl: String?,
+        pollingFallback: Boolean = false, resetMedia: Boolean = true,
+    ) {
         try {
             socket?.off()
             socket?.disconnect()
             socket = null
 
-            if (hasMicrophonePermission()) {
+            if (hasMicrophonePermission() && resetMedia) {
                 initializeWebRTC(userId)
-            } else {
+            } else if (!hasMicrophonePermission()) {
                 android.util.Log.e("CallRepository", "Microphone permission missing, skipping WebRTC init")
             }
             refreshAudioSession()
 
+            val transportPlan = CallSignalingTransportPlan(pollingFallback)
             val options = IO.Options().apply {
                 forceNew = true
                 reconnection = true
                 reconnectionAttempts = SOCKET_RECONNECT_ATTEMPTS
                 reconnectionDelay = SOCKET_RECONNECT_DELAY_MS
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
-                timeout = 10_000
-                // Keep polling as a fallback for carrier networks, older
-                // Android WebViews and restrictive Wi‑Fi. Forcing WebSocket
-                // made otherwise valid calls stay in "Conectando…" forever.
-                transports = arrayOf(
-                    io.socket.engineio.client.transports.Polling.NAME,
-                    io.socket.engineio.client.transports.WebSocket.NAME
-                )
+                timeout = transportPlan.timeoutMs
+                transports = transportPlan.transports
                 attachSignalingAffinity("call", callId)
                 attachBearerToken(authService.getAccessToken())
             }
@@ -1162,6 +1160,21 @@ class CallRepository @Inject constructor(
 
             createdSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
                 if (!isCurrentCallSocket()) return@on
+                if (!pollingFallback) {
+                    // Java's client does not automatically try polling when
+                    // a direct WebSocket handshake fails. Keep the media
+                    // engine and auth/affinity while changing transport once.
+                    scope.launch {
+                        synchronized(this@CallRepository) {
+                            if (isCurrentCallSocket()) {
+                                Log.i(TAG, "Direct call socket failed; trying polling fallback")
+                                connectSocket(callId, userId, name, avatarUrl,
+                                    pollingFallback = true, resetMedia = false)
+                            }
+                        }
+                    }
+                    return@on
+                }
                 val detail = args.firstOrNull()?.toString().orEmpty().ifBlank { "socket_connect_error" }
                 recoverSocketAfterEndpointFailure(
                     failedSocket = createdSocket,
@@ -1215,6 +1228,7 @@ class CallRepository @Inject constructor(
                     }
                 )
                 android.util.Log.i("CallRepository", "📤 join-call EMITTED for call=$callId sid=$sid")
+                Log.i(TAG, "Call signaling connected (${if (pollingFallback) "polling fallback" else "direct WebSocket"})")
 
                 // Now do WebRTC/audio setup in a protected block
                 try {
@@ -1437,7 +1451,7 @@ class CallRepository @Inject constructor(
             .filterNot { it.userId.equals(userId, ignoreCase = true) }
             .filter { it.socketId.isNotBlank() }
             .forEach { participant ->
-                webRTCManager?.onUserJoined(participant.socketId, participant.userId)
+                webRTCManager?.onUserJoined(participant.socketId, participant.userId, restartExistingPeer = false)
             }
     }
 
