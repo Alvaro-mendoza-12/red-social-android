@@ -20,7 +20,7 @@ internal class CollectionMediaStore(
         filePrefix: String
     ): Result<String> = uploadFixedMime(
         bucketName = bucketName,
-        fileName = "${filePrefix}_${ownerId}_${System.currentTimeMillis()}.jpg",
+        fileName = collectionMediaFileName(filePrefix, ownerId, "jpg"),
         bytes = bytes,
         contentType = "image/jpeg"
     )
@@ -36,7 +36,7 @@ internal class CollectionMediaStore(
     ): Result<String> = uploadFixedMime(
         bucketName = primaryBucket,
         fallbackBucket = fallbackBucket,
-        fileName = "${filePrefix}_${ownerId}_${System.currentTimeMillis()}.$extension",
+        fileName = collectionMediaFileName(filePrefix, ownerId, extension),
         bytes = bytes,
         contentType = contentType
     )
@@ -63,7 +63,7 @@ internal class CollectionMediaStore(
                 inferredMime = inferMimeTypeFromBytes(bytes)
             )
             val extension = normalized.extensionWithDot.removePrefix(".")
-            var fileName = "${filePrefix}_${ownerId}_${System.currentTimeMillis()}.$extension"
+            val fileName = collectionMediaFileName(filePrefix, ownerId, extension)
             uploadWithOptionalFallback(
                 primaryBucket = primaryBucket,
                 fallbackBucket = fallbackBucket,
@@ -105,7 +105,7 @@ internal class CollectionMediaStore(
                 return@withContext Result.failure(Exception("El archivo pendiente está vacío"))
             }
             val extension = normalized.extensionWithDot.removePrefix(".")
-            val fileName = "${filePrefix}_${ownerId}_${System.currentTimeMillis()}.$extension"
+            val fileName = collectionMediaFileName(filePrefix, ownerId, extension)
             uploadUriWithOptionalFallback(
                 primaryBucket = primaryBucket,
                 fallbackBucket = fallbackBucket,
@@ -154,7 +154,8 @@ internal class CollectionMediaStore(
             bucketName = primaryBucket,
             fileName = fileName,
             bytes = bytes,
-            contentType = contentType
+            contentType = contentType,
+            allowOverwrite = false,
         )
         if (primary.isSuccess) {
             val remoteKey = primary.getOrThrow().Key ?: fileName
@@ -169,7 +170,8 @@ internal class CollectionMediaStore(
             bucketName = fallbackBucket,
             fileName = fileName,
             bytes = bytes,
-            contentType = contentType
+            contentType = contentType,
+            allowOverwrite = false,
         )
         return if (fallback.isSuccess) {
             val remoteKey = fallback.getOrThrow().Key ?: fileName
@@ -194,7 +196,7 @@ internal class CollectionMediaStore(
             sourceUri = sourceUri,
             sizeBytes = sizeBytes,
             contentType = contentType,
-            allowOverwrite = true,
+            allowOverwrite = false,
             onProgress = onProgress
         )
         if (primary.isSuccess) {
@@ -210,7 +212,7 @@ internal class CollectionMediaStore(
             sourceUri = sourceUri,
             sizeBytes = sizeBytes,
             contentType = contentType,
-            allowOverwrite = true,
+            allowOverwrite = false,
             onProgress = onProgress
         )
         return if (fallback.isSuccess) {

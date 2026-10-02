@@ -1,0 +1,8 @@
+
+conectate.com.presentation.calls.IncomingCallScreenStateTest:..
+conectate.com.data.webrtc.MediaTeardownRegressionTest:...
+conectate.com.presentation.calls.IncomingCallCancellationTest:......
+
+Time: 80.185
+
+OK (11 tests)

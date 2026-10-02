@@ -9,6 +9,13 @@ en el documento 33. No equivalen a certificar cada opción de todos los clientes
 usuarios reales, no solo pruebas internas, por lo que cualquier cambio debe tratarse
 como producción.
 
+## Actualización del 01/10/2026
+
+- Servidor: nueve servicios saludables; Docker y containerd migrados al NVMe ext4 autorizado, con respaldo previo y posterior verificados. Detalle en la [revisión 37](37-ssd-llamadas-multimedia-2026-10-01.md).
+- Web: bloque de autenticación/recuperación/avisos publicado en Vercel y comprobado desde el origen externo, sin interceptar el frontend. Detalle en la [revisión 38](38-web-autenticacion-avisos-2026-10-01.md); no equivale a paridad completa.
+- Móvil es la prioridad actual: cierre de pantalla al cancelar llamada y protección de adjuntos concurrentes, en la [revisión 39](39-movil-llamadas-y-adjuntos-2026-10-01.md). Se conservan versión 117 / 9.0.20.
+- Faltan pruebas físicas entre Motorola y tablet para cierre inesperado, timbre fuera de la app, todos los envíos y LIVE/salas en redes distintas. No se declaran certificados 60 FPS ni todos los módulos para producción.
+
 ## Historia resumida
 
 El proyecto pasó por varias etapas:

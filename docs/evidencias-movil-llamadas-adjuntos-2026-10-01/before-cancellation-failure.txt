@@ -1,0 +1,19 @@
+
+conectate.com.presentation.calls.IncomingCallCancellationTest:
+Error in cancellingTheVisibleInvitationClosesItsAnswerScreen(conectate.com.presentation.calls.IncomingCallCancellationTest):
+java.lang.AssertionError: Cancelled call left the answer screen open
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at conectate.com.presentation.calls.IncomingCallCancellationTest.cancellingTheVisibleInvitationClosesItsAnswerScreen(IncomingCallCancellationTest.kt:35)
+
+
+Time: 9.262
+There was 1 failure:
+1) cancellingTheVisibleInvitationClosesItsAnswerScreen(conectate.com.presentation.calls.IncomingCallCancellationTest)
+java.lang.AssertionError: Cancelled call left the answer screen open
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at conectate.com.presentation.calls.IncomingCallCancellationTest.cancellingTheVisibleInvitationClosesItsAnswerScreen(IncomingCallCancellationTest.kt:35)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1

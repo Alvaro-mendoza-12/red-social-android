@@ -1,6 +1,11 @@
 package conectate.com.data.service
 
 import android.content.Context
+import android.content.SharedPreferences
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** Shared by realtime, FCM and the cold-start ringing service. */
 class CallCancellationGuard(context: Context) {
@@ -21,6 +26,19 @@ class CallCancellationGuard(context: Context) {
         val id = callId.trim().lowercase()
         return id.isNotBlank() && isRecentCallCancellation(preferences.getLong(PREFIX + id, 0), System.currentTimeMillis())
     }
+
+    /** Closes a cold-start answer screen without constructing CallRepository/WebRTC. */
+    fun observe(callId: String): Flow<Boolean> = callbackFlow {
+        val id = callId.trim().lowercase()
+        val key = PREFIX + id
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changed ->
+            if (changed == null || changed == key) trySend(contains(id))
+        }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        // Register first so cancellation cannot fall between the initial read and listening.
+        trySend(contains(id))
+        awaitClose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }.distinctUntilChanged()
 
     private companion object { const val PREFIX = "cancelled_call_" }
 }

@@ -43,9 +43,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -64,6 +61,7 @@ import conectate.com.data.local.prefs.ThemePreferences
 import conectate.com.data.model.CallInvite
 import conectate.com.data.repository.CallRepository
 import conectate.com.data.service.IncomingCallAccountRouter
+import conectate.com.data.service.CallCancellationGuard
 import conectate.com.util.notificationAccountTargetFromIntent
 import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.common.toUserFacingMessage
@@ -76,6 +74,8 @@ import dagger.hilt.android.AndroidEntryPoint
 import dagger.Lazy
 import javax.inject.Inject
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -95,6 +95,9 @@ class IncomingCallActivity : ComponentActivity() {
     private val terminalActionStarted = AtomicBoolean(false)
     private val activeInviteState = mutableStateOf<CallInvite?>(null)
     private val callerAvatarState = mutableStateOf<Bitmap?>(null)
+    private val handlingState = mutableStateOf(false)
+    private val cancellationGuard by lazy { CallCancellationGuard(this) }
+    private var cancellationObservation: Job? = null
 
     // CallRepository owns WebRTC, sockets and audio services. Construct it only
     // after the user accepts/declines so the incoming-call screen itself can
@@ -119,6 +122,7 @@ class IncomingCallActivity : ComponentActivity() {
             performAcceptInvite(invite)
         } else {
             terminalActionStarted.set(false)
+            handlingState.value = false
             AppFeedbackBus.showError(
                 if (invite.isVideo) {
                     "Activa micrófono y cámara para contestar la videollamada."
@@ -147,10 +151,12 @@ class IncomingCallActivity : ComponentActivity() {
             finish()
             return
         }
+        if (closeIfCancelled(invite)) return
 
         val autoAccept = intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false)
         activeInviteState.value = invite
         callerAvatarState.value = intent.toAvatarBitmapOrNull()
+        observeCancellation(invite)
 
         setContent {
             val isDarkMode by themePreferences.isDarkMode.collectAsStateWithLifecycle()
@@ -171,7 +177,8 @@ class IncomingCallActivity : ComponentActivity() {
                         callerAvatarBitmap = callerAvatar,
                         accountLabel = notificationAccountTargetFromIntent(intent)?.presentableLabel(),
                         onAccept = { acceptInvite(current) },
-                        onDecline = { declineInvite(current) }
+                        onDecline = { declineInvite(current) },
+                        isHandling = handlingState.value,
                     )
                 }
             }
@@ -197,18 +204,57 @@ class IncomingCallActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
         val invite = intent.toInviteOrNull() ?: return
+        if (closeIfCancelled(invite)) return
+        setIntent(intent)
         terminalActionStarted.set(false)
+        handlingState.value = false
+        pendingAcceptInvite = null
         activeInviteState.value = invite
         callerAvatarState.value = intent.toAvatarBitmapOrNull()
+        observeCancellation(invite)
         if (intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false)) {
             acceptInvite(invite)
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        activeInviteState.value?.let(::closeIfCancelled)
+    }
+
+    private fun observeCancellation(invite: CallInvite) {
+        cancellationObservation?.cancel()
+        // Keep listening while the screen is behind a permission dialog or another app.
+        // Otherwise a cancellation could expire before the user returns to this screen.
+        cancellationObservation = lifecycleScope.launch {
+            cancellationGuard.observe(invite.callId).collect { cancelled ->
+                if (cancelled) closeIfCancelled(invite)
+            }
+        }
+    }
+
+    private fun closeIfCancelled(invite: CallInvite): Boolean {
+        if (!cancellationGuard.contains(invite.callId)) return false
+        clearIncomingCallNotification(invite.callId)
+        IncomingCallForegroundService.stop(this, invite.callId)
+        val active = activeInviteState.value
+        // A delayed intent for an older call must not dismiss a newer invitation.
+        if (active == null || active.callId.equals(invite.callId, ignoreCase = true)) {
+            pendingAcceptInvite = null
+            terminalActionStarted.set(true)
+            activeInviteState.value = null
+            cancellationObservation?.cancel()
+            finish()
+        }
+        return true
+    }
+
     private fun acceptInvite(invite: CallInvite) {
+        if (!activeInviteState.value?.callId.equals(invite.callId, ignoreCase = true)) return
+        if (closeIfCancelled(invite)) return
         if (!terminalActionStarted.compareAndSet(false, true)) return
+        handlingState.value = true
         val missingPermissions = requiredCallPermissions(invite)
             .filterNot(::hasPermission)
             .toTypedArray()
@@ -221,19 +267,23 @@ class IncomingCallActivity : ComponentActivity() {
     }
 
     private fun performAcceptInvite(invite: CallInvite) {
+        if (!activeInviteState.value?.callId.equals(invite.callId, ignoreCase = true)) return
+        if (closeIfCancelled(invite)) return
         lifecycleScope.launch {
             clearIncomingCallNotification(invite.callId)
-            IncomingCallForegroundService.stop(this@IncomingCallActivity)
+            IncomingCallForegroundService.stop(this@IncomingCallActivity, invite.callId)
             val accountReady = runCatching {
                 withTimeout(12_000L) { accountRouter.get().prepareAnswer(notificationAccountTargetFromIntent(intent)).getOrThrow() }
-            }
+            }.onFailure { if (it is CancellationException && it !is kotlinx.coroutines.TimeoutCancellationException) throw it }
             if (accountReady.isFailure) {
                 AppFeedbackBus.showError(accountReady.exceptionOrNull()?.toUserFacingMessage("No se pudo abrir la cuenta de esta llamada.")
                     ?: "No se pudo abrir la cuenta de esta llamada.")
                 finish()
                 return@launch
             }
+            if (closeIfCancelled(invite)) return@launch
             val result = callRepository.acceptIncomingCall(invite)
+            if (closeIfCancelled(invite)) return@launch
             if (result.isFailure) {
                 AppFeedbackBus.showError(
                     result.exceptionOrNull()?.toUserFacingMessage(
@@ -262,13 +312,19 @@ class IncomingCallActivity : ComponentActivity() {
     }
 
     private fun declineInvite(invite: CallInvite) {
+        if (!activeInviteState.value?.callId.equals(invite.callId, ignoreCase = true)) return
+        if (closeIfCancelled(invite)) return
         if (!terminalActionStarted.compareAndSet(false, true)) return
+        handlingState.value = true
         lifecycleScope.launch {
             clearIncomingCallNotification(invite.callId)
-            IncomingCallForegroundService.stop(this@IncomingCallActivity)
+            IncomingCallForegroundService.stop(this@IncomingCallActivity, invite.callId)
             runCatching {
                 withTimeout(8_000L) { accountRouter.get().decline(invite, notificationAccountTargetFromIntent(intent)).getOrThrow() }
-            }.onFailure { AppFeedbackBus.showError("Se cerró la llamada, pero no se pudo avisar al llamante.") }
+            }.onFailure {
+                if (it is CancellationException && it !is kotlinx.coroutines.TimeoutCancellationException) throw it
+                AppFeedbackBus.showError("Se cerró la llamada, pero no se pudo avisar al llamante.")
+            }
             finish()
         }
     }
@@ -330,13 +386,11 @@ internal fun IncomingCallScreen(
     onAccept: () -> Unit,
     onDecline: () -> Unit,
     accountLabel: String? = null,
+    isHandling: Boolean = false,
 ) {
     BackHandler(enabled = true) {
         // Require explicit action
     }
-
-    var isHandling by remember { mutableStateOf(false) }
-    var scope = rememberCoroutineScope()
 
     BoxWithConstraints(
         modifier = Modifier
@@ -368,7 +422,8 @@ internal fun IncomingCallScreen(
                     Spacer(modifier = Modifier.height(6.dp))
                 }
                 Text(
-                    text = if (invite.isVideo) "Videollamada entrante" else "Llamada entrante",
+                    text = if (isHandling) "Procesando llamada…"
+                        else if (invite.isVideo) "Videollamada entrante" else "Llamada entrante",
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White.copy(alpha = 0.8f)
                 )
@@ -410,16 +465,14 @@ internal fun IncomingCallScreen(
             ) {
                 Button(
                     onClick = {
-                        if (isHandling) return@Button
-                        isHandling = true
-                        scope.launch {
-                            onDecline()
-                            isHandling = false
-                        }
+                        if (!isHandling) onDecline()
                     },
                     enabled = !isHandling,
                     modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("incoming_decline"),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB3261E), contentColor = Color.White)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFB3261E), contentColor = Color.White,
+                        disabledContainerColor = Color(0xFF242424), disabledContentColor = Color(0xFFBDBDBD),
+                    )
                 ) {
                     androidx.compose.material3.Icon(Icons.Default.CallEnd, contentDescription = null)
                     Spacer(modifier = Modifier.width(10.dp))
@@ -428,16 +481,14 @@ internal fun IncomingCallScreen(
 
                 Button(
                     onClick = {
-                        if (isHandling) return@Button
-                        isHandling = true
-                        scope.launch {
-                            onAccept()
-                            isHandling = false
-                        }
+                        if (!isHandling) onAccept()
                     },
                     enabled = !isHandling,
                     modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("incoming_accept"),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF236D36), contentColor = Color.White)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF236D36), contentColor = Color.White,
+                        disabledContainerColor = Color(0xFF242424), disabledContentColor = Color(0xFFBDBDBD),
+                    )
                 ) {
                     androidx.compose.material3.Icon(Icons.Default.Call, contentDescription = null)
                     Spacer(modifier = Modifier.width(10.dp))

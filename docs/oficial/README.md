@@ -51,6 +51,10 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 38. [Fluidez y auditoría por módulos — 2026-09-30](33-fluidez-y-auditoria-modulos-2026-09-30.md)
 39. [Cadencia de LIVE, salas, llamadas y PK — 2026-10-01](34-cadencia-live-salas-2026-10-01.md)
 40. [Arranque, invitaciones LIVE y recuperación por correo — 2026-10-01](35-arranque-invitaciones-y-recuperacion-correo-2026-10-01.md)
+41. [Mensajería, recomendaciones y avisos — 2026-10-01](36-mensajeria-recomendaciones-avisos-2026-10-01.md)
+42. [SSD autorizado, llamadas y multimedia — 2026-10-01](37-ssd-llamadas-multimedia-2026-10-01.md)
+43. [Web publicada: autenticación y avisos — 2026-10-01](38-web-autenticacion-avisos-2026-10-01.md)
+44. [Móvil: cancelación de llamadas y adjuntos simultáneos — 2026-10-01](39-movil-llamadas-y-adjuntos-2026-10-01.md)
 
 ## Reglas para quien trabaje en este proyecto
 

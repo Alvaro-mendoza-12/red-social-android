@@ -74,6 +74,7 @@ class IncomingCallForegroundService : Service() {
         timeoutJob?.cancel()
         timeoutJob = serviceScope.launch {
             delay(45_000L)
+            CallCancellationGuard(this@IncomingCallForegroundService).mark(invite.callId)
             stopIncomingCallUi()
         }
 

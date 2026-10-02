@@ -2,6 +2,8 @@
 
 La app Android es el cliente principal de Conéctate. Está desarrollada en Kotlin con Jetpack Compose y sigue una organización por capas, ViewModels, repositorios, servicios Android y módulos de datos.
 
+La revisión móvil más reciente está en [llamadas y adjuntos del 01/10/2026](39-movil-llamadas-y-adjuntos-2026-10-01.md): cancelación de la pantalla de contestar, estado visible al responder y protección de archivos simultáneos. Los resultados de emulador no sustituyen las comprobaciones físicas pendientes.
+
 ## Configuración de build
 
 Archivo:

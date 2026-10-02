@@ -1,0 +1,31 @@
+{
+  "project": "red social - live-gifts",
+  "branch": "feature/live-gifts",
+  "date": "2026-10-01",
+  "versionCode": 117,
+  "baseVersionName": "9.0.20",
+  "installedDebugVersionName": "9.0.20-debug",
+  "unitResults": {
+    "skipped": 0,
+    "tests": 1045,
+    "failures": 0,
+    "suites": 234,
+    "errors": 0
+  },
+  "androidInstrumentation": {
+    "result": "OK (11 tests)",
+    "device": "Android SDK x86_64 emulator",
+    "failures": 0,
+    "tests": 11,
+    "elapsedSeconds": 80.185
+  },
+  "apk": {
+    "relativePath": "app/build/outputs/apk/debug/app-debug.apk",
+    "sha256": "7a95c47500a04fb460b6f794f4fbfc9442b5fac5ca1e3e92a08fe5a384fc1d17",
+    "bytes": 280659549
+  },
+  "limits": [
+    "Instrumentation was run on the emulator, not both physical devices.",
+    "Physical audio/video latency, background FCM delivery and 60 FPS are not certified."
+  ]
+}
