@@ -51,6 +51,8 @@ import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.sync.PendingMessageSyncScheduler
 import conectate.com.data.localfallback.LocalFallbackApiClient
+import conectate.com.data.localfallback.MessageSendHttpException
+import conectate.com.data.localfallback.isRetryableMessageHttpStatus
 import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.local.entity.ChatEntity
@@ -2370,6 +2372,12 @@ class MessageRepository @Inject constructor(
         var auditUserId: String? = null
         var queuedMessage: Message? = null
         val startedAt = System.currentTimeMillis()
+        val startedAtElapsedMs = android.os.SystemClock.elapsedRealtime()
+        fun recordSendStage(stage: String) {
+            val elapsed = android.os.SystemClock.elapsedRealtime() - startedAtElapsedMs
+            android.util.Log.i("MessageRepository", "Message send: ref=${id.hashCode().toUInt().toString(16)} " +
+                "stage=$stage elapsed_ms=$elapsed")
+        }
         fun requireCurrentSession() {
             if (!isSessionSnapshotValid(session, "sendMessage")) throw CancellationException("Session changed")
         }
@@ -2487,6 +2495,7 @@ class MessageRepository @Inject constructor(
             )
             queuedMessage = msg
             requireCurrentSession()
+            recordSendStage("created")
             
             android.util.Log.d("MessageRepository", "📦 Message object created: id=$id, chat_id=$cleanId, sender_id=$userId")
 
@@ -2499,6 +2508,7 @@ class MessageRepository @Inject constructor(
                     pendingAction = "send"
                 )
                 messageDao.insertMessage(optimisticEntity)
+                recordSendStage("persisted")
                 PendingMessageSyncScheduler.enqueue(context, "direct_message_pending")
                 android.util.Log.d("MessageRepository", "✅ Optimistic Message saved to Room: ${msg.id}")
             } catch (error: Exception) {
@@ -2551,6 +2561,7 @@ class MessageRepository @Inject constructor(
                 return Result.success(msg)
             }
             requireCurrentSession()
+            recordSendStage("token_ready")
 
             if (isSendCancelledByDeletion(id, userId, session)) return Result.success(msg.copy(deleted_for_all = true))
             if (pendingMediaUri != null) {
@@ -2592,11 +2603,13 @@ class MessageRepository @Inject constructor(
             requireCurrentSession()
             if (isSendCancelledByDeletion(id, userId, session)) return Result.success(msg.copy(deleted_for_all = true))
             android.util.Log.d("MessageRepository", "📡 Sending message to backend (secure RPC with fallback)...")
+            recordSendStage("backend_started")
             val serverSendResult = sendMessageToBackend(
                 token = token,
                 msg = msg
             )
             requireCurrentSession()
+            recordSendStage("backend_returned")
             android.util.Log.d("MessageRepository", "📨 Backend status: ${serverSendResult.statusCode}")
 
             // --- 4. HANDLE RESPONSE (UPDATE LOCAL) ---
@@ -2623,6 +2636,7 @@ class MessageRepository @Inject constructor(
 
                 requireCurrentSession()
                 addMessageToFlow(cleanId, returnedMsg)
+                recordSendStage("acknowledged")
 
                 scope.launch {
                     try {
@@ -2825,10 +2839,12 @@ class MessageRepository @Inject constructor(
                     )
                 },
                 onFailure = { error ->
+                    if (error is CancellationException) throw error
                     BackendSendResult(
                         isSuccess = false,
-                        statusCode = 500,
-                        errorBody = error.message ?: "No se pudo enviar al servidor Ubuntu."
+                        statusCode = (error as? MessageSendHttpException)?.statusCode ?: 0,
+                        errorBody = (error as? MessageSendHttpException)?.errorCode?.takeIf(String::isNotBlank)
+                            ?: error.message ?: "No se pudo enviar al servidor Ubuntu."
                     )
                 }
             )
@@ -2885,10 +2901,12 @@ class MessageRepository @Inject constructor(
                 statusCode = rpcResponse.status.value,
                 errorBody = rpcError
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             BackendSendResult(
                 isSuccess = false,
-                statusCode = 500,
+                statusCode = 0,
                 errorBody = e.message ?: "Unexpected error calling secure_send_message"
             )
         }
@@ -2927,6 +2945,9 @@ class MessageRepository @Inject constructor(
 
     // Helper extracted to avoid code duplication
     private suspend fun updateChatLastMessageInternal(chatId: String, preview: String, createdAt: String?, msgId: String, senderId: String, token: String) {
+          // Ubuntu confirms the message only after updating its authoritative chat preview.
+          // A compatibility PATCH here repeats the write and stalls durable queue draining.
+          if (shouldUseUbuntuBackend()) return
           try {
             var update = buildJsonObject {
                 put("last_message", preview)
@@ -4933,6 +4954,7 @@ class MessageRepository @Inject constructor(
     }
 
     private fun isRetryableBackendFailure(statusCode: Int, body: String?): Boolean {
+        if (statusCode in 100..599) return isRetryableMessageHttpStatus(statusCode)
         val normalized = body?.trim()?.lowercase().orEmpty()
         val terminalHints = listOf(
             "http 400", "http 401", "http 403", "http 404",

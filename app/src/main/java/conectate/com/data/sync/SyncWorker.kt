@@ -28,6 +28,8 @@ class SyncWorker(
         ).syncManager()
     }
 
+    override suspend fun getForegroundInfo(): androidx.work.ForegroundInfo = syncForegroundInfo(applicationContext)
+
     override suspend fun doWork(): Result {
         var reason = inputData.getString(SyncManager.SYNC_REASON_KEY) ?: "worker"
         return try {

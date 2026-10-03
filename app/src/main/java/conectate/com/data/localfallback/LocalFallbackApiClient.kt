@@ -5276,6 +5276,9 @@ class LocalFallbackApiClient @Inject constructor(
                 onSuccess = { Result.success(it) },
                 onFailure = { firstError ->
                     if (firstError is CancellationException) throw firstError
+                    if (firstError is MessageSendHttpException && !firstError.isRetryable) {
+                        return@fold Result.failure(firstError)
+                    }
                     val retryUrl = refreshedRetryUrl(initialUrl)
                     if (retryUrl != null && retryUrl != initialUrl) {
                         sendChatMessageOnce(retryUrl, accessToken, request)
@@ -5399,7 +5402,7 @@ class LocalFallbackApiClient @Inject constructor(
             if (response.status.isSuccess()) {
                 Result.success(json.decodeFromString<LocalFallbackMessageResponse>(body).message)
             } else {
-                Result.failure(toException(response, decodeError(body)))
+                Result.failure(toMessageSendException(response, decodeError(body)))
             }
         } catch (error: CancellationException) {
             throw error
@@ -5588,8 +5591,10 @@ class LocalFallbackApiClient @Inject constructor(
             if (response.status.isSuccess()) {
                 Result.success(json.decodeFromString<LocalFallbackGroupMessageResponse>(body).message)
             } else {
-                Result.failure(toException(response, decodeError(body)))
+                Result.failure(toMessageSendException(response, decodeError(body)))
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -5633,8 +5638,10 @@ class LocalFallbackApiClient @Inject constructor(
             if (response.status.isSuccess()) {
                 Result.success(json.decodeFromString<LocalFallbackCommunityMessageResponse>(body).message)
             } else {
-                Result.failure(toException(response, decodeError(body)))
+                Result.failure(toMessageSendException(response, decodeError(body)))
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -6410,6 +6417,13 @@ class LocalFallbackApiClient @Inject constructor(
                 LocalFallbackErrorResponse(message = body.take(240))
             }
     }
+
+    private fun toMessageSendException(response: HttpResponse, error: LocalFallbackErrorResponse): MessageSendHttpException =
+        MessageSendHttpException(
+            statusCode = response.status.value,
+            errorCode = (error.error ?: error.message).orEmpty().trim(),
+            cause = toException(response, error),
+        )
 
     private fun toException(response: HttpResponse, error: LocalFallbackErrorResponse): Exception {
         val code = (error.error ?: error.message).orEmpty().trim()

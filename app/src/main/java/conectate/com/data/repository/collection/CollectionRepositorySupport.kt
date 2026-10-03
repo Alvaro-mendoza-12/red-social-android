@@ -1,5 +1,6 @@
 package conectate.com.data.repository.collection
 
+import conectate.com.data.localfallback.MessageSendHttpException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -52,6 +53,7 @@ internal object CollectionRepositorySupport {
     }
 
     fun isRetryableNetworkError(error: Exception, retryCodes: List<String>): Boolean {
+        if (error is MessageSendHttpException) return error.isRetryable
         var text = error.message?.lowercase() ?: return false
         return retryCodes.any { code -> text.contains(code) }
     }

@@ -648,7 +648,7 @@ fun GroupChatScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Respondiendo a", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                     Text(
-                                        text = if (reply.deleted_for_all) "Mensaje eliminado" else reply.content,
+                                        text = conectate.com.util.quotedMessagePreview(reply),
                                         maxLines = 1,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.bodySmall

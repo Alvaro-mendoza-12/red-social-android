@@ -1,0 +1,128 @@
+{
+  "date": "2026-10-02",
+  "scope": "Emulator Android API 35; no physical device operations",
+  "version_code": 117,
+  "base_version": "9.0.20",
+  "apk_sha256": "6a4ea72d41339fba5b52834a95294e08e3e6803d84784d95217f703ac0b98328",
+  "android_unit_tests": {
+    "tests": 1108,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 245
+  },
+  "android_ui_tests": {
+    "passed": 7,
+    "failures": 0
+  },
+  "android_public_transport_tests": {
+    "passed": 3,
+    "failures": 0,
+    "expected_status": 401,
+    "uses_deliberately_invalid_token": true
+  },
+  "backend_selected_regressions": {
+    "passed": 45,
+    "failures": 0,
+    "suites": [
+      "message insert/media/read receipts",
+      "friend request/markers/scheduled messages"
+    ]
+  },
+  "public_https_probe": {
+    "scope": "Windows to public HTTPS; own fictional QA account; includes public transport",
+    "results": [
+      {
+        "case": "empty_payload",
+        "http_status": 400,
+        "error_code": "CHAT_ID_AND_CONTENT_OR_MEDIA_REQUIRED",
+        "acknowledged": false,
+        "elapsed_ms": 182.4
+      },
+      {
+        "case": "absent_chat",
+        "http_status": 403,
+        "error_code": "CHAT_ACCESS_DENIED",
+        "acknowledged": false,
+        "elapsed_ms": 77.3
+      },
+      {
+        "case": "own_qa_sticker_1",
+        "http_status": 201,
+        "error_code": null,
+        "acknowledged": true,
+        "elapsed_ms": 126.2
+      },
+      {
+        "case": "own_qa_sticker_2",
+        "http_status": 201,
+        "error_code": null,
+        "acknowledged": true,
+        "elapsed_ms": 89.7
+      },
+      {
+        "case": "own_qa_sticker_3",
+        "http_status": 201,
+        "error_code": null,
+        "acknowledged": true,
+        "elapsed_ms": 93.5
+      }
+    ]
+  },
+  "native_send_stages_ms": [
+    {
+      "created": 53,
+      "persisted": 68,
+      "token_ready": 2047,
+      "backend_started": 2311,
+      "backend_returned": 2658,
+      "acknowledged": 2721
+    },
+    {
+      "created": 19,
+      "persisted": 107,
+      "token_ready": 1096,
+      "backend_started": 1383,
+      "backend_returned": 2158,
+      "acknowledged": 2422
+    },
+    {
+      "created": 69,
+      "persisted": 117,
+      "token_ready": 680,
+      "backend_started": 1498,
+      "backend_returned": 2118,
+      "acknowledged": 2400
+    }
+  ],
+  "native_reply": {
+    "reply_count_local": 1,
+    "status": "sent",
+    "synced": true,
+    "pending_send": false,
+    "has_reply_id": true,
+    "quoted_content_type": "sticker",
+    "quote_retained_after_server_ack": true
+  },
+  "emulator_environment": {
+    "api": 35,
+    "emulator_version": "36.2.12",
+    "gpu": "host NVIDIA RTX 3050",
+    "vulkan_enabled": false,
+    "cpu_cores": 4,
+    "ram_mb": 2048,
+    "aot_compile_mode": "speed",
+    "cold_activity_start_total_ms_after_aot": 5425,
+    "cold_activity_start_wait_ms_after_aot": 5479,
+    "initial_native_startup_anr_observed": true
+  },
+  "limitations": [
+    "No production certification",
+    "No physical network handoff in this block",
+    "WorkManager before Android 12 validated with Robolectric SDK 25 and 30; no matching physical device",
+    "QEMU access violations and Android/System UI startup ANRs occurred before host GPU and emulator-only AOT compilation; these failures are not counted as successful navigation",
+    "Cold activity start still took 5425 ms after AOT; this debug emulator result does not establish production startup performance",
+    "Android send acknowledgements in this sample still exceed one second",
+    "No server code deployment; SSH check unavailable during this block"
+  ]
+}

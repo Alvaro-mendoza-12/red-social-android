@@ -1421,13 +1421,7 @@ fun ChatScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = when {
-                                    reply.deleted_for_all -> "Mensaje eliminado"
-                                    reply.isImage -> "📷 Imagen"
-                                    reply.isVideo -> "📹 Video"
-                                    reply.isAudio -> "🎤 Audio ${reply.content}"
-                                    else -> reply.content
-                                },
+                                text = conectate.com.util.quotedMessagePreview(reply),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodySmall

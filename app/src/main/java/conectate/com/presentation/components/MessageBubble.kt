@@ -642,13 +642,7 @@ fun MessageBubble(
                                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                             )
                             Text(
-                                text = when {
-                                    quoted.deleted_for_all -> "Mensaje eliminado"
-                                    quoted.isImage -> "📷 Imagen"
-                                    quoted.isVideo -> "📹 Video"
-                                    quoted.isAudio -> "🎤 Audio ${quoted.content}"
-                                    else -> quoted.content
-                                },
+                                text = conectate.com.util.quotedMessagePreview(quoted),
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 2,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
