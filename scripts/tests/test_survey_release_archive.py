@@ -103,6 +103,14 @@ class ArchiveValidationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             validator.run("unchanged", self.root, archive)
 
+    def test_candidate_changes_abort_activation(self):
+        target = self.file("survey-antivirus/start.sh", b"candidate")
+        archive = self.archive([("survey-antivirus/start.sh", b"candidate", tarfile.REGTYPE)])
+        validator.run("unchanged-candidate", self.root, archive)
+        target.write_bytes(b"changed")
+        with self.assertRaises(ValueError):
+            validator.run("unchanged-candidate", self.root, archive)
+
     def test_rollback_removes_only_unchanged_added_files(self):
         self.file("api/src/server.js", b"new")
         added = self.file("api/src/new.js", b"added")
@@ -129,29 +137,61 @@ class RollbackGuardTest(unittest.TestCase):
     def test_conditional_rollback_stops_at_each_failed_stage(self):
         source = (SCRIPTS / "deploy-surveys-api-candidate.sh").read_text()
         function = source[source.index("rollback() {"):source.index('if [[ "$mode" == rollback ]]')]
-        for stage in ("ps", "inspect", "python3", "tar", "stop", "config", "up", "ready", "none", "absent", "foreign"):
+        helpers = source[source.index("candidate_override() {"):source.index('if [[ "$mode" == prepare ]]')]
+        for stage in ("ps", "inspect", "python3", "tar", "stop", "config", "up", "ready", "none", "absent", "foreign", "enabled-false", "enabled-true", "foreign-override"):
             with self.subTest(stage=stage), tempfile.TemporaryDirectory() as temp:
                 root = pathlib.Path(temp).resolve()
                 # Never invokes Docker, tar extraction, or the real validator.
                 shell = r'''
 set -Eeuo pipefail
-root="$1"; release="$1"; validator=unused; previous_image=unused; api_image=candidate; stage="$2"
+root="$1"; release="$1"; validator=unused; previous_image=unused; api_image=candidate; scanner_image=scanner; stage="$2"
 python3() { echo python3 >>"$root/trace"; [[ "$stage" != python3 ]]; }
 tar() { echo tar >>"$root/trace"; [[ "$stage" != tar ]]; }
 docker() { local action="${@: -1}"; [[ "$*" == *" config "* ]] && action=config; [[ "$*" == *" up "* ]] && action=up; [[ "$*" == *" stop "* ]] && action=stop; if [[ "$1" == ps ]]; then action=ps; [[ "$stage" == absent ]] || echo container; fi; if [[ "$1" == inspect ]]; then action=inspect; if [[ "$stage" == foreign ]]; then echo foreign; else echo unused; fi; fi; echo "$action" >>"$root/trace"; [[ "$stage" != "$action" ]]; }
 wait_ready() { echo ready >>"$root/trace"; [[ "$stage" != ready ]]; }
 '''
-                shell += function + '\nif rollback; then exit 0; else exit 42; fi\n'
+                shell += helpers + function + '''
+case "$stage" in
+ enabled-false) candidate_override false >"$root/docker-compose.override.yml" ;;
+ enabled-true) candidate_override true >"$root/docker-compose.override.yml" ;;
+ foreign-override) echo unknown >"$root/docker-compose.override.yml" ;;
+esac
+if rollback; then exit 0; else exit 42; fi
+'''
                 result = subprocess.run(["bash", "-s", "--", str(root), stage], input=shell, text=True, capture_output=True)
-                self.assertEqual(result.returncode, 0 if stage in ("none", "absent") else 42, result.stderr)
-                trace = (root / "trace").read_text().splitlines()
+                success = stage in ("none", "absent", "enabled-false", "enabled-true")
+                self.assertEqual(result.returncode, 0 if success else 42, result.stderr)
+                trace = (root / "trace").read_text().splitlines() if (root / "trace").exists() else []
                 expected = ["ps", "inspect", "python3", "tar", "stop", "config", "up", "ready"]
                 if stage == "absent":
                     self.assertEqual(trace, [item for item in expected if item != "inspect"])
                 elif stage == "foreign":
                     self.assertEqual(trace, expected[:2])
+                elif stage == "foreign-override":
+                    self.assertEqual(trace, [])
                 else:
-                    self.assertEqual(trace, expected if stage == "none" else expected[:expected.index(stage) + 1])
+                    self.assertEqual(trace, expected if success else expected[:expected.index(stage) + 1])
+
+    def check_override(self, variant, modification="", expected=0):
+        source = (SCRIPTS / "deploy-surveys-api-candidate.sh").read_text()
+        helpers = source[source.index("candidate_override() {"):source.index('if [[ "$mode" == prepare ]]')]
+        with tempfile.TemporaryDirectory() as temp:
+            script = 'set -Eeuo pipefail\nroot="$1"; api_image=expected-api; scanner_image=expected-scanner\n' + helpers
+            script += '\ncandidate_override "$2" >"$root/docker-compose.override.yml"\n' + modification + '\napproved_override\n'
+            result = subprocess.run(["bash", "-s", "--", temp, variant], input=script, text=True, capture_output=True)
+            self.assertEqual(result.returncode, expected, result.stderr)
+            return result.stdout.strip()
+
+    def test_approved_false_and_true_keep_exact_images(self):
+        self.assertEqual(self.check_override("false"), "false")
+        self.assertEqual(self.check_override("true"), "true")
+
+    def test_foreign_image_or_settings_are_not_owned(self):
+        self.check_override("true", 'sed -i "s/expected-api/foreign-api/" "$root/docker-compose.override.yml"', expected=1)
+        self.check_override("false", 'echo "foreign setting" >>"$root/docker-compose.override.yml"', expected=1)
+
+    def test_linked_override_is_rejected(self):
+        self.check_override("false", 'mv "$root/docker-compose.override.yml" "$root/linked.yml"; ln -s "$root/linked.yml" "$root/docker-compose.override.yml"', expected=1)
 
 
 if __name__ == "__main__":

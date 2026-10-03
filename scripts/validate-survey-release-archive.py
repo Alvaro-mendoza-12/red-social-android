@@ -64,8 +64,8 @@ def run(mode, root, snapshot_path, candidate_path=None):
     if root.is_symlink() or root.resolve(strict=True) != root:
         raise ValueError("Root must be an existing canonical directory")
     with tarfile.open(snapshot_path) as archive:
-        entries = members(archive, mode != "candidate", root)
-        if mode == "unchanged":
+        entries = members(archive, mode not in ("candidate", "unchanged-candidate"), root)
+        if mode in ("unchanged", "unchanged-candidate"):
             for name, member in entries.items():
                 if not member.isfile():
                     continue
@@ -94,7 +94,7 @@ def run(mode, root, snapshot_path, candidate_path=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("candidate", "snapshot", "unchanged", "remove-added"))
+    parser.add_argument("mode", choices=("candidate", "snapshot", "unchanged", "unchanged-candidate", "remove-added"))
     parser.add_argument("root")
     parser.add_argument("archive")
     parser.add_argument("candidate", nargs="?")

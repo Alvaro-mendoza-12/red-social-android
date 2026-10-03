@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 umask 077
 
-mode="${1:?prepare, deploy or rollback}"
+mode="${1:?prepare, deploy, activate or rollback}"
 root="${2:?existing absolute stack directory}"
 release="${3:?absolute prepared release directory}"
 backup="${4:?absolute verified database/storage backup directory}"
@@ -13,7 +13,7 @@ scanner_image="sha256:8cecbe651670849f42784cf24fa1b943be63da23cf41b52d16478dc5f4
 validator="$(dirname "$(realpath -e "$0")")/validate-survey-release-archive.py"
 test -f "$validator"
 
-case "$mode" in prepare|deploy|rollback) ;; *) exit 2 ;; esac
+case "$mode" in prepare|deploy|activate|rollback) ;; *) exit 2 ;; esac
 [[ "$root" == /home/alvaro/conectate-local-fallback ]]
 [[ "$release" == /home/alvaro/conectate-releases/surveys-api-2011e32-* ]]
 [[ "$backup" == /home/alvaro/conectate-backups/20*T*Z ]]
@@ -45,29 +45,15 @@ wait_ready() {
   return 1
 }
 
-if [[ "$mode" == prepare ]]; then
-  # Refuse to replace an unknown override or overwrite rollback material.
-  test ! -e "$root/docker-compose.override.yml"
-  test ! -e "$root/survey-antivirus"
-  scanner_existing="$(docker ps -aq --filter label=com.docker.compose.project=conectate-local-fallback --filter label=com.docker.compose.service=survey-antivirus)"
-  [[ -z "$scanner_existing" ]]
-  test ! -e "$release/predeploy-files.tar"
-  chmod 700 "$release"
-  python3 "$validator" candidate "$root" "$release/candidate-files.tar"
-  bash "$root/scripts/verify-backup.sh" "$backup"
-  verify_image "$api_image"
-  verify_image "$scanner_image"
-  docker inspect --format '{{.Image}}' conectate-local-fallback-api-main >"$release/previous-api-image"
-  tar -cf "$release/predeploy-files.tar" api/Dockerfile api/package.json api/package-lock.json api/src api/scripts docker-compose.yml .conectate-release
-  python3 "$validator" snapshot "$root" "$release/predeploy-files.tar"
-  sha256sum "$release/predeploy-files.tar" >"$release/predeploy-files.sha256"
-  sha256sum "$release/candidate-files.tar" >"$release/candidate-files.sha256"
-  cat >"$release/candidate.override.yml" <<EOF
+candidate_override() {
+  local enabled="${1:?approved boolean}"
+  case "$enabled" in true|false) ;; *) return 1 ;; esac
+  cat <<EOF
 services:
   api:
     image: "$api_image"
     environment:
-      NOVVIN_SURVEYS_ENABLED: "false"
+      NOVVIN_SURVEYS_ENABLED: "$enabled"
       SURVEY_CLAMD_HOST: survey-antivirus
       SURVEY_CLAMD_PORT: "3310"
   survey-antivirus:
@@ -90,6 +76,37 @@ services:
         max-size: "10m"
         max-file: "3"
 EOF
+}
+
+approved_override() {
+  [[ -f "$root/docker-compose.override.yml" && ! -L "$root/docker-compose.override.yml" ]] || return 1
+  if cmp -s <(candidate_override false) "$root/docker-compose.override.yml"; then
+    echo false
+  elif cmp -s <(candidate_override true) "$root/docker-compose.override.yml"; then
+    echo true
+  else
+    return 1
+  fi
+}
+
+if [[ "$mode" == prepare ]]; then
+  # Refuse to replace an unknown override or overwrite rollback material.
+  test ! -e "$root/docker-compose.override.yml"
+  test ! -e "$root/survey-antivirus"
+  scanner_existing="$(docker ps -aq --filter label=com.docker.compose.project=conectate-local-fallback --filter label=com.docker.compose.service=survey-antivirus)"
+  [[ -z "$scanner_existing" ]]
+  test ! -e "$release/predeploy-files.tar"
+  chmod 700 "$release"
+  python3 "$validator" candidate "$root" "$release/candidate-files.tar"
+  bash "$root/scripts/verify-backup.sh" "$backup"
+  verify_image "$api_image"
+  verify_image "$scanner_image"
+  docker inspect --format '{{.Image}}' conectate-local-fallback-api-main >"$release/previous-api-image"
+  tar -cf "$release/predeploy-files.tar" api/Dockerfile api/package.json api/package-lock.json api/src api/scripts docker-compose.yml .conectate-release
+  python3 "$validator" snapshot "$root" "$release/predeploy-files.tar"
+  sha256sum "$release/predeploy-files.tar" >"$release/predeploy-files.sha256"
+  sha256sum "$release/candidate-files.tar" >"$release/candidate-files.sha256"
+  candidate_override false >"$release/candidate.override.yml"
   docker compose -f docker-compose.yml -f "$release/candidate.override.yml" config --quiet
   chmod 600 "$release/previous-api-image" "$release/predeploy-files.tar" "$release/predeploy-files.sha256" "$release/candidate-files.tar" "$release/candidate-files.sha256" "$release/candidate.override.yml"
   touch "$release/PREPARED"
@@ -113,7 +130,7 @@ rollback() {
   # which disables Bash errexit inside the whole function.
   test ! -L "$root/docker-compose.override.yml" || return 1
   if [[ -e "$root/docker-compose.override.yml" ]]; then
-    cmp "$release/candidate.override.yml" "$root/docker-compose.override.yml" || return 1
+    approved_override >/dev/null || return 1
   fi
   local current_image current_id
   current_id="$(docker ps -aq --filter 'name=^/conectate-local-fallback-api-main$')" || return 1
@@ -142,13 +159,6 @@ EOF
 }
 if [[ "$mode" == rollback ]]; then rollback; exit 0; fi
 
-test ! -e "$release/DEPLOYED"
-test ! -e "$root/docker-compose.override.yml"
-verify_image "$api_image"
-verify_image "$scanner_image"
-[[ "$(docker inspect --format '{{.Image}}' conectate-local-fallback-api-main)" == "$previous_image" ]]
-python3 "$validator" unchanged "$root" "$release/predeploy-files.tar"
-bash "$root/scripts/verify-backup.sh" "$backup"
 failure() {
   trap - ERR
   if ! rollback; then
@@ -156,6 +166,39 @@ failure() {
   fi
   exit 1
 }
+
+if [[ "$mode" == activate ]]; then
+  test -f "$release/DEPLOYED"
+  test ! -e "$release/ACTIVATED"
+  [[ "$(approved_override)" == false ]]
+  [[ "$(docker inspect --format '{{.Image}}' conectate-local-fallback-api-main)" == "$api_image" ]]
+  python3 "$validator" unchanged-candidate "$root" "$release/candidate-files.tar"
+  [[ "$(docker inspect --format '{{.State.Health.Status}}' conectate-local-fallback-api-main)" == healthy ]]
+  [[ "$(docker inspect --format '{{.State.Health.Status}}' conectate-local-fallback-survey-antivirus-1)" == healthy ]]
+  verify_image "$api_image"
+  verify_image "$scanner_image"
+  bash "$root/scripts/verify-backup.sh" "$backup"
+  trap failure ERR
+  override_tmp="$(mktemp "$root/.surveys-override.tmp.XXXXXX")"
+  candidate_override true >"$override_tmp"
+  chmod 644 "$override_tmp"
+  mv -T -- "$override_tmp" "$root/docker-compose.override.yml"
+  docker compose config --quiet
+  docker compose up -d --no-deps --no-build --force-recreate api
+  wait_ready
+  touch "$release/ACTIVATED"
+  trap - ERR
+  echo "API_READY_SURVEYS_ENABLED"
+  exit 0
+fi
+
+test ! -e "$release/DEPLOYED"
+test ! -e "$root/docker-compose.override.yml"
+verify_image "$api_image"
+verify_image "$scanner_image"
+[[ "$(docker inspect --format '{{.Image}}' conectate-local-fallback-api-main)" == "$previous_image" ]]
+python3 "$validator" unchanged "$root" "$release/predeploy-files.tar"
+bash "$root/scripts/verify-backup.sh" "$backup"
 trap failure ERR
 tar -xf "$release/candidate-files.tar" -C "$root"
 install -m 644 "$release/candidate.override.yml" "$root/docker-compose.override.yml"
