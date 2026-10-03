@@ -1,6 +1,6 @@
 # Creación de grupos y comunidades: propiedad y reintentos
 
-Fecha: 2026-10-02. Estado: corrección local probada; despliegue pendiente.
+Fecha: 2026-10-02. Estado: desplegada en la API; PostgreSQL comprobado. Validación de grupos desde Android pendiente.
 
 ## Hallazgo
 
@@ -20,7 +20,13 @@ No hay migraciones de esquema. La creación normal sin ID sigue generándolo en 
 
 Pasaron siete pruebas nuevas del almacén: condición de propietario y tipo, conflicto sin confirmación, protección de IDs importados en ambos tipos de sala, creador falsificado, creación con ID generado y propagación de fallos de base de datos. Pasaron también las 45 regresiones seleccionadas de mensajes, permisos, confirmaciones, marcadores, solicitudes de amistad y programación: **52 pruebas en total**, sin fallos ni omisiones. Node comprobó la sintaxis de `data-routes.js`.
 
-Las pruebas usan un pool simulado y comprueban la consulta parametrizada y sus resultados. Falta ejecutarlas contra PostgreSQL y validar la creación y el reintento desde Android con la API actualizada. El último intento SSH a la mini PC no terminó dentro del plazo y se detuvo únicamente ese proceso. **La corrección no está desplegada en la mini PC; este documento no certifica que la ruta pública ya esté protegida por este cambio.**
+Las siete pruebas iniciales usan un pool simulado y comprueban la consulta parametrizada y sus resultados. Tras la comprobación de Tailscale autorizada por el usuario, se respaldaron PostgreSQL, storage, estado de IA y Compose; sus checksums y estructura fueron verificados. Respaldo: `/home/alvaro/conectate-backups/20261003T032837Z`. No se ejecutó una restauración completa en este bloque.
+
+Se comprobó la revisión anterior de `data-routes.js` antes de sustituirla y se guardaron sus fuentes e imagen para reversión. Se desplegaron la ruta y el helper juntos y se recreó únicamente la API. `/ready` devolvió `ok=true`; los nueve contenedores estaban saludables antes del cambio. La comparación posterior confirmó **99 de 99 fuentes JavaScript de la API**, sin diferencias ni archivos adicionales. El marcador de release se actualizó al commit de backend `f2909d736c051ba37fbc5c8dd07025e62d6ddab3` y su huella de fuentes.
+
+Contra PostgreSQL real pasaron **seis comprobaciones adicionales**: creación de grupo; reintento del propietario conservando ID, creador y reglas; rechazo de otro propietario; rechazo de otro tipo de sala; rechazo de sala eliminada; y creación de comunidad. Se usaron IDs aleatorios dentro de una transacción revertida: las filas de esa prueba no se conservaron. Estos resultados prueban el helper desplegado y su consulta real; sigue pendiente probar creación y reintento desde Android y la interfaz completa de grupos.
+
+La evidencia sanitizada está en [resultados del despliegue](../evidencias-grupos-propiedad-2026-10-02/resultados.json).
 
 ## Siguiente validación de grupos
 

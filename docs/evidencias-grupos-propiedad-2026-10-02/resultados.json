@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-02",
+  "backend_commit": "f2909d736c051ba37fbc5c8dd07025e62d6ddab3",
+  "backup_verified": true,
+  "full_restore_executed": false,
+  "deployed_services": [
+    "api"
+  ],
+  "postgres": {
+    "scope": "Real PostgreSQL; random fixture rows rolled back",
+    "passed": [
+      "create_owned_group",
+      "retry_preserves_creator_rules_and_id",
+      "other_owner_conflict",
+      "other_kind_conflict",
+      "deleted_room_not_resurrected",
+      "create_owned_community"
+    ],
+    "failures": 0,
+    "rolled_back": true
+  },
+  "source_provenance": {
+    "scope": "API src JavaScript only; excludes configuration, schema and other services",
+    "ok": true,
+    "sourceFiles": 99,
+    "matched": 99,
+    "different": [],
+    "extra": [],
+    "ready": true,
+    "checkedAtUtc": "2026-10-03T03:39:52.634737+00:00",
+    "releaseMetadata": {
+      "release": "conectate-mini-pc-20261003T033951Z",
+      "commit": "f2909d736c051ba37fbc5c8dd07025e62d6ddab3",
+      "sourceDigest": "576172b32eb17a98b84f9a7e684ff426be53be06f9dd9961f63bd7923d7cea69",
+      "deployedAtUtc": "2026-10-03T03:39:51.629833+00:00",
+      "environment": "production"
+    }
+  },
+  "android_group_validation_complete": false
+}
