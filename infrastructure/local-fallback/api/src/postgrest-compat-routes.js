@@ -22,6 +22,7 @@ const { googlePlayRtdnConfiguration } = require('./google-play-rtdn')
 const { applyGiftToActiveBattle } = require('./live-battle-scoring')
 const { stableKey } = require('./request-security')
 const { safeErrorLogDetails } = require('./request-observability')
+const { publishPollUpdate } = require('./poll-update-publish')
 const { cleanUsername, usernameOwnedByAnother, usernameProblem } = require('./username-policy')
 const { introPolicyError } = require('./direct-message-request-policy')
 const { catalogAllowsStickerMedia, stickerPackReadable, stickerRowDeleted } = require('./sticker-media-policy')
@@ -2909,41 +2910,69 @@ async function votePollOption(pool, auth, body) {
   const pollId = normalizeIdentityValue(messageBodyValue(body, 'poll_id', ''))
   const optionId = normalizeIdentityValue(messageBodyValue(body, 'option_id', ''))
   const selected = messageBodyValue(body, 'selected', true) !== false
-  if (!pollId || !optionId || !(await canAccessPoll(pool, identity, pollId))) {
+  if (!pollId || !optionId) {
     throw httpError('POLL_ACCESS_DENIED')
   }
-  const poll = await findCompatEntity(pool, 'message_polls', pollId)
-  if (!poll) throw httpError('POLL_NOT_FOUND', 404)
-  if (poll.is_closed === true) throw httpError('POLL_CLOSED', 409)
-  const option = (await importedAndCompatRows(pool, 'message_poll_options'))
-    .find((row) => normalizeIdentityValue(row.id) === optionId)
-  if (!option || normalizeIdentityValue(option.poll_id) !== pollId) {
-    throw httpError('POLL_OPTION_NOT_FOUND', 404)
-  }
+  const client = typeof pool.connect === 'function' ? await pool.connect() : pool
+  const releaseClient = client !== pool && typeof client.release === 'function'
+  let inTransaction = false
+  try {
+    await client.query('BEGIN')
+    inTransaction = true
+    // One account may vote from several devices at once. Serialize its changes
+    // across workers before reading policy or replacing a single-choice vote.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `poll-vote:${pollId}:${normalizeIdentityValue(identity.preferredUserId)}`,
+    ])
+    if (!(await canAccessPoll(client, identity, pollId))) throw httpError('POLL_ACCESS_DENIED')
+    const poll = await findCompatEntity(client, 'message_polls', pollId)
+    if (!poll) throw httpError('POLL_NOT_FOUND', 404)
+    if (poll.is_closed === true) throw httpError('POLL_CLOSED', 409)
+    const option = (await importedAndCompatRows(client, 'message_poll_options'))
+      .find((row) => normalizeIdentityValue(row.id) === optionId)
+    if (!option || normalizeIdentityValue(option.poll_id) !== pollId) {
+      throw httpError('POLL_OPTION_NOT_FOUND', 404)
+    }
 
-  const compatVotes = await readCompatRows(pool, 'message_poll_votes')
-  const actorVotes = compatVotes.filter((vote) =>
-    normalizeIdentityValue(vote.poll_id) === pollId && identityOwnsRow(identity, vote, ['user_id']),
-  )
-  const votesToDelete = selected && poll.allows_multiple !== true
-    ? actorVotes.filter((vote) => normalizeIdentityValue(vote.option_id) !== optionId)
-    : selected
-      ? []
-      : actorVotes.filter((vote) => normalizeIdentityValue(vote.option_id) === optionId)
-  for (const vote of votesToDelete) {
-    await pool.query(
-      `DELETE FROM fallback_compat_rows WHERE table_name = 'message_poll_votes' AND row_id = $1`,
-      [rowId(vote, 'message_poll_votes')],
+    // Replace all aliases of this account's selected vote, including imported
+    // votes. Otherwise old votes can reappear after a change or removal.
+    const replaceAll = selected && poll.allows_multiple !== true
+    const parameters = [pollId, identity.values, replaceAll, optionId]
+    await client.query(
+      `DELETE FROM fallback_compat_rows
+       WHERE table_name = 'message_poll_votes'
+         AND lower(row->>'poll_id') = $1
+         AND lower(row->>'user_id') = ANY($2::text[])
+         AND ($3::boolean OR lower(row->>'option_id') = $4)`,
+      parameters,
     )
+    if (await tableExists(client, 'supabase_import', 'message_poll_votes')) {
+      await client.query(
+        `DELETE FROM supabase_import.message_poll_votes AS vote
+         WHERE lower(to_jsonb(vote)->>'poll_id') = $1
+           AND lower(to_jsonb(vote)->>'user_id') = ANY($2::text[])
+           AND ($3::boolean OR lower(to_jsonb(vote)->>'option_id') = $4)`,
+        parameters,
+      )
+    }
+    if (selected) {
+      await storeCompatRow(client, 'message_poll_votes', {
+        poll_id: pollId,
+        option_id: optionId,
+        user_id: identity.preferredUserId,
+      })
+    }
+    const state = await buildPollState(client, identity, pollId)
+    await client.query('COMMIT')
+    inTransaction = false
+    void publishPollUpdate(pool, poll)
+    return state
+  } catch (error) {
+    if (inTransaction) await client.query('ROLLBACK').catch(() => {})
+    throw error
+  } finally {
+    if (releaseClient) client.release()
   }
-  if (selected) {
-    await storeCompatRow(pool, 'message_poll_votes', {
-      poll_id: pollId,
-      option_id: optionId,
-      user_id: identity.preferredUserId,
-    })
-  }
-  return buildPollState(pool, identity, pollId)
 }
 
 function strictBoolean(value, fieldName) {
@@ -6054,6 +6083,8 @@ function registerPostgrestCompatRoutes(app, { pool, authOptional }) {
 module.exports = {
   canReuseCatalogStickerMedia,
   _test: {
+    votePollOption,
+    buildPollState,
     desiredStickerFavoriteState,
     toggleStickerFavoriteRpc,
     DEFAULT_VIRTUAL_GIFTS,
