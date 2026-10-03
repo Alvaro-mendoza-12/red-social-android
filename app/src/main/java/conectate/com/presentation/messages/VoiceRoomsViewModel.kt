@@ -16,7 +16,6 @@ import javax.inject.Inject
 sealed class VoiceRoomsUiState {
     object Loading : VoiceRoomsUiState()
     data class Success(val rooms: List<VoiceRoom>) : VoiceRoomsUiState()
-    data class SearchResult(val room: VoiceRoom?) : VoiceRoomsUiState()
     data class Error(val message: String) : VoiceRoomsUiState()
 }
 
@@ -36,6 +35,12 @@ class VoiceRoomsViewModel @Inject constructor(
     val errorEvents = _errorEvents.receiveAsFlow()
     val currentRoom = voiceRoomRepository.currentRoom
     val currentParticipants = voiceRoomRepository.currentParticipants
+    private val roomSearch = VoiceRoomSearchController(
+        scope = viewModelScope,
+        currentAccount = voiceRoomRepository::getCurrentUserId,
+        findRoom = voiceRoomRepository::getRoomById,
+    )
+    internal val searchState = roomSearch.state
 
     init {
         viewModelScope.launch {
@@ -80,21 +85,11 @@ class VoiceRoomsViewModel @Inject constructor(
     }
 
     fun searchRoomById(id: String) {
-        viewModelScope.launch {
-            _uiState.value = VoiceRoomsUiState.Loading
-            voiceRoomRepository.getRoomById(id).fold(
-                onSuccess = { room ->
-                    _uiState.value = VoiceRoomsUiState.SearchResult(room)
-                },
-                onFailure = {
-                    _uiState.value = VoiceRoomsUiState.Error("Sala no encontrada")
-                }
-            )
-        }
+        roomSearch.search(id)
     }
 
     fun resetSearch() {
-        refreshRooms()
+        roomSearch.reset()
     }
 
     fun deleteRoom(roomId: String) {

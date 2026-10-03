@@ -64,8 +64,7 @@ fun VoiceRoomsTab(
 
     var showSearchDialog by remember { mutableStateOf(false) }
     var searchId by remember { mutableStateOf("") }
-    var searchPassword by remember { mutableStateOf("") }
-    var searchError by remember { mutableStateOf<String?>(null) }
+    val searchState by viewModel.searchState.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (!hasAccess) {
@@ -124,6 +123,7 @@ fun VoiceRoomsTab(
                         }
                         
                         IconButton(onClick = { 
+                            viewModel.resetSearch()
                             showSearchDialog = true
                         }) {
                             Icon(
@@ -137,67 +137,21 @@ fun VoiceRoomsTab(
             }
 
             if (showSearchDialog) {
-                AlertDialog(
-                    onDismissRequest = { 
-                        showSearchDialog = false
-                        searchError = null
-                        searchPassword = ""
-                    },
-                    title = { Text("Unirse por ID") },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = searchId,
-                                onValueChange = { searchId = it },
-                                label = { Text("ID de la Sala") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = searchPassword,
-                                onValueChange = { searchPassword = it },
-                                label = { Text("Contraseña (si es privada)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                            searchError?.let {
-                                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        Button(onClick = {
-                            if (searchId.isNotBlank()) {
-                                viewModel.searchRoomById(searchId)
-                            }
-                        }) {
-                            Text("Buscar y Unirse")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showSearchDialog = false }) {
-                            Text("Cancelar")
-                        }
-                    }
+                VoiceRoomSearchDialog(
+                    id = searchId,
+                    state = searchState,
+                    onIdChange = { searchId = it; viewModel.resetSearch() },
+                    onSearch = { viewModel.searchRoomById(searchId) },
+                    onDismiss = { showSearchDialog = false; viewModel.resetSearch() },
                 )
             }
 
-            // Handle Search result within the UI
-            LaunchedEffect(uiState) {
-                if (uiState is VoiceRoomsUiState.SearchResult) {
-                    val room = (uiState as VoiceRoomsUiState.SearchResult).room
-                    if (room != null) {
-                        // Check password if private
-                        if (room.isPublic || room.password == searchPassword) {
-                            onNavigateToRoomDetail(room.id)
-                            showSearchDialog = false
-                            viewModel.resetSearch()
-                        } else {
-                            searchError = "Contraseña incorrecta"
-                        }
-                    } else {
-                        searchError = "Sala no encontrada"
-                    }
+            LaunchedEffect(searchState, showSearchDialog) {
+                val found = searchState as? VoiceRoomSearchState.Found
+                if (showSearchDialog && found != null) {
+                    showSearchDialog = false
+                    viewModel.resetSearch()
+                    onNavigateToRoomDetail(found.room.id)
                 }
             }
 
@@ -251,11 +205,6 @@ fun VoiceRoomsTab(
                                 )
                             }
                         }
-                    }
-                }
-                is VoiceRoomsUiState.SearchResult -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
                     }
                 }
                 is VoiceRoomsUiState.Error -> {

@@ -67,6 +67,10 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 54. [Emulador: respuestas a multimedia y sincronización — 2026-10-02](49-emulador-mensajes-respuestas-y-sync-2026-10-02.md)
 55. [Emulador: envío fuera del hilo de la pantalla y documentos — 2026-10-02](50-emulador-envio-background-y-documentos-2026-10-02.md)
 56. [Creación de grupos y comunidades: propiedad y reintentos — 2026-10-02](51-creacion-grupos-propiedad-2026-10-02.md)
+57. [Enlaces de chat — 2026-10-02](52-enlaces-chat-2026-10-02.md)
+58. [Transporte de llamadas, salas y LIVE — 2026-10-02](53-transporte-llamadas-salas-live-2026-10-02.md)
+59. [Permisos al contestar llamadas — 2026-10-02](54-permisos-al-contestar-llamadas-2026-10-02.md)
+60. [Salas privadas y media entre emuladores — 2026-10-03](55-salas-privadas-y-media-emuladores-2026-10-03.md)
 
 ## Reglas para quien trabaje en este proyecto
 
