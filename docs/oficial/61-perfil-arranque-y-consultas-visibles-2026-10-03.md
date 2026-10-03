@@ -319,6 +319,91 @@ Este cambio limita picos de memoria; no elimina el coste de carga de firmas de
 la música ni certifica el tiempo total de publicar canciones. Sigue pendiente
 su despliegue con verificación de fuentes y regresión en el servidor.
 
+### Compatibilidad SQL con PostgreSQL de producción
+
+Se ejecutaron los cinco archivos de pruebas de Encuestas sobre PostgreSQL
+**16.15**, la versión del servidor: **48 pruebas aprobadas, cero fallos y cero
+omisiones**. Incluyen la creación idempotente de tablas dos veces, HTTP con JWT
+firmado y validación de sesiones, retención, privacidad, moderación y carreras
+de publicación y activos. No se usaron registros ni credenciales productivos.
+
+La base `novvin_surveys_test` estaba en un contenedor temporal, con datos en
+tmpfs, 256 MiB de memoria, una CPU y puerto accesible solo por loopback mediante
+un túnel SSH. Al terminar quedaron cero esquemas de prueba; se retiraron túnel,
+contenedor y sus datos. Esta prueba confirma los recorridos ensayados sobre
+PostgreSQL 16.15, pero no acredita una migración ni un despliegue sobre la base
+real. Las fuentes combinadas quedaron registradas en `664b44a` (sesiones y
+música) y `8c4493a` (módulo de Encuestas y antivirus).
+
+### Fixtures Bash que Windows había omitido
+
+Se copiaron únicamente dos archivos de prueba y sus dos scripts a un directorio
+temporal privado de Linux. Pasaron tres pruebas con Node 22.23.1: una comprobación
+estática y los dos fixtures que Windows omite. Verifican que el simulacro espera
+el proceso PostgreSQL definitivo y conserva diagnósticos ante fallo, y que el
+monitor distingue fallos públicos, tolera fallos aislados y alerta al tercero.
+
+Los fixtures sustituyen Docker por un ejecutable ficticio y usan archivos
+sintéticos. No se restauró una base real ni se ejecutó el monitor contra los
+usuarios. Se retiraron el directorio y sus diagnósticos temporales. Esta ronda
+cubre las dos omisiones de plataforma; su prueba estática se repetía y no debe
+sumarse dos veces al recuento global.
+
+## Comprobaciones adicionales de esta continuación
+
+La tarea coordinada terminó la compilación debug y del APK de instrumentación
+de `8c4493a`: **1.230 pruebas unitarias Android, cero fallos, errores u omisiones**.
+Esto incluye las nueve regresiones de la protección de sesiones. La regresión
+conjunta de 27 casos descubrió un fallo intermitente en el estado accesible de
+carga de moderación; se corrigió en `0c3548b` y se repite la ronda completa. Los
+resultados de la revisión anterior no se presentan como aprobados para el nuevo
+artefacto hasta que termine esa repetición.
+
+Se creó y verificó el respaldo
+`/home/alvaro/conectate-backups/20261003T221229Z`: PostgreSQL de 3.795.584 bytes,
+storage de 2.217.646.141 bytes y estado de IA de 4.695.842 bytes. Pasaron los
+cuatro SHA256 del manifiesto, el listado de `pg_restore` y la lectura de los dos
+archivos comprimidos. `RETENTION_DAYS=0` evitó podar respaldos anteriores. Esta
+comprobación de integridad no equivale a una restauración completa ensayada.
+Los nueve servicios productivos estaban saludables y todavía conservaban la
+API de `31c571d`; no se había desplegado la nueva revisión.
+
+La inspección de inicio encontró que `MainActivityContent` resuelve los
+repositorios de llamadas, voz y LIVE durante la composición al restaurar una
+sesión autenticada. `HomeViewModel` también recibe dependencias de varias
+secciones antes de usar sus pantallas. Es un candidato de optimización que exige
+traza y medición, no la demostración de que todos los segundos provienen de esas
+dependencias. La entrega de llamadas entrantes debe conservarse al reorganizar
+este trabajo. Se distinguirán primer dibujo y contenido utilizable, conforme a
+la [guía oficial de inicio de Android](https://developer.android.com/topic/performance/appstartup/analysis-optimization).
+
+En WebRTC la creación de un peer puede esperar hasta diez segundos cuando faltan
+credenciales TURN válidas. Con credenciales vigentes evita esa espera. Acortar el
+plazo sin revisar su obtención y la negociación puede impedir audio y video en
+redes móviles: la conexión del socket de señalización no demuestra conexión de
+medios. La revisión sigue el flujo de señalización y candidatos descrito en la
+[documentación oficial de WebRTC](https://webrtc.org/getting-started/peer-connections).
+
+Una prueba nueva forzó las direcciones IPv4 públicas de Funnel obtenidas por DNS
+HTTPS, conservando TLS y SNI normales. Desde la mini PC, con una sesión propia de
+QA, cinco peticiones TURN devolvieron credenciales válidas en 1.066, 298, 284,
+287 y 287 ms. Los handshakes directos WebSocket de llamada, voz y LIVE tardaron
+1.496, 1.708 y 775 ms; el transporte con polling tardó 2.566, 1.719 y 2.000 ms.
+Las seis conexiones se establecieron. No se unió a salas ni se activaron medios;
+estos resultados no demuestran audio, cámara ni latencia en un celular por datos
+móviles. Tampoco cumplen la meta de menos de un segundo para todas las rutas.
+El proceso temporal de la primera prueba quedó activo por handles del cliente;
+se retiró ese proceso de QA y la repetición finalizó con limpieza explícita.
+
+La segunda ronda de 27 pruebas tuvo dos fallos: una comparación del resultado
+JavaScript en la prueba de moderación y un timeout al iniciar audio de perfil.
+Este último ocurrió **antes** del reemplazo de `LifecycleOwner`, por lo que no
+prueba un fallo de ese reemplazo. No se amplió el plazo para ocultarlo. El audio
+usaba un WAV propio de doce segundos; se investigan sincronización, foco y red,
+y se repetirá sin R8 simultáneo. Otro caso de esa ronda arrancó audio de perfil
+en 4.635 ms, preescucha en 1.211 ms e imagen en 189 ms; el pico de audio permanece
+registrado. La ronda conjunta todavía no está aprobada.
+
 ## Pendientes prioritarios
 
 1. Reproducir y reducir los picos de inicio de audio; medir el recorrido completo
