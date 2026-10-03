@@ -30,6 +30,7 @@
     else throw new Error('La descarga está disponible en la app Android.')
   }
   function button(label, action, data = '', cls = '') { return `<button type="button" class="${cls}" data-action="${action}" data-id="${e(data)}">${e(label)}</button>` }
+  function setBusy(value) { busy = value; app.setAttribute('aria-busy', String(value)) }
   function input(label, path, value, kind = 'text', extra = '') { return `<label>${e(label)}<input data-field="${e(path)}" type="${kind}" value="${e(value)}" ${extra}></label>` }
   function area(label, path, value, extra = '') { return `<label>${e(label)}<textarea data-field="${e(path)}" ${extra}>${e(value)}</textarea></label>` }
   function select(label, path, value, options) { return `<label>${e(label)}<select data-field="${e(path)}">${Object.entries(options).map(([k, v]) => `<option value="${e(k)}" ${k === String(value) ? 'selected' : ''}>${e(v)}</option>`).join('')}</select></label>` }
@@ -99,7 +100,7 @@
       const control = card.querySelector('[data-action="manage"]'), c = allCampaigns.find(item => item.id === control?.dataset.id)
       if (c) card.querySelector('.chip').textContent = campaignStatus(c)
     })
-    app.setAttribute('aria-busy', 'false')
+    app.setAttribute('aria-busy', String(busy))
   }
   function filterLibrary() { document.querySelectorAll('#app .grid article.card').forEach(card => { card.hidden = !card.querySelector('h3').textContent.toLocaleLowerCase('es').includes(librarySearch.toLocaleLowerCase('es')) }) }
   function renderEditor() {
@@ -464,13 +465,13 @@
   }
   document.addEventListener('click', async event => {
     const b = event.target.closest('[data-action]'); if (!b || busy) return
-    try { busy = true; b.disabled = true; await action(b.dataset.action, b.dataset.id) }
+    try { setBusy(true); b.disabled = true; await action(b.dataset.action, b.dataset.id) }
     catch (error) { toast(error.message || 'No se pudo completar la operación.') }
-    finally { busy = false; if (b.isConnected) b.disabled = false; app.setAttribute('aria-busy', 'false') }
+    finally { setBusy(false); if (b.isConnected) b.disabled = false }
   })
   document.getElementById('home').addEventListener('click', async () => {
     if (busy) return
-    try { busy = true; await home() } catch (error) { toast(error.message) } finally { busy = false }
+    try { setBusy(true); await home() } catch (error) { toast(error.message) } finally { setBusy(false) }
   })
   window.surveyBack = async () => {
     try {
@@ -506,7 +507,7 @@
     if (!el.files?.length) return
     if (busy) { toast('Espera a que termine la operación anterior.'); return }
     try {
-      busy = true; el.disabled = true; toast('Validando archivo…')
+      setBusy(true); el.disabled = true; toast('Validando archivo…')
       if (el.dataset.uploadCover || el.dataset.uploadSection) {
         const a = await upload(el.files[0])
         if (el.dataset.uploadCover) form.schema.cover = a.id
@@ -524,7 +525,7 @@
         sessionStorage.setItem(`novvin-survey-answer:${account.id}:${survey.id}`, JSON.stringify(answers)); renderRespond()
       }
       toast('Archivo guardado en privado.')
-    } catch (error) { toast(error.message) } finally { busy = false; el.disabled = false }
+    } catch (error) { toast(error.message) } finally { setBusy(false); el.disabled = false }
   })
   window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = '' } })
   if (window.NovvinSurveys) window.NovvinSurveys.ready()
