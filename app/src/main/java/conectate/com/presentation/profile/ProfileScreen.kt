@@ -1219,7 +1219,11 @@ fun ProfileScreen(
                                 if (!isOwnProfile) {
                                     Spacer(Modifier.height(8.dp))
                                     ProfileMessageButton(onClick = {
-                                        navController.navigate(Screen.Chat.createRoute(user.id))
+                                        if (user.id.isNotBlank() && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                                            navController.navigate(Screen.Chat.createRoute(user.id)) {
+                                                launchSingleTop = true
+                                            }
+                                        }
                                     })
                                 }
 

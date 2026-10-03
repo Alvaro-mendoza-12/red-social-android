@@ -1,199 +1,142 @@
 package conectate.com.presentation.components
 
-import android.media.AudioAttributes
-import android.media.MediaPlayer
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import conectate.com.util.InteractiveAudioBuffer
+import conectate.com.util.MediaPlaybackDataSources
 import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.delay
 import java.net.URI
 
-private val supportedAudioExtensions = setOf(
-    "mp3", "m4a", "mp4", "aac", "ogg", "oga", "opus", "flac", "wav", "webm"
-)
+private val supportedAudioExtensions = setOf("mp3", "m4a", "mp4", "aac", "ogg", "oga", "opus", "flac", "wav", "webm")
 
-/** Only local content or direct HTTPS audio is playable; web pages/embeds are not audio sources. */
-internal fun isSupportedDirectAudioSource(rawUrl: String): Boolean {
-    val value = rawUrl.trim()
-    if (value.isBlank()) return false
-    return runCatching {
-        val uri = URI(value)
-        when (uri.scheme?.lowercase()) {
-            "content", "file", "android.resource" -> true
-            "https" -> uri.path.orEmpty().substringAfterLast('.', "").lowercase() in supportedAudioExtensions
-            else -> false
-        }
-    }.getOrDefault(false)
-}
+internal fun isSupportedDirectAudioSource(rawUrl: String): Boolean = runCatching {
+    val uri = URI(rawUrl.trim())
+    when (uri.scheme?.lowercase()) {
+        "content", "file", "android.resource" -> true
+        "https" -> !uri.host.isNullOrBlank() && uri.userInfo == null && (
+            uri.path.orEmpty().substringAfterLast('.', "").lowercase() in supportedAudioExtensions ||
+                Regex("/storage/v1/object/(public|sign)/audios/.+").matches(uri.path.orEmpty())
+            )
+        else -> false
+    }
+}.getOrDefault(false)
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-fun CommentAudioPlayer(
-    audioUrl: String,
-    modifier: Modifier = Modifier
-) {
+fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    var isPlaying by remember(audioUrl) { mutableStateOf(false) }
-    var isLoading by remember(audioUrl) { mutableStateOf(false) }
-    var progress by remember(audioUrl) { mutableStateOf(0f) }
-    var errorMessage by remember(audioUrl) { mutableStateOf<String?>(null) }
-    var mediaPlayer by remember(audioUrl) { mutableStateOf<MediaPlayer?>(null) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val resolved = remember(audioUrl) { UbuntuMedia.resolveUrl(audioUrl) ?: audioUrl }
+    var player by remember(resolved) { mutableStateOf<ExoPlayer?>(null) }
+    var isPlaying by remember(resolved) { mutableStateOf(false) }
+    var isLoading by remember(resolved) { mutableStateOf(false) }
+    var progress by remember(resolved) { mutableStateOf(0f) }
+    var error by remember(resolved) { mutableStateOf<String?>(null) }
 
-    DisposableEffect(audioUrl) {
-        onDispose {
-            runCatching { mediaPlayer?.stop() }
-            runCatching { mediaPlayer?.release() }
-            mediaPlayer = null
-        }
+    DisposableEffect(player) {
+        val owned = player
+        onDispose { owned?.release() }
     }
 
-    LaunchedEffect(isPlaying, mediaPlayer) {
+    DisposableEffect(player, lifecycle) {
+        val owned = player
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) { owned?.pause(); isPlaying = false; isLoading = false }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(isPlaying, player) {
         while (isPlaying) {
-            val player = mediaPlayer ?: break
-            runCatching {
-                if (player.duration > 0) {
-                    progress = player.currentPosition.toFloat() / player.duration.toFloat()
-                }
-            }
+            val active = player ?: break
+            if (active.duration > 0) progress = (active.currentPosition.toFloat() / active.duration).coerceIn(0f, 1f)
             delay(100)
         }
     }
 
     fun togglePlay() {
-        if (!isSupportedDirectAudioSource(audioUrl)) {
-            errorMessage = "Este enlace no es un archivo de audio directo compatible."
+        if (!isSupportedDirectAudioSource(resolved)) {
+            error = "Este enlace no es un archivo de audio directo compatible."
             return
         }
-        val activePlayer = mediaPlayer
-        if (activePlayer == null) {
-            try {
-                isLoading = true
-                errorMessage = null
-                mediaPlayer = MediaPlayer().apply {
-                    setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .build()
-                    )
-                    UbuntuMedia.setDataSource(context, this, audioUrl)
-                    setOnPreparedListener {
-                        isLoading = false
-                        start()
-                        isPlaying = true
+        var active = player
+        try {
+            if (active == null) {
+                active = ExoPlayer.Builder(context)
+                    .setMediaSourceFactory(DefaultMediaSourceFactory(MediaPlaybackDataSources.streamingFactory(context)))
+                    .setLoadControl(InteractiveAudioBuffer.loadControl())
+                    .setHandleAudioBecomingNoisy(true).build()
+                val owned = active
+                player = owned
+                owned.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
+                owned.addListener(object : Player.Listener {
+                    override fun onIsPlayingChanged(value: Boolean) { if (player === owned) isPlaying = value }
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (player !== owned) return
+                        isLoading = state == Player.STATE_BUFFERING && owned.playWhenReady
+                        if (state == Player.STATE_ENDED) { progress = 0f; isPlaying = false }
                     }
-                    setOnCompletionListener {
-                        isLoading = false
-                        isPlaying = false
-                        progress = 0f
-                        seekTo(0)
+                    override fun onPlayerError(failure: PlaybackException) {
+                        if (player !== owned) return
+                        isLoading = false; isPlaying = false
+                        error = "No se pudo reproducir este audio. Toca reproducir para reintentar."
                     }
-                    setOnErrorListener { failedPlayer, _, _ ->
-                        isLoading = false
-                        isPlaying = false
-                        progress = 0f
-                        errorMessage = "No se pudo reproducir este audio."
-                        runCatching { failedPlayer.release() }
-                        if (mediaPlayer === failedPlayer) mediaPlayer = null
-                        true
-                    }
-                    prepareAsync()
-                }
-            } catch (_: Exception) {
-                isLoading = false
-                errorMessage = "No se pudo reproducir este audio."
-                runCatching { mediaPlayer?.release() }
-                mediaPlayer = null
+                })
             }
-            return
-        }
-
-        runCatching {
-            if (activePlayer.isPlaying) {
-                activePlayer.pause()
-                isPlaying = false
+            val owned = active
+            error = null
+            if (owned.playWhenReady && owned.playbackState != Player.STATE_ENDED && owned.playerError == null) {
+                owned.pause(); isLoading = false; isPlaying = false
             } else {
-                activePlayer.start()
-                isPlaying = true
+                if (owned.playbackState == Player.STATE_IDLE) {
+                    owned.setMediaItem(MediaItem.fromUri(resolved)); isLoading = true; owned.prepare()
+                } else if (owned.playbackState == Player.STATE_ENDED) owned.seekTo(0)
+                owned.play()
             }
-        }.onFailure {
-            isPlaying = false
-            errorMessage = "No se pudo reproducir este audio."
+        } catch (_: Exception) {
+            // Release even if setup failed before Compose installed its disposal effect.
+            active?.release()
+            if (player === active) player = null
+            isLoading = false; isPlaying = false; error = "No se pudo reproducir este audio."
         }
     }
 
-    Column(
-        modifier = modifier
-            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f), CircleShape)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(
-                onClick = ::togglePlay,
-                enabled = !isLoading,
-                modifier = Modifier.size(36.dp),
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pausar" else "Reproducir",
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
+    Column(modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = .3f), CircleShape)
+        .padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = ::togglePlay, modifier = Modifier.size(36.dp)) {
+                if (isLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                else Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    if (isPlaying) "Pausar" else "Reproducir", tint = MaterialTheme.colorScheme.primary)
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(4.dp)
-                    .clip(CircleShape),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
-            )
+            Spacer(Modifier.width(8.dp))
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.weight(1f).height(4.dp).clip(CircleShape),
+                color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .2f))
         }
-        errorMessage?.let { message ->
-            Text(
-                text = message,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            )
-        }
+        error?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) }
     }
 }

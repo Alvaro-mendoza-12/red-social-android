@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,6 +53,8 @@ import conectate.com.data.model.MessagePollOptionState
 import conectate.com.data.model.PollVoteUser
 import conectate.com.data.model.MessageReadReceipt
 import conectate.com.presentation.components.CircularProfileImage
+
+internal fun pollVoteCountLabel(count: Long): String = "$count ${if (count == 1L) "voto" else "votos"}"
 
 @Composable
 fun PollComposerDialog(
@@ -184,7 +187,7 @@ fun PollMessageCard(
                 pollState.forEach { option ->
                     val ratio = if (totalVotes > 0L) (option.voteCount.toFloat() / totalVotes.toFloat()) else 0f
                     val rowBackground = if (option.votedByMe) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                        textColor.copy(alpha = 0.10f)
                     } else {
                         Color.Transparent
                     }
@@ -216,7 +219,11 @@ fun PollMessageCard(
                                 Spacer(Modifier.size(6.dp))
                                 TextButton(
                                     onClick = { onVote(option.optionId, !option.votedByMe) },
-                                    enabled = !isClosed
+                                    enabled = !isClosed,
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = textColor,
+                                        disabledContentColor = textColor.copy(alpha = 0.45f),
+                                    ),
                                 ) {
                                     Text(if (option.votedByMe) "Quitar voto" else "Votar", style = MaterialTheme.typography.labelSmall)
                                 }
@@ -227,8 +234,8 @@ fun PollMessageCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(6.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                            color = textColor.copy(alpha = 0.75f),
+                            trackColor = textColor.copy(alpha = 0.12f)
                         )
                     }
                 }
@@ -249,7 +256,7 @@ fun PollMessageCard(
                 ) {
                     Text(
                         text = buildString {
-                            append("${totalVotes} votos")
+                            append(pollVoteCountLabel(totalVotes))
                             if (allowsMultiple) append(" · múltiple")
                             if (isClosed) append(" · cerrada")
                         },
@@ -303,7 +310,7 @@ fun PollOptionVotersDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("$title ($voteCount votos)") },
+        title = { Text("$title (${pollVoteCountLabel(voteCount)})") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when {
@@ -321,7 +328,7 @@ fun PollOptionVotersDialog(
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(240.dp),
+                                .heightIn(max = 240.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items(voters) { voter ->

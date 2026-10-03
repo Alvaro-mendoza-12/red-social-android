@@ -997,9 +997,11 @@ class UserRepository @Inject constructor(
 
         val viewer = getCachedUserById(viewerId)
             ?: getUserById(viewerId, forceNetwork = false).getOrNull()
-        if (viewer?.profile_view_history_enabled != true) return Result.success(Unit)
+        if (viewer == null) return Result.failure(Exception("No se pudo comprobar la preferencia de visitas."))
+        if (!viewer.profile_view_history_enabled) return Result.success(Unit)
 
         val token = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No access token"))
+        if (viewerId != authService.getCurrentUserId()?.let(::normalizePrivacyUserId)) return Result.success(Unit)
         return runCatching {
             val response = supabaseConfig.httpClient.post(
                 "${supabaseConfig.supabaseUrl.removeSuffix("/")}/rest/v1/profile_views"
@@ -1020,7 +1022,7 @@ class UserRepository @Inject constructor(
             if (!response.status.isSuccess()) {
                 throw Exception("No se pudo registrar la visita (${response.status.value})")
             }
-        }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     suspend fun getRecentProfileViewers(limit: Int = 50): Result<List<ProfileViewer>> {

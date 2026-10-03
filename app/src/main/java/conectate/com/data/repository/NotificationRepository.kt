@@ -43,13 +43,24 @@ class NotificationRepository @Inject constructor(
 
     private val scope = newSafeScope("NotificationRepository", Dispatchers.IO)
     private var momentExpiryRefreshJob: Job? = null
+    private var realtimeUnreadRefreshJob: Job? = null
     private val _unreadCount = MutableStateFlow(0)
     val unreadCount: StateFlow<Int> = _unreadCount.asStateFlow()
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
     fun clearData() {
         momentExpiryRefreshJob?.cancel()
+        realtimeUnreadRefreshJob?.cancel()
         _unreadCount.value = 0
+    }
+
+    private fun scheduleRealtimeUnreadRefresh(userId: String) {
+        if (!userId.equals(authService.getCurrentUserId(), ignoreCase = true)) return
+        realtimeUnreadRefreshJob?.cancel()
+        realtimeUnreadRefreshJob = scope.launch {
+            delay(150)
+            if (userId.equals(authService.getCurrentUserId(), ignoreCase = true)) updateUnreadCount()
+        }
     }
 
     private fun scheduleMomentExpiryRefresh(notifications: List<Notification>) {
@@ -466,6 +477,7 @@ class NotificationRepository @Inject constructor(
             if (token.isBlank()) return@flow
             ubuntuRealtimeClient.updateAccessToken(token)
             ubuntuRealtimeClient.subscribe("user:$userId")
+            val gate = NotificationEventGate(userId)
             ubuntuRealtimeClient.events.collect { envelope ->
                 if (!envelope.channel.equals("user:$userId", ignoreCase = true) ||
                     !userId.equals(authService.getCurrentUserId()?.trim(), ignoreCase = true)) return@collect
@@ -474,11 +486,12 @@ class NotificationRepository @Inject constructor(
                     return@collect
                 }
                 if (envelope.event != "notification") return@collect
-                val payload = envelope.payload["notification"]?.jsonObject ?: return@collect
-                val notification = supabaseConfig.json.decodeFromJsonElement<Notification>(payload)
+                val notification = gate.accept(envelope, authService.getCurrentUserId(), supabaseConfig.json) ?: return@collect
                 if (notification.recipientId.equals(userId, ignoreCase = true) &&
                     userId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
-                    if (!notification.isRead) _unreadCount.value = _unreadCount.value + 1
+                    // Deliveries can be retried and multiple screens can subscribe. Read the authoritative
+                    // count once for a short burst instead of adding one for each duplicate/subscriber.
+                    scheduleRealtimeUnreadRefresh(userId)
                     emit(notification)
                 }
             }

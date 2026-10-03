@@ -9,6 +9,18 @@ en el documento 33. No equivalen a certificar cada opción de todos los clientes
 usuarios reales, no solo pruebas internas, por lo que cualquier cambio debe tratarse
 como producción.
 
+## Actualización del 03/10/2026
+
+- API: encuestas con transacción y publicación de cambios (revisión 58); registro
+  de visitas corregido y confirmado desde Android (revisión 59). Release `e5e3ce1`,
+  nueve servicios saludables y 100/100 fuentes JavaScript comprobadas.
+- Android: encuestas visibles, música, fotos de momentos, formulario de avisos y
+  visitas con 33 pruebas unitarias y 12 instrumentadas correctas. Recorridos reales
+  entre cuentas propias de QA y recursos del servidor; detalle y matriz de los
+  once requisitos en la revisión 60. Se mantienen 117 / 9.0.20.
+- Siguen abiertos arranque ≤3 s, rendimiento WebRTC/60 FPS, pruebas físicas entre
+  redes, entrega FCM y paridad web completa. No se declara producción certificada.
+
 ## Actualización del 01/10/2026
 
 - Servidor: nueve servicios saludables; Docker y containerd migrados al NVMe ext4 autorizado, con respaldo previo y posterior verificados. Detalle en la [revisión 37](37-ssd-llamadas-multimedia-2026-10-01.md).

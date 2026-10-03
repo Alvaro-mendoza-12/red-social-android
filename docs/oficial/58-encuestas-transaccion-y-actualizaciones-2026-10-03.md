@@ -18,8 +18,12 @@ Después de confirmar el voto, el servidor publica una invalidación en los cana
 - Suite completa de API: 371 pruebas; 369 correctas, 2 omitidas, 0 fallos.
 - PostgreSQL real: 9 comprobaciones en un esquema temporal aislado, incluida una carrera de 20 selecciones de la misma cuenta, un usuario ajeno, una opción de otra encuesta y una escritura fallida. La limpieza del esquema fue comprobada. No se cambiaron votos reales.
 
+## Despliegue comprobado
+
+API desplegada con revisión `c204ad935502cfec36da7e25a481b56cb8d1f26b`. Respaldo de PostgreSQL, storage, estado de IA y Compose: `/home/alvaro/conectate-backups/20261003T062512Z`, con checksums y estructura verificados. No se realizó una restauración completa en esta etapa. Fuentes anteriores e imagen de API se conservaron para reversión. Se recreó únicamente la API; `/ready` fue correcto. Los nueve servicios quedaron saludables. La comparación posterior confirmó 100/100 fuentes JavaScript tanto en el host como en el contenedor, y se actualizó el marcador de release.
+
 ## Límites y siguiente etapa
 
-La UI existente ya permite votar, cambiar, quitar y abrir votantes. Se está corrigiendo Android para que actualice también los votos ajenos mientras la encuesta está visible, se detenga fuera de pantalla y descarte respuestas antiguas durante cambios de cuenta, sala o voto. Esas comprobaciones todavía no forman parte de esta entrega de servidor.
+La corrección Android y las comprobaciones posteriores desde dos cuentas se documentan en la [revisión 60](60-encuestas-audio-momentos-avisos-y-perfil-2026-10-03.md). Incluyen actualización de votos ajenos mientras la encuesta es visible, cancelación fuera de pantalla y descarte de respuestas anteriores a cambios de cuenta, sala o voto.
 
-Siguen pendientes la prueba desde dos cuentas Android con este servidor desplegado y la revisión de rendimiento de lecturas de encuestas con un historial grande. Los resultados no implican cobertura completa de todos los módulos ni certificación de producción.
+Siguen pendientes las lecturas con un historial grande y la concurrencia al cerrar una encuesta. Los resultados no implican cobertura completa de todos los módulos ni certificación de producción.

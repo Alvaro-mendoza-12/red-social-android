@@ -78,7 +78,10 @@ class ProfileViewModel @Inject constructor(
     val momentHighlights: StateFlow<List<MomentHighlight>> = _momentHighlights.asStateFlow()
     private val _profileViewers = MutableStateFlow<List<ProfileViewer>>(emptyList())
     val profileViewers: StateFlow<List<ProfileViewer>> = _profileViewers.asStateFlow()
-    private var lastRecordedProfileId: String? = null
+    private var profileViewersGeneration = 0L
+    private val profileVisitRecorder = ProfileVisitRecorder(
+        viewModelScope, authService::getCurrentUserId,
+    ) { target -> userRepository.recordProfileView(target, targetAllowsHistory = true) }
     private val momentHighlightCache = mutableMapOf<String, List<MomentHighlight>>()
     private var loadedHighlightUserId: String? = null
 
@@ -193,12 +196,15 @@ class ProfileViewModel @Inject constructor(
                 }
                 if (!isSameUser && cachedUser != null) {
                     _profileState.value = ProfileUiState.Success(cachedUser)
+                    profileVisitRecorder.displayed(cachedUser.id, cachedUser.profile_view_history_enabled)
                 } else if (!isSameUser) {
                     _profileState.value = ProfileUiState.Loading
                 }
 
                 val shouldForceNetwork = forceNetwork ?: !isSameUser
                 if (!shouldForceNetwork && cachedUser != null) {
+                    profileVisitRecorder.displayed(cachedUser.id, cachedUser.profile_view_history_enabled)
+                    if (currentUserId == cachedUser.id) loadProfileViewers(cachedUser.profile_view_history_enabled)
                     badgeRepository.getUserBadges(cachedUser.id).onSuccess { badges ->
                         val latest = (_profileState.value as? ProfileUiState.Success)?.user
                             ?.takeIf { it.id == cachedUser.id }
@@ -228,6 +234,7 @@ class ProfileViewModel @Inject constructor(
                         return@onSuccess
                     }
                     if (user != null) {
+                       profileVisitRecorder.displayed(user.id, user.profile_view_history_enabled)
                        val badgesResult = badgeRepository.getUserBadges(user.id)
                        val userWithBadges = if (badgesResult.isSuccess) {
                            user.copy(badges = badgesResult.getOrThrow())
@@ -239,17 +246,6 @@ class ProfileViewModel @Inject constructor(
 
                        if (currentUserId == userWithBadges.id) {
                            loadProfileViewers(userWithBadges.profile_view_history_enabled)
-                       } else if (
-                           userWithBadges.profile_view_history_enabled &&
-                           lastRecordedProfileId != userWithBadges.id
-                       ) {
-                           lastRecordedProfileId = userWithBadges.id
-                           viewModelScope.launch {
-                               userRepository.recordProfileView(
-                                   profileId = userWithBadges.id,
-                                   targetAllowsHistory = true
-                               )
-                           }
                        }
                        
                        // Start Realtime Subscription
@@ -286,13 +282,19 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun loadProfileViewers(enabled: Boolean = true) {
+        val generation = ++profileViewersGeneration
+        val owner = authService.getCurrentUserId()
         if (!enabled) {
             _profileViewers.value = emptyList()
             return
         }
         viewModelScope.launch {
             userRepository.getRecentProfileViewers()
-                .onSuccess { _profileViewers.value = it }
+                .onSuccess {
+                    if (generation == profileViewersGeneration && owner == authService.getCurrentUserId()) {
+                        _profileViewers.value = it
+                    }
+                }
         }
     }
 

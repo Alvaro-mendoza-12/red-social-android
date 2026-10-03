@@ -49,6 +49,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
 import conectate.com.data.model.resolvedMusicAudioUrl
@@ -1406,6 +1407,7 @@ fun MomentContent(
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 ZoomableMomentImage(
                     mediaUrl = moment.mediaUrl,
+                    thumbnailUrl = moment.thumbnailUrl,
                     momentId = moment.id,
                     zoomEnabled = allowImageZoom,
                     onImageSettled = { onImageReady(moment.id) },
@@ -1446,14 +1448,18 @@ fun MomentContent(
 }
 
 @Composable
-private fun ZoomableMomentImage(
+internal fun ZoomableMomentImage(
     mediaUrl: String,
+    thumbnailUrl: String?,
     momentId: String,
     zoomEnabled: Boolean,
     onImageSettled: () -> Unit,
 ) {
     var scale by remember(momentId) { mutableFloatStateOf(1f) }
     var offset by remember(momentId) { mutableStateOf(Offset.Zero) }
+    var imageState by remember(momentId, mediaUrl) { mutableStateOf(MomentImageLoadState.LOADING) }
+    var retry by remember(momentId, mediaUrl) { mutableIntStateOf(0) }
+    val context = LocalContext.current
     val gestureModifier = if (!zoomEnabled) {
         Modifier
     } else {
@@ -1500,13 +1506,24 @@ private fun ZoomableMomentImage(
             }
     }
 
-    AsyncImage(
-        model = UbuntuMedia.resolveUrl(mediaUrl) ?: mediaUrl,
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF15171B))) {
+        val decodeSize = momentImageDecodeSize(constraints.maxWidth, constraints.maxHeight)
+        val imageUrl = momentImagePreviewUrl(mediaUrl, decodeSize.first)
+        val thumbnail = thumbnailUrl?.let { UbuntuMedia.resolveUrl(it) ?: it }?.takeIf { it != imageUrl }
+        if (imageState != MomentImageLoadState.READY && thumbnail != null) {
+            AsyncImage(model = ImageRequest.Builder(context).data(thumbnail)
+                .size(decodeSize.first, decodeSize.second).build(), contentDescription = null,
+                contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+        }
+        key(momentId, imageUrl, retry) {
+        AsyncImage(
+        model = ImageRequest.Builder(context).data(imageUrl)
+            .size(decodeSize.first, decodeSize.second).build(),
         contentDescription = "Imagen del momento; pellizca o toca dos veces para ampliar",
-        onSuccess = { onImageSettled() },
+        onSuccess = { imageState = MomentImageLoadState.READY; onImageSettled() },
         // A broken object must not trap the viewer forever. The error state is
         // still shown for the complete six-second image window.
-        onError = { onImageSettled() },
+        onError = { imageState = MomentImageLoadState.FAILED; onImageSettled() },
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer(
@@ -1518,6 +1535,23 @@ private fun ZoomableMomentImage(
             .then(gestureModifier),
         contentScale = ContentScale.Fit,
     )
+        }
+        if (imageState == MomentImageLoadState.LOADING) {
+            Column(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .6f), RoundedCornerShape(12.dp))
+                .padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.height(8.dp))
+                Text("Cargando imagen…", color = Color.White)
+            }
+        } else if (imageState == MomentImageLoadState.FAILED) {
+            Column(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .75f), RoundedCornerShape(12.dp))
+                .padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("No se pudo cargar la imagen", color = Color.White)
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = { imageState = MomentImageLoadState.LOADING; retry++ }) { Text("Reintentar") }
+            }
+        }
+    }
 }
 
 @Composable

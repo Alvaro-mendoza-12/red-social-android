@@ -84,7 +84,12 @@ class GroupChatViewModel @Inject constructor(
     private val pollVoteMutex = kotlinx.coroutines.sync.Mutex()
     private val _pollStates = MutableStateFlow<Map<String, List<MessagePollOptionState>>>(emptyMap())
     val pollStates: StateFlow<Map<String, List<MessagePollOptionState>>> = _pollStates.asStateFlow()
-    private val pollRetryJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+    private val pollRefresh = VisiblePollRefreshController(
+        scope = viewModelScope,
+        isCurrentAccount = { ownerAccountId != null && authService.getCurrentUserId().equals(ownerAccountId, true) },
+        fetch = groupRepository::getPollState,
+        apply = { id, state -> _pollStates.update { it + (id to state) } },
+    )
 
     private val _isCreatingPoll = MutableStateFlow(false)
     val isCreatingPoll: StateFlow<Boolean> = _isCreatingPoll.asStateFlow()
@@ -172,10 +177,21 @@ class GroupChatViewModel @Inject constructor(
             .sortedBy { it.title.lowercase() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    init {
+        viewModelScope.launch {
+            groupRepository.observePollUpdates().collect { pollRefresh.requestRefresh(it) }
+        }
+    }
+
     fun init(groupId: String) {
         val cleanId = groupId.trim().lowercase()
         if (cleanId.isBlank()) return
         if (this.groupId != cleanId) textComposer.reset()
+        if (this.groupId != cleanId) {
+            pollRefresh.stop()
+            _pollStates.value = emptyMap()
+            _visibleMessageIds.value = emptySet()
+        }
         this.groupId = cleanId
         _activeGroupId.value = cleanId
         observeChatBackground(cleanId)
@@ -211,6 +227,7 @@ class GroupChatViewModel @Inject constructor(
 
     fun onScreenVisibilityChanged(isVisible: Boolean) {
         _isScreenActive.value = isVisible
+        refreshVisiblePolls()
         val cleanId = groupId.trim().lowercase()
         if (cleanId.isBlank()) return
         if (isVisible) {
@@ -227,6 +244,7 @@ class GroupChatViewModel @Inject constructor(
 
     fun onVisibleMessageIdsChanged(visibleMessageIds: Set<String>) {
         _visibleMessageIds.value = visibleMessageIds
+        refreshVisiblePolls()
         if (!_isScreenActive.value) return
         val cleanId = groupId.trim().lowercase()
         if (cleanId.isBlank()) return
@@ -655,41 +673,18 @@ class GroupChatViewModel @Inject constructor(
     }
 
     private fun refreshPollStates(messages: List<GroupMessage>) {
-        val pollIds = messages
-            .mapNotNull { it.poll_id?.trim()?.ifBlank { null } }
-            .distinct()
-        if (pollIds.isEmpty()) {
-            _pollStates.value = emptyMap()
-            pollRetryJobs.values.forEach { it.cancel() }
-            pollRetryJobs.clear()
-            return
-        }
+        val pollIds = messages.mapNotNull { it.poll_id?.trim()?.takeIf(String::isNotBlank) }.toSet()
+        _pollStates.update { it.filterKeys { id -> id in pollIds } }
+        pollRefresh.update(
+            active = _isScreenActive.value,
+            room = groupId,
+            visiblePollIds = visiblePollIds(messages.map { it.id to it.poll_id }, _visibleMessageIds.value),
+        )
+    }
 
-        pollRetryJobs.keys
-            .filter { existingId -> existingId !in pollIds }
-            .forEach { staleId ->
-                pollRetryJobs.remove(staleId)?.cancel()
-            }
-
-        pollIds.forEach { pollId ->
-            val current = _pollStates.value[pollId]
-            if (!current.isNullOrEmpty()) return@forEach
-            if (pollRetryJobs[pollId]?.isActive == true) return@forEach
-
-            pollRetryJobs[pollId] = viewModelScope.launch {
-                repeat(6) { attempt ->
-                    val fetched = groupRepository.getPollState(pollId).getOrNull().orEmpty()
-                    if (fetched.isNotEmpty()) {
-                        _pollStates.update { it + (pollId to fetched) }
-                        return@launch
-                    }
-                    if (attempt < 5) delay(1000)
-                }
-                _pollStates.update { existing ->
-                    if (existing[pollId].isNullOrEmpty()) existing + (pollId to emptyList()) else existing
-                }
-            }
-        }
+    private fun refreshVisiblePolls() {
+        val messages = (_uiState.value as? GroupChatUiState.Success)?.messages.orEmpty()
+        refreshPollStates(messages)
     }
 
     fun createPoll(question: String, options: List<String>, allowsMultiple: Boolean) {
@@ -722,26 +717,30 @@ class GroupChatViewModel @Inject constructor(
     }
 
     fun votePollOption(pollId: String, optionId: String, selected: Boolean = true) {
+        val voteRoom = groupId
         viewModelScope.launch {
             pollVoteMutex.lock()
             try {
-            if (!authService.getCurrentUserId().equals(ownerAccountId, true)) return@launch
-            val previous = _pollStates.value[pollId]
-            if (!previous.isNullOrEmpty()) {
+                if (ownerAccountId == null || !authService.getCurrentUserId().equals(ownerAccountId, true) ||
+                    voteRoom != groupId
+                ) return@launch
+                val previous = _pollStates.value[pollId]
+                if (previous.isNullOrEmpty() || previous.first().isClosed || previous.none { it.optionId == optionId }) return@launch
+                pollRefresh.voteStarted(pollId)
                 _pollStates.update { it + (pollId to applyOptimisticPollVote(previous, optionId, selected)) }
-            }
-            val result = groupRepository.votePollOption(pollId, optionId, selected)
-            if (!authService.getCurrentUserId().equals(ownerAccountId, true)) return@launch
-            if (result.isSuccess) {
-                _pollStates.update { it + (pollId to result.getOrThrow()) }
-            } else {
-                if (previous != null) {
+                val result = groupRepository.votePollOption(pollId, optionId, selected)
+                if (!authService.getCurrentUserId().equals(ownerAccountId, true) || voteRoom != groupId) return@launch
+                if (result.isSuccess && !result.getOrThrow().isEmpty()) {
+                    _pollStates.update { it + (pollId to result.getOrThrow()) }
+                } else {
                     _pollStates.update { it + (pollId to previous) }
+                    _errorMessage.value = result.exceptionOrNull()
+                        .toUserFacingMessage("No se pudo registrar tu voto.")
                 }
-                _errorMessage.value = result.exceptionOrNull()
-                    .toUserFacingMessage("No se pudo registrar tu voto.")
+            } finally {
+                pollRefresh.voteFinished(pollId)
+                pollVoteMutex.unlock()
             }
-            } finally { pollVoteMutex.unlock() }
         }
     }
 
@@ -1187,8 +1186,7 @@ class GroupChatViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        pollRetryJobs.values.forEach { it.cancel() }
-        pollRetryJobs.clear()
+        pollRefresh.stop()
         stopAudio()
         voiceMessageManager.reset()
         groupRepository.setActiveGroup(null) // Called synchronously to ensure execution

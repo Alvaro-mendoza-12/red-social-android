@@ -35,6 +35,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -260,6 +261,7 @@ class ChatViewModel @Inject constructor(
 
     private var messageCollectionJob: Job? = null
     private var presenceJob: Job? = null
+    private var metadataJob: Job? = null
     private var chatSettingsJob: Job? = null
     private var blockRelationshipJob: Job? = null
     private var typingObserverJob: Job? = null
@@ -304,6 +306,8 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun initializeChat() {
+        metadataJob?.cancel()
+        presenceJob?.cancel()
         viewModelScope.launch {
             runReadWithDeadline(InteractiveReadDeadlines.ConversationHistoryMillis) {
                 initializeChatWithinDeadline()
@@ -410,8 +414,9 @@ class ChatViewModel @Inject constructor(
                 }
 
                 // 4. Fetch Profiles and Badges in Parallel from Server (Refresh metadata)
-                viewModelScope.launch {
+                metadataJob = viewModelScope.launch {
                     val otherUserDeferred = async {
+                        optionalConversationData {
                         if (!resolvedChat.is_group && targetUserId != null) {
                             var u = userRepository.getUserById(targetUserId).getOrNull()
                             if (u == null) u = messageRepository.getCachedUserProfile(resolvedChat.id)
@@ -425,30 +430,34 @@ class ChatViewModel @Inject constructor(
                             }
                             u
                         } else null
+                        }
                     }
 
                     val currentUserDeferred = async {
-                        userRepository.getUserById(currentId).getOrNull()
+                        optionalConversationData { userRepository.getUserById(currentId).getOrNull() }
                     }
 
                     val currentBadgesDeferred = async {
-                        badgeRepository.getUserBadges(currentId).getOrNull() ?: emptyList()
+                        optionalConversationData { badgeRepository.getUserBadges(currentId).getOrNull() } ?: emptyList()
                     }
 
                     val otherUser = otherUserDeferred.await()
                     val currentUserObj = currentUserDeferred.await()
                     val currentBadges = currentBadgesDeferred.await()
+                    if (ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase() ||
+                        chatId != resolvedChat.id
+                    ) return@launch
                     
                     val userWithBadges = currentUserObj?.copy(badges = currentBadges)
 
-                    _otherUserMetadata.value = otherUser
+                    _otherUserMetadata.value = otherUser ?: _otherUserMetadata.value
                     _currentUserMetadata.value = userWithBadges
                     _currentUserBadgesMetadata.value = currentBadges
 
                     if (!isRealChat) {
                         _chatState.value = ChatUiState.Success(
                             messages = emptyList(),
-                            otherUser = otherUser,
+                            otherUser = _otherUserMetadata.value,
                             currentUser = userWithBadges,
                             chat = resolvedChat,
                             currentUserBadges = currentBadges
@@ -459,7 +468,14 @@ class ChatViewModel @Inject constructor(
                     if (targetUserId != null) {
                         presenceJob?.cancel()
                         presenceJob = viewModelScope.launch {
-                            userRepository.observeUserPresence(targetUserId).collectLatest { updatedUser ->
+                            userRepository.observeUserPresence(targetUserId)
+                                .catch { error ->
+                                    if (error is CancellationException) throw error
+                                    android.util.Log.w("ChatViewModel", "Presence unavailable", error)
+                                }.collectLatest { updatedUser ->
+                                if (ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase() ||
+                                    chatId != resolvedChat.id
+                                ) return@collectLatest
                                 _otherUserMetadata.update { current ->
                                     // Si current es null (porque falló el fetch inicial), creamos uno básico
                                     // con los datos frescos del polling

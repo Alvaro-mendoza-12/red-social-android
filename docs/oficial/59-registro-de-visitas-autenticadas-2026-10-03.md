@@ -24,5 +24,17 @@ perfil propio y desactivación explícita de cada participante.
 
 ## Validación operativa
 
-El despliegue y la repetición desde Android se documentarán con su resultado
-medido; las pruebas locales no equivalen a validación del servidor desplegado.
+API desplegada con revisión `e5e3ce1`. Se conservaron la imagen anterior y las
+fuentes en `/home/alvaro/conectate-source-backups/visits-20261003T122025Z`, usando
+el respaldo verificado descrito en la revisión 58. No hubo migración del esquema.
+Los nueve servicios quedaron saludables y 100/100 fuentes JavaScript coincidieron
+entre repositorio, host y contenedor. Se actualizó el marcador de release.
+
+La misma petición pasó de HTTP 401 a 201. Después de reiniciar únicamente el
+proceso de la app y abrir el perfil de QA desde la otra cuenta, una lectura
+autenticada del propietario confirmó una visita, sin duplicar los recorridos
+de caché y red. Ambas cuentas tenían activada la preferencia de visitas.
+
+La prueba utilizó cuentas propias de auditoría; no modificó preferencias de
+personas reales. Las pruebas de redes móviles y dispositivos físicos siguen
+fuera de esta ronda.

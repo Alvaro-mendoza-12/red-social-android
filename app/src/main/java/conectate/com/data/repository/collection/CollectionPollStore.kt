@@ -12,6 +12,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
@@ -39,7 +40,7 @@ internal class CollectionPollStore(
                 header("Content-Type", "application/json")
                 setBody(buildJsonObject { put("p_poll_id", cleanPollId) })
             }
-            var body = runCatching { response.bodyAsText() }.getOrDefault("")
+            var body = response.bodyAsText()
             if (response.status.isSuccess()) {
                 val parsed = parsePollStateList(body)
                 if (parsed.isNotEmpty()) {
@@ -54,6 +55,8 @@ internal class CollectionPollStore(
             } else {
                 Result.success(emptyList())
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -80,7 +83,7 @@ internal class CollectionPollStore(
                     }
                 )
             }
-            var body = runCatching { response.bodyAsText() }.getOrDefault("")
+            var body = response.bodyAsText()
             if (!response.status.isSuccess()) {
                 if (isAmbiguousPollIdRpcError(response.status.value, body)) {
                     return@withContext votePollOptionFallback(
@@ -93,6 +96,8 @@ internal class CollectionPollStore(
                 return@withContext Result.failure(Exception("Error votando encuesta: ${response.status.value} $body"))
             }
             Result.success(parsePollStateList(body).sortedBy { it.displayOrder })
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -119,7 +124,7 @@ internal class CollectionPollStore(
                 parameter("select", "user_id,profiles(username,full_name,avatar_url)")
             }
 
-            var body = runCatching { response.bodyAsText() }.getOrDefault("")
+            var body = response.bodyAsText()
             if (!response.status.isSuccess()) {
                 return@withContext Result.failure(Exception("Error cargando votantes: ${response.status.value} $body"))
             }
@@ -143,6 +148,8 @@ internal class CollectionPollStore(
             }.distinctBy { it.userId.trim().lowercase() }
 
             Result.success(voters)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -163,7 +170,7 @@ internal class CollectionPollStore(
             parameter("limit", "1")
         }
         val metaRows = if (metaResponse.status.isSuccess()) {
-            runCatching { json.decodeFromString<List<JsonObject>>(metaResponse.bodyAsText()) }.getOrDefault(emptyList())
+            parseObjectRows(metaResponse.bodyAsText())
         } else {
             emptyList()
         }
@@ -181,7 +188,7 @@ internal class CollectionPollStore(
         }
         if (!optionsResponse.status.isSuccess()) return emptyList()
 
-        val options = runCatching { json.decodeFromString<List<JsonObject>>(optionsResponse.bodyAsText()) }.getOrDefault(emptyList())
+        val options = parseObjectRows(optionsResponse.bodyAsText())
         if (options.isEmpty()) return emptyList()
 
         val votesResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/message_poll_votes") {
@@ -191,7 +198,7 @@ internal class CollectionPollStore(
             parameter("select", "option_id,user_id")
         }
         val voteRows = if (votesResponse.status.isSuccess()) {
-            runCatching { json.decodeFromString<List<JsonObject>>(votesResponse.bodyAsText()) }.getOrDefault(emptyList())
+            parseObjectRows(votesResponse.bodyAsText())
         } else {
             emptyList()
         }
@@ -251,7 +258,7 @@ internal class CollectionPollStore(
                     parameter("option_id", "neq.$optionId")
                 }
                 if (!clearResponse.status.isSuccess()) {
-                    val clearBody = runCatching { clearResponse.bodyAsText() }.getOrDefault("")
+                    val clearBody = clearResponse.bodyAsText()
                     return Result.failure(Exception("Error limpiando voto anterior: ${clearResponse.status.value} $clearBody"))
                 }
             }
@@ -269,7 +276,7 @@ internal class CollectionPollStore(
                     }
                 )
             }
-            val insertBody = runCatching { insertResponse.bodyAsText() }.getOrDefault("")
+            val insertBody = insertResponse.bodyAsText()
             val isDuplicateConflict = insertResponse.status.value == 409 &&
                 (insertBody.contains("23505") || insertBody.lowercase().contains("duplicate key"))
             if (!insertResponse.status.isSuccess() && !isDuplicateConflict) {
@@ -284,7 +291,7 @@ internal class CollectionPollStore(
                 parameter("user_id", "eq.$cleanUserId")
             }
             if (!deleteResponse.status.isSuccess()) {
-                val deleteBody = runCatching { deleteResponse.bodyAsText() }.getOrDefault("")
+                val deleteBody = deleteResponse.bodyAsText()
                 return Result.failure(Exception("Error quitando voto: ${deleteResponse.status.value} $deleteBody"))
             }
         }
@@ -301,12 +308,15 @@ internal class CollectionPollStore(
             parameter("limit", "1")
         }
         if (!metaResponse.status.isSuccess()) return null
-        var rows = runCatching { json.decodeFromString<List<JsonObject>>(metaResponse.bodyAsText()) }.getOrDefault(emptyList())
+        var rows = parseObjectRows(metaResponse.bodyAsText())
         return rows.firstOrNull()
             ?.get("allows_multiple")
             ?.jsonPrimitive
             ?.booleanOrNull
     }
+
+    private fun parseObjectRows(body: String): List<JsonObject> =
+        runCatching { json.decodeFromString<List<JsonObject>>(body) }.getOrDefault(emptyList())
 
     private fun parsePollStateList(body: String): List<MessagePollOptionState> {
         return runCatching { json.decodeFromString<List<MessagePollOptionState>>(body) }

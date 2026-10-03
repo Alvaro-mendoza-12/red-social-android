@@ -80,6 +80,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -91,6 +94,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import coil.compose.AsyncImage
 import conectate.com.data.music.ApprovedMomentMusic
 import conectate.com.util.MediaPlaybackDataSources
+import conectate.com.util.InteractiveAudioBuffer
 import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.delay
 
@@ -141,6 +145,7 @@ fun MomentMusicPickerDialog(
     onSelect: (MomentMusicSelection) -> Unit,
 ) {
     val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     var query by remember { mutableStateOf(state.query) }
     var category by remember { mutableStateOf(state.category) }
     var section by remember {
@@ -164,6 +169,7 @@ fun MomentMusicPickerDialog(
     var playingId by remember { mutableStateOf<String?>(null) }
     var playingSelection by remember { mutableStateOf(false) }
     var isPlayerPlaying by remember { mutableStateOf(false) }
+    var isPlayerBuffering by remember { mutableStateOf(false) }
     var previewStartMs by remember { mutableLongStateOf(0L) }
     var previewEndMs by remember { mutableLongStateOf(30_000L) }
     var positionMs by remember { mutableLongStateOf(0L) }
@@ -184,6 +190,7 @@ fun MomentMusicPickerDialog(
 
     val player = remember {
         ExoPlayer.Builder(context)
+            .setLoadControl(InteractiveAudioBuffer.loadControl())
             // Community music is streaming-only. Do not use an offline cache or
             // a DownloadService for this catalog.
             .setMediaSourceFactory(
@@ -207,6 +214,9 @@ fun MomentMusicPickerDialog(
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                isPlayerBuffering = state == Player.STATE_BUFFERING
+            }
             override fun onIsPlayingChanged(value: Boolean) {
                 isPlayerPlaying = value
                 if (!value && player.playbackState == Player.STATE_ENDED) playingId = null
@@ -222,6 +232,18 @@ fun MomentMusicPickerDialog(
             player.removeListener(listener)
             player.release()
         }
+    }
+
+    DisposableEffect(player, lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                player.pause()
+                playingId = null
+                isPlayerBuffering = false
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(playingId, range, playingSelection) {
@@ -253,7 +275,7 @@ fun MomentMusicPickerDialog(
         loopSelection: Boolean = false,
     ) {
         playbackError = null
-        if (toggleIfAlreadyPlaying && playingId == track.id && isPlayerPlaying && playingSelection == loopSelection) {
+        if (toggleIfAlreadyPlaying && playingId == track.id && (isPlayerPlaying || isPlayerBuffering) && playingSelection == loopSelection) {
             player.pause()
             playingId = null
             return
@@ -280,10 +302,13 @@ fun MomentMusicPickerDialog(
                         }
                     }
                     .build(),
+                previewStartMs,
             )
             player.prepare()
+        } else {
+            player.seekTo(previewStartMs)
+            if (player.playbackState == Player.STATE_IDLE) player.prepare()
         }
-        player.seekTo(previewStartMs)
         player.playWhenReady = true
         playingId = track.id
         positionMs = startMs
@@ -474,6 +499,7 @@ fun MomentMusicPickerDialog(
                                     MusicCatalogRow(
                                         track = track,
                                         isPlaying = playingId == track.id && isPlayerPlaying,
+                                        isBuffering = playingId == track.id && isPlayerBuffering,
                                         onPreview = { play(track, 0L, track.durationMs, useFullTrack = true) },
                                         onSelect = { selectTrack(track) },
                                         onToggleFavorite = { onToggleFavorite(track) },
@@ -523,6 +549,7 @@ fun MomentMusicPickerDialog(
                         MusicCatalogRow(
                             track = track,
                             isPlaying = playingId == track.id && isPlayerPlaying,
+                            isBuffering = playingId == track.id && isPlayerBuffering,
                             onPreview = {
                                 play(
                                     track,
@@ -710,6 +737,7 @@ fun MomentMusicPickerDialog(
 private fun MusicCatalogRow(
     track: ApprovedMomentMusic,
     isPlaying: Boolean,
+    isBuffering: Boolean = false,
     onPreview: () -> Unit,
     onSelect: () -> Unit,
     selectable: Boolean = true,
@@ -754,7 +782,8 @@ private fun MusicCatalogRow(
             )
         }
         IconButton(onClick = onPreview) {
-            Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pausar" else "Escuchar")
+            if (isBuffering) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            else Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pausar" else "Escuchar")
         }
         Box {
             IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, "Más opciones") }

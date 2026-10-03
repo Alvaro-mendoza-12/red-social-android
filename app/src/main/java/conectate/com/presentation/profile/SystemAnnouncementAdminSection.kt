@@ -3,6 +3,7 @@ package conectate.com.presentation.profile
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,17 +36,31 @@ class SystemAnnouncementAdminViewModel @Inject constructor(
     val notices = MutableStateFlow<List<SystemAnnouncement>>(emptyList())
     val busy = MutableStateFlow(false)
     val message = MutableStateFlow<String?>(null)
+    val lastPublishedId = MutableStateFlow<String?>(null)
     private val owner = auth.getCurrentUserId()
     fun refresh() = action { token -> load(token) }
     fun publish(notice: PublishSystemAnnouncement) = action { token ->
-        api.publishSystemAnnouncement(token, notice).getOrThrow()
-        message.value = "Aviso publicado. La entrega a las cuentas se procesa en segundo plano."
-        load(token)
+        val result = commitAnnouncementAndRefresh(
+            commit = { api.publishSystemAnnouncement(token, notice).getOrThrow() },
+            refresh = { api.loadSystemAnnouncements(token).getOrThrow() },
+        )
+        if (auth.getCurrentUserId() == owner) {
+            lastPublishedId.value = notice.id
+            result.notices?.let { notices.value = it }
+            message.value = if (result.notices != null) "Aviso publicado. Las notificaciones se están entregando."
+                else "Aviso publicado. No se pudo actualizar la lista; pulsa Actualizar avisos."
+        }
     }
     fun revoke(id: String) = action { token ->
-        api.revokeSystemAnnouncement(token, id).getOrThrow()
-        message.value = "El aviso se retiró. Las notificaciones que ya llegaron pueden seguir visibles."
-        load(token)
+        val result = commitAnnouncementAndRefresh(
+            commit = { api.revokeSystemAnnouncement(token, id).getOrThrow() },
+            refresh = { api.loadSystemAnnouncements(token).getOrThrow() },
+        )
+        if (auth.getCurrentUserId() == owner) {
+            result.notices?.let { notices.value = it }
+            message.value = "Aviso retirado. Las notificaciones ya recibidas pueden seguir visibles." +
+                if (result.notices == null) " Pulsa Actualizar avisos para recargar la lista." else ""
+        }
     }
     private suspend fun load(token: String) {
         val fresh = api.loadSystemAnnouncements(token).getOrThrow()
@@ -71,10 +86,11 @@ fun SystemAnnouncementAdminSection(access: AdminAccessInfo) {
     val notices by model.notices.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
     val result by model.message.collectAsStateWithLifecycle()
+    val publishedId by model.lastPublishedId.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { model.refresh() }
     SystemAnnouncementAdminForm(
         canManage = "admin.system.manage" in access.capabilities,
-        busy = busy, onPublish = model::publish,
+        busy = busy, onPublish = model::publish, resetKey = publishedId,
     )
     result?.let { Text(it, modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
     OutlinedButton(onClick = { model.refresh() }, enabled = !busy) { Text("Actualizar avisos") }
@@ -94,16 +110,16 @@ fun SystemAnnouncementAdminSection(access: AdminAccessInfo) {
 }
 
 @Composable
-fun SystemAnnouncementAdminForm(canManage: Boolean, busy: Boolean, onPublish: (PublishSystemAnnouncement) -> Unit) {
+fun SystemAnnouncementAdminForm(canManage: Boolean, busy: Boolean, onPublish: (PublishSystemAnnouncement) -> Unit, resetKey: String? = null) {
     val context = LocalContext.current
-    var kind by rememberSaveable { mutableStateOf("info") }
-    var title by rememberSaveable { mutableStateOf("") }
-    var body by rememberSaveable { mutableStateOf("") }
-    var version by rememberSaveable { mutableStateOf("") }
-    var start by rememberSaveable { mutableStateOf<Long?>(null) }
-    var end by rememberSaveable { mutableStateOf<Long?>(null) }
-    var preview by remember { mutableStateOf<PublishSystemAnnouncement?>(null) }
-    var draftId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
+    var kind by rememberSaveable(resetKey) { mutableStateOf("info") }
+    var title by rememberSaveable(resetKey) { mutableStateOf("") }
+    var body by rememberSaveable(resetKey) { mutableStateOf("") }
+    var version by rememberSaveable(resetKey) { mutableStateOf("") }
+    var start by rememberSaveable(resetKey) { mutableStateOf<Long?>(null) }
+    var end by rememberSaveable(resetKey) { mutableStateOf<Long?>(null) }
+    var preview by remember(resetKey) { mutableStateOf<PublishSystemAnnouncement?>(null) }
+    var draftId by rememberSaveable(resetKey) { mutableStateOf(UUID.randomUUID().toString()) }
     var draftExpiry by rememberSaveable(draftId) { mutableStateOf<Long?>(null) }
     val zone = ZoneId.systemDefault()
     val format = remember { DateTimeFormatter.ofPattern("dd MMM yyyy · HH:mm", Locale("es")) }
@@ -123,10 +139,10 @@ fun SystemAnnouncementAdminForm(canManage: Boolean, busy: Boolean, onPublish: (P
     Column(Modifier.fillMaxWidth().testTag("system_announcement_admin"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Avisos de Novvin", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text("Comunica una novedad, un mantenimiento o una actualización a todas las cuentas. También se mostrará al abrir la app.")
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("info" to "Novedad", "maintenance" to "Mantenimiento", "update" to "Actualización").forEach { (value, label) ->
                 FilterChip(selected = kind == value, onClick = { kind = value; draftId = UUID.randomUUID().toString() },
-                    label = { Text(label) }, enabled = canManage && !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
+                    label = { Text(label) }, enabled = canManage && !busy, modifier = Modifier.heightIn(min = 48.dp))
             }
         }
         OutlinedTextField(title, { title = it.take(100); draftId = UUID.randomUUID().toString() }, label = { Text("Título") }, modifier = Modifier.fillMaxWidth(), enabled = canManage && !busy)

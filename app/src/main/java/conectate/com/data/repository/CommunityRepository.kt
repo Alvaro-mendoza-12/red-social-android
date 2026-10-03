@@ -3153,6 +3153,9 @@ class CommunityRepository @Inject constructor(
         )
     }
 
+    fun observePollUpdates(): kotlinx.coroutines.flow.Flow<String> =
+        conectate.com.data.repository.collection.collectionPollUpdates(ubuntuRealtimeClient, authService, "community")
+
     suspend fun getPollState(pollId: String): Result<List<MessagePollOptionState>> =
         collectionPollStore.getPollState(pollId)
 
