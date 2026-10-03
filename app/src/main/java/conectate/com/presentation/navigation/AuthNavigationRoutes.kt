@@ -3,6 +3,9 @@ package conectate.com.presentation.navigation
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import conectate.com.presentation.auth.EmailRecoveryDraftStore
+import conectate.com.presentation.auth.StartupDestination
+import conectate.com.presentation.auth.startupDestination
+import conectate.com.core.auth.hasSavedGuestSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.navigation.NavHostController
@@ -26,7 +29,6 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
 ) {
     composable(Screen.Splash.route) {
         val context = LocalContext.current
-        val guestViewModel: GuestModeViewModel = hiltViewModel()
         conectate.com.presentation.auth.SplashScreen()
 
         LaunchedEffect(isInitializing, isLoggedIn, hasPendingIntent) {
@@ -47,18 +49,22 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                 android.util.Log.d("MainActivity", "Splash: Already navigated to $currentRoute. Aborting.")
             } else {
                 try {
-                    val recoveryPending = withContext(Dispatchers.IO) { EmailRecoveryDraftStore(context).read() != null }
-                    val targetRoute = when {
-                        recoveryPending -> if (isLoggedIn) Screen.AddAccountLogin.route else Screen.Login.route
-                        isLoggedIn -> Screen.Home.createRoute()
-                        guestViewModel.hasSavedSession() -> Screen.Guest.route
-                        else -> Screen.Login.route
+                    val persisted = withContext(Dispatchers.IO) {
+                        val recovery = EmailRecoveryDraftStore(context).read() != null
+                        recovery to (!isLoggedIn && !recovery && hasSavedGuestSession(context))
+                    }
+                    val targetRoute = when (startupDestination(isLoggedIn, persisted.first, persisted.second)) {
+                        StartupDestination.ADD_ACCOUNT -> Screen.AddAccountLogin.route
+                        StartupDestination.HOME -> Screen.Home.createRoute()
+                        StartupDestination.GUEST -> Screen.Guest.route
+                        StartupDestination.LOGIN -> Screen.Login.route
                     }
                     android.util.Log.d("MainActivity", "Splash: Navigating to ${if (isLoggedIn) "Home" else "Login"}")
                     navController.navigate(targetRoute) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
-                } catch (e: Exception) {
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (e: Exception) {
                     android.util.Log.e("MainActivity", "Splash: Navigation FAILED", e)
                 }
             }

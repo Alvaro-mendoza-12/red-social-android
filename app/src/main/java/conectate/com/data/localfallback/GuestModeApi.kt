@@ -95,8 +95,9 @@ class GuestModeApi @Inject constructor(
         ?: error("El servidor no está disponible. Revisa tu conexión e inténtalo nuevamente.")
 
     fun hasActiveGuest(): Boolean =
-        !prefs.getString("token", null).isNullOrBlank() &&
-            prefs.getLong("expires_at", 0L) > System.currentTimeMillis() + 30_000L
+        conectate.com.core.auth.isSavedGuestSessionActive(
+            !prefs.getString("token", null).isNullOrBlank(),
+            prefs.getLong("expires_at", 0L), System.currentTimeMillis())
 
     fun savedIdentity(): GuestIdentity? {
         if (!hasActiveGuest()) return null

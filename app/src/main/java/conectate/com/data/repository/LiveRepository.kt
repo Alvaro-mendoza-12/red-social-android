@@ -83,9 +83,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -212,12 +210,6 @@ class LiveRepository @Inject constructor(
 
     private val _activeStreams = MutableStateFlow<List<LiveStream>>(emptyList())
     val activeStreams: StateFlow<List<LiveStream>> = _activeStreams.asStateFlow()
-
-    val liveHostUserIds: StateFlow<Set<String>> = activeStreams
-        .map { streams ->
-            streams.map { it.hostUserId }.filter { it.isNotBlank() }.toSet()
-        }
-        .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
     private val _liveReplays = MutableStateFlow<List<LiveStream>>(emptyList())
     val liveReplays: StateFlow<List<LiveStream>> = _liveReplays.asStateFlow()
@@ -353,9 +345,8 @@ class LiveRepository @Inject constructor(
     init {
         scope.launch {
             if (usesUbuntuPersistence()) {
-                while (currentCoroutineContext().isActive) {
+                conectate.com.core.network.refreshWhileObserved(_activeStreams.subscriptionCount, LOCAL_LIVE_REFRESH_MS) {
                     refreshActiveStreams()
-                    delay(LOCAL_LIVE_REFRESH_MS)
                 }
             } else {
                 refreshActiveStreams()
@@ -392,6 +383,7 @@ class LiveRepository @Inject constructor(
 
     suspend fun refreshActiveStreams(): Result<Unit> = withContext(Dispatchers.IO) {
         if (usesUbuntuPersistence()) {
+            val owner = authService.getCurrentUserId()
             val token = localAccessToken()
             if (token.isBlank()) {
                 _activeStreams.value = emptyList()
@@ -399,7 +391,9 @@ class LiveRepository @Inject constructor(
             }
             return@withContext localFallbackApiClient.loadLiveStreams(token, limit = 60)
                 .map { streams ->
-                    _activeStreams.value = filterToServerActiveStreams(normalizeActiveStreams(streams))
+                    if (owner == authService.getCurrentUserId()) {
+                        _activeStreams.value = filterToServerActiveStreams(normalizeActiveStreams(streams))
+                    }
                     Unit
                 }
                 .onFailure { error ->

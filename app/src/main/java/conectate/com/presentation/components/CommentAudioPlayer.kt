@@ -93,7 +93,18 @@ fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
                 player = owned
                 owned.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
                 owned.addListener(object : Player.Listener {
-                    override fun onIsPlayingChanged(value: Boolean) { if (player === owned) isPlaying = value }
+                    override fun onIsPlayingChanged(value: Boolean) {
+                        if (player !== owned) return
+                        isPlaying = value
+                        if (value) error = null
+                    }
+                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                        if (player !== owned) return
+                        if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
+                            isLoading = false
+                            error = "La reproducción se interrumpió. Toca reproducir para continuar."
+                        }
+                    }
                     override fun onPlaybackStateChanged(state: Int) {
                         if (player !== owned) return
                         isLoading = state == Player.STATE_BUFFERING && owned.playWhenReady
@@ -115,6 +126,10 @@ fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
                     owned.setMediaItem(MediaItem.fromUri(resolved)); isLoading = true; owned.prepare()
                 } else if (owned.playbackState == Player.STATE_ENDED) owned.seekTo(0)
                 owned.play()
+                if (!owned.playWhenReady) {
+                    isLoading = false
+                    error = "No se pudo iniciar el audio. Toca reproducir para reintentar."
+                }
             }
         } catch (_: Exception) {
             // Release even if setup failed before Compose installed its disposal effect.

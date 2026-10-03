@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.LinkAnnotation
@@ -19,6 +20,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.TextUnit
 import conectate.com.data.model.videoIdFromSharedLink
+import conectate.com.presentation.theme.readableLinkColors
 
 @Composable
 fun LinkText(
@@ -31,8 +33,13 @@ fun LinkText(
     onTextLayout: (TextLayoutResult) -> Unit = {},
     onUrlClick: ((String) -> Unit)? = null,
     onTextClick: (() -> Unit)? = null,
+    backgroundColor: Color = Color.Unspecified,
 ) {
     val uriHandler = LocalUriHandler.current
+    val surface = MaterialTheme.colorScheme.surface
+    val linkColors = readableLinkColors(
+        if (backgroundColor == Color.Unspecified) surface else backgroundColor.compositeOver(surface),
+    )
     val urlClickListener = remember(uriHandler, onUrlClick) {
         LinkInteractionListener { annotation ->
             val url = (annotation as? LinkAnnotation.Url)?.url
@@ -59,6 +66,7 @@ fun LinkText(
         text,
         color,
         fontSize,
+        linkColors,
         onTextClick,
         urlClickListener,
         textClickListener
@@ -101,7 +109,8 @@ fun LinkText(
                         url = link.url,
                         styles = TextLinkStyles(
                             style = SpanStyle(
-                                color = Color(0xFF1DA1F2),
+                                color = linkColors.foreground,
+                                background = linkColors.background,
                                 textDecoration = TextDecoration.Underline,
                                 fontSize = fontSize
                             )

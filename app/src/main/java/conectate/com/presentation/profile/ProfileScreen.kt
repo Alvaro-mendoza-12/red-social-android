@@ -38,6 +38,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.imageLoader
@@ -95,7 +98,7 @@ internal fun profileUserIdFromQr(raw: String?): String? {
         ?.takeIf { it.isNotBlank() && it.length <= 128 }
 }
 
-private fun profileVisitLabel(raw: String): String {
+internal fun profileVisitLabel(raw: String): String {
     val instant = runCatching { java.time.Instant.parse(raw) }.getOrNull() ?: return "Recientemente"
     val minutes = java.time.Duration.between(instant, java.time.Instant.now()).toMinutes().coerceAtLeast(0)
     return when {
@@ -468,7 +471,8 @@ fun ProfileScreen(
     val sharedVideos by viewModel.sharedVideos.collectAsState()
     val favoriteVideos by viewModel.favoriteVideos.collectAsState()
     val momentHighlights by viewModel.momentHighlights.collectAsState()
-    val profileViewers by viewModel.profileViewers.collectAsState()
+    val profileVisitorsState by viewModel.profileVisitorsState.collectAsState()
+    val profileViewers = profileVisitorsState.items
     val isConnected by connectivityViewModel.isConnected.collectAsState()
     
     var showCreatePostDialog by remember { mutableStateOf(false) }
@@ -559,58 +563,12 @@ fun ProfileScreen(
 
     if (showProfileViewers) {
         ModalBottomSheet(onDismissRequest = { showProfileViewers = false }) {
-            Text(
-                text = "Visitas recientes",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-            )
-            if (profileViewers.isEmpty()) {
-                Text(
-                    text = "Todavía no hay visitas visibles. Solo aparecen cuando ambos usuarios habilitan el historial.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(20.dp)
-                )
-            } else {
-                profileViewers.forEach { visitor ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                showProfileViewers = false
-                                (mainNavController ?: navController).navigate(
-                                    Screen.UserProfile.createRoute(visitor.user.id)
-                                )
-                            }
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AsyncImage(
-                            model = UbuntuStorageUrl.rewrite(visitor.user.avatar_url),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(50)),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(visitor.user.displayName, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "@${profilePublicHandle(visitor.user)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            profileVisitLabel(visitor.viewedAt),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.navigationBarsPadding().height(12.dp))
+            ProfileVisitorsContent(profileVisitorsState,
+                onRetry = { viewModel.loadProfileViewers(profileVisitorsState.enabled) },
+                onOpenProfile = { visitorId ->
+                    showProfileViewers = false
+                    (mainNavController ?: navController).navigate(Screen.UserProfile.createRoute(visitorId))
+                })
         }
     }
 
@@ -748,24 +706,11 @@ fun ProfileScreen(
     
 
 
-    // Load profile on first composition
-    LaunchedEffect(userId) {
+    // One load on entry/resume. The former effect plus ON_RESUME observer issued
+    // overlapping initial reads and could replace freshly loaded music/identity.
+    LifecycleStartEffect(viewModel, userId) {
         viewModel.loadUserProfile(userId)
-    }
-
-    DisposableEffect(lifecycleOwner, userId) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                // Reload from local database without forcing network.
-                // This ensures optimistic updates from EditProfileScreen are immediately reflected
-                // without triggering a stale network fetch.
-                viewModel.loadUserProfile(userId, forceNetwork = false)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onStopOrDispose { }
     }
 
     Scaffold(
@@ -813,26 +758,25 @@ fun ProfileScreen(
                                     modifier = Modifier
                                         .width(44.dp)
                                         .height(40.dp)
-                                        .clickable { showProfileViewers = true },
+                                        .clickable { showProfileViewers = true }
+                                        .semantics { contentDescription = "Visitas al perfil" },
                                     contentAlignment = Alignment.CenterStart
                                 ) {
                                     if (profileViewers.isEmpty()) {
                                         Icon(
                                             Icons.Default.Visibility,
-                                            contentDescription = "Visitas al perfil",
+                                            contentDescription = null,
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(22.dp)
                                         )
                                     } else {
                                         profileViewers.take(3).forEachIndexed { index, visitor ->
-                                            AsyncImage(
-                                                model = UbuntuStorageUrl.rewrite(visitor.user.avatar_url),
-                                                contentDescription = null,
+                                            CircularProfileImage(
+                                                imageUrl = visitor.user.avatar_url,
+                                                fallbackName = visitor.user.displayName,
+                                                size = 22.dp,
                                                 modifier = Modifier
-                                                    .offset(x = (index * 10).dp)
-                                                    .size(22.dp)
-                                                    .clip(RoundedCornerShape(50)),
-                                                contentScale = ContentScale.Crop
+                                                    .offset(x = (index * 10).dp),
                                             )
                                         }
                                         if (profileViewers.size > 3) {

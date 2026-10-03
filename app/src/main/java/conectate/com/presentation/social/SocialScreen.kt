@@ -3,6 +3,7 @@ package conectate.com.presentation.social
 import conectate.com.core.media.ShareableMediaFileStore
 
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import conectate.com.presentation.social.ChallengeViewModel
 import conectate.com.presentation.components.Line
@@ -186,7 +187,7 @@ fun SocialScreen(
     val socializationCards by viewModel.socializationCards.collectAsState()
     val feedError by viewModel.feedError.collectAsState()
     val feedMode by viewModel.feedMode.collectAsState()
-    val activeStreams by viewModel.activeStreams.collectAsState()
+    val activeStreams by viewModel.activeStreams.collectAsStateWithLifecycle()
     val showLiveCarousel by viewModel.showLiveCarousel.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val isUserRefreshing by viewModel.isUserRefreshing.collectAsState()

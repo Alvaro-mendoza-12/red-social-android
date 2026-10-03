@@ -11,10 +11,13 @@ object DatabaseMigrations {
             object : Migration(fromVersion, APP_DATABASE_VERSION) {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     Log.i("DatabaseMigrations", "Normalizing schema $fromVersion->$APP_DATABASE_VERSION")
-                    if (fromVersion == 54) {
-                        LatestSchemaNormalizer.addMessageDeletions(db)
-                    } else {
-                        LatestSchemaNormalizer.migrate(db)
+                    when (fromVersion) {
+                        54 -> {
+                            LatestSchemaNormalizer.addMessageDeletions(db)
+                            LatestSchemaNormalizer.addProfileSnapshot(db)
+                        }
+                        55 -> LatestSchemaNormalizer.addProfileSnapshot(db)
+                        else -> LatestSchemaNormalizer.migrate(db)
                     }
                     LegacyMessageDeletionMigration.import(db)
                 }
@@ -48,7 +51,7 @@ internal object LatestSchemaNormalizer {
 
     private val usersPlan = TablePlan(
         name = "users",
-        createSql = "CREATE TABLE IF NOT EXISTS `users` (`id` TEXT NOT NULL, `username` TEXT NOT NULL, `full_name` TEXT NOT NULL, `avatar_url` TEXT, `cover_url` TEXT, `avatar_media_type` TEXT, `avatar_video_muted` INTEGER NOT NULL DEFAULT 1, `avatar_duration_ms` INTEGER, `bio` TEXT, `profile_theme` TEXT NOT NULL DEFAULT 'conectate', `profile_effect` TEXT NOT NULL DEFAULT 'none', `profile_welcome` TEXT, `social_links_json` TEXT NOT NULL DEFAULT '{}', `follower_count` INTEGER NOT NULL DEFAULT 0, `following_count` INTEGER NOT NULL DEFAULT 0, `is_verified` INTEGER NOT NULL DEFAULT 0, `is_admin` INTEGER NOT NULL DEFAULT 0, `voice_access_granted` INTEGER NOT NULL DEFAULT 0, `is_online` INTEGER NOT NULL DEFAULT 0, `last_seen` TEXT, `updated_at` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
+        createSql = "CREATE TABLE IF NOT EXISTS `users` (`id` TEXT NOT NULL, `username` TEXT NOT NULL, `full_name` TEXT NOT NULL, `avatar_url` TEXT, `cover_url` TEXT, `avatar_media_type` TEXT, `avatar_video_muted` INTEGER NOT NULL DEFAULT 1, `avatar_duration_ms` INTEGER, `bio` TEXT, `profile_theme` TEXT NOT NULL DEFAULT 'conectate', `profile_effect` TEXT NOT NULL DEFAULT 'none', `profile_welcome` TEXT, `social_links_json` TEXT NOT NULL DEFAULT '{}', `follower_count` INTEGER NOT NULL DEFAULT 0, `following_count` INTEGER NOT NULL DEFAULT 0, `is_verified` INTEGER NOT NULL DEFAULT 0, `is_admin` INTEGER NOT NULL DEFAULT 0, `voice_access_granted` INTEGER NOT NULL DEFAULT 0, `is_online` INTEGER NOT NULL DEFAULT 0, `last_seen` TEXT, `updated_at` INTEGER NOT NULL DEFAULT 0, `profile_json` TEXT, PRIMARY KEY(`id`))",
         columns = listOf(
             ColumnSpec("id"),
             ColumnSpec("username", "''"),
@@ -70,7 +73,8 @@ internal object LatestSchemaNormalizer {
             ColumnSpec("voice_access_granted", "0"),
             ColumnSpec("is_online", "0"),
             ColumnSpec("last_seen", "NULL", coalesceNulls = false),
-            ColumnSpec("updated_at", "CAST(strftime('%s','now') AS INTEGER) * 1000")
+            ColumnSpec("updated_at", "CAST(strftime('%s','now') AS INTEGER) * 1000"),
+            ColumnSpec("profile_json", "NULL", coalesceNulls = false),
         ),
         indexSql = listOf(
             "CREATE INDEX IF NOT EXISTS `index_users_username` ON `users` (`username`)"
@@ -466,6 +470,10 @@ internal object LatestSchemaNormalizer {
     fun addMessageDeletions(db: SupportSQLiteDatabase) {
         db.execSQL(messageDeletionsPlan.createSql)
         messageDeletionsPlan.indexSql.forEach(db::execSQL)
+    }
+
+    fun addProfileSnapshot(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `users` ADD COLUMN `profile_json` TEXT")
     }
 
     fun migrate(db: SupportSQLiteDatabase) {

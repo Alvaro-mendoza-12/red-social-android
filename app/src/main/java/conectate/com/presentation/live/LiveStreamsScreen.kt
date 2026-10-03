@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import conectate.com.data.model.LiveStream
@@ -65,7 +66,7 @@ fun LiveStreamsScreen(
     navController: NavController,
     viewModel: LiveStreamsViewModel = hiltViewModel()
 ) {
-    val streams by viewModel.streams.collectAsState()
+    val streams by viewModel.streams.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {

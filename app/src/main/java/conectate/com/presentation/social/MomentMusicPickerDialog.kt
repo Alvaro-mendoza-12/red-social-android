@@ -219,7 +219,16 @@ fun MomentMusicPickerDialog(
             }
             override fun onIsPlayingChanged(value: Boolean) {
                 isPlayerPlaying = value
+                if (value) playbackError = null
                 if (!value && player.playbackState == Player.STATE_ENDED) playingId = null
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
+                    isPlayerBuffering = false
+                    playingId = null
+                    playbackError = "La reproducción se interrumpió. Toca escuchar para continuar."
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -310,7 +319,13 @@ fun MomentMusicPickerDialog(
             if (player.playbackState == Player.STATE_IDLE) player.prepare()
         }
         player.playWhenReady = true
-        playingId = track.id
+        if (player.playWhenReady) {
+            playingId = track.id
+        } else {
+            playingId = null
+            isPlayerBuffering = false
+            playbackError = "No se pudo iniciar el audio. Toca escuchar para reintentar."
+        }
         positionMs = startMs
         onPreviewStarted(track)
     }

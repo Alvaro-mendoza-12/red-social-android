@@ -284,7 +284,7 @@ fun VideoFeedScreen(
     val socialHighlights by viewModel.socialHighlights.collectAsState()
     val recommendedPeople by viewModel.recommendedPeople.collectAsState()
     val socializationCards by viewModel.socializationCards.collectAsState()
-    val activeStreams by viewModel.activeStreams.collectAsState()
+    val activeStreams by viewModel.activeStreams.collectAsStateWithLifecycle()
     val showLiveRecommendations by viewModel.showLiveRecommendations.collectAsState()
     val dataSaverEnabled by viewModel.dataSaverEnabled.collectAsStateWithLifecycle()
     val videoAutoplayOnMobile by viewModel.videoAutoplayOnMobile.collectAsStateWithLifecycle()

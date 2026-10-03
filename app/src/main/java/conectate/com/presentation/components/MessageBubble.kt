@@ -728,6 +728,7 @@ fun MessageBubble(
                     "text" -> {
                         LinkText(
                             text = message.content,
+                            backgroundColor = backgroundColor,
                             color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                             fontSize = 15.sp,
                             onUrlClick = onUrlClick
@@ -1035,6 +1036,7 @@ fun MessageBubble(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             LinkText(
+                                backgroundColor = backgroundColor,
                                 text = if (mapsUrl != null) {
                                     val normalizedContent = message.content
                                         .replace(mapsUrl, "")

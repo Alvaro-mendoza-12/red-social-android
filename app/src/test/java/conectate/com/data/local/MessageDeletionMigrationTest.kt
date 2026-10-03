@@ -63,7 +63,7 @@ class MessageDeletionMigrationTest {
             assertFalse(db.messageDao().getMessageById("for-all")!!.deleted_for_all)
             // Never discard an undecodable legacy intent or invent its actor.
             assertEquals("delete", db.messageDao().getMessageById("malformed")!!.pending_action)
-            assertEquals(55, db.openHelper.writableDatabase.version)
+            assertEquals(APP_DATABASE_VERSION, db.openHelper.writableDatabase.version)
         } finally { db.close() }
     }
 }

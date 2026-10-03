@@ -20,6 +20,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
@@ -76,9 +78,9 @@ class ProfileViewModel @Inject constructor(
 
     private val _momentHighlights = MutableStateFlow<List<MomentHighlight>>(emptyList())
     val momentHighlights: StateFlow<List<MomentHighlight>> = _momentHighlights.asStateFlow()
-    private val _profileViewers = MutableStateFlow<List<ProfileViewer>>(emptyList())
-    val profileViewers: StateFlow<List<ProfileViewer>> = _profileViewers.asStateFlow()
-    private var profileViewersGeneration = 0L
+    private val profileVisitorsLoader = ProfileVisitorsLoader(viewModelScope,
+        authService::getCurrentUserId, { userRepository.getRecentProfileViewers() })
+    internal val profileVisitorsState = profileVisitorsLoader.state
     private val profileVisitRecorder = ProfileVisitRecorder(
         viewModelScope, authService::getCurrentUserId,
     ) { target -> userRepository.recordProfileView(target, targetAllowsHistory = true) }
@@ -122,8 +124,16 @@ class ProfileViewModel @Inject constructor(
 
     private var realtimeJob: kotlinx.coroutines.Job? = null
     private val profileMutationClock = ProfileMutationClock()
+    private val profileReadScope = ProfileReadScope(authService::getCurrentUserId)
+    private var profileLoadJob: kotlinx.coroutines.Job? = null
+    private var profileBadgeJob: kotlinx.coroutines.Job? = null
 
     init {
+        viewModelScope.launch {
+            authService.currentSession.map { authService.getCurrentUserId() }.distinctUntilChanged().collect {
+                profileVisitorsLoader.accountChanged()
+            }
+        }
         viewModelScope.launch {
             userRepository.profileUpdates.collect { updatedUser ->
                 val current = _profileState.value as? ProfileUiState.Success ?: return@collect
@@ -164,6 +174,9 @@ class ProfileViewModel @Inject constructor(
             _profileState.value = ProfileUiState.Error("No user logged in")
             return
         }
+        val ticket = profileReadScope.begin(idToLoad)
+        profileLoadJob?.cancel()
+        profileBadgeJob?.cancel()
 
         // Friendship changes when a first message creates a request, even if
         // the profile itself is already cached when returning from the chat.
@@ -185,7 +198,7 @@ class ProfileViewModel @Inject constructor(
         loadMomentHighlights(idToLoad)
         val readGeneration = profileMutationClock.snapshot()
 
-        viewModelScope.launch {
+        profileLoadJob = viewModelScope.launch {
             try {
                 val currentState = _profileState.value
                 val isSameUser = (currentState is ProfileUiState.Success && currentState.user.id == idToLoad)
@@ -194,6 +207,7 @@ class ProfileViewModel @Inject constructor(
                 } else {
                     userRepository.getCachedUserById(idToLoad)
                 }
+                if (!profileReadScope.isCurrent(ticket)) return@launch
                 if (!isSameUser && cachedUser != null) {
                     _profileState.value = ProfileUiState.Success(cachedUser)
                     profileVisitRecorder.displayed(cachedUser.id, cachedUser.profile_view_history_enabled)
@@ -205,12 +219,7 @@ class ProfileViewModel @Inject constructor(
                 if (!shouldForceNetwork && cachedUser != null) {
                     profileVisitRecorder.displayed(cachedUser.id, cachedUser.profile_view_history_enabled)
                     if (currentUserId == cachedUser.id) loadProfileViewers(cachedUser.profile_view_history_enabled)
-                    badgeRepository.getUserBadges(cachedUser.id).onSuccess { badges ->
-                        val latest = (_profileState.value as? ProfileUiState.Success)?.user
-                            ?.takeIf { it.id == cachedUser.id }
-                            ?: cachedUser
-                        _profileState.value = ProfileUiState.Success(latest.copy(badges = badges))
-                    }
+                    refreshProfileBadges(ticket)
                     subscribeToProfileUpdates(idToLoad)
                     return@launch
                 }
@@ -218,6 +227,7 @@ class ProfileViewModel @Inject constructor(
                 val result = withTimeoutOrNull(PROFILE_LOAD_TIMEOUT_MS) {
                     userRepository.getUserById(idToLoad, forceNetwork = shouldForceNetwork)
                 }
+                if (!profileReadScope.isCurrent(ticket)) return@launch
                 if (result == null) {
                     val hasUsableProfile = (_profileState.value as? ProfileUiState.Success)
                         ?.user?.id == idToLoad
@@ -229,23 +239,18 @@ class ProfileViewModel @Inject constructor(
                     return@launch
                 }
                 result.onSuccess { user ->
-                    if (!profileMutationClock.isCurrent(readGeneration)) {
+                    if (!profileReadScope.isCurrent(ticket) || !profileMutationClock.isCurrent(readGeneration)) {
                         android.util.Log.d("ProfileViewModel", "Ignoring stale profile read for $idToLoad")
                         return@onSuccess
                     }
                     if (user != null) {
                        profileVisitRecorder.displayed(user.id, user.profile_view_history_enabled)
-                       val badgesResult = badgeRepository.getUserBadges(user.id)
-                       val userWithBadges = if (badgesResult.isSuccess) {
-                           user.copy(badges = badgesResult.getOrThrow())
-                       } else {
-                           user
-                       }
+                       // Identity and music are usable without waiting for optional badges.
+                       _profileState.value = ProfileUiState.Success(user)
+                       refreshProfileBadges(ticket)
 
-                       _profileState.value = ProfileUiState.Success(userWithBadges)
-
-                       if (currentUserId == userWithBadges.id) {
-                           loadProfileViewers(userWithBadges.profile_view_history_enabled)
+                       if (currentUserId == user.id) {
+                           loadProfileViewers(user.profile_view_history_enabled)
                        }
                        
                        // Start Realtime Subscription
@@ -265,37 +270,43 @@ class ProfileViewModel @Inject constructor(
                         if (!hasUsableProfile) _profileState.value = ProfileUiState.Error("User not found")
                     }
                 }.onFailure { e ->
+                    if (e is CancellationException) throw e
                     val hasUsableProfile = (_profileState.value as? ProfileUiState.Success)
                         ?.user?.id == idToLoad
                     if (profileMutationClock.isCurrent(readGeneration) && !hasUsableProfile) {
                         _profileState.value = ProfileUiState.Error(e.message ?: "Unknown error")
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 val hasUsableProfile = (_profileState.value as? ProfileUiState.Success)
                     ?.user?.id == idToLoad
-                if (!hasUsableProfile) {
-                    _profileState.value = ProfileUiState.Error("Crash prevented: ${e.message}")
+                if (profileReadScope.isCurrent(ticket) && !hasUsableProfile) {
+                    _profileState.value = ProfileUiState.Error("No se pudo cargar el perfil. Inténtalo de nuevo.")
                 }
             }
         }
     }
 
+    private fun refreshProfileBadges(ticket: ProfileReadScope.Ticket) {
+        profileBadgeJob?.cancel()
+        profileBadgeJob = viewModelScope.launch {
+            try {
+                val badges = withTimeoutOrNull(3_000) {
+                    badgeRepository.getUserBadges(ticket.target).getOrNull()
+                } ?: return@launch
+                if (!profileReadScope.isCurrent(ticket)) return@launch
+                val latest = (_profileState.value as? ProfileUiState.Success)?.user
+                    ?.takeIf { it.id == ticket.target } ?: return@launch
+                _profileState.value = ProfileUiState.Success(latest.copy(badges = badges))
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Optional badges do not block the displayed profile. */ }
+        }
+    }
+
     fun loadProfileViewers(enabled: Boolean = true) {
-        val generation = ++profileViewersGeneration
-        val owner = authService.getCurrentUserId()
-        if (!enabled) {
-            _profileViewers.value = emptyList()
-            return
-        }
-        viewModelScope.launch {
-            userRepository.getRecentProfileViewers()
-                .onSuccess {
-                    if (generation == profileViewersGeneration && owner == authService.getCurrentUserId()) {
-                        _profileViewers.value = it
-                    }
-                }
-        }
+        profileVisitorsLoader.refresh(enabled)
     }
 
     private companion object {
@@ -954,30 +965,26 @@ class ProfileViewModel @Inject constructor(
      * without showing a loading state
      */
     private suspend fun reloadProfileSilently(userId: String) {
+        val ticket = profileReadScope.snapshotFor(userId) ?: return
+        val mutation = profileMutationClock.snapshot()
         try {
             android.util.Log.d("ProfileViewModel", "reloadProfileSilently: Fetching updated profile for $userId")
             val result = userRepository.getUserById(userId)
             result.onSuccess { user ->
-                if (user != null) {
+                if (user != null && profileReadScope.isCurrent(ticket) && profileMutationClock.isCurrent(mutation)) {
                     // Only update if we're still viewing the same user
                     val currentState = _profileState.value
                     if (currentState is ProfileUiState.Success && currentState.user.id == userId) {
-                        // Load badges for silent reload too
-                        val badgesResult = badgeRepository.getUserBadges(user.id)
-                        val userWithBadges = if (badgesResult.isSuccess) {
-                            user.copy(badges = badgesResult.getOrThrow())
-                        } else {
-                            user
-                        }
-                        
-                        _profileState.value = ProfileUiState.Success(userWithBadges)
+                        _profileState.value = ProfileUiState.Success(user.copy(badges = currentState.user.badges))
+                        refreshProfileBadges(ticket)
                         android.util.Log.d("ProfileViewModel", "reloadProfileSilently: Updated counters and badges")
                     }
                 }
             }.onFailure { e ->
                 android.util.Log.e("ProfileViewModel", "reloadProfileSilently: Failed to reload", e)
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             android.util.Log.e("ProfileViewModel", "reloadProfileSilently: Exception", e)
         }
     }

@@ -1,6 +1,8 @@
 package conectate.com.presentation.messages
 
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.ReportDrawnWhen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,7 +46,9 @@ fun PrivateChatsTab(
     viewModel: MessagingViewModel = hiltViewModel(),
     onNavigateToChat: (String) -> Unit
 ) {
-    val conversationsState by viewModel.conversationsState.collectAsState()
+    val conversationsState by viewModel.conversationsState.collectAsStateWithLifecycle()
+    // Measure usable inbox content, rather than treating the splash as a complete launch.
+    ReportDrawnWhen { conversationsState !is ConversationsUiState.Loading }
     val searchQuery by viewModel.searchQuery.collectAsState()
     val folders by viewModel.chatFolders.collectAsState()
     val selectedFolderId by viewModel.selectedFolderId.collectAsState()

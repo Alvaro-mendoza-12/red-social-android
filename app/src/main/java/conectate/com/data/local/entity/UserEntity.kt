@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import conectate.com.data.model.User
+import kotlinx.serialization.json.Json
 
 @Entity(tableName = "users", indices = [
     Index(value = ["username"])
@@ -41,15 +42,22 @@ data class UserEntity(
     val is_online: Boolean = false,
     val last_seen: String? = null,
     @ColumnInfo(defaultValue = "0")
-    val updated_at: Long = System.currentTimeMillis()
+    val updated_at: Long = System.currentTimeMillis(),
+    val profile_json: String? = null,
 ) {
     val displayName: String
         get() = if (full_name.isNotBlank()) full_name else username
 
     fun toDomain(): User {
-        return User(
+        // Keep authoritative identity, music and privacy fields omitted by the
+        // compact columns. Legacy rows retain the safe, name-based fallback.
+        val snapshot = profile_json?.let { raw ->
+            runCatching { profileJson.decodeFromString(User.serializer(), raw) }.getOrNull()
+        }?.takeIf { it.id == id && it.username.orEmpty() == username }
+        return (snapshot ?: User(id = id)).copy(
             id = id,
             username = username,
+            username_origin = snapshot?.username_origin,
             full_name = full_name,
             avatar_url = avatar_url,
             cover_url = cover_url,
@@ -72,6 +80,8 @@ data class UserEntity(
     }
 
     companion object {
+        private val profileJson = Json { ignoreUnknownKeys = true }
+
         fun fromDomain(user: User): UserEntity {
             return UserEntity(
                 id = user.id,
@@ -93,7 +103,8 @@ data class UserEntity(
                 is_admin = user.is_admin,
                 voice_access_granted = user.voice_access_granted,
                 is_online = user.is_online,
-                last_seen = user.lastSeen
+                last_seen = user.lastSeen,
+                profile_json = profileJson.encodeToString(User.serializer(), user),
             )
         }
 

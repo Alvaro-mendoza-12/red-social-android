@@ -20,6 +20,7 @@ import conectate.com.data.model.User
 import conectate.com.data.model.profileSearchQuery
 import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.repository.user.UserLocalStateStore
+import conectate.com.data.repository.user.readLocalProfileIdentity
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
@@ -245,6 +246,7 @@ class UserRepository @Inject constructor(
         fallbackEmail: String?
     ): User? {
         val profile = response.profile ?: return null
+        val identity = readLocalProfileIdentity(profile)
         val normalizedId = normalizePrivacyUserId(
             profile.stringValue("supabase_user_id", "supabaseUserId", "id", "user_id", "profile_id")
                 ?: fallbackId
@@ -260,6 +262,8 @@ class UserRepository @Inject constructor(
         return applyLocalUserOverrides(
             User(
                 id = normalizedId,
+                numeric_id = identity.numericId,
+                username_origin = identity.usernameOrigin,
                 email = email,
                 username = sanitizeProfileText(profile.stringValue("username"))
                     ?: slugifyUsername(displayName).ifBlank { buildDeterministicUsername(normalizedId) },

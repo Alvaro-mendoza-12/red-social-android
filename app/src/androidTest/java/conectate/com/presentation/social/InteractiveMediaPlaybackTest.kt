@@ -9,7 +9,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -24,13 +25,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Before
 import org.junit.runner.RunWith
 import java.io.File
 
 /** Uses only explicit, owned QA objects. No session changes or media publication. */
 @RunWith(AndroidJUnit4::class)
 class InteractiveMediaPlaybackTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Before fun waitForTheForegroundAudioHost() {
+        compose.waitUntil(5_000) {
+            val process = android.app.ActivityManager.RunningAppProcessInfo()
+            android.app.ActivityManager.getMyMemoryState(process)
+            compose.activity.hasWindowFocus() && process.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+        }
+    }
     private val qaOwner = "0e990f73-424e-4c33-9d83-5887f995e294"
     private fun source(key: String, bucket: String): String {
         val url = InstrumentationRegistry.getArguments().getString(key).orEmpty()

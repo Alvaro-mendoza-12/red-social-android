@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import conectate.com.data.model.Message
 import conectate.com.presentation.components.MessageBubble
+import conectate.com.presentation.theme.resolveChatAccent
+import conectate.com.presentation.theme.textContrastRatio
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -57,7 +59,11 @@ class ChatLinkUiTest {
         render(text, true, { opened=it }, { fail("External link entered an internal route") })
         val layout=clickAt(text, text.indexOf("example"))
         val link=layout.layoutInput.text.getLinkAnnotations(0,text.length).single().item as LinkAnnotation.Url
-        assertEquals(Color(0xFF1DA1F2), link.styles?.style?.color)
+        val style = requireNotNull(link.styles?.style)
+        assertTrue(style.color.blue > style.color.red && style.color.blue > style.color.green)
+        val background = style.background.takeUnless { it == Color.Unspecified }
+            ?: resolveChatAccent("conectate_red", darkTheme = false).sentBackground
+        assertTrue(textContrastRatio(style.color, background) >= 4.5f)
         compose.runOnIdle { assertEquals("https://www.example.org/test", opened) }
     }
 

@@ -48,7 +48,7 @@ fun LiveDiscoveryScreen(
     navController: NavController,
     viewModel: LiveViewModel = hiltViewModel()
 ) {
-    val activeStreams by viewModel.activeStreams.collectAsState()
+    val activeStreams by viewModel.activeStreams.collectAsStateWithLifecycle()
     val replays by viewModel.liveReplays.collectAsStateWithLifecycle()
     val myHistory by viewModel.myLiveHistory.collectAsStateWithLifecycle()
     val uploadProgress by viewModel.replayUploadProgress.collectAsStateWithLifecycle()
