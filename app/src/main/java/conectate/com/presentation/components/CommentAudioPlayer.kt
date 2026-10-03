@@ -88,7 +88,10 @@ fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
         try {
             if (active == null) {
                 active = ExoPlayer.Builder(context)
-                    .setMediaSourceFactory(DefaultMediaSourceFactory(MediaPlaybackDataSources.streamingFactory(context)))
+                    // Progressive audio may reopen immediately after sniffing
+                    // its header. Reuse that bounded response for the short
+                    // forward seek, as in the community preview player.
+                    .setMediaSourceFactory(DefaultMediaSourceFactory(MediaPlaybackDataSources.interactiveAudioFactory(context)))
                     .setLoadControl(InteractiveAudioBuffer.loadControl())
                     .setHandleAudioBecomingNoisy(true).build()
                 val owned = active
