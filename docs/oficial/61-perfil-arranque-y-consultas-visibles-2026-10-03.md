@@ -404,6 +404,30 @@ y se repetirá sin R8 simultáneo. Otro caso de esa ronda arrancó audio de perf
 en 4.635 ms, preescucha en 1.211 ms e imagen en 189 ms; el pico de audio permanece
 registrado. La ronda conjunta todavía no está aprobada.
 
+La prueba de audio también falló de forma focalizada sin Gradle ejecutándose.
+El diagnóstico mostró proceso en primer plano, ventana enfocada y actividad
+RESUMED, sin mensaje de pérdida de foco ni error visible. Por tanto, no se
+atribuye ese fallo únicamente a la presión de memoria de R8. Se añadió diagnóstico
+de eventos de Media3 en debug, sin URL ni token, para localizar su causa.
+Además se corrigió un defecto de carga visible: `prepare()` puede emitir
+BUFFERING antes de `play()`, y el cambio de intención de reproducción no volvía
+a mostrar el indicador. Ahora se recalcula el indicador en ese cambio. La nueva
+fuente requiere volver a compilar y repetir las pruebas antes de declarar cierre.
+
+Las imágenes candidatas de API y antivirus de `2011e32` se construyeron sin
+reemplazar servicios productivos. Se comprobaron **179 archivos de la imagen de
+API, cero diferencias**, y las cuatro versiones corregidas de dependencias.
+La imagen real de API ejecutó `server.js` sobre PostgreSQL 16.15 dedicado, con
+red interna sin puertos públicos, almacenamiento en tmpfs y secretos ficticios.
+El primer arranque hasta `/ready` tardó 4.783 ms y el reinicio 3.375 ms. Esto mide
+inicio del servidor en QA, no tiempo de abrir Android ni latencia de una petición.
+Respondieron `/health` con 200, registro de cuenta ficticia con 201, Encuestas
+desactivada con 503 para una sesión real de QA y 401 sin autenticación. Se
+crearon siete tablas de Encuestas y el reinicio fue idempotente. No se configuró
+FCM ni correo reales; se retiraron los dos contenedores, sus datos y la red.
+Este recorrido omite el entrypoint de actualización de firmas y no sustituye
+la verificación de producción con sus servicios y configuración.
+
 ## Pendientes prioritarios
 
 1. Reproducir y reducir los picos de inicio de audio; medir el recorrido completo
