@@ -1,0 +1,44 @@
+{
+  "scope": "Temporary isolated daemon, existing signatures read-only, no published ports",
+  "image": "novvin-survey-antivirus:qa-1791063899",
+  "container": "novvin-survey-antivirus-qa-1791063899",
+  "startupMs": 18641,
+  "uid": 10001,
+  "samples": [
+    {
+      "label": "clean-pdf",
+      "bytes": 431,
+      "outcome": "clean",
+      "code": null,
+      "status": null,
+      "ms": 12
+    },
+    {
+      "label": "clean-pdf-repeat",
+      "bytes": 431,
+      "outcome": "clean",
+      "code": null,
+      "status": null,
+      "ms": 2
+    },
+    {
+      "label": "standard-antivirus-test",
+      "bytes": 68,
+      "outcome": "rejected",
+      "code": "SURVEY_FILE_REJECTED",
+      "status": 400,
+      "ms": 7
+    },
+    {
+      "label": "encrypted-pdf",
+      "bytes": 828,
+      "outcome": "rejected",
+      "code": "SURVEY_FILE_REJECTED",
+      "status": 400,
+      "ms": 7
+    }
+  ],
+  "daemonPeakResidentKiB": 986344,
+  "encryptedTestAvailable": true,
+  "temporaryContainerRemoved": true
+}

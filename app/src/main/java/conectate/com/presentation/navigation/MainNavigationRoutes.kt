@@ -16,6 +16,21 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
     navController: NavHostController,
     isLoggedIn: Boolean
 ) {
+    composable(Screen.Surveys.route, arguments = listOf(
+        navArgument("id") { type = NavType.StringType; defaultValue = "" },
+        navArgument("key") { type = NavType.StringType; defaultValue = "" },
+        navArgument("mode") { type = NavType.StringType; defaultValue = "" }
+    )) { entry ->
+        val id = entry.arguments?.getString("id")?.takeIf { it.isNotBlank() }
+        val key = entry.arguments?.getString("key")?.takeIf { it.isNotBlank() }
+        val mode = entry.arguments?.getString("mode")?.takeIf { it.isNotBlank() }
+        if (!isLoggedIn) {
+            LaunchedEffect(id, key, mode) {
+                conectate.com.presentation.surveys.PendingSurveyDestination.remember(Screen.Surveys.createRoute(id, key, mode), entry.savedStateHandle)
+                navController.navigate(Screen.Login.route) { launchSingleTop = true }
+            }
+        } else conectate.com.presentation.surveys.SurveysScreen(id, key, mode, onBack = { navController.popBackStack() })
+    }
     composable(Screen.SearchUsers.route) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.search.SearchUsersScreen(navController = navController)

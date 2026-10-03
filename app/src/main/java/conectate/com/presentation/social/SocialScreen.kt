@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Face
@@ -244,6 +245,7 @@ fun SocialScreen(
     }
 
     var showCreatePostDialog by remember { mutableStateOf(false) }
+    var showSurveysMenu by remember { mutableStateOf(false) }
     var postToEdit by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var postToReport by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var showInternalShareDialog by remember { mutableStateOf(false) }
@@ -1703,6 +1705,21 @@ fun SocialScreen(
                             
                             IconButton(onClick = { showCreatePostDialog = true }) {
                                 Icon(Icons.Default.Add, contentDescription = "Nueva publicación", tint = MaterialTheme.colorScheme.primary)
+                            }
+                            Box {
+                                IconButton(onClick = { showSurveysMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "Más opciones de Social", tint = MaterialTheme.colorScheme.primary)
+                                }
+                                DropdownMenu(expanded = showSurveysMenu, onDismissRequest = { showSurveysMenu = false }) {
+                                    DropdownMenuItem(text = { Text("Crear encuesta") }, onClick = {
+                                        showSurveysMenu = false
+                                        navController.navigate(Screen.Surveys.createRoute(mode = "create"))
+                                    })
+                                    DropdownMenuItem(text = { Text("Mis encuestas") }, onClick = {
+                                        showSurveysMenu = false
+                                        navController.navigate(Screen.Surveys.createRoute())
+                                    })
+                                }
                             }
                         } else if (pagerState.currentPage == 2) {
                             IconButton(onClick = { showCreateChallengeDialog = true }) {

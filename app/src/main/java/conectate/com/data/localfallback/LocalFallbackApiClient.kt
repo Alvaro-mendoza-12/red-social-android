@@ -6946,7 +6946,9 @@ class LocalFallbackApiClient @Inject constructor(
             remixRootPostId = textOf(row, "remix_root_post_id", "remixRootPostId").ifBlank { null },
             remixSourceUserId = textOf(row, "remix_source_user_id", "remixSourceUserId").ifBlank { null },
             remixSourceUserName = textOf(row, "remix_source_user_name", "remixSourceUserName").ifBlank { null },
-            remixDepth = intOf(row, "remix_depth", "remixDepth")
+            remixDepth = intOf(row, "remix_depth", "remixDepth"),
+            surveyId = textOf(row, "survey_id").ifBlank { null },
+            surveyResponseCount = intOf(row, "survey_response_count")
         ).also { it.isSensitive = boolOf(row, "is_sensitive", "isSensitive") }
     }
 

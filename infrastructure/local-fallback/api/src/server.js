@@ -220,6 +220,7 @@ app.use(cors({
     'upload-length', 'upload-offset', 'upload-expires', 'upload-object-path', 'upload-state',
   ],
 }))
+app.use('/v1/surveys/assets', express.json({ limit: '6mb' }))
 app.use(express.json({ limit: '1mb' }))
 app.use((req, res, next) => {
   const supplied = String(req.headers['x-request-id'] || '').trim()
@@ -3752,6 +3753,7 @@ registerSystemAnnouncementRoutes(app, { pool, runWorker: runSystemAnnouncementDe
   },
 })
 registerStorageRoutes(app, { pool, authRequired })
+require('./surveys/routes').registerSurveyRoutes(app, { pool, authRequired, enabled: process.env.NOVVIN_SURVEYS_ENABLED === 'true' })
 registerDataRoutes(app, {
   pool,
   authRequired,
@@ -3820,6 +3822,7 @@ let creatorPayoutTimer
 let creatorPayoutRunning = false
 let rateLimitCleanupTimer
 let resumableUploadCleanupTimer
+let surveyMaintenanceTimer
 
 withSchemaInitializationLock({
   pool,
@@ -3834,6 +3837,7 @@ withSchemaInitializationLock({
     await ensurePasswordMailOutboxSchema(client)
     await ensureLocalStorageTables(client)
     await ensureLocalDataTables(client)
+    await require('./surveys/routes').ensureSurveyTables(client)
     await ensureSystemAnnouncementSchema(client)
     await ensureScheduledMessageTables(client)
     await ensurePostgrestCompatTables(client)
@@ -3882,6 +3886,17 @@ withSchemaInitializationLock({
     runResumableUploadCleanup()
     resumableUploadCleanupTimer = setInterval(runResumableUploadCleanup, 15 * 60_000)
     resumableUploadCleanupTimer.unref?.()
+    let surveyMaintenanceRunning = false
+    const maintainSurveys = async () => {
+      if (surveyMaintenanceRunning) return
+      surveyMaintenanceRunning = true
+      try { await require('./surveys/maintenance').runSurveyMaintenance(pool) }
+      catch (error) { console.error('[surveys] maintenance failed', safeErrorLogDetails(error, { production: isProduction })) }
+      finally { surveyMaintenanceRunning = false }
+    }
+    void maintainSurveys()
+    surveyMaintenanceTimer = setInterval(() => void maintainSurveys(), 60_000)
+    surveyMaintenanceTimer.unref?.()
     liveDrawGuessReconciler = startLiveDrawGuessReconciler({ pool })
     const runScheduledMessages = () => {
       void processDueScheduledMessageJobs(pool).catch((error) => {
@@ -3995,6 +4010,7 @@ async function shutdown(signal) {
   if (creatorPayoutTimer) clearInterval(creatorPayoutTimer)
   if (rateLimitCleanupTimer) clearInterval(rateLimitCleanupTimer)
   if (resumableUploadCleanupTimer) clearInterval(resumableUploadCleanupTimer)
+  if (surveyMaintenanceTimer) clearInterval(surveyMaintenanceTimer)
   if (passwordMailTimer) clearInterval(passwordMailTimer)
   await passwordResetMailOutbox?.stop()
   liveDrawGuessReconciler?.stop()

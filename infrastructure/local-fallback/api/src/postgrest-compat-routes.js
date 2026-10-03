@@ -629,7 +629,9 @@ async function readSpecificRows(pool, tableName, auth) {
     case 'posts': {
       const { rows } = await pool.query(`
         SELECT id::text, user_id, user_name, user_profile_image, content, media_url,
-               media_urls, media_type, visibility, created_at, updated_at
+               media_urls, media_type, visibility, survey_id,
+               (SELECT count(*)::int FROM survey_responses r WHERE r.campaign_id=fallback_posts.survey_id AND r.removed_at IS NULL AND (r.expires_at IS NULL OR r.expires_at>now())) AS survey_response_count,
+               created_at, updated_at
         FROM fallback_posts
         ORDER BY created_at DESC
         LIMIT $1

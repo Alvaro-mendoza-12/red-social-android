@@ -23,6 +23,10 @@ sealed class Screen(val route: String) {
     }
     
     object Social : Screen("social")
+    object Surveys : Screen("surveys?id={id}&key={key}&mode={mode}") {
+        fun createRoute(id: String? = null, key: String? = null, mode: String? = null): String =
+            "surveys?id=${android.net.Uri.encode(id.orEmpty())}&key=${android.net.Uri.encode(key.orEmpty())}&mode=${android.net.Uri.encode(mode.orEmpty())}"
+    }
     object Games : Screen("games")
     object GamingProfile : Screen("games_profile")
     object AddGame : Screen("games_add")

@@ -86,6 +86,7 @@
                 <data android:host="conectate.com" />
                 <data android:host="www.conectate.com" />
                 <data android:pathPrefix="/post" />
+                <data android:pathPrefix="/survey" />
                 <data android:pathPrefix="/video" />
                 <data android:pathPrefix="/u" />
                 <data android:pathPrefix="/profile" />

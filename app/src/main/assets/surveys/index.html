@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Encuestas · Novvin</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="workbench.js"></script>
+</head>
+<body>
+  <header><strong>Novvin <span>Encuestas</span></strong><button id="home" type="button">Mis encuestas</button></header>
+  <main id="app" aria-busy="true"><p role="status">Abriendo Encuestas…</p></main>
+  <div id="notice" role="status" aria-live="polite"></div>
+  <dialog id="modal" aria-labelledby="modal-title"><h2 id="modal-title"></h2><div id="modal-body"></div><div class="actions"><button type="button" data-dialog="cancel">Cancelar</button><button type="button" data-dialog="ok" class="primary">Confirmar</button></div></dialog>
+</body>
+</html>

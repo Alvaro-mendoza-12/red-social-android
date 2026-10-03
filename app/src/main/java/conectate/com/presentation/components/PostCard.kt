@@ -428,6 +428,19 @@ fun PostCard(
 
             SensitiveContentGate(isSensitive = post.isSensitive) {
                 Column {
+                    post.surveyId?.let { surveyId ->
+                        Card(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Encuesta", style = MaterialTheme.typography.titleMedium)
+                                Text("${post.surveyResponseCount} respuestas · Una por cuenta", style = MaterialTheme.typography.bodySmall)
+                                Text("Las respuestas son privadas para el creador.", style = MaterialTheme.typography.bodySmall)
+                                Button(onClick = {
+                                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse("conectate://survey/$surveyId")).setPackage(context.packageName))
+                                }) { Text("Ver encuesta") }
+                            }
+                        }
+                    }
                     // Content Text
                     if (post.content.isNotBlank()) {
                         LinkText(

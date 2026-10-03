@@ -228,7 +228,7 @@ fun LoginScreen(
         if (!isAddAccountMode || authState !is AuthState.Success) {
             return@LaunchedEffect
         }
-        navController.navigate(Screen.Home.createRoute(startTab = "messages")) {
+        navController.navigate(conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute(startTab = "messages")) {
             popUpTo(Screen.AddAccountLogin.route) { inclusive = true }
             launchSingleTop = true
         }

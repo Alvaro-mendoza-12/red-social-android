@@ -423,6 +423,16 @@ object IntentRouter {
             clearIntent()
             return true
         }
+        val surveyLink = (uri.scheme == "conectate" && uri.host == "survey") ||
+            (uri.scheme == "https" && uri.pathSegments.firstOrNull() == "survey")
+        if (surveyLink) {
+            val id = safeExternalRouteValue(if (uri.scheme == "conectate") uri.pathSegments.firstOrNull() else uri.pathSegments.getOrNull(1))
+            if (id != null && id.matches(Regex("[0-9a-fA-F-]{36}"))) {
+                navController.navigate(Screen.Surveys.createRoute(id, safeExternalRouteValue(uri.getQueryParameter("key"), 100)))
+                clearIntent()
+                return true
+            }
+        }
         // Never log the full URI: recovery links carry access and refresh
         // credentials in their fragment.
         android.util.Log.d(
@@ -636,6 +646,7 @@ internal fun isTrustedExternalDeepLinkOrigin(scheme: String?, host: String?): Bo
         "messages",
         "create-moment",
         "post",
+        "survey",
         "video",
         "profile",
         "group",

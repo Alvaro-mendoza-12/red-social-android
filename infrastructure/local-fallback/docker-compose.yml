@@ -74,6 +74,28 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  survey-antivirus:
+    build:
+      context: ./survey-antivirus
+      network: host
+    restart: unless-stopped
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: "1.0"
+    pids_limit: 64
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,uid=10001,gid=10001,mode=0700
+    volumes:
+      - novvin-clamav-db:/var/lib/clamav:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   api:
     build:
       context: ./api
@@ -94,6 +116,9 @@ services:
       STORAGE_SIGNING_SECRET: ${STORAGE_SIGNING_SECRET:?STORAGE_SIGNING_SECRET is required}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       MUSIC_ANTIVIRUS_REQUIRED: ${MUSIC_ANTIVIRUS_REQUIRED:-true}
+      NOVVIN_SURVEYS_ENABLED: ${NOVVIN_SURVEYS_ENABLED:-false}
+      SURVEY_CLAMD_HOST: survey-antivirus
+      SURVEY_CLAMD_PORT: "3310"
       MUSIC_ANTIVIRUS_COMMAND: ${MUSIC_ANTIVIRUS_COMMAND:-clamscan}
       MUSIC_ANTIVIRUS_TIMEOUT_MS: ${MUSIC_ANTIVIRUS_TIMEOUT_MS:-90000}
       REALTIME_INTERNAL_URL: http://realtime-gateway:3002
