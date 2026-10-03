@@ -1,0 +1,20 @@
+{
+  "date_local": "2026-10-02",
+  "device": "emulator-5554",
+  "android_api": 35,
+  "unit": {"suites": 44, "tests": 164, "failures": 0, "errors": 0},
+  "instrumentation": {"tests": 3, "failures": 0, "duration_seconds": 10.775},
+  "blocked_websocket": {"connected_ms": 2674, "fallback_count": 1, "auth_preserved": true, "affinity_preserved": true},
+  "public_signaling": [
+    {"scope": "call", "compatible": false, "connected_ms": 1075},
+    {"scope": "call", "compatible": true, "connected_ms": 1089},
+    {"scope": "voice", "compatible": false, "connected_ms": 1069},
+    {"scope": "voice", "compatible": true, "connected_ms": 500},
+    {"scope": "live", "compatible": false, "connected_ms": 1068},
+    {"scope": "live", "compatible": true, "connected_ms": 543}
+  ],
+  "public_probe_joined_sessions": false,
+  "end_to_end_media_certified": false,
+  "version_code": 117,
+  "base_version": "9.0.20"
+}

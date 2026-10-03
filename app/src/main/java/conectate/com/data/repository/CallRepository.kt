@@ -26,6 +26,8 @@ import conectate.com.data.model.CallReactionEvent
 import conectate.com.data.signaling.SignalingConfig
 import conectate.com.data.signaling.SignalingNetwork
 import conectate.com.data.signaling.attachBearerToken
+import conectate.com.data.signaling.MediaSignalingFallback
+import conectate.com.data.signaling.isCurrentMediaSignalingSession
 import conectate.com.data.signaling.attachSignalingAffinity
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
@@ -1256,7 +1258,9 @@ class CallRepository @Inject constructor(
         callId: String, userId: String, name: String, avatarUrl: String?,
         pollingFallback: Boolean = false, resetMedia: Boolean = true,
     ) {
-        if (!canRefreshCallMedia(_activeCall.value, callId)) return
+        if (!canRefreshCallMedia(_activeCall.value, callId) || !isCurrentMediaSignalingSession(
+                callId, _activeCall.value?.callId, userId, authService.getCurrentUserId(),
+            )) return
         try {
             socket?.off()
             socket?.disconnect()
@@ -1276,6 +1280,7 @@ class CallRepository @Inject constructor(
                 android.os.SystemClock.elapsedRealtime(),
             ) == true
             val transportPlan = CallSignalingTransportPlan(pollingFallback, preparationFailed)
+            val fallback = MediaSignalingFallback(transportPlan)
             if (preparedIncomingSocketFailureContext != null) {
                 preparedIncomingSocketExpiryJob?.cancel()
                 preparedIncomingSocketExpiryJob = null
@@ -1298,7 +1303,9 @@ class CallRepository @Inject constructor(
             } else null) ?: IO.socket(signalingEndpoint, options)
             socket = createdSocket
             fun isCurrentCallSocket() = socket === createdSocket &&
-                canRefreshCallMedia(_activeCall.value, callId)
+                canRefreshCallMedia(_activeCall.value, callId) && isCurrentMediaSignalingSession(
+                    callId, _activeCall.value?.callId, userId, authService.getCurrentUserId(),
+                )
 
             createdSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
                 if (!isCurrentCallSocket()) return@on
@@ -1306,7 +1313,7 @@ class CallRepository @Inject constructor(
                     // Java's client does not automatically try polling when
                     // a direct WebSocket handshake fails. Keep the media
                     // engine and auth/affinity while changing transport once.
-                    scope.launch {
+                    if (fallback.claim(isCurrentCallSocket())) scope.launch {
                         synchronized(this@CallRepository) {
                             if (isCurrentCallSocket()) {
                                 Log.i(TAG, "Direct call socket failed; trying polling fallback")
@@ -1621,7 +1628,7 @@ class CallRepository @Inject constructor(
                     !refreshed ||
                     socket !== failedSocket ||
                     active == null ||
-                    !active.callId.equals(callId, ignoreCase = true)
+                    !isCurrentMediaSignalingSession(callId, active.callId, userId, authService.getCurrentUserId())
                 ) {
                     return@launch
                 }

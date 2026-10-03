@@ -45,6 +45,9 @@ import org.json.JSONObject
 import org.json.JSONArray
 import org.webrtc.VideoTrack
 import conectate.com.data.signaling.SignalingConfig
+import conectate.com.data.signaling.MediaSignalingTransportPlan
+import conectate.com.data.signaling.MediaSignalingFallback
+import conectate.com.data.signaling.isCurrentMediaSignalingSession
 import conectate.com.data.signaling.attachBearerToken
 import conectate.com.data.signaling.attachSignalingAffinity
 import conectate.com.util.AppPerformanceProfiles
@@ -112,6 +115,7 @@ class VoiceRoomRepository @Inject constructor(
     // WebRTC & Realtime
     private var webRTCManager: WebRTCManager? = null
     private var roomChannel: RealtimeChannel? = null
+    @Volatile
     private var socket: Socket? = null
     private var audioFocusRequest: AudioFocusRequest? = null
     @Volatile
@@ -563,7 +567,7 @@ class VoiceRoomRepository @Inject constructor(
             attributes = currentMetricAttributes(reason = reason, roomId = roomId)
         )
         pendingConnectMetricName = "voice_room_attach"
-        pendingConnectStartedAtMs = System.currentTimeMillis()
+        pendingConnectStartedAtMs = android.os.SystemClock.elapsedRealtime()
 
         val attachedRoom = _currentRoom.value ?: getRoomById(roomId).getOrNull()?.let(::normalizeRoomForUi)
         if (attachedRoom != null) {
@@ -1253,7 +1257,7 @@ class VoiceRoomRepository @Inject constructor(
     ) = withContext(Dispatchers.IO) {
         android.util.Log.w("VoiceRoomRepository", "📍 joinRoom START: roomId=$roomId, userId=$userId")
         pendingConnectMetricName = "voice_room_join"
-        pendingConnectStartedAtMs = System.currentTimeMillis()
+        pendingConnectStartedAtMs = android.os.SystemClock.elapsedRealtime()
         reconnectFailureCount = 0
         updateConnectionState(VoiceConnectionState.CONNECTING)
         appMetrics.incrementCounter(
@@ -1452,7 +1456,15 @@ class VoiceRoomRepository @Inject constructor(
         }
     }
 
-    private fun setupSocketSignaling(roomId: String, userId: String, name: String, avatarUrl: String?) {
+    @Synchronized
+    private fun setupSocketSignaling(
+        roomId: String, userId: String, name: String, avatarUrl: String?,
+        pollingFallback: Boolean = false,
+    ) {
+        fun isCurrentSession() = isCurrentMediaSignalingSession(
+            roomId, activeRoomId, userId, authService.getCurrentUserId(),
+        )
+        if (!isCurrentSession()) return
         try {
             // v7.2.4: Strict Socket Purge - Ensure old socket is completely dead before creating new one
             socket?.let {
@@ -1461,14 +1473,16 @@ class VoiceRoomRepository @Inject constructor(
                 it.disconnect()
             }
 
+            val transportPlan = MediaSignalingTransportPlan(pollingFallback)
+            val fallback = MediaSignalingFallback(transportPlan)
             val options = IO.Options().apply {
                 forceNew = true
                 reconnection = true
                 reconnectionAttempts = SOCKET_RECONNECT_ATTEMPTS
                 reconnectionDelay = SOCKET_RECONNECT_DELAY_MS
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
-                timeout = 10000
-                transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
+                timeout = transportPlan.timeoutMs
+                transports = transportPlan.transports
                 attachSignalingAffinity("voice", roomId)
                 attachBearerToken(authService.getAccessToken())
             }
@@ -1477,9 +1491,10 @@ class VoiceRoomRepository @Inject constructor(
             android.util.Log.i("VoiceRoomRepository", "🔌 Initializing Socket.io for: $signalingEndpoint")
             val createdSocket = IO.socket(signalingEndpoint, options)
             socket = createdSocket
+            fun isCurrentAttempt() = socket === createdSocket && isCurrentSession()
 
             createdSocket.on(Socket.EVENT_CONNECT) {
-                if (socket !== createdSocket) return@on
+                if (!isCurrentAttempt()) return@on
                 var sid = createdSocket.id() ?: ""
                 android.util.Log.w("VoiceRoomRepository", "✅ SIGNALING CONNECTED: $sid. Joining room: $roomId")
                 reconnectFailureCount = 0
@@ -1556,13 +1571,13 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             createdSocket.on("room-joined") { args ->
-                if (socket !== createdSocket) return@on
+                if (!isCurrentAttempt()) return@on
                 val data = extractJsonPayload(args) ?: return@on
                 if (!data.optString("roomId").trim().equals(roomId, ignoreCase = true)) return@on
                 pendingConnectStartedAtMs?.let { startedAt ->
                     appMetrics.recordLatency(
                         metric = pendingConnectMetricName ?: "voice_room_connect",
-                        durationMs = System.currentTimeMillis() - startedAt,
+                        durationMs = (android.os.SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0),
                         attributes = currentMetricAttributes(roomId = roomId)
                     )
                 }
@@ -1577,7 +1592,7 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             createdSocket.on("room-join-error") { args ->
-                if (socket !== createdSocket) return@on
+                if (!isCurrentAttempt()) return@on
                 val data = extractJsonPayload(args)
                 val message = data?.optString("error")?.trim().orEmpty()
                     .ifBlank { "El servidor rechazó el acceso a esta sala de voz." }
@@ -1586,7 +1601,21 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             createdSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
-                if (socket !== createdSocket) return@on
+                if (!isCurrentAttempt()) return@on
+                if (!transportPlan.usesPollingFallback) {
+                    if (fallback.claim(isCurrentAttempt())) {
+                        scope.launch {
+                            synchronized(this@VoiceRoomRepository) {
+                                if (isCurrentAttempt()) {
+                                    android.util.Log.i("VoiceRoomRepository", "Direct voice socket failed; trying polling fallback")
+                                    // Membership and the media engine stay intact during transport replacement.
+                                    setupSocketSignaling(roomId, userId, name, avatarUrl, pollingFallback = true)
+                                }
+                            }
+                        }
+                    }
+                    return@on
+                }
                 val errorMessage = args.firstOrNull()?.toString().orEmpty().ifBlank { "Socket connect error" }
                 android.util.Log.e("VoiceRoomRepository", "❌ Socket connect error: $errorMessage")
                 recoverSocketAfterEndpointFailure(
@@ -1608,7 +1637,8 @@ class VoiceRoomRepository @Inject constructor(
                 )
             }
 
-            socket?.on(Socket.EVENT_DISCONNECT) {
+            createdSocket.on(Socket.EVENT_DISCONNECT) {
+                if (!isCurrentAttempt()) return@on
                 android.util.Log.e("VoiceRoomRepository", "🔌 SIGNALING DISCONNECTED")
                 if (!activeRoomId.isNullOrBlank()) {
                     updateConnectionState(VoiceConnectionState.RECONNECTING)
@@ -2082,7 +2112,9 @@ class VoiceRoomRepository @Inject constructor(
             try {
                 val refreshed = conectate.com.data.localfallback.RuntimeBackendEndpoint
                     .refreshAfterEndpointFailure(failedBaseUrl)
-                if (!refreshed || socket !== failedSocket || !matchesActiveRoom(roomId)) return@launch
+                if (!refreshed || socket !== failedSocket || !isCurrentMediaSignalingSession(
+                        roomId, activeRoomId, userId, authService.getCurrentUserId(),
+                    )) return@launch
                 val refreshedEndpoint = SIGNALING_URL
                 if (refreshedEndpoint == failedSignalingEndpoint) return@launch
                 android.util.Log.w(
@@ -2385,18 +2417,21 @@ class VoiceRoomRepository @Inject constructor(
             isAudioSessionPrepared = false
             disableCaptionsInternal(announce = true)
 
+            // Invalidate locally before waiting for HTTP: a late error must not rejoin
+            // the room while the user is leaving it.
+            synchronized(this@VoiceRoomRepository) {
+                activeRoomId = null
+                val closingSocket = socket
+                socket = null
+                closingSocket?.off()
+                closingSocket?.disconnect()
+            }
+
             if (!actualRoomId.isNullOrBlank() && authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 authService.getAccessTokenAwait()?.let { token ->
                     localFallbackApiClient.leaveVoiceRoom(token, actualRoomId)
                 }
             }
-
-            // 1. Disconnect Signaling FIRST to prevent new negotiation during teardown
-            socket?.let {
-                it.off()
-                it.disconnect()
-            }
-            socket = null
 
             roomChannel?.unsubscribe()
             roomChannel = null

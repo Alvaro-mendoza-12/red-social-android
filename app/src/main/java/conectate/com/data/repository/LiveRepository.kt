@@ -44,6 +44,9 @@ import conectate.com.data.livekit.LiveKitRoomBridge
 import conectate.com.data.local.prefs.LivePreferences
 import conectate.com.data.model.LiveCreatorLayoutStyle
 import conectate.com.data.signaling.SignalingConfig
+import conectate.com.data.signaling.MediaSignalingTransportPlan
+import conectate.com.data.signaling.MediaSignalingFallback
+import conectate.com.data.signaling.isCurrentMediaSignalingSession
 import conectate.com.data.signaling.attachBearerToken
 import conectate.com.data.signaling.attachSignalingAffinity
 import conectate.com.data.supabase.AuthService
@@ -2791,7 +2794,17 @@ class LiveRepository @Inject constructor(
         }.isSuccess
     }
 
-    private fun connectSocket(liveId: String, role: LiveRole, userId: String, name: String, avatarUrl: String?) {
+    @Synchronized
+    private fun connectSocket(
+        liveId: String, role: LiveRole, userId: String, name: String, avatarUrl: String?,
+        pollingFallback: Boolean = false,
+    ) {
+        fun isCurrentSession() = _activeSession.value?.let { active ->
+            active.role == role && isCurrentMediaSignalingSession(
+                liveId, active.stream.id, userId, authService.getCurrentUserId(),
+            )
+        } == true
+        if (!isCurrentSession()) return
         try {
             socket?.off()
             socket?.disconnect()
@@ -2817,14 +2830,16 @@ class LiveRepository @Inject constructor(
                 renegotiate = false
             )
 
+            val transportPlan = MediaSignalingTransportPlan(pollingFallback)
+            val fallback = MediaSignalingFallback(transportPlan)
             val options = IO.Options().apply {
                 forceNew = true
                 reconnection = true
                 reconnectionAttempts = SOCKET_RECONNECT_ATTEMPTS
                 reconnectionDelay = SOCKET_RECONNECT_DELAY_MS
                 reconnectionDelayMax = SOCKET_RECONNECT_DELAY_MAX_MS
-                timeout = 10_000
-                transports = arrayOf(io.socket.engineio.client.transports.WebSocket.NAME) // FIX: Bypass polling
+                timeout = transportPlan.timeoutMs
+                transports = transportPlan.transports
                 attachSignalingAffinity("live", liveId)
                 attachBearerToken(authService.getAccessToken())
             }
@@ -2832,9 +2847,23 @@ class LiveRepository @Inject constructor(
             val signalingEndpoint = signalingUrl
             val createdSocket = IO.socket(signalingEndpoint, options)
             socket = createdSocket
+            fun isCurrentAttempt() = socket === createdSocket && isCurrentSession()
 
             createdSocket.on(Socket.EVENT_CONNECT_ERROR) {
-                if (socket !== createdSocket) return@on
+                if (!isCurrentAttempt()) return@on
+                if (!transportPlan.usesPollingFallback) {
+                    if (fallback.claim(isCurrentAttempt())) {
+                        scope.launch {
+                            synchronized(this@LiveRepository) {
+                                if (isCurrentAttempt()) {
+                                    android.util.Log.i("LiveRepository", "Direct live socket failed; trying polling fallback")
+                                    connectSocket(liveId, role, userId, name, avatarUrl, pollingFallback = true)
+                                }
+                            }
+                        }
+                    }
+                    return@on
+                }
                 recoverSocketAfterEndpointFailure(
                     failedSocket = createdSocket,
                     failedBaseUrl = endpointBaseUrl,
@@ -2848,7 +2877,7 @@ class LiveRepository @Inject constructor(
             }
 
             createdSocket.on(Socket.EVENT_CONNECT) {
-                if (socket !== createdSocket) return@on
+                if (!isCurrentAttempt()) return@on
                 val active = _activeSession.value
                 if (
                     active?.role != role ||
@@ -3457,7 +3486,7 @@ class LiveRepository @Inject constructor(
                     !refreshed ||
                     socket !== failedSocket ||
                     active == null ||
-                    !active.stream.id.equals(liveId, ignoreCase = true) ||
+                    !isCurrentMediaSignalingSession(liveId, active.stream.id, userId, authService.getCurrentUserId()) ||
                     active.role != role
                 ) {
                     return@launch
