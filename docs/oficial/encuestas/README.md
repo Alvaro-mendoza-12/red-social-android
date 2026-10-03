@@ -30,3 +30,5 @@ La rama incorpora el editor de planillas, biblioteca, publicación de encuestas 
 - [Construcción de imágenes candidatas](VALIDACION_IMAGENES.json)
 - [Arranque completo de la API en PostgreSQL aislado](VALIDACION_ARRANQUE_API.json)
 - [Regresión conjunta del emulador](VALIDACION_ANDROID_COMBINADA.json)
+- [Preparación comprobada de la entrega](VALIDACION_PREPARACION_ENTREGA.json)
+- [Procedencia y hashes de los APK](VALIDACION_ARTEFACTOS_ANDROID.json)

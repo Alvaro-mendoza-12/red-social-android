@@ -1,0 +1,32 @@
+{
+  "androidSourceCommit": "782fd6c10ff6b22f9335675df6d65b55dc73d65e",
+  "embeddedApkBuildCommit": "782fd6c10ff6",
+  "embeddedCommitEvidence": "apkanalyzer dex code --class conectate.com.BuildConfig app-debug.apk",
+  "apkSha256": "0e6f06feaf9e7870ce0a73c718c8c74e7634b7f2ffe53e908ebe78522f82a980",
+  "androidTestApkSha256": "898902524c1268c92651caacf922c1d7399b25be103cf74a9d11362ae1447e7c",
+  "debugBuild": "passed",
+  "unitTests": 1230,
+  "unitFailures": 0,
+  "unitErrors": 0,
+  "unitSkipped": 0,
+  "r8Compilation": "passed",
+  "r8DurationAndDebugSuite": "15 min 30 s",
+  "javascriptBridgeClass": "conectate.com.presentation.surveys.SurveysBridge",
+  "javascriptBridgeMethods": [
+    "request",
+    "download",
+    "copy",
+    "share",
+    "ready",
+    "close"
+  ],
+  "releaseSigning": "User performs manual signing in Android Studio; final Play AAB not verified",
+  "nativeMediaRegression": {
+    "tests": 5,
+    "failures": 2,
+    "symptom": "Profile audio remained BUFFERING beyond the unchanged 10-second test deadline",
+    "diagnosticSourceCommit": "da176479e36e3765d20bf4a09186239ab52408e7",
+    "state": "cause under investigation; previous combined pass does not validate this APK"
+  },
+  "limits": "R8 compilation only, no signed release package or release runtime certification; native audio regression has not passed."
+}
