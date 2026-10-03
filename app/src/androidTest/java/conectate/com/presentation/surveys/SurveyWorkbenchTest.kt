@@ -172,7 +172,7 @@ class SurveyWorkbenchTest {
         awaitJs("document.body.innerText.includes('Encuesta reportada') && document.getElementById('app').getAttribute('aria-busy') === 'false'")
         click("review-instrument")
         awaitJs("document.getElementById('modal').open && document.getElementById('modal-body').innerText.includes('Edad')")
-        assertEquals("true", js("document.getElementById('app').getAttribute('aria-busy')"))
+        assertEquals("true", js("document.getElementById('app').getAttribute('aria-busy') === 'true'"))
         confirm()
         awaitJs("!document.getElementById('modal').open && document.getElementById('app').getAttribute('aria-busy') !== 'true'")
         click("moderation-block")
