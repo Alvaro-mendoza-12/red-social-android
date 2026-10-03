@@ -94,6 +94,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -275,6 +277,7 @@ internal fun NovvinLiveViewerExperience(
         }
         ViewerPanel.GUEST_REQUEST -> GuestRequestSheet(
             state = guestState,
+            requestsAllowed = stream?.allowGuestRequests == true,
             onDismiss = { panel = null },
             onRequest = onRequestGuest,
             onCancel = onCancelGuest
@@ -898,33 +901,12 @@ private fun LiveExperienceFrame(
                     bottom(metrics)
                 }
             } else {
-                val bottomOffset = metrics.composerHeight + 16.dp +
-                    if (metrics.horizontalActions) 76.dp else 0.dp
-                CompactChat(
-                    comments,
-                    metrics.chatHeight,
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = metrics.horizontalPadding, bottom = bottomOffset)
-                        .fillMaxWidth(0.72f)
+                LiveViewerOverlayLayout(
+                    metrics = metrics,
+                    chat = { CompactChat(comments, metrics.chatHeight, Modifier.fillMaxWidth()) },
+                    actions = { actions(metrics) },
+                    composer = { bottom(metrics) },
                 )
-                if (metrics.horizontalActions) {
-                    Column(
-                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().imePadding()
-                    ) {
-                        Box(Modifier.fillMaxWidth().padding(horizontal = metrics.horizontalPadding)) {
-                            actions(metrics)
-                        }
-                        bottom(metrics)
-                    }
-                } else {
-                    Box(
-                        Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = metrics.horizontalPadding, bottom = bottomOffset)
-                    ) { actions(metrics) }
-                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { bottom(metrics) }
-                }
             }
         }
     }
@@ -1527,8 +1509,9 @@ private fun ReceiverChip(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GuestRequestSheet(
+internal fun GuestRequestSheet(
     state: LiveGuestAccessState,
+    requestsAllowed: Boolean,
     onDismiss: () -> Unit,
     onRequest: () -> Unit,
     onCancel: () -> Unit
@@ -1572,7 +1555,8 @@ private fun GuestRequestSheet(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            when (state.status) {
+                            if (!requestsAllowed && state.status == LiveGuestRequestStatus.NONE) "Solicitudes cerradas"
+                            else when (state.status) {
                                 LiveGuestRequestStatus.PENDING -> "Solicitud enviada"
                                 LiveGuestRequestStatus.REJECTED -> "El creador no pudo aceptar"
                                 LiveGuestRequestStatus.ACCEPTED -> "Solicitud aceptada"
@@ -1583,7 +1567,9 @@ private fun GuestRequestSheet(
                             fontWeight = FontWeight.ExtraBold
                         )
                         Text(
-                            state.message ?: when (state.status) {
+                            if (!requestsAllowed && state.status == LiveGuestRequestStatus.NONE) {
+                                "El creador ha cerrado las solicitudes para unirse."
+                            } else state.message ?: when (state.status) {
                                 LiveGuestRequestStatus.PENDING -> "Te avisaremos en cuanto responda."
                                 LiveGuestRequestStatus.REJECTED -> "Puedes volver a intentarlo más tarde."
                                 else -> "Tu cámara y micrófono seguirán apagados hasta que confirmes."
@@ -1601,7 +1587,7 @@ private fun GuestRequestSheet(
                     onClick = onCancel,
                     modifier = Modifier.padding(horizontal = 18.dp)
                 )
-            } else {
+            } else if (requestsAllowed) {
                 LiveGradientButton(
                     text = if (state.status == LiveGuestRequestStatus.REJECTED) "Solicitar de nuevo" else "Solicitar unirme",
                     onClick = onRequest,
@@ -1847,6 +1833,7 @@ private fun ToggleSettingRow(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            modifier = Modifier.semantics { contentDescription = title },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = LivePalette.Purple,

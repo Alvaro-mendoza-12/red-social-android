@@ -1985,6 +1985,13 @@ class LiveRepository @Inject constructor(
         ) {
             return
         }
+        if (!session.stream.allowGuestRequests) {
+            _guestAccessState.value = LiveGuestAccessState(
+                status = LiveGuestRequestStatus.NONE,
+                message = "El creador ha cerrado las solicitudes para unirse.",
+            )
+            return
+        }
         if (socket?.connected() != true) {
             _guestAccessState.value = LiveGuestAccessState(
                 status = LiveGuestRequestStatus.NONE,
@@ -2023,12 +2030,15 @@ class LiveRepository @Inject constructor(
                     }
                 }
                 .onFailure { error ->
+                    if (error is CancellationException) throw error
+                    if (_activeSession.value?.stream?.id != session.stream.id) return@onFailure
                     android.util.Log.w("LiveRepository", "Unable to persist guest request", error)
+                    val message = liveGuestRequestErrorMessage(error)
                     _guestAccessState.value = LiveGuestAccessState(
                         status = LiveGuestRequestStatus.NONE,
-                        message = "No se pudo enviar la solicitud."
+                        message = message
                     )
-                    _runtimeErrors.tryEmit("No se pudo enviar la solicitud para unirte.")
+                    _runtimeErrors.tryEmit(message)
                 }
         }
     }
