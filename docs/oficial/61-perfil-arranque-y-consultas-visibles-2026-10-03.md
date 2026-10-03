@@ -442,8 +442,33 @@ La revisión `782fd6c` aplica al audio de perfil la misma reutilización acotada
 de respuesta HTTP inicial que ya usa la preescucha de música. Conserva los límites
 de tiempo y bytes y la separación por contexto/credenciales; no aumenta el plazo
 de la prueba. La compilación debug, el APK de instrumentación y las **1.230 pruebas
-unitarias** de esa fuente pasaron. La medición nativa de ese último cambio y su
-compilación R8 siguen pendientes al escribir este apartado.
+unitarias** de esa fuente pasaron. También pasó R8, en una compilación total de
+15 minutos y 30 segundos. Se confirmó `782fd6c10ff6` directamente en el DEX
+del APK: un archivo Java generado cambió después a `unknown`, por lo que no se
+usa ese archivo posterior para atribuir la procedencia del artefacto.
+
+La prueba focalizada de ciclo de vida de `782fd6c` pasó en 11,272 segundos; su
+transición a reproducción tardó aproximadamente 1,8 segundos. **La ronda de
+cinco medios falló en dos casos**, ambos al iniciar audio de perfil antes de
+cambiar el propietario del ciclo de vida. A los diez segundos seguían en
+BUFFERING, con actividad RESUMED, foco normal y sin error visible. El indicador
+de carga corregido sí se mantenía visible. La imagen cargó en 475 ms y la
+preescucha en 3.766 ms. Esta revisión no cierra el fallo intermitente de audio.
+
+Los registros del edge para el WAV propio de esa ronda mostraron cuatro
+respuestas de 384.044 bytes en 5–7 ms y tiempos de upstream de 5–6 ms. Eso mide
+el tramo interno hasta el proxy, **no la recepción en Android**. Desde Windows,
+forzando la dirección IPv4 pública pero conservando TLS/SNI, descargar el mismo
+archivo completo tardó 8,846 y 6,111 segundos; intervalos de 32.768 bytes tardaron
+1,677 y 2,689 segundos. Ese cliente usa HTTP/1.1, así que no es una equivalencia
+exacta del reproductor HTTP/2 Android. Son indicios de latencia en el recorrido
+público; todavía se investiga qué etapa explica los bloqueos dentro de Media3.
+
+`da17647` añade diagnóstico sólo en debug: tiempos de apertura y lecturas,
+offsets, bytes, retención/cierre y duración almacenada en el reproductor. No
+registra URL, cabeceras ni tokens. No modifica los plazos o umbrales para hacer
+pasar la prueba. El análisis distingue carga, buffering y reproducción según la
+[documentación de Media3](https://developer.android.com/media/media3/exoplayer/troubleshooting).
 
 Se añadió un procedimiento de entrega exclusivo para la API y el antivirus
 privado. Verifica las imágenes por digest, las fuentes y un respaldo, rechaza
@@ -451,7 +476,9 @@ enlaces y rutas ajenas en los archivos de entrega y detecta cambios desde la
 preparación. La reversión conserva las tablas aditivas y los mensajes nuevos;
 restaura archivos e imagen anterior sin reemplazar los datos por el respaldo.
 Los errores de reversión se informan y detienen la operación. **14 pruebas en
-Linux pasaron**, incluida la simulación de fallos de cada etapa de reversión.
+Linux pasaron**, incluida la simulación de fallos de cada etapa de reversión,
+la recuperación cuando una recreación deja el contenedor API ausente y el
+rechazo de una imagen ajena.
 Es una comprobación del procedimiento; no equivale a un ensayo de caída y
 restauración completo de todos los servicios productivos.
 
