@@ -63,6 +63,8 @@ fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
     DisposableEffect(player, lifecycle) {
         val owned = player
         val observer = LifecycleEventObserver { _, event ->
+            if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("InteractiveAudioState",
+                "lifecycle_event=$event player_attached=${owned != null}")
             if (event == Lifecycle.Event.ON_STOP) { owned?.pause(); isPlaying = false; isLoading = false }
         }
         lifecycle.addObserver(observer)
@@ -100,6 +102,10 @@ fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
                     }
                     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                         if (player !== owned) return
+                        // prepare() can report BUFFERING before play() sets the
+                        // playback intent. Keep the spinner in sync when that
+                        // intent changes, including a pause during loading.
+                        isLoading = playWhenReady && owned.playbackState == Player.STATE_BUFFERING
                         if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
                             isLoading = false
                             error = "La reproducción se interrumpió. Toca reproducir para continuar."
@@ -109,6 +115,14 @@ fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
                         if (player !== owned) return
                         isLoading = state == Player.STATE_BUFFERING && owned.playWhenReady
                         if (state == Player.STATE_ENDED) { progress = 0f; isPlaying = false }
+                    }
+                    override fun onEvents(eventPlayer: Player, events: Player.Events) {
+                        if (conectate.com.BuildConfig.DEBUG && player === owned) {
+                            android.util.Log.d("InteractiveAudioState",
+                                "state=${eventPlayer.playbackState} play_when_ready=${eventPlayer.playWhenReady} " +
+                                    "playing=${eventPlayer.isPlaying} suppression=${eventPlayer.playbackSuppressionReason} " +
+                                    "position_ms=${eventPlayer.currentPosition} owner_state=${lifecycle.currentState}")
+                        }
                     }
                     override fun onPlayerError(failure: PlaybackException) {
                         if (player !== owned) return
