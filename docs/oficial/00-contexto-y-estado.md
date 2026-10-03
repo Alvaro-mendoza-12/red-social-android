@@ -12,12 +12,16 @@ como producción.
 ## Actualización del 03/10/2026
 
 - API: encuestas con transacción y publicación de cambios (revisión 58); registro
-  de visitas corregido y confirmado desde Android (revisión 59). Release `e5e3ce1`,
+  de visitas corregido y confirmado desde Android (revisión 59). Release `31c571d`,
   nueve servicios saludables y 100/100 fuentes JavaScript comprobadas.
 - Android: encuestas visibles, música, fotos de momentos, formulario de avisos y
-  visitas con 33 pruebas unitarias y 12 instrumentadas correctas. Recorridos reales
-  entre cuentas propias de QA y recursos del servidor; detalle y matriz de los
-  once requisitos en la revisión 60. Se mantienen 117 / 9.0.20.
+  visitas, aislamiento del perfil y consultas LIVE mientras son visibles. La
+  regresión completa aprobó 1.221 pruebas unitarias y la APK combinada pasó 24
+  casos nativos. El selector reutiliza una respuesta para el salto inicial corto
+  de audio; persisten picos de transferencia. Recorridos entre cuentas
+  propias de QA y recursos del servidor; matriz de los once requisitos en la
+  revisión 60 y mediciones actuales en la [revisión 61](61-perfil-arranque-y-consultas-visibles-2026-10-03.md).
+  Se mantienen 117 / 9.0.20.
 - Siguen abiertos arranque ≤3 s, rendimiento WebRTC/60 FPS, pruebas físicas entre
   redes, entrega FCM y paridad web completa. No se declara producción certificada.
 

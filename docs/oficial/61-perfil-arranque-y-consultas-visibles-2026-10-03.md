@@ -55,6 +55,9 @@ Fecha: 03/10/2026. Continúa las revisiones 59 y 60. Android conserva versión
 - **1.210 pruebas unitarias Android, 267 suites, cero fallos/errores/omisiones**
   en una copia aislada de `dfcacb2`. Incluyen las regresiones de identidad local,
   caché de perfil y color de enlaces.
+- La regresión completa se repitió después en el checkout principal con la
+  integración de Encuestas: **1.221 pruebas, 268 suites, cero fallos, errores u
+  omisiones**. La APK debug y la instrumentada de esa combinación compilaron.
 - Cuatro pruebas de Compose de visitas: carga sin falso resultado vacío,
   reintento, privacidad desactivada y desplazamiento hasta el visitante 50 con
   apertura del identificador correcto.
@@ -63,6 +66,13 @@ Fecha: 03/10/2026. Continúa las revisiones 59 y 60. Android conserva versión
   144 ms, audio de perfil a 3.113 ms y fragmento comunitario a 2.783 ms. Son
   componentes nativos con recursos propios del servidor en emulador API 35;
   quedan por ampliar los recorridos completos y la prueba física de audición.
+- Repetición sobre la APK combinada: **24 casos nativos aprobados**, sin fallos,
+  en 59,68 s. Incluye los 16 anteriores, tres del editor/respuesta de Encuestas,
+  su contrato de documentos, tres de enlaces de chat y la migración Room 55→56.
+  Perfil empezó a los 3.189 ms, fragmento comunitario a 1.766 ms y foto a 147 ms.
+  Las pruebas del editor de Encuestas usan transporte sintético; no validan su
+  API en producción. Los cambios posteriores de ese módulo necesitan otra ronda.
+  SHA-256 de la APK probada: `4cdf2943f3490481cce8d777575f85828cf3171436048e738f6fb3617ffef686`.
 - Recorrido real entre las cuentas propias de QA: el propietario ve nombre,
   @usuario, inicial y hora del visitante; tocarlo abre el perfil. Desde allí,
   Mensaje abrió el chat y mantuvo la aplicación activa.
@@ -70,6 +80,8 @@ Fecha: 03/10/2026. Continúa las revisiones 59 y 60. Android conserva versión
   cero fallos**. Backend desplegado `31c571d`, nueve servicios saludables; se
   comprobó que el contenedor y el host ejecutan el código revisado. El cierre
   de la ruta genérica de votos sí modifica la API, sin migración de esquema.
+  Otra lectura del contenedor a las 17:04 UTC confirmó 100/100 fuentes JS de
+  `31c571d` y `/ready` correcto. La API nueva de Encuestas aún no está desplegada.
 
 ## Tiempos: no se ha cumplido aún el objetivo de arranque
 
@@ -94,15 +106,17 @@ Referencia: [medición de arranque de Android](https://developer.android.com/top
 
 Tres lecturas por ruta, con cuenta propia de QA:
 
-| Ruta | Mediana interna en la mini PC | Mediana por acceso público |
+| Ruta | Mediana interna en la mini PC | Mediana HTTPS desde el host lector |
 |---|---:|---:|
 | Perfil | 73 ms | 1.078 ms |
 | Grupos | 99 ms | 672 ms |
 | Descubrimiento LIVE | 70 ms | 610 ms |
 | Visitas | 62 ms | 375 ms |
 
-Las lecturas públicas incluyen DNS/TLS/red y conexiones nuevas del cliente de
-diagnóstico del host. No son medidas de latencia de voz ni de todos los módulos.
+Las lecturas HTTPS incluyen DNS/TLS/red y conexiones nuevas del cliente de
+diagnóstico del host. En esa ronda no se forzó DNS público; no deben usarse para
+certificar el recorrido de Funnel externo. No son medidas de latencia de voz
+ni de todos los módulos.
 
 La prueba de audio usa una actividad visible y con foco: Android 15 limita la
 solicitud de foco de audio a aplicaciones visibles o con servicio apropiado.
@@ -140,10 +154,70 @@ variabilidad de transferencia. Estas pocas muestras no prueban un tiempo
 garantizado ni una mejora porcentual global. Referencia del contrato:
 [DataSource de Media3](https://developer.android.com/reference/androidx/media3/datasource/DataSource).
 
-El intento SSH más reciente exige una comprobación adicional de Tailscale;
-la dirección LAN conocida agotó seis segundos de conexión. Los recursos de
-prueba sí respondieron por HTTPS público. La comprobación remota actual de
-contenedores y despliegues queda pendiente de recuperar acceso administrativo.
+Tras un bloqueo de comprobación de Tailscale y un timeout de seis segundos,
+SSH volvió a responder con el mismo acceso autorizado y límite de conexión de
+15 segundos. Se comprobaron nueve servicios saludables. El NVMe ext4 montado en
+`/mnt/conectate-fast` tiene 469 GiB de capacidad, 41 GiB usados y 424 GiB libres.
+
+Una lectura desde el contenedor de API hasta Nginx entregó un rango de 32.768
+bytes con HTTP 206 en **26 y 7 ms**. La ruta directa a API devolvió autorización
+`X-Accel-Redirect`, con cuerpo vacío: la entrega de bytes corresponde a Nginx.
+La misma URL HTTPS solicitada desde el servidor resolvía a su IP Tailscale,
+por lo que sus 222 y 210 ms se clasifican como acceso desde la tailnet.
+
+Para medir Funnel se resolvió el nombre por DNS público y se forzó esa dirección
+en HTTPS, conservando hostname/SNI y validación TLS. Tres rangos tuvieron HTTP
+206, 32.768 bytes exactos y **1.005, 455 y 339 ms** de entrega desde la mini PC.
+Es un recorrido distinto del emulador; no prueba que todos los usuarios reciban
+esos tiempos. El contrato de [Funnel](https://tailscale.com/docs/features/tailscale-funnel)
+incluye límites de ancho de banda no configurables. Su contribución concreta a
+los picos de Android queda por medir; no se atribuyen todos los retrasos a ese
+servicio ni al almacenamiento.
+
+## Revisión de servidor para el siguiente despliegue de Encuestas
+
+Revisión coordinada con la otra tarea del proyecto: lecturas de estado y login
+normal con una cuenta propia de QA. No se desplegó su módulo ni se ejecutaron
+migraciones, cambios de configuración o modificaciones de volúmenes e imágenes.
+
+- Compose: `/home/alvaro/conectate-local-fallback/docker-compose.yml`; API
+  `conectate-local-fallback-api-main`, servicio `api`. PostgreSQL acepta conexiones.
+- Recursos: 14.915 MiB de RAM total y 12.919 MiB disponibles en la muestra. El
+  contenedor API tiene límite real de 4 GiB, 3 CPU y 384 procesos; el margen del
+  host no elimina ese límite. Docker usa el bind NVMe ext4 `/var/lib/docker`.
+- Antivirus: ClamAV 1.4.6, firmas 28142 del 03/10/2026; existen las bases main,
+  daily y bytecode en el volumen persistente. Se comprobó versión y presencia,
+  sin ejecutar una batería de archivos infectados. `clamscan` carga las firmas
+  por proceso: hace falta limitar concurrencia y memoria de los PDF de Encuestas.
+- Backup existente: metadatos del 03/10/2026 a las 08:25:45 UTC con verificación
+  registrada como aprobada, dump de 3.737.261 bytes y storage de 2.217.236.907 bytes.
+  En este preflight no se recalcularon esos hashes. Antes del despliegue se debe
+  generar otra copia y verificar hashes, lectura del dump y archivos del storage.
+- QA: login y `/v1/auth/me` con una cuenta propia marcada como creada por QA
+  confirmaron la identidad esperada. `/v1/surveys/me` devuelve **404** en producción:
+  las pruebas actuales del módulo no demuestran su funcionamiento en esa API.
+
+Propuesta de ejecución, pendiente de revisión final del módulo:
+
+1. Congelar sus fuentes y lockfile, completar regresión de API y pruebas de
+   retención, límites, adjuntos y exportaciones. Repetir Android si cambian assets.
+2. Hacer backup nuevo, preservar fuentes/Compose/marker y etiquetar la imagen API
+   actual por su digest `sha256:83b2366a16e7aecf442bf2f5b31c9e04c18f33ab5ada34680f8029363f608a17`.
+3. Construir y validar **solo API**. El script general del stack también recrea
+   Redis y señalización; esa amplitud necesita revisión antes de usarlo para este
+   cambio. Conservar ingreso HTTPS, secretos, TURN y almacenamiento existentes.
+4. Aplicar las tablas nuevas de forma controlada y comprobar permisos, claves
+   foráneas e idempotencia antes de exponer las rutas. La migración añade un campo
+   a `fallback_posts`, por lo que se deben probar también publicaciones antiguas.
+5. Activar API y comprobar salud, hashes y recorridos con las cuentas QA: crear,
+   publicar, responder, editar, retirar y exportar, más control entre propietarios.
+   Verificar también login, mensajes, medios y el guard de votos del backend anterior.
+6. Ante fallo, volver a la imagen API preservada y su marker. Restaurar toda la
+   base perdería escrituras posteriores: esa operación exige un plan de incidente
+   separado. La reversión normal conserva las tablas añadidas y los datos nuevos.
+
+Este plan no sustituye las comprobaciones de retención efectiva, moderación por
+QR, adjuntos y límites que la otra tarea sigue implementando y revisando.
 
 ## Pendientes prioritarios
 

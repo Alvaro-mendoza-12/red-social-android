@@ -4,6 +4,11 @@ Fecha: 03/10/2026. Android: versión 117 / 9.0.20, conservada por indicación de
 propietario. APK debug recompilada e instalada mediante actualización; sin borrar
 datos ni cerrar sesiones. Pruebas en emuladores API 35 y backend Ubuntu real.
 
+Continuación: la [revisión 61](61-perfil-arranque-y-consultas-visibles-2026-10-03.md)
+añade visitas, carga del perfil, regresión completa y nuevas mediciones. Las
+repeticiones posteriores de audio tuvieron esperas que superaron diez segundos;
+los tiempos favorables de esta revisión corresponden a su ronda inicial.
+
 ## Correcciones móviles
 
 ### Encuestas de grupos y comunidades
