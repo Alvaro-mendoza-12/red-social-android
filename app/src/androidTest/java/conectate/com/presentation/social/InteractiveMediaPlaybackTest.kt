@@ -59,7 +59,16 @@ class InteractiveMediaPlaybackTest {
             val listen = compose.onAllNodesWithContentDescription("Escuchar").fetchSemanticsNodes().size
             val replay = compose.onAllNodesWithContentDescription("Reproducir").fetchSemanticsNodes().size
             val errors = compose.onAllNodes(hasText("No se pudo", substring = true)).fetchSemanticsNodes().size
-            android.util.Log.i("QaInteractiveMedia", "audio_ui_timeout listen=$listen replay=$replay errors=$errors")
+            val focusLoss = compose.onAllNodes(hasText("se interrumpió", substring = true)).fetchSemanticsNodes().size
+            val process = android.app.ActivityManager.RunningAppProcessInfo()
+            android.app.ActivityManager.getMyMemoryState(process)
+            android.util.Log.i("QaInteractiveMedia", "audio_ui_timeout listen=$listen replay=$replay errors=$errors " +
+                "focus_loss=$focusLoss importance=${process.importance} window_focus=${compose.activity.hasWindowFocus()} " +
+                "activity_state=${compose.activity.lifecycle.currentState}")
+            // This isolated surface contains only the owned QA player's controls
+            // and feedback. Keep its semantics for diagnosis without widening
+            // the playback deadline or ignoring a failed start.
+            compose.onRoot().printToLog("QaInteractiveMedia")
             throw timeout
         }
     }
