@@ -38,6 +38,7 @@ const {
 const { stableKey } = require('./request-security')
 const { safeErrorLogDetails } = require('./request-observability')
 const { insertMessageOnce } = require('./message-insert-store')
+const { upsertOwnedCollectionRoom } = require('./collection-room-create-store')
 const { mayReuseMessageMedia } = require('./message-media-access')
 const { cleanUsername, usernameOwnedByAnother, usernameProblem } = require('./username-policy')
 const { ensureDirectMessageRequestPolicy, introPolicyError, publishAutomaticFriendRequest } = require('./direct-message-request-policy')
@@ -10111,62 +10112,27 @@ function registerDataRoutes(app, {
         : false
       const memberIds = Array.from(cleanSet([...asArray(req.body?.members), ...asArray(req.body?.memberIds), identity.displayUserId]))
 
-      const { rows } = await pool.query(
-        `INSERT INTO fallback_collection_rooms(
-            id,
-            room_kind,
-            name,
-            image,
-            description,
-            category,
-            is_public,
-            creator_id,
-            is_deleted,
-            only_admins_can_talk,
-            daily_message_limit,
-            created_at,
-            updated_at
-         )
-         VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, FALSE, FALSE, 0, NOW(), NOW())
-         ON CONFLICT (id) DO UPDATE SET
-            room_kind = EXCLUDED.room_kind,
-            name = EXCLUDED.name,
-            image = EXCLUDED.image,
-            description = EXCLUDED.description,
-            category = EXCLUDED.category,
-            is_public = EXCLUDED.is_public,
-            creator_id = EXCLUDED.creator_id,
-            is_deleted = FALSE,
-            updated_at = NOW()
-         RETURNING
-            id::text,
-            room_kind,
-            name,
-            image,
-            description,
-            category,
-            is_public,
-            creator_id,
-            is_deleted,
-            only_admins_can_talk,
-            daily_message_limit,
-            created_at,
-            updated_at`,
-        [requestedId, config.kind, name, image, description, category, isPublic, identity.displayUserId],
+      const roomRow = await upsertOwnedCollectionRoom(
+        pool,
+        { id: requestedId, kind: config.kind, name, image, description, category,
+          isPublic, creatorId: identity.displayUserId },
+        identity.ids,
+        async (kind, id) => (await importedRowsByFieldValues(pool,
+          collectionConfig(kind).roomTable, ['id'], [id], 1)).length > 0,
       )
-      const roomId = textOf(normalizeImportedRow(rows[0]), ['id'], '')
+      const roomId = textOf(normalizeImportedRow(roomRow), ['id'], '')
 
       for (const memberId of memberIds) {
         await pool.query(
           `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at)
            VALUES ($1, $2, $3, $4, NOW())
            ON CONFLICT (room_kind, room_id, user_id)
-           DO UPDATE SET role = EXCLUDED.role`,
+           DO NOTHING`,
           [config.kind, roomId, memberId, memberId === identity.displayUserId ? 'owner' : 'member'],
         )
       }
 
-      res.status(201).json({ room: normalizeImportedRow(rows[0]), id: roomId })
+      res.status(201).json({ room: normalizeImportedRow(roomRow), id: roomId })
     } catch (error) {
       next(error)
     }

@@ -65,6 +65,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 52. [Móvil: TURN por sesión y tiempos nativos de llamadas — 2026-10-02](47-movil-turn-sesion-y-tiempos-2026-10-02.md)
 53. [Emulador: stickers y recuperación de la cola — 2026-10-02](48-emulador-stickers-y-cola-2026-10-02.md)
 54. [Emulador: respuestas a multimedia y sincronización — 2026-10-02](49-emulador-mensajes-respuestas-y-sync-2026-10-02.md)
+55. [Creación de grupos y comunidades: propiedad y reintentos — 2026-10-02](51-creacion-grupos-propiedad-2026-10-02.md)
 
 ## Reglas para quien trabaje en este proyecto
 
