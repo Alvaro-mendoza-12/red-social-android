@@ -115,9 +115,14 @@ rollback() {
   if [[ -e "$root/docker-compose.override.yml" ]]; then
     cmp "$release/candidate.override.yml" "$root/docker-compose.override.yml" || return 1
   fi
-  local current_image
-  current_image="$(docker inspect --format '{{.Image}}' conectate-local-fallback-api-main)" || return 1
-  [[ "$current_image" == "$api_image" || "$current_image" == "$previous_image" ]] || return 1
+  local current_image current_id
+  current_id="$(docker ps -aq --filter 'name=^/conectate-local-fallback-api-main$')" || return 1
+  # A failed force-recreate can remove the old container before creating its
+  # replacement. Absence is recoverable; an unknown replacement image is not.
+  if [[ -n "$current_id" ]]; then
+    current_image="$(docker inspect --format '{{.Image}}' "$current_id")" || return 1
+    [[ "$current_image" == "$api_image" || "$current_image" == "$previous_image" ]] || return 1
+  fi
   python3 "$validator" remove-added "$root" "$release/predeploy-files.tar" "$release/candidate-files.tar" || return 1
   tar -xf "$release/predeploy-files.tar" -C "$root" || return 1
   cat >"$release/rollback.override.yml" <<EOF || return 1

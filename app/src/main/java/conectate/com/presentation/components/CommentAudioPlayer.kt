@@ -124,7 +124,8 @@ fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
                             android.util.Log.d("InteractiveAudioState",
                                 "state=${eventPlayer.playbackState} play_when_ready=${eventPlayer.playWhenReady} " +
                                     "playing=${eventPlayer.isPlaying} suppression=${eventPlayer.playbackSuppressionReason} " +
-                                    "position_ms=${eventPlayer.currentPosition} owner_state=${lifecycle.currentState}")
+                                    "position_ms=${eventPlayer.currentPosition} buffered_ms=${eventPlayer.totalBufferedDuration} " +
+                                    "owner_state=${lifecycle.currentState}")
                         }
                     }
                     override fun onPlayerError(failure: PlaybackException) {

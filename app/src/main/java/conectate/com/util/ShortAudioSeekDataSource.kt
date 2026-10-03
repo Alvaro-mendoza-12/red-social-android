@@ -10,6 +10,7 @@ import java.io.IOException
 import java.io.InterruptedIOException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Progressive extractors can read a small header and immediately reopen at the
@@ -34,9 +35,16 @@ internal class ShortAudioSeekDataSource(
     private var reused = false
     private var generation = 0L
     private var retainedAtNs = 0L
+    private val traceId = if (conectate.com.BuildConfig.DEBUG) traceIds.incrementAndGet() else 0L
+    private var firstRead = false
+
+    private inline fun trace(message: () -> String) {
+        if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("InteractiveAudioIo", "source=$traceId ${message()}")
+    }
 
     @Synchronized
     override fun open(dataSpec: DataSpec): Long {
+        val started = if (conectate.com.BuildConfig.DEBUG) System.nanoTime() else 0L
         check(!opened) { "Source already open" }
         generation++
         val previous = original
@@ -46,6 +54,8 @@ internal class ShortAudioSeekDataSource(
             retainedForNs in 0..TimeUnit.MILLISECONDS.toNanos(RETAIN_MS) &&
             gap in 0..MAX_FORWARD_BYTES && sameRequest(previous, dataSpec) &&
             (upstreamRemaining == C.LENGTH_UNSET.toLong() || gap <= upstreamRemaining)
+        firstRead = true
+        trace { "open offset=${dataSpec.position} length=${dataSpec.length} previous_offset=$position reuse=$compatible" }
         if (compatible) {
             try {
                 val scratch = ByteArray(8_192)
@@ -60,6 +70,7 @@ internal class ShortAudioSeekDataSource(
                 reused = true
                 requestedRemaining = boundedLength(dataSpec.length, upstreamRemaining)
                 opened = true
+                trace { "opened mode=reuse elapsed_ms=${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)} available=$requestedRemaining" }
                 return requestedRemaining
             } catch (failure: IOException) {
                 closeAfterFailure(failure)
@@ -75,8 +86,10 @@ internal class ShortAudioSeekDataSource(
             upstreamRemaining = upstream.open(dataSpec)
             requestedRemaining = boundedLength(dataSpec.length, upstreamRemaining)
             opened = true
+            trace { "opened mode=network elapsed_ms=${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)} available=$requestedRemaining" }
             return requestedRemaining
         } catch (failure: Exception) {
+            trace { "open_failed type=${failure.javaClass.simpleName} elapsed_ms=${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)}" }
             closeAfterFailure(failure)
             throw failure
         }
@@ -90,7 +103,13 @@ internal class ShortAudioSeekDataSource(
         val limit = if (requestedRemaining == C.LENGTH_UNSET.toLong()) length
             else minOf(length.toLong(), requestedRemaining).toInt()
         try {
+            val started = if (conectate.com.BuildConfig.DEBUG) System.nanoTime() else 0L
             val count = upstream.read(buffer, offset, limit)
+            if (conectate.com.BuildConfig.DEBUG) {
+                val elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+                if (firstRead || elapsed >= 300) trace { "read offset=$position bytes=$count elapsed_ms=$elapsed first=$firstRead" }
+            }
+            firstRead = false
             if (count > 0) {
                 advance(count)
                 if (requestedRemaining != C.LENGTH_UNSET.toLong()) requestedRemaining -= count
@@ -100,6 +119,7 @@ internal class ShortAudioSeekDataSource(
             }
             return count
         } catch (failure: IOException) {
+            trace { "read_failed type=${failure.javaClass.simpleName} offset=$position" }
             opened = false
             closeAfterFailure(failure)
             throw failure
@@ -115,6 +135,7 @@ internal class ShortAudioSeekDataSource(
             spec.httpMethod == DataSpec.HTTP_METHOD_GET &&
             spec.uri.scheme in listOf("http", "https") &&
             position in 1..MAX_HEADER_BYTES && upstreamRemaining != 0L
+        trace { "close offset=$position retained=$maySeekFromHeader" }
         if (!maySeekFromHeader) {
             closeUpstream()
             return
@@ -147,7 +168,9 @@ internal class ShortAudioSeekDataSource(
         if (!upstreamActive) return
         upstreamActive = false
         original = null
+        val started = if (conectate.com.BuildConfig.DEBUG) System.nanoTime() else 0L
         try { upstream.close() } finally {
+            trace { "upstream_closed elapsed_ms=${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)}" }
             upstreamRemaining = C.LENGTH_UNSET.toLong()
             requestedRemaining = C.LENGTH_UNSET.toLong()
         }
@@ -175,6 +198,7 @@ internal class ShortAudioSeekDataSource(
         private const val RETAIN_MS = 250L
         private const val MAX_HEADER_BYTES = 16_384L
         private const val MAX_FORWARD_BYTES = 262_144L
+        private val traceIds = AtomicLong()
         private val closer = Executors.newSingleThreadScheduledExecutor { runnable ->
             Thread(runnable, "novvin-audio-response-close").apply { isDaemon = true }
         }

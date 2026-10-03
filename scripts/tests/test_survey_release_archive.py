@@ -129,7 +129,7 @@ class RollbackGuardTest(unittest.TestCase):
     def test_conditional_rollback_stops_at_each_failed_stage(self):
         source = (SCRIPTS / "deploy-surveys-api-candidate.sh").read_text()
         function = source[source.index("rollback() {"):source.index('if [[ "$mode" == rollback ]]')]
-        for stage in ("inspect", "python3", "tar", "stop", "config", "up", "ready", "none"):
+        for stage in ("ps", "inspect", "python3", "tar", "stop", "config", "up", "ready", "none", "absent", "foreign"):
             with self.subTest(stage=stage), tempfile.TemporaryDirectory() as temp:
                 root = pathlib.Path(temp).resolve()
                 # Never invokes Docker, tar extraction, or the real validator.
@@ -138,15 +138,20 @@ set -Eeuo pipefail
 root="$1"; release="$1"; validator=unused; previous_image=unused; api_image=candidate; stage="$2"
 python3() { echo python3 >>"$root/trace"; [[ "$stage" != python3 ]]; }
 tar() { echo tar >>"$root/trace"; [[ "$stage" != tar ]]; }
-docker() { local action="${@: -1}"; [[ "$*" == *" config "* ]] && action=config; [[ "$*" == *" up "* ]] && action=up; [[ "$*" == *" stop "* ]] && action=stop; if [[ "$1" == inspect ]]; then action=inspect; echo unused; fi; echo "$action" >>"$root/trace"; [[ "$stage" != "$action" ]]; }
+docker() { local action="${@: -1}"; [[ "$*" == *" config "* ]] && action=config; [[ "$*" == *" up "* ]] && action=up; [[ "$*" == *" stop "* ]] && action=stop; if [[ "$1" == ps ]]; then action=ps; [[ "$stage" == absent ]] || echo container; fi; if [[ "$1" == inspect ]]; then action=inspect; if [[ "$stage" == foreign ]]; then echo foreign; else echo unused; fi; fi; echo "$action" >>"$root/trace"; [[ "$stage" != "$action" ]]; }
 wait_ready() { echo ready >>"$root/trace"; [[ "$stage" != ready ]]; }
 '''
                 shell += function + '\nif rollback; then exit 0; else exit 42; fi\n'
                 result = subprocess.run(["bash", "-s", "--", str(root), stage], input=shell, text=True, capture_output=True)
-                self.assertEqual(result.returncode, 0 if stage == "none" else 42, result.stderr)
+                self.assertEqual(result.returncode, 0 if stage in ("none", "absent") else 42, result.stderr)
                 trace = (root / "trace").read_text().splitlines()
-                expected = ["inspect", "python3", "tar", "stop", "config", "up", "ready"]
-                self.assertEqual(trace, expected if stage == "none" else expected[:expected.index(stage) + 1])
+                expected = ["ps", "inspect", "python3", "tar", "stop", "config", "up", "ready"]
+                if stage == "absent":
+                    self.assertEqual(trace, [item for item in expected if item != "inspect"])
+                elif stage == "foreign":
+                    self.assertEqual(trace, expected[:2])
+                else:
+                    self.assertEqual(trace, expected if stage == "none" else expected[:expected.index(stage) + 1])
 
 
 if __name__ == "__main__":
