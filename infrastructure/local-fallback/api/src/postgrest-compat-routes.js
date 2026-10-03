@@ -1660,7 +1660,9 @@ async function prepareInsertRow(pool, tableName, identity, source) {
     if (!targetId || identityOwnsValue(identity, targetId)) {
       throw httpError('PROFILE_VIEW_TARGET_INVALID', 400)
     }
-    const profiles = await readTableRows(pool, 'profiles', {}, identity)
+    // readTableRows expects an authenticated token subject; the resolved identity
+    // has localUserId/ids instead of sub. Passing it directly rejects valid visits.
+    const profiles = await readTableRows(pool, 'profiles', {}, { sub: identity.localUserId })
     const target = profiles.find((profile) =>
       normalizeIdentityValue(rowId(profile, 'profiles')) === targetId,
     )
