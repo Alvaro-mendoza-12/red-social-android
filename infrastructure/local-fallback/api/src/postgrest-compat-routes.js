@@ -228,13 +228,14 @@ const ADMIN_WRITE_TABLES = new Set([
   'virtual_gifts',
 ])
 
-// Ledger, balances and provider purchase state are never writable through the
+// Ledger, balances, poll votes and provider purchase state are never writable through the
 // generic PostgREST compatibility surface. They are mutated only by the
 // authenticated, transactional RPCs below.
 const SERVER_MUTATION_ONLY_TABLES = new Set([
   'billing_purchases',
   'creator_earnings',
   'gift_transactions',
+  'message_poll_votes',
   'user_subscriptions',
   'wallet_transactions',
   'wallets',
