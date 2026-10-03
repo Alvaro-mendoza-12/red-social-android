@@ -53,6 +53,7 @@ import conectate.com.data.sync.PendingMessageSyncScheduler
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.MessageSendHttpException
 import conectate.com.data.localfallback.isRetryableMessageHttpStatus
+import conectate.com.data.repository.message.executeMessageSend
 import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.local.entity.ChatEntity
@@ -2323,10 +2324,10 @@ class MessageRepository @Inject constructor(
         forwardedFromUserId: String? = null,
         allowRapidMediaBatch: Boolean = false,
         onQueued: suspend () -> Unit = {}
-    ): Result<Message> {
+    ): Result<Message> = executeMessageSend(onQueued = onQueued) { queued ->
         val id = messageId ?: UUID.randomUUID().toString()
         val session = captureSessionSnapshot()
-        return messageSendCoordinator.withMessage(id) {
+        messageSendCoordinator.withMessage(id) {
             if (!isSessionSnapshotValid(session, "sendMessage:lock")) {
                 return@withMessage Result.failure(CancellationException("Session changed"))
             }
@@ -2347,7 +2348,7 @@ class MessageRepository @Inject constructor(
                 return@withMessage Result.success(cached.toDomain())
             }
             sendMessageInternal(session, chatId, content, replyToId, mediaUri, mediaType, id, existingMediaUrl,
-                isForwarded, forwardedFromMessageId, forwardedFromUserId, allowRapidMediaBatch, onQueued)
+                isForwarded, forwardedFromMessageId, forwardedFromUserId, allowRapidMediaBatch, queued)
         }
     }
 
@@ -2376,7 +2377,7 @@ class MessageRepository @Inject constructor(
         fun recordSendStage(stage: String) {
             val elapsed = android.os.SystemClock.elapsedRealtime() - startedAtElapsedMs
             android.util.Log.i("MessageRepository", "Message send: ref=${id.hashCode().toUInt().toString(16)} " +
-                "stage=$stage elapsed_ms=$elapsed")
+                "stage=$stage elapsed_ms=$elapsed on_main_thread=${android.os.Looper.myLooper() == android.os.Looper.getMainLooper()}")
         }
         fun requireCurrentSession() {
             if (!isSessionSnapshotValid(session, "sendMessage")) throw CancellationException("Session changed")
@@ -2537,6 +2538,7 @@ class MessageRepository @Inject constructor(
                 }
             }
             android.util.Log.d("MessageRepository", "🔄 Optimistic update applied to flow")
+            recordSendStage("optimistic_ready")
 
             // Offline-first: once the message (and any selected media) is safely
             // persisted, do not make the composer wait for an HTTP timeout. The
@@ -2546,6 +2548,7 @@ class MessageRepository @Inject constructor(
                 return Result.success(msg)
             }
 
+            recordSendStage("token_requested")
             val token = authService.ensureValidAccessToken().getOrElse { error ->
                 if (error is CancellationException) throw error
                 android.util.Log.w("MessageRepository", "Message queued until the session can reconnect", error)

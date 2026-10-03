@@ -1,0 +1,126 @@
+{
+  "date": "2026-10-02",
+  "scope": "Android API 35 emulator and fictional QA conversation only",
+  "version_code": 117,
+  "base_version": "9.0.20",
+  "apk_sha256": "2725b1e96ef8050b4d6d5a3187e3f35358d4cf6f15b23ec44aff6eb56c406f6a",
+  "android_unit_tests": {
+    "tests": 1113,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 246
+  },
+  "android_ui_tests": {
+    "passed": 7,
+    "failures": 0,
+    "duration_seconds": 7.772
+  },
+  "android_public_transport_tests": {
+    "passed": 3,
+    "failures": 0,
+    "duration_seconds": 3.509,
+    "expected_http": 401
+  },
+  "backend_tests": {
+    "total": 362,
+    "passed": 360,
+    "failures": 0,
+    "skipped": 2,
+    "skipped_reason": "Two Linux shell fixtures are not executed on Windows"
+  },
+  "native_online_sticker_samples": [
+    {
+      "stages_ms": {
+        "created": 5,
+        "persisted": 8,
+        "optimistic_ready": 64,
+        "token_requested": 67,
+        "token_ready": 107,
+        "backend_started": 128,
+        "backend_returned": 407,
+        "acknowledged": 416
+      },
+      "all_observed_stages_off_main": true
+    },
+    {
+      "stages_ms": {
+        "created": 3,
+        "persisted": 5,
+        "optimistic_ready": 225,
+        "token_requested": 226,
+        "token_ready": 282,
+        "backend_started": 296,
+        "backend_returned": 579,
+        "acknowledged": 584
+      },
+      "all_observed_stages_off_main": true
+    },
+    {
+      "stages_ms": {
+        "created": 5,
+        "persisted": 7,
+        "optimistic_ready": 132,
+        "token_requested": 136,
+        "token_ready": 171,
+        "backend_started": 193,
+        "backend_returned": 473,
+        "acknowledged": 489
+      },
+      "all_observed_stages_off_main": true
+    }
+  ],
+  "native_pdf_sample": {
+    "stages_ms": {
+      "created": 59,
+      "persisted": 61,
+      "optimistic_ready": 115,
+      "token_requested": 118,
+      "token_ready": 181,
+      "backend_started": 1326,
+      "backend_returned": 1591,
+      "acknowledged": 1595
+    },
+    "all_observed_stages_off_main": true
+  },
+  "native_pdf_local_ack": {
+    "rows": 1,
+    "status": "sent",
+    "synced": true,
+    "pending_send": false,
+    "remote_media_url_present": true,
+    "media_bytes": 30372,
+    "page_count": 2,
+    "swipe_to_second_page_observed": true
+  },
+  "native_reply": {
+    "reply_count_local": 1,
+    "status": "sent",
+    "synced": true,
+    "pending_send": false,
+    "has_reply_id": true,
+    "quoted_content_type": "sticker",
+    "quote_retained_after_server_ack": true
+  },
+  "offline_public_history_before": {
+    "scope": "Read-only public history of own QA conversation",
+    "http_status": 200,
+    "history_entries": 0,
+    "is_sticker": false
+  },
+  "offline_public_history_after": {
+    "scope": "Read-only public history of own QA conversation",
+    "http_status": 200,
+    "history_entries": 1,
+    "is_sticker": true
+  },
+  "limitations": [
+    "No production certification or physical network test",
+    "Three online sticker samples are not a universal delivery deadline",
+    "The single PDF upload still exceeds one second",
+    "Host load, emulator boot and AOT compilation differ from the previous timing block",
+    "No SSH deployment in this block; group ownership fix remains local",
+    "Document caption UI is not yet available in this APK",
+    "LIVE 60 FPS, guest startup, calls, remaining modules and web parity are not closed"
+  ]
+}
