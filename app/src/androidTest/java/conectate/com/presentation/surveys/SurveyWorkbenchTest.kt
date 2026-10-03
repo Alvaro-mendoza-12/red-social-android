@@ -112,6 +112,7 @@ class SurveyWorkbenchTest {
     private fun confirm() {
         awaitJs("document.getElementById('modal').open")
         js("document.querySelector('[data-dialog=\"ok\"]').click()")
+        awaitJs("!document.getElementById('modal').open && document.getElementById('app').getAttribute('aria-busy') === 'false'")
     }
     private fun capture(name: String) {
         js("window.surveyCaptureReady=false;requestAnimationFrame(()=>requestAnimationFrame(()=>window.surveyCaptureReady=true))")
