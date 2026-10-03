@@ -428,6 +428,33 @@ FCM ni correo reales; se retiraron los dos contenedores, sus datos y la red.
 Este recorrido omite el entrypoint de actualización de firmas y no sustituye
 la verificación de producción con sus servicios y configuración.
 
+## Repetición de audio y protección del despliegue
+
+La fuente con diagnóstico de audio `09da048` y las correcciones de prueba
+`e1443af` pasaron la ronda conjunta: **27 casos, cero fallos, 67,722 segundos**.
+En esa ronda el perfil inició audio en 1.987 ms, la preescucha en 912 ms y la
+imagen en 236 ms. La prueba focalizada de ciclo de vida también pasó en 6,984
+segundos. Una ronda independiente de cinco casos pasó en 26,301 segundos, pero
+registró **6.625 ms** para iniciar audio de perfil. Los fallos y picos anteriores
+siguen siendo evidencia válida; una ronda rápida no demuestra que desaparecieron.
+
+La revisión `782fd6c` aplica al audio de perfil la misma reutilización acotada
+de respuesta HTTP inicial que ya usa la preescucha de música. Conserva los límites
+de tiempo y bytes y la separación por contexto/credenciales; no aumenta el plazo
+de la prueba. La compilación debug, el APK de instrumentación y las **1.230 pruebas
+unitarias** de esa fuente pasaron. La medición nativa de ese último cambio y su
+compilación R8 siguen pendientes al escribir este apartado.
+
+Se añadió un procedimiento de entrega exclusivo para la API y el antivirus
+privado. Verifica las imágenes por digest, las fuentes y un respaldo, rechaza
+enlaces y rutas ajenas en los archivos de entrega y detecta cambios desde la
+preparación. La reversión conserva las tablas aditivas y los mensajes nuevos;
+restaura archivos e imagen anterior sin reemplazar los datos por el respaldo.
+Los errores de reversión se informan y detienen la operación. **14 pruebas en
+Linux pasaron**, incluida la simulación de fallos de cada etapa de reversión.
+Es una comprobación del procedimiento; no equivale a un ensayo de caída y
+restauración completo de todos los servicios productivos.
+
 ## Pendientes prioritarios
 
 1. Reproducir y reducir los picos de inicio de audio; medir el recorrido completo

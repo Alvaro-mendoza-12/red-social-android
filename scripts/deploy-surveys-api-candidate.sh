@@ -49,7 +49,8 @@ if [[ "$mode" == prepare ]]; then
   # Refuse to replace an unknown override or overwrite rollback material.
   test ! -e "$root/docker-compose.override.yml"
   test ! -e "$root/survey-antivirus"
-  [[ -z "$(docker compose ps -aq survey-antivirus)" ]]
+  scanner_existing="$(docker ps -aq --filter label=com.docker.compose.project=conectate-local-fallback --filter label=com.docker.compose.service=survey-antivirus)"
+  [[ -z "$scanner_existing" ]]
   test ! -e "$release/predeploy-files.tar"
   chmod 700 "$release"
   python3 "$validator" candidate "$root" "$release/candidate-files.tar"
