@@ -91,15 +91,9 @@ internal suspend fun requestSurveyApi(client: HttpClient, baseUrl: String, token
     }
     val responseText = response.bodyAsText()
     val data = runCatching { JSONObject(responseText) }.getOrNull()
-    if (!response.status.isSuccess()) error(data?.optString("message").orEmpty().ifBlank {
-        when (response.status.value) {
-            401 -> "Tu sesión venció. Inicia sesión de nuevo."
-            404 -> "Encuesta no disponible para esta cuenta."
-            429 -> "Demasiadas solicitudes. Espera un momento."
-            503 -> "El servicio no está disponible. Inténtalo de nuevo."
-            else -> "No se pudo completar la operación (${response.status.value})."
-        }
-    })
+    if (!response.status.isSuccess()) error(surveyApiErrorMessage(
+        response.status.value, path, data?.optString("message")
+    ))
     return requireNotNull(data) { "El servicio de Encuestas devolvió una respuesta inválida. Inténtalo de nuevo." }
 }
 
