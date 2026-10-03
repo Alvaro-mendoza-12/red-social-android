@@ -71,6 +71,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 58. [Transporte de llamadas, salas y LIVE — 2026-10-02](53-transporte-llamadas-salas-live-2026-10-02.md)
 59. [Permisos al contestar llamadas — 2026-10-02](54-permisos-al-contestar-llamadas-2026-10-02.md)
 60. [Salas privadas y media entre emuladores — 2026-10-03](55-salas-privadas-y-media-emuladores-2026-10-03.md)
+61. [Entrada a salas sin peticiones repetidas — 2026-10-03](56-admision-salas-sin-peticiones-repetidas-2026-10-03.md)
 
 ## Reglas para quien trabaje en este proyecto
 

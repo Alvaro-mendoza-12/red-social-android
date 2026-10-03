@@ -1295,19 +1295,8 @@ class VoiceRoomRepository @Inject constructor(
             if (_currentParticipants.value.none { it.id == userId }) {
                 _currentParticipants.value = _currentParticipants.value + self
             }
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                authService.getAccessTokenAwait()?.let { token ->
-                    localFallbackApiClient.joinVoiceRoom(
-                        accessToken = token,
-                        roomId = roomLookupId,
-                        userName = displayName,
-                        userAvatarUrl = avatarUrl,
-                        socketId = socket?.id() ?: userId,
-                        isMuted = isSelfMuted(),
-                        password = activeRoomPassword
-                    )
-                }
-            }
+            // The existing authenticated socket already owns this membership.
+            // Reattaching the screen must not perform another admission POST.
             
             prepareVoiceAudioSession(forceMicUnmute = !isSelfMuted() && canCurrentUserPublishMedia())
             webRTCManager?.ensureLocalTracks()
@@ -1387,27 +1376,16 @@ class VoiceRoomRepository @Inject constructor(
                 name = displayName,
                 avatarUrl = avatarUrl,
                 isMuted = joinMuted,
+                role = initialVoiceParticipantRole(room, userId),
                 socketId = userId
             )
             _currentParticipants.value = listOf(self)
 
-            // Validate membership before signaling; a failed admission must not look connected.
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                val token = authService.getAccessTokenAwait()
-                    ?: throw IllegalStateException("Vuelve a iniciar sesión para entrar a la sala.")
-                val participants = localFallbackApiClient.joinVoiceRoom(
-                        accessToken = token,
-                        roomId = roomLookupId,
-                        userName = displayName,
-                        userAvatarUrl = avatarUrl,
-                        socketId = socket?.id() ?: userId,
-                        isMuted = joinMuted,
-                        password = activeRoomPassword
-                    ).getOrThrow()
-                if (participants.isNotEmpty()) {
-                    applyVoiceRoomState(room, participants)
-                }
-            } else {
+            // Signaling persists admission with the authenticated user, password
+            // and actual socket ID before emitting room-joined. Do not register a
+            // provisional REST socket and repeat the same admission on connect.
+            // CONNECTED remains gated by room-joined; denied access remains ERROR.
+            if (!authService.isLocalFallbackSession() || !localFallbackApiClient.isConfigured) {
                 try {
                     android.util.Log.i("VoiceRoomRepository", "⚡ Subscribing to Supabase Realtime: room:$roomId")
                     roomChannel = supabaseConfig.client.channel("room:$roomId")
@@ -1547,27 +1525,28 @@ class VoiceRoomRepository @Inject constructor(
                     (current.filterNot { it.id == userId } + self.copy(socketId = sid)).distinctBy { it.socketId }
                 }
                 refreshParticipantAliases()
-                if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                    scope.launch {
-                        authService.getAccessTokenAwait()?.let { token ->
-                            localFallbackApiClient.joinVoiceRoom(
-                                accessToken = token,
-                                roomId = roomId,
-                                userName = name,
-                                userAvatarUrl = avatarUrl,
-                                socketId = sid.ifBlank { userId },
-                                isMuted = isSelfMuted(),
-                                password = activeRoomPassword
-                            ).onSuccess { participants ->
-                                if (participants.isNotEmpty()) {
-                                    _currentRoom.value?.let { current -> applyVoiceRoomState(current, participants) }
-                                        ?: run { _currentParticipants.value = participants }
-                                }
-                            }
-                        }
-                    }
-                }
+            }
 
+            createdSocket.on("voice-stage-state") { args ->
+                if (!isCurrentAttempt()) return@on
+                val data = extractJsonPayload(args) ?: return@on
+                if (!data.optString("roomId").trim().equals(roomId, ignoreCase = true)) return@on
+                _currentParticipants.update { current ->
+                    applyVoiceAdmissionState(
+                        participants = current,
+                        selfId = userId,
+                        role = data.optString("role"),
+                        serverMuted = data.optBoolean("isMuted", true),
+                        handRaised = data.optBoolean("handRaised", false),
+                        locallyMuted = desiredSelfMuted,
+                    )
+                }
+                if (!canCurrentUserPublishMedia()) {
+                    webRTCManager?.setAudioEnabled(false)
+                    if (_currentVideoMode.value != VideoMode.NONE) stopVideo()
+                } else {
+                    webRTCManager?.setAudioEnabled(!isSelfMuted())
+                }
             }
 
             createdSocket.on("room-joined") { args ->
@@ -1650,6 +1629,7 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             socket?.on("user-joined") { args ->
+                if (!isCurrentAttempt()) return@on
                 var data = extractJsonPayload(args) ?: return@on
                 var sid = data.optString("socketId").trim()
                 var uid = data.optString("userId").trim()
@@ -1685,6 +1665,7 @@ class VoiceRoomRepository @Inject constructor(
             }
             
             socket?.on("user-left") { args ->
+                if (!isCurrentAttempt()) return@on
                 var socketId = extractSocketIdPayload(args)
                 if (socketId.isBlank()) return@on
                 android.util.Log.d("VoiceRoomRepository", "Socket user-left: $socketId")
@@ -1712,6 +1693,7 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             socket?.on("current-participants") { args ->
+                if (!isCurrentAttempt()) return@on
                 val participantsJson = args.firstOrNull() as? org.json.JSONArray ?: return@on
                 android.util.Log.i("VoiceRoomRepository", "📋 Received Participant List: ${participantsJson.length()} users in room $roomId")
                 
@@ -1737,6 +1719,9 @@ class VoiceRoomRepository @Inject constructor(
                             id = uid,
                             name = participantName,
                             avatarUrl = p.optString("avatarUrl"),
+                            role = normalizedVoiceParticipantRole(p.optString("role")),
+                            isMuted = p.optBoolean("isMuted", true),
+                            handRaised = p.optBoolean("handRaised", false),
                             socketId = sid
                         )
 
