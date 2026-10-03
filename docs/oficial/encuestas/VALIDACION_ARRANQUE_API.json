@@ -1,0 +1,40 @@
+{
+  "scope": "Full candidate server.js bootstrap with dedicated PostgreSQL16.15 tmpfs, internal-only network, fake secrets, no production data or push/SMTP access",
+  "sourceRevision": "2011e322af879b42867cee1f43ac8a26bcb24b7b",
+  "imageId": "sha256:28d4f0e6c06bb6b3794b9df71da50794b0f6463840e9e79f17e32024aa7eb6a2",
+  "featureFlag": false,
+  "startupMs": [
+    4783,
+    3375
+  ],
+  "http": {
+    "health": 200,
+    "registration": 201,
+    "disabledSurvey": 503,
+    "disabledCode": "SURVEY_DISABLED",
+    "unauthenticatedSurvey": 401,
+    "push": {
+      "configured": false,
+      "provider": "firebase-cloud-messaging",
+      "errorCode": "FIREBASE_NOT_INITIALIZED"
+    }
+  },
+  "idempotentRestart": true,
+  "surveyTables": 7,
+  "syntheticUsers": 1,
+  "passed": true,
+  "cleanup": [
+    {
+      "resource": "novvin-api-boot-qa-1791066643-api",
+      "removed": true
+    },
+    {
+      "resource": "novvin-api-boot-qa-1791066643-db",
+      "removed": true
+    },
+    {
+      "resource": "novvin-api-boot-qa-1791066643",
+      "removed": true
+    }
+  ]
+}

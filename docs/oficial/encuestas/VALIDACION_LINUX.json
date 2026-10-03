@@ -1,0 +1,11 @@
+{
+  "scope": "Linux fixtures with fake Docker, no restore or public monitor execution on production",
+  "nodeVersion": "v22.23.1",
+  "exitCode": 0,
+  "tests": 3,
+  "pass": 3,
+  "fail": 0,
+  "skipped": 0,
+  "cancelled": 0,
+  "temporaryDirectoryRemoved": true
+}

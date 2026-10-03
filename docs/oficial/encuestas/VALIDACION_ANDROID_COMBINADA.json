@@ -1,0 +1,16 @@
+{
+  "scope": "Android emulator with packaged surveys, owned QA media, real loopback HTTPS survey API and isolated PostgreSQL",
+  "apkBuildCommit": "e1443afdcb39",
+  "androidMainCommit": "09da048",
+  "backendCommit": "2011e32",
+  "tests": 27,
+  "pass": 27,
+  "fail": 0,
+  "skipped": 0,
+  "durationSeconds": 67.722,
+  "unitTests": 1230,
+  "unitFailures": 0,
+  "unitSkipped": 0,
+  "status": "Superseded by upcoming source 782fd6c playback optimization validation",
+  "limits": "No physical phone; no final Play upload signature or deployed surveys endpoint validation."
+}

@@ -22,3 +22,11 @@ La rama incorpora el editor de planillas, biblioteca, publicación de encuestas 
 - [Estado de la implementación Android](IMPLEMENTACION_ANDROID.md)
 
 - [Informe de preproducción y plan de habilitación](INFORME_PREPRODUCCION.md)
+- [Evidencia PostgreSQL 16.15](VALIDACION_POSTGRESQL16.json)
+- [Evidencia del antivirus privado](VALIDACION_ANTIVIRUS.json)
+- [Evidencia de fixtures Linux](VALIDACION_LINUX.json)
+- [Revisión de dependencias de la API](VALIDACION_DEPENDENCIAS.json)
+- [Respaldo comprobado antes de la entrega](VALIDACION_RESPALDO.json)
+- [Construcción de imágenes candidatas](VALIDACION_IMAGENES.json)
+- [Arranque completo de la API en PostgreSQL aislado](VALIDACION_ARRANQUE_API.json)
+- [Regresión conjunta del emulador](VALIDACION_ANDROID_COMBINADA.json)

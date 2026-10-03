@@ -1,0 +1,21 @@
+{
+  "checkedAtUtc": "2026-10-03T22:19:59.7384595Z",
+  "command": "npm audit --omit=dev",
+  "backendDependencyCommit": "2011e32",
+  "exitCode": 0,
+  "knownVulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "updatedPackages": {
+    "@fastify/busboy": "3.2.2",
+    "@grpc/grpc-js": "1.14.5",
+    "brace-expansion": "2.1.7",
+    "multer": "2.4.0"
+  },
+  "limits": "Registry advisory coverage at this time; does not prove absence of vulnerabilities."
+}

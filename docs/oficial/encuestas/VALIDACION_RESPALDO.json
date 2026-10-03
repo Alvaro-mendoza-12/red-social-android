@@ -1,0 +1,26 @@
+{
+  "backupId": "20261003T221229Z",
+  "backupPath": "/home/alvaro/conectate-backups/20261003T221229Z",
+  "metadata": {
+    "schemaVersion": 2,
+    "createdAt": "2026-10-03T22:14:34Z",
+    "database": "conectate_fallback",
+    "databaseBytes": 3795584,
+    "storageBytes": 2217646141,
+    "aiDataBytes": 4695842,
+    "verification": "passed"
+  },
+  "sha256": {
+    "postgres.dump": "d10439f683105ec7478f7f5932c923be3f871803641e8e7c15d2d3422d4d1ee3",
+    "storage.tar.gz": "50eb130e1f2e329fa4dc61e14dde877732927e457674dcfc945bbc31fb052de3",
+    "ai-chatbot-data.tar.gz": "f8a490383727780898a6fa51604ca833a8ba03cebb0d977738bd14549a88c852",
+    "docker-compose.yml": "8b4a6fe715bfadaf0a4a1071a3c4085f1693339e71c6458e6e645db4c90894f8"
+  },
+  "manifestChecks": "4/4 passed by verify-backup.sh",
+  "postgresDumpList": "passed",
+  "storageArchiveList": "passed",
+  "aiArchiveList": "passed",
+  "retentionDays": 0,
+  "deletedEarlierBackups": false,
+  "productionRestorePerformed": false
+}

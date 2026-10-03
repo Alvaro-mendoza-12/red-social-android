@@ -1,0 +1,14 @@
+{
+  "scope": "PostgreSQL16 isolated disposable synthetic DB via SSH loopback tunnel",
+  "container": "novvin-surveys-pg16-qa-1791064686",
+  "serverVersion": "16.15",
+  "testsExitCode": 0,
+  "remainingTestSchemas": 0,
+  "temporaryContainerRemoved": true,
+  "temporaryDataWasTmpfs": true,
+  "tests": 48,
+  "pass": 48,
+  "fail": 0,
+  "skipped": 0,
+  "cancelled": 0
+}

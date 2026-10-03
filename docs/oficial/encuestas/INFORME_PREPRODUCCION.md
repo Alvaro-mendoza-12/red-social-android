@@ -14,11 +14,19 @@ Este informe reúne evidencia reproducible. No declara que toda la aplicación e
 
 | Comprobación | Resultado documentado | Alcance |
 |---|---|---|
-| Regresión Android combinada previa | 1.221 unitarias y 24 nativas correctas, informadas por la otra IA | Revisión anterior a los últimos cambios de autenticación/Encuestas; debe repetirse la combinación final. |
+| Unitarias Android finales | 1.230 correctas, cero fallos, errores u omisiones | 269 suites, última ejecución con `BUILD_COMMIT=e1443afdcb39`; incluye el ajuste de carga del audio `09da048` y nueve regresiones del control de sesión. |
 | API focalizada | 48 comprobaciones correctas | HTTP real y PostgreSQL local, JWT firmado y revocable, cuentas ficticias; incluye nueve casos del protocolo antivirus. |
-| Regresión completa API | 426 correctas, 2 omitidas, 0 fallos | Omisiones de fixtures Bash que deben ejecutarse en Linux; La revisión posterior de música agrega otra regresión; se repetirá sobre el commit final. |
-| APK Android | Compilación de la ronda anterior correcta; ronda final pendiente | Los errores de compilación o instrumentación se corrigen antes de aceptar la combinación final. |
-| Transporte HTTPS Android | Prueba añadida; ejecución pendiente | Certificado exclusivo de pruebas en androidTest, dos cuentas ficticias, API real y PostgreSQL local; nunca relaja TLS del aplicativo. |
+| Regresión completa API | 427 correctas, 2 omitidas en Windows, 0 fallos; backend `2011e32` | Linux ejecutó aparte los dos fixtures omitidos, ambos correctos. Su suite de tres incluye una comprobación estática ya contada en Windows; no sumar esa comprobación dos veces. |
+| PostgreSQL de producción equivalente | 48 pruebas correctas, cero omisiones, PostgreSQL 16.15 | Contenedor QA desechable con datos ficticios, tablas inicializadas dos veces y esquemas de pruebas retirados; no se alteró la base productiva. |
+| Dependencias productivas de la API | Cuatro avisos corregidos; auditoría final sin avisos conocidos | Lockfile `2011e32`, actualizaciones compatibles de busboy, grpc-js, brace-expansion y multer; 48 pruebas focalizadas y 427 generales repetidas correctamente. La cobertura depende del registro de avisos consultado. |
+| Imágenes candidatas Ubuntu | API y antivirus construidos correctamente con fuentes verificadas | Candidato `2011e32`, 180 archivos de API y cuatro del antivirus; no se reemplazaron servicios productivos. IDs, etiquetas y hashes en `VALIDACION_IMAGENES.json`. |
+| Arranque completo de server.js | Salud 200, registro 201, JWT real y reinicio idempotente | PostgreSQL 16.15 en tmpfs/red interna, secretos ficticios, sin push/SMTP ni datos productivos. Encuestas desactivada devuelve 503 y sin sesión devuelve 401; los tres recursos QA fueron retirados. |
+| APK Android | APK debug y androidTest generados correctamente con `BUILD_COMMIT=e1443afdcb39` | Compilación final de esta ronda: 4 min 45 s. No acredita la firma de subida a Google Play. |
+| Encuestas en emulador | Siete pruebas correctas en 17,333 s tras corregir las esperas entre diálogos | Cinco de interfaz, contrato de documentos y transporte HTTPS real; los casos de interfaz usan datos sintéticos. La regresión conjunta de 27 se repite al cerrar la revisión del audio. |
+| Regresión móvil combinada | 27 pruebas correctas en 67,722 s, cero omisiones | APK con `BUILD_COMMIT=e1443afdcb39`, código Android `09da048` y API de QA `2011e32`. Se repite para la optimización posterior del audio `782fd6c`; no trasladar automáticamente este resultado a otro APK. |
+| Transporte HTTPS Android | Correcto en la prueba nativa final | Certificado exclusivo de pruebas en androidTest, dos cuentas ficticias, API real y PostgreSQL local; nunca relaja TLS del aplicativo. |
+| Reducción R8 | Compilación correcta en 11 min 14 s sobre Android `0c3548b` | Se conservaron clase y seis métodos de SurveysBridge. Ejecución de la tarea de reducción sin empaquetar ni firmar; debe repetirse después de nuevos cambios de código Android. |
+| AAB para Google Play | Generación detenida por falta de configuración de la clave de subida | `verifyReleaseSigningConfiguration` rechazó correctamente la entrega sin firma. El usuario confirmó en el chat coordinado que firma manualmente desde Android Studio; queda pendiente verificar ese AAB firmado. |
 | Exportaciones PDF | Instrumento, informe y QR renderizados y revisados | Datos e imágenes ficticios; no se afirma compatibilidad visual con todos los lectores móviles. |
 | Excel a volumen alto | 20.000 respuestas × 4 variables, 5.401 ms, pico RSS 1.553 MiB | Equipo Windows local; no demuestra esos tiempos en Ubuntu ni en un teléfono. |
 | CSV a volumen alto | Misma selección, 223 ms, archivo 3,26 MB | Misma limitación de hardware y selección. |
@@ -45,6 +53,7 @@ Los contadores de las pruebas focalizadas y generales se superponen. No deben su
 12. El puente nativo queda protegido contra eliminación o renombrado de sus métodos por R8.
 13. La autenticación descarta resultados de renovación/startup anteriores a logout/cambio de cuenta y limpia importaciones tardías del SDK. La última mutación se serializa con el cambio de identidad.
 14. El antivirus de música existente también limita escaneos simultáneos y fuerza la terminación al vencer su timeout, para evitar competir sin límite con exportaciones.
+15. El estado accesible de operación en curso podía anunciar disponibilidad antes de que terminara un diálogo. Ahora se mantiene consistente durante acciones, navegación y cargas de archivos; la prueba de moderación espera a que finalice la acción antes de continuar.
 
 ## Operación y límites efectivos
 
@@ -63,7 +72,7 @@ Los contadores de las pruebas focalizadas y generales se superponen. No deben su
 
 La otra IA hizo preflight de solo lectura del servidor: 16 GiB de RAM, aproximadamente 12,9 GiB disponibles y 424 GiB libres en NVMe. El volumen de Docker está sobre NVMe. La API tiene límites de 4 GiB, 3 CPU y 384 procesos; el nuevo antivirus privado tiene 2 GiB, 1 CPU y un hilo de escaneo. El daemon no publica el puerto en el host, monta firmas en solo lectura y usa actualización existente; no inicia un segundo freshclam.
 
-El último respaldo observado fue del 3 de octubre a las 08:25:45 UTC, con metadatos de verificación correcta. El preflight no repitió sus hashes. Antes del despliegue hay que crear y comprobar un respaldo reciente, y guardar imagen, fuentes, Compose y marcador de versión anteriores.
+La otra IA creó el respaldo `20261003T221229Z`; su manifest terminó a las 22:14:34 UTC. Verificó cuatro de cuatro hashes, lista del dump de PostgreSQL y archivos de almacenamiento/IA. Usó `RETENTION_DAYS=0`, conservando respaldos anteriores. No hizo una restauración sobre producción. Los hashes y tamaños están en `VALIDACION_RESPALDO.json`. Volver a comprobar que ese respaldo sea suficientemente reciente al desplegar, y guardar imagen, fuentes, Compose y marcador de versión anteriores.
 
 Imagen de API observada para reversión: `sha256:83b2366a16e7aecf442bf2f5b31c9e04c18f33ab5ada34680f8029363f608a17`. Comprobar que siga siendo la imagen activa al realizar la entrega; esta observación no autoriza borrar imágenes ni reemplazar contenedores.
 
@@ -90,4 +99,4 @@ node --test tests/survey-domain.test.js tests/survey-exports.test.js tests/surve
 
 `scripts/benchmark-survey-exports.js` genera solo datos sintéticos en memoria. `scripts/serve-survey-validation.js` requiere la base local exclusiva, certificado de androidTest y una clave TLS de prueba en output; escucha solamente en 127.0.0.1:55440, crea un esquema temporal y lo elimina al recibir `stop` por stdin. Su endpoint QA no forma parte de server.js ni de producción. Para instrumentación, usar ADB reverse y el argumento `survey_api_url=https://127.0.0.1:55440`. TLS de prueba se configura únicamente dentro del test; el APK mantiene certificados del sistema y bloqueo de HTTP sin cifrar.
 
-Los logs de la revisión actual están en `output/survey-production-api-tests.log`, `output/survey-production-api-regression.log`, `output/survey-production-mobile-test.log`, `output/survey-production-final-build.log` y `output/survey-export-benchmark.json`. Las capturas y PDF ficticios están bajo `output/surveys-mobile/` y `output/pdf/`. output no se debe agregar íntegramente al repositorio: puede contener registros locales y materiales de otras verificaciones.
+Los logs de la revisión actual incluyen `output/survey-production-api-tests-final.log`, `output/survey-production-api-regression-final.log`, `output/survey-production-mobile-test-final.log`, `output/survey-production-audio-debug-build.log`, `output/survey-production-r8-validation.log` y `output/survey-export-benchmark.json`. Los logs privados de la regresión combinada están en `build/physical-qa-2026-10-01/`; no se publican íntegramente. Las capturas y PDF ficticios están bajo `output/surveys-mobile/` y `output/pdf/`. output no se debe agregar íntegramente al repositorio: puede contener registros locales y materiales de otras verificaciones.
