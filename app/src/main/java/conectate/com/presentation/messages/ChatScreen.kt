@@ -1302,8 +1302,8 @@ fun ChatScreen(
                                         state.otherUser?.badges ?: emptyList()
                                     },
                                     onUrlClick = { url ->
-                                        if (url.contains("conectate.com/post/")) {
-                                            val postId = url.substringAfter("post/")
+                                        val postId = conectate.com.presentation.components.postIdFromSharedLink(url)
+                                        if (postId != null) {
                                             navController.navigate(conectate.com.presentation.navigation.Screen.PostDetail.createRoute(postId))
                                         } else {
                                             conectate.com.data.model.videoIdFromSharedLink(url)?.let { videoId ->

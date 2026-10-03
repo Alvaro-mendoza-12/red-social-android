@@ -18,7 +18,6 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.TextUnit
-import androidx.core.net.toUri
 import conectate.com.data.model.videoIdFromSharedLink
 
 @Composable
@@ -39,17 +38,14 @@ fun LinkText(
             val url = (annotation as? LinkAnnotation.Url)?.url
             if (url != null) {
                 if (onUrlClick != null &&
-                    (url.contains("conectate.com/post/") || videoIdFromSharedLink(url) != null)
+                    (postIdFromSharedLink(url) != null || videoIdFromSharedLink(url) != null)
                 ) {
                     onUrlClick(url)
                 } else {
                     runCatching {
-                        val externalUrl = if (url.toUri().scheme.isNullOrBlank()) {
-                            "https://$url"
-                        } else {
-                            url
-                        }
-                        uriHandler.openUri(externalUrl)
+                        uriHandler.openUri(url)
+                    }.onFailure {
+                        conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo abrir el enlace. Comprueba que tienes un navegador instalado.")
                     }
                 }
             }
@@ -68,8 +64,6 @@ fun LinkText(
         textClickListener
     ) {
         buildAnnotatedString {
-            val urlPattern = android.util.Patterns.WEB_URL
-            val matcher = urlPattern.matcher(text)
             var lastIndex = 0
             val plainStyle = SpanStyle(
                 color = if (color == Color.Unspecified) Color.Unspecified else color,
@@ -92,10 +86,9 @@ fun LinkText(
                 }
             }
 
-            while (matcher.find()) {
-                val start = matcher.start()
-                val end = matcher.end()
-                val url = text.substring(start, end)
+            for (link in findWebTextLinks(text)) {
+                val start = link.start
+                val end = link.end
 
                 // Append text before URL
                 if (start > lastIndex) {
@@ -105,7 +98,7 @@ fun LinkText(
                 // Append URL
                 withLink(
                     LinkAnnotation.Url(
-                        url = url,
+                        url = link.url,
                         styles = TextLinkStyles(
                             style = SpanStyle(
                                 color = Color(0xFF1DA1F2),
@@ -116,7 +109,7 @@ fun LinkText(
                         linkInteractionListener = urlClickListener
                     )
                 ) {
-                    append(url)
+                    append(text.substring(start, end))
                 }
 
                 lastIndex = end
