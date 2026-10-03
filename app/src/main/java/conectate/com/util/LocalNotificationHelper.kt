@@ -32,6 +32,10 @@ class LocalNotificationHelper(private val context: Context) {
         extraData: JsonObject? = null,
         notificationId: String? = null
     ) {
+        if (isRetiredMomentViewNotification(
+                type, getExtraDataValue(extraData, "notification_type"),
+                getExtraDataValue(extraData, "notificationType")
+            )) return
         val normalizedType = type.trim().lowercase()
         val normalizedTargetType = targetType?.trim()?.lowercase()?.ifBlank { null }
             ?: getExtraDataValue(extraData, "target_type")?.lowercase()

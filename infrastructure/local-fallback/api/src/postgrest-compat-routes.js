@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { isRetiredNotification } = require('./retired-notifications')
 const fs = require('fs')
 const jwt = require('jsonwebtoken')
 const {
@@ -1340,7 +1341,9 @@ async function readTableRows(pool, tableName, query, auth) {
   ])
   const merged = mergeRows([importedRows, specificRows, compatRows], tableName)
   const readable = await filterRowsForRead(pool, tableName, merged, auth)
-  const filtered = applyFilters(readable, query)
+  const visible = tableName === 'notifications'
+    ? readable.filter(row => !isRetiredNotification(row)) : readable
+  const filtered = applyFilters(visible, query)
   return applyOrder(filtered, query?.order)
 }
 

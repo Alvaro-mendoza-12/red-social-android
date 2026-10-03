@@ -575,7 +575,9 @@ private data class LocalFallbackProfilesResponse(
 )
 
 data class LocalFallbackFeedResponse(
-    val items: List<Post> = emptyList()
+    val items: List<Post> = emptyList(),
+    val hasMore: Boolean = false,
+    val nextOffset: Int? = null,
 )
 
 @Serializable
@@ -1229,7 +1231,9 @@ private data class LocalFallbackVoiceParticipantsResponse(
 
 @Serializable
 private data class LocalFallbackRawFeedResponse(
-    val items: List<JsonObject> = emptyList()
+    val items: List<JsonObject> = emptyList(),
+    val hasMore: Boolean? = null,
+    val nextOffset: Int? = null,
 )
 
 @Serializable
@@ -3030,7 +3034,11 @@ class LocalFallbackApiClient @Inject constructor(
         return runReadWithDeadline(InteractiveReadDeadlines.FirstPageMillis) {
             requestJson<LocalFallbackRawFeedResponse>(query, accessToken).getOrThrow()
         }
-            .map { response -> LocalFallbackFeedResponse(response.items.map { mapPost(it) }) }
+            .map { response ->
+                val nextOffset = publicFeedNextOffset(offset, limit, response.items.size,
+                    response.hasMore, response.nextOffset)
+                LocalFallbackFeedResponse(response.items.map { mapPost(it) }, nextOffset != null, nextOffset)
+            }
     }
 
     suspend fun searchPublicContent(

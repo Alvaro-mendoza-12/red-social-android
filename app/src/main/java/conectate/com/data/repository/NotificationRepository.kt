@@ -1,6 +1,7 @@
 package conectate.com.data.repository
 
 import android.content.Context
+import conectate.com.util.isRetiredNotification
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.repository.RepositoryCallHandler
 import conectate.com.core.result.AppResult
@@ -153,10 +154,12 @@ class NotificationRepository @Inject constructor(
                 return localFallbackApiClient.loadNotifications(token)
                     .map { response ->
                         if (owner != null && owner == authService.getCurrentUserId()) {
-                            _unreadCount.value = response.unreadCount
+                            _unreadCount.value = (response.unreadCount - response.items.count {
+                                it.isRetiredNotification() && !it.isRead
+                            }).coerceAtLeast(0)
                             scheduleMomentExpiryRefresh(response.items)
                         }
-                        response.items
+                        response.items.filterNot { it.isRetiredNotification() }
                     }
             }
 
@@ -170,6 +173,7 @@ class NotificationRepository @Inject constructor(
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("recipient_id", "eq.$userId")
                 parameter("select", "*,actor:profiles!actor_id(display_name,username,full_name,avatar_url)")
+                parameter("type", "neq.view_moment")
                 parameter("order", "created_at.desc")
             }
 
@@ -223,7 +227,7 @@ class NotificationRepository @Inject constructor(
                     }
                 }
                 Log.d("NotificationRepository", "✅ Successfully returning ${notifications.size} notifications")
-                Result.success(notifications)
+                Result.success(notifications.filterNot { it.isRetiredNotification() })
             } else {
                 val errorBody = response.bodyAsText()
                 Log.e("NotificationRepository", "❌ HTTP Error: ${response.status}")
@@ -435,11 +439,14 @@ class NotificationRepository @Inject constructor(
                 ?: return Result.failure(Exception("No token"))
             return localFallbackApiClient.loadNotifications(token, unreadOnly = true, limit = 500)
                 .map { response ->
+                    val visibleUnread = (response.unreadCount - response.items.count {
+                        it.isRetiredNotification() && !it.isRead
+                    }).coerceAtLeast(0)
                     if (owner != null && owner == authService.getCurrentUserId()) {
-                        _unreadCount.value = response.unreadCount
+                        _unreadCount.value = visibleUnread
                         scheduleMomentExpiryRefresh(response.items)
                     }
-                    response.unreadCount
+                    visibleUnread
                 }
         }
 
@@ -453,6 +460,7 @@ class NotificationRepository @Inject constructor(
                 parameter("recipient_id", "eq.$userId")
                 parameter("is_read", "eq.false")
                 parameter("select", "id")
+                parameter("type", "neq.view_moment")
                 header("Prefer", "count=exact")
             }
 
@@ -521,6 +529,7 @@ class NotificationRepository @Inject constructor(
                     try {
                         val record = action.record
                         var notification = supabaseConfig.json.decodeFromJsonElement<conectate.com.data.model.Notification>(record)
+                        if (notification.isRetiredNotification()) return@collect
                         Log.d("NotificationRepository", "📥 New Notification received: ID=${notification.id}, recipient=${notification.recipientId}")
                         
                         // Use case-insensitive comparison for safety

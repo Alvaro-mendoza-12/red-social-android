@@ -116,6 +116,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         try {
             val data = remoteMessage.data
             if (data.isEmpty()) return // 1. Basic Extraction
+            if (conectate.com.util.isRetiredMomentViewNotification(
+                    data["type"], data["notification_type"], data["notificationType"]
+                )) return
             val notificationTitle = remoteMessage.notification?.title
             val notificationBody = remoteMessage.notification?.body
             

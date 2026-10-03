@@ -193,6 +193,9 @@ fun SocialScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val isUserRefreshing by viewModel.isUserRefreshing.collectAsState()
     val authoritativeHasMore by viewModel.authoritativeHasMore.collectAsState()
+    val isLoadingMorePosts by viewModel.isLoadingMorePosts.collectAsState()
+    val loadMorePostsError by viewModel.loadMorePostsError.collectAsState()
+    val feedScrollReset by viewModel.feedScrollReset.collectAsState()
     val unreadCount by notificationViewModel.unreadCount.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val moments by momentViewModel.moments.collectAsState()
@@ -236,6 +239,10 @@ fun SocialScreen(
     val coroutineScope = rememberCoroutineScope()
     val socialListState = rememberLazyListState()
     var automaticFeedRecoveryAttempts by remember { mutableIntStateOf(0) }
+
+    SocialFeedPagingEffect(socialListState, pagerState.currentPage == 0,
+        authoritativeHasMore, isRefreshing, isLoadingMorePosts, loadMorePostsError != null,
+        feedScrollReset, viewModel::loadMorePosts)
 
     LaunchedEffect(Unit) {
         viewModel.selectFeedMode(SocialFeedMode.DISCOVER)
@@ -2074,18 +2081,20 @@ fun SocialScreen(
                                             }
                                         }
                                     }
-                                    if (feedMode == SocialFeedMode.DISCOVER && authoritativeHasMore) {
+                                    if (authoritativeHasMore) {
                                         item(key = "authoritative-feed-next-page") {
-                                            LaunchedEffect(posts.size, authoritativeHasMore) {
-                                                if (authoritativeHasMore) viewModel.loadMorePosts()
-                                            }
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .padding(vertical = 16.dp),
                                                 contentAlignment = Alignment.Center,
                                             ) {
-                                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                                if (loadMorePostsError != null) {
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Text(loadMorePostsError.orEmpty())
+                                                        TextButton(onClick = viewModel::loadMorePosts) { Text("Reintentar") }
+                                                    }
+                                                } else CircularProgressIndicator(modifier = Modifier.size(28.dp))
                                             }
                                         }
                                     }

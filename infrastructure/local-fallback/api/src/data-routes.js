@@ -1,4 +1,6 @@
 const crypto = require('crypto')
+const { isRetiredNotification } = require('./retired-notifications')
+const { publicFeedPage } = require('./public-feed-page')
 const { loadCollectionReceipts, isCollectionMessageUnread, projectCollectionReceipt } = require('./collection-read-state')
 const bcrypt = require('bcrypt')
 const { requireBcryptPasswordLength } = require('./new-password-policy')
@@ -2721,7 +2723,7 @@ async function importedActivityNotificationsByRecipientIds(pool, recipientIds, l
       return sortByDateDesc(
         rows
           .filter((row) => rowMatchesAny(row, ['recipient_id', 'user_id', 'profile_id', 'to_user_id'], ids))
-          .filter((row) => !isMessagingModuleNotification(row)),
+          .filter((row) => !isMessagingModuleNotification(row) && !isRetiredNotification(row)),
         ['created_at', 'updated_at'],
       )
     },
@@ -2769,6 +2771,10 @@ async function localActivityNotificationsByRecipientIds(
          OR lower(trim(COALESCE(target_type, ''))) = ANY($3::text[])
          OR lower(COALESCE(content, '')) LIKE ANY($4::text[])
        )
+       AND lower(trim(type)) <> 'view_moment'
+       AND effective_type <> 'view_moment'
+       AND lower(trim(COALESCE(extra_data->>'notification_type', ''))) <> 'view_moment'
+       AND lower(trim(COALESCE(extra_data->>'notificationType', ''))) <> 'view_moment'
        AND (
          effective_type <> 'new_moment'
          OR EXISTS (
@@ -2923,6 +2929,7 @@ async function createLocalNotification(pool, input) {
   const actorId = normalizeId(input?.actorId || input?.actor_id || '')
   const type = cleanText(input?.type || 'activity', 80)
   if (!recipientId || !type || recipientId === actorId) return null
+  if (isRetiredNotification({ ...input, type })) return null
 
   const breakState = await pool.query(
     `SELECT COALESCE(o.profile->>'break_mode', o.profile->>'breakMode', 'off') AS break_mode
@@ -8343,9 +8350,9 @@ function registerDataRoutes(app, {
         : mode === 'following'
           ? cleanSet([...identity.values, ...followingIds])
           : new Set()
-      const candidateReadLimit = Math.min(5_000, Math.max(240, offset + (limit * 4)))
-      const importedPostRead = requestedOwnerIds.size > 0
-        ? importedRowsByFieldValues(
+      const readCandidates = candidateReadLimit => {
+        const importedPostRead = requestedOwnerIds.size > 0
+          ? importedRowsByFieldValues(
             pool,
             'posts',
             ['user_id', 'userId', 'owner_id', 'author_id', 'creator_id', 'profile_id'],
@@ -8353,17 +8360,16 @@ function registerDataRoutes(app, {
             candidateReadLimit,
           )
         : importedRecentRows(pool, 'posts', candidateReadLimit)
-      const fallbackPostRead = requestedOwnerIds.size > 0
+        const fallbackPostRead = requestedOwnerIds.size > 0
         ? localPostsByOwnerIds(pool, requestedOwnerIds, candidateReadLimit)
         : localPosts(pool, candidateReadLimit)
-      const [importedPosts, fallbackPosts] = await Promise.all([importedPostRead, fallbackPostRead])
-      const posts = [...importedPosts, ...fallbackPosts].filter((row) => feedPostVisible(row, {
-        identityIds: identity.ids,
-        followingIds,
-        mode,
-        requestedUserId,
-      }))
-      const pagePosts = sortByDateDesc(posts, ['created_at', 'updated_at']).slice(offset, offset + limit)
+        return Promise.all([importedPostRead, fallbackPostRead])
+      }
+      const page = await publicFeedPage({ read: readCandidates, offset, limit,
+        visible: row => feedPostVisible(row, { identityIds: identity.ids, followingIds, mode, requestedUserId }),
+        order: rows => sortByDateDesc(rows, ['created_at', 'updated_at']),
+      })
+      const pagePosts = page.items
       const postIds = pagePosts.map((row) => textOf(row, ['id'], '')).filter(Boolean)
       const authorIds = cleanSet([
         ...identity.values,
@@ -8410,7 +8416,8 @@ function registerDataRoutes(app, {
           reactionState.mine,
         ))
 
-      res.json({ items })
+      res.json({ items, hasMore: page.hasMore, nextOffset: page.nextOffset,
+        candidateLimitReached: page.candidateLimitReached })
     } catch (error) {
       next(error)
     }

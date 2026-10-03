@@ -66,3 +66,24 @@ test('private moment view and reaction routes never write or notify an outsider'
   assert.equal(pool.writes.length, 0)
   assert.equal(notices, 0)
 })
+
+test('a public moment view is recorded without creating an activity notification', async () => {
+  const handlers = new Map()
+  const app = Object.fromEntries(['get', 'post', 'put', 'patch', 'delete']
+    .map(verb => [verb, (path, ...stack) => handlers.set(`${verb} ${path}`, stack.at(-1))]))
+  const pool = fixture({ id, user_id: 'owner', visibility: 'public', expires_at: future })
+  let notices = 0
+  registerMomentsRoutes(app, { pool, authRequired: () => {},
+    getCurrentUser: async () => ({ id: 'viewer' }), userIdentity: () => identity,
+    createLocalNotification: async () => { notices++ },
+  })
+  const result = {}
+  const res = { json: body => { result.body = body; return res },
+    status: value => { result.status = value; return res } }
+  await handlers.get('post /v1/data/moments/:momentId/view')(
+    { params: { momentId: id } }, res, error => { throw error })
+  assert.deepEqual(result.body, { ok: true })
+  assert.equal(pool.writes.length, 1)
+  assert.match(pool.writes[0], /INSERT INTO fallback_moment_views/)
+  assert.equal(notices, 0)
+})

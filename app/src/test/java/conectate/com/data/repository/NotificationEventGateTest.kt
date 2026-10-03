@@ -20,6 +20,14 @@ class NotificationEventGateTest {
         assertNotNull(gate.accept(envelope(), "qa-owner", json))
         assertNull(gate.accept(envelope(), "qa-owner", json))
     }
+    @Test fun retiredMomentViewDoesNotEmitOrConsumeAnotherNotificationsId() {
+        val gate = NotificationEventGate("qa-owner")
+        val original = envelope().payload["notification"] as JsonObject
+        val retired = envelope().copy(payload = JsonObject(mapOf("notification" to
+            JsonObject(original + ("type" to JsonPrimitive("view_moment"))))))
+        assertNull(gate.accept(retired, "qa-owner", json))
+        assertNotNull(gate.accept(envelope(), "qa-owner", json))
+    }
     @Test fun brokenPayloadDoesNotPreventTheNextValidDelivery() {
         val gate = NotificationEventGate("qa-owner")
         assertNull(gate.accept(envelope().copy(payload = JsonObject(mapOf("notification" to JsonPrimitive("broken")))), "qa-owner", json))

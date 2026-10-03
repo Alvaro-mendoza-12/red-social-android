@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -209,6 +210,33 @@ class PostRepository @Inject constructor(
         val accessToken = authService.getAccessToken()
             ?: return Result.failure(IllegalStateException("Necesitas iniciar sesión para editar tus guardados."))
         return localFallbackApiClient.removeSavedPost(accessToken, collectionId, postId)
+    }
+
+    internal suspend fun getGlobalPostPage(offset: Int = 0, limit: Int = 60,
+        mode: String = "discover"): Result<GlobalPostPage> = withContext(Dispatchers.IO) {
+        try {
+            if (usesLocalFallbackBackend()) {
+                val owner = authService.getCurrentUserId()
+                val token = authService.getAccessToken()
+                    ?: return@withContext Result.failure(IllegalStateException("Tu sesión no está disponible. Vuelve a iniciar sesión."))
+                val result = localFallbackApiClient.loadFeed(token, limit, offset, mode = mode)
+                result.exceptionOrNull()?.let {
+                    _globalFeedError.value = it.message ?: "No se pudo cargar el feed público."
+                    return@withContext Result.failure(it)
+                }
+                val page = result.getOrThrow()
+                _globalFeedError.value = null
+                if (offset == 0) persistLocalFeed(mode, page.items, owner)
+                Result.success(GlobalPostPage(page.items, page.nextOffset))
+            } else {
+                val items = getGlobalPosts(offset, limit, mode, emitCachedSnapshots = false).last()
+                val error = _globalFeedError.value
+                if (error != null) Result.failure(IllegalStateException(error))
+                else Result.success(GlobalPostPage(items,
+                    (offset + items.size).takeIf { items.size >= limit && it <= 10_000 }))
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { Result.failure(error) }
     }
 
     fun getGlobalPosts(

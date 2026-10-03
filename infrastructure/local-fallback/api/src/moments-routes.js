@@ -1382,14 +1382,6 @@ function registerMomentsRoutes(
         )
         return res.json({ ok: true, self_view_ignored: true })
       }
-      const alreadyViewed = await pool.query(
-        `SELECT 1
-         FROM fallback_moment_views
-         WHERE lower(moment_id::text) = $1 AND lower(user_id) = $2
-         LIMIT 1`,
-        [normalizeId(momentId), identity.displayUserId],
-      )
-
       await pool.query(
         `INSERT INTO fallback_moment_views(moment_id, user_id, viewed_at)
          VALUES ($1::uuid, $2, NOW())
@@ -1397,24 +1389,6 @@ function registerMomentsRoutes(
          DO UPDATE SET viewed_at = NOW()`,
         [momentId, identity.displayUserId],
       )
-      if (
-        typeof createLocalNotification === 'function' &&
-        alreadyViewed.rows.length === 0 &&
-        ownerId &&
-        ownerId !== identity.displayUserId
-      ) {
-        await createLocalNotification(pool, {
-          recipientId: ownerId,
-          actorId: identity.displayUserId,
-          actorName: user.display_name || user.email || 'Usuario',
-          actorAvatarUrl: user.avatar_url || '',
-          type: 'view_moment',
-          targetId: momentId,
-          targetType: 'moment',
-          content: 'Vio tu momento.',
-          extraData: { moment_id: momentId },
-        })
-      }
       void publishRealtimeEvent('moments:live', { event: 'moment', action: 'view', momentId })
       res.json({ ok: true })
     } catch (error) {

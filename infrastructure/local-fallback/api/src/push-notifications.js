@@ -106,6 +106,10 @@ function isInvalidTokenError(code = '') {
 }
 
 async function sendPushForNotification(pool, notification, extraData = {}) {
+  const { isRetiredNotification } = require('./retired-notifications')
+  if (isRetiredNotification(notification) || isRetiredNotification({ extraData })) {
+    return { sent: 0, failed: 0, retired: true }
+  }
   const digestDeferred = extraData?.digest_deferred === true ||
     String(extraData?.digest_deferred || '').trim().toLowerCase() === 'true'
   if (digestDeferred) {

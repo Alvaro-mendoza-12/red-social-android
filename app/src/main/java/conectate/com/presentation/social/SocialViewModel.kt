@@ -142,6 +142,14 @@ class SocialViewModel @Inject constructor(
     private var authoritativeCursor: OpaqueRecommendationCursor? = null
     private var authoritativeFeedActive = false
     private var authoritativePageRequestInFlight = false
+    private var publicFeedNextOffset: Int? = null
+    private val consumedRecommendationCursors = mutableSetOf<OpaqueRecommendationCursor>()
+    private val _isLoadingMorePosts = MutableStateFlow(false)
+    val isLoadingMorePosts: StateFlow<Boolean> = _isLoadingMorePosts.asStateFlow()
+    private val _loadMorePostsError = MutableStateFlow<String?>(null)
+    val loadMorePostsError: StateFlow<String?> = _loadMorePostsError.asStateFlow()
+    private val _feedScrollReset = MutableStateFlow(0L)
+    val feedScrollReset: StateFlow<Long> = _feedScrollReset.asStateFlow()
     private val authoritativeExplanations = mutableMapOf<String, List<String>>()
     private var authoritativeRankingVersion: String? = null
     private var authoritativeExplanationsEnabled = false
@@ -340,6 +348,7 @@ class SocialViewModel @Inject constructor(
     fun loadPosts() = loadPosts(forceLegacy = false, refreshSeed = UUID.randomUUID().toString())
 
     fun refreshDiscovery() {
+        _feedScrollReset.value++
         loadPosts(forceLegacy = false, replaceOrder = true, userInitiated = true)
         scheduleSupplementalContent()
     }
@@ -399,10 +408,10 @@ class SocialViewModel @Inject constructor(
                     if (generation != postsGeneration) return@launch
                     if (authoritativePage != null) {
                         val visiblePosts = applyFeedControls(authoritativePage.items)
-                        if (visiblePosts.isNotEmpty()) {
+                        if (visiblePosts.isNotEmpty() || (authoritativePage.hasMore && authoritativePage.nextCursor != null)) {
                             authoritativeFeedActive = true
                             authoritativeCursor = authoritativePage.nextCursor
-                            _authoritativeHasMore.value = authoritativePage.hasMore
+                            _authoritativeHasMore.value = authoritativePage.hasMore && authoritativeCursor != null
                             authoritativeRankingVersion = authoritativePage.rankingVersion
                             authoritativeExplanationsEnabled = authoritativePage.explanationsEnabled
                             authoritativeExplanations.putAll(authoritativePage.explanationsByCandidateId)
@@ -417,13 +426,13 @@ class SocialViewModel @Inject constructor(
                         resetAuthoritativeFeedState()
                     }
                 }
-                postRepository.getGlobalPosts(
-                    limit = 60,
-                    mode = selectedMode.apiValue,
-                    emitCachedSnapshots = false,
-                ).distinctUntilChanged().collect { globalPosts ->
-                    if (generation != postsGeneration) return@collect
-                    val visiblePosts = applyFeedControls(globalPosts)
+                val publicPage = postRepository.getGlobalPostPage(limit = 60, mode = selectedMode.apiValue)
+                    .getOrThrow()
+                if (generation != postsGeneration) return@launch
+                publicFeedNextOffset = publicPage.nextOffset
+                _authoritativeHasMore.value = publicFeedNextOffset != null
+                run {
+                    val visiblePosts = applyFeedControls(publicPage.items)
                     val ranked = if (selectedMode == SocialFeedMode.DISCOVER) {
                         rankPosts(visiblePosts, refreshSeed)
                     } else {
@@ -431,7 +440,7 @@ class SocialViewModel @Inject constructor(
                     }
                     // Keep cached content on a failed request, but honor an
                     // authoritative empty result (e.g. removed/private posts).
-                    if (ranked.isEmpty() && postRepository.globalFeedError.value != null) return@collect
+                    if (ranked.isEmpty() && postRepository.globalFeedError.value != null) return@run
                     _posts.value = reconcileSocialFeed(_posts.value, ranked, !replaceOrder)
                     recordFeedLoaded(startedAt, ranked.size, selectedMode.apiValue, generation)
                     refreshVisibleAuthors(generation)
@@ -452,30 +461,45 @@ class SocialViewModel @Inject constructor(
     }
 
     fun loadMorePosts() {
-        val cursor = authoritativeCursor ?: return
-        if (!authoritativeFeedActive || !_authoritativeHasMore.value || authoritativePageRequestInFlight) return
+        if (!_authoritativeHasMore.value || authoritativePageRequestInFlight || _isRefreshing.value) return
+        val cursor = authoritativeCursor
+        val offset = publicFeedNextOffset
+        if ((authoritativeFeedActive && cursor == null) || (!authoritativeFeedActive && offset == null)) return
         val generation = postsGeneration
         authoritativePageRequestInFlight = true
+        _isLoadingMorePosts.value = true
+        _loadMorePostsError.value = null
         morePostsJob = viewModelScope.launch {
             try {
-                val page = algorithmRepository.loadSocialRecommendationPage(cursor = cursor, limit = 60)
-                    .getOrElse {
-                        if (generation != postsGeneration) return@launch
-                        // Never mix a failed authoritative continuation with a
-                        // differently ranked legacy page. Replace the feed with
-                        // one coherent legacy feed instead.
-                        loadPosts(forceLegacy = true, replaceOrder = true)
-                        return@launch
-                    }
-                if (generation != postsGeneration) return@launch
-                authoritativeCursor = page.nextCursor
-                _authoritativeHasMore.value = page.hasMore
-                authoritativeExplanations.putAll(page.explanationsByCandidateId)
-                // Concatenation preserves the server page and item sequence.
-                _posts.value = (_posts.value + applyFeedControls(page.items)).distinctBy { it.id }
+                val items = if (authoritativeFeedActive) {
+                    val requested = requireNotNull(cursor)
+                    val page = algorithmRepository.loadSocialRecommendationPage(cursor = requested, limit = 60).getOrThrow()
+                    if (generation != postsGeneration) return@launch
+                    consumedRecommendationCursors.add(requested)
+                    authoritativeCursor = page.nextCursor?.takeUnless { it in consumedRecommendationCursors }
+                    _authoritativeHasMore.value = page.hasMore && authoritativeCursor != null
+                    authoritativeExplanations.putAll(page.explanationsByCandidateId)
+                    page.items
+                } else {
+                    val requested = requireNotNull(offset)
+                    val page = postRepository.getGlobalPostPage(requested, 60, feedMode.value.apiValue).getOrThrow()
+                    if (generation != postsGeneration) return@launch
+                    publicFeedNextOffset = page.nextOffset?.takeIf { it > requested }
+                    _authoritativeHasMore.value = publicFeedNextOffset != null
+                    page.items
+                }
+                _posts.value = (_posts.value + applyFeedControls(items)).distinctBy { it.id }
                 refreshVisibleAuthors(generation)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (generation == postsGeneration) _loadMorePostsError.value =
+                    "No se pudieron cargar más publicaciones. Inténtalo de nuevo."
             } finally {
-                if (generation == postsGeneration) authoritativePageRequestInFlight = false
+                if (generation == postsGeneration) {
+                    authoritativePageRequestInFlight = false
+                    _isLoadingMorePosts.value = false
+                }
             }
         }
     }
@@ -484,6 +508,10 @@ class SocialViewModel @Inject constructor(
         authoritativeFeedActive = false
         authoritativeCursor = null
         authoritativePageRequestInFlight = false
+        publicFeedNextOffset = null
+        consumedRecommendationCursors.clear()
+        _isLoadingMorePosts.value = false
+        _loadMorePostsError.value = null
         authoritativeExplanations.clear()
         authoritativeRankingVersion = null
         authoritativeExplanationsEnabled = false
@@ -554,6 +582,7 @@ class SocialViewModel @Inject constructor(
     fun selectFeedMode(mode: SocialFeedMode) {
         if (feedMode.value == mode) return
         _posts.value = emptyList()
+        _feedScrollReset.value++
         feedPreferences.setMode(mode)
         loadPosts()
     }
