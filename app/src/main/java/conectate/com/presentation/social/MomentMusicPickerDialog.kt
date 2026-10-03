@@ -195,7 +195,7 @@ fun MomentMusicPickerDialog(
             // a DownloadService for this catalog.
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(
-                    MediaPlaybackDataSources.streamingFactory(context),
+                    MediaPlaybackDataSources.interactiveAudioFactory(context),
                 ),
             )
             .setHandleAudioBecomingNoisy(true)

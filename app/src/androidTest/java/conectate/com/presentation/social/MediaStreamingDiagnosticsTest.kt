@@ -119,4 +119,69 @@ class MediaStreamingDiagnosticsTest {
             }
         }
     }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    @Test fun ownedAudioCanStartAtTheSelectedCommunityOffsetWithinTenSeconds() {
+        val url = InstrumentationRegistry.getArguments().getString("qaAudioUrl").orEmpty()
+        assumeTrue(url.startsWith("https://") && android.net.Uri.parse(url).path.orEmpty().startsWith(
+            "/storage/v1/object/public/profile-audio/0e990f73-424e-4c33-9d83-5887f995e294/"))
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val ready = CountDownLatch(1)
+        val start = SystemClock.elapsedRealtime()
+        val bytes = AtomicLong()
+        val firstByte = AtomicLong(-1)
+        val reuseInitialResponse = InstrumentationRegistry.getArguments()
+            .getString("qaReuseInitialAudioResponse") != "false"
+        val factory = DataSource.Factory {
+            val base = if (reuseInitialResponse) MediaPlaybackDataSources.interactiveAudioFactory(context)
+                else MediaPlaybackDataSources.streamingFactory(context)
+            base.createDataSource().apply {
+                addTransferListener(object : TransferListener {
+                    override fun onTransferInitializing(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {
+                        android.util.Log.i("QaMediaNetwork", "audio_seek_request position=${dataSpec.position} " +
+                            "length=${dataSpec.length} elapsedMs=${SystemClock.elapsedRealtime()-start}")
+                    }
+                    override fun onTransferStart(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {
+                        android.util.Log.i("QaMediaNetwork", "audio_seek_headers position=${dataSpec.position} " +
+                            "elapsedMs=${SystemClock.elapsedRealtime()-start}")
+                    }
+                    override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {
+                        android.util.Log.i("QaMediaNetwork", "audio_seek_end position=${dataSpec.position} " +
+                            "elapsedMs=${SystemClock.elapsedRealtime()-start} bytes=${bytes.get()}")
+                    }
+                    override fun onBytesTransferred(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean, count: Int) {
+                        firstByte.compareAndSet(-1, SystemClock.elapsedRealtime()-start)
+                        bytes.addAndGet(count.toLong())
+                    }
+                })
+            }
+        }
+        lateinit var player: ExoPlayer
+        instrumentation.runOnMainSync {
+            player = ExoPlayer.Builder(context)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(factory))
+                .setLoadControl(InteractiveAudioBuffer.loadControl()).build()
+            player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
+            player.addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) { if (isPlaying) ready.countDown() }
+            })
+            player.setMediaItem(MediaItem.fromUri(url), 1_000L)
+            player.prepare()
+            player.play()
+        }
+        try {
+            val succeeded = ready.await(10, TimeUnit.SECONDS)
+            instrumentation.runOnMainSync {
+                android.util.Log.i("QaMediaNetwork", "audio_seek_player ready=$succeeded " +
+                    "reuse=$reuseInitialResponse " +
+                    "firstByteMs=${firstByte.get()} bytes=${bytes.get()} " +
+                    "totalMs=${SystemClock.elapsedRealtime()-start} state=${player.playbackState} " +
+                    "suppression=${player.playbackSuppressionReason} bufferedMs=${player.totalBufferedDuration} " +
+                    "playWhenReady=${player.playWhenReady} errorCode=${player.playerError?.errorCode ?: 0}")
+            }
+            assertTrue("Seeked community audio did not start within ten seconds", succeeded)
+        } finally { instrumentation.runOnMainSync { player.release() } }
+    }
 }

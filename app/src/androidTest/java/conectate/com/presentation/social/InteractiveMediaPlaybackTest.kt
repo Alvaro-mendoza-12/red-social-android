@@ -50,8 +50,18 @@ class InteractiveMediaPlaybackTest {
     private fun ready(label: String, start: Long) {
         android.util.Log.i("QaInteractiveMedia", "${label}_ready_ms=${SystemClock.elapsedRealtime() - start}")
     }
-    private fun waitForPause() = compose.waitUntil(10_000) {
-        compose.onAllNodesWithContentDescription("Pausar").fetchSemanticsNodes().isNotEmpty()
+    private fun waitForPause() {
+        try {
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithContentDescription("Pausar").fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
+            val listen = compose.onAllNodesWithContentDescription("Escuchar").fetchSemanticsNodes().size
+            val replay = compose.onAllNodesWithContentDescription("Reproducir").fetchSemanticsNodes().size
+            val errors = compose.onAllNodes(hasText("No se pudo", substring = true)).fetchSemanticsNodes().size
+            android.util.Log.i("QaInteractiveMedia", "audio_ui_timeout listen=$listen replay=$replay errors=$errors")
+            throw timeout
+        }
     }
     @Test fun profileAudioStartsAndCanPauseAndResume() {
         val audio = source("qaAudioUrl", "profile-audio")

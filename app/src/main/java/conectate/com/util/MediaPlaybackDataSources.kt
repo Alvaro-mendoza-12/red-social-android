@@ -64,4 +64,10 @@ object MediaPlaybackDataSources {
         context.applicationContext,
         httpFactory(includeStorageHeaders),
     )
+
+    /** Reuse the initial HTTP response for a short, immediate audio trim seek. */
+    internal fun interactiveAudioFactory(context: Context): DataSource.Factory =
+        DefaultDataSource.Factory(context.applicationContext, DataSource.Factory {
+            ShortAudioSeekDataSource(httpFactory().createDataSource())
+        })
 }
