@@ -561,6 +561,10 @@ class CallRepository @Inject constructor(
     }
 
     suspend fun acceptIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
+        if (!hasMicrophonePermission() || (invite.isVideo &&
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
+            return@withContext Result.failure(IllegalStateException("Activa los permisos de la llamada antes de contestar."))
+        }
         if (callCancellationGuard.contains(invite.callId)) {
             IncomingCallForegroundService.stop(context, invite.callId)
             dismissIncomingInvite()

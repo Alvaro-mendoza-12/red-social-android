@@ -38,7 +38,8 @@ import conectate.com.presentation.components.CircularProfileImage
 fun CallInvitationOverlay(
     invite: CallInvite?,
     onAccept: (CallInvite) -> Unit,
-    onDecline: (CallInvite) -> Unit
+    onDecline: (CallInvite) -> Unit,
+    isHandling: Boolean = false,
 ) {
     if (invite == null) return
 
@@ -100,6 +101,7 @@ fun CallInvitationOverlay(
                 ) {
                     Button(
                         onClick = { onDecline(invite) },
+                        enabled = !isHandling,
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
                         Icon(Icons.Default.CallEnd, contentDescription = null)
@@ -109,6 +111,7 @@ fun CallInvitationOverlay(
 
                     Button(
                         onClick = { onAccept(invite) },
+                        enabled = !isHandling,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                     ) {
                         Icon(Icons.Default.Call, contentDescription = null)
