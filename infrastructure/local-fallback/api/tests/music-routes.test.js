@@ -117,3 +117,33 @@ test('production upload fails closed when antivirus is required but unavailable'
     else process.env.MUSIC_ANTIVIRUS_COMMAND = previousCommand
   }
 })
+
+test('music antivirus rejects overlap and releases its slot after success and failure', async () => {
+  const previous = process.env.MUSIC_ANTIVIRUS_COMMAND
+  process.env.MUSIC_ANTIVIRUS_COMMAND = 'qa-scanner'
+  let release
+  let scans = 0
+  try {
+    const first = scanMusicFile('/own-qa-fixture', { runScan: async (command, args, options) => {
+      scans++
+      assert.equal(command, 'qa-scanner')
+      assert.deepEqual(args, ['--no-summary', '/own-qa-fixture'])
+      assert.equal(options.killSignal, 'SIGKILL')
+      await new Promise(resolve => { release = resolve })
+    } })
+    await assert.rejects(scanMusicFile('/another-qa-fixture', { runScan: async () => { scans++ } }), error =>
+      error.status === 503 && error.message === 'MUSIC_ANTIVIRUS_BUSY')
+    assert.equal(scans, 1)
+    release()
+    assert.equal(await first, 'ANTIVIRUS_CLEAN:qa-scanner')
+    await assert.rejects(scanMusicFile('/own-qa-fixture', { runScan: async () => { throw { code: 1 } } }), error =>
+      error.status === 422 && error.message === 'MUSIC_MALWARE_DETECTED')
+    await assert.rejects(scanMusicFile('/own-qa-fixture', { runScan: async () => { throw { code: 'ETIMEDOUT' } } }), error =>
+      error.status === 503 && error.message === 'MUSIC_ANTIVIRUS_UNAVAILABLE')
+    assert.equal(await scanMusicFile('/own-qa-fixture', { runScan: async () => {} }), 'ANTIVIRUS_CLEAN:qa-scanner')
+  } finally {
+    release?.()
+    if (previous === undefined) delete process.env.MUSIC_ANTIVIRUS_COMMAND
+    else process.env.MUSIC_ANTIVIRUS_COMMAND = previous
+  }
+})

@@ -365,7 +365,10 @@ function musicPublicBase(req) {
   return `${proto}://${host}`
 }
 
-async function scanMusicFile(inputPath) {
+// clamscan loads approximately 1 GiB of signatures per process. This API has a
+// bounded container heap: reject overlapping scans instead of exhausting it.
+let musicAntivirusBusy = false
+async function scanMusicFile(inputPath, { runScan = execFileAsync } = {}) {
   const command = cleanText(process.env.MUSIC_ANTIVIRUS_COMMAND, 300)
   const required = bool(process.env.MUSIC_ANTIVIRUS_REQUIRED)
   if (!command) {
@@ -374,9 +377,12 @@ async function scanMusicFile(inputPath) {
     }
     return 'ANTIVIRUS_SKIPPED_DEVELOPMENT'
   }
+  if (musicAntivirusBusy) throw Object.assign(new Error('MUSIC_ANTIVIRUS_BUSY'), { status: 503 })
+  musicAntivirusBusy = true
   try {
-    await execFileAsync(command, ['--no-summary', inputPath], {
+    await runScan(command, ['--no-summary', inputPath], {
       timeout: Math.round(numberIn(process.env.MUSIC_ANTIVIRUS_TIMEOUT_MS, 5_000, 180_000, 90_000)),
+      killSignal: 'SIGKILL',
       maxBuffer: 2 * 1024 * 1024,
     })
     return `ANTIVIRUS_CLEAN:${path.basename(command)}`
@@ -385,7 +391,7 @@ async function scanMusicFile(inputPath) {
       throw Object.assign(new Error('MUSIC_MALWARE_DETECTED'), { status: 422 })
     }
     throw Object.assign(new Error('MUSIC_ANTIVIRUS_UNAVAILABLE'), { status: 503 })
-  }
+  } finally { musicAntivirusBusy = false }
 }
 
 async function inspectAndCreateMusicPreview(pool, req, userId, storage, declaredDurationMs) {

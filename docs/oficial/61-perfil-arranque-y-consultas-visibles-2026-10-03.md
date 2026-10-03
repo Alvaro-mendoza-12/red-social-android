@@ -186,9 +186,18 @@ migraciones, cambios de configuración o modificaciones de volúmenes e imágene
   contenedor API tiene límite real de 4 GiB, 3 CPU y 384 procesos; el margen del
   host no elimina ese límite. Docker usa el bind NVMe ext4 `/var/lib/docker`.
 - Antivirus: ClamAV 1.4.6, firmas 28142 del 03/10/2026; existen las bases main,
-  daily y bytecode en el volumen persistente. Se comprobó versión y presencia,
-  sin ejecutar una batería de archivos infectados. `clamscan` carga las firmas
-  por proceso: hace falta limitar concurrencia y memoria de los PDF de Encuestas.
+  daily y bytecode en el volumen persistente. Además se ejecutaron dos escaneos
+  secuenciales por stdin como `novvin` (UID 10001), sin guardar ni subir archivos:
+  PDF ficticio limpio, salida 0, 24.831 ms y pico residente de 985.596 KiB;
+  cadena estándar EICAR, salida 1, 14.844 ms y 986.212 KiB. Ninguno agotó el
+  timeout de 70 segundos. Esto confirma lectura de firmas y detección efectiva,
+  pero no constituye una batería completa de documentos. El coste de cargar
+  firmas en cada proceso sigue siendo alto. El módulo nuevo limita a un escaneo
+  simultáneo y aplica SIGKILL al vencer su plazo; esa protección no elimina los
+  15–25 segundos observados. Se propuso al responsable del módulo un escáner
+  persistente con recursos y salud controlados antes de dar por fluido el envío.
+  [ClamAV documenta el protocolo INSTREAM y sus límites de cola, hilos y tamaño](https://docs.clamav.net/manual/Usage/ClamdProtocol.html),
+  que permiten enviar los bytes a un daemon con firmas previamente cargadas.
 - Backup existente: metadatos del 03/10/2026 a las 08:25:45 UTC con verificación
   registrada como aprobada, dump de 3.737.261 bytes y storage de 2.217.236.907 bytes.
   En este preflight no se recalcularon esos hashes. Antes del despliegue se debe
@@ -218,6 +227,97 @@ Propuesta de ejecución, pendiente de revisión final del módulo:
 
 Este plan no sustituye las comprobaciones de retención efectiva, moderación por
 QR, adjuntos y límites que la otra tarea sigue implementando y revisando.
+
+### Revisión independiente del módulo de Encuestas en desarrollo
+
+Se revisaron `domain.js`, `routes.js`, `maintenance.js` y `resources.js` y se
+comunicaron los siguientes defectos a la tarea responsable, sin modificar sus
+fuentes. Estos hallazgos corresponden al código en desarrollo previo al arreglo:
+
+1. Las imágenes del instrumento admitían activos ligados a respuestas. El acceso
+   mediante otro instrumento podía eludir la caducidad del adjunto original.
+   Se pidió separar imágenes del instrumento (`campaign_id IS NULL`) y adjuntos.
+2. La eliminación de activos comprobaba referencias y borraba en operaciones
+   separadas; una edición concurrente podía conservar una referencia rota.
+   También faltaba considerar imágenes utilizadas solo en revisiones históricas.
+3. Las conversiones con `sharp` no compartían un límite global de concurrencia;
+   limitar PDF no protege los 4 GiB de la API ante muchas imágenes grandes.
+4. La publicación bloqueaba una planilla, pero no todas las publicaciones del
+   propietario: distintas planillas podían superar juntas el límite o provocar
+   un error interno por una clave de publicación repetida.
+
+La autorización de moderación reutiliza `appAdminAccess` y sus capacidades.
+La lectura de borradores de participantes está restringida y las respuestas
+caducadas se excluyen de las lecturas revisadas. Falta validar los arreglos
+anteriores y repetir las pruebas sobre su nueva revisión antes de desplegar.
+
+Actualización de revisión: la tarea responsable corrigió los cuatro hallazgos.
+Se comprobaron nuevamente en las fuentes la restricción `campaign_id IS NULL`,
+el bloqueo de activos compartido con las referencias, la eliminación transaccional
+con revisiones históricas, el límite de conversiones y la publicación serializada
+por propietario. Sus regresiones de API se registran en su informe del módulo.
+
+### Antivirus persistente: implementación y prueba real aislada
+
+Se añadieron el cliente `api/src/surveys/clamd-client.js`, nueve pruebas Node y
+la configuración de `survey-antivirus`. Las nueve pruebas pasaron: protocolo y
+fragmentación, envío de 4 MiB con backpressure, detección, errores, timeout,
+desconexión, límites de respuesta y configuración inválida. El cliente exige
+respuesta final válida, aplica un plazo absoluto de diez segundos y falla con
+503 sin volver al escaneo costoso ni guardar un archivo sin verificar.
+
+Se construyó una imagen temporal y se probó el daemon real en la mini PC, con
+las firmas existentes montadas en solo lectura. El contenedor de QA tenía red
+deshabilitada, ningún puerto publicado, UID 10001, límite de 2 GiB y una CPU,
+filesystem de solo lectura y permisos restringidos. No reemplazó servicios de
+producción. El arranque hasta PING tardó 18.641 ms; ese coste se paga al iniciar
+el servicio, no en cada archivo. Pico residente del daemon: 986.344 KiB.
+
+| Entrada por el cliente INSTREAM real | Resultado | Tiempo |
+| --- | --- | ---: |
+| PDF válido vacío, 431 bytes | Aceptado | 12 ms |
+| Repetición del mismo PDF | Aceptado | 2 ms |
+| Cadena estándar EICAR, 68 bytes | Rechazado, 400 | 7 ms |
+| PDF cifrado, 828 bytes | Rechazado, 400 | 7 ms |
+
+El contenedor y su imagen de QA se retiraron al terminar. `AlertEncrypted` y
+`AlertExceedsMax` están activos; la recarga no duplica la base en memoria. La
+tarea responsable integra el servicio privado y conserva el límite de una
+validación simultánea en la API. El módulo permanece pendiente de despliegue.
+Estas entradas pequeñas no prueban tiempo de escaneo de todos los PDF, cargas
+concurrentes ni el recorrido de subida desde Android por internet. El antivirus
+tampoco sustituye la comprobación de estructura o visualización del documento.
+
+### Protección de renovaciones al cambiar de cuenta
+
+Se encontró que una renovación HTTP pendiente podía terminar después de salir
+o cambiar de cuenta e intentar persistir la sesión anterior. Se añadió un control
+de generación y una sección crítica para el commit y publicación locales. La
+salida y el cambio de cuenta invalidan las respuestas anteriores; también se
+comprueban tokens antes de guardar y retornar una renovación. Las lecturas de
+arranque tardías no pueden sustituir una sesión nueva, y la importación del SDK
+se serializa comprobando el token actual, se verifica nuevamente después de la
+importación suspendida y se limpia el JWT saliente antes de admitir otra
+importación. El timestamp de renovación también queda protegido por el control.
+Pasaron nueve regresiones JVM de generación, tokens, error tardío, lectura de
+arranque, importación tardía y serialización del último commit frente a logout.
+La primera compilación combinada completó Kotlin; tras la revisión independiente
+se corrigieron los dos bordes adicionales y se repetirá la compilación completa.
+Los nueve casos prueban el control de concurrencia, no una prueba integrada de
+todo `AuthService` ni una instalación en el dispositivo del usuario.
+
+### Límite del escaneo de música comunitaria
+
+La auditoría encontró que el escaneo de música seguía iniciando un `clamscan`
+por subida sin límite global. Ese proceso comparte los 4 GiB de la API con
+exportaciones y demás operaciones. Se limitó a un escaneo simultáneo por proceso
+de API; otro intento recibe 503 y puede reintentarse. El timeout utiliza SIGKILL
+y el recurso se libera al finalizar, tanto ante éxito como detección o error.
+No se omite el antivirus. Pasaron 17 pruebas de rutas, biblioteca y política de
+música, incluida la nueva regresión de concurrencia y liberación del recurso.
+Este cambio limita picos de memoria; no elimina el coste de carga de firmas de
+la música ni certifica el tiempo total de publicar canciones. Sigue pendiente
+su despliegue con verificación de fuentes y regresión en el servidor.
 
 ## Pendientes prioritarios
 
