@@ -38,6 +38,9 @@ object MediaPlaybackDataSources {
             // Never let an HTTPS media URL downgrade to cleartext through a
             // redirect. Same-protocol redirects remain supported.
             .followSslRedirects(false)
+            .apply {
+                if (BuildConfig.DEBUG) eventListenerFactory { MediaNetworkTrace() }
+            }
             .build()
     }
 

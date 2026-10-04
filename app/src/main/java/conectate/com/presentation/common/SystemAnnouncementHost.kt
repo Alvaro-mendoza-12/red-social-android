@@ -7,9 +7,12 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -27,6 +30,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -44,6 +50,7 @@ class SystemAnnouncementViewModel @Inject constructor(
     val notices = MutableStateFlow<List<SystemAnnouncement>>(emptyList())
     private val json = Json { ignoreUnknownKeys = true }
     private var refreshJob: Job? = null
+    private var visibleNoticeJob: Job? = null
     @Volatile private var activeOwner = "guest"
     private val dismissed = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val preferenceMutex = Mutex()
@@ -58,7 +65,8 @@ class SystemAnnouncementViewModel @Inject constructor(
             fun show(items: List<SystemAnnouncement>) {
                 if (capturedOwner != activeOwner) return
                 val seen = prefs.getStringSet("seen:$capturedOwner", emptySet()).orEmpty()
-                notices.value = items.filter { it.id !in seen && "$capturedOwner:${it.id}" !in dismissed && it.isVisible(BuildConfig.VERSION_CODE) }
+                notices.value = orderedSystemAnnouncements(items, BuildConfig.VERSION_CODE)
+                    .filter { it.id !in seen && "$capturedOwner:${it.id}" !in dismissed }
             }
             val cached = runCatching { json.decodeFromString(SystemAnnouncementEnvelope.serializer(), prefs.getString("cache", "{}").orEmpty()).items }.getOrDefault(emptyList())
             show(cached)
@@ -68,6 +76,24 @@ class SystemAnnouncementViewModel @Inject constructor(
                 show(fresh)
             }
         }
+    }
+    fun watchVisibleNotices(owner: String?) {
+        visibleNoticeJob?.cancel()
+        refresh(owner)
+        visibleNoticeJob = viewModelScope.launch {
+            // Revalidate a displayed announcement so revocation can remove it.
+            // No polling when no announcement is visible or the app is paused.
+            notices.collectLatest { visible ->
+                if (visible.isEmpty()) return@collectLatest
+                while (isActive) { delay(15_000); refresh(owner) }
+            }
+        }
+    }
+    fun stopWatching(owner: String?) {
+        if (owner?.trim()?.lowercase().orEmpty().ifBlank { "guest" } != activeOwner) return
+        visibleNoticeJob?.cancel()
+        visibleNoticeJob = null
+        refreshJob?.cancel()
     }
     fun dismiss(id: String) {
         val owner = activeOwner
@@ -96,36 +122,51 @@ fun SystemAnnouncementHost(owner: String?) {
     val viewModel: SystemAnnouncementViewModel = hiltViewModel()
     val notices by viewModel.notices.collectAsStateWithLifecycle()
     LifecycleResumeEffect(owner) {
-        viewModel.refresh(owner)
-        onPauseOrDispose { }
+        viewModel.watchVisibleNotices(owner)
+        onPauseOrDispose { viewModel.stopWatching(owner) }
     }
     notices.firstOrNull()?.let { notice ->
-        SystemAnnouncementDialog(notice, onDismiss = { viewModel.dismiss(notice.id) })
+        SystemAnnouncementDialog(notice, onDismiss = { viewModel.dismiss(notice.id) }, remaining = notices.size)
     }
 }
 
 @Composable
-fun SystemAnnouncementDialog(notice: SystemAnnouncement, onDismiss: () -> Unit) {
+fun SystemAnnouncementDialog(notice: SystemAnnouncement, onDismiss: () -> Unit, remaining: Int = 1) {
     val context = LocalContext.current
     AlertDialog(
         modifier = Modifier.testTag("system_announcement"),
         onDismissRequest = onDismiss,
-        title = { Text(notice.title) },
+        title = {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(when (notice.kind) {
+                        "maintenance" -> "Mantenimiento de Novvin"
+                        "update" -> "Actualización de Novvin"
+                        else -> "Novedades de Novvin"
+                    }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    if (remaining > 1) Text("Quedan $remaining avisos", style = MaterialTheme.typography.labelMedium)
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.Close, "Cerrar aviso")
+                }
+            }
+        },
         text = {
-            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(notice.title, style = MaterialTheme.typography.titleLarge)
                 noticeSchedule(notice)?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
                 Text(notice.body)
                 if (notice.kind == "update") Text("¿Deseas actualizar Novvin?", style = MaterialTheme.typography.titleSmall)
             }
         },
         confirmButton = {
-            TextButton(onClick = {
+            Button(onClick = {
                 if (notice.kind == "update") {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=conectate.com"))
                     val opened = runCatching { context.startActivity(intent) }.isSuccess
                     if (!opened) {
                         Toast.makeText(context, "No se pudo abrir Google Play. Inténtalo de nuevo.", Toast.LENGTH_LONG).show()
-                        return@TextButton
+                        return@Button
                     }
                 }
                 onDismiss()

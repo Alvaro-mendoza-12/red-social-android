@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -57,7 +58,9 @@ class SystemAnnouncementAdminViewModel @Inject constructor(
             refresh = { api.loadSystemAnnouncements(token).getOrThrow() },
         )
         if (auth.getCurrentUserId() == owner) {
-            result.notices?.let { notices.value = it }
+            notices.value = result.notices ?: notices.value.map {
+                if (it.id == id) it.copy(revokedAt = Instant.now().toString()) else it
+            }
             message.value = "Aviso retirado. Las notificaciones ya recibidas pueden seguir visibles." +
                 if (result.notices == null) " Pulsa Actualizar avisos para recargar la lista." else ""
         }
@@ -95,14 +98,33 @@ fun SystemAnnouncementAdminSection(access: AdminAccessInfo) {
     result?.let { Text(it, modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
     OutlinedButton(onClick = { model.refresh() }, enabled = !busy) { Text("Actualizar avisos") }
     notices.forEach { notice ->
-        Card(Modifier.fillMaxWidth().padding(top = 12.dp)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(notice.title, style = MaterialTheme.typography.titleMedium)
-                Text(notice.body)
-                conectate.com.presentation.common.noticeSchedule(notice)?.let { Text(it) }
-                Text(if (notice.isVisible(Int.MIN_VALUE)) "Publicado" else "Retirado o finalizado", style = MaterialTheme.typography.labelMedium)
-                if (notice.revokedAt == null && "admin.system.manage" in access.capabilities) {
-                    TextButton(onClick = { model.revoke(notice.id) }, enabled = !busy) { Text("Retirar aviso") }
+        SystemAnnouncementAdminCard(notice, "admin.system.manage" in access.capabilities, busy) { model.revoke(notice.id) }
+    }
+}
+
+@Composable
+internal fun SystemAnnouncementAdminCard(notice: SystemAnnouncement, canManage: Boolean, busy: Boolean, onRevoke: () -> Unit) {
+    val expiration = remember(notice.expiresAt) { runCatching {
+        DateTimeFormatter.ofPattern("dd MMM · HH:mm", Locale("es"))
+            .format(Instant.parse(notice.expiresAt).atZone(ZoneId.systemDefault()))
+    }.getOrNull() }
+    Card(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.small) {
+                Text(when (notice.kind) { "update" -> "Actualización"; "maintenance" -> "Mantenimiento"; else -> "Novedad" },
+                    Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer)
+            }
+            Text(notice.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(notice.body, style = MaterialTheme.typography.bodyMedium)
+            conectate.com.presentation.common.noticeSchedule(notice)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            Text(when { notice.revokedAt != null -> "Retirado"; !notice.isVisible(Int.MIN_VALUE) -> "Finalizado"; else -> "Publicado" },
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            expiration?.let { Text("Visible hasta $it", style = MaterialTheme.typography.bodySmall) }
+            if (notice.revokedAt == null && notice.isVisible(Int.MIN_VALUE) && canManage) {
+                OutlinedButton(onClick = onRevoke, enabled = !busy, modifier = Modifier.align(Alignment.End),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                    Text("Retirar aviso")
                 }
             }
         }
@@ -159,7 +181,8 @@ fun SystemAnnouncementAdminForm(canManage: Boolean, busy: Boolean, onPublish: (P
         }
         if (kind == "update") OutlinedTextField(version, { version = it.filter(Char::isDigit).take(10); draftId = UUID.randomUUID().toString() }, label = { Text("Código de versión publicado en Google Play") },
             supportingText = { Text("Avísalo cuando la versión ya esté disponible. Solo aparece a quienes tengan una versión anterior.") }, modifier = Modifier.fillMaxWidth(), enabled = canManage && !busy)
-        Text("${if (kind == "maintenance") "Se mostrará hasta 24 h después del mantenimiento." else "El aviso estará disponible durante 7 días."}")
+        Text(if (kind == "maintenance") "Visible hasta 24 h después del mantenimiento. Puedes retirarlo antes desde la lista."
+            else "Visible durante 7 días. Puedes retirarlo antes desde la lista.", style = MaterialTheme.typography.bodySmall)
         Button(onClick = {
             val expires = Instant.ofEpochMilli(draftExpiry ?: (if (kind == "maintenance") end!! + 86400000 else System.currentTimeMillis() + 7 * 86400000L).also { draftExpiry = it })
             preview = PublishSystemAnnouncement(draftId, kind, title.trim(), body.trim(), expires.toString(),

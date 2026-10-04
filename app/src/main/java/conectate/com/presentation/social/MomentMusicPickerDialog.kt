@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,7 +44,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -74,6 +74,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -149,7 +151,7 @@ fun MomentMusicPickerDialog(
     var query by remember { mutableStateOf(state.query) }
     var category by remember { mutableStateOf(state.category) }
     var section by remember {
-        mutableStateOf(if (initialSelection?.track?.source == "novvin_community") "community" else "mine")
+        mutableStateOf(if (initialSelection?.localUri != null) "mine" else "community")
     }
     var selected by remember { mutableStateOf(initialSelection?.track) }
     var selectedLocalUri by remember { mutableStateOf(initialSelection?.localUri) }
@@ -367,136 +369,180 @@ fun MomentMusicPickerDialog(
                         },
                     )
                 },
+                bottomBar = {
+                    selected?.let { track ->
+                        val policy = MomentMusicTrimPolicy(track.durationMs, contentDurationMs)
+                        val safeRange = policy.normalize(range)
+                        val maxFadeMs = policy.fadeLimitMs(safeRange)
+                        Surface(tonalElevation = 3.dp) {
+                            Row(
+                                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        play(track, safeRange.start.toLong(), safeRange.endInclusive.toLong(),
+                                            selectedLocalUri, useFullTrack = true, loopSelection = true)
+                                    },
+                                    modifier = Modifier.heightIn(min = 48.dp),
+                                ) {
+                                    if (playingId == track.id && isPlayerBuffering) {
+                                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Icon(if (playingId == track.id && isPlayerPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null)
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(if (playingId == track.id && isPlayerPlaying) "Pausar" else "Escuchar")
+                                }
+                                Button(
+                                    onClick = {
+                                        player.pause()
+                                        onSelect(MomentMusicSelection(
+                                            track, safeRange.start.toLong(), safeRange.endInclusive.toLong(),
+                                            musicVolume, originalVolume, fadeInMs.coerceIn(0L, maxFadeMs),
+                                            fadeOutMs.coerceIn(0L, maxFadeMs), duckOriginal, selectedLocalUri,
+                                        ))
+                                    },
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                ) {
+                                    Icon(Icons.Default.Check, null)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Usar audio")
+                                }
+                            }
+                        }
+                    }
+                },
             ) { padding ->
                 if (selected == null) {
-                    Column(
+                    LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(padding)
                             .navigationBarsPadding(),
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            sections.forEach { (id, label) ->
-                                FilterChip(
-                                    selected = section == id,
-                                    onClick = {
-                                        section = id
-                                        if (id == "community") onSearch(query, category, id)
+                        item(key = "catalog-controls") {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    sections.forEach { (id, label) ->
+                                        FilterChip(
+                                            selected = section == id,
+                                            onClick = {
+                                                section = id
+                                                if (id == "community") onSearch(query, category, id)
+                                            },
+                                            label = { Text(label) },
+                                        )
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    OutlinedButton(
+                                        onClick = if (section == "mine") onOpenDeviceMusic else onOpenCommunityUpload,
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                    ) {
+                                        Icon(if (section == "mine") Icons.Default.LibraryMusic else Icons.Default.CloudUpload, null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(if (section == "mine") "Elegir del dispositivo" else "Publicar una canción")
+                                    }
+                                    IconButton(onClick = { player.pause(); playingId = null; showMyUploads = true }) {
+                                        Icon(Icons.Default.History, "Mis canciones publicadas")
+                                    }
+                                }
+                                if (section == "community") OutlinedTextField(
+                                    value = query,
+                                    onValueChange = {
+                                        query = it
+                                        onSearch(it, category, section)
                                     },
-                                    label = { Text(label) },
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                    singleLine = true,
+                                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                                    placeholder = { Text("Canción o artista") },
+                                    trailingIcon = {
+                                        if (query.isNotEmpty()) IconButton(onClick = {
+                                            query = ""
+                                            onSearch("", category, section)
+                                        }) { Icon(Icons.Default.Close, "Borrar búsqueda") }
+                                    },
+                                )
+                                if (section == "community") Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    categories.forEach { item ->
+                                        FilterChip(
+                                            selected = category == item,
+                                            onClick = {
+                                                category = item
+                                                onSearch(query, item, section)
+                                            },
+                                            label = { Text(item) },
+                                        )
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(Icons.Default.Info, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        if (section == "mine") {
+                                            "Elige música propia o con permiso para compartir."
+                                        } else {
+                                            "Toca una canción para escucharla y elegir tu fragmento."
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                playbackError?.let {
+                                    Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                                }
+                                state.actionMessage?.let {
+                                    Text(
+                                        it,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                    )
+                                }
+                                Text(
+                                    if (section == "mine") "Tu biblioteca" else "Música de la comunidad",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            if (section == "mine") {
-                                OutlinedButton(
-                                    onClick = onOpenDeviceMusic,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Icon(Icons.Default.LibraryMusic, null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Ver canciones de mi dispositivo")
-                                }
-                            } else {
-                                OutlinedButton(
-                                    onClick = onOpenCommunityUpload,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Icon(Icons.Default.CloudUpload, null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Publicar mi música para la comunidad")
-                                }
-                            }
-                        }
-                        Button(
-                            onClick = { player.pause(); showMyUploads = true },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondary,
-                                contentColor = MaterialTheme.colorScheme.onSecondary,
-                            ),
-                        ) {
-                            Icon(Icons.Default.History, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Abrir historial de mis canciones")
-                        }
-                        if (section == "community") OutlinedTextField(
-                            value = query,
-                            onValueChange = {
-                                query = it
-                                onSearch(it, category, section)
-                            },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                            singleLine = true,
-                            leadingIcon = { Icon(Icons.Default.Search, null) },
-                            placeholder = { Text("Buscar en la comunidad") },
-                        )
-                        if (section == "community") Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            categories.forEach { item ->
-                                FilterChip(
-                                    selected = category == item,
-                                    onClick = {
-                                        category = item
-                                        onSearch(query, item, section)
-                                    },
-                                    label = { Text(item) },
-                                )
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Default.Info, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                if (section == "mine") {
-                                    "Se muestran las canciones guardadas en tu teléfono. Para usarlas públicamente debes confirmar que controlas sus derechos."
-                                } else {
-                                    "Solo aparecen canciones de la comunidad aprobadas y con permiso de reutilización."
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        playbackError?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-                        }
-                        state.actionMessage?.let {
-                            Text(
-                                it,
-                                color = MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                            )
                         }
                         when {
-                            section == "mine" -> CatalogMessage(
+                            section == "mine" -> item { CatalogMessage(
                                 "Elige una canción de tu dispositivo. Novvin detectará título, artista, álbum, duración y portada cuando estén disponibles.",
                                 action = "Abrir mi música",
                                 onAction = onOpenDeviceMusic,
-                            )
-                            state.isLoading && state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator()
+                            ) }
+                            state.isLoading && state.items.isEmpty() -> item {
+                                Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator()
+                                }
                             }
-                            state.error != null && state.items.isEmpty() -> CatalogMessage(
+                            state.error != null && state.items.isEmpty() -> item { CatalogMessage(
                                 state.error,
                                 action = "Reintentar",
                                 onAction = { onSearch(query, category, section) },
-                            )
-                            state.items.isEmpty() -> CatalogMessage(
+                            ) }
+                            state.items.isEmpty() -> item { CatalogMessage(
                                 "Todavía no hay canciones aprobadas de la comunidad para esta búsqueda.",
-                            )
-                            else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            ) }
+                            else -> {
                                 if (state.isLoading) {
                                     item(key = "refresh-progress") {
                                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -653,55 +699,9 @@ fun MomentMusicPickerDialog(
                             onValueChange = { fadeOutMs = it.toLong() },
                             valueRange = 0f..maxFadeMs.toFloat(),
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    play(
-                                        track,
-                                        range.start.toLong(),
-                                        range.endInclusive.toLong(),
-                                        selectedLocalUri,
-                                        // The catalog preview is intentionally
-                                        // short. Once the track is selected
-                                        // for trimming, every playback control
-                                        // must use the complete approved audio
-                                        // so ranges beyond the preview remain
-                                        // audible.
-                                        useFullTrack = true,
-                                        loopSelection = true,
-                                    )
-                                },
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(if (playingId == track.id && isPlayerPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null)
-                                Spacer(Modifier.width(4.dp))
-                                Text(if (playingId == track.id && isPlayerPlaying) "Pausar" else "Escuchar")
-                            }
-                            Button(
-                                onClick = {
-                                    onSelect(
-                                        MomentMusicSelection(
-                                            track = track,
-                                            startMs = safeRange.start.toLong(),
-                                            endMs = safeRange.endInclusive.toLong(),
-                                            musicVolume = musicVolume,
-                                            originalAudioVolume = originalVolume,
-                                            fadeInMs = fadeInMs.coerceIn(0L, maxFadeMs),
-                                             fadeOutMs = fadeOutMs.coerceIn(0L, maxFadeMs),
-                                             duckOriginalAudio = duckOriginal,
-                                             localUri = selectedLocalUri,
-                                         ),
-                                    )
-                                },
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(Icons.Default.Check, null)
-                                Spacer(Modifier.width(4.dp))
-                                Text("Usar audio")
-                            }
+                        playbackError?.let { message ->
+                            Text(message, color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall)
                         }
                         val attributionUrl = (track.licenseUrl ?: track.sourcePageUrl)
                             .takeIf { it.startsWith("https://") }
@@ -767,12 +767,14 @@ private fun MusicCatalogRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(14.dp)).background(
+                Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.secondaryContainer)),
+            ),
             contentAlignment = Alignment.Center,
         ) {
             if (!track.artworkUrl.isNullOrBlank()) {
-                AsyncImage(track.artworkUrl, null, modifier = Modifier.fillMaxSize())
-            } else Icon(Icons.Default.MusicNote, null)
+                AsyncImage(track.artworkUrl, null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else Icon(Icons.Default.MusicNote, null, Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -784,16 +786,11 @@ private fun MusicCatalogRow(
                 else -> track.provider
             }
             Text(
-                "$sourceLabel · ${track.license} · ${formatDuration(track.durationMs)}",
+                "$sourceLabel · ${formatDuration(track.durationMs)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                "Streaming únicamente · no se descarga",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         IconButton(onClick = onPreview) {
@@ -830,7 +827,7 @@ private fun MusicCatalogRow(
 
 @Composable
 private fun CatalogMessage(message: String, action: String? = null, onAction: () -> Unit = {}) {
-    Box(Modifier.fillMaxSize().padding(28.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxWidth().heightIn(min = 220.dp).padding(28.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(Icons.Default.MusicNote, null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
