@@ -186,10 +186,10 @@ redirección interna; no se interpreta como una URL para abrir desde el cliente.
 Docker se consulta con un formato reducido que excluye variables de entorno
 y montajes. [Formato oficial de Docker](https://docs.docker.com/engine/cli/formatting/).
 
-Pasaron ocho [pruebas aisladas del diagnóstico](../../scripts/test-storage-response-latency.py):
+Pasaron nueve [pruebas aisladas del diagnóstico](../../scripts/test-storage-response-latency.py):
 ruta propia, metadatos mínimos, métricas numéricas, lectura parcial, respuesta
 delegada, rechazo de redirección/archivo completo, tamaño incorrecto y errores
-sin mensajes privados. El modo `--plan` validó el archivo sintético sin Docker
+sin mensajes privados y ejecución por entrada estándar. El modo `--plan` validó el archivo sintético sin Docker
 ni red. **La comparación en Linux todavía no se ha ejecutado** por el acceso
 SSH pendiente. Cada muestra abrirá una conexión HTTP/1.1 nueva; no replica
 la conexión HTTP/2 reutilizada observada en Android.
@@ -222,3 +222,9 @@ frecuentes; no se presentan como implementados en este commit.
 Continúan pendientes las llamadas reales entre dos participantes, entrega
 física FCM, FPS sostenidos en LIVE, AAB firmado, auditoría restante y paridad
 web/Vercel. Este documento no certifica toda la aplicación para producción.
+
+## Continuación posterior del diagnóstico
+
+Se completó el protocolo de tres arranques del APK `fed1546` con Gradle inactivo, conservando su SHA-256 y los datos: Android informó COLD 5.881 ms, WARM 3.071 ms y WARM 4.492 ms. Se recuperó SSH por Tailscale y se realizaron nueve lecturas parciales válidas del audio sintético propio desde Linux; la demora móvil anterior no se reprodujo desde ese punto de medición. El servidor seguía en `f42a349` y no se desplegó el candidato.
+
+Alcance, métricas y limitaciones: [continuidad móvil](../../CONTINUIDAD_VALIDACION_MOVIL.md) y [evidencia adicional](../../VALIDACION_CONTINUIDAD_ADICIONAL.json). Estas comprobaciones posteriores no demuestran una reducción causal del arranque ni una corrección de la latencia de audio del teléfono.

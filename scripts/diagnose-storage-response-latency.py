@@ -146,9 +146,10 @@ def main():
     parser.add_argument('--plan', action='store_true', help='Validate input without Docker or network access')
     args = parser.parse_args()
     object_path = validate_path(args.object_path)
+    script_file = pathlib.Path(__file__)
     record = {
         'schemaVersion': 1, 'recordedAtUtc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        'diagnosticScriptSha256': hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),
+        'diagnosticScriptSha256': hashlib.sha256(script_file.read_bytes()).hexdigest() if script_file.is_file() else None,
         'fixturePathRef': hashlib.sha256(object_path.encode()).hexdigest(),
         'publicOriginRef': hashlib.sha256(PUBLIC_ORIGIN.encode()).hexdigest(),
         'requestUrlOrSecretsIncluded': False, 'readOnly': True, 'executed': not args.plan,

@@ -2,6 +2,8 @@
 import importlib.util
 import json
 import pathlib
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -43,6 +45,16 @@ class Connection:
 
 
 class StorageProbeTests(unittest.TestCase):
+    def test_stdin_plan_needs_no_remote_script_file_or_network(self):
+        object_path = f'/storage/v1/object/public/profile-audio/{probe.OWNER_ID}/fixture.m4a'
+        result = subprocess.run([sys.executable, '-', '--object-path', object_path, '--plan'],
+                                input=source.read_bytes(), capture_output=True, check=True, timeout=10)
+        record = json.loads(result.stdout)
+        self.assertFalse(record['executed'])
+        self.assertEqual(record['samples'], [])
+        self.assertIsNone(record['diagnosticScriptSha256'])
+        self.assertNotIn(object_path, result.stdout.decode())
+
     def test_only_owned_audio_path(self):
         prefix = f'/storage/v1/object/public/profile-audio/{probe.OWNER_ID}/'
         self.assertEqual(probe.validate_path(prefix + 'fixture.m4a'), prefix + 'fixture.m4a')
