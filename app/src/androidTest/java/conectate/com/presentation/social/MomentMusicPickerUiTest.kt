@@ -111,4 +111,16 @@ class MomentMusicPickerUiTest {
         compose.onNodeWithText("Reintentar").assertIsDisplayed().performClick()
         assertEquals(1, attempts)
     }
+
+    @Test fun mixingControlsAreAvailableOnRequestAndKeepConfirmationVisible() {
+        val song = track()
+        show(MusicCatalogUiState(), MomentMusicSelection(song, 0, 6_000, 1f, 1f))
+        compose.onNodeWithText("Volumen de la música 100%").assertDoesNotExist()
+        compose.onNodeWithText("Mezcla y efectos").performScrollTo().performClick()
+        compose.onNodeWithText("Volumen de la música 100%").assertIsDisplayed()
+        compose.onNodeWithText("Usar audio").assertIsDisplayed()
+        compose.onNodeWithText("Mezcla y efectos").performScrollTo().performClick()
+        compose.onNodeWithText("Volumen de la música 100%").assertDoesNotExist()
+        compose.onNodeWithText("Usar audio").assertIsDisplayed()
+    }
 }

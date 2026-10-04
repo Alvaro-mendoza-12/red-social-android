@@ -30,6 +30,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.History
@@ -77,6 +79,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -179,6 +183,7 @@ fun MomentMusicPickerDialog(
     val categories = remember { listOf("Todo", "Instrumental", "Piano", "Clásica", "Ambiental", "Naturaleza") }
     val sections = remember { MOMENT_MUSIC_PICKER_SECTIONS }
     var showMyUploads by remember { mutableStateOf(false) }
+    var showMixSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(selected?.id, selected?.durationMs, contentDurationMs) {
         selected?.let { track -> range = MomentMusicTrimPolicy(track.durationMs, contentDurationMs).normalize(range) }
@@ -659,14 +664,25 @@ fun MomentMusicPickerDialog(
                             valueRange = 0f..sourceEndMs.toFloat(),
                         )
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(formatDuration(range.start.toLong()))
-                            Text("${formatDuration((range.endInclusive - range.start).toLong())} seleccionados")
-                            Text(formatDuration(range.endInclusive.toLong()))
+                            Text("Inicio ${formatDuration(safeRange.start.toLong())}", style = MaterialTheme.typography.bodySmall)
+                            Text("Final ${formatDuration(safeRange.endInclusive.toLong())}", style = MaterialTheme.typography.bodySmall)
                         }
+                        Text("${formatDuration((safeRange.endInclusive - safeRange.start).toLong())} seleccionados",
+                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         LinearProgressIndicator(
                             progress = { ((positionMs - safeRange.start) / (safeRange.endInclusive - safeRange.start)).coerceIn(0f, 1f) },
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        OutlinedButton(
+                            onClick = { showMixSettings = !showMixSettings },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+                                stateDescription = if (showMixSettings) "Expandido" else "Contraído"
+                            },
+                        ) {
+                            Text("Mezcla y efectos", modifier = Modifier.weight(1f))
+                            Icon(if (showMixSettings) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+                        }
+                        if (showMixSettings) {
                         Text("Volumen de la música ${percent(musicVolume)}", fontWeight = FontWeight.SemiBold)
                         Slider(
                             value = musicVolume,
@@ -699,6 +715,7 @@ fun MomentMusicPickerDialog(
                             onValueChange = { fadeOutMs = it.toLong() },
                             valueRange = 0f..maxFadeMs.toFloat(),
                         )
+                        }
                         playbackError?.let { message ->
                             Text(message, color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodySmall)
