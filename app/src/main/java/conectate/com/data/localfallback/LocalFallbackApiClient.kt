@@ -2870,7 +2870,7 @@ class LocalFallbackApiClient @Inject constructor(
     )
 
     @Serializable
-    private data class LocalFallbackCreateMomentRequest(
+    internal data class LocalFallbackCreateMomentRequest(
         val mediaUrl: String,
         val mediaType: String,
         val thumbnailUrl: String? = null,
@@ -2893,6 +2893,8 @@ class LocalFallbackApiClient @Inject constructor(
         val musicTitle: String? = null,
         val musicId: String? = null,
         val musicArtist: String? = null,
+        val musicPresentation: String = "card",
+        val musicArtworkUrl: String? = null,
         val musicSource: String? = null,
         val musicSourceUrl: String? = null,
         val musicLicense: String? = null,
@@ -2942,6 +2944,8 @@ class LocalFallbackApiClient @Inject constructor(
         musicTitle: String?,
         musicId: String?,
         musicArtist: String?,
+        musicPresentation: String,
+        musicArtworkUrl: String?,
         musicSource: String?,
         musicSourceUrl: String?,
         musicLicense: String?,
@@ -2985,6 +2989,8 @@ class LocalFallbackApiClient @Inject constructor(
                         musicTitle = musicTitle,
                         musicId = musicId,
                         musicArtist = musicArtist,
+                        musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(musicPresentation).wireValue,
+                        musicArtworkUrl = UbuntuStorageUrl.rewrite(musicArtworkUrl),
                         musicSource = musicSource,
                         musicSourceUrl = musicSourceUrl,
                         musicLicense = musicLicense,
@@ -7084,6 +7090,10 @@ class LocalFallbackApiClient @Inject constructor(
             musicId = textOf(row, "music_id", "musicId").ifBlank { null },
             musicTitle = textOf(row, "music_title", "musicTitle").ifBlank { null },
             musicArtist = textOf(row, "music_artist", "musicArtist").ifBlank { null },
+            musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(
+                textOf(row, "music_presentation", "musicPresentation")
+            ).wireValue,
+            musicArtworkUrl = UbuntuStorageUrl.rewrite(textOf(row, "music_artwork_url", "musicArtworkUrl").ifBlank { null }),
             musicSource = textOf(row, "music_source", "musicSource").ifBlank { null },
             musicSourceUrl = textOf(row, "music_source_url", "musicSourceUrl").ifBlank { null },
             musicLicense = textOf(row, "music_license", "musicLicense").ifBlank { null },
