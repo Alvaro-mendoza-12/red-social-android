@@ -1,0 +1,37 @@
+{
+  "productCommit": "e729365",
+  "captureUtc": "2026-10-04T11:43:28.939685+00:00",
+  "attempt": 4,
+  "traceSha256": "c53a70d62d65dda678b7d210e110a486ae9683cd59a6c3a195591dce37c23cb5",
+  "traceBytes": 44352408,
+  "analyzerVersion": "Perfetto v58.2-add693d8b",
+  "analyzerBinarySha256": "adfa6bad3d72be3ba9b83fa2b17b69fa13b3ab1cad0f42e52b86188bd5f0f997",
+  "buildType": "debug",
+  "minified": false,
+  "launchState": "COLD",
+  "dataCleared": false,
+  "captureProcedure": "Perfetto acknowledged start, then am start -S -W; 20 seconds; no Android log data source",
+  "processAssociationResolved": true,
+  "frameworkFirstFrameMs": 5391,
+  "perfettoStartupDurationMs": 5391.951266,
+  "timeToInitialDisplayMs": 5385.198112,
+  "timeToFullDisplayMs": 14679.367798,
+  "mainThreadRunningBeforeFirstFrameMs": 4814.390776,
+  "intervalsMs": {
+    "bindApplication": 3028.133267,
+    "dexOpeningNestedInBindApplication": 2396.587229,
+    "activityStart": 603.502999,
+    "firstTraversal": 1271.480883,
+    "composeInitializeNestedInFirstTraversal": 504.826461,
+    "composeRecomposeNestedInFirstTraversal": 274.333384,
+    "measureNestedInFirstTraversal": 281.218692,
+    "recompositionAfterFirstFrame": 3366.058306
+  },
+  "integrityNotices": {
+    "ftraceSetupErrors": 6,
+    "tracedChunksDiscarded": 2,
+    "nonzeroOverwriteOrOverrunStats": 0,
+    "nonzeroErrorOrDataLossSeverityStats": 0
+  },
+  "scope": "One instrumented debug launch with restored session, not a production benchmark or latency SLA. Parent and child intervals overlap and must not be added. CPU and framework slices locate work but do not identify a particular dependency constructor or establish server latency. Full raw trace and device-specific paths remain private."
+}

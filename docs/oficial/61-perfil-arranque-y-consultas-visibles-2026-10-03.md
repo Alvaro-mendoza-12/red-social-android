@@ -610,3 +610,42 @@ espera únicamente al procesamiento SQL.
 Los fixtures propios se conservan porque las pruebas siguen en curso. No se
 publican credenciales, tokens ni logs privados. Este informe no certifica toda la
 aplicación para producción.
+
+## Revisión física adicional — 4 de octubre de 2026
+
+Producto Android `e729365`, código 117 / `9.0.20-debug`, instalado sobre el
+Motorola g04 sin desinstalar ni borrar datos. El SHA-256 de la APK es
+`9536bf4d825f804c8d1e774a3c9732d813b4cce481c131abcbba4a278a64c38d`.
+La compilación conjunta terminó en 17 min 48 s; las 1.264 pruebas unitarias
+de 278 suites y R8 pasaron. No se generó un AAB firmado.
+
+| Comprobación física | Resultado | Alcance |
+|---|---|---|
+| Rechazo de llamadas | Tres correctas, 6,251 s | Las mismas pruebas que antes fallaron: rechazo inmediato, invitación tardía y notificación antigua; cuenta objetivo ausente. |
+| Interfaz | 39 correctas, 45,601 s | Encuestas, enlaces de chat, Social, avisos, visitas de perfil y música. |
+| Medios remotos | Cinco correctas, 15,175 s | Foto 157 ms, perfil 890 ms y preescucha comunitaria 798 ms; archivos propios de QA. |
+| Llamadas/RTC y controles LIVE | 18 correctas, 68,763 s | Invitaciones locales, cierre nativo y controles; no es una sesión entre dos usuarios reales. |
+
+Los 65 casos de esta ronda pasaron sin omisiones. No se suman las repeticiones
+anteriores como cobertura adicional. Ambas IAs revisaron las cuatro capturas
+originales de música; texto ampliado, tres estilos y controles inferiores
+permanecen visibles. Se conservan los fallos y las mediciones anteriores.
+
+La corrección registra el rechazo antes de consultar la sesión, entrega la
+respuesta mediante un receptor independiente de la actividad y limita el
+cierre a la llamada correspondiente. [Reproducción y corrección](65-rechazo-de-llamadas-y-arranque-2026-10-04.md),
+[compilación](VALIDACION_ANDROID_E729365.json),
+[antes](VALIDACION_RECHAZO_LLAMADAS_ROJO.json) y
+[después](VALIDACION_RECHAZO_LLAMADAS_VERDE.json).
+
+Arranque de este APK: dos muestras COLD de 4.924 y 4.396 ms y una WARM de
+4.504 ms hasta el primer fotograma. El objetivo de 2,5–3 s sigue abierto;
+estos tiempos no miden contenido utilizable. Las muestras de medios de esta
+ronda tampoco garantizan audio inferior a un segundo con cualquier canción o
+red. Una captura posterior válida asocia el arranque con el proceso nuevo:
+TTID 5.385 ms y TTFD 14.679 ms con trazado sobre la APK debug; no se mezclan
+con las muestras sin trazado. El análisis localiza carga DEX y trabajo de
+Compose, conserva los avisos de integridad y no atribuye la demora al servidor.
+[Diagnóstico y límites](65-rechazo-de-llamadas-y-arranque-2026-10-04.md).
+Siguen pendientes transmisión real en llamadas/salas/LIVE, FCM físico,
+FPS sostenidos, el AAB firmado, la auditoría restante y paridad web/Vercel.

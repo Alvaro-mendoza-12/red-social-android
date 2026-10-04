@@ -1,0 +1,14 @@
+{
+  "dateLocal": "2026-10-04",
+  "scope": "Public HTTPS /ready from the Windows host, not Android media or SQL execution",
+  "tlsVerification": true,
+  "protocol": "HTTP/1.1",
+  "release": "moment-music-api-f42a349-20261004T005709Z",
+  "earlierIndependentColdSample": {"httpStatus": 200, "connectSeconds": 1.507902, "tlsCompleteSeconds": 2.149519, "totalSeconds": 3.158197},
+  "sameCurlProcessSamples": [
+    {"httpStatus": 200, "newConnections": 1, "connectSeconds": 1.199631, "tlsCompleteSeconds": 1.437208, "firstByteSeconds": 1.745870, "totalSeconds": 1.745956},
+    {"httpStatus": 200, "newConnections": 0, "connectSeconds": 0, "tlsCompleteSeconds": 0, "firstByteSeconds": 0.529157, "totalSeconds": 0.529238},
+    {"httpStatus": 200, "newConnections": 0, "connectSeconds": 0, "tlsCompleteSeconds": 0, "firstByteSeconds": 0.318622, "totalSeconds": 0.318724}
+  ],
+  "notes": ["Timing milestones within one request are cumulative, not additive", "No API or network configuration changes", "SSH required an additional Tailscale check; internal container state was not inspected in this round", "Samples do not certify calls, audio, mobile data, or a universal sub-second response"]
+}

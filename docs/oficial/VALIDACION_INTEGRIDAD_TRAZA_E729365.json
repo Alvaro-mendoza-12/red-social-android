@@ -1,0 +1,52 @@
+{
+  "productCommit": "e729365",
+  "captureUtc": "2026-10-04T11:31:41.893378+00:00",
+  "traceSha256": "3cdbbc44a743600fee5db5076232516d53d67e4ff1065a250b4163372a55f904",
+  "traceBytes": 33430047,
+  "analyzerVersion": "Perfetto v58.2-add693d8b",
+  "bufferBytes": 33554432,
+  "bytesWritten": 59977728,
+  "bytesOverwritten": 26480640,
+  "chunksOverwritten": 809,
+  "processRows": 49,
+  "namedProcessRows": 8,
+  "targetNamedProcessRows": 0,
+  "targetNamedThreadRows": 1,
+  "startupRowsForApp": 0,
+  "usableForStartupAttribution": false,
+  "frameworkFirstFrameMsWhileTracing": 8695,
+  "scope": "Attempt 2 integrity only. The raw capture remains private. This traced sample occurred about six hours after the three untraced launch samples and cannot establish a causal performance regression. Buffer overwrite stats are reported as info by Perfetto and must still be checked.",
+  "subsequentCaptures": [
+    {
+      "attempt": 3,
+      "captureUtc": "2026-10-04T11:36:06.248587+00:00",
+      "traceSha256": "c3eea3309b74c3c4ee1e4f480b4a21c06e6366c82a5e51fb5fc291e8f600dbe0",
+      "traceBytes": 57314565,
+      "frameworkFirstFrameMsWhileTracing": 5891,
+      "startupRowsForApp": 1,
+      "processAssociationResolved": false,
+      "usableForStartupAttribution": false,
+      "nonzeroOverwriteOrOverrunStats": 0,
+      "ftraceSetupErrors": 5,
+      "configWriteIntoFileNoFlush": 1,
+      "tracedChunksDiscarded": 1,
+      "reason": "The new main thread was named for the app, but its process retained zygote64 metadata. The stock display module could not associate that startup with a process."
+    },
+    {
+      "attempt": 4,
+      "captureUtc": "2026-10-04T11:43:28.939685+00:00",
+      "traceSha256": "c53a70d62d65dda678b7d210e110a486ae9683cd59a6c3a195591dce37c23cb5",
+      "traceBytes": 44352408,
+      "frameworkFirstFrameMsWhileTracing": 5391,
+      "startupRowsForApp": 1,
+      "processAssociationResolved": true,
+      "usableForFrameworkStartupAnalysisWithLimitations": true,
+      "nonzeroOverwriteOrOverrunStats": 0,
+      "nonzeroErrorOrDataLossSeverityStats": 0,
+      "ftraceSetupErrors": 6,
+      "tracedChunksDiscarded": 2,
+      "analysis": "VALIDACION_ARRANQUE_TRAZA_E729365.json",
+      "limitations": "Not zero-warning capture or a production benchmark. Retain both notices, previous attempts and the separate untraced measurements; do not add overlapping framework slices."
+    }
+  ]
+}
