@@ -223,6 +223,35 @@ Continúan pendientes las llamadas reales entre dos participantes, entrega
 física FCM, FPS sostenidos en LIVE, AAB firmado, auditoría restante y paridad
 web/Vercel. Este documento no certifica toda la aplicación para producción.
 
+## Continuidad posterior del mismo día
+
+Los apartados anteriores conservan los resultados y pendientes de su checkpoint.
+La [evidencia adicional coordinada](../../VALIDACION_CONTINUIDAD_ADICIONAL.json)
+registra dos comprobaciones posteriores que sí se ejecutaron:
+
+- **Arranque del mismo APK `fed1546`, 14:20 UTC:** Android informó COLD
+  5.881 ms, WARM 3.071 ms y WARM 4.492 ms. En la tercera muestra se había
+  solicitado un inicio COLD y confirmado ausencia del proceso, pero se conserva
+  la clasificación WARM emitida por Android. Son tiempos `TotalTime` de primer
+  fotograma del framework, sin trazado ni borrado de datos. No acreditan el
+  contenido completamente cargado, el objetivo de 2,5–3 s ni una mejora causal
+  atribuible exclusivamente a Home. El protocolo anterior usaba `am start -S`
+  en todas las solicitudes y no permite una comparación causal directa.
+- **Diagnóstico de almacenamiento en Linux, 14:34 UTC:** las tres lecturas de
+  la API local tardaron 5,217 / 19,582 / 2,796 ms en responder encabezados;
+  las de Nginx local, 3,139 / 8,757 / 2,878 ms; y las de la ruta pública
+  desde el servidor, 33,990 / 7,065 / 3,476 ms. La API delegó cada cuerpo
+  mediante `X-Accel-Redirect`; proxy y ruta pública devolvieron 4.096 bytes
+  con HTTP 206. Las nueve mediciones fueron válidas. Es una muestra del
+  servidor usando conexiones HTTP/1.1 nuevas, no del Motorola ni de una red
+  móvil. No reproduce ni demuestra resuelta la demora de 3–5 s de Android.
+
+El diagnóstico identificó la API `f42a349` en ese momento; no demuestra el
+despliegue del candidato `fed1546` ni describe por sí solo la versión actualmente
+en producción. El nuevo trabajo de Sorteos, audio, mensajes y avisos de las
+otras IAs tiene artefactos y registros separados. Sus tiempos y pruebas no se
+atribuyen al APK `fed1546` conservado en este documento.
+
 ## Continuación posterior del diagnóstico
 
 Se completó el protocolo de tres arranques del APK `fed1546` con Gradle inactivo, conservando su SHA-256 y los datos: Android informó COLD 5.881 ms, WARM 3.071 ms y WARM 4.492 ms. Se recuperó SSH por Tailscale y se realizaron nueve lecturas parciales válidas del audio sintético propio desde Linux; la demora móvil anterior no se reprodujo desde ese punto de medición. El servidor seguía en `f42a349` y no se desplegó el candidato.
