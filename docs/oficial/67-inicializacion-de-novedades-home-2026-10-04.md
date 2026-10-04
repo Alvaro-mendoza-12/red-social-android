@@ -108,12 +108,25 @@ de los bordes, controles visibles y barra más delgada. La compilación conjunta
 terminó en **21 min 49 s**, incluido release/R8. Conservó los seis métodos del
 puente de encuestas y no produjo un AAB firmado. El SHA-256 de la APK debug es
 `0baba93b840aa4f485bf26615d4416e2f34c0a0d92f334c9a977ac529d26be76`.
-La regresión física completa continúa abierta: pasaron 52 casos de interfaz,
-pero la primera tanda de 18 casos de llamadas registró 17 correctos y un fallo
-en la comprobación de vencimiento de la invitación. Se conserva ese resultado
-y se investiga su causa; no se presenta la tanda completa como aprobada.
-Ese caso puntual ocurrió mientras Gradle estaba activo; no es una medición
-de rendimiento ni sustituye la tanda física completa.
+Pasaron 52 casos físicos de interfaz, tres de rechazo de llamadas y cinco
+de medios. La primera tanda de 18 casos de llamadas registró 17 correctos y
+un fallo en el vencimiento de una invitación; una segunda tanda, ya sin Gradle
+activo, repitió ese mismo fallo. Los cierres sucedieron antes de los 45 segundos
+de vencimiento: a los 10,6 y 37,8 segundos, respectivamente. La causa de esos
+dos cierres no está confirmada y no se atribuye a la compilación concurrente.
+
+Sin cambiar el código, el caso aislado pasó en 46,951 s. Una ejecución con
+depurador pasó los 18 casos en 70,459 s y capturó el cierre correcto por
+`closeIfCancelled`, desde el observador de cancelación, tras 45,679 s.
+Finalmente, una tanda normal, sin depurador ni Gradle activo, pasó los
+**18 casos en 78,238 s**. Esa repetición acredita el resultado observado;
+no borra los fallos anteriores ni confirma que su causa esté resuelta.
+
+Los 78 casos físicos del checkpoint tienen resultados aprobados en sus
+últimas ejecuciones separadas. Usan invitaciones sintéticas propias y estado
+RTC local: no son llamadas entre dos participantes, entrega FCM, medida de
+latencia de voz ni FPS de LIVE. Los 52 casos de interfaz se ejecutaron mientras
+R8 estaba activo y tampoco se usan como medida de rendimiento.
 
 El contrato de música de la API pasó también una comprobación con PostgreSQL
 local real y seis comprobaciones de HTTP/SQL, con almacenamiento, autenticación
@@ -132,6 +145,38 @@ no equivale a un despliegue; sigue pendiente el acceso SSH.
 [Continuidad y paquete exacto](../../VALIDACION_CONTINUIDAD_MOMENTOS_API_FED1546.json).
 
 ## Referencia de rendimiento y límites
+
+### Audio remoto: demora todavía abierta
+
+Con Gradle inactivo, las pruebas de medios del Motorola observaron 158 ms
+para cargar una foto sintética propia de Momentos, 5.270 ms para mostrar
+«Pausar» en audio de Perfil y 3.445 ms en la vista previa de Comunidad.
+La aparición de ese control corresponde al estado de reproducción de Media3;
+no mide el primer sonido audible ni permite comparar estos tiempos con una
+medición de salida acústica.
+
+La traza de transporte muestra ambas solicitudes de audio sobre la misma
+conexión HTTP/2, sin nueva resolución DNS ni negociación TLS. Desde el envío
+de encabezados hasta los encabezados de respuesta pasaron 5.026 ms y 2.979 ms.
+En estas dos muestras la espera está principalmente antes de recibir la
+respuesta. No distingue por sí sola entre aplicación del servidor, base de
+datos, proxy público y tránsito de red.
+
+Tres lecturas públicas consecutivas de 4 KiB desde el escritorio recibieron
+HTTP 206 y tardaron 6.049, 1.166 y 486 ms en recibir encabezados. Son muestras
+de otro cliente, no del Motorola ni del origen local del servidor. Confirman
+variación en esa ruta pública y no acreditan tiempos inferiores a un segundo.
+La comparación con el origen requiere recuperar el acceso SSH. Los registros
+publicables no contienen direcciones del medio, tokens ni credenciales.
+[Mediciones y alcance](../../VALIDACION_CONTINUIDAD_MOMENTOS_API_FED1546.json).
+
+La siguiente medición de audio debe distinguir solicitud, encabezados,
+preparación y avance del audio. Media3 ofrece `onAudioPositionAdvancing`; su
+marca de inicio usa tiempo de sistema, por lo que no debe restarse directamente
+de un reloj monotónico. Este diagnóstico adicional todavía no está aplicado.
+[Contrato oficial de AnalyticsListener](https://developer.android.com/reference/androidx/media3/exoplayer/analytics/AnalyticsListener).
+
+### Inicio de la aplicación
 
 El APK anterior `e729365`, medido sin trazado, registró primer fotograma
 COLD 4.924 ms, WARM 4.504 ms y COLD 4.396 ms. En una captura instrumentada

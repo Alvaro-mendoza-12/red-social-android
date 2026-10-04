@@ -44,7 +44,146 @@
   "limits": [
     "Tailscale SSH verification pending; this is not deployment evidence",
     "Linux-only fixtures remain omitted in the prior Windows full run",
-    "Android fed1546 build and physical validation are separate pending work",
+    "Android fed1546 was built and installed; separate physical checkpoint below. Subsequent uncommitted raffle changes are excluded from the APK and prepared API archive.",
     "No first-audio latency, cross-network call or sustained LIVE FPS measured by these tests"
-  ]
+  ],
+  "publicAudioInvestigation": {
+    "physicalMediaTests": {
+      "tests": 5,
+      "passed": true,
+      "timings": [
+        {
+          "name": "moment_photo",
+          "readyMs": 158
+        },
+        {
+          "name": "profile_audio",
+          "readyMs": 5270
+        },
+        {
+          "name": "community_audio_preview",
+          "readyMs": 3445
+        }
+      ],
+      "measurement": "Audio: time until native Pause control appears; not first audible sound. Photo: image load callback. Owned synthetic remote media; host Gradle idle."
+    },
+    "androidTransport": {
+      "protocol": "h2",
+      "sameConnectionObserved": true,
+      "profileRequestHeadersToResponseHeadersMs": 5026,
+      "communityRequestHeadersToResponseHeadersMs": 2979,
+      "logSha256": "737fe2fd9ca898baaa3387a0a3f6a6ff59096fb48b08a06cd93dc92c730d144d",
+      "scope": "Two observed calls on a reused connection without new DNS/TLS; does not isolate server application, database, public edge or network transit."
+    },
+    "desktopRangeReads": {
+      "recordedAtUtc": "2026-10-04T13:44:29.855Z",
+      "sourceCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+      "scope": "Desktop Node fetch of owned public audio, three sequential 4KiB range reads; not Android timing, not origin-local timing and not mobile-network validation",
+      "objectRef": "5ecb9da7e34c8a76b5f8f0a00cf855c6a2af5625ffd01f24920f5951c46d8ef4",
+      "requestUrlOrSecretsIncluded": false,
+      "samples": [
+        {
+          "attempt": 1,
+          "status": 206,
+          "headersMs": 6049,
+          "totalMs": 6250,
+          "bytes": 4096,
+          "contentRangePresent": true,
+          "serverTiming": null
+        },
+        {
+          "attempt": 2,
+          "status": 206,
+          "headersMs": 1166,
+          "totalMs": 1169,
+          "bytes": 4096,
+          "contentRangePresent": true,
+          "serverTiming": null
+        },
+        {
+          "attempt": 3,
+          "status": 206,
+          "headersMs": 486,
+          "totalMs": 486,
+          "bytes": 4096,
+          "contentRangePresent": true,
+          "serverTiming": null
+        }
+      ]
+    },
+    "status": "Latency remains open. Public header delay varies on desktop too. Requires local-origin vs public comparison and audio-advancement measurement."
+  },
+  "updatedAtUtc": "2026-10-04T13:57:08.299373+00:00",
+  "androidPhysicalCheckpoint": {
+    "productCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+    "apkSha256": "0baba93b840aa4f485bf26615d4416e2f34c0a0d92f334c9a977ac529d26be76",
+    "unitTests": {
+      "tests": 1294,
+      "suites": 282,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "releaseR8Passed": true,
+    "signedAabProduced": false,
+    "latestSeparatePhysicalRuns": {
+      "interface": {
+        "tests": 52,
+        "passed": true,
+        "elapsedSeconds": 97.237,
+        "logSha256": "8aadc0eeb4ff2b38902aec60f5c321bfa23319f920ebd7a7613e64a57fb31f93"
+      },
+      "callDecline": {
+        "tests": 3,
+        "passed": true,
+        "elapsedSeconds": 11.092,
+        "logSha256": "f93ce818f00cd63ef4a480f7866a62c90ec1c69fc40d273cf87718de4bcd03e9"
+      },
+      "media": {
+        "tests": 5,
+        "passed": true,
+        "elapsedSeconds": 20.903,
+        "logSha256": "b76380026c860775999d91066312318aa0a06c8be783007f574834304a793f64"
+      },
+      "callsAndLiveLayout": {
+        "tests": 18,
+        "passed": true,
+        "elapsedSeconds": 78.238,
+        "logSha256": "ae0ab05cba877b72f7438573e67b5b75202465d09f8f8e3950579d941e81b2a0"
+      }
+    },
+    "previousCallBatchFailuresPreserved": [
+      {
+        "tests": 18,
+        "passed": false,
+        "elapsedSeconds": 38.253,
+        "logSha256": "30003bfaea4a005ebf93fa434dc13b2504b93cfa4695d4659624bd27826b2990"
+      },
+      {
+        "tests": 18,
+        "passed": false,
+        "elapsedSeconds": 59.715,
+        "logSha256": "933809d90d044cfe9218fa9953da9352eab2fe1de68b5151e5e23c16d459870b"
+      }
+    ],
+    "unchangedTimeoutIsolatedRun": {
+      "tests": 1,
+      "passed": true,
+      "elapsedSeconds": 46.951,
+      "logSha256": "1f7664dfba452708084067562af4848a7220a61b793aeba9a89b144f63d3ac5d"
+    },
+    "diagnosticDebuggerRun": {
+      "tests": 18,
+      "passed": true,
+      "elapsedSeconds": 70.459,
+      "logSha256": "c6db24bf75f06e8890fcd0ac588b8058fe2c6df7e96f94c1ef967898dc0a57f5"
+    },
+    "observedDiagnosticClose": {
+      "elapsedFromActivityCreateMs": 45679,
+      "path": "IncomingCallActivity.closeIfCancelled from observeCancellation",
+      "scope": "Successful diagnostic invocation only; early failures not reproduced under debugger"
+    },
+    "earlyCallClosuresCauseConfirmed": false,
+    "scope": "78 cases passed in the latest separate physical runs. Earlier two failures remain unresolved. Synthetic owned invitations and local RTC state; no remote call signaling, FCM, cross-network validation, acoustic delay or sustained LIVE FPS. The 52 UI cases ran during R8 and are not performance measurements."
+  }
 }
