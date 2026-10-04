@@ -34,7 +34,8 @@ class MomentHighlightMapperTest {
     @Test fun `soundtrack mix attribution overlay and expiry survive both mappings`() {
         val original = Json.parseToJsonElement("""{"media_url":"video","media_type":"video",
             "music_audio_url":"song","music_url":"legacy","music_id":"song-id","music_title":"Title",
-            "music_artist":"Artist","music_source":"community","music_source_url":"source",
+            "music_artist":"Artist","music_presentation":"label","music_artwork_url":"https://example.test/cover.jpg",
+            "music_source":"community","music_source_url":"source",
             "music_license":"CC","music_license_url":"license","music_start_ms":30000,
             "music_duration_ms":25000,"music_end_ms":55000,"music_volume":0.8,"original_audio_volume":0.3,
             "music_fade_in_ms":500,"music_fade_out_ms":600,"duck_original_audio":true,"music_embedded":true,
@@ -47,6 +48,8 @@ class MomentHighlightMapperTest {
         assertEquals("song-id", moment.musicId)
         assertEquals("Title", moment.musicTitle)
         assertEquals("Artist", moment.musicArtist)
+        assertEquals("label", moment.musicPresentation)
+        assertEquals("https://example.test/cover.jpg", moment.musicArtworkUrl)
         assertEquals("community", moment.musicSource)
         assertEquals("source", moment.musicSourceUrl)
         assertEquals("CC", moment.musicLicense)

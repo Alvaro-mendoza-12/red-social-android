@@ -34,6 +34,8 @@ data class MomentHighlightItemPreview(
     val musicId: String? = null,
     val musicTitle: String? = null,
     val musicArtist: String? = null,
+    val musicPresentation: String = "card",
+    val musicArtworkUrl: String? = null,
     val musicSource: String? = null,
     val musicSourceUrl: String? = null,
     val musicLicense: String? = null,

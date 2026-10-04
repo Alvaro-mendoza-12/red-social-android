@@ -30,6 +30,8 @@ internal fun JsonObject.toHighlightItemPreview(moment: JsonObject): MomentHighli
         musicId = moment.string("music_id"),
         musicTitle = moment.string("music_title"),
         musicArtist = moment.string("music_artist"),
+        musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(moment.string("music_presentation")).wireValue,
+        musicArtworkUrl = moment.string("music_artwork_url"),
         musicSource = moment.string("music_source"),
         musicSourceUrl = moment.string("music_source_url"),
         musicLicense = moment.string("music_license"),

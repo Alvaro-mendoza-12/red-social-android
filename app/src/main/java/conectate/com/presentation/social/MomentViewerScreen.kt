@@ -1436,6 +1436,14 @@ fun MomentContent(
                 }
             }
         }
+        if (!moment.resolvedMusicAudioUrl.isNullOrBlank()) {
+            MomentMusicPresentationPreview(
+                presentation = conectate.com.data.model.MomentMusicPresentation.fromWire(moment.musicPresentation),
+                title = moment.musicTitle.orEmpty(), artist = moment.musicArtist,
+                artworkUrl = moment.musicArtworkUrl,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, bottom = 170.dp),
+            )
+        }
         MomentBackgroundMusic(
             moment = moment,
             isVisible = isVisible,

@@ -32,6 +32,8 @@ data class Moment(
     @SerialName("music_id") val musicId: String? = null,
     @SerialName("music_title") val musicTitle: String? = null,
     @SerialName("music_artist") val musicArtist: String? = null,
+    @SerialName("music_presentation") val musicPresentation: String = "card",
+    @SerialName("music_artwork_url") val musicArtworkUrl: String? = null,
     @SerialName("music_source") val musicSource: String? = null,
     @SerialName("music_source_url") val musicSourceUrl: String? = null,
     @SerialName("music_license") val musicLicense: String? = null,

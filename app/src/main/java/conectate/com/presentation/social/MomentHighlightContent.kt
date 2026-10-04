@@ -11,6 +11,7 @@ internal fun MomentHighlightItemPreview.asMoment(): Moment = Moment(
     overlayScale = overlayScale, overlayX = overlayX, overlayY = overlayY,
     musicUrl = musicUrl, musicAudioUrl = musicAudioUrl, musicId = musicId,
     musicTitle = musicTitle, musicArtist = musicArtist, musicSource = musicSource,
+    musicPresentation = musicPresentation, musicArtworkUrl = musicArtworkUrl,
     musicSourceUrl = musicSourceUrl, musicLicense = musicLicense, musicLicenseUrl = musicLicenseUrl,
     musicStartMs = musicStartMs, musicDurationMs = musicDurationMs, musicEndMs = musicEndMs,
     musicVolume = musicVolume, originalAudioVolume = originalAudioVolume,

@@ -396,6 +396,8 @@ class MomentRepository @Inject constructor(
                 musicId = json["music_id"]?.jsonPrimitive?.contentOrNull,
                 musicTitle = json["music_title"]?.jsonPrimitive?.contentOrNull,
                 musicArtist = json["music_artist"]?.jsonPrimitive?.contentOrNull,
+                musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(json["music_presentation"]?.jsonPrimitive?.contentOrNull).wireValue,
+                musicArtworkUrl = UbuntuStorageUrl.rewrite(json["music_artwork_url"]?.jsonPrimitive?.contentOrNull),
                 musicSource = json["music_source"]?.jsonPrimitive?.contentOrNull,
                 musicSourceUrl = json["music_source_url"]?.jsonPrimitive?.contentOrNull,
                 musicLicense = json["music_license"]?.jsonPrimitive?.contentOrNull,
@@ -507,6 +509,8 @@ class MomentRepository @Inject constructor(
                         musicId = json["music_id"]?.jsonPrimitive?.contentOrNull,
                         musicTitle = json["music_title"]?.jsonPrimitive?.contentOrNull,
                         musicArtist = json["music_artist"]?.jsonPrimitive?.contentOrNull,
+                musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(json["music_presentation"]?.jsonPrimitive?.contentOrNull).wireValue,
+                musicArtworkUrl = UbuntuStorageUrl.rewrite(json["music_artwork_url"]?.jsonPrimitive?.contentOrNull),
                         musicSource = json["music_source"]?.jsonPrimitive?.contentOrNull,
                         musicSourceUrl = json["music_source_url"]?.jsonPrimitive?.contentOrNull,
                         musicLicense = json["music_license"]?.jsonPrimitive?.contentOrNull,
@@ -646,6 +650,8 @@ class MomentRepository @Inject constructor(
                             musicId = json["music_id"]?.jsonPrimitive?.contentOrNull,
                             musicTitle = json["music_title"]?.jsonPrimitive?.contentOrNull,
                             musicArtist = json["music_artist"]?.jsonPrimitive?.contentOrNull,
+                musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(json["music_presentation"]?.jsonPrimitive?.contentOrNull).wireValue,
+                musicArtworkUrl = UbuntuStorageUrl.rewrite(json["music_artwork_url"]?.jsonPrimitive?.contentOrNull),
                             musicSource = json["music_source"]?.jsonPrimitive?.contentOrNull,
                             musicSourceUrl = json["music_source_url"]?.jsonPrimitive?.contentOrNull,
                             musicLicense = json["music_license"]?.jsonPrimitive?.contentOrNull,
@@ -693,6 +699,8 @@ class MomentRepository @Inject constructor(
         musicTitle: String? = null,
         musicId: String? = null,
         musicArtist: String? = null,
+        musicPresentation: String = "card",
+        musicArtworkUrl: String? = null,
         musicSource: String? = null,
         musicSourceUrl: String? = null,
         musicLicense: String? = null,
@@ -914,6 +922,8 @@ class MomentRepository @Inject constructor(
                 effectiveMusicSourceUrl?.takeIf { hasMusic && it.isNotBlank() }?.let { put("music_source_url", it) }
                 effectiveMusicLicense?.takeIf { hasMusic }?.let { put("music_license", it) }
                 effectiveMusicLicenseUrl?.takeIf { hasMusic && it.startsWith("https://") }?.let { put("music_license_url", it) }
+                put("music_presentation", conectate.com.data.model.MomentMusicPresentation.fromWire(musicPresentation).wireValue)
+                musicArtworkUrl?.takeIf { hasMusic && it.startsWith("https://") }?.let { put("music_artwork_url", it) }
                 put("music_start_ms", safeMusicStartMs)
                 put("music_duration_ms", safeMusicDurationMs)
                 put("music_end_ms", safeMusicEndMs)
@@ -954,6 +964,8 @@ class MomentRepository @Inject constructor(
                     musicTitle = effectiveMusicTitle,
                     musicId = effectiveMusicId,
                     musicArtist = effectiveMusicArtist,
+                    musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(musicPresentation).wireValue,
+                    musicArtworkUrl = musicArtworkUrl,
                     musicSource = effectiveMusicSource,
                     musicSourceUrl = effectiveMusicSourceUrl,
                     musicLicense = effectiveMusicLicense,

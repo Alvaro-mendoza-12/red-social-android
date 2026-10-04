@@ -304,6 +304,7 @@ fun CreateMomentScreen(
                             musicVolume = previous.musicVolume,
                             originalAudioVolume = previous.originalAudioVolume,
                             duckOriginalAudio = previous.duckOriginalAudio,
+                            presentation = previous.presentation,
                         )
                     } ?: selected
                 }
@@ -475,6 +476,8 @@ fun CreateMomentScreen(
                                         } ?: selection.track.id
                                     },
                                     musicArtist = musicSelection?.track?.artist,
+                                    musicPresentation = musicSelection?.presentation?.wireValue ?: "card",
+                                    musicArtworkUrl = musicSelection?.track?.artworkUrl,
                                     musicSource = musicSelection?.let { selection ->
                                         if (selection.localUri != null) NOVVIN_LOCAL_MOMENT_MUSIC_SOURCE
                                         else selection.track.source
@@ -890,13 +893,14 @@ private fun MomentEditorView(
         }
 
         if (musicSelection != null) {
-            MomentMusicPreviewChip(
-                title = "${musicSelection.track.title} — ${musicSelection.track.artist}",
-                durationMs = musicSelection.endMs - musicSelection.startMs,
-                onClick = { showMusicDialog = true },
+            MomentMusicPresentationPreview(
+                presentation = musicSelection.presentation,
+                title = musicSelection.track.title,
+                artist = musicSelection.track.artist,
+                artworkUrl = musicSelection.track.artworkUrl,
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 62.dp)
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 24.dp, end = 24.dp, bottom = 170.dp)
             )
         }
         if (musicSelection != null && !showMusicDialog && !suspendMusicPlayback) {
@@ -1168,36 +1172,6 @@ private fun MomentEditorToolButton(
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(20.dp))
-        }
-    }
-}
-
-@Composable
-private fun MomentMusicPreviewChip(
-    title: String,
-    durationMs: Long,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier,
-        color = Color.Black.copy(alpha = 0.66f),
-        contentColor = Color.White,
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f))
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.MusicNote, null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(
-                "$title · ${formatMomentMusicDuration(durationMs)}",
-                maxLines = 1,
-                style = MaterialTheme.typography.labelMedium,
-            )
         }
     }
 }
