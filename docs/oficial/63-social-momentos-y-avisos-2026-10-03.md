@@ -65,10 +65,10 @@ Son capturas del APK `07e4989` en el emulador, con canciones y archivos propios 
 
 El fragmento y los estilos se desplazan cuando hace falta; escuchar y confirmar siguen en la barra inferior. Las portadas ausentes muestran un símbolo musical. Solo música evita colocar una tarjeta sobre la imagen publicada.
 
-La primera captura del diálogo tras cambiar de estilo omitía barras que las aserciones de interfaz sí encontraban. Se corrigió exclusivamente el helper de pruebas en `2a2b9bf` para esperar la composición y capturar la pantalla completa mediante UI Automation. El APK del producto `07e4989` conserva su hash. Las capturas publicadas son las nuevas de 1.080 × 2.400, con las barras completas; los resultados originales se conservan localmente y la incidencia de captura quedó registrada en la coordinación.
+La lectura de varias capturas juntas en la herramienta de inspección pareció omitir sus barras. La revisión de cada PNG por separado y la comparación de sus regiones confirmaron que sí estaban completas; no se comprobó un defecto de interfaz. El helper de pruebas `2a2b9bf` captura toda la pantalla mediante UI Automation; el ajuste posterior `bfacfd5` espera además la entrega del fotograma por el renderizador. Estos ajustes solo afectan las pruebas. El APK del producto `07e4989` conserva su hash. Las capturas del emulador publicadas son de 1.080 × 2.400 y los resultados de ambas rondas se conservan.
 
 ## Entrega móvil pendiente
 
 El APK debug revisado está instalado en el emulador. Falta generar y comprobar el AAB firmado que el usuario prepara manualmente en Android Studio antes de una nueva entrega a Google Play. Esta ronda no publica el APK ni cambia el número de versión. La validación de emulador no cubre todos los modelos de teléfono.
 
-La revisión se realiza en el emulador elegido por el usuario. No constituye una certificación externa de toda la aplicación ni acredita todos los modelos de teléfono.
+La revisión inicial se realizó en el emulador. El usuario conectó después su Moto g04: pasaron 39 pruebas de interfaz y cinco de medios, con revisión visual coordinada. La suite adicional de llamadas/LIVE pasó 18/18 al repetirse; su fallo inicial se conserva con sus límites de diagnóstico. [Informe físico](64-validacion-moto-g04-2026-10-03.md). No constituye una certificación externa de toda la aplicación ni acredita todos los modelos de teléfono.

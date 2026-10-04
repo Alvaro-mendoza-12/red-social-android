@@ -1,0 +1,178 @@
+{
+  "utc": "2026-10-04T04:55:29.726699+00:00",
+  "androidSourceCommit": "07e4989db2957abbad2f219e50e7be60d6876419",
+  "device": {
+    "model": "Moto g04",
+    "android": "14",
+    "api": 34,
+    "display": "720x1612",
+    "densityDpi": 280
+  },
+  "applicationId": "conectate.com",
+  "versionName": "9.0.20-debug",
+  "versionCode": 117,
+  "productApkSha256": "86b89eb3cc98b07e950b077e463e82d53c394ad1eb2f03b533cb193731db3eac",
+  "deviceDataCleared": false,
+  "compatibleUpdateInstalled": true,
+  "nativeUi": {
+    "utc": "2026-10-04T04:42:29.281251+00:00",
+    "androidSourceCommit": "07e4989db2957abbad2f219e50e7be60d6876419",
+    "embeddedBuildCommit": "07e4989",
+    "expectedTests": 39,
+    "device": {
+      "model": "Moto g04",
+      "android": "14",
+      "api": 34,
+      "display": "720x1612",
+      "densityDpi": 280
+    },
+    "testArtifactCommit": "2a2b9bf",
+    "deviceType": "physical",
+    "passed": true,
+    "classes": [
+      "conectate.com.presentation.messages.PollMessageUiTest",
+      "conectate.com.presentation.profile.SystemAnnouncementAdminFormTest",
+      "conectate.com.presentation.profile.ProfileVisitorsContentTest",
+      "conectate.com.presentation.surveys.SurveyWorkbenchTest",
+      "conectate.com.presentation.surveys.SurveyDocumentContractTest",
+      "conectate.com.presentation.surveys.SurveyApiIntegrationTest",
+      "conectate.com.presentation.messages.ChatLinkUiTest",
+      "conectate.com.data.local.ProfileCacheMigrationTest",
+      "conectate.com.presentation.social.SocialFeedPagingUiTest",
+      "conectate.com.presentation.profile.SystemAnnouncementDialogTest",
+      "conectate.com.presentation.social.MomentMusicPickerUiTest",
+      "conectate.com.presentation.social.MomentMusicPresentationUiTest"
+    ],
+    "transport": "HTTPS Android to disposable local API and PostgreSQL for survey integration",
+    "scope": "Native Social paging, notice controls, music selection and previous mobile regression. Remote audio playback measured separately.",
+    "elapsedSeconds": 88.235,
+    "omitted": false,
+    "transportNetwork": "WiFi for remote media; USB reverse for exclusive local HTTPS survey fixture",
+    "installation": "Same matching debug signature, install -r -t, existing package data retained"
+  },
+  "remoteMedia": {
+    "utc": "2026-10-04T04:43:43.177698+00:00",
+    "embeddedBuildCommit": "07e4989",
+    "expectedTests": 5,
+    "device": {
+      "model": "Moto g04",
+      "android": "14",
+      "api": 34
+    },
+    "testArtifactCommit": "2a2b9bf",
+    "deviceType": "physical",
+    "passed": true,
+    "omitted": false,
+    "timings": [
+      {
+        "name": "moment_photo",
+        "readyMs": 1139
+      },
+      {
+        "name": "profile_audio",
+        "readyMs": 563
+      },
+      {
+        "name": "community_audio_preview",
+        "readyMs": 1191
+      }
+    ],
+    "scope": "Actual Android playback/photo tests using owned remote synthetic media; host Gradle idle; audio timeout remains 10 seconds",
+    "elapsedSeconds": 16.201
+  },
+  "callsAndLive": {
+    "utc": "2026-10-04T04:53:40.225695+00:00",
+    "embeddedBuildCommit": "07e4989",
+    "testArtifactCommit": "bfacfd5",
+    "device": "Moto g04 Android 14",
+    "elapsedWallSeconds": 87.344,
+    "passed": true,
+    "tests": 18,
+    "scope": "Own fake local invitation; no real outgoing call or human session changes",
+    "elapsedSeconds": 80.439,
+    "omitted": false,
+    "passedTests": 18,
+    "failedTests": 0,
+    "initialAttempt": {
+      "utc": "2026-10-04T04:46:14.573722+00:00",
+      "androidSourceCommit": "07e4989db2957abbad2f219e50e7be60d6876419",
+      "embeddedBuildCommit": "07e4989",
+      "expectedTests": 18,
+      "device": {
+        "model": "Moto g04",
+        "android": "14",
+        "api": 34,
+        "display": "720x1612",
+        "densityDpi": 280
+      },
+      "testArtifactCommit": "2a2b9bf",
+      "deviceType": "physical",
+      "passed": false,
+      "classes": [
+        "conectate.com.data.webrtc.MediaTeardownRegressionTest",
+        "conectate.com.presentation.calls.IncomingCallScreenStateTest",
+        "conectate.com.presentation.calls.IncomingCallCancellationTest",
+        "conectate.com.presentation.calls.CallInvitationOverlayHandlingTest",
+        "conectate.com.presentation.live.LiveViewerOverlayLayoutTest"
+      ],
+      "transport": "HTTPS Android to disposable local API and PostgreSQL for survey integration",
+      "scope": "Owned local fake call invitations, cancellation and RTC teardown; LIVE layout only, no calls or sessions with other people.",
+      "elapsedSeconds": 40.548,
+      "omitted": false,
+      "completedTests": 18,
+      "passedTests": 17,
+      "failedTests": 1,
+      "failure": {
+        "test": "IncomingCallCancellationTest.theRingTimeoutAlsoClosesTheAnswerScreen",
+        "message": "Timeout did not mark the expired invitation",
+        "screenClosed": true,
+        "cancellationMarkPresent": false,
+        "diagnosis": "In progress; not waived"
+      }
+    },
+    "isolatedRetry": {
+      "utc": "2026-10-04T04:51:25.306726+00:00",
+      "embeddedBuildCommit": "07e4989",
+      "testArtifactCommit": "bfacfd5",
+      "device": "Moto g04 Android 14",
+      "elapsedWallSeconds": 54.219,
+      "passed": true,
+      "tests": 1,
+      "scope": "Own fake local invitation; no real outgoing call or human session changes"
+    },
+    "initialFailureRootCause": "Not established; original first batch did not collect the activity timeline. No product fix is claimed."
+  },
+  "startup": {
+    "utc": "2026-10-04T04:49:09.366539+00:00",
+    "embeddedBuildCommit": "07e4989",
+    "device": {
+      "model": "Moto g04",
+      "android": "14",
+      "api": 34
+    },
+    "rounds": [
+      {
+        "round": 1,
+        "launchState": "COLD",
+        "frameworkFirstFrameMs": 4870,
+        "adbWaitMs": 4884
+      },
+      {
+        "round": 2,
+        "launchState": "WARM",
+        "frameworkFirstFrameMs": 4310,
+        "adbWaitMs": 4316
+      },
+      {
+        "round": 3,
+        "launchState": "COLD",
+        "frameworkFirstFrameMs": 4395,
+        "adbWaitMs": 4401
+      }
+    ],
+    "totalPssKiB": 274822,
+    "scope": "Three requested force-stop launches with existing app data retained; Android classified two COLD and one WARM; framework first frame only, not time to usable feed or fully drawn content; no scrolling workload measured",
+    "dataCleared": false
+  },
+  "scope": "Physical phone UI and playback plus local RTC teardown/invitation/LIVE layout, not a live two-user video call or Play signed-release certification."
+}

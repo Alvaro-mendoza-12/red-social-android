@@ -8,6 +8,8 @@
 
 **Alcance:** Android, API de Encuestas, PostgreSQL, exportaciones, adjuntos y coordinación con la auditoría móvil existente.
 
+**Validación física posterior:** el usuario conectó un Moto g04 con Android 14. Pasaron las 39 pruebas de interfaz, incluido el flujo de Encuestas por HTTPS, y cinco de medios. Las pruebas adicionales de llamadas, su incidencia inicial y los límites se registran en [Validación Moto g04](../64-validacion-moto-g04-2026-10-03.md). La fila de teléfono físico de la tabla histórica describe el checkpoint anterior.
+
 Este informe reúne evidencia reproducible. No declara que toda la aplicación esté libre de errores ni acredita una certificación externa. La especificación completa del producto sigue en `ESPECIFICACION_FUNCIONAL_Y_TECNICA.md`; su alcance pendiente se enumera en `IMPLEMENTACION_ANDROID.md`.
 
 ## Entrega actual y comprobaciones posteriores
