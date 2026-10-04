@@ -62,6 +62,7 @@ import conectate.com.data.model.CallInvite
 import conectate.com.data.repository.CallRepository
 import conectate.com.data.service.IncomingCallAccountRouter
 import conectate.com.data.service.CallCancellationGuard
+import conectate.com.data.service.IncomingCallActionReceiver
 import conectate.com.util.notificationAccountTargetFromIntent
 import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.common.toUserFacingMessage
@@ -316,17 +317,8 @@ class IncomingCallActivity : ComponentActivity() {
         if (closeIfCancelled(invite)) return
         if (!terminalActionStarted.compareAndSet(false, true)) return
         handlingState.value = true
-        lifecycleScope.launch {
-            clearIncomingCallNotification(invite.callId)
-            IncomingCallForegroundService.stop(this@IncomingCallActivity, invite.callId)
-            runCatching {
-                withTimeout(8_000L) { accountRouter.get().decline(invite, notificationAccountTargetFromIntent(intent)).getOrThrow() }
-            }.onFailure {
-                if (it is CancellationException && it !is kotlinx.coroutines.TimeoutCancellationException) throw it
-                AppFeedbackBus.showError("Se cerró la llamada, pero no se pudo avisar al llamante.")
-            }
-            finish()
-        }
+        IncomingCallActionReceiver.decline(this, invite, notificationAccountTargetFromIntent(intent))
+        finish()
     }
 
     private fun navigateToCall(callId: String) {

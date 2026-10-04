@@ -664,12 +664,22 @@ class CallRepository @Inject constructor(
     }
 
     suspend fun declineIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
+        callCancellationGuard.mark(invite.callId)
+        IncomingCallForegroundService.stop(context, invite.callId)
+        val incoming = _incomingInvite.value
+        if (incoming?.callId.equals(invite.callId, ignoreCase = true) &&
+            _incomingInvite.compareAndSet(incoming, null)) {
+            callTonePlayer.stopIncomingRingtone()
+        }
+        synchronized(this@CallRepository) {
+            if (preparedIncomingSocket?.context?.callId.equals(invite.callId, ignoreCase = true) ||
+                preparedIncomingSocketFailureContext?.callId.equals(invite.callId, ignoreCase = true)) {
+                discardPreparedIncomingSocket()
+            }
+        }
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
 
-        _incomingInvite.value = null
-        discardPreparedIncomingSocket()
-        callTonePlayer.stopAll()
         try {
             recordIncomingInviteOutcome(invite, "Llamada rechazada")
         } catch (error: Exception) {

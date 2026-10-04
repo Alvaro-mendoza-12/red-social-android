@@ -7,7 +7,9 @@ import android.content.Intent
 import conectate.com.data.model.CallInvite
 import conectate.com.data.repository.CallRepository
 import conectate.com.presentation.calls.IncomingCallActivity
+import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.services.IncomingCallForegroundService
+import conectate.com.util.NotificationAccountTarget
 import conectate.com.util.notificationAccountTargetFromIntent
 import conectate.com.util.putNotificationAccountTarget
 import dagger.hilt.EntryPoint
@@ -50,6 +52,11 @@ class IncomingCallActionReceiver : BroadcastReceiver() {
             return
         }
 
+        if (intent.action != ACTION_DECLINE) return
+        // Local dismissal must complete before session lookup or network work.
+        // A late invitation then cannot reopen the screen or auto-answer.
+        dismissRejectedCall(appContext, invite.callId)
+        val showDeliveryFeedback = intent.getBooleanExtra(EXTRA_DELIVERY_FEEDBACK, false)
         val pendingResult = goAsync()
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -59,17 +66,15 @@ class IncomingCallActionReceiver : BroadcastReceiver() {
                     IncomingCallReceiverEntryPoint::class.java
                 )
 
-                val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-                notificationManager?.cancel(invite.callId.hashCode())
-                IncomingCallForegroundService.stop(appContext)
-
-                if (intent.action == ACTION_DECLINE) {
-                    withTimeout(8_000L) {
-                        entryPoint.incomingCallAccountRouter().decline(invite, notificationAccountTargetFromIntent(intent))
-                    }.onFailure { android.util.Log.w("IncomingCallAction", "Could not deliver decline response") }
+                withTimeout(8_000L) {
+                    entryPoint.incomingCallAccountRouter().decline(invite, notificationAccountTargetFromIntent(intent))
+                }.onFailure {
+                    android.util.Log.w("IncomingCallAction", "Could not deliver decline response")
+                    if (showDeliveryFeedback) AppFeedbackBus.showError("Se cerró la llamada, pero no se pudo avisar al llamante.")
                 }
             } catch (_: Exception) {
                 android.util.Log.w("IncomingCallAction", "Decline response interrupted")
+                if (showDeliveryFeedback) AppFeedbackBus.showError("Se cerró la llamada, pero no se pudo avisar al llamante.")
             } finally {
                 pendingResult.finish()
             }
@@ -79,6 +84,35 @@ class IncomingCallActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_ACCEPT = "conectate.com.action.ACCEPT_CALL"
         const val ACTION_DECLINE = "conectate.com.action.DECLINE_CALL"
+        private const val EXTRA_DELIVERY_FEEDBACK = "decline_delivery_feedback"
+
+        /** The receiver owns delivery, so closing the activity cannot cancel the reply. */
+        fun decline(context: Context, invite: CallInvite, accountTarget: NotificationAccountTarget?) {
+            val appContext = context.applicationContext
+            dismissRejectedCall(appContext, invite.callId)
+            appContext.sendBroadcast(Intent(appContext, IncomingCallActionReceiver::class.java).apply {
+                action = ACTION_DECLINE
+                putExtra(EXTRA_DELIVERY_FEEDBACK, true)
+                putExtra("call_id", invite.callId)
+                putExtra("caller_user_id", invite.callerUserId)
+                putExtra("caller_name", invite.callerName)
+                putExtra("caller_avatar_url", invite.callerAvatarUrl ?: "")
+                putExtra("call_title", invite.title)
+                putExtra("call_context_type", invite.contextType)
+                putExtra("call_context_id", invite.contextId ?: "")
+                putExtra("call_is_video", invite.isVideo)
+                putNotificationAccountTarget(accountTarget)
+            })
+        }
+
+        private fun dismissRejectedCall(context: Context, callId: String) {
+            CallCancellationGuard(context).mark(callId)
+            runCatching {
+                (context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(callId.hashCode())
+            }.onFailure { android.util.Log.w("IncomingCallAction", "Could not remove declined call notification") }
+            // A delayed action for call A must not stop the service ringing call B.
+            IncomingCallForegroundService.stop(context, callId)
+        }
     }
 }
 
