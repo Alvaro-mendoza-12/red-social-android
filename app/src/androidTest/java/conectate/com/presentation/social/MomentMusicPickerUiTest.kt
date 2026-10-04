@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import conectate.com.data.music.ApprovedMomentMusic
+import conectate.com.data.model.MomentMusicPresentation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Rule
@@ -24,8 +25,8 @@ import java.nio.ByteOrder
 class MomentMusicPickerUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun track(index: Int = 1): ApprovedMomentMusic {
-        val samples = 16_000 * 12
+    private fun track(index: Int = 1, seconds: Int = 12): ApprovedMomentMusic {
+        val samples = 16_000 * seconds
         val bytes = ByteBuffer.allocate(44 + samples * 2).order(ByteOrder.LITTLE_ENDIAN)
         bytes.put("RIFF".toByteArray()).putInt(bytes.capacity() - 8).put("WAVEfmt ".toByteArray())
             .putInt(16).putShort(1).putShort(1).putInt(16_000).putInt(32_000)
@@ -33,7 +34,7 @@ class MomentMusicPickerUiTest {
         repeat(samples) { bytes.putShort(0) }
         val file = File(compose.activity.cacheDir, "qa-music-picker.wav")
         file.writeBytes(bytes.array())
-        return ApprovedMomentMusic("qa:$index", "Canción de prueba $index", "Novvin QA", 12_000,
+        return ApprovedMomentMusic("qa:$index", "Canción de prueba $index", "Novvin QA", seconds * 1_000L,
             android.net.Uri.fromFile(file).toString(), "https://example.invalid/qa",
             source = "novvin_community", license = "Audio propio")
     }
@@ -45,12 +46,14 @@ class MomentMusicPickerUiTest {
         onPreview: () -> Unit = {},
         onSearch: (String) -> Unit = {},
         onSelect: (MomentMusicSelection) -> Unit = {},
+        durationMs: Long? = 6_000,
+        originalAudio: Boolean = true,
     ) {
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, if (largeText) 1.5f else density.fontScale)) {
                 MaterialTheme { MomentMusicPickerDialog(
-                    state, 6_000, true, initial,
+                    state.copy(section = "community"), durationMs, originalAudio, initial,
                     onSearch = { query, _, _ -> onSearch(query) }, onLoadMore = {},
                     onToggleFavorite = {}, onReport = {}, onNotInterested = {},
                     onPreviewStarted = { onPreview() }, onOpenCommunityUpload = {},
@@ -100,7 +103,10 @@ class MomentMusicPickerUiTest {
         compose.onNodeWithText("Usar audio").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithText("Escuchar").assertIsDisplayed()
         screenshot("qa-music-selection-large-text.png")
-        compose.onNodeWithText("Ver atribución y licencia").performScrollTo()
+        compose.onNodeWithContentDescription("Opciones de música").performClick()
+        compose.onNodeWithText("Información de la canción").performClick()
+        compose.onNodeWithText("Ver licencia").assertIsDisplayed()
+        compose.onNodeWithText("Listo").performClick()
         compose.onNodeWithText("Usar audio").assertIsDisplayed()
     }
 
@@ -112,15 +118,49 @@ class MomentMusicPickerUiTest {
         assertEquals(1, attempts)
     }
 
-    @Test fun mixingControlsAreAvailableOnRequestAndKeepConfirmationVisible() {
+    @Test fun threePresentationsConfirmTheStyleAndRetainTheExistingMix() {
         val song = track()
-        show(MusicCatalogUiState(), MomentMusicSelection(song, 0, 6_000, 1f, 1f))
+        var confirmed: MomentMusicSelection? = null
+        show(MusicCatalogUiState(), MomentMusicSelection(song, 0, 6_000, .35f, .65f,
+            fadeInMs = 300, fadeOutMs = 500, duckOriginalAudio = true), onSelect = { confirmed = it })
         compose.onNodeWithText("Volumen de la música 100%").assertDoesNotExist()
-        compose.onNodeWithText("Mezcla y efectos").performScrollTo().performClick()
-        compose.onNodeWithText("Volumen de la música 100%").assertIsDisplayed()
+        compose.onNodeWithTag("music_presentation_option_card").assertIsSelected()
+        compose.onNodeWithTag("music_presentation_option_label").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithTag("moment_music_presentation_label").assertExists()
+        compose.onNodeWithTag("music_presentation_option_audio").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithTag("moment_music_presentation_label").assertDoesNotExist()
         compose.onNodeWithText("Usar audio").assertIsDisplayed()
-        compose.onNodeWithText("Mezcla y efectos").performScrollTo().performClick()
-        compose.onNodeWithText("Volumen de la música 100%").assertDoesNotExist()
-        compose.onNodeWithText("Usar audio").assertIsDisplayed()
+        screenshot("qa-music-audio-only.png")
+        compose.onNodeWithText("Usar audio").performClick()
+        assertEquals(MomentMusicPresentation.AUDIO_ONLY, confirmed!!.presentation)
+        assertEquals(.35f, confirmed!!.musicVolume, .001f)
+        assertEquals(.65f, confirmed!!.originalAudioVolume, .001f)
+        assertEquals(300L, confirmed!!.fadeInMs)
+        assertEquals(500L, confirmed!!.fadeOutMs)
+        assertEquals(true, confirmed!!.duckOriginalAudio)
+    }
+
+    @Test fun photoDurationStaysWithinTheAuthoritativeSixSeconds() {
+        val song = track()
+        var confirmed: MomentMusicSelection? = null
+        show(MusicCatalogUiState(), MomentMusicSelection(song, 0, 6_000, 1f, 1f),
+            durationMs = 60_000, originalAudio = false, onSelect = { confirmed = it })
+        compose.onNodeWithText("6 s").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Usar audio").performClick()
+        assertEquals(6_000L, confirmed!!.endMs - confirmed!!.startMs)
+    }
+
+    @Test fun durationOptionsStayWithinTheVideoAndConfirmationUsesTheChosenLength() {
+        val song = track(seconds = 60)
+        var confirmed: MomentMusicSelection? = null
+        show(MusicCatalogUiState(), MomentMusicSelection(song, 0, 6_000, 1f, 1f),
+            durationMs = 25_000, onSelect = { confirmed = it })
+        compose.onNodeWithText("6 s").performScrollTo().performClick()
+        compose.onNodeWithText("15 segundos").assertIsDisplayed()
+        compose.onNodeWithText("25 segundos").assertIsDisplayed()
+        compose.onNodeWithText("60 segundos").assertDoesNotExist()
+        compose.onNodeWithText("25 segundos").performClick()
+        compose.onNodeWithText("Usar audio").performClick()
+        assertEquals(25_000L, confirmed!!.endMs - confirmed!!.startMs)
     }
 }

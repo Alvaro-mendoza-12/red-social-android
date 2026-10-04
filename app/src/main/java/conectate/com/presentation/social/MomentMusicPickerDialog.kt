@@ -9,6 +9,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,12 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Flag
@@ -46,6 +43,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -57,11 +55,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -80,7 +76,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -99,6 +96,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import coil.compose.AsyncImage
 import conectate.com.data.music.ApprovedMomentMusic
+import conectate.com.data.model.MomentMusicPresentation
 import conectate.com.util.MediaPlaybackDataSources
 import conectate.com.util.InteractiveAudioBuffer
 import conectate.com.util.UbuntuMedia
@@ -115,6 +113,7 @@ data class MomentMusicSelection(
     val duckOriginalAudio: Boolean = false,
     /** URI local temporal cuando la pista viene del dispositivo. */
     val localUri: Uri? = null,
+    val presentation: MomentMusicPresentation = MomentMusicPresentation.CARD,
 )
 
 internal val MOMENT_MUSIC_PICKER_SECTIONS = listOf(
@@ -131,7 +130,7 @@ internal fun momentMusicRemoteUrl(track: ApprovedMomentMusic, useFullTrack: Bool
     if (useFullTrack || track.source == "novvin_community") track.audioUrl else track.previewUrl ?: track.audioUrl
 
 @OptIn(UnstableApi::class)
-@kotlin.OptIn(ExperimentalMaterial3Api::class)
+@kotlin.OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MomentMusicPickerDialog(
     state: MusicCatalogUiState,
@@ -151,9 +150,12 @@ fun MomentMusicPickerDialog(
     onSelect: (MomentMusicSelection) -> Unit,
 ) {
     val context = LocalContext.current
+    // Photos currently last six seconds on the authoritative server.
+    val effectiveContentDurationMs = if (hasOriginalAudio) contentDurationMs
+        else minOf(6_000L, contentDurationMs?.takeIf { it > 0L } ?: 6_000L)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var query by remember { mutableStateOf(state.query) }
-    var category by remember { mutableStateOf(state.category) }
+    val category = "Todo"
     var section by remember {
         mutableStateOf(if (initialSelection?.localUri != null) "mine" else "community")
     }
@@ -162,7 +164,7 @@ fun MomentMusicPickerDialog(
     var range by remember {
         mutableStateOf(
             initialSelection?.let {
-                MomentMusicTrimPolicy(it.track.durationMs, contentDurationMs)
+                MomentMusicTrimPolicy(it.track.durationMs, effectiveContentDurationMs)
                     .normalize(it.startMs.toFloat()..it.endMs.toFloat())
             } ?: (0f..6_000f),
         )
@@ -180,13 +182,20 @@ fun MomentMusicPickerDialog(
     var previewEndMs by remember { mutableLongStateOf(30_000L) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var playbackError by remember { mutableStateOf<String?>(null) }
-    val categories = remember { listOf("Todo", "Instrumental", "Piano", "Clásica", "Ambiental", "Naturaleza") }
     val sections = remember { MOMENT_MUSIC_PICKER_SECTIONS }
     var showMyUploads by remember { mutableStateOf(false) }
-    var showMixSettings by remember { mutableStateOf(false) }
+    var presentation by remember { mutableStateOf(initialSelection?.presentation ?: MomentMusicPresentation.CARD) }
+    var showSongInfo by remember { mutableStateOf(false) }
+    var showTopMenu by remember { mutableStateOf(false) }
 
-    LaunchedEffect(selected?.id, selected?.durationMs, contentDurationMs) {
-        selected?.let { track -> range = MomentMusicTrimPolicy(track.durationMs, contentDurationMs).normalize(range) }
+    LaunchedEffect(section) {
+        if (section == "community" && (state.section != "community" || state.category != category)) {
+            onSearch(query, category, section)
+        }
+    }
+
+    LaunchedEffect(selected?.id, selected?.durationMs, effectiveContentDurationMs) {
+        selected?.let { track -> range = MomentMusicTrimPolicy(track.durationMs, effectiveContentDurationMs).normalize(range) }
     }
 
     LaunchedEffect(range) {
@@ -340,7 +349,7 @@ fun MomentMusicPickerDialog(
     fun selectTrack(track: ApprovedMomentMusic) {
         selected = track
         selectedLocalUri = null
-        range = MomentMusicTrimPolicy(track.durationMs, contentDurationMs).initialRange(contentDurationMs)
+        range = MomentMusicTrimPolicy(track.durationMs, effectiveContentDurationMs).initialRange(effectiveContentDurationMs)
         play(
             track,
             range.start.toLong(),
@@ -362,21 +371,41 @@ fun MomentMusicPickerDialog(
                         title = { Text(if (selected == null) "Añadir música" else "Elegir fragmento") },
                         navigationIcon = {
                             IconButton(onClick = {
-                                 if (selected != null) {
-                                     player.pause()
-                                     playingId = null
-                                     selected = null
-                                     selectedLocalUri = null
-                                } else onDismiss()
+                                player.pause(); playingId = null
+                                if (selected != null) { selected = null; selectedLocalUri = null }
+                                else onDismiss()
                             }) {
-                                Icon(if (selected == null) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack, "Volver")
+                                Icon(if (selected == null) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack,
+                                    if (selected == null) "Cerrar selector de música" else "Volver al catálogo")
+                            }
+                        },
+                        actions = {
+                            Box {
+                                IconButton(onClick = { showTopMenu = true }) { Icon(Icons.Default.MoreVert, "Opciones de música") }
+                                DropdownMenu(expanded = showTopMenu, onDismissRequest = { showTopMenu = false }) {
+                                    if (selected == null) {
+                                        DropdownMenuItem(text = { Text("Publicar una canción") }, onClick = {
+                                            showTopMenu = false; player.pause(); onOpenCommunityUpload()
+                                        })
+                                        DropdownMenuItem(text = { Text("Mi biblioteca") }, onClick = {
+                                            showTopMenu = false; player.pause(); playingId = null; showMyUploads = true
+                                        })
+                                    } else {
+                                        DropdownMenuItem(text = { Text("Información de la canción") }, onClick = {
+                                            showTopMenu = false; showSongInfo = true
+                                        })
+                                        if (initialSelection != null) DropdownMenuItem(text = { Text("Quitar música") }, onClick = {
+                                            showTopMenu = false; player.pause(); onRemove(); onDismiss()
+                                        })
+                                    }
+                                }
                             }
                         },
                     )
                 },
                 bottomBar = {
                     selected?.let { track ->
-                        val policy = MomentMusicTrimPolicy(track.durationMs, contentDurationMs)
+                        val policy = MomentMusicTrimPolicy(track.durationMs, effectiveContentDurationMs)
                         val safeRange = policy.normalize(range)
                         val maxFadeMs = policy.fadeLimitMs(safeRange)
                         Surface(tonalElevation = 3.dp) {
@@ -390,7 +419,9 @@ fun MomentMusicPickerDialog(
                                         play(track, safeRange.start.toLong(), safeRange.endInclusive.toLong(),
                                             selectedLocalUri, useFullTrack = true, loopSelection = true)
                                     },
-                                    modifier = Modifier.heightIn(min = 48.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).semantics {
+                                        contentDescription = if (playingId == track.id && isPlayerPlaying) "Pausar" else "Escuchar"
+                                    },
                                 ) {
                                     if (playingId == track.id && isPlayerBuffering) {
                                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -406,7 +437,7 @@ fun MomentMusicPickerDialog(
                                         onSelect(MomentMusicSelection(
                                             track, safeRange.start.toLong(), safeRange.endInclusive.toLong(),
                                             musicVolume, originalVolume, fadeInMs.coerceIn(0L, maxFadeMs),
-                                            fadeOutMs.coerceIn(0L, maxFadeMs), duckOriginal, selectedLocalUri,
+                                            fadeOutMs.coerceIn(0L, maxFadeMs), duckOriginal, selectedLocalUri, presentation,
                                         ))
                                     },
                                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
@@ -444,23 +475,6 @@ fun MomentMusicPickerDialog(
                                         )
                                     }
                                 }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    OutlinedButton(
-                                        onClick = if (section == "mine") onOpenDeviceMusic else onOpenCommunityUpload,
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                    ) {
-                                        Icon(if (section == "mine") Icons.Default.LibraryMusic else Icons.Default.CloudUpload, null)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(if (section == "mine") "Elegir del dispositivo" else "Publicar una canción")
-                                    }
-                                    IconButton(onClick = { player.pause(); playingId = null; showMyUploads = true }) {
-                                        Icon(Icons.Default.History, "Mis canciones publicadas")
-                                    }
-                                }
                                 if (section == "community") OutlinedTextField(
                                     value = query,
                                     onValueChange = {
@@ -478,37 +492,6 @@ fun MomentMusicPickerDialog(
                                         }) { Icon(Icons.Default.Close, "Borrar búsqueda") }
                                     },
                                 )
-                                if (section == "community") Row(
-                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    categories.forEach { item ->
-                                        FilterChip(
-                                            selected = category == item,
-                                            onClick = {
-                                                category = item
-                                                onSearch(query, item, section)
-                                            },
-                                            label = { Text(item) },
-                                        )
-                                    }
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(Icons.Default.Info, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        if (section == "mine") {
-                                            "Elige música propia o con permiso para compartir."
-                                        } else {
-                                            "Toca una canción para escucharla y elegir tu fragmento."
-                                        },
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
                                 playbackError?.let {
                                     Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                                 }
@@ -603,156 +586,104 @@ fun MomentMusicPickerDialog(
                     }
                 } else {
                     val track = selected!!
-                    val trimPolicy = MomentMusicTrimPolicy(track.durationMs, contentDurationMs)
-                    val sourceEndMs = trimPolicy.sourceDurationMs
+                    val trimPolicy = MomentMusicTrimPolicy(track.durationMs, effectiveContentDurationMs)
                     val safeRange = trimPolicy.normalize(range)
-                    val maxFadeMs = trimPolicy.fadeLimitMs(safeRange)
+                    val durations = momentMusicClipDurations(trimPolicy.maxClipMs)
+                    var showDurations by remember { mutableStateOf(false) }
                     Column(
-                        modifier = Modifier.fillMaxSize().padding(padding).navigationBarsPadding()
+                        modifier = Modifier.fillMaxSize().padding(padding)
                             .verticalScroll(rememberScrollState()).padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        MusicCatalogRow(
-                            track = track,
-                            isPlaying = playingId == track.id && isPlayerPlaying,
-                            isBuffering = playingId == track.id && isPlayerBuffering,
-                            onPreview = {
-                                play(
-                                    track,
-                                    range.start.toLong(),
-                                    range.endInclusive.toLong(),
-                                    selectedLocalUri,
-                                    useFullTrack = true,
-                                    loopSelection = true,
-                                )
-                            },
-                            onSelect = {},
-                            selectable = false,
-                            onToggleFavorite = { onToggleFavorite(track) },
-                            onShare = {
-                                val share = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, "🎵 ${track.title} — ${track.artist}\n${track.sourcePageUrl}")
+                        Box(
+                            Modifier.fillMaxWidth().heightIn(min = 240.dp)
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(Brush.verticalGradient(listOf(
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = .4f),
+                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .15f))))
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (presentation == MomentMusicPresentation.AUDIO_ONLY) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Icon(Icons.Default.MusicNote, null, Modifier.size(40.dp), MaterialTheme.colorScheme.primary)
+                                    Text("Solo música", style = MaterialTheme.typography.titleLarge)
+                                    Text(track.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodyMedium)
                                 }
-                                context.startActivity(Intent.createChooser(share, "Compartir música"))
-                            },
-                            onReport = { onReport(track) },
-                            onNotInterested = { onNotInterested(track) },
-                        )
-                        Text("Inicio en la canción", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Recorre toda la canción (${formatDuration(sourceEndMs)}). Puedes usar hasta ${formatDuration(trimPolicy.maxClipMs)} por fragmento.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        val latestStart = sourceEndMs.toFloat() - (safeRange.endInclusive - safeRange.start)
-                        Slider(
-                            value = safeRange.start,
+                            } else MomentMusicPresentationPreview(presentation, track.title, track.artist, track.artworkUrl)
+                        }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            MomentMusicPresentation.entries.forEach { option ->
+                                val label = when (option) {
+                                    MomentMusicPresentation.CARD -> "Tarjeta"
+                                    MomentMusicPresentation.LABEL -> "Etiqueta"
+                                    MomentMusicPresentation.AUDIO_ONLY -> "Solo música"
+                                }
+                                FilterChip(selected = presentation == option, onClick = { presentation = option },
+                                    label = { Text(label) }, modifier = Modifier.testTag("music_presentation_option_${option.wireValue}"))
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Fragmento", style = MaterialTheme.typography.titleSmall)
+                            Box {
+                                TextButton(onClick = { showDurations = true }, enabled = durations.size > 1) {
+                                    Text("${(safeRange.endInclusive - safeRange.start).toLong() / 1_000} s")
+                                    if (durations.size > 1) Icon(Icons.Default.ExpandMore, null)
+                                }
+                                DropdownMenu(expanded = showDurations, onDismissRequest = { showDurations = false }) {
+                                    durations.forEach { length ->
+                                        DropdownMenuItem(text = { Text("${length / 1_000} segundos") }, onClick = {
+                                            range = trimPolicy.normalize(safeRange.start..(safeRange.start + length))
+                                            showDurations = false
+                                            if (playingId == track.id && playingSelection) player.seekTo(range.start.toLong())
+                                        })
+                                    }
+                                }
+                            }
+                        }
+                        val latestStart = trimPolicy.sourceDurationMs.toFloat() - (safeRange.endInclusive - safeRange.start)
+                        Slider(value = safeRange.start,
                             onValueChange = { start ->
                                 range = trimPolicy.moveStart(start, safeRange)
                                 if (playingId == track.id && playingSelection) player.seekTo(range.start.toLong())
-                            },
-                            valueRange = 0f..latestStart.coerceAtLeast(1f),
-                            enabled = latestStart > 0f,
-                        )
-                        Text("Ajustar duración del fragmento", fontWeight = FontWeight.Bold)
-                        RangeSlider(
-                            value = safeRange,
-                            onValueChange = { candidate ->
-                                range = trimPolicy.resize(candidate, safeRange)
-                                if (playingId == track.id && playingSelection) player.seekTo(range.start.toLong())
-                            },
-                            valueRange = 0f..sourceEndMs.toFloat(),
-                        )
+                            }, valueRange = 0f..latestStart.coerceAtLeast(1f), enabled = latestStart > 0f,
+                            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Inicio del fragmento" })
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Inicio ${formatDuration(safeRange.start.toLong())}", style = MaterialTheme.typography.bodySmall)
                             Text("Final ${formatDuration(safeRange.endInclusive.toLong())}", style = MaterialTheme.typography.bodySmall)
                         }
-                        Text("${formatDuration((safeRange.endInclusive - safeRange.start).toLong())} seleccionados",
-                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         LinearProgressIndicator(
                             progress = { ((positionMs - safeRange.start) / (safeRange.endInclusive - safeRange.start)).coerceIn(0f, 1f) },
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        OutlinedButton(
-                            onClick = { showMixSettings = !showMixSettings },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
-                                stateDescription = if (showMixSettings) "Expandido" else "Contraído"
-                            },
-                        ) {
-                            Text("Mezcla y efectos", modifier = Modifier.weight(1f))
-                            Icon(if (showMixSettings) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
-                        }
-                        if (showMixSettings) {
-                        Text("Volumen de la música ${percent(musicVolume)}", fontWeight = FontWeight.SemiBold)
-                        Slider(
-                            value = musicVolume,
-                            onValueChange = {
-                                musicVolume = it
-                                player.volume = it
-                            },
-                            valueRange = 0f..1f,
-                        )
-                        if (hasOriginalAudio) {
-                            Text("Audio original ${percent(originalVolume)}", fontWeight = FontWeight.SemiBold)
-                            Slider(value = originalVolume, onValueChange = { originalVolume = it }, valueRange = 0f..1f)
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Reducir voz/sonido mientras suena la música", fontWeight = FontWeight.SemiBold)
-                                    Text("Evita que ambos audios compitan.", style = MaterialTheme.typography.labelSmall)
-                                }
-                                Switch(checked = duckOriginal, onCheckedChange = { duckOriginal = it })
-                            }
-                        }
-                        Text("Entrada suave ${formatDuration(fadeInMs)}", fontWeight = FontWeight.SemiBold)
-                        Slider(
-                            value = fadeInMs.coerceIn(0L, maxFadeMs).toFloat(),
-                            onValueChange = { fadeInMs = it.toLong() },
-                            valueRange = 0f..maxFadeMs.toFloat(),
-                        )
-                        Text("Salida suave ${formatDuration(fadeOutMs)}", fontWeight = FontWeight.SemiBold)
-                        Slider(
-                            value = fadeOutMs.coerceIn(0L, maxFadeMs).toFloat(),
-                            onValueChange = { fadeOutMs = it.toLong() },
-                            valueRange = 0f..maxFadeMs.toFloat(),
-                        )
-                        }
-                        playbackError?.let { message ->
-                            Text(message, color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall)
-                        }
-                        val attributionUrl = (track.licenseUrl ?: track.sourcePageUrl)
-                            .takeIf { it.startsWith("https://") }
-                        OutlinedButton(
-                            onClick = {
-                                attributionUrl?.let { url ->
-                                    runCatching {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                                    }
-                                }
-                            },
-                            enabled = attributionUrl != null,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(if (attributionUrl != null) "Ver atribución y licencia" else "Licencia validada por Novvin")
-                        }
-                        if (initialSelection != null) {
-                            OutlinedButton(
-                                onClick = {
-                                    player.pause()
-                                    onRemove()
-                                    onDismiss()
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(Icons.Default.Close, null)
-                                Spacer(Modifier.width(4.dp))
-                                Text("Quitar música")
-                            }
-                        }
+                        Text("Desliza para elegir la parte de la canción.", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        playbackError?.let { Text(it, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall) }
                     }
+
                 }
             }
         }
+    }
+    if (showSongInfo && selected != null) {
+        val track = selected!!
+        val attributionUrl = (track.licenseUrl ?: track.sourcePageUrl).takeIf { it.startsWith("https://") }
+        AlertDialog(onDismissRequest = { showSongInfo = false },
+            title = { Text("Información de la canción") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(track.title); Text(track.artist); Text(track.license)
+            } },
+            confirmButton = { TextButton(onClick = { showSongInfo = false }) { Text("Listo") } },
+            dismissButton = { if (attributionUrl != null) TextButton(onClick = {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(attributionUrl))) }
+            }) { Text("Ver licencia") } },
+        )
     }
     if (showMyUploads) CommunityMusicLibraryDialog(
         onDismiss = { showMyUploads = false },
@@ -857,5 +788,3 @@ private fun formatDuration(valueMs: Long): String {
     val seconds = (valueMs.coerceAtLeast(0L) / 1_000L)
     return "%d:%02d".format(seconds / 60L, seconds % 60L)
 }
-
-private fun percent(value: Float): String = "${(value.coerceIn(0f, 1f) * 100).toInt()}%"
