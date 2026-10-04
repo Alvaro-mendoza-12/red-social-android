@@ -1,0 +1,300 @@
+{
+  "recordedAtUtc": "2026-10-04T13:57:18.758536+00:00",
+  "sourceCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+  "branch": "feature/live-gifts",
+  "build": {
+    "utc": "2026-10-04T13:34:58.142363+00:00",
+    "androidSourceCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+    "embeddedBuildCommit": "fed1546",
+    "embeddedCommitVerifiedInDex": true,
+    "buildSuccessful": true,
+    "unit": {
+      "suites": 282,
+      "tests": 1294,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "oldestSuiteTimestamp": "2026-10-04T13:20:36.809Z",
+      "newestSuiteTimestamp": "2026-10-04T13:21:19.425Z"
+    },
+    "apks": [
+      {
+        "path": "app/build/outputs/apk/debug/app-debug.apk",
+        "sha256": "0baba93b840aa4f485bf26615d4416e2f34c0a0d92f334c9a977ac529d26be76",
+        "bytes": 275344810
+      },
+      {
+        "path": "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+        "sha256": "7c6b79a5200eda052b4261c105d17418d6e8854ddb3d342a849bb79a16d0a825",
+        "bytes": 2323263
+      }
+    ],
+    "r8": {
+      "successful": true,
+      "signedReleaseArtifact": false,
+      "surveysBridgeRetained": true,
+      "bridgeMethods": [
+        "close",
+        "copy",
+        "download",
+        "ready",
+        "request",
+        "share"
+      ]
+    },
+    "testArtifactCommit": "fed1546",
+    "scope": "Debug APK, instrumentation APK, fresh complete unit run and release R8; no signed AAB produced"
+  },
+  "installation": {
+    "utc": "2026-10-04T13:23:01.454093+00:00",
+    "productCommit": "fed1546",
+    "installed": true,
+    "versionCode": 117,
+    "versionName": "9.0.20-debug",
+    "method": "adb install -r -t; existing compatible debug signature",
+    "privateDataDirectoryIdentityPreserved": true,
+    "uninstalled": false,
+    "appDataCleared": false
+  },
+  "installedArtifact": {
+    "utc": "2026-10-04T13:53:11.013124+00:00",
+    "productCommit": "fed1546",
+    "installedApkSha256": "0baba93b840aa4f485bf26615d4416e2f34c0a0d92f334c9a977ac529d26be76",
+    "installedApkMatchesBuiltArtifact": true,
+    "startupMarkers": [],
+    "scope": "Final installed APK hash verification; debug startup markers only, not full feed readiness or fully drawn measurement"
+  },
+  "physicalTests": {
+    "tests": 78,
+    "passed": 78,
+    "failed": 0,
+    "skipped": 0,
+    "groups": [
+      {
+        "name": "native_ui_and_surveys",
+        "tests": 52,
+        "passed": 52,
+        "failed": 0,
+        "skipped": 0,
+        "uniqueSuccessfulCasesVerified": true,
+        "elapsedSeconds": 97.237,
+        "logSha256": "8aadc0eeb4ff2b38902aec60f5c321bfa23319f920ebd7a7613e64a57fb31f93",
+        "details": {
+          "utc": "2026-10-04T13:27:47.756682+00:00",
+          "androidSourceCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+          "embeddedBuildCommit": "fed1546",
+          "expectedTests": 52,
+          "device": {
+            "model": "Moto g04",
+            "android": "14",
+            "api": 34,
+            "display": "720x1612",
+            "densityDpi": 280
+          },
+          "testArtifactCommit": "fed1546",
+          "deviceType": "physical",
+          "passed": true,
+          "classes": [
+            "conectate.com.presentation.messages.PollMessageUiTest",
+            "conectate.com.presentation.profile.SystemAnnouncementAdminFormTest",
+            "conectate.com.presentation.profile.ProfileVisitorsContentTest",
+            "conectate.com.presentation.surveys.SurveyWorkbenchTest",
+            "conectate.com.presentation.surveys.SurveyDocumentContractTest",
+            "conectate.com.presentation.surveys.SurveyApiIntegrationTest",
+            "conectate.com.presentation.messages.ChatLinkUiTest",
+            "conectate.com.data.local.ProfileCacheMigrationTest",
+            "conectate.com.presentation.social.SocialFeedPagingUiTest",
+            "conectate.com.presentation.profile.SystemAnnouncementDialogTest",
+            "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "conectate.com.presentation.social.MomentMusicPresentationUiTest",
+            "conectate.com.presentation.social.MomentEditorCanvasUiTest",
+            "conectate.com.presentation.social.CommunityMusicLyricsUiTest"
+          ],
+          "transport": "HTTPS Android to disposable local API and PostgreSQL for survey integration",
+          "hostReleaseBuildConcurrent": true,
+          "scope": "Native Social paging, notice controls, music selection, real editor canvas gestures, synchronized local audio lyrics and previous mobile regression. Remote audio playback measured separately."
+        }
+      },
+      {
+        "name": "remote_owned_media",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0,
+        "uniqueSuccessfulCasesVerified": true,
+        "elapsedSeconds": 20.903,
+        "logSha256": "b76380026c860775999d91066312318aa0a06c8be783007f574834304a793f64",
+        "details": {
+          "utc": "2026-10-04T13:37:20.973651+00:00",
+          "embeddedBuildCommit": "fed1546",
+          "expectedTests": 5,
+          "device": {
+            "model": "Moto g04",
+            "android": "14",
+            "api": 34
+          },
+          "testArtifactCommit": "fed1546",
+          "deviceType": "physical",
+          "passed": true,
+          "omitted": false,
+          "timings": [
+            {
+              "name": "moment_photo",
+              "readyMs": 158
+            },
+            {
+              "name": "profile_audio",
+              "readyMs": 5270
+            },
+            {
+              "name": "community_audio_preview",
+              "readyMs": 3445
+            }
+          ],
+          "scope": "Actual Android playback/photo tests using owned remote synthetic media; host Gradle idle; audio timeout remains 10 seconds"
+        }
+      },
+      {
+        "name": "local_calls_and_live_layout",
+        "tests": 18,
+        "passed": 18,
+        "failed": 0,
+        "skipped": 0,
+        "uniqueSuccessfulCasesVerified": true,
+        "elapsedSeconds": 78.238,
+        "logSha256": "ae0ab05cba877b72f7438573e67b5b75202465d09f8f8e3950579d941e81b2a0",
+        "details": {
+          "utc": "2026-10-04T13:54:03.224353+00:00",
+          "androidSourceCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+          "embeddedBuildCommit": "fed1546",
+          "expectedTests": 18,
+          "device": {
+            "model": "Moto g04",
+            "android": "14",
+            "api": 34,
+            "display": "720x1612",
+            "densityDpi": 280
+          },
+          "testArtifactCommit": "fed1546",
+          "deviceType": "physical",
+          "passed": true,
+          "classes": [
+            "conectate.com.data.webrtc.MediaTeardownRegressionTest",
+            "conectate.com.presentation.calls.IncomingCallScreenStateTest",
+            "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "conectate.com.presentation.calls.CallInvitationOverlayHandlingTest",
+            "conectate.com.presentation.live.LiveViewerOverlayLayoutTest"
+          ],
+          "transport": "Owned synthetic call invitations and local test RTC state; no remote signaling or FCM",
+          "hostReleaseBuildConcurrent": false,
+          "scope": "Owned local fake call invitations, cancellation and RTC teardown; LIVE layout only, no calls or sessions with other people."
+        }
+      },
+      {
+        "name": "local_call_rejection",
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "uniqueSuccessfulCasesVerified": true,
+        "elapsedSeconds": 11.092,
+        "logSha256": "f93ce818f00cd63ef4a480f7866a62c90ec1c69fc40d273cf87718de4bcd03e9",
+        "details": {
+          "utc": "2026-10-04T13:35:35.490588+00:00",
+          "phase": "green",
+          "productCommit": "fed1546",
+          "testClass": "IncomingCallRejectionTest",
+          "expectedTests": 3,
+          "passed": true,
+          "failures": 0,
+          "elapsedSeconds": 11.092,
+          "device": "Moto g04 Android 14",
+          "omitted": false,
+          "failureMessages": [],
+          "scope": "Owned local invitations and deliberately absent account; no real caller or human session changes"
+        }
+      }
+    ]
+  },
+  "initialCallBatch": {
+    "tests": 18,
+    "passed": 17,
+    "failed": 1,
+    "elapsedSeconds": 38.253,
+    "case": "IncomingCallCancellationTest.theRingTimeoutAlsoClosesTheAnswerScreen",
+    "message": "Timeout did not mark the expired invitation",
+    "logSha256": "30003bfaea4a005ebf93fa434dc13b2504b93cfa4695d4659624bd27826b2990",
+    "productChangeBetweenFailureAndRepeats": false,
+    "causeConfirmed": false,
+    "status": "Initial result preserved; an unchanged isolated case passed. Do not infer a product fix from repeat results."
+  },
+  "isolatedCallTimeout": {
+    "utc": "2026-10-04T13:39:34.183478+00:00",
+    "sourceCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+    "testSourceCommit": "fed1546",
+    "tests": 1,
+    "passed": true,
+    "elapsedSeconds": 46.951,
+    "logSha256": "1f7664dfba452708084067562af4848a7220a61b793aeba9a89b144f63d3ac5d",
+    "hostGradleIdle": true,
+    "scope": "Isolated unchanged test with streamed lifecycle events, preserved separately from initial batch failure"
+  },
+  "secondCallBatch": {
+    "tests": 18,
+    "passed": 17,
+    "failed": 1,
+    "elapsedSeconds": 59.715,
+    "hostGradleIdle": true,
+    "case": "IncomingCallCancellationTest.theRingTimeoutAlsoClosesTheAnswerScreen",
+    "logSha256": "933809d90d044cfe9218fa9953da9352eab2fe1de68b5151e5e23c16d459870b",
+    "causeConfirmed": false
+  },
+  "debuggerDiagnosis": {
+    "utc": "2026-10-04T13:49:43.530532+00:00",
+    "sourceCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+    "tests": 18,
+    "passed": true,
+    "elapsedSeconds": 70.459,
+    "logSha256": "c6db24bf75f06e8890fcd0ac588b8058fe2c6df7e96f94c1ef967898dc0a57f5",
+    "debuggerExit": 0,
+    "scope": "Unchanged APK, diagnostic JDWP finish breakpoints; diagnostic run only, not a latency or final regression claim",
+    "observedTimeoutFinishPath": "IncomingCallActivity.closeIfCancelled called by observeCancellation",
+    "observedCreateToFinishSeconds": 45.679,
+    "countsTowardFinalPhysicalBatch": false
+  },
+  "compactTimeline": {
+    "previousHeightDp": 88,
+    "heightDp": 48,
+    "touchTargetDp": 48,
+    "heightReductionPercent": 45.45,
+    "heightAssertionPassed": true,
+    "screenshotReview": "performed on actual phone output"
+  },
+  "screenshots": [
+    {
+      "name": "qa-music-compact-timeline-fed1546.png",
+      "publicPath": "docs/oficial/capturas/moto-g04-fed1546/qa-music-compact-timeline-fed1546.png",
+      "sha256": "2dc334c049a25af333db682e07dd26143cbe6dab1be20170a6b7352e2ac98a8d"
+    },
+    {
+      "name": "qa-moment-editor-lyrics-fed1546.png",
+      "publicPath": "docs/oficial/capturas/moto-g04-fed1546/qa-moment-editor-lyrics-fed1546.png",
+      "sha256": "5ce7ef3a086dfaabb31008d612fd3a6c5d3c0f770663c38d0a81938d5976ddb1"
+    },
+    {
+      "name": "qa-moment-editor-label-fed1546.png",
+      "publicPath": "docs/oficial/capturas/moto-g04-fed1546/qa-moment-editor-label-fed1546.png",
+      "sha256": "e40d311d8a8c86f4deeb4e17f0bcbe9bfb38f6b39265649884c82a60929a4e84"
+    }
+  ],
+  "limitations": [
+    "One physical Moto g04 with Android 14; no claim about every phone model",
+    "Local call fixtures do not demonstrate two-person RTC or FCM",
+    "LRC upload UI tests do not exercise an authenticated production upload or OS document selection",
+    "Remote media readiness is not an acoustic first-sound measurement or a production latency SLA",
+    "Release R8 passed without producing a signed AAB",
+    "New API deployment awaits Tailscale SSH authentication; installed mobile code alone does not publish the new server contract",
+    "Two early-close call test failures remain without a demonstrated cause, even if the unchanged final batch passes",
+    "Later concurrent Sorteos source changes are outside the frozen fed1546 APK and these validation results"
+  ]
+}
