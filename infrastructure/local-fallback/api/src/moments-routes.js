@@ -2,7 +2,7 @@ const crypto = require('crypto')
 const { publishRealtimeEvent } = require('./realtime-publish')
 const { mergeProfileRows } = require('./profile-merge')
 const { getExternalTrack } = require('./music-provider-adapters')
-const { renderCompatibleMomentMusic } = require('./moment-music-renderer')
+const { renderCompatibleMomentMusic, isPublicHttpsUrl } = require('./moment-music-renderer')
 const { parseStorageObjectUrl, removeStorageObjectFiles } = require('./storage-routes')
 const { sameCommunityMusicReference } = require('./moment-music-reference')
 const { momentTimestamp } = require('./moment-timestamps')
@@ -293,7 +293,7 @@ async function verifyApprovedMomentMusic(pool, body, context = {}) {
     throw Object.assign(new Error('MUSIC_SOURCE_NOT_APPROVED'), { statusCode: 400 })
   }
   const { rows } = await pool.query(
-    `SELECT id,owner_id,title,artist_name,attribution,audio_url,duration_ms,rights_type,license_name,license_url,
+    `SELECT id,owner_id,title,artist_name,attribution,audio_url,cover_url,duration_ms,rights_type,license_name,license_url,
             visibility,allow_reuse,moderation_state
        FROM fallback_music_tracks
       WHERE id=$1::uuid
@@ -328,6 +328,7 @@ async function verifyApprovedMomentMusic(pool, body, context = {}) {
     license: track.license_name || track.rights_type,
     licenseUrl: track.license_url || null,
     audioUrl: track.audio_url,
+    artworkUrl: track.cover_url || null,
     startMs,
     endMs,
     durationMs: endMs - startMs,
@@ -573,6 +574,8 @@ async function ensureMomentsTables(pool) {
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_id TEXT`)
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_title TEXT`)
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_artist TEXT`)
+  await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_presentation TEXT NOT NULL DEFAULT 'card'`)
+  await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_artwork_url TEXT`)
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_source TEXT`)
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_source_url TEXT`)
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_license TEXT`)
@@ -630,10 +633,24 @@ function profileAliases(row) {
   ].map(normalizeId).filter(Boolean))
 }
 
-function normalizedMomentMusicForMedia(approvedMusic, mediaType) {
-  if (!approvedMusic || mediaType === 'video') return approvedMusic
+function momentMusicPresentationFields(body = {}, approvedMusic = null) {
+  const requested = textOf(body, ['musicPresentation', 'music_presentation'], 'card')
+  const presentation = ['card', 'label', 'audio'].includes(requested) ? requested : 'card'
+  // Community artwork is authoritative catalog data, like title and artist.
+  const artwork = approvedMusic?.source === 'novvin_community'
+    ? String(approvedMusic.artworkUrl || '')
+    : textOf(body, ['musicArtworkUrl', 'music_artwork_url'], '')
+  return { presentation,
+    artworkUrl: approvedMusic && artwork.length <= 2048 && isPublicHttpsUrl(artwork) ? artwork : null,
+  }
+}
+
+function normalizedMomentMusicForMedia(approvedMusic, mediaType, body = {}) {
+  if (!approvedMusic) return null
+  const selected = { ...approvedMusic, ...momentMusicPresentationFields(body, approvedMusic) }
+  if (mediaType === 'video') return selected
   return {
-    ...approvedMusic,
+    ...selected,
     durationMs: IMAGE_MOMENT_DISPLAY_DURATION_MS,
     endMs: approvedMusic.startMs + IMAGE_MOMENT_DISPLAY_DURATION_MS,
   }
@@ -726,7 +743,7 @@ async function buildMomentsFeed(pool, identity) {
   const { rows: localRows } = await pool.query(
     `SELECT id::text, user_id, media_url, media_type, thumbnail_url, caption,
             overlay_text, overlay_color, overlay_font, overlay_scale, overlay_x, overlay_y,
-            music_url, music_audio_url, music_id, music_title, music_artist, music_source,
+            music_url, music_audio_url, music_id, music_title, music_artist, music_presentation, music_artwork_url, music_source,
             music_source_url, music_license, music_license_url, music_start_ms, music_duration_ms,
             music_end_ms, music_volume, original_audio_volume, music_fade_in_ms, music_fade_out_ms,
             duck_original_audio, music_embedded, visibility, visibility_type,
@@ -846,6 +863,8 @@ async function buildMomentsFeed(pool, identity) {
       music_id: textOf(row, ['music_id', 'musicId'], ''),
       music_title: textOf(row, ['music_title', 'musicTitle'], ''),
       music_artist: textOf(row, ['music_artist', 'musicArtist'], ''),
+      music_presentation: ['card', 'label', 'audio'].includes(row.music_presentation) ? row.music_presentation : 'card',
+      music_artwork_url: isPublicHttpsUrl(row.music_artwork_url) ? row.music_artwork_url : null,
       music_source: textOf(row, ['music_source', 'musicSource'], ''),
       music_source_url: textOf(row, ['music_source_url', 'musicSourceUrl'], ''),
       music_license: textOf(row, ['music_license', 'musicLicense'], ''),
@@ -1023,7 +1042,7 @@ function registerMomentsRoutes(
         currentUserOwnsStorageObject,
       })
       const displayDurationMs = normalizedMomentDisplayDurationMs(req.body, mediaType)
-      const selectedMusic = normalizedMomentMusicForMedia(approvedMusic, mediaType)
+      const selectedMusic = normalizedMomentMusicForMedia(approvedMusic, mediaType, req.body)
       // Android flattens a device soundtrack into the MP4 before uploading it.
       // Rendering the same local source a second time on the API caused an
       // avoidable failure when the temporary storage URL was not reachable
@@ -1085,15 +1104,15 @@ function registerMomentsRoutes(
             music_url, music_audio_url, music_id, music_title, music_artist, music_source,
             music_source_url, music_license, music_license_url, music_start_ms, music_duration_ms,
             music_end_ms, music_volume, original_audio_volume, music_fade_in_ms, music_fade_out_ms,
-            duck_original_audio, music_embedded
+            duck_original_audio, music_embedded, music_presentation, music_artwork_url
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14,
                  $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
-                 $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)
+                 $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)
          RETURNING id::text, user_id, media_url, media_type, thumbnail_url, caption, visibility, visibility_type,
                    allow_replies, display_duration_ms, duration_hours, duration_type, excluded_ids, audience_ids, expires_at,
                    overlay_text, overlay_color, overlay_font, overlay_scale, overlay_x, overlay_y,
-                   music_url, music_audio_url, music_id, music_title, music_artist, music_source,
+                   music_url, music_audio_url, music_id, music_title, music_artist, music_presentation, music_artwork_url, music_source,
                    music_source_url, music_license, music_license_url, music_start_ms, music_duration_ms,
                    music_end_ms, music_volume, original_audio_volume, music_fade_in_ms, music_fade_out_ms,
                    duck_original_audio, music_embedded, created_at, updated_at`,
@@ -1136,6 +1155,8 @@ function registerMomentsRoutes(
           musicFadeOutMs,
           duckOriginalAudio,
           musicEmbedded,
+          effectiveMusic?.presentation || 'card',
+          effectiveMusic?.artworkUrl || null,
         ],
       )
       momentPersisted = true
@@ -1224,6 +1245,7 @@ function registerMomentsRoutes(
       const selectedMusic = normalizedMomentMusicForMedia(
         approvedMusic,
         normalizeMomentMediaType(owned.rows[0].media_type, ''),
+        req.body,
       )
       const effectiveMusic = await renderCompatibleMomentMusic({
         pool,
@@ -1242,7 +1264,7 @@ function registerMomentsRoutes(
            music_source=$6,music_source_url=$7,music_license=$8,music_license_url=$9,
            music_start_ms=$10,music_duration_ms=$11,music_end_ms=$12,music_volume=$13,
            original_audio_volume=$14,music_fade_in_ms=$15,music_fade_out_ms=$16,
-           duck_original_audio=$17,music_embedded=FALSE,updated_at=NOW()
+           duck_original_audio=$17,music_embedded=FALSE,music_presentation=$18,music_artwork_url=$19,updated_at=NOW()
          WHERE id=$1::uuid RETURNING *`,
         [
           owned.rows[0].id, effectiveMusic.audioUrl, effectiveMusic.id, effectiveMusic.title,
@@ -1250,6 +1272,7 @@ function registerMomentsRoutes(
           effectiveMusic.licenseUrl || effectiveMusic.sourceUrl, effectiveMusic.startMs,
           effectiveMusic.durationMs, effectiveMusic.endMs, effectiveMusic.musicVolume,
           effectiveMusic.originalAudioVolume, fadeInMs, fadeOutMs, duckOriginal,
+          effectiveMusic.presentation, effectiveMusic.artworkUrl,
         ],
       )
       musicUpdated = true
@@ -1310,6 +1333,7 @@ function registerMomentsRoutes(
            UPDATE fallback_moments AS moment SET
              music_url=NULL,music_audio_url=NULL,music_id=NULL,music_title=NULL,music_artist=NULL,
              music_source=NULL,music_source_url=NULL,music_license=NULL,music_license_url=NULL,
+             music_presentation='card',music_artwork_url=NULL,
              music_start_ms=0,music_duration_ms=6000,music_end_ms=NULL,music_volume=1,
              original_audio_volume=1,music_fade_in_ms=0,music_fade_out_ms=0,
              duck_original_audio=FALSE,music_embedded=FALSE,updated_at=NOW()
@@ -1521,6 +1545,7 @@ module.exports = {
   isPlayableMomentMusicMime,
   normalizedMomentDisplayDurationMs,
   normalizedMomentMusicForMedia,
+  momentMusicPresentationFields,
   verifyApprovedCommonsMusic,
   verifyApprovedMomentMusic,
   verifyOwnedLocalMomentMusic,
