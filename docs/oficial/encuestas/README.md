@@ -1,6 +1,6 @@
 # Encuestas de Novvin
 
-**Estado:** especificación del producto e implementación Android en la rama `feature/live-gifts`; pendiente de integración y despliegue del backend.
+**Estado:** implementación Android en `feature/live-gifts`, API y antivirus desplegados; Encuestas activadas y 36 comprobaciones funcionales correctas en el servidor. Revisión móvil y criterios pendientes en el informe.
 
 **Fecha:** 2026-10-03.
 
@@ -32,3 +32,10 @@ La rama incorpora el editor de planillas, biblioteca, publicación de encuestas 
 - [Regresión conjunta del emulador](VALIDACION_ANDROID_COMBINADA.json)
 - [Preparación comprobada de la entrega](VALIDACION_PREPARACION_ENTREGA.json)
 - [Procedencia y hashes de los APK](VALIDACION_ARTEFACTOS_ANDROID.json)
+- [Regresión móvil sin medios](VALIDACION_ANDROID_SIN_MEDIOS.json)
+- [Salud de la API desplegada](VALIDACION_SALUD_API_DESPLEGADA.json)
+- [Respaldo fresco utilizado para la entrega](VALIDACION_RESPALDO_ENTREGA.json)
+
+- [Entrega verificada en el servidor](VALIDACION_ENTREGA_API.json)
+- [Antivirus desplegado comprobado](VALIDACION_ANTIVIRUS_DESPLEGADO.json)
+- [Comprobación funcional tras habilitar Encuestas](VALIDACION_PRODUCCION_FUNCIONAL.json)

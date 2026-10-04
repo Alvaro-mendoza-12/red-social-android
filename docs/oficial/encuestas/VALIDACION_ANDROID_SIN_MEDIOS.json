@@ -1,0 +1,19 @@
+{
+  "utc": "2026-10-03T23:32:30.768714+00:00",
+  "androidSourceCommit": "da176479e36e3765d20bf4a09186239ab52408e7",
+  "embeddedBuildCommit": "da17647",
+  "expectedTests": 22,
+  "passed": true,
+  "classes": [
+    "conectate.com.presentation.messages.PollMessageUiTest",
+    "conectate.com.presentation.profile.SystemAnnouncementAdminFormTest",
+    "conectate.com.presentation.profile.ProfileVisitorsContentTest",
+    "conectate.com.presentation.surveys.SurveyWorkbenchTest",
+    "conectate.com.presentation.surveys.SurveyDocumentContractTest",
+    "conectate.com.presentation.surveys.SurveyApiIntegrationTest",
+    "conectate.com.presentation.messages.ChatLinkUiTest",
+    "conectate.com.data.local.ProfileCacheMigrationTest"
+  ],
+  "transport": "HTTPS Android to isolated local API and PostgreSQL",
+  "scope": "Media cases excluded; their failure is tracked separately, not waived."
+}

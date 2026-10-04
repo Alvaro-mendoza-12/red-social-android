@@ -4,7 +4,7 @@
 
 **Fecha:** 2026-10-03
 
-**Estado:** módulo implementado y verificado con PostgreSQL local y un emulador Android. Aún no desplegado ni validado de extremo a extremo contra la API productiva y dispositivos físicos.
+**Estado:** módulo implementado y verificado con PostgreSQL local y un emulador Android. API y antivirus desplegados con Encuestas desactivadas; falta comprobar activación y recorrido contra producción. El usuario eligió el emulador para esta revisión.
 
 ## Recorrido disponible
 
@@ -75,3 +75,9 @@ Las imágenes del instrumento deben pertenecer al creador y tener campaign_id nu
 El estado de habilitación se controla con NOVVIN_SURVEYS_ENABLED, desactivado por defecto en Compose. Debe activarse después de instalar y validar API, tablas y antivirus. La navegación pendiente hacia una encuesta se guarda en SavedStateHandle y el puente JavaScript tiene @Keep para la compilación R8 de producción.
 
 Consulta [INFORME_PREPRODUCCION.md](INFORME_PREPRODUCCION.md) para evidencia, alcance y pasos pendientes del despliegue.
+
+## Servicio habilitado y comprobado
+
+El 3 de octubre de 2026 se desplegaron la API `2011e32` y el antivirus privado y se habilitó Encuestas. El servicio autenticado pasó 36 comprobaciones funcionales con datos ficticios propios, incluidos permisos, revisiones, cierre y cuatro exportaciones. Todos los recursos creados para esa comprobación fueron retirados. [Evidencia del servidor](VALIDACION_PRODUCCION_FUNCIONAL.json).
+
+El mensaje de apertura distingue ahora un servicio de Encuestas no disponible de una restricción de acceso a una encuesta concreta. La corrección `c2a02b0` tiene ocho pruebas unitarias nuevas. La regresión del nuevo APK conjunto se mantiene pendiente hasta registrar su resultado.

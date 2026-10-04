@@ -1,0 +1,33 @@
+{
+  "healthyServices": 10,
+  "unchangedOtherServices": [
+    "conectate-local-fallback-signaling-1",
+    "conectate-local-fallback-realtime-main",
+    "conectate-local-fallback-office-preview-1",
+    "conectate-local-fallback-edge-main",
+    "conectate-local-fallback-ai-main",
+    "conectate-local-fallback-signaling-redis-main",
+    "conectate-local-fallback-coturn-main",
+    "conectate-local-fallback-db-main"
+  ],
+  "images": [
+    {
+      "service": "api",
+      "imageId": "sha256:28d4f0e6c06bb6b3794b9df71da50794b0f6463840e9e79f17e32024aa7eb6a2",
+      "sourceFiles": 180
+    },
+    {
+      "service": "survey-antivirus",
+      "imageId": "sha256:8cecbe651670849f42784cf24fa1b943be63da23cf41b52d16478dc5f4cbec54",
+      "sourceFiles": 4
+    }
+  ],
+  "apiRuntime": {
+    "verifiedFiles": 179,
+    "mismatches": [],
+    "uid": 10001,
+    "commit": "2011e322af879b42867cee1f43ac8a26bcb24b7b",
+    "surveysEnabled": false
+  },
+  "dataRestorePerformed": false
+}

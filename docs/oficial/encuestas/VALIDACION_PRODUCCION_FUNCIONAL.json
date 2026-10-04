@@ -1,0 +1,193 @@
+{
+  "passed": true,
+  "productionApiCommit": "2011e32",
+  "scope": "Two owned QA accounts; synthetic instrument and answers; no Social post; exports validated in memory only",
+  "checks": [
+    {
+      "name": "owned QA owner login",
+      "status": 200,
+      "elapsedMs": 356
+    },
+    {
+      "name": "register own temporary QA respondent",
+      "status": 201,
+      "elapsedMs": 265
+    },
+    {
+      "name": "owner survey bootstrap",
+      "status": 200,
+      "elapsedMs": 15
+    },
+    {
+      "name": "respondent survey bootstrap",
+      "status": 200,
+      "elapsedMs": 11
+    },
+    {
+      "name": "bootstrap needs authentication",
+      "status": 401,
+      "elapsedMs": 4
+    },
+    {
+      "name": "create owned QA form",
+      "status": 200,
+      "elapsedMs": 17
+    },
+    {
+      "name": "publish without a Social post",
+      "status": 200,
+      "elapsedMs": 16
+    },
+    {
+      "name": "private audience hides instrument",
+      "status": 404,
+      "elapsedMs": 11
+    },
+    {
+      "name": "allow owned QA respondent",
+      "status": 200,
+      "elapsedMs": 14
+    },
+    {
+      "name": "read instrument",
+      "status": 200,
+      "elapsedMs": 11
+    },
+    {
+      "name": "consent is required",
+      "status": 400,
+      "elapsedMs": 13
+    },
+    {
+      "name": "submit identified response",
+      "status": 200,
+      "elapsedMs": 13
+    },
+    {
+      "name": "edit same response within deadline",
+      "status": 200,
+      "elapsedMs": 12
+    },
+    {
+      "name": "stale edit is rejected",
+      "status": 409,
+      "elapsedMs": 63
+    },
+    {
+      "name": "owner private results",
+      "status": 200,
+      "elapsedMs": 103
+    },
+    {
+      "name": "respondent cannot read private results",
+      "status": 404,
+      "elapsedMs": 56
+    },
+    {
+      "name": "owner export csv",
+      "status": 200,
+      "elapsedMs": 114
+    },
+    {
+      "name": "owner export xlsx",
+      "status": 200,
+      "elapsedMs": 325
+    },
+    {
+      "name": "owner export docx",
+      "status": 200,
+      "elapsedMs": 221
+    },
+    {
+      "name": "owner export pdf",
+      "status": 200,
+      "elapsedMs": 121
+    },
+    {
+      "name": "respondent cannot export",
+      "status": 404,
+      "elapsedMs": 11
+    },
+    {
+      "name": "owner QR link",
+      "status": 200,
+      "elapsedMs": 10
+    },
+    {
+      "name": "owner rotates QR",
+      "status": 200,
+      "elapsedMs": 14
+    },
+    {
+      "name": "old QR is invalid",
+      "status": 404,
+      "elapsedMs": 12
+    },
+    {
+      "name": "owner closes campaign",
+      "status": 200,
+      "elapsedMs": 11
+    },
+    {
+      "name": "closed campaign rejects edit",
+      "status": 409,
+      "elapsedMs": 11
+    },
+    {
+      "name": "owner reopens explicitly",
+      "status": 200,
+      "elapsedMs": 15
+    },
+    {
+      "name": "reopen does not renew edit window",
+      "status": 409,
+      "elapsedMs": 32
+    },
+    {
+      "name": "private audience restored",
+      "status": 200,
+      "elapsedMs": 16
+    },
+    {
+      "name": "respondent no longer sees instrument",
+      "status": 404,
+      "elapsedMs": 15
+    },
+    {
+      "name": "cleanup campaign trash",
+      "status": 200,
+      "elapsedMs": 18
+    },
+    {
+      "name": "cleanup campaign purge",
+      "status": 200,
+      "elapsedMs": 23
+    },
+    {
+      "name": "cleanup form trash",
+      "status": 200,
+      "elapsedMs": 19
+    },
+    {
+      "name": "cleanup form purge",
+      "status": 200,
+      "elapsedMs": 14
+    },
+    {
+      "name": "remove only respondent created by this run",
+      "status": 200,
+      "elapsedMs": 377
+    },
+    {
+      "name": "deleted respondent session is invalid",
+      "status": 401,
+      "elapsedMs": 7
+    }
+  ],
+  "cleanupFailures": [],
+  "createdFormRemoved": true,
+  "createdCampaignRemoved": true,
+  "createdRespondentRemoved": true,
+  "utc": "2026-10-04T00:13:58.525441+00:00",
+  "surveysEnabled": true
+}

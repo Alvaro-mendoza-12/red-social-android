@@ -1,0 +1,22 @@
+{
+  "backup": "/home/alvaro/conectate-backups/20261003T232528Z",
+  "elapsedMs": 154140,
+  "metadata": {
+    "schemaVersion": 2,
+    "createdAt": "2026-10-03T23:27:45Z",
+    "database": "conectate_fallback",
+    "databaseBytes": 3800138,
+    "storageBytes": 2218189812,
+    "aiDataBytes": 4695842,
+    "verification": "passed"
+  },
+  "manifest": [
+    "e1c0df19af83d4d1fd0eaa9cf9dc15a28ef0d3cc071e9967eff957acab114a73  postgres.dump",
+    "d835d8e765511593c44591cf3e67df20894232f83b9904c4d3728b8c98f54883  storage.tar.gz",
+    "f8a490383727780898a6fa51604ca833a8ba03cebb0d977738bd14549a88c852  ai-chatbot-data.tar.gz",
+    "8b4a6fe715bfadaf0a4a1071a3c4085f1693339e71c6458e6e645db4c90894f8  docker-compose.yml"
+  ],
+  "verification": "postgres.dump: OK\nstorage.tar.gz: OK\nai-chatbot-data.tar.gz: OK\ndocker-compose.yml: OK\nBACKUP_VERIFIED=/home/alvaro/conectate-backups/20261003T232528Z\n",
+  "retentionDays": 0,
+  "restorePerformed": false
+}

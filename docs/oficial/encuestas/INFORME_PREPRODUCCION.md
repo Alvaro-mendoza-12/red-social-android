@@ -4,7 +4,7 @@
 
 **Rama:** `feature/live-gifts`.
 
-**Estado:** revisión y verificaciones en curso; habilitación productiva pendiente.
+**Estado:** API y antivirus desplegados, Encuestas habilitadas y ciclo funcional comprobado en el servidor. Regresión Android conjunta en curso.
 
 **Alcance:** Android, API de Encuestas, PostgreSQL, exportaciones, adjuntos y coordinación con la auditoría móvil existente.
 
@@ -23,6 +23,7 @@ Este informe reúne evidencia reproducible. No declara que toda la aplicación e
 | Arranque completo de server.js | Salud 200, registro 201, JWT real y reinicio idempotente | PostgreSQL 16.15 en tmpfs/red interna, secretos ficticios, sin push/SMTP ni datos productivos. Encuestas desactivada devuelve 503 y sin sesión devuelve 401; los tres recursos QA fueron retirados. |
 | APK Android | APK debug y androidTest generados correctamente; commit embebido `782fd6c10ff6` | Commit comprobado dentro del DEX con apkanalyzer, hashes en `VALIDACION_ARTEFACTOS_ANDROID.json`. El archivo BuildConfig generado se modificó después; se verificó el APK, no ese archivo posterior. |
 | Encuestas en emulador | Siete pruebas correctas en 17,333 s tras corregir las esperas entre diálogos | Cinco de interfaz, contrato de documentos y transporte HTTPS real; los casos de interfaz usan datos sintéticos. La regresión conjunta de 27 se repite al cerrar la revisión del audio. |
+| Regresión móvil sin medios | 22 pruebas correctas en 52,483 s, cero omisiones | APK diagnóstico `da17647`, incluye los siete casos de Encuestas y HTTPS real a PostgreSQL local. La primera ejecución rechazó la sesión QA vencida; se reinició el fixture manteniendo JWT y sesiones de una hora y se repitió la suite completa. No acredita los cinco casos de medios pendientes. |
 | Regresión móvil combinada | 27 pruebas correctas en 67,722 s, cero omisiones | APK con `BUILD_COMMIT=e1443afdcb39`, código Android `09da048` y API de QA `2011e32`. Se repite para la optimización posterior del audio `782fd6c`; no trasladar automáticamente este resultado a otro APK. |
 | Audio tras el cambio `782fd6c` | Prueba focal de ciclo de vida correcta; dos fallos entre cinco casos de medios | Dos inicios de audio de perfil no alcanzaron reproducción dentro de los 10 s de la prueba. Permanecieron en BUFFERING, con intención de reproducir y sin pérdida de foco. No se aumentó el timeout. Diagnóstico de apertura/lectura incorporado en `da17647`; causa aún pendiente. |
 | Transporte HTTPS Android | Correcto en la prueba nativa final | Certificado exclusivo de pruebas en androidTest, dos cuentas ficticias, API real y PostgreSQL local; nunca relaja TLS del aplicativo. |
@@ -33,8 +34,8 @@ Este informe reúne evidencia reproducible. No declara que toda la aplicación e
 | CSV a volumen alto | Misma selección, 223 ms, archivo 3,26 MB | Misma limitación de hardware y selección. |
 | Antivirus productivo anterior | PDF limpio aceptado; EICAR detectado con UID 10001 | clamscan: 24,8/14,8 s y ~963 MiB por arranque. Confirma firmas y detección; se sustituye por un daemon privado. |
 | Antivirus persistente real | PDF limpio 12/2 ms; EICAR y PDF cifrado rechazados en 7 ms | Contenedor QA privado, sin red pública, UID 10001, firmas reales de solo lectura. Arranque/PING 18,6 s, pico 963 MiB; contenedor e imagen temporales eliminados. No representa latencia de todo PDF ni del envío desde un teléfono. |
-| API productiva de Encuestas | `/v1/surveys/me` devuelve 404 en el preflight autenticado | El módulo nuevo todavía no está desplegado. |
-| Preparación de entrega API | Respaldo, archivos, imágenes y materiales de reversión verificados | Preparación completada sin reiniciar servicios. La entrega usa exclusivamente API y antivirus, con Encuestas desactivadas inicialmente; no implica despliegue ni habilitación ya realizados. |
+| API productiva de Encuestas | API `2011e32` y antivirus desplegados; salud 200 | Login y perfil autenticado correctos. `/v1/surveys/me` devuelve 503/SURVEY_DISABLED con sesión y 401 sin sesión; Encuestas permanece desactivada hasta validar su activación y flujo QA. |
+| Preparación de entrega API | Respaldo, archivos, imágenes y materiales de reversión verificados | Preparación sin reinicio, seguida de entrega exclusiva de API y antivirus. Respaldo fresco `20261003T232528Z`, cuatro hashes correctos, sin podar respaldos previos ni restaurar producción. La activación sigue pendiente. |
 | Teléfono físico | No ejecutado | El usuario eligió explícitamente el emulador para esta revisión. |
 
 Los contadores de las pruebas focalizadas y generales se superponen. No deben sumarse para inflar el número de verificaciones independientes.
@@ -102,3 +103,11 @@ node --test tests/survey-domain.test.js tests/survey-exports.test.js tests/surve
 `scripts/benchmark-survey-exports.js` genera solo datos sintéticos en memoria. `scripts/serve-survey-validation.js` requiere la base local exclusiva, certificado de androidTest y una clave TLS de prueba en output; escucha solamente en 127.0.0.1:55440, crea un esquema temporal y lo elimina al recibir `stop` por stdin. Su endpoint QA no forma parte de server.js ni de producción. Para instrumentación, usar ADB reverse y el argumento `survey_api_url=https://127.0.0.1:55440`. TLS de prueba se configura únicamente dentro del test; el APK mantiene certificados del sistema y bloqueo de HTTP sin cifrar.
 
 Los logs de la revisión actual incluyen `output/survey-production-api-tests-final.log`, `output/survey-production-api-regression-final.log`, `output/survey-production-mobile-test-final.log`, `output/survey-production-audio-debug-build.log`, `output/survey-production-r8-validation.log` y `output/survey-export-benchmark.json`. Los logs privados de la regresión combinada están en `build/physical-qa-2026-10-01/`; no se publican íntegramente. Las capturas y PDF ficticios están bajo `output/surveys-mobile/` y `output/pdf/`. output no se debe agregar íntegramente al repositorio: puede contener registros locales y materiales de otras verificaciones.
+
+## Habilitación y comprobación funcional del servidor
+
+La API `2011e32` quedó habilitada mediante el controlador de activación `7164c1a`, con respaldo comprobado y cambio limitado al servicio API. El antivirus privado conserva su imagen validada. Se ejecutaron 36 comprobaciones HTTP sobre el servicio desplegado: arranque con cuenta autenticada, consentimiento, respuesta identificada, edición de la misma respuesta, rechazo de revisión antigua, resultados privados, CSV/Excel/Word/PDF, rotación del QR, cierre y reapertura sin renovar el plazo de edición.
+
+Se utilizó una cuenta QA existente del equipo y un participante ficticio creado exclusivamente para esta ejecución. La encuesta no generó una publicación en Social. Se retiraron la campaña, la planilla y el participante creado; su sesión dejó de ser válida. No hubo errores de limpieza. La evidencia no contiene credenciales ni identificadores de usuarios: [VALIDACION_PRODUCCION_FUNCIONAL.json](VALIDACION_PRODUCCION_FUNCIONAL.json).
+
+Esta comprobación acredita el flujo HTTP del servidor. La instalación Android con los cambios conjuntos `6adc49b` y su revisión visual en el emulador se documentarán con resultados propios; no se trasladan automáticamente los resultados de un APK anterior.
