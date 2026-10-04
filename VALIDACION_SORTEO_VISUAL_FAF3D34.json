@@ -1,0 +1,93 @@
+{
+  "utc": "2026-10-04T19:27:12.591468+00:00",
+  "visualCommit": "faf3d34",
+  "device": "NovvinMediaPair35 Android emulator API35",
+  "physicalDevice": false,
+  "expectedCases": 11,
+  "passed": true,
+  "elapsedSeconds": 26.232,
+  "apks": [
+    {
+      "name": "app-debug.apk",
+      "sha256": "ced297a60f127872322d6ef150edcb12f523413656f0edbed78fb424c06bfa4c",
+      "bytes": 278236814
+    },
+    {
+      "name": "app-debug-androidTest.apk",
+      "sha256": "c88ff4f023083862b8624360c17393a3b705719eef020cc999c5aaf9b9bd17e9",
+      "bytes": 2455044
+    }
+  ],
+  "installedApkHashVerified": true,
+  "privateDataDirectoryIdentityPreserved": true,
+  "dataCleared": false,
+  "uiLogSha256": "f8d71e4ab5369118c5cb2f455c73849d8482a60053c0cfa259ea700d7c82d486",
+  "scope": "Native raffle colors, frame rotation, queued reveal/confetti, round switch and scroll; synthetic participants, no production raffle mutation",
+  "sourceScope": "Visual commit plus a captured shared working-tree source snapshot, not a clean full-repository build",
+  "unitSuites": [
+    {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suite": "conectate.com.presentation.raffles.RaffleDrawPresentationStateTest"
+    },
+    {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suite": "conectate.com.presentation.raffles.RaffleStateTest"
+    }
+  ],
+  "generatedBuildConfigMarkerVerified": true,
+  "buildLogSha256": "fe85ecc42d1b4c3d453a6e9496cffe32ce0a1f3d90f4f5398acf4dcf872dd8a0",
+  "sharedSourceSnapshotSha256": "272ace3d67f316d5705f68492d308603517dfbad6c6a417d4b86045fec2169c1",
+  "sourceFilesInSnapshot": 1357,
+  "capturesVisuallyInspected": true,
+  "currentValidationLimitations": [
+    "Emulator only; no current physical-device run",
+    "Synthetic visual/UI cases; no production draw executed in this batch",
+    "Reduced motion scale was not explicitly tested"
+  ],
+  "visualSources": [
+    {
+      "path": "app/src/main/java/conectate/com/presentation/raffles/RaffleWheel.kt",
+      "sha256": "bc12d820a25ccb9948b6a4b273829d0173dc2c17059cb31209d03c601492e4a1"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/raffles/RafflesScreen.kt",
+      "sha256": "a9fa2db9d827b1c7ff8d3e6defed8148b08302b9046636ef9d9da836cdd521a4"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/raffles/RaffleDrawPresentation.kt",
+      "sha256": "6feedf78de55da82c86aeb58f01605e890fa4b4ec775161ac0273786b11371ad"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/raffles/RaffleDrawPresentationState.kt",
+      "sha256": "d71e3e4a7e9b162dfbb130e8b6ac0da02ded0dca29171cfd56206fce261e945a"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/presentation/raffles/RaffleDrawPresentationStateTest.kt",
+      "sha256": "fad6be75bd4f11310a3e9c150017331bfe5a0f9c49619852ab432bd27dc8bd0d"
+    },
+    {
+      "path": "app/src/androidTest/java/conectate/com/presentation/raffles/RaffleDrawPresentationUiTest.kt",
+      "sha256": "6b711b7f065a437498b3e2c1d28e813dc46febc63db99eda84ed330893c6c220"
+    }
+  ],
+  "captures": [
+    {
+      "path": "docs/oficial/capturas/sorteo-faf3d34/qa-raffle-vivid-wheel.png",
+      "sha256": "208e94d427f0ba3308d40a2d6d175673fb5f778b7cfb4906320eefb1284c381a"
+    },
+    {
+      "path": "docs/oficial/capturas/sorteo-faf3d34/qa-raffle-spinning.png",
+      "sha256": "9373ac2b2bcb32072893aa7a17c78685bfb8df7adefe335d529548fc33965e15"
+    },
+    {
+      "path": "docs/oficial/capturas/sorteo-faf3d34/qa-raffle-confetti.png",
+      "sha256": "495a1e0beff45d3ed0520ce6fd5983edd499c7001fd7a00e1c1990d2eec12989"
+    }
+  ]
+}
