@@ -179,13 +179,14 @@ private fun RaffleDetailContent(detail: RaffleDetail, busy: Boolean, vm: Raffles
     // Keep the presentation queue above LazyColumn so scrolling the wheel out
     // of view cannot discard pending winners or replay an already revealed draw.
     val presentation = rememberRaffleDrawPresentationSession(round)
-    val presenting = presentation.state.active != null
+    val presenting = presentation.state.active != null || presentation.state.roundId != round?.id
     val results = round?.results.orEmpty()
     val remaining = round?.remainingParticipants() ?: detail.participants
     var expandedRound by rememberSaveable(detail.raffle.id) { mutableStateOf<String?>(null) }
     var showRemaining by rememberSaveable(detail.raffle.id) { mutableStateOf(false) }
     var showOriginal by rememberSaveable(detail.raffle.id) { mutableStateOf(false) }
-    val visibleResults = results.filter { it.position <= presentation.state.revealedPosition }
+    val visibleResults = if (presentation.state.roundId == round?.id)
+        results.filter { it.position <= presentation.state.revealedPosition } else emptyList()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("${raffleStatusLabel(detail.raffle.status)} · ${detail.raffle.participantCount} participantes · ${detail.raffle.roundCount} rondas") }
         item { Text("Creado por ${detail.raffle.creatorName} · ${detail.raffle.createdAt.take(10)}", style = MaterialTheme.typography.bodySmall) }

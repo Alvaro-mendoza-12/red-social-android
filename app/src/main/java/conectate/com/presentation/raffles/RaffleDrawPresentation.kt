@@ -74,7 +74,8 @@ internal fun RaffleDrawPresentation(
     session: RaffleDrawPresentationSession = rememberRaffleDrawPresentationSession(round),
 ) {
     val presentation = session.state
-    val active = presentation.active
+    val roundIsCurrent = presentation.roundId == round?.id
+    val active = presentation.active.takeIf { roundIsCurrent }
     val drawKey = active?.let { "${presentation.roundId}:${it.position}" }
     val celebrating = drawKey != null && session.celebratingKey == drawKey
     val storedResults = round?.results.orEmpty()
@@ -85,7 +86,8 @@ internal fun RaffleDrawPresentation(
         val selected = storedResults.mapTo(hashSetOf()) { it.participant.id }
         (round?.participants ?: originalParticipants).filter { it.id !in selected }
     }
-    val revealed = storedResults.filter { it.position <= presentation.revealedPosition }.maxByOrNull { it.position }
+    val revealed = if (roundIsCurrent) storedResults.filter { it.position <= presentation.revealedPosition }
+        .maxByOrNull { it.position } else null
     Box(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -93,6 +95,7 @@ internal fun RaffleDrawPresentation(
                 animationKey = drawKey,
                 rotationState = session.rotation)
             when {
+                !roundIsCurrent -> Text("Preparando ruleta…", style = MaterialTheme.typography.titleMedium)
                 active != null && !celebrating -> Text("Girando…", style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.testTag("raffle_spinning"))
                 revealed != null -> Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh,
