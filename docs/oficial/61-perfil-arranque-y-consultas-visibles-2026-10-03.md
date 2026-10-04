@@ -482,6 +482,93 @@ rechazo de una imagen ajena.
 Es una comprobación del procedimiento; no equivale a un ensayo de caída y
 restauración completo de todos los servicios productivos.
 
+## Entrega coordinada y música de Momentos (3 de octubre, actualización)
+
+### Interfaz solicitada en las once capturas
+
+La selección queda en dos pantallas: catálogo con buscador y escucha; después,
+fragmento con **Tarjeta, Etiqueta o Solo música**, un deslizador de inicio y
+confirmación fija. Hay como máximo tres duraciones, limitadas por la fuente y
+el contenido. Las fotos conservan la duración real de seis segundos; no se
+ofrecen quince segundos que el servidor después recortaría. Publicar música,
+historial e información pasan al menú. Mezcla avanzada permanece en el editor
+de video, fuera de esta selección breve.
+
+`f42a349` persiste `music_presentation` (`card`, `label`, `audio`) y
+`music_artwork_url` en creación, lectura, edición y eliminación. Las cuentas y
+momentos anteriores usan `card` si falta el campo; los valores desconocidos
+vuelven a ese mismo valor. La portada comunitaria procede del catálogo aprobado,
+no de una portada arbitraria enviada por el cliente. No se añaden letras
+sincronizadas sin datos del proveedor. Android comparte el componente entre
+selector, editor, momento publicado y destacados. La atribución musical se
+conserva también en Solo música.
+
+La primera compilación del nuevo flujo, `715eac6`, detectó campos que faltaban
+en `LocalFallbackApiClient` y una sobrecarga incorrecta de `padding`; **ese
+intento no produjo un APK validado**. `07e4989` corrige el envío y DTO reales,
+la lectura del estilo y la portada, y añade dos pruebas de ese contrato. La
+compilación y comprobación visual de esa revisión están en curso. La versión
+permanece en **117 / 9.0.20**.
+
+### Pruebas que ya finalizaron
+
+- Checkpoint anterior `c424929`: compilación debug, APK de pruebas, pruebas
+  unitarias y R8; **34 pruebas nativas** y **5 pruebas de medios** pasaron. En la
+  última ronda, perfil 1.616 ms, preescucha 1.132 ms e imagen 233 ms. Esos tiempos
+  pertenecen a ese checkpoint; no certifican el nuevo selector.
+- API `f42a349`: **440 de 442 pruebas pasaron**, sin fallos. Las dos omitidas
+  requieren Linux; sus tres casos de fixture pasaron en el servidor sobre los
+  mismos archivos, sin ejecutar restauraciones sobre producción.
+- Bootstrap completo con PostgreSQL 16.15 dedicado y tmpfs: arranque y segundo
+  inicio idempotente pasaron. Tres estilos se crearon y leyeron con SQL real,
+  se sustituyeron y se retiraron. En este fixture autenticación, propiedad de
+  archivos y render estaban simulados; sus tres recursos se retiraron.
+- **HTTP productivo por el edge**, con cuenta QA propia, almacenamiento propio
+  y FFmpeg reales: los tres estilos conservaron portada y presentación tras
+  crear, recargar y editar; eliminar música restableció los campos. Cada clip
+  AAC/M4A de seis segundos descargado tenía 116.081 bytes. Creación fría
+  3.068 ms; siguientes 271 y 311 ms. Las tres publicaciones privadas, cuatro
+  archivos originales de prueba y la nueva sesión de esta ejecución se retiraron.
+  [Evidencia HTTP de música](VALIDACION_MOMENTOS_MUSICA_HTTP.json).
+- Encuestas productivas tras `f42a349`: **39 comprobaciones** pasaron; encuesta,
+  campaña, participante y sesión de esa ronda se limpiaron. **12 comprobaciones
+  HTTPS** pasaron con TLS verificado: autenticación, API disponible, página
+  siguiente de Descubrir sin duplicados y rechazo del aviso retirado
+  `view_moment`. Son pruebas concretas, no certificación completa de la aplicación.
+
+El primer helper de HTTP pedía los bytes directamente a la API y no pasaba por
+Nginx, que realiza la transferencia mediante `X-Accel-Redirect`. Se conserva
+como intento fallido, junto a los errores del helper en nombres de archivos y
+logout. La repetición corrigió la ruta y verificó bytes reales por el edge.
+Los dos archivos propios de ese intento se recuperaron y retiraron. No quedó
+registrado el refreshToken de su primera sesión QA; no se revocaron otras
+sesiones para limpiar ese único login. Las cuentas propias se mantienen mientras
+continúa la auditoría.
+
+### Servidor y continuidad
+
+`f42a349` se entregó por digest
+`sha256:8edd1817526d1c9978fe68943ec4363066eea47dfd3a61232f6e4547d0c876ed`,
+con respaldo verificado `20261003T232528Z`. Se comprobaron 181 archivos de fuente
+y 180 dentro de la imagen, sin diferencias. **Diez servicios saludables**,
+Encuestas habilitado y antivirus privado con el digest aprobado. Se recreó
+únicamente la API; el edge conservó su inicio `2026-10-04T00:12:43Z` y cero
+reinicios en esta entrega. [Evidencia de entrega](VALIDACION_ENTREGA_MOMENTOS_F42.json).
+
+Se corrigió la carrera del watchdog: vuelve a comprobar la salud tras obtener
+el bloqueo de despliegue y evita recuperar un servicio que ya se recuperó.
+Después de recrear API, el controlador comprueba también `/ready` por el proxy
+antes de liberar el bloqueo. El nuevo controlador conservó el respaldo,
+Encuestas habilitado y el antivirus durante reversión; sus cuatro pruebas de
+guardas y fallos de reversión pasaron en Linux.
+
+El diagnóstico debug del reproductor registra tiempos y bytes sin URL,
+cabeceras o tokens. En la ronda `6adc49b`, DNS tardó 1 ms, TCP/TLS frío
+aproximadamente 2,2 s y la espera de cabeceras cerca de 1 s. Las solicitudes
+siguientes reutilizaron la misma conexión HTTP/2, pero aún esperaron alrededor
+de 1,7–1,9 s por cabeceras. No se bajaron límites de prueba ni se atribuye esa
+espera únicamente al procesamiento SQL.
+
 ## Pendientes prioritarios
 
 1. Reproducir y reducir los picos de inicio de audio; medir el recorrido completo

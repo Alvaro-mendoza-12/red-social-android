@@ -1,0 +1,89 @@
+{
+  "release": {
+    "release": "moment-music-api-f42a349-20261004T005709Z",
+    "commit": "f42a3493ed4d06c9ff019acf71efc8b25b6b3a81",
+    "sourceDigest": null,
+    "deployedAtUtc": "2026-10-04T00:59:47Z",
+    "environment": "production"
+  },
+  "apiReady": true,
+  "apiImageMatches": true,
+  "sourceFilesChecked": 181,
+  "sourceMismatches": [],
+  "surveysEnabled": true,
+  "scannerImagePinned": true,
+  "edgeUnchangedSincePreviousDelivery": true,
+  "containers": [
+    {
+      "name": "conectate-local-fallback-api-main",
+      "imageId": "sha256:8edd1817526d1c9978fe68943ec4363066eea47dfd3a61232f6e4547d0c876ed",
+      "healthy": true,
+      "startedAt": "2026-10-04T00:59:49.581258629Z",
+      "restartCount": 0
+    },
+    {
+      "name": "conectate-local-fallback-survey-antivirus-1",
+      "imageId": "sha256:8cecbe651670849f42784cf24fa1b943be63da23cf41b52d16478dc5f4cbec54",
+      "healthy": true,
+      "startedAt": "2026-10-03T23:29:07.052952879Z",
+      "restartCount": 0
+    },
+    {
+      "name": "conectate-local-fallback-signaling-1",
+      "imageId": "sha256:83b6acbdf74e4b2ee47cc7a275844d35ad4573377b0b8de1ff1a64a7ff52416a",
+      "healthy": true,
+      "startedAt": "2026-10-02T02:07:43.687780716Z",
+      "restartCount": 0
+    },
+    {
+      "name": "conectate-local-fallback-realtime-main",
+      "imageId": "sha256:abbcdd072e7dc6d556eb27d569a6e80e464af4a04d47e048c6103180e087dc3c",
+      "healthy": true,
+      "startedAt": "2026-10-02T02:07:16.873190585Z",
+      "restartCount": 0
+    },
+    {
+      "name": "conectate-local-fallback-office-preview-1",
+      "imageId": "sha256:c85f019d6ae4927714507254331cc0ed72da7b619ee798e3a45de01f54372c12",
+      "healthy": true,
+      "startedAt": "2026-10-02T02:07:12.993534939Z",
+      "restartCount": 0
+    },
+    {
+      "name": "conectate-local-fallback-edge-main",
+      "imageId": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "healthy": true,
+      "startedAt": "2026-10-04T00:12:43.70436658Z",
+      "restartCount": 0
+    },
+    {
+      "name": "conectate-local-fallback-ai-main",
+      "imageId": "sha256:390fc3d3f59dec9f62c5c5797dc27d21022e055677edc8ff58ff47ed29072341",
+      "healthy": true,
+      "startedAt": "2026-10-02T02:07:12.960226408Z",
+      "restartCount": 0
+    },
+    {
+      "name": "conectate-local-fallback-signaling-redis-main",
+      "imageId": "sha256:7aec734b2bb298a1d769fd8729f13b8514a41bf90fcdd1f38ec52267fbaa8ee6",
+      "healthy": true,
+      "startedAt": "2026-10-02T02:07:16.864408958Z",
+      "restartCount": 0
+    },
+    {
+      "name": "conectate-local-fallback-coturn-main",
+      "imageId": "sha256:71c3c990283385567f11794ee692e3a47b66fd9b0bb39e42afbe776e331dd888",
+      "healthy": true,
+      "startedAt": "2026-10-02T02:07:12.960928161Z",
+      "restartCount": 0
+    },
+    {
+      "name": "conectate-local-fallback-db-main",
+      "imageId": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+      "healthy": true,
+      "startedAt": "2026-10-02T02:07:16.866874968Z",
+      "restartCount": 0
+    }
+  ],
+  "passed": true
+}
