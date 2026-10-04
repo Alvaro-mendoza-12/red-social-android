@@ -2,7 +2,7 @@
 
 **Rama:** `feature/live-gifts`. **Plataforma:** Android.
 
-**Código conjunto:** `6adc49b`. La compilación y las pruebas de interfaz de esta combinación se registrarán cuando terminen. Los resultados de versiones anteriores no se consideran resultados de este APK.
+**Código Android conjunto:** `07e4989`. **API desplegada:** `f42a349`. La compilación y las pruebas de interfaz de esta combinación están en curso. Los checkpoints `6adc49b` y `c424929` pasaron sus suites; esos resultados no se trasladan automáticamente a este APK.
 
 ## Notificaciones por vistas de Momentos
 
@@ -10,7 +10,7 @@ Ver un Momento continúa registrando la vista y actualizando el estado de lectur
 
 Android rechaza esos eventos en la recepción de Firebase, la publicación local, el control de eventos y el repositorio. La retirada cubre los tipos dentro de los metadatos y los registros antiguos. No consume el identificador de otra notificación válida. Se mantienen las notificaciones de nuevos Momentos y reacciones.
 
-El cambio del servidor es necesario para que los APK ya instalados dejen de recibir notificaciones por nuevas vistas. El despliegue de esa corrección se documentará por separado del servicio de Encuestas actualmente habilitado.
+La corrección del servidor está desplegada y beneficia también a los APK anteriores para nuevas vistas. La comprobación HTTPS verificó que la lista omite esos eventos y que su creación explícita se rechaza antes de generar filas, eventos o push.
 
 ## Social: continuar descubriendo y volver al inicio
 
@@ -34,18 +34,21 @@ Cuatro pruebas de interfaz comprueban la X, el contenido largo y las acciones ad
 
 ## Selector nativo de música para Momentos
 
-Se implementa con Compose, siguiendo el tema del aplicativo. «Añadir música» abre la comunidad con buscador y categorías. «Mi música» lleva a la selección de audio del dispositivo. Las canciones muestran portada, título y artista; las acciones secundarias se agrupan en su menú.
+Se implementa con Compose, siguiendo el tema del aplicativo y las once referencias enviadas por el usuario. «Añadir música» abre la comunidad con buscador. «Mi música» lleva a la selección de audio del dispositivo. Las canciones muestran portada, título y artista; publicar una canción y abrir la biblioteca son acciones del menú.
 
-Tocar una canción selecciona e inicia su reproducción. «Elegir fragmento» permite mover el inicio y ajustar la duración, consultar el avance, regular la música y el sonido original y configurar la entrada/salida suave. «Escuchar/Pausar» y «Usar audio» permanecen en la barra inferior; el contenido adicional se desplaza. «Usar audio» confirma el intervalo y la mezcla elegidos. Volver detiene la reproducción y regresa al catálogo; cerrar libera el reproductor.
+Tocar una canción selecciona e inicia su reproducción. La confirmación ofrece tres presentaciones: tarjeta con portada, etiqueta compacta y solo audio sin elemento sobre la imagen. La misma presentación se usa en selector, editor, Momento publicado y destacados; se guarda en el servidor. No se ofrece letra sincronizada ni una onda de audio simulada.
+
+El inicio se ajusta con un deslizador. La duración ofrece como máximo tres opciones (15/30/60 segundos, recortadas a la duración válida del contenido y la pista); las fotos conservan los seis segundos que usa el servidor. «Escuchar/Pausar» y «Usar audio» permanecen en la barra inferior. Las opciones de mezcla existentes se conservan al confirmar; el selector no añade esos controles a la pantalla principal. La información de autoría y licencia se abre desde el menú. Volver detiene la reproducción y regresa al catálogo; cerrar libera el reproductor.
 
 La reproducción comienza con una sola interacción; el tiempo hasta escuchar sonido depende de la red y del archivo. El indicador de carga refleja el estado del reproductor. Un fallo muestra un mensaje; no se declara reproducción instantánea garantizada. La comunidad utiliza el audio original aprobado para poder seleccionar un fragmento fuera de la vista previa.
 
-Cuatro pruebas nuevas cubren búsqueda y limpieza, selección con reproducción real de un WAV local propio, confirmación con título largo y texto ampliado, y reintento de catálogo. Las pruebas separadas de audio remoto mantienen su límite de diez segundos.
+Siete pruebas del selector cubren búsqueda y limpieza, reproducción de un WAV local propio con una sola interacción, texto ampliado, reintento, tres presentaciones, duración de fotos y límites de duración de videos. Tres pruebas adicionales cubren la presentación compartida. Las pruebas separadas de audio remoto mantienen su límite de diez segundos.
 
 ## Comprobaciones disponibles
 
-- API completa tras el cambio de Social y notificaciones: 436 correctas, dos omitidas en Windows y cero fallos. Los casos focalizados se superponen con ese total.
-- Encuestas habilitadas en el servidor: 36 comprobaciones HTTP correctas y limpieza completa de los recursos ficticios. [Evidencia](encuestas/VALIDACION_PRODUCCION_FUNCIONAL.json).
+- API completa tras persistir los estilos de música: 440 correctas, dos omitidas en Windows y cero fallos; los fixtures de Linux se comprobaron por separado. Los casos focalizados se superponen con ese total.
+- Encuestas habilitadas tras entregar `f42a349`: 39 comprobaciones HTTP correctas y limpieza completa de los recursos ficticios. [Evidencia](encuestas/VALIDACION_PRODUCCION_FUNCIONAL_F42.json).
+- HTTPS público: 12 comprobaciones correctas, continuidad de Social sin duplicados y rechazo de notificaciones por vistas. [Evidencia](encuestas/VALIDACION_HTTPS_SOCIAL_Y_ENCUESTAS.json).
 - Compilación Android conjunta, pruebas de interfaz y capturas: pendientes de registrar al finalizar la ejecución actual.
 
 La revisión se realiza en el emulador elegido por el usuario. No constituye una certificación externa de toda la aplicación ni acredita todos los modelos de teléfono.

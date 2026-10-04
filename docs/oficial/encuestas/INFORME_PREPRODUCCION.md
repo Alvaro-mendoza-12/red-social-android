@@ -10,7 +10,17 @@
 
 Este informe reúne evidencia reproducible. No declara que toda la aplicación esté libre de errores ni acredita una certificación externa. La especificación completa del producto sigue en `ESPECIFICACION_FUNCIONAL_Y_TECNICA.md`; su alcance pendiente se enumera en `IMPLEMENTACION_ANDROID.md`.
 
-## Evidencia y límites
+## Entrega actual y comprobaciones posteriores
+
+La API activa es `f42a349`, posterior a la corrección de Social y notificaciones `4f1e40e`. Encuestas continúa habilitada y el antivirus privado conserva su imagen validada. Tras esta entrega pasaron 39 comprobaciones funcionales: se añadió la comprobación del plazo exacto de 30 minutos y del rechazo de una segunda respuesta por cuenta; los recursos ficticios y la sesión nueva del dueño se retiraron. [Evidencia funcional](VALIDACION_PRODUCCION_FUNCIONAL_F42.json).
+
+También pasaron 12 comprobaciones por el origen HTTPS configurado en Android, con verificación TLS: disponibilidad de Encuestas, autenticación, dos páginas de Descubrir sin duplicados, lista de notificaciones sin vistas de Momentos y rechazo de crear `view_moment`. Esta comprobación no publicó contenido de prueba en Social. [Evidencia HTTPS](VALIDACION_HTTPS_SOCIAL_Y_ENCUESTAS.json).
+
+La compilación y regresión del Android `07e4989` siguen en curso. Los resultados anteriores de APK se conservan como historial y no acreditan automáticamente esta versión. El intento de compilación `715eac6` detectó campos de presentación ausentes en el cliente HTTP y un uso incorrecto de padding; se corrigieron antes de repetir.
+
+## Evidencia y límites de revisiones anteriores
+
+La siguiente tabla conserva los resultados y pendientes de los checkpoints anteriores. Para el estado del servidor actual prevalece la sección anterior; los resultados del nuevo APK se incorporarán al concluir su ejecución.
 
 | Comprobación | Resultado documentado | Alcance |
 |---|---|---|

@@ -1,0 +1,206 @@
+{
+  "passed": true,
+  "productionApiCommit": "f42a349",
+  "scope": "Two owned QA accounts; synthetic instrument and answers; no Social post; exports validated in memory only",
+  "checks": [
+    {
+      "name": "owned QA owner login",
+      "status": 200,
+      "elapsedMs": 401
+    },
+    {
+      "name": "register own temporary QA respondent",
+      "status": 201,
+      "elapsedMs": 328
+    },
+    {
+      "name": "owner survey bootstrap",
+      "status": 200,
+      "elapsedMs": 15
+    },
+    {
+      "name": "respondent survey bootstrap",
+      "status": 200,
+      "elapsedMs": 13
+    },
+    {
+      "name": "bootstrap needs authentication",
+      "status": 401,
+      "elapsedMs": 5
+    },
+    {
+      "name": "create owned QA form",
+      "status": 200,
+      "elapsedMs": 26
+    },
+    {
+      "name": "publish without a Social post",
+      "status": 200,
+      "elapsedMs": 23
+    },
+    {
+      "name": "private audience hides instrument",
+      "status": 404,
+      "elapsedMs": 16
+    },
+    {
+      "name": "allow owned QA respondent",
+      "status": 200,
+      "elapsedMs": 20
+    },
+    {
+      "name": "read instrument",
+      "status": 200,
+      "elapsedMs": 16
+    },
+    {
+      "name": "consent is required",
+      "status": 400,
+      "elapsedMs": 19
+    },
+    {
+      "name": "submit identified response",
+      "status": 200,
+      "elapsedMs": 21
+    },
+    {
+      "name": "same account cannot create a second response",
+      "status": 200,
+      "elapsedMs": 13
+    },
+    {
+      "name": "edit same response within deadline",
+      "status": 200,
+      "elapsedMs": 14
+    },
+    {
+      "name": "stale edit is rejected",
+      "status": 409,
+      "elapsedMs": 12
+    },
+    {
+      "name": "owner private results",
+      "status": 200,
+      "elapsedMs": 17
+    },
+    {
+      "name": "respondent cannot read private results",
+      "status": 404,
+      "elapsedMs": 10
+    },
+    {
+      "name": "owner export csv",
+      "status": 200,
+      "elapsedMs": 21
+    },
+    {
+      "name": "owner export xlsx",
+      "status": 200,
+      "elapsedMs": 333
+    },
+    {
+      "name": "owner export docx",
+      "status": 200,
+      "elapsedMs": 191
+    },
+    {
+      "name": "owner export pdf",
+      "status": 200,
+      "elapsedMs": 163
+    },
+    {
+      "name": "respondent cannot export",
+      "status": 404,
+      "elapsedMs": 11
+    },
+    {
+      "name": "owner QR link",
+      "status": 200,
+      "elapsedMs": 11
+    },
+    {
+      "name": "owner rotates QR",
+      "status": 200,
+      "elapsedMs": 27
+    },
+    {
+      "name": "old QR is invalid",
+      "status": 404,
+      "elapsedMs": 11
+    },
+    {
+      "name": "owner closes campaign",
+      "status": 200,
+      "elapsedMs": 14
+    },
+    {
+      "name": "closed campaign rejects edit",
+      "status": 409,
+      "elapsedMs": 14
+    },
+    {
+      "name": "owner reopens explicitly",
+      "status": 200,
+      "elapsedMs": 17
+    },
+    {
+      "name": "reopen does not renew edit window",
+      "status": 409,
+      "elapsedMs": 17
+    },
+    {
+      "name": "private audience restored",
+      "status": 200,
+      "elapsedMs": 13
+    },
+    {
+      "name": "respondent no longer sees instrument",
+      "status": 404,
+      "elapsedMs": 10
+    },
+    {
+      "name": "cleanup campaign trash",
+      "status": 200,
+      "elapsedMs": 12
+    },
+    {
+      "name": "cleanup campaign purge",
+      "status": 200,
+      "elapsedMs": 16
+    },
+    {
+      "name": "cleanup form trash",
+      "status": 200,
+      "elapsedMs": 15
+    },
+    {
+      "name": "cleanup form purge",
+      "status": 200,
+      "elapsedMs": 12
+    },
+    {
+      "name": "remove only respondent created by this run",
+      "status": 200,
+      "elapsedMs": 320
+    },
+    {
+      "name": "deleted respondent session is invalid",
+      "status": 401,
+      "elapsedMs": 8
+    },
+    {
+      "name": "revoke only owner session created by this run",
+      "status": 200,
+      "elapsedMs": 9
+    },
+    {
+      "name": "finished owner QA session is invalid",
+      "status": 401,
+      "elapsedMs": 6
+    }
+  ],
+  "cleanupFailures": [],
+  "createdFormRemoved": true,
+  "createdCampaignRemoved": true,
+  "createdRespondentRemoved": true
+}

@@ -1,6 +1,6 @@
 # Encuestas de Novvin
 
-**Estado:** implementación Android en `feature/live-gifts`, API y antivirus desplegados; Encuestas activadas y 36 comprobaciones funcionales correctas en el servidor. Revisión móvil y criterios pendientes en el informe.
+**Estado:** implementación Android en `feature/live-gifts`, API `f42a349` y antivirus desplegados; Encuestas activadas, 39 comprobaciones funcionales y 12 comprobaciones HTTPS correctas tras la entrega. Revisión del APK conjunto en curso; criterios pendientes en el informe.
 
 **Fecha:** 2026-10-03.
 
@@ -39,3 +39,5 @@ La rama incorpora el editor de planillas, biblioteca, publicación de encuestas 
 - [Entrega verificada en el servidor](VALIDACION_ENTREGA_API.json)
 - [Antivirus desplegado comprobado](VALIDACION_ANTIVIRUS_DESPLEGADO.json)
 - [Comprobación funcional tras habilitar Encuestas](VALIDACION_PRODUCCION_FUNCIONAL.json)
+- [Comprobación funcional tras actualizar Momentos](VALIDACION_PRODUCCION_FUNCIONAL_F42.json)
+- [HTTPS, continuidad de Social y retirada de notificaciones por vistas](VALIDACION_HTTPS_SOCIAL_Y_ENCUESTAS.json)

@@ -1,0 +1,75 @@
+{
+  "utc": "2026-10-04T01:02:27.806456+00:00",
+  "passed": true,
+  "productionApiCommit": "f42a349",
+  "tlsVerified": true,
+  "sessionRevoked": true,
+  "scope": "Android configured HTTPS origin; feed read only; retired notification rejection; no public QA posts",
+  "checks": [
+    {
+      "name": "public HTTPS readiness",
+      "status": 200,
+      "elapsedMs": 299
+    },
+    {
+      "name": "public HTTPS health",
+      "status": 200,
+      "elapsedMs": 418
+    },
+    {
+      "name": "owned QA login",
+      "status": 200,
+      "elapsedMs": 943
+    },
+    {
+      "name": "authenticated account",
+      "status": 200,
+      "elapsedMs": 827
+    },
+    {
+      "name": "survey bootstrap available",
+      "status": 200,
+      "elapsedMs": 927
+    },
+    {
+      "name": "survey bootstrap requires authentication",
+      "status": 401,
+      "elapsedMs": 610
+    },
+    {
+      "name": "discover first page",
+      "status": 200,
+      "elapsedMs": 311
+    },
+    {
+      "name": "discover continuation",
+      "status": 200,
+      "elapsedMs": 1339
+    },
+    {
+      "name": "notification list excludes retired views",
+      "status": 200,
+      "elapsedMs": 274
+    },
+    {
+      "name": "retired view notification creation is rejected",
+      "status": 400,
+      "elapsedMs": 464
+    },
+    {
+      "name": "revoke only the QA session created here",
+      "status": 200,
+      "elapsedMs": 2360
+    },
+    {
+      "name": "revoked QA session requires authentication",
+      "status": 401,
+      "elapsedMs": 1959
+    }
+  ],
+  "feedObservations": {
+    "firstPageItems": 3,
+    "hasMore": true,
+    "nextPageItems": 3
+  }
+}
