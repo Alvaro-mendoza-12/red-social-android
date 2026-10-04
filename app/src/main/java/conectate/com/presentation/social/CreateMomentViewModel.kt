@@ -271,6 +271,11 @@ class CreateMomentViewModel @Inject constructor(
         musicFadeInMs: Long = 0L,
         musicFadeOutMs: Long = 0L,
         duckOriginalAudio: Boolean = false,
+        musicOverlayX: Float = .5f,
+        musicOverlayY: Float = .5f,
+        musicOverlayScale: Float = 1f,
+        musicOverlayRotation: Float = 0f,
+        musicLyrics: String? = null,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
@@ -332,6 +337,11 @@ class CreateMomentViewModel @Inject constructor(
                     musicArtist = musicArtist,
                     musicPresentation = musicPresentation,
                     musicArtworkUrl = musicArtworkUrl,
+                    musicOverlayX = conectate.com.data.model.normalizedMomentMusicPosition(musicOverlayX),
+                    musicOverlayY = conectate.com.data.model.normalizedMomentMusicPosition(musicOverlayY),
+                    musicOverlayScale = conectate.com.data.model.normalizedMomentMusicScale(musicOverlayScale),
+                    musicOverlayRotation = conectate.com.data.model.normalizedMomentMusicRotation(musicOverlayRotation),
+                    musicLyrics = musicLyrics?.takeIf { it.length <= 12_000 },
                     musicSource = musicSource,
                     musicSourceUrl = musicSourceUrl,
                     musicLicense = musicLicense,

@@ -96,6 +96,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import coil.compose.AsyncImage
 import conectate.com.data.music.ApprovedMomentMusic
+import conectate.com.data.music.timedMusicLyrics
 import conectate.com.data.model.MomentMusicPresentation
 import conectate.com.util.MediaPlaybackDataSources
 import conectate.com.util.InteractiveAudioBuffer
@@ -114,6 +115,10 @@ data class MomentMusicSelection(
     /** URI local temporal cuando la pista viene del dispositivo. */
     val localUri: Uri? = null,
     val presentation: MomentMusicPresentation = MomentMusicPresentation.CARD,
+    val overlayX: Float = .5f,
+    val overlayY: Float = .5f,
+    val overlayScale: Float = 1f,
+    val overlayRotation: Float = 0f,
 )
 
 internal val MOMENT_MUSIC_PICKER_SECTIONS = listOf(
@@ -347,6 +352,9 @@ fun MomentMusicPickerDialog(
     }
 
     fun selectTrack(track: ApprovedMomentMusic) {
+        if (presentation == MomentMusicPresentation.LYRICS && timedMusicLyrics(track.lyrics, track.durationMs).isEmpty()) {
+            presentation = MomentMusicPresentation.CARD
+        }
         selected = track
         selectedLocalUri = null
         range = MomentMusicTrimPolicy(track.durationMs, effectiveContentDurationMs).initialRange(effectiveContentDurationMs)
@@ -391,6 +399,9 @@ fun MomentMusicPickerDialog(
                                             showTopMenu = false; player.pause(); playingId = null; showMyUploads = true
                                         })
                                     } else {
+                                        DropdownMenuItem(text = { Text("Solo música, sin tarjeta ni letras") }, onClick = {
+                                            presentation = MomentMusicPresentation.AUDIO_ONLY; showTopMenu = false
+                                        })
                                         DropdownMenuItem(text = { Text("Información de la canción") }, onClick = {
                                             showTopMenu = false; showSongInfo = true
                                         })
@@ -408,6 +419,10 @@ fun MomentMusicPickerDialog(
                         val policy = MomentMusicTrimPolicy(track.durationMs, effectiveContentDurationMs)
                         val safeRange = policy.normalize(range)
                         val maxFadeMs = policy.fadeLimitMs(safeRange)
+                        val selectableLyrics = presentation != MomentMusicPresentation.LYRICS ||
+                            timedMusicLyrics(track.lyrics, track.durationMs).any {
+                                it.text.isNotBlank() && it.startMs < safeRange.endInclusive && it.endMs > safeRange.start
+                            }
                         Surface(tonalElevation = 3.dp) {
                             Row(
                                 Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
@@ -432,12 +447,17 @@ fun MomentMusicPickerDialog(
                                     Text(if (playingId == track.id && isPlayerPlaying) "Pausar" else "Escuchar")
                                 }
                                 Button(
+                                    enabled = selectableLyrics,
                                     onClick = {
                                         player.pause()
                                         onSelect(MomentMusicSelection(
                                             track, safeRange.start.toLong(), safeRange.endInclusive.toLong(),
                                             musicVolume, originalVolume, fadeInMs.coerceIn(0L, maxFadeMs),
                                             fadeOutMs.coerceIn(0L, maxFadeMs), duckOriginal, selectedLocalUri, presentation,
+                                            overlayX = initialSelection?.overlayX ?: .5f,
+                                            overlayY = initialSelection?.overlayY ?: .5f,
+                                            overlayScale = initialSelection?.overlayScale ?: 1f,
+                                            overlayRotation = initialSelection?.overlayRotation ?: 0f,
                                         ))
                                     },
                                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
@@ -613,15 +633,19 @@ fun MomentMusicPickerDialog(
                                     Text(track.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.bodyMedium)
                                 }
-                            } else MomentMusicPresentationPreview(presentation, track.title, track.artist, track.artworkUrl)
+                            } else MomentMusicPresentationPreview(presentation, track.title, track.artist, track.artworkUrl,
+                                rawLyrics = track.lyrics, playbackPositionMs = positionMs, durationMs = track.durationMs)
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            MomentMusicPresentation.entries.forEach { option ->
+                            val hasLyrics = timedMusicLyrics(track.lyrics, track.durationMs).isNotEmpty()
+                            listOf(MomentMusicPresentation.CARD, MomentMusicPresentation.LABEL,
+                                if (hasLyrics) MomentMusicPresentation.LYRICS else MomentMusicPresentation.AUDIO_ONLY).forEach { option ->
                                 val label = when (option) {
                                     MomentMusicPresentation.CARD -> "Tarjeta"
                                     MomentMusicPresentation.LABEL -> "Etiqueta"
                                     MomentMusicPresentation.AUDIO_ONLY -> "Solo música"
+                                    MomentMusicPresentation.LYRICS -> "Letras"
                                 }
                                 FilterChip(selected = presentation == option, onClick = { presentation = option },
                                     label = { Text(label) }, modifier = Modifier.testTag("music_presentation_option_${option.wireValue}"))
@@ -646,23 +670,28 @@ fun MomentMusicPickerDialog(
                                 }
                             }
                         }
-                        val latestStart = trimPolicy.sourceDurationMs.toFloat() - (safeRange.endInclusive - safeRange.start)
-                        Slider(value = safeRange.start,
-                            onValueChange = { start ->
-                                range = trimPolicy.moveStart(start, safeRange)
+                        MomentMusicExcerptTimeline(
+                            sourceDurationMs = trimPolicy.sourceDurationMs,
+                            startMs = safeRange.start.toLong(), endMs = safeRange.endInclusive.toLong(),
+                            playbackPositionMs = positionMs,
+                            onStartChanged = { start ->
+                                range = trimPolicy.moveStart(start.toFloat(), safeRange)
                                 if (playingId == track.id && playingSelection) player.seekTo(range.start.toLong())
-                            }, valueRange = 0f..latestStart.coerceAtLeast(1f), enabled = latestStart > 0f,
-                            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Inicio del fragmento" })
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Inicio ${formatDuration(safeRange.start.toLong())}", style = MaterialTheme.typography.bodySmall)
-                            Text("Final ${formatDuration(safeRange.endInclusive.toLong())}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        LinearProgressIndicator(
-                            progress = { ((positionMs - safeRange.start) / (safeRange.endInclusive - safeRange.start)).coerceIn(0f, 1f) },
-                            modifier = Modifier.fillMaxWidth(),
+                            },
                         )
-                        Text("Desliza para elegir la parte de la canción.", style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val cues = remember(track.lyrics, track.durationMs) { timedMusicLyrics(track.lyrics, track.durationMs) }
+                        if (cues.isEmpty()) Text("Esta pista no incluye letras sincronizadas.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        else if (presentation == MomentMusicPresentation.LYRICS && cues.none {
+                            it.text.isNotBlank() && it.startMs < safeRange.endInclusive && it.endMs > safeRange.start
+                        }) {
+                            Text("Este fragmento no tiene letra. Elige otra parte de la canción.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton(onClick = {
+                                range = trimPolicy.moveStart(cues.first { it.text.isNotBlank() }.startMs.toFloat(), safeRange)
+                                if (playingId == track.id && playingSelection) player.seekTo(range.start.toLong())
+                            }) { Text("Ir al inicio de la letra") }
+                        }
                         playbackError?.let { Text(it, color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall) }
                     }

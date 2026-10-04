@@ -28,5 +28,23 @@ class LocalFallbackMomentMusicRequestTest {
         )
         assertEquals("card", request.musicPresentation)
         assertEquals(null, request.musicArtworkUrl)
+        assertEquals(.5f, request.musicOverlayX, 0f)
+        assertEquals(.5f, request.musicOverlayY, 0f)
+        assertEquals(1f, request.musicOverlayScale, 0f)
+        assertEquals(0f, request.musicOverlayRotation, 0f)
+        assertEquals(null, request.musicLyrics)
+    }
+
+    @Test fun createRequestPreservesPlacementAndRealLyrics() {
+        val request = LocalFallbackApiClient.LocalFallbackCreateMomentRequest(
+            mediaUrl = "https://example.invalid/moment.png", mediaType = "image",
+            musicPresentation = "lyrics", musicLyrics = "[00:00]QA A\n[00:02]QA B",
+            musicOverlayX = .8f, musicOverlayY = .7f, musicOverlayScale = 1.3f, musicOverlayRotation = -20f,
+        )
+        val json = Json { encodeDefaults = true }
+        assertEquals(request, json.decodeFromString<LocalFallbackApiClient.LocalFallbackCreateMomentRequest>(json.encodeToString(request)))
+        val payload = json.parseToJsonElement(json.encodeToString(request)).jsonObject
+        assertEquals("0.8", payload.getValue("musicOverlayX").jsonPrimitive.content)
+        assertEquals(request.musicLyrics, payload.getValue("musicLyrics").jsonPrimitive.content)
     }
 }

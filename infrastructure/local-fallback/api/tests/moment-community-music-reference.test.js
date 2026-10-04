@@ -82,3 +82,15 @@ test('catalog ID remains authoritative and removed or unapproved tracks stay rej
   const verified = await verifyApprovedMomentMusic(pool, { ...body, musicAudioUrl: undefined })
   assert.equal(verified.audioUrl, storedUrl)
 })
+
+test('community lyrics are resolved with the approved track, never overwritten by the client', async () => {
+  const lyrics = '[00:00]QA first\n[00:03]QA next'
+  const lyricsPool = { query: async sql => {
+    assert.match(sql, /moderation_state,lyrics/)
+    return { rows: [{ ...track, lyrics }] }
+  } }
+  const verified = await verifyApprovedMomentMusic(lyricsPool, { ...body, musicLyrics: '[00:00]Forged' })
+  assert.equal(verified.lyrics, lyrics)
+  const untimed = await verifyApprovedMomentMusic({ query: async () => ({ rows: [{ ...track, lyrics: 'Untimed' }] }) }, body)
+  assert.equal(untimed.lyrics, null)
+})

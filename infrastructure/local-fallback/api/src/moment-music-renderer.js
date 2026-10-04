@@ -1,5 +1,6 @@
 'use strict'
 
+const { clippedMusicLyrics } = require('./moment-music-lyrics')
 const crypto = require('crypto')
 const dns = require('dns').promises
 const fs = require('fs')
@@ -314,6 +315,7 @@ async function renderCompatibleMomentMusic({ pool, req, user, approvedMusic, fet
       ...approvedMusic,
       audioUrl: stored.public_url,
       startMs: 0,
+      lyrics: clippedMusicLyrics(approvedMusic.lyrics, approvedMusic.startMs, durationMs),
       durationMs,
       endMs: durationMs,
       renderedCodec: 'aac-lc',

@@ -57,6 +57,11 @@ data class MomentHighlightItemPreview(
     val username: String? = null,
     val userDisplayName: String? = null,
     val userAvatarUrl: String? = null,
+    val musicOverlayX: Float = 0.5f,
+    val musicOverlayY: Float = 0.5f,
+    val musicOverlayScale: Float = 1f,
+    val musicOverlayRotation: Float = 0f,
+    val musicLyrics: String? = null,
 )
 
 fun MomentHighlightItemPreview.isActiveAt(now: Instant = Instant.now()): Boolean {

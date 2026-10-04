@@ -187,4 +187,56 @@ class MomentMusicPickerUiTest {
         compose.onNodeWithText("Usar audio").performClick()
         assertEquals(25_000L, confirmed!!.endMs - confirmed!!.startMs)
     }
+
+    @Test fun realLyricsOfferThreeStylesAndConfirmTheExistingPlacement() {
+        val song = track(seconds = 30).copy(lyrics = "[00:00.00]Una voz para compartir\n[00:03.00]Seguimos creando")
+        var confirmed: MomentMusicSelection? = null
+        show(MusicCatalogUiState(), MomentMusicSelection(song, 0, 6_000, 1f, 1f,
+            overlayX = .6f, overlayY = .4f, overlayScale = .8f, overlayRotation = 18f), onSelect = { confirmed = it })
+        compose.onNodeWithTag("music_presentation_option_lyrics").performScrollTo().performClick()
+        compose.onNodeWithTag("moment_music_active_lyric").assertTextEquals("Una voz para compartir")
+        compose.onNodeWithTag("music_presentation_option_audio").assertDoesNotExist()
+        screenshot("qa-music-lyrics-selection.png")
+        compose.onNodeWithText("Usar audio").performClick()
+        assertEquals(MomentMusicPresentation.LYRICS, confirmed!!.presentation)
+        assertEquals(.6f, confirmed!!.overlayX, .001f)
+        assertEquals(.4f, confirmed!!.overlayY, .001f)
+        assertEquals(.8f, confirmed!!.overlayScale, .001f)
+        assertEquals(18f, confirmed!!.overlayRotation, .001f)
+    }
+
+    @Test fun timelineDragChangesTheActualStartWithoutChangingClipLength() {
+        val song = track(seconds = 60)
+        var confirmed: MomentMusicSelection? = null
+        show(MusicCatalogUiState(), MomentMusicSelection(song, 10_000, 16_000, 1f, 1f), onSelect = { confirmed = it })
+        compose.onNodeWithTag("moment_music_excerpt_timeline").performScrollTo().performTouchInput {
+            swipe(center, center - androidx.compose.ui.geometry.Offset(60f, 0f), 400)
+        }
+        screenshot("qa-music-excerpt-timeline.png")
+        compose.onNodeWithText("Usar audio").performClick()
+        assertTrue(confirmed!!.startMs > 10_000)
+        assertEquals(6_000L, confirmed!!.endMs - confirmed!!.startMs)
+    }
+    @Test fun synchronizedLyricsAdvanceWithTheActualAudioPlayer() {
+        val song = track(seconds = 12).copy(lyrics = "[00:00.00]Comenzamos\n[00:02.00]La canción continúa\n[00:05.00]Nuestra voz")
+        show(MusicCatalogUiState(items = listOf(song)))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(song.title))
+        compose.onNodeWithText(song.title).performClick()
+        compose.onNodeWithTag("music_presentation_option_lyrics").performScrollTo().performClick()
+        compose.waitUntil(6_000) {
+            compose.onAllNodes(hasTestTag("moment_music_active_lyric") and hasText("La canción continúa")).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("moment_music_active_lyric").assertTextEquals("La canción continúa")
+    }
+    @Test fun instrumentalExcerptMustBeAdjustedBeforeConfirmingLyrics() {
+        val song = track(seconds = 30).copy(lyrics = "[00:20.00]Nuestra voz comienza\n[00:24.00]Seguimos aquí")
+        var confirmed: MomentMusicSelection? = null
+        show(MusicCatalogUiState(), MomentMusicSelection(song, 0, 6_000, 1f, 1f), onSelect = { confirmed = it })
+        compose.onNodeWithTag("music_presentation_option_lyrics").performScrollTo().performClick()
+        compose.onNodeWithText("Usar audio").assertIsNotEnabled()
+        compose.onNodeWithText("Ir al inicio de la letra").performScrollTo().performClick()
+        compose.onNodeWithText("Usar audio").assertIsEnabled().performClick()
+        assertEquals(MomentMusicPresentation.LYRICS, confirmed!!.presentation)
+        assertEquals(20_000L, confirmed!!.startMs)
+    }
 }

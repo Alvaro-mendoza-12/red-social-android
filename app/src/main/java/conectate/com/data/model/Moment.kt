@@ -56,7 +56,12 @@ data class Moment(
     val viewCount: Int = 0,
     val isViewed: Boolean = false,
     @SerialName("reaction_count") val reactionCount: Int = 0,
-    @SerialName("reacted_by_me") val isLikedByMe: Boolean = false
+    @SerialName("reacted_by_me") val isLikedByMe: Boolean = false,
+    @SerialName("music_overlay_x") val musicOverlayX: Float = 0.5f,
+    @SerialName("music_overlay_y") val musicOverlayY: Float = 0.5f,
+    @SerialName("music_overlay_scale") val musicOverlayScale: Float = 1f,
+    @SerialName("music_overlay_rotation") val musicOverlayRotation: Float = 0f,
+    @SerialName("music_lyrics") val musicLyrics: String? = null,
 )
 
 val Moment.resolvedMusicAudioUrl: String?

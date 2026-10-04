@@ -6,6 +6,7 @@ const { renderCompatibleMomentMusic, isPublicHttpsUrl } = require('./moment-musi
 const { parseStorageObjectUrl, removeStorageObjectFiles } = require('./storage-routes')
 const { sameCommunityMusicReference } = require('./moment-music-reference')
 const { momentTimestamp } = require('./moment-timestamps')
+const { approvedSyncedLyrics } = require('./moment-music-lyrics')
 
 const IMAGE_MOMENT_DISPLAY_DURATION_MS = 6000
 const MIN_IMAGE_MOMENT_DISPLAY_DURATION_MS = 6000
@@ -256,6 +257,7 @@ async function verifyOwnedLocalMomentMusic(
     ownerId: String(user.id),
     attribution: `${title} — ${artist}`.slice(0, 500),
     source: 'novvin_moment_local',
+    lyrics: approvedSyncedLyrics(body.musicLyrics ?? body.music_lyrics),
     sourceUrl: null,
     license: 'Uso aportado por el usuario',
     licenseUrl: null,
@@ -294,7 +296,7 @@ async function verifyApprovedMomentMusic(pool, body, context = {}) {
   }
   const { rows } = await pool.query(
     `SELECT id,owner_id,title,artist_name,attribution,audio_url,cover_url,duration_ms,rights_type,license_name,license_url,
-            visibility,allow_reuse,moderation_state
+            visibility,allow_reuse,moderation_state,lyrics
        FROM fallback_music_tracks
       WHERE id=$1::uuid
         AND moderation_state='APPROVED'
@@ -321,6 +323,7 @@ async function verifyApprovedMomentMusic(pool, body, context = {}) {
     id: `community:${track.id}`,
     title: track.title,
     artist: track.artist_name,
+    lyrics: approvedSyncedLyrics(track.lyrics),
     ownerId: String(track.owner_id || ''),
     attribution: String(track.attribution || `${track.title} — ${track.artist_name}`).slice(0, 500),
     source: 'novvin_community',
@@ -576,6 +579,11 @@ async function ensureMomentsTables(pool) {
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_artist TEXT`)
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_presentation TEXT NOT NULL DEFAULT 'card'`)
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_artwork_url TEXT`)
+  await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_overlay_x REAL NOT NULL DEFAULT 0.5`)
+  await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_overlay_y REAL NOT NULL DEFAULT 0.5`)
+  await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_overlay_scale REAL NOT NULL DEFAULT 1`)
+  await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_overlay_rotation REAL NOT NULL DEFAULT 0`)
+  await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_lyrics TEXT`)
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_source TEXT`)
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_source_url TEXT`)
   await pool.query(`ALTER TABLE fallback_moments ADD COLUMN IF NOT EXISTS music_license TEXT`)
@@ -635,12 +643,19 @@ function profileAliases(row) {
 
 function momentMusicPresentationFields(body = {}, approvedMusic = null) {
   const requested = textOf(body, ['musicPresentation', 'music_presentation'], 'card')
-  const presentation = ['card', 'label', 'audio'].includes(requested) ? requested : 'card'
+  const lyrics = approvedSyncedLyrics(approvedMusic?.lyrics)
+  const presentation = ['card', 'label', 'audio', ...(lyrics ? ['lyrics'] : [])].includes(requested) ? requested : 'card'
   // Community artwork is authoritative catalog data, like title and artist.
   const artwork = approvedMusic?.source === 'novvin_community'
     ? String(approvedMusic.artworkUrl || '')
     : textOf(body, ['musicArtworkUrl', 'music_artwork_url'], '')
-  return { presentation,
+  const coordinate = (keys, fallback, min, max) => Math.max(min, Math.min(numberOf(body, keys, fallback), max))
+  const rotation = numberOf(body, ['musicOverlayRotation', 'music_overlay_rotation'], 0)
+  return { presentation, lyrics,
+    overlayX: approvedMusic ? coordinate(['musicOverlayX', 'music_overlay_x'], .5, 0, 1) : .5,
+    overlayY: approvedMusic ? coordinate(['musicOverlayY', 'music_overlay_y'], .5, 0, 1) : .5,
+    overlayScale: approvedMusic ? coordinate(['musicOverlayScale', 'music_overlay_scale'], 1, .5, 2) : 1,
+    overlayRotation: approvedMusic ? ((rotation + 180) % 360 + 360) % 360 - 180 : 0,
     artworkUrl: approvedMusic && artwork.length <= 2048 && isPublicHttpsUrl(artwork) ? artwork : null,
   }
 }
@@ -743,7 +758,7 @@ async function buildMomentsFeed(pool, identity) {
   const { rows: localRows } = await pool.query(
     `SELECT id::text, user_id, media_url, media_type, thumbnail_url, caption,
             overlay_text, overlay_color, overlay_font, overlay_scale, overlay_x, overlay_y,
-            music_url, music_audio_url, music_id, music_title, music_artist, music_presentation, music_artwork_url, music_source,
+            music_url, music_audio_url, music_id, music_title, music_artist, music_presentation, music_artwork_url, music_overlay_x, music_overlay_y, music_overlay_scale, music_overlay_rotation, music_lyrics, music_source,
             music_source_url, music_license, music_license_url, music_start_ms, music_duration_ms,
             music_end_ms, music_volume, original_audio_volume, music_fade_in_ms, music_fade_out_ms,
             duck_original_audio, music_embedded, visibility, visibility_type,
@@ -863,7 +878,12 @@ async function buildMomentsFeed(pool, identity) {
       music_id: textOf(row, ['music_id', 'musicId'], ''),
       music_title: textOf(row, ['music_title', 'musicTitle'], ''),
       music_artist: textOf(row, ['music_artist', 'musicArtist'], ''),
-      music_presentation: ['card', 'label', 'audio'].includes(row.music_presentation) ? row.music_presentation : 'card',
+      music_presentation: ['card', 'label', 'audio', ...(approvedSyncedLyrics(row.music_lyrics) ? ['lyrics'] : [])].includes(row.music_presentation) ? row.music_presentation : 'card',
+      music_lyrics: approvedSyncedLyrics(row.music_lyrics),
+      music_overlay_x: Math.max(0, Math.min(numberOf(row, ['music_overlay_x', 'musicOverlayX'], .5), 1)),
+      music_overlay_y: Math.max(0, Math.min(numberOf(row, ['music_overlay_y', 'musicOverlayY'], .5), 1)),
+      music_overlay_scale: Math.max(.5, Math.min(numberOf(row, ['music_overlay_scale', 'musicOverlayScale'], 1), 2)),
+      music_overlay_rotation: ((numberOf(row, ['music_overlay_rotation', 'musicOverlayRotation'], 0) + 180) % 360 + 360) % 360 - 180,
       music_artwork_url: isPublicHttpsUrl(row.music_artwork_url) ? row.music_artwork_url : null,
       music_source: textOf(row, ['music_source', 'musicSource'], ''),
       music_source_url: textOf(row, ['music_source_url', 'musicSourceUrl'], ''),
@@ -1104,15 +1124,16 @@ function registerMomentsRoutes(
             music_url, music_audio_url, music_id, music_title, music_artist, music_source,
             music_source_url, music_license, music_license_url, music_start_ms, music_duration_ms,
             music_end_ms, music_volume, original_audio_volume, music_fade_in_ms, music_fade_out_ms,
-            duck_original_audio, music_embedded, music_presentation, music_artwork_url
+            duck_original_audio, music_embedded, music_presentation, music_artwork_url,
+            music_overlay_x, music_overlay_y, music_overlay_scale, music_overlay_rotation, music_lyrics
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14,
                  $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
-                 $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)
+                 $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45)
          RETURNING id::text, user_id, media_url, media_type, thumbnail_url, caption, visibility, visibility_type,
                    allow_replies, display_duration_ms, duration_hours, duration_type, excluded_ids, audience_ids, expires_at,
                    overlay_text, overlay_color, overlay_font, overlay_scale, overlay_x, overlay_y,
-                   music_url, music_audio_url, music_id, music_title, music_artist, music_presentation, music_artwork_url, music_source,
+                   music_url, music_audio_url, music_id, music_title, music_artist, music_presentation, music_artwork_url, music_overlay_x, music_overlay_y, music_overlay_scale, music_overlay_rotation, music_lyrics, music_source,
                    music_source_url, music_license, music_license_url, music_start_ms, music_duration_ms,
                    music_end_ms, music_volume, original_audio_volume, music_fade_in_ms, music_fade_out_ms,
                    duck_original_audio, music_embedded, created_at, updated_at`,
@@ -1157,6 +1178,9 @@ function registerMomentsRoutes(
           musicEmbedded,
           effectiveMusic?.presentation || 'card',
           effectiveMusic?.artworkUrl || null,
+          effectiveMusic?.overlayX ?? .5, effectiveMusic?.overlayY ?? .5,
+          effectiveMusic?.overlayScale ?? 1, effectiveMusic?.overlayRotation ?? 0,
+          effectiveMusic?.lyrics || null,
         ],
       )
       momentPersisted = true
@@ -1264,7 +1288,8 @@ function registerMomentsRoutes(
            music_source=$6,music_source_url=$7,music_license=$8,music_license_url=$9,
            music_start_ms=$10,music_duration_ms=$11,music_end_ms=$12,music_volume=$13,
            original_audio_volume=$14,music_fade_in_ms=$15,music_fade_out_ms=$16,
-           duck_original_audio=$17,music_embedded=FALSE,music_presentation=$18,music_artwork_url=$19,updated_at=NOW()
+           duck_original_audio=$17,music_embedded=FALSE,music_presentation=$18,music_artwork_url=$19,
+           music_overlay_x=$20,music_overlay_y=$21,music_overlay_scale=$22,music_overlay_rotation=$23,music_lyrics=$24,updated_at=NOW()
          WHERE id=$1::uuid RETURNING *`,
         [
           owned.rows[0].id, effectiveMusic.audioUrl, effectiveMusic.id, effectiveMusic.title,
@@ -1273,6 +1298,7 @@ function registerMomentsRoutes(
           effectiveMusic.durationMs, effectiveMusic.endMs, effectiveMusic.musicVolume,
           effectiveMusic.originalAudioVolume, fadeInMs, fadeOutMs, duckOriginal,
           effectiveMusic.presentation, effectiveMusic.artworkUrl,
+          effectiveMusic.overlayX, effectiveMusic.overlayY, effectiveMusic.overlayScale, effectiveMusic.overlayRotation, effectiveMusic.lyrics,
         ],
       )
       musicUpdated = true
@@ -1334,6 +1360,7 @@ function registerMomentsRoutes(
              music_url=NULL,music_audio_url=NULL,music_id=NULL,music_title=NULL,music_artist=NULL,
              music_source=NULL,music_source_url=NULL,music_license=NULL,music_license_url=NULL,
              music_presentation='card',music_artwork_url=NULL,
+             music_overlay_x=.5,music_overlay_y=.5,music_overlay_scale=1,music_overlay_rotation=0,music_lyrics=NULL,
              music_start_ms=0,music_duration_ms=6000,music_end_ms=NULL,music_volume=1,
              original_audio_volume=1,music_fade_in_ms=0,music_fade_out_ms=0,
              duck_original_audio=FALSE,music_embedded=FALSE,updated_at=NOW()

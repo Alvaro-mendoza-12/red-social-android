@@ -31,6 +31,21 @@ class MomentHighlightMapperTest {
         assertNull(item.toHighlightItemPreview(Json.parseToJsonElement("{}").jsonObject))
     }
 
+    @Test fun `timed lyrics and separate music placement survive highlighted moment`() {
+        val original = Json.parseToJsonElement("""{"media_url":"media","music_presentation":"lyrics",
+            "music_lyrics":"[00:00]QA A\n[00:02]QA B","music_overlay_x":0.8,"music_overlay_y":0.6,
+            "music_overlay_scale":1.4,"music_overlay_rotation":-32,"overlay_x":0.1,"overlay_y":0.2}""").jsonObject
+        val moment = requireNotNull(item.toHighlightItemPreview(original)).asMoment()
+        assertEquals("lyrics", moment.musicPresentation)
+        assertEquals("[00:00]QA A\n[00:02]QA B", moment.musicLyrics)
+        assertEquals(.8f, moment.musicOverlayX, 0f)
+        assertEquals(.6f, moment.musicOverlayY, 0f)
+        assertEquals(1.4f, moment.musicOverlayScale, 0f)
+        assertEquals(-32f, moment.musicOverlayRotation, 0f)
+        assertEquals(.1f, moment.overlayX, 0f)
+        assertEquals(.2f, moment.overlayY, 0f)
+    }
+
     @Test fun `soundtrack mix attribution overlay and expiry survive both mappings`() {
         val original = Json.parseToJsonElement("""{"media_url":"video","media_type":"video",
             "music_audio_url":"song","music_url":"legacy","music_id":"song-id","music_title":"Title",

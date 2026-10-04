@@ -725,7 +725,8 @@ async function readSpecificRows(pool, tableName, auth) {
                visibility_type, allow_replies, duration_hours, duration_type, excluded_ids,
                audience_ids, display_duration_ms,
                overlay_text, overlay_color, overlay_font, overlay_scale, overlay_x, overlay_y,
-               music_url, music_audio_url, music_id, music_title, music_artist, music_presentation, music_artwork_url, music_source,
+               music_url, music_audio_url, music_id, music_title, music_artist, music_presentation, music_artwork_url,
+               music_overlay_x, music_overlay_y, music_overlay_scale, music_overlay_rotation, music_lyrics, music_source,
                music_source_url, music_license, music_license_url, music_start_ms,
                music_duration_ms, music_end_ms, music_volume, original_audio_volume,
                expires_at, created_at, updated_at

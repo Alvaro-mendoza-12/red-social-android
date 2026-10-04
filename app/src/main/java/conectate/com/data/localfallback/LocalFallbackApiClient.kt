@@ -2908,6 +2908,11 @@ class LocalFallbackApiClient @Inject constructor(
         val musicFadeOutMs: Long = 0L,
         val duckOriginalAudio: Boolean = false,
         val musicEmbedded: Boolean = false,
+        val musicOverlayX: Float = .5f,
+        val musicOverlayY: Float = .5f,
+        val musicOverlayScale: Float = 1f,
+        val musicOverlayRotation: Float = 0f,
+        val musicLyrics: String? = null,
     )
 
     @Serializable
@@ -2959,6 +2964,11 @@ class LocalFallbackApiClient @Inject constructor(
         musicFadeOutMs: Long,
         duckOriginalAudio: Boolean,
         musicEmbedded: Boolean,
+        musicOverlayX: Float = .5f,
+        musicOverlayY: Float = .5f,
+        musicOverlayScale: Float = 1f,
+        musicOverlayRotation: Float = 0f,
+        musicLyrics: String? = null,
     ): Result<Moment> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -2991,6 +3001,11 @@ class LocalFallbackApiClient @Inject constructor(
                         musicArtist = musicArtist,
                         musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(musicPresentation).wireValue,
                         musicArtworkUrl = UbuntuStorageUrl.rewrite(musicArtworkUrl),
+                        musicOverlayX = conectate.com.data.model.normalizedMomentMusicPosition(musicOverlayX),
+                        musicOverlayY = conectate.com.data.model.normalizedMomentMusicPosition(musicOverlayY),
+                        musicOverlayScale = conectate.com.data.model.normalizedMomentMusicScale(musicOverlayScale),
+                        musicOverlayRotation = conectate.com.data.model.normalizedMomentMusicRotation(musicOverlayRotation),
+                        musicLyrics = musicLyrics?.takeIf { it.length <= 12_000 },
                         musicSource = musicSource,
                         musicSourceUrl = musicSourceUrl,
                         musicLicense = musicLicense,
@@ -7094,6 +7109,11 @@ class LocalFallbackApiClient @Inject constructor(
                 textOf(row, "music_presentation", "musicPresentation")
             ).wireValue,
             musicArtworkUrl = UbuntuStorageUrl.rewrite(textOf(row, "music_artwork_url", "musicArtworkUrl").ifBlank { null }),
+            musicOverlayX = conectate.com.data.model.normalizedMomentMusicPosition(textOf(row, "music_overlay_x", "musicOverlayX").toFloatOrNull() ?: .5f),
+            musicOverlayY = conectate.com.data.model.normalizedMomentMusicPosition(textOf(row, "music_overlay_y", "musicOverlayY").toFloatOrNull() ?: .5f),
+            musicOverlayScale = conectate.com.data.model.normalizedMomentMusicScale(textOf(row, "music_overlay_scale", "musicOverlayScale").toFloatOrNull() ?: 1f),
+            musicOverlayRotation = conectate.com.data.model.normalizedMomentMusicRotation(textOf(row, "music_overlay_rotation", "musicOverlayRotation").toFloatOrNull() ?: 0f),
+            musicLyrics = textOf(row, "music_lyrics", "musicLyrics").takeIf { it.isNotBlank() && it.length <= 12_000 },
             musicSource = textOf(row, "music_source", "musicSource").ifBlank { null },
             musicSourceUrl = textOf(row, "music_source_url", "musicSourceUrl").ifBlank { null },
             musicLicense = textOf(row, "music_license", "musicLicense").ifBlank { null },

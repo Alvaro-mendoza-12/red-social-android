@@ -55,6 +55,7 @@ data class ApprovedMomentMusic(
     val allowRemix: Boolean = true,
     val isFavorite: Boolean = false,
     val ownerId: String? = null,
+    val lyrics: String? = null,
 ) {
     companion object {
         const val SOURCE_WIKIMEDIA_COMMONS = "wikimedia_commons"

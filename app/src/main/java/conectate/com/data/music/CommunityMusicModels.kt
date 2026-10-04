@@ -44,6 +44,7 @@ data class CommunityMusicTrack(
     val publishedAt: String? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null,
+    val lyrics: String? = null,
 )
 
 @Serializable
@@ -185,5 +186,6 @@ internal fun CommunityMusicTrack.toApprovedMomentMusic(): ApprovedMomentMusic? {
         allowRemix = allowRemix,
         isFavorite = isFavorite,
         ownerId = ownerId,
+        lyrics = lyrics,
     )
 }

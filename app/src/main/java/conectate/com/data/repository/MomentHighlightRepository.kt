@@ -84,6 +84,13 @@ class MomentHighlightRepository @Inject constructor(
         @SerialName("music_fade_out_ms") val musicFadeOutMs: Long,
         @SerialName("duck_original_audio") val duckOriginalAudio: Boolean,
         @SerialName("music_embedded") val musicEmbedded: Boolean,
+        @SerialName("music_presentation") val musicPresentation: String = "card",
+        @SerialName("music_artwork_url") val musicArtworkUrl: String? = null,
+        @SerialName("music_overlay_x") val musicOverlayX: Float = .5f,
+        @SerialName("music_overlay_y") val musicOverlayY: Float = .5f,
+        @SerialName("music_overlay_scale") val musicOverlayScale: Float = 1f,
+        @SerialName("music_overlay_rotation") val musicOverlayRotation: Float = 0f,
+        @SerialName("music_lyrics") val musicLyrics: String? = null,
     )
 
     suspend fun getHighlightsForUser(userId: String): Result<List<MomentHighlight>> = withContext(Dispatchers.IO) {
@@ -136,7 +143,7 @@ class MomentHighlightRepository @Inject constructor(
             val momentResponse = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/moments") {
                 authHeaders(token)
                 parameter("id", momentIds.joinToString(prefix = "in.(", postfix = ")"))
-                parameter("select", "id,user_id,media_url,media_type,thumbnail_url,caption,overlay_text,overlay_color,overlay_font,overlay_scale,overlay_x,overlay_y,music_url,music_audio_url,music_id,music_title,music_artist,music_source,music_source_url,music_license,music_license_url,music_start_ms,music_duration_ms,music_end_ms,music_volume,original_audio_volume,music_fade_in_ms,music_fade_out_ms,duck_original_audio,music_embedded,display_duration_ms,expires_at,created_at")
+                parameter("select", "id,user_id,media_url,media_type,thumbnail_url,caption,overlay_text,overlay_color,overlay_font,overlay_scale,overlay_x,overlay_y,music_url,music_audio_url,music_id,music_title,music_artist,music_presentation,music_artwork_url,music_overlay_x,music_overlay_y,music_overlay_scale,music_overlay_rotation,music_lyrics,music_source,music_source_url,music_license,music_license_url,music_start_ms,music_duration_ms,music_end_ms,music_volume,original_audio_volume,music_fade_in_ms,music_fade_out_ms,duck_original_audio,music_embedded,display_duration_ms,expires_at,created_at")
             }
             if (!momentResponse.status.isSuccess()) {
                 throw IllegalStateException("No se pudieron cargar los momentos del destacado: ${momentResponse.status}")
@@ -206,6 +213,13 @@ class MomentHighlightRepository @Inject constructor(
                         musicFadeOutMs = moment.musicFadeOutMs,
                         duckOriginalAudio = moment.duckOriginalAudio,
                         musicEmbedded = moment.musicEmbedded,
+                        musicPresentation = moment.musicPresentation,
+                        musicArtworkUrl = moment.musicArtworkUrl,
+                        musicOverlayX = moment.musicOverlayX,
+                        musicOverlayY = moment.musicOverlayY,
+                        musicOverlayScale = moment.musicOverlayScale,
+                        musicOverlayRotation = moment.musicOverlayRotation,
+                        musicLyrics = moment.musicLyrics,
                     )
                 )
             }

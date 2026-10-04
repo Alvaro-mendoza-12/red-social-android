@@ -398,6 +398,11 @@ class MomentRepository @Inject constructor(
                 musicArtist = json["music_artist"]?.jsonPrimitive?.contentOrNull,
                 musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(json["music_presentation"]?.jsonPrimitive?.contentOrNull).wireValue,
                 musicArtworkUrl = UbuntuStorageUrl.rewrite(json["music_artwork_url"]?.jsonPrimitive?.contentOrNull),
+                musicOverlayX = conectate.com.data.model.normalizedMomentMusicPosition(json["music_overlay_x"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: .5f),
+                musicOverlayY = conectate.com.data.model.normalizedMomentMusicPosition(json["music_overlay_y"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: .5f),
+                musicOverlayScale = conectate.com.data.model.normalizedMomentMusicScale(json["music_overlay_scale"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f),
+                musicOverlayRotation = conectate.com.data.model.normalizedMomentMusicRotation(json["music_overlay_rotation"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f),
+                musicLyrics = json["music_lyrics"]?.jsonPrimitive?.contentOrNull?.takeIf { it.length <= 12_000 },
                 musicSource = json["music_source"]?.jsonPrimitive?.contentOrNull,
                 musicSourceUrl = json["music_source_url"]?.jsonPrimitive?.contentOrNull,
                 musicLicense = json["music_license"]?.jsonPrimitive?.contentOrNull,
@@ -511,6 +516,11 @@ class MomentRepository @Inject constructor(
                         musicArtist = json["music_artist"]?.jsonPrimitive?.contentOrNull,
                 musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(json["music_presentation"]?.jsonPrimitive?.contentOrNull).wireValue,
                 musicArtworkUrl = UbuntuStorageUrl.rewrite(json["music_artwork_url"]?.jsonPrimitive?.contentOrNull),
+                musicOverlayX = conectate.com.data.model.normalizedMomentMusicPosition(json["music_overlay_x"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: .5f),
+                musicOverlayY = conectate.com.data.model.normalizedMomentMusicPosition(json["music_overlay_y"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: .5f),
+                musicOverlayScale = conectate.com.data.model.normalizedMomentMusicScale(json["music_overlay_scale"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f),
+                musicOverlayRotation = conectate.com.data.model.normalizedMomentMusicRotation(json["music_overlay_rotation"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f),
+                musicLyrics = json["music_lyrics"]?.jsonPrimitive?.contentOrNull?.takeIf { it.length <= 12_000 },
                         musicSource = json["music_source"]?.jsonPrimitive?.contentOrNull,
                         musicSourceUrl = json["music_source_url"]?.jsonPrimitive?.contentOrNull,
                         musicLicense = json["music_license"]?.jsonPrimitive?.contentOrNull,
@@ -652,6 +662,11 @@ class MomentRepository @Inject constructor(
                             musicArtist = json["music_artist"]?.jsonPrimitive?.contentOrNull,
                 musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(json["music_presentation"]?.jsonPrimitive?.contentOrNull).wireValue,
                 musicArtworkUrl = UbuntuStorageUrl.rewrite(json["music_artwork_url"]?.jsonPrimitive?.contentOrNull),
+                musicOverlayX = conectate.com.data.model.normalizedMomentMusicPosition(json["music_overlay_x"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: .5f),
+                musicOverlayY = conectate.com.data.model.normalizedMomentMusicPosition(json["music_overlay_y"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: .5f),
+                musicOverlayScale = conectate.com.data.model.normalizedMomentMusicScale(json["music_overlay_scale"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 1f),
+                musicOverlayRotation = conectate.com.data.model.normalizedMomentMusicRotation(json["music_overlay_rotation"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f),
+                musicLyrics = json["music_lyrics"]?.jsonPrimitive?.contentOrNull?.takeIf { it.length <= 12_000 },
                             musicSource = json["music_source"]?.jsonPrimitive?.contentOrNull,
                             musicSourceUrl = json["music_source_url"]?.jsonPrimitive?.contentOrNull,
                             musicLicense = json["music_license"]?.jsonPrimitive?.contentOrNull,
@@ -713,6 +728,11 @@ class MomentRepository @Inject constructor(
         musicFadeOutMs: Long = 0L,
         duckOriginalAudio: Boolean = false,
         musicEmbedded: Boolean = false,
+        musicOverlayX: Float = .5f,
+        musicOverlayY: Float = .5f,
+        musicOverlayScale: Float = 1f,
+        musicOverlayRotation: Float = 0f,
+        musicLyrics: String? = null,
     ): Result<Moment> = withContext(Dispatchers.IO) {
         val uploadedObjects = mutableListOf<Pair<String, String>>()
         var metadataPersisted = false
@@ -924,6 +944,11 @@ class MomentRepository @Inject constructor(
                 effectiveMusicLicenseUrl?.takeIf { hasMusic && it.startsWith("https://") }?.let { put("music_license_url", it) }
                 put("music_presentation", conectate.com.data.model.MomentMusicPresentation.fromWire(musicPresentation).wireValue)
                 musicArtworkUrl?.takeIf { hasMusic && it.startsWith("https://") }?.let { put("music_artwork_url", it) }
+                put("music_overlay_x", conectate.com.data.model.normalizedMomentMusicPosition(musicOverlayX))
+                put("music_overlay_y", conectate.com.data.model.normalizedMomentMusicPosition(musicOverlayY))
+                put("music_overlay_scale", conectate.com.data.model.normalizedMomentMusicScale(musicOverlayScale))
+                put("music_overlay_rotation", conectate.com.data.model.normalizedMomentMusicRotation(musicOverlayRotation))
+                musicLyrics?.takeIf { hasMusic && it.length <= 12_000 }?.let { put("music_lyrics", it) }
                 put("music_start_ms", safeMusicStartMs)
                 put("music_duration_ms", safeMusicDurationMs)
                 put("music_end_ms", safeMusicEndMs)
@@ -966,6 +991,11 @@ class MomentRepository @Inject constructor(
                     musicArtist = effectiveMusicArtist,
                     musicPresentation = conectate.com.data.model.MomentMusicPresentation.fromWire(musicPresentation).wireValue,
                     musicArtworkUrl = musicArtworkUrl,
+                    musicOverlayX = conectate.com.data.model.normalizedMomentMusicPosition(musicOverlayX),
+                    musicOverlayY = conectate.com.data.model.normalizedMomentMusicPosition(musicOverlayY),
+                    musicOverlayScale = conectate.com.data.model.normalizedMomentMusicScale(musicOverlayScale),
+                    musicOverlayRotation = conectate.com.data.model.normalizedMomentMusicRotation(musicOverlayRotation),
+                    musicLyrics = musicLyrics?.takeIf { it.length <= 12_000 },
                     musicSource = effectiveMusicSource,
                     musicSourceUrl = effectiveMusicSourceUrl,
                     musicLicense = effectiveMusicLicense,

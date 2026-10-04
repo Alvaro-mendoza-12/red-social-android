@@ -43,6 +43,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -478,6 +479,11 @@ fun CreateMomentScreen(
                                     musicArtist = musicSelection?.track?.artist,
                                     musicPresentation = musicSelection?.presentation?.wireValue ?: "card",
                                     musicArtworkUrl = musicSelection?.track?.artworkUrl,
+                                    musicOverlayX = musicSelection?.overlayX ?: .5f,
+                                    musicOverlayY = musicSelection?.overlayY ?: .5f,
+                                    musicOverlayScale = musicSelection?.overlayScale ?: 1f,
+                                    musicOverlayRotation = musicSelection?.overlayRotation ?: 0f,
+                                    musicLyrics = musicSelection?.track?.lyrics,
                                     musicSource = musicSelection?.let { selection ->
                                         if (selection.localUri != null) NOVVIN_LOCAL_MOMENT_MUSIC_SOURCE
                                         else selection.track.source
@@ -693,7 +699,7 @@ fun VideoTrimmerView(
     }
 }
 
-private data class MomentEditorUiState(
+internal data class MomentEditorUiState(
     val uri: Uri,
     val isVideo: Boolean,
     val caption: String,
@@ -716,7 +722,7 @@ private data class MomentEditorUiState(
     val suspendMusicPlayback: Boolean,
 )
 
-private class MomentEditorActions(
+internal class MomentEditorActions(
     val onCaptionChange: (String) -> Unit,
     val onDurationChange: (Float) -> Unit,
     val onAudienceChange: (MomentAudienceOption) -> Unit,
@@ -743,7 +749,7 @@ private class MomentEditorActions(
 )
 
 @Composable
-private fun MomentEditorView(
+internal fun MomentEditorView(
     state: MomentEditorUiState,
     actions: MomentEditorActions,
 ) {
@@ -796,6 +802,14 @@ private fun MomentEditorView(
     var showTextDialog by remember { mutableStateOf(false) }
     var showMusicDialog by remember { mutableStateOf(false) }
     var showAudioMixDialog by remember { mutableStateOf(false) }
+    var showLifetimeDialog by remember { mutableStateOf(false) }
+    var toolbarHeight by remember { mutableIntStateOf(0) }
+    var footerHeight by remember { mutableIntStateOf(0) }
+    var mediaAspectRatio by remember(uri) { mutableFloatStateOf(1f) }
+    val musicClock = remember(musicSelection?.track?.id, musicSelection?.startMs) {
+        kotlinx.coroutines.flow.MutableStateFlow(musicSelection?.startMs ?: 0L)
+    }
+    val editorDensity = LocalDensity.current
     var imageScale by remember(uri) { mutableStateOf(1f) }
     var imageOffset by remember(uri) { mutableStateOf(Offset.Zero) }
     var imageSize by remember(uri) { mutableStateOf(IntSize.Zero) }
@@ -823,6 +837,10 @@ private fun MomentEditorView(
             .imePadding()
     ) {
         // Media Preview
+        Box(Modifier.fillMaxSize().padding(
+            top = with(editorDensity) { toolbarHeight.toDp() },
+            bottom = with(editorDensity) { footerHeight.toDp() },
+        ).clip(RoundedCornerShape(0.dp)).testTag("moment_editor_media_canvas")) {
         if (isVideo) {
             MomentVideoPlayer(
                 uri = uri,
@@ -830,12 +848,17 @@ private fun MomentEditorView(
                     it.originalAudioVolume * if (it.duckOriginalAudio) 0.35f else 1f
                 } ?: 1f,
                 playWhenReady = !showMusicDialog && !suspendMusicPlayback,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                onAspectRatioChanged = { mediaAspectRatio = it },
             )
         } else {
             AsyncImage(
                 model = uri,
                 contentDescription = "Vista previa del momento; pellizca para ampliar",
+                onSuccess = { result ->
+                    val size = result.painter.intrinsicSize
+                    if (size.width > 0f && size.height > 0f) mediaAspectRatio = size.width / size.height
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .onSizeChanged { imageSize = it }
@@ -893,15 +916,8 @@ private fun MomentEditorView(
         }
 
         if (musicSelection != null) {
-            MomentMusicPresentationPreview(
-                presentation = musicSelection.presentation,
-                title = musicSelection.track.title,
-                artist = musicSelection.track.artist,
-                artworkUrl = musicSelection.track.artworkUrl,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(start = 24.dp, end = 24.dp, bottom = 170.dp)
-            )
+            MomentEditorMusicOverlay(musicSelection, mediaAspectRatio, musicClock, onMusicSelected)
+        }
         }
         if (musicSelection != null && !showMusicDialog && !suspendMusicPlayback) {
             MomentEditorMusicPlayback(
@@ -912,6 +928,7 @@ private fun MomentEditorView(
                 startMs = musicSelection.startMs,
                 durationMs = musicSelection.endMs - musicSelection.startMs,
                 volume = musicSelection.musicVolume,
+                onPositionChanged = { musicClock.value = it },
             )
         }
         
@@ -919,6 +936,7 @@ private fun MomentEditorView(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .onSizeChanged { toolbarHeight = it.height }
                 .padding(horizontal = 8.dp, vertical = 2.dp)
                 .align(Alignment.TopCenter),
             verticalAlignment = Alignment.CenterVertically
@@ -982,6 +1000,8 @@ private fun MomentEditorView(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .onSizeChanged { footerHeight = it.height }
+                .testTag("moment_editor_footer")
                 .background(Brush.verticalGradient(
                     colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.92f))
                 ))
@@ -1014,7 +1034,7 @@ private fun MomentEditorView(
                 modifier = Modifier.fillMaxWidth()
             )
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier
@@ -1046,15 +1066,19 @@ private fun MomentEditorView(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                 // Duration Control
                 Column(modifier = Modifier.weight(1f)) {
-                     Text("Duración: ${durationHours.toInt()}h", color = Color.White, fontSize = 12.sp)
-                     Slider(
-                         value = durationHours,
-                         onValueChange = onDurationChange,
-                         valueRange = 5f..24f,
-                         steps = 18
-                     )
+                    TextButton(onClick = { showLifetimeDialog = true }, modifier = Modifier.heightIn(min = 48.dp)
+                        .testTag("moment_lifetime_button")) {
+                        Icon(Icons.Default.Schedule, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Visible por ${durationHours.toInt()} h", color = Color.White)
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Default.ExpandMore, null, tint = Color.White)
+                    }
+                    if (musicSelection != null && musicSelection.presentation != conectate.com.data.model.MomentMusicPresentation.AUDIO_ONLY) {
+                        Text("Arrastra la música · pellizca y gira", color = Color.White.copy(alpha = .6f),
+                            style = MaterialTheme.typography.labelSmall)
+                    }
                 }
                 
                 Spacer(modifier = Modifier.width(16.dp))
@@ -1080,6 +1104,9 @@ private fun MomentEditorView(
             }
         }
     }
+
+    if (showLifetimeDialog) MomentLifetimeDialog(durationHours.toInt(),
+        onChange = { onDurationChange(it.toFloat()) }, onDismiss = { showLifetimeDialog = false })
 
     if (showAudienceDialog) {
         MomentAudienceDialog(
@@ -1158,6 +1185,17 @@ private fun MomentEditorView(
 }
 
 @Composable
+private fun MomentEditorMusicOverlay(selection: MomentMusicSelection, mediaAspectRatio: Float,
+    clock: kotlinx.coroutines.flow.StateFlow<Long>, onSelected: (MomentMusicSelection) -> Unit) {
+    val position by clock.collectAsState()
+    MomentMusicCanvasOverlay(selection.presentation, selection.track.title, selection.track.artist, selection.track.artworkUrl,
+        mediaAspectRatio, selection.overlayX, selection.overlayY, selection.overlayScale, selection.overlayRotation,
+        rawLyrics = selection.track.lyrics, playbackPositionMs = position, durationMs = selection.track.durationMs,
+        onTransform = { transform -> onSelected(selection.copy(overlayX = transform.x, overlayY = transform.y,
+            overlayScale = transform.scale, overlayRotation = transform.rotation)) })
+}
+
+@Composable
 private fun MomentEditorToolButton(
     icon: ImageVector,
     label: String,
@@ -1183,8 +1221,10 @@ internal fun formatMomentMusicDuration(durationMs: Long): String {
 
 @Composable
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
-private fun MomentEditorMusicPlayback(uri: Uri, startMs: Long, durationMs: Long, volume: Float) {
+private fun MomentEditorMusicPlayback(uri: Uri, startMs: Long, durationMs: Long, volume: Float,
+    onPositionChanged: (Long) -> Unit = {}) {
     val context = LocalContext.current
+    val positionCallback by rememberUpdatedState(onPositionChanged)
     val exoPlayer = remember(uri) {
         androidx.media3.exoplayer.ExoPlayer.Builder(context)
             .setMediaSourceFactory(
@@ -1216,6 +1256,7 @@ private fun MomentEditorMusicPlayback(uri: Uri, startMs: Long, durationMs: Long,
         exoPlayer.seekTo(safeStart)
         exoPlayer.playWhenReady = true
         while (true) {
+            positionCallback(exoPlayer.currentPosition.coerceAtLeast(0L))
             if (exoPlayer.currentPosition >= safeStart + safeDuration ||
                 exoPlayer.playbackState == androidx.media3.common.Player.STATE_ENDED
             ) {
@@ -1430,8 +1471,10 @@ fun MomentVideoPlayer(
     endMs: Long = -1,
     volume: Float = 1f,
     playWhenReady: Boolean = true,
+    onAspectRatioChanged: (Float) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val aspectCallback by rememberUpdatedState(onAspectRatioChanged)
     val exoPlayer = remember(uri) {
         // Gallery and camera media arrive as content:// or file:// URIs. A
         // CacheDataSource only understands the HTTP upstream used by the feed;
@@ -1475,7 +1518,16 @@ fun MomentVideoPlayer(
     }
 
     DisposableEffect(exoPlayer) {
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    aspectCallback(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height)
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
         onDispose {
+            exoPlayer.removeListener(listener)
             exoPlayer.release()
         }
     }

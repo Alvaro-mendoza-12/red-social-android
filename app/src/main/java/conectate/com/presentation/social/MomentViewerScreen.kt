@@ -1250,6 +1250,12 @@ fun MomentContent(
 ) {
     val context = LocalContext.current
     var videoPlaying by remember(moment.id, moment.mediaUrl) { mutableStateOf(false) }
+    var mediaAspectRatio by remember(moment.id, moment.mediaUrl) { mutableFloatStateOf(Float.NaN) }
+    // Only the music leaf reads this clock. Video progress does not recompose the whole canvas.
+    val musicPosition = remember(moment.id, moment.resolvedMusicAudioUrl) {
+        kotlinx.coroutines.flow.MutableStateFlow(moment.musicStartMs.coerceAtLeast(0L))
+    }
+    val hasTimedPresentation = moment.musicPresentation == "lyrics"
     // Force clipping to prevent next slide from overlapping
     Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
         if (moment.isVideoMoment()) {
@@ -1336,6 +1342,12 @@ fun MomentContent(
                               isVideoReady = true
                               latestOnVideoReady.value(moment.id)
                           }
+                          override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                              if (videoSize.width > 0 && videoSize.height > 0) {
+                                  val aspect = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+                                  mediaAspectRatio = if (videoSize.unappliedRotationDegrees % 180 == 0) aspect else 1f / aspect
+                              }
+                          }
                           override fun onIsPlayingChanged(isPlaying: Boolean) {
                               videoPlaying = isPlaying
                           }
@@ -1358,6 +1370,9 @@ fun MomentContent(
                      exoPlayer.seekTo(0)
                      latestOnVideoProgress.value(moment.id, 0f)
                      while (true) {
+                         if (hasTimedPresentation && moment.musicEmbedded) {
+                             musicPosition.value = moment.musicStartMs.coerceAtLeast(0L) + exoPlayer.currentPosition.coerceAtLeast(0L)
+                         }
                          val knownDuration = exoPlayer.duration
                          if (knownDuration != C.TIME_UNSET && knownDuration > 0L) {
                              latestOnVideoDurationKnown.value(moment.id, knownDuration)
@@ -1411,6 +1426,7 @@ fun MomentContent(
                     momentId = moment.id,
                     zoomEnabled = allowImageZoom,
                     onImageSettled = { onImageReady(moment.id) },
+                    onAspectRatioKnown = { mediaAspectRatio = it },
                 )
                 moment.overlayText?.takeIf { it.isNotBlank() }?.let { overlay ->
                     val overlayX = (maxWidth * moment.overlayX.coerceIn(0f, 1f) - 76.dp)
@@ -1436,13 +1452,8 @@ fun MomentContent(
                 }
             }
         }
-        if (!moment.resolvedMusicAudioUrl.isNullOrBlank()) {
-            MomentMusicPresentationPreview(
-                presentation = conectate.com.data.model.MomentMusicPresentation.fromWire(moment.musicPresentation),
-                title = moment.musicTitle.orEmpty(), artist = moment.musicArtist,
-                artworkUrl = moment.musicArtworkUrl,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(start = 24.dp, end = 24.dp, bottom = 170.dp),
-            )
+        if (!moment.resolvedMusicAudioUrl.isNullOrBlank() && mediaAspectRatio.isFinite() && mediaAspectRatio > 0f) {
+            PublishedMomentMusicOverlay(moment, mediaAspectRatio, musicPosition)
         }
         MomentBackgroundMusic(
             moment = moment,
@@ -1451,8 +1462,28 @@ fun MomentContent(
             playbackClockRunning = momentSoundtrackClockRunning(playbackClockRunning, moment.isVideoMoment(), videoPlaying),
             onPlaybackPrepared = onMusicPrepared,
             onPlaybackStarted = onMusicStarted,
+            onPlaybackPosition = { if (hasTimedPresentation) musicPosition.value = it },
         )
     }
+}
+
+@Composable
+private fun PublishedMomentMusicOverlay(
+    moment: Moment,
+    mediaAspectRatio: Float,
+    clock: kotlinx.coroutines.flow.StateFlow<Long>,
+) {
+    val position by clock.collectAsState()
+    MomentMusicCanvasOverlay(
+        presentation = conectate.com.data.model.MomentMusicPresentation.fromWire(moment.musicPresentation),
+        title = moment.musicTitle.orEmpty(), artist = moment.musicArtist,
+        artworkUrl = moment.musicArtworkUrl, mediaAspectRatio = mediaAspectRatio,
+        overlayX = moment.musicOverlayX, overlayY = moment.musicOverlayY,
+        overlayScale = moment.musicOverlayScale, overlayRotation = moment.musicOverlayRotation,
+        rawLyrics = moment.musicLyrics, playbackPositionMs = position,
+        durationMs = moment.resolvedMusicEndMs,
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 @Composable
@@ -1461,6 +1492,7 @@ internal fun ZoomableMomentImage(
     thumbnailUrl: String?,
     momentId: String,
     zoomEnabled: Boolean,
+    onAspectRatioKnown: (Float) -> Unit = {},
     onImageSettled: () -> Unit,
 ) {
     var scale by remember(momentId) { mutableFloatStateOf(1f) }
@@ -1528,7 +1560,14 @@ internal fun ZoomableMomentImage(
         model = ImageRequest.Builder(context).data(imageUrl)
             .size(decodeSize.first, decodeSize.second).build(),
         contentDescription = "Imagen del momento; pellizca o toca dos veces para ampliar",
-        onSuccess = { imageState = MomentImageLoadState.READY; onImageSettled() },
+        onSuccess = { result ->
+            val drawable = result.result.drawable
+            if (drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0) {
+                onAspectRatioKnown(drawable.intrinsicWidth.toFloat() / drawable.intrinsicHeight)
+            }
+            imageState = MomentImageLoadState.READY
+            onImageSettled()
+        },
         // A broken object must not trap the viewer forever. The error state is
         // still shown for the complete six-second image window.
         onError = { imageState = MomentImageLoadState.FAILED; onImageSettled() },
@@ -1571,12 +1610,14 @@ private fun MomentBackgroundMusic(
     playbackClockRunning: Boolean,
     onPlaybackPrepared: (String) -> Unit,
     onPlaybackStarted: (String) -> Unit,
+    onPlaybackPosition: (Long) -> Unit = {},
 ) {
     if (!moment.requiresSeparateMusicPlayback) return
     val source = moment.resolvedMusicAudioUrl ?: return
     val context = LocalContext.current
     val latestOnPlaybackPrepared = rememberUpdatedState(onPlaybackPrepared)
     val latestOnPlaybackStarted = rememberUpdatedState(onPlaybackStarted)
+    val latestOnPlaybackPosition = rememberUpdatedState(onPlaybackPosition)
     val latestShouldPlay = rememberUpdatedState(isVisible && !paused && playbackClockRunning)
     val exoPlayer = remember(moment.id, source) {
         val retries = java.util.concurrent.atomic.AtomicInteger(0)
@@ -1666,6 +1707,7 @@ private fun MomentBackgroundMusic(
                     exoPlayer.seekTo(startMs)
                     exoPlayer.playWhenReady = true
                 }
+                latestOnPlaybackPosition.value(exoPlayer.currentPosition.coerceAtLeast(startMs))
                 val relativeMs = (exoPlayer.currentPosition - startMs).coerceIn(0L, segmentDurationMs)
                 val fadeInGain = if (moment.musicFadeInMs > 0L) {
                     (relativeMs.toFloat() / moment.musicFadeInMs.toFloat()).coerceIn(0f, 1f)
