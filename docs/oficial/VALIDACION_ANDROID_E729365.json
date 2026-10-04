@@ -1,0 +1,43 @@
+{
+  "utc": "2026-10-04T05:28:44.721170+00:00",
+  "androidSourceCommit": "e729365d5a2358fde3207420c29621d94a9af42a",
+  "embeddedBuildCommit": "e729365",
+  "embeddedCommitVerifiedInDex": true,
+  "buildSuccessful": true,
+  "unit": {
+    "suites": 278,
+    "tests": 1264,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "oldestSuiteTimestamp": "2026-10-04T05:17:20.344Z",
+    "newestSuiteTimestamp": "2026-10-04T05:18:08.028Z"
+  },
+  "apks": [
+    {
+      "path": "app/build/outputs/apk/debug/app-debug.apk",
+      "sha256": "9536bf4d825f804c8d1e774a3c9732d813b4cce481c131abcbba4a278a64c38d",
+      "bytes": 275939281
+    },
+    {
+      "path": "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+      "sha256": "9aef6ea8a6522800b9639de335c1e869dab0e891971532b7e3e10ce0e1dc1531",
+      "bytes": 2304619
+    }
+  ],
+  "r8": {
+    "successful": true,
+    "signedReleaseArtifact": false,
+    "surveysBridgeRetained": true,
+    "bridgeMethods": [
+      "close",
+      "copy",
+      "download",
+      "ready",
+      "request",
+      "share"
+    ]
+  },
+  "testArtifactCommit": "e729365",
+  "scope": "Debug APK, instrumentation APK, fresh complete unit run and release R8; no signed AAB produced"
+}

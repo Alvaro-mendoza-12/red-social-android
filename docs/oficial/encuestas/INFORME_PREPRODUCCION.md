@@ -1,6 +1,6 @@
 # Informe técnico de preproducción: Encuestas Android
 
-**Fecha:** 3 de octubre de 2026, America/Bogota.
+**Última validación:** 4 de octubre de 2026, America/Bogota.
 
 **Rama:** `feature/live-gifts`.
 
@@ -8,7 +8,7 @@
 
 **Alcance:** Android, API de Encuestas, PostgreSQL, exportaciones, adjuntos y coordinación con la auditoría móvil existente.
 
-**Validación física posterior:** el usuario conectó un Moto g04 con Android 14. Pasaron las 39 pruebas de interfaz, incluido el flujo de Encuestas por HTTPS, y cinco de medios. Las pruebas adicionales de llamadas, su incidencia inicial y los límites se registran en [Validación Moto g04](../64-validacion-moto-g04-2026-10-03.md). La fila de teléfono físico de la tabla histórica describe el checkpoint anterior.
+**Validación física más reciente:** APK `e729365` en Moto g04/Android 14. Pasaron 65 casos: tres de rechazo de llamadas, 39 de interfaz y Encuestas por HTTPS, cinco de medios y 18 de llamadas/RTC/composición LIVE. Compilación, 1.264 unitarias y R8 correctos. [Informe físico conjunto y límites](../66-validacion-movil-e729365-2026-10-04.md). [El checkpoint anterior](../64-validacion-moto-g04-2026-10-03.md) conserva su incidencia inicial del temporizador. Las tablas y rondas anteriores permanecen como historial; el AAB firmado sigue pendiente.
 
 Este informe reúne evidencia reproducible. No declara que toda la aplicación esté libre de errores ni acredita una certificación externa. La especificación completa del producto sigue en `ESPECIFICACION_FUNCIONAL_Y_TECNICA.md`; su alcance pendiente se enumera en `IMPLEMENTACION_ANDROID.md`.
 

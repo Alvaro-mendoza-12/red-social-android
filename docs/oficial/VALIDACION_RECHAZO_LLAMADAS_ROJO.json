@@ -1,0 +1,18 @@
+{
+  "utc": "2026-10-04T05:00:04.018525+00:00",
+  "phase": "red",
+  "productCommit": "07e4989",
+  "testClass": "IncomingCallRejectionTest",
+  "expectedTests": 3,
+  "passed": false,
+  "failures": 3,
+  "elapsedSeconds": 8.773,
+  "device": "Moto g04 Android 14",
+  "omitted": false,
+  "failureMessages": [
+    "Notification rejection was not recorded locally",
+    "Rejected invitation can still be accepted by a late intent",
+    "Rejecting an old notification stopped a different incoming call"
+  ],
+  "scope": "Owned local invitations and deliberately absent account; no real caller or human session changes"
+}

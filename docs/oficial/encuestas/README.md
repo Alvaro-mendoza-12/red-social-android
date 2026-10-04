@@ -1,8 +1,8 @@
 # Encuestas de Novvin
 
-**Estado:** implementación Android en `feature/live-gifts`, API `f42a349` y antivirus desplegados; Encuestas activadas, 39 comprobaciones funcionales y 12 comprobaciones HTTPS correctas tras la entrega. APK `07e4989` validado en el emulador: 1.264 unitarias, 39 pruebas de interfaz y cinco de medios correctas. AAB firmado y criterios restantes en el informe.
+**Estado:** implementación Android en `feature/live-gifts`, API `f42a349` y antivirus desplegados; Encuestas activadas, 39 comprobaciones funcionales y 12 comprobaciones HTTPS correctas tras la entrega. APK `e729365` validado en Moto g04: 1.264 unitarias, R8 y 65 casos móviles correctos, incluidos 39 de interfaz/Encuestas. [Validación física y límites](../66-validacion-movil-e729365-2026-10-04.md). AAB firmado y criterios restantes pendientes en el informe; se conserva el historial del emulador `07e4989`.
 
-**Fecha:** 2026-10-03.
+**Última validación:** 2026-10-04.
 
 **Producto:** Novvin para Android, conectado al backend Ubuntu.
 

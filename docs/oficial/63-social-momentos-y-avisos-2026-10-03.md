@@ -2,7 +2,7 @@
 
 **Rama:** `feature/live-gifts`. **Plataforma:** Android.
 
-**Código Android conjunto:** `07e4989`. **API desplegada:** `f42a349`. Compilación, 1.264 unitarias, 39 pruebas de interfaz, cinco pruebas de medios y R8 correctos. La versión continúa en `9.0.20`, código `117`. Los checkpoints anteriores se conservan como historial.
+**Validación Android más reciente:** `e729365`, con corrección posterior del rechazo de llamadas. Compilación, 1.264 unitarias, R8 y 65 casos en Moto g04 correctos. [Informe físico conjunto y límites](66-validacion-movil-e729365-2026-10-04.md). **API desplegada:** `f42a349`. La versión continúa en `9.0.20`, código `117`. Las comprobaciones `07e4989` y anteriores se conservan como historial.
 
 ## Notificaciones por vistas de Momentos
 

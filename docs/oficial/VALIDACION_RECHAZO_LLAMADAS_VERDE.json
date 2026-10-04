@@ -1,0 +1,14 @@
+{
+  "utc": "2026-10-04T05:29:42.110950+00:00",
+  "phase": "green",
+  "productCommit": "e729365",
+  "testClass": "IncomingCallRejectionTest",
+  "expectedTests": 3,
+  "passed": true,
+  "failures": 0,
+  "elapsedSeconds": 6.251,
+  "device": "Moto g04 Android 14",
+  "omitted": false,
+  "failureMessages": [],
+  "scope": "Owned local invitations and deliberately absent account; no real caller or human session changes"
+}

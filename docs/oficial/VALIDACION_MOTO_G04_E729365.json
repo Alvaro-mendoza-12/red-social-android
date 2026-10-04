@@ -1,0 +1,324 @@
+{
+  "utc": "2026-10-04T11:49:40.952459+00:00",
+  "productCommit": "e729365d5a2358fde3207420c29621d94a9af42a",
+  "device": {
+    "model": "Moto g04",
+    "android": "14",
+    "api": 34,
+    "display": "720x1612",
+    "densityDpi": 280
+  },
+  "apks": [
+    {
+      "path": "app/build/outputs/apk/debug/app-debug.apk",
+      "sha256": "9536bf4d825f804c8d1e774a3c9732d813b4cce481c131abcbba4a278a64c38d",
+      "bytes": 275939281
+    },
+    {
+      "path": "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+      "sha256": "9aef6ea8a6522800b9639de335c1e869dab0e891971532b7e3e10ce0e1dc1531",
+      "bytes": 2304619
+    }
+  ],
+  "installation": {
+    "utc": "2026-10-04T05:29:03.636354+00:00",
+    "productCommit": "e729365",
+    "installed": true,
+    "versionCode": 117,
+    "versionName": "9.0.20-debug",
+    "method": "adb install -r -t; existing compatible debug signature",
+    "privateDataDirectoryIdentityPreserved": true,
+    "uninstalled": false,
+    "appDataCleared": false
+  },
+  "groups": [
+    {
+      "name": "Incoming call rejection",
+      "result": {
+        "utc": "2026-10-04T05:29:42.110950+00:00",
+        "phase": "green",
+        "productCommit": "e729365",
+        "testClass": "IncomingCallRejectionTest",
+        "expectedTests": 3,
+        "passed": true,
+        "failures": 0,
+        "elapsedSeconds": 6.251,
+        "device": "Moto g04 Android 14",
+        "omitted": false,
+        "failureMessages": [],
+        "scope": "Owned local invitations and deliberately absent account; no real caller or human session changes",
+        "tests": 3
+      }
+    },
+    {
+      "name": "Native UI and survey HTTPS",
+      "result": {
+        "utc": "2026-10-04T05:30:51.878765+00:00",
+        "androidSourceCommit": "e729365d5a2358fde3207420c29621d94a9af42a",
+        "embeddedBuildCommit": "e729365",
+        "expectedTests": 39,
+        "device": {
+          "model": "Moto g04",
+          "android": "14",
+          "api": 34,
+          "display": "720x1612",
+          "densityDpi": 280
+        },
+        "testArtifactCommit": "e729365",
+        "deviceType": "physical",
+        "passed": true,
+        "classes": [
+          "conectate.com.presentation.messages.PollMessageUiTest",
+          "conectate.com.presentation.profile.SystemAnnouncementAdminFormTest",
+          "conectate.com.presentation.profile.ProfileVisitorsContentTest",
+          "conectate.com.presentation.surveys.SurveyWorkbenchTest",
+          "conectate.com.presentation.surveys.SurveyDocumentContractTest",
+          "conectate.com.presentation.surveys.SurveyApiIntegrationTest",
+          "conectate.com.presentation.messages.ChatLinkUiTest",
+          "conectate.com.data.local.ProfileCacheMigrationTest",
+          "conectate.com.presentation.social.SocialFeedPagingUiTest",
+          "conectate.com.presentation.profile.SystemAnnouncementDialogTest",
+          "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "conectate.com.presentation.social.MomentMusicPresentationUiTest"
+        ],
+        "transport": "HTTPS Android to disposable local API and PostgreSQL for survey integration",
+        "scope": "Native Social paging, notice controls, music selection and previous mobile regression. Remote audio playback measured separately.",
+        "tests": 39,
+        "omitted": false,
+        "elapsedSeconds": 45.601
+      }
+    },
+    {
+      "name": "Owned remote media",
+      "result": {
+        "utc": "2026-10-04T05:31:30.324883+00:00",
+        "embeddedBuildCommit": "e729365",
+        "expectedTests": 5,
+        "device": {
+          "model": "Moto g04",
+          "android": "14",
+          "api": 34
+        },
+        "testArtifactCommit": "e729365",
+        "deviceType": "physical",
+        "passed": true,
+        "omitted": false,
+        "timings": [
+          {
+            "name": "moment_photo",
+            "readyMs": 157
+          },
+          {
+            "name": "profile_audio",
+            "readyMs": 890
+          },
+          {
+            "name": "community_audio_preview",
+            "readyMs": 798
+          }
+        ],
+        "scope": "Actual Android playback/photo tests using owned remote synthetic media; host Gradle idle; audio timeout remains 10 seconds",
+        "tests": 5,
+        "elapsedSeconds": 15.175
+      }
+    },
+    {
+      "name": "Local call/RTC teardown and LIVE layout",
+      "result": {
+        "utc": "2026-10-04T05:33:56.453720+00:00",
+        "androidSourceCommit": "e729365d5a2358fde3207420c29621d94a9af42a",
+        "embeddedBuildCommit": "e729365",
+        "expectedTests": 18,
+        "device": {
+          "model": "Moto g04",
+          "android": "14",
+          "api": 34,
+          "display": "720x1612",
+          "densityDpi": 280
+        },
+        "testArtifactCommit": "e729365",
+        "deviceType": "physical",
+        "passed": true,
+        "classes": [
+          "conectate.com.data.webrtc.MediaTeardownRegressionTest",
+          "conectate.com.presentation.calls.IncomingCallScreenStateTest",
+          "conectate.com.presentation.calls.IncomingCallCancellationTest",
+          "conectate.com.presentation.calls.CallInvitationOverlayHandlingTest",
+          "conectate.com.presentation.live.LiveViewerOverlayLayoutTest"
+        ],
+        "transport": "Local native invitations, RTC resource teardown and Compose LIVE layout; no survey API used in these cases",
+        "scope": "Owned local fake call invitations, cancellation and RTC teardown; LIVE layout only, no calls or sessions with other people.",
+        "tests": 18,
+        "omitted": false,
+        "elapsedSeconds": 68.763,
+        "metadataCorrection": "Original private helper copied the survey transport label. Public metadata corrected after reviewing the actual five classes; test execution unchanged."
+      }
+    }
+  ],
+  "distinctExecutedCases": 65,
+  "allGroupsPassed": true,
+  "omissions": 0,
+  "currentRoundRetries": 0,
+  "startup": {
+    "utc": "2026-10-04T05:35:10.766847+00:00",
+    "embeddedBuildCommit": "e729365",
+    "device": {
+      "model": "Moto g04",
+      "android": "14",
+      "api": 34
+    },
+    "rounds": [
+      {
+        "round": 1,
+        "launchState": "COLD",
+        "frameworkFirstFrameMs": 4924,
+        "adbWaitMs": 4945
+      },
+      {
+        "round": 2,
+        "launchState": "WARM",
+        "frameworkFirstFrameMs": 4504,
+        "adbWaitMs": 4516
+      },
+      {
+        "round": 3,
+        "launchState": "COLD",
+        "frameworkFirstFrameMs": 4396,
+        "adbWaitMs": 4402
+      }
+    ],
+    "totalPssKiB": 302451,
+    "scope": "Three force-stop launch requests; Android launch classifications retained with existing app data retained; Android framework first frame only, not time to usable feed or fully drawn content; no scrolling workload measured",
+    "dataCleared": false
+  },
+  "startupTraceCapture": {
+    "utc": "2026-10-04T11:43:28.939685+00:00",
+    "productCommit": "e729365",
+    "traceCaptured": true,
+    "durationMs": 20000,
+    "traceBytes": 44352408,
+    "launchState": "COLD",
+    "frameworkFirstFrameMs": 5391,
+    "dataCleared": false,
+    "scope": "Private Perfetto capture of a debug APK; associated cold startup and marker measurements independently reviewed. Detailed analysis and integrity in linked evidence; not a production release performance claim."
+  },
+  "intermediateTraceCapture": {
+    "utc": "2026-10-04T11:36:06.248587+00:00",
+    "productCommit": "e729365",
+    "traceCaptured": true,
+    "durationMs": 20000,
+    "traceBytes": 57314565,
+    "launchState": "COLD",
+    "frameworkFirstFrameMs": 5891,
+    "dataCleared": false,
+    "scope": "Intermediate capture retained; process metadata did not associate the newly launched PID correctly, so not used for final startup attribution."
+  },
+  "previousTraceCapture": {
+    "utc": "2026-10-04T11:31:41.893378+00:00",
+    "productCommit": "e729365",
+    "traceCaptured": true,
+    "durationMs": 20000,
+    "traceBytes": 33430047,
+    "launchState": "COLD",
+    "frameworkFirstFrameMs": 8695,
+    "dataCleared": false,
+    "scope": "Previous capture retained; initial metadata was overwritten by the ring buffer, so not used for startup attribution."
+  },
+  "traceIntegrityEvidence": "VALIDACION_INTEGRIDAD_TRAZA_E729365.json",
+  "startupTraceAnalysis": {
+    "productCommit": "e729365",
+    "captureUtc": "2026-10-04T11:43:28.939685+00:00",
+    "attempt": 4,
+    "traceSha256": "c53a70d62d65dda678b7d210e110a486ae9683cd59a6c3a195591dce37c23cb5",
+    "traceBytes": 44352408,
+    "analyzerVersion": "Perfetto v58.2-add693d8b",
+    "analyzerBinarySha256": "adfa6bad3d72be3ba9b83fa2b17b69fa13b3ab1cad0f42e52b86188bd5f0f997",
+    "buildType": "debug",
+    "minified": false,
+    "launchState": "COLD",
+    "dataCleared": false,
+    "captureProcedure": "Perfetto acknowledged start, then am start -S -W; 20 seconds; no Android log data source",
+    "processAssociationResolved": true,
+    "frameworkFirstFrameMs": 5391,
+    "perfettoStartupDurationMs": 5391.951266,
+    "timeToInitialDisplayMs": 5385.198112,
+    "timeToFullDisplayMs": 14679.367798,
+    "mainThreadRunningBeforeFirstFrameMs": 4814.390776,
+    "intervalsMs": {
+      "bindApplication": 3028.133267,
+      "dexOpeningNestedInBindApplication": 2396.587229,
+      "activityStart": 603.502999,
+      "firstTraversal": 1271.480883,
+      "composeInitializeNestedInFirstTraversal": 504.826461,
+      "composeRecomposeNestedInFirstTraversal": 274.333384,
+      "measureNestedInFirstTraversal": 281.218692,
+      "recompositionAfterFirstFrame": 3366.058306
+    },
+    "integrityNotices": {
+      "ftraceSetupErrors": 6,
+      "tracedChunksDiscarded": 2,
+      "nonzeroOverwriteOrOverrunStats": 0,
+      "nonzeroErrorOrDataLossSeverityStats": 0
+    },
+    "scope": "One instrumented debug launch with restored session, not a production benchmark or latency SLA. Parent and child intervals overlap and must not be added. CPU and framework slices locate work but do not identify a particular dependency constructor or establish server latency. Full raw trace and device-specific paths remain private."
+  },
+  "installedFinalVerification": {
+    "utc": "2026-10-04T11:37:15.030845+00:00",
+    "productCommit": "e729365",
+    "installedApkSha256": "9536bf4d825f804c8d1e774a3c9732d813b4cce481c131abcbba4a278a64c38d",
+    "installedApkMatchesBuiltArtifact": true,
+    "startupMarkers": [],
+    "scope": "Final installed APK hash verification; debug startup markers only, not full feed readiness or fully drawn measurement"
+  },
+  "temporaryResourcesCleanup": {
+    "fixtureStopped": true,
+    "fixtureSchemaDropped": true,
+    "localQaDatabaseStopped": true,
+    "adbReverseRemoved": true,
+    "phoneTraceFilesRemoved": true,
+    "phoneAppRetained": true
+  },
+  "captures": [
+    {
+      "path": "capturas/moto-g04-e729365/qa-music-audio-only.png",
+      "pixels": [
+        720,
+        1612
+      ],
+      "sha256": "3e600ff624cd99c99806aaa89f392ada94d0ef123f5ab7d59167a4a2a047ac7a"
+    },
+    {
+      "path": "capturas/moto-g04-e729365/qa-music-catalog.png",
+      "pixels": [
+        720,
+        1612
+      ],
+      "sha256": "04cf6ac0f8e2c17e1468654e47dad325884dd0d337285e662c01307862ac89d4"
+    },
+    {
+      "path": "capturas/moto-g04-e729365/qa-music-label.png",
+      "pixels": [
+        720,
+        1612
+      ],
+      "sha256": "a311a558f580ef15a0fcf25179340414112d0a90ca67d3ea370cb380a71aa33c"
+    },
+    {
+      "path": "capturas/moto-g04-e729365/qa-music-selection-large-text.png",
+      "pixels": [
+        720,
+        1612
+      ],
+      "sha256": "649d2ebb48c4c9cd3c184454fcd24a701365d93da0a1a928541699f52cdd7523"
+    }
+  ],
+  "visualReview": "Both coordinated agents independently reviewed original PNGs separately; native header, footer and three presentation choices retained.",
+  "previousCheckpoint": "64-validacion-moto-g04-2026-10-03.md; initial ring-timeout failure cause not established, retained as history rather than claimed fixed by this decline change",
+  "limits": [
+    "Debug APK only; signed Play Store AAB not generated or verified",
+    "No authenticated repository rejection or real two-participant call tested by the absent-account regressions",
+    "FCM delivery on the phone, sustained performance and additional phones still require validation",
+    "Media readiness timings are individual samples over WiFi, not a universal latency commitment",
+    "Three force-stop startup requests measure first frame, not usable feed or fully drawn content"
+  ]
+}
