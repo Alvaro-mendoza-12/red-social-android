@@ -138,7 +138,7 @@ class RollbackGuardTest(unittest.TestCase):
         source = (SCRIPTS / "deploy-surveys-api-candidate.sh").read_text()
         function = source[source.index("rollback() {"):source.index('if [[ "$mode" == rollback ]]')]
         helpers = source[source.index("candidate_override() {"):source.index('if [[ "$mode" == prepare ]]')]
-        for stage in ("ps", "inspect", "python3", "tar", "stop", "config", "up", "ready", "none", "absent", "foreign", "enabled-false", "enabled-true", "foreign-override"):
+        for stage in ("ps", "inspect", "python3", "tar", "stop", "config", "up", "ready", "edge-ready", "none", "absent", "foreign", "enabled-false", "enabled-true", "foreign-override"):
             with self.subTest(stage=stage), tempfile.TemporaryDirectory() as temp:
                 root = pathlib.Path(temp).resolve()
                 # Never invokes Docker, tar extraction, or the real validator.
@@ -149,6 +149,7 @@ python3() { echo python3 >>"$root/trace"; [[ "$stage" != python3 ]]; }
 tar() { echo tar >>"$root/trace"; [[ "$stage" != tar ]]; }
 docker() { local action="${@: -1}"; [[ "$*" == *" config "* ]] && action=config; [[ "$*" == *" up "* ]] && action=up; [[ "$*" == *" stop "* ]] && action=stop; if [[ "$1" == ps ]]; then action=ps; [[ "$stage" == absent ]] || echo container; fi; if [[ "$1" == inspect ]]; then action=inspect; if [[ "$stage" == foreign ]]; then echo foreign; else echo unused; fi; fi; echo "$action" >>"$root/trace"; [[ "$stage" != "$action" ]]; }
 wait_ready() { echo ready >>"$root/trace"; [[ "$stage" != ready ]]; }
+wait_edge_ready() { echo edge-ready >>"$root/trace"; [[ "$stage" != edge-ready ]]; }
 '''
                 shell += helpers + function + '''
 case "$stage" in
@@ -162,7 +163,7 @@ if rollback; then exit 0; else exit 42; fi
                 success = stage in ("none", "absent", "enabled-false", "enabled-true")
                 self.assertEqual(result.returncode, 0 if success else 42, result.stderr)
                 trace = (root / "trace").read_text().splitlines() if (root / "trace").exists() else []
-                expected = ["ps", "inspect", "python3", "tar", "stop", "config", "up", "ready"]
+                expected = ["ps", "inspect", "python3", "tar", "stop", "config", "up", "ready", "edge-ready"]
                 if stage == "absent":
                     self.assertEqual(trace, [item for item in expected if item != "inspect"])
                 elif stage == "foreign":
@@ -192,6 +193,46 @@ if rollback; then exit 0; else exit 42; fi
 
     def test_linked_override_is_rejected(self):
         self.check_override("false", 'mv "$root/docker-compose.override.yml" "$root/linked.yml"; ln -s "$root/linked.yml" "$root/docker-compose.override.yml"', expected=1)
+
+
+class WatchdogRecheckTest(unittest.TestCase):
+    def check_recovery(self, stage, expected):
+        source = (SCRIPTS.parent / "infrastructure/local-fallback/scripts/health-watchdog.sh").read_text()
+        start = source.index("  (\n")
+        recovery = source[start:source.index('  ) 9>', start) + 3]
+        with tempfile.TemporaryDirectory() as temp:
+            shell = r'''
+set -Eeuo pipefail
+root="$1"; stage="$2"
+flock() { echo flock >>"$root/trace"; }
+healthy() { echo healthy >>"$root/trace"; [[ "$stage" == healed ]]; }
+docker() {
+  local step=unknown
+  [[ "$*" == *" up "* ]] && step=up
+  [[ "$*" == *" nginx -t" ]] && step=nginx-test
+  [[ "$*" == *" nginx -s reload" ]] && step=nginx-reload
+  [[ "$*" == *" restart edge" ]] && step=restart
+  echo "$step" >>"$root/trace"
+  [[ "$stage" != "$step" ]]
+}
+'''
+            run = subprocess.run(["bash", "-s", "--", temp, stage], input=shell + recovery,
+                text=True, capture_output=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual((pathlib.Path(temp) / "trace").read_text().splitlines(), expected)
+            return run.stdout
+
+    def test_recovered_while_waiting_does_not_touch_compose_or_proxy(self):
+        self.assertIn("RECOVERY_SKIPPED", self.check_recovery("healed", ["flock", "healthy"]))
+
+    def test_recovery_reloads_proxy_without_stopping_workers(self):
+        self.check_recovery("degraded", ["flock", "healthy", "up", "nginx-test", "nginx-reload"])
+
+    def test_invalid_proxy_configuration_uses_restart_fallback(self):
+        self.check_recovery("nginx-test", ["flock", "healthy", "up", "nginx-test", "restart"])
+
+    def test_failed_graceful_reload_uses_restart_fallback(self):
+        self.check_recovery("nginx-reload", ["flock", "healthy", "up", "nginx-test", "nginx-reload", "restart"])
 
 
 if __name__ == "__main__":

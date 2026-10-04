@@ -27,11 +27,20 @@ if ! healthy; then
   echo "WARN: stack degradado; intentando recuperacion controlada"
   (
     flock --wait 240 9 || exit 1
-    docker compose up -d --remove-orphans
-    # Compose can recreate API/realtime/signaling with new container IPs.
-    # Nginx resolves those names at worker start, so recovery is incomplete
-    # until edge is reloaded while the same lock is still held.
-    docker compose restart edge
+    # A deployment can finish while this watchdog waits for the same lock.
+    # Recheck before mutating: stale failure evidence must not interrupt a
+    # recovered proxy and its active WebSocket/media sessions.
+    if healthy; then
+      echo "RECOVERY_SKIPPED: stack recuperado mientras se esperaba el bloqueo"
+    else
+      docker compose up -d --remove-orphans
+      # Recovery can recreate upstream containers; refresh their DNS while
+      # the same lock is held, without stopping healthy proxy workers.
+      if ! docker compose exec -T edge nginx -t ||
+         ! docker compose exec -T edge nginx -s reload; then
+        docker compose restart edge
+      fi
+    fi
   ) 9>"$COMPOSE_LOCK"
   for _ in $(seq 1 12); do
     sleep 5

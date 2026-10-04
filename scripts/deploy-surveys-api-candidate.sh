@@ -45,6 +45,18 @@ wait_ready() {
   return 1
 }
 
+wait_edge_ready() {
+  local deadline=$((SECONDS + 30))
+  while ((SECONDS < deadline)); do
+    if curl -fsS --max-time 5 http://127.0.0.1:3080/ready |
+       python3 -c 'import json,sys;sys.exit(0 if json.load(sys.stdin).get("ok") is True else 1)'; then
+      return 0
+    fi
+    sleep 1 || return 1
+  done
+  return 1
+}
+
 candidate_override() {
   local enabled="${1:?approved boolean}"
   case "$enabled" in true|false) ;; *) return 1 ;; esac
@@ -155,6 +167,7 @@ EOF
   docker compose -f docker-compose.yml -f "$release/rollback.override.yml" config --quiet || return 1
   docker compose -f docker-compose.yml -f "$release/rollback.override.yml" up -d --no-deps --no-build --force-recreate api || return 1
   wait_ready || return 1
+  wait_edge_ready || return 1
   echo "API_ROLLBACK_READY_WITHOUT_DATABASE_RESTORE"
 }
 if [[ "$mode" == rollback ]]; then rollback; exit 0; fi
@@ -186,6 +199,7 @@ if [[ "$mode" == activate ]]; then
   docker compose config --quiet
   docker compose up -d --no-deps --no-build --force-recreate api
   wait_ready
+  wait_edge_ready
   touch "$release/ACTIVATED"
   trap - ERR
   echo "API_READY_SURVEYS_ENABLED"
@@ -223,6 +237,7 @@ while [[ "$(docker inspect --format '{{.State.Health.Status}}' "$scanner_id")" !
 done
 docker compose up -d --no-deps --no-build --force-recreate api
 wait_ready
+wait_edge_ready
 touch "$release/DEPLOYED"
 trap - ERR
 echo "API_AND_SCANNER_READY_SURVEYS_DISABLED"
