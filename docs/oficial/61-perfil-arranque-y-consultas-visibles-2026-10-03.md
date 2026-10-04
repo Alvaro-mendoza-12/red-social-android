@@ -507,11 +507,34 @@ La primera compilación del nuevo flujo, `715eac6`, detectó campos que faltaban
 en `LocalFallbackApiClient` y una sobrecarga incorrecta de `padding`; **ese
 intento no produjo un APK validado**. `07e4989` corrige el envío y DTO reales,
 la lectura del estilo y la portada, y añade dos pruebas de ese contrato. La
-compilación y comprobación visual de esa revisión están en curso. La versión
-permanece en **117 / 9.0.20**.
+compilación de esa revisión terminó correctamente, incluido R8 y **1.264
+pruebas unitarias en 278 suites**, sin fallos, errores ni omisiones. La versión
+permanece en **117 / 9.0.20**. La APK debug incorpora `07e4989`, con SHA-256
+`86b89eb3cc98b07e950b077e463e82d53c394ad1eb2f03b533cb193731db3eac`;
+no es un AAB de producción firmado.
 
 ### Pruebas que ya finalizaron
 
+- Android `07e4989`: **39 comprobaciones de interfaz** pasaron en 58,905 s y
+  cinco de medios en 26,484 s, sin omisiones. La captura inicial del diálogo
+  no mostraba la ventana completa; `2a2b9bf` cambia únicamente el helper de
+  instrumentación a captura completa del dispositivo. Se conservó la misma
+  APK de producto y se repitieron **39 casos en 71,287 s y cinco de medios en
+  27,733 s**, todos aprobados. La inspección independiente de las capturas
+  completas de 1080×2400 confirma encabezado, tres estilos y confirmación
+  visibles, incluidos nombres largos y texto ampliado a 1,5×. Se revisó el
+  PNG de texto ampliado en resolución original para evitar el recorte de su
+  vista redimensionada. Las pruebas usan emulador API 35; no sustituyen
+  pruebas físicas de audición ni recorridos completos de todos los módulos.
+- Medios sobre esa misma APK, con Gradle inactivo y límite de audio de diez
+  segundos sin modificar: primera ronda, foto 124 ms, perfil 4.312 ms y
+  preescucha comunitaria 1.131 ms; repetición, foto 180 ms, perfil 2.133 ms y
+  preescucha 4.067 ms. Ambas rondas pasaron, pero **ninguna certifica audio
+  inferior a un segundo ni elimina los picos anteriores**. Se mantienen
+  ambos resultados en las evidencias, sin escoger solo la muestra más rápida.
+  [Interfaz](encuestas/VALIDACION_INTERFAZ_07E4989.json),
+  [medios](encuestas/VALIDACION_MEDIOS_07E4989.json) y
+  [compilación](encuestas/VALIDACION_ANDROID_07E4989.json).
 - Checkpoint anterior `c424929`: compilación debug, APK de pruebas, pruebas
   unitarias y R8; **34 pruebas nativas** y **5 pruebas de medios** pasaron. En la
   última ronda, perfil 1.616 ms, preescucha 1.132 ms e imagen 233 ms. Esos tiempos
