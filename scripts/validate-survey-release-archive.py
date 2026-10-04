@@ -16,7 +16,7 @@ def permitted(name, snapshot):
         or (not snapshot and name in (
             "survey-antivirus/Dockerfile", "survey-antivirus/clamd.conf",
             "survey-antivirus/healthcheck.js", "survey-antivirus/start.sh"))
-        or (snapshot and name in ("docker-compose.yml", ".conectate-release"))
+        or (snapshot and name in ("docker-compose.yml", "docker-compose.override.yml", ".conectate-release"))
     )
 
 

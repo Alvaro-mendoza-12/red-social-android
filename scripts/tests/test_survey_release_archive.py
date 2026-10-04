@@ -85,6 +85,12 @@ class ArchiveValidationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             validator.run("candidate", self.root, archive)
 
+    def test_previous_override_can_be_restored_but_not_supplied_by_candidate(self):
+        archive = self.archive([("docker-compose.override.yml", b"previous complete override", tarfile.REGTYPE)])
+        validator.run("snapshot", self.root, archive)
+        with self.assertRaises(ValueError):
+            validator.run("candidate", self.root, archive)
+
     def test_directory_cannot_replace_regular_file(self):
         self.file("api/src/file.js")
         with self.assertRaises(ValueError):
