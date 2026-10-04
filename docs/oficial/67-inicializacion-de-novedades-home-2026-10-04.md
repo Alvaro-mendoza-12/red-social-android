@@ -65,7 +65,7 @@ La primera compilación se detuvo en pruebas unitarias: no se declara R8 nuevo
 correcto ni una instalación física de Home. A petición del usuario en el chat
 coordinado, se integrará el ajuste de posición de música, letras y duración de
 Momentos antes de la siguiente compilación conjunta y regresión del teléfono.
-Hasta esa ejecución, la APK instalada conserva el checkpoint `e729365`.
+Ese era el checkpoint anterior a la compilación conjunta de Momentos.
 
 El ajuste de Momentos quedó registrado en `e6de71c` y la siguiente compilación
 completa usa explícitamente esa revisión como marca de producto. La comprobación
@@ -75,12 +75,61 @@ Incluye letras, geometría, modelos, petición de creación y mapeo de destacado
 Es una comprobación focal: no acredita aún la nueva suite completa, R8,
 instalación ni la última revisión de proporciones del lienzo.
 
+### Checkpoint conjunto completado
+
+La compilación de `e6de71c` terminó correctamente en 18 min 21 s. Sus XML
+nuevos contienen **1.287 pruebas en 281 suites, sin fallos, errores ni omisiones**.
+También terminó R8 de release y se verificó la conservación de los seis métodos
+del puente de encuestas. Ese control no produjo un AAB firmado.
+
+La APK debug de ese checkpoint fue instalada como actualización en el Motorola,
+conservando sus datos. Pasaron **20 pruebas físicas del selector y editor**;
+las capturas muestran la tarjeta y las letras separadas del comentario y los
+controles, también con texto ampliado. Son pruebas del editor con medios locales:
+no miden el arranque de pistas remotas ni acreditan todo el recorrido de subida.
+
+El SHA-256 de esa APK es
+`63d9b29bf6c19952259c50a0bda971c10fb5988c0adabf51a81af5db4e8c235a`.
+Se conserva el primer intento de compilación que se detuvo por una exclusión
+de tarea Gradle inexistente; la ejecución corregida es la que terminó correctamente.
+
+Después se añadieron la importación nativa de archivos LRC y el ajuste al
+recorte exacto en `403fc0d`. Su compilación fue interrumpida deliberadamente
+para incorporar el pedido de reducir la altura del selector de fragmento.
+La revisión `fed1546` fija esa zona en **48 dp**, frente a los 88 dp anteriores,
+y añade una comprobación de esa proporción. Su nueva suite completa terminó
+con **1.294 casos en 282 suites, sin fallos, errores ni omisiones**; ambas IAs
+comprobaron los XML de las 13:20:36–13:21:19 UTC. Incluye seis casos nuevos de
+importación LRC y uno del filtro de documentos.
+
+Se instaló esa APK conservando datos y pasó una comprobación puntual de los
+48 dp. La captura nueva del Motorola fue revisada por ambas IAs: marcas dentro
+de los bordes, controles visibles y barra más delgada. La compilación conjunta
+terminó en **21 min 49 s**, incluido release/R8. Conservó los seis métodos del
+puente de encuestas y no produjo un AAB firmado. El SHA-256 de la APK debug es
+`0baba93b840aa4f485bf26615d4416e2f34c0a0d92f334c9a977ac529d26be76`.
+La regresión física completa continúa abierta: pasaron 52 casos de interfaz,
+pero la primera tanda de 18 casos de llamadas registró 17 correctos y un fallo
+en la comprobación de vencimiento de la invitación. Se conserva ese resultado
+y se investiga su causa; no se presenta la tanda completa como aprobada.
+Ese caso puntual ocurrió mientras Gradle estaba activo; no es una medición
+de rendimiento ni sustituye la tanda física completa.
+
 El contrato de música de la API pasó también una comprobación con PostgreSQL
 local real y seis comprobaciones de HTTP/SQL, con almacenamiento, autenticación
 y conversión de audio aislados. La suite de API terminó con 450 casos: 448
 correctos y dos omitidos por requerir Bash/Linux. El nuevo código todavía
 no está desplegado: Tailscale solicita una comprobación adicional de SSH.
 [Evidencia del contrato y límites](../../VALIDACION_MOMENTOS_MUSICA_API_E6DE71C.json).
+
+Sobre `fed1546` se repitieron las 18 comprobaciones específicas de API, sin
+fallos ni omisiones. Los ocho archivos de contrato mantienen los hashes del
+checkpoint anterior. El candidato para Linux se regeneró con
+`core.autocrlf=false`: los **183 archivos** coinciden byte por byte con los
+objetos de ese commit. El paquete previo, no desplegado, contenía conversiones
+CRLF de Windows y se conserva como historial. La comprobación del paquete
+no equivale a un despliegue; sigue pendiente el acceso SSH.
+[Continuidad y paquete exacto](../../VALIDACION_CONTINUIDAD_MOMENTOS_API_FED1546.json).
 
 ## Referencia de rendimiento y límites
 

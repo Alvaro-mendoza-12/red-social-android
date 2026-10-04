@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-04T13:17:14.363450+00:00",
+  "currentProductCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+  "apiSourcesEqualPreviouslyTestedCommit": "e6de71ca35b5c9d5178217e84162df479d0ef02e",
+  "verifiedSourceFilesSha256": {
+    "infrastructure/local-fallback/api/src/moment-music-lyrics.js": "729df7e16856b08eb748fe88a4a42b90b21c73e17ff1ceca890c6ea62215ffa0",
+    "infrastructure/local-fallback/api/src/moment-music-renderer.js": "9dcc6d2ae2f34785f36a807a272a3f7d2cabf71da77670d772baa32f877f574b",
+    "infrastructure/local-fallback/api/src/moments-routes.js": "9a7f81256d473a2656e641859c3f187c7b7a4afb57eb6ac3138034b73a7c1ebd",
+    "infrastructure/local-fallback/api/src/postgrest-compat-routes.js": "1acb53e6bb1afb182e2cb2e9871d3c75cdb0b0de228453d6dee7c12cd4d66c41",
+    "infrastructure/local-fallback/api/tests/moment-music-lyrics.test.js": "f78538b1574049610f214baaf5ffd1485ac3d265b8c5e1b04b2bda749690b238",
+    "infrastructure/local-fallback/api/tests/moment-music-presentation.test.js": "bd5003f32e7160ed4a9f2c084b3b8bfd2a1d2c19fe3cb575b07e26d7190292d2",
+    "infrastructure/local-fallback/api/tests/moment-community-music-reference.test.js": "793219feefd774ce7bfb3016ae85732921512d48c58dab921074b6ff30077ee5",
+    "infrastructure/local-fallback/api/scripts/verify-moment-music-placement-local.js": "48b54db0484273226968888b15e3a1fa67be7d5a0c2cf7efe08e8d47a48609c4"
+  },
+  "focalApiRun": {
+    "tests": 18,
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0,
+    "logSha256": "8708479f9b8c88a1f2fc6c032af69f00d494506e7f98b4ffa2ee059bf8431b26",
+    "durationMs": 1036.3097,
+    "scope": "LRC parser, presentation route fixtures and authoritative community reference; no real transcoder"
+  },
+  "previousFullApiRun": {
+    "evidence": "VALIDACION_MOMENTOS_MUSICA_API_E6DE71C.json",
+    "tests": 450,
+    "passed": 448,
+    "failed": 0,
+    "skipped": 2,
+    "notRerunForThisRecord": true
+  },
+  "preparedArchive": {
+    "sourceCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+    "sha256": "d9e39d25ea1343fa90b8a4bd726e29649a2085c99f9f260b34afa726a2de2a41",
+    "bytes": 3532800,
+    "regularFiles": 183,
+    "allContentsEqualCurrentProductCommit": true,
+    "uploaded": false,
+    "deployed": false
+  },
+  "archiveCorrection": "Previous undeployed e6 archive had CRLF checkout conversions. New archive uses core.autocrlf=false and all 183 members must equal committed bytes.",
+  "productionApiLastVerifiedCommit": "f42a3493ed4d06c9ff019acf71efc8b25b6b3a81",
+  "limits": [
+    "Tailscale SSH verification pending; this is not deployment evidence",
+    "Linux-only fixtures remain omitted in the prior Windows full run",
+    "Android fed1546 build and physical validation are separate pending work",
+    "No first-audio latency, cross-network call or sustained LIVE FPS measured by these tests"
+  ]
+}
