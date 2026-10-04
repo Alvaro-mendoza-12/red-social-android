@@ -201,10 +201,10 @@ function validateVideoDeliveryMetadata(metadata) {
   return { durationSeconds, width, height, fps, codec, averageBitrateBps }
 }
 
-async function probeVideoDelivery(sourcePath, sizeBytes) {
+async function probeVideoDelivery(sourcePath, sizeBytes, runProcess = execFileAsync) {
   let parsed
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await runProcess(
       'ffprobe',
       [
         '-v', 'error',
@@ -238,23 +238,64 @@ async function probeVideoDelivery(sourcePath, sizeBytes) {
   })
 }
 
-function progressiveMp4RemuxArgs(inputPath, outputPath) {
+function normalizeMp4AudioCodecs(codecs) {
+  if (!Array.isArray(codecs) || codecs.some((codec) =>
+    typeof codec !== 'string' || !/^[a-z0-9_]+$/i.test(codec.trim()))) {
+    const error = new Error('VIDEO_AUDIO_METADATA_INVALID')
+    error.status = 415
+    throw error
+  }
+  return codecs.map((codec) => codec.trim().toLowerCase())
+}
+
+function parseMp4AudioCodecs(metadata) {
+  if (!Array.isArray(metadata?.streams)) return normalizeMp4AudioCodecs(null)
+  return normalizeMp4AudioCodecs(metadata.streams.map((stream) => stream?.codec_name))
+}
+
+async function probeMp4AudioCodecs(sourcePath, runProcess = execFileAsync) {
+  try {
+    const { stdout } = await runProcess('ffprobe', [
+      '-v', 'error', '-select_streams', 'a',
+      '-show_entries', 'stream=codec_name', '-of', 'json', sourcePath,
+    ], { timeout: 20_000, maxBuffer: 1024 * 1024 })
+    return parseMp4AudioCodecs(JSON.parse(stdout))
+  } catch (cause) {
+    const error = new Error('VIDEO_DECODE_FAILED')
+    error.status = 415
+    error.cause = cause
+    throw error
+  }
+}
+
+function progressiveMp4RemuxArgs(inputPath, outputPath, audioCodecs = []) {
+  // Keep the video and existing AAC packets intact. Other camera audio codecs
+  // (notably AMR in 3GP-branded MP4 uploads) need AAC for mobile MP4 delivery.
+  // Ordinals match -map 0:a?: all audio tracks are retained in their input order.
+  const audioArgs = normalizeMp4AudioCodecs(audioCodecs).flatMap((codec, index) =>
+    codec === 'aac' ? [] : [
+      `-c:a:${index}`, 'aac', `-profile:a:${index}`, 'aac_low', `-b:a:${index}`, '128k',
+    ])
   return [
     '-hide_banner', '-loglevel', 'error', '-y',
     '-i', inputPath,
     '-map', '0:v:0', '-map', '0:a?',
     '-c', 'copy',
+    ...audioArgs,
     '-movflags', '+faststart',
     outputPath,
   ]
 }
 
-async function optimizeMp4ForProgressiveDownload(sourcePath, { enforceFeedLimits = true, maxBytes = Infinity } = {}) {
+async function optimizeMp4ForProgressiveDownload(sourcePath, {
+  enforceFeedLimits = true, maxBytes = Infinity, runProcess = execFileAsync,
+} = {}) {
   const outputPath = `${sourcePath}.faststart-${crypto.randomUUID()}.mp4`
   try {
-    await execFileAsync(
+    const audioCodecs = await probeMp4AudioCodecs(sourcePath, runProcess)
+    await runProcess(
       'ffmpeg',
-      progressiveMp4RemuxArgs(sourcePath, outputPath),
+      progressiveMp4RemuxArgs(sourcePath, outputPath, audioCodecs),
       { timeout: 120_000, maxBuffer: 2 * 1024 * 1024 },
     )
     const optimizedStat = await fs.promises.stat(outputPath)
@@ -263,8 +304,9 @@ async function optimizeMp4ForProgressiveDownload(sourcePath, { enforceFeedLimits
       error.status = 413
       throw error
     }
-    if (enforceFeedLimits) await probeVideoDelivery(outputPath, optimizedStat.size)
-    await fs.promises.rm(sourcePath, { force: true })
+    if (enforceFeedLimits) await probeVideoDelivery(outputPath, optimizedStat.size, runProcess)
+    // Replace only after successful normalization and validation. A failed
+    // rename must leave the original upload available for caller cleanup.
     await fs.promises.rename(outputPath, sourcePath)
     return optimizedStat.size
   } catch (cause) {
@@ -1838,6 +1880,8 @@ module.exports = {
   parseFrameRate,
   optimizeMp4ForProgressiveDownload,
   progressiveMp4RemuxArgs,
+  parseMp4AudioCodecs,
+  probeMp4AudioCodecs,
   probeVideoDelivery,
   parseStorageObjectUrl,
   objectFilePath,
