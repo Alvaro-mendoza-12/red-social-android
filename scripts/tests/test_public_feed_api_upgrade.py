@@ -1,10 +1,11 @@
+import os
 import pathlib
 import subprocess
 import tempfile
 import unittest
 
 SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
-SOURCE = (SCRIPTS / "deploy-public-feed-api-candidate.sh").read_text()
+SOURCE = (SCRIPTS / os.environ.get("NOVVIN_CANDIDATE_CONTROLLER", "deploy-public-feed-api-candidate.sh")).read_text()
 HELPERS = SOURCE[SOURCE.index("override_for() {"):SOURCE.index("check_image() {")]
 
 
