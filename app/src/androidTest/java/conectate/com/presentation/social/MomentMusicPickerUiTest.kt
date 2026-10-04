@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import conectate.com.data.music.ApprovedMomentMusic
@@ -216,6 +217,13 @@ class MomentMusicPickerUiTest {
         compose.onNodeWithText("Usar audio").performClick()
         assertTrue(confirmed!!.startMs > 10_000)
         assertEquals(6_000L, confirmed!!.endMs - confirmed!!.startMs)
+    }
+    @Test fun timelineIsCompactWithoutLosingItsTouchTarget() {
+        val song = track(seconds = 60)
+        show(MusicCatalogUiState(), MomentMusicSelection(song, 10_000, 16_000, 1f, 1f))
+        compose.onNodeWithTag("moment_music_excerpt_timeline").performScrollTo()
+            .assertHeightIsEqualTo(48.dp).assertHeightIsAtLeast(48.dp)
+        screenshot("qa-music-compact-timeline.png")
     }
     @Test fun synchronizedLyricsAdvanceWithTheActualAudioPlayer() {
         val song = track(seconds = 12).copy(lyrics = "[00:00.00]Comenzamos\n[00:02.00]La canción continúa\n[00:05.00]Nuestra voz")

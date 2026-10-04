@@ -40,7 +40,7 @@ internal fun MomentMusicExcerptTimeline(sourceDurationMs: Long, startMs: Long, e
             Text("${excerptTime(startMs)} → ${excerptTime(endMs)}", style = MaterialTheme.typography.titleMedium)
             Text("${clipMs / 1_000} s seleccionados", style = MaterialTheme.typography.labelLarge, color = primary)
         }
-        Canvas(Modifier.fillMaxWidth().height(88.dp).clip(RoundedCornerShape(16.dp)).testTag("moment_music_excerpt_timeline")
+        Canvas(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(12.dp)).testTag("moment_music_excerpt_timeline")
             .semantics {
                 contentDescription = "Inicio del fragmento"
                 progressBarRangeInfo = ProgressBarRangeInfo(startMs.toFloat(), 0f..maxStart.toFloat())
@@ -57,24 +57,24 @@ internal fun MomentMusicExcerptTimeline(sourceDurationMs: Long, startMs: Long, e
             }) {
             val viewportStart = startMs + clipMs / 2f - viewportMs / 2f
             fun x(time: Float) = (time - viewportStart) / viewportMs * size.width
-            drawRoundRect(surface, cornerRadius = CornerRadius(16.dp.toPx()))
+            drawRoundRect(surface, cornerRadius = CornerRadius(12.dp.toPx()))
             val left = x(startMs.toFloat())
             val right = x(endMs.toFloat())
             drawRoundRect(primary.copy(alpha = .18f), topLeft = Offset(left, 4.dp.toPx()),
-                size = Size(right - left, size.height - 8.dp.toPx()), cornerRadius = CornerRadius(12.dp.toPx()))
+                size = Size(right - left, size.height - 8.dp.toPx()), cornerRadius = CornerRadius(8.dp.toPx()))
             val firstTick = (viewportStart.toLong().coerceAtLeast(0L) / 1_000L) * 1_000L
             var time = firstTick
             while (time <= sourceDurationMs && x(time.toFloat()) <= size.width) {
                 val xx = x(time.toFloat())
                 val major = time % 5_000L == 0L
-                val tickHeight = if (major) 32.dp.toPx() else 16.dp.toPx()
+                val tickHeight = if (major) 20.dp.toPx() else 10.dp.toPx()
                 drawLine(if (time in startMs..endMs) primary else inactive,
                     Offset(xx, (size.height - tickHeight) / 2), Offset(xx, (size.height + tickHeight) / 2), 2.dp.toPx())
                 time += 1_000L
             }
             listOf(left, right).forEach { xx ->
-                drawRoundRect(primary, topLeft = Offset(xx - 2.dp.toPx(), 12.dp.toPx()),
-                    size = Size(4.dp.toPx(), size.height - 24.dp.toPx()), cornerRadius = CornerRadius(2.dp.toPx()))
+                drawRoundRect(primary, topLeft = Offset(xx - 2.dp.toPx(), 8.dp.toPx()),
+                    size = Size(4.dp.toPx(), size.height - 16.dp.toPx()), cornerRadius = CornerRadius(2.dp.toPx()))
             }
             if (playbackPositionMs in startMs..endMs) drawLine(primary,
                 Offset(x(playbackPositionMs.toFloat()), 6.dp.toPx()), Offset(x(playbackPositionMs.toFloat()), size.height - 6.dp.toPx()), 2.dp.toPx())
