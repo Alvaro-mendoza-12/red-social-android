@@ -50,13 +50,18 @@ class HomeGraphInitializationTest {
         assertEquals(1, calls.get())
     }
 
-    @Test fun `construction failure returns the original error`() = runBlocking {
+    @Test fun `construction failure preserves its type message and original cause`() = runBlocking {
         val failure = IllegalStateException("QA repository construction failure")
         val provider = Lazy<Any> { throw failure }
 
         val caught = runCatching { resolveHomeRepository(provider) }.exceptionOrNull()
 
-        assertSame(failure, caught)
+        assertNotNull(caught)
+        assertEquals(failure.javaClass, caught!!.javaClass)
+        assertEquals(failure.message, caught.message)
+        // Coroutine stack-trace recovery may copy an exception when crossing
+        // dispatchers. Its original cause must remain available to the caller.
+        assertTrue(generateSequence(caught) { it.cause }.take(8).any { it === failure })
     }
 
     @Test fun `cancelled refresh never begins repository construction`() = runBlocking {
