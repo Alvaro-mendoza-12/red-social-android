@@ -170,6 +170,30 @@ La comparación con el origen requiere recuperar el acceso SSH. Los registros
 publicables no contienen direcciones del medio, tokens ni credenciales.
 [Mediciones y alcance](../../VALIDACION_CONTINUIDAD_MOMENTOS_API_FED1546.json).
 
+Se añadió [un diagnóstico de almacenamiento](../../scripts/diagnose-storage-response-latency.py)
+para comparar tres lecturas de ese mismo audio propio en cada ruta: API
+local, Nginx local y URL pública. Descubre únicamente los puertos de contenedores
+con enlace a loopback, usa GET de rango y limita la lectura a 4.097 bytes para
+detectar una respuesta incorrecta. No sigue redirecciones ni descarga el archivo
+completo. Registra conexión, encabezados, primer byte y el valor numérico
+`app;dur` de `Server-Timing`, cuando exista. No modifica contenedores ni datos.
+
+La API puede responder con cuerpo vacío y `X-Accel-Redirect`; en ese caso se
+mide su autorización y búsqueda de metadatos, no la entrega del audio. El
+diagnóstico registra esa diferencia. Nginx procesa ese encabezado como una
+redirección interna; no se interpreta como una URL para abrir desde el cliente.
+[Referencia oficial de Nginx](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ignore_headers).
+Docker se consulta con un formato reducido que excluye variables de entorno
+y montajes. [Formato oficial de Docker](https://docs.docker.com/engine/cli/formatting/).
+
+Pasaron ocho [pruebas aisladas del diagnóstico](../../scripts/test-storage-response-latency.py):
+ruta propia, metadatos mínimos, métricas numéricas, lectura parcial, respuesta
+delegada, rechazo de redirección/archivo completo, tamaño incorrecto y errores
+sin mensajes privados. El modo `--plan` validó el archivo sintético sin Docker
+ni red. **La comparación en Linux todavía no se ha ejecutado** por el acceso
+SSH pendiente. Cada muestra abrirá una conexión HTTP/1.1 nueva; no replica
+la conexión HTTP/2 reutilizada observada en Android.
+
 La siguiente medición de audio debe distinguir solicitud, encabezados,
 preparación y avance del audio. Media3 ofrece `onAudioPositionAdvancing`; su
 marca de inicio usa tiempo de sistema, por lo que no debe restarse directamente
