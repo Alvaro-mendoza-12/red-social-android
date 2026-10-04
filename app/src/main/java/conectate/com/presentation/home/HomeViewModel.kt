@@ -18,6 +18,7 @@ import conectate.com.data.model.PlayMatchMatch
 import conectate.com.data.supabase.AuthService
 import conectate.com.presentation.messages.normalizedVisibleConversations
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.Lazy
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
@@ -38,10 +39,10 @@ class HomeViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
     private val groupRepository: GroupRepository,
     private val communityRepository: CommunityRepository,
-    private val videoRepository: VideoRepository,
+    private val videoRepository: Lazy<VideoRepository>,
     private val momentRepository: MomentRepository,
-    private val postRepository: PostRepository,
-    private val playMatchRepository: PlayMatchRepository,
+    private val postRepository: Lazy<PostRepository>,
+    private val playMatchRepository: Lazy<PlayMatchRepository>,
     private val notificationRepository: NotificationRepository,
     private val friendRepository: FriendRepository,
     private val seenFriendRequestsPreferences: SeenFriendRequestsPreferences,
@@ -111,7 +112,8 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun refreshNewContent(userId: String) = coroutineScope {
         launch { quietlyRefresh {
-            val videos = videoRepository.getFollowingVideos(emitCachedSnapshots = false, failOnError = true)
+            val repository = resolveHomeRepository(videoRepository)
+            val videos = repository.getFollowingVideos(emitCachedSnapshots = false, failOnError = true)
                 .toList().lastOrNull().orEmpty()
             currentCoroutineContext().ensureActive()
             if (isCurrent(userId)) {
@@ -120,9 +122,10 @@ class HomeViewModel @Inject constructor(
             }
         } }
         launch { quietlyRefresh {
-            val posts = postRepository.getGlobalPosts(mode = "following", emitCachedSnapshots = false)
+            val repository = resolveHomeRepository(postRepository)
+            val posts = repository.getGlobalPosts(mode = "following", emitCachedSnapshots = false)
                 .toList().lastOrNull().orEmpty()
-            if (postRepository.globalFeedError.value != null) return@quietlyRefresh
+            if (repository.globalFeedError.value != null) return@quietlyRefresh
             currentCoroutineContext().ensureActive()
             if (isCurrent(userId)) {
                 latestPostAt = HomeNoveltyPolicy.newest(posts.filter { it.userId != userId }.map { it.createdAt })
@@ -140,9 +143,10 @@ class HomeViewModel @Inject constructor(
             }
         } }
         launch { quietlyRefresh {
-            if (!playMatchRepository.capabilities().getOrThrow().enabled) return@quietlyRefresh
-            val connections = playMatchRepository.connections().getOrThrow().items
-            val matches = playMatchRepository.matches().getOrThrow().items
+            val repository = resolveHomeRepository(playMatchRepository)
+            if (!repository.capabilities().getOrThrow().enabled) return@quietlyRefresh
+            val connections = repository.connections().getOrThrow().items
+            val matches = repository.matches().getOrThrow().items
             currentCoroutineContext().ensureActive()
             if (isCurrent(userId)) {
                 gameKeys = HomeNoveltyPolicy.gameEvents(connections, matches)
