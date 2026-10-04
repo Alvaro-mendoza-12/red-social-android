@@ -4,7 +4,7 @@
 
 **Rama:** `feature/live-gifts`.
 
-**Estado:** API y antivirus desplegados, Encuestas habilitadas y ciclo funcional comprobado en el servidor. Regresión Android conjunta en curso.
+**Estado:** API y antivirus desplegados, Encuestas habilitadas y ciclo funcional comprobado en el servidor. APK conjunto validado en el emulador; AAB firmado pendiente.
 
 **Alcance:** Android, API de Encuestas, PostgreSQL, exportaciones, adjuntos y coordinación con la auditoría móvil existente.
 
@@ -16,7 +16,11 @@ La API activa es `f42a349`, posterior a la corrección de Social y notificacione
 
 También pasaron 12 comprobaciones por el origen HTTPS configurado en Android, con verificación TLS: disponibilidad de Encuestas, autenticación, dos páginas de Descubrir sin duplicados, lista de notificaciones sin vistas de Momentos y rechazo de crear `view_moment`. Esta comprobación no publicó contenido de prueba en Social. [Evidencia HTTPS](VALIDACION_HTTPS_SOCIAL_Y_ENCUESTAS.json).
 
-La compilación y regresión del Android `07e4989` siguen en curso. Los resultados anteriores de APK se conservan como historial y no acreditan automáticamente esta versión. El intento de compilación `715eac6` detectó campos de presentación ausentes en el cliente HTTP y un uso incorrecto de padding; se corrigieron antes de repetir.
+El Android `07e4989` compiló correctamente: APK debug, APK de pruebas, 1.264 unitarias en 278 suites sin fallos, errores ni omisiones, y reducción R8. Se comprobó el commit embebido dentro del DEX y se registraron los hashes de ambos APK. R8 conservó SurveysBridge y sus seis métodos; esta ejecución no produjo un AAB firmado. [Evidencia Android](VALIDACION_ANDROID_07E4989.json).
+
+La regresión del emulador sobre ese APK pasó 39 pruebas de interfaz y cinco de medios, sin omisiones. Tras corregir exclusivamente el helper de capturas `2a2b9bf`, ambas suites se repitieron completas: 71,287 y 27,733 segundos respectivamente. También se conservan las primeras rondas correctas de 58,905 y 26,484 segundos. La suite nativa incluye el contrato de documentos y la publicación/respuesta/edición/exportación de Encuestas por HTTPS contra PostgreSQL local exclusivo. Los medios se probaron por separado, con Gradle detenido y el límite de diez segundos intacto. [Interfaz](VALIDACION_INTERFAZ_07E4989.json), [medios](VALIDACION_MEDIOS_07E4989.json).
+
+Los resultados anteriores de APK se conservan como historial y no acreditan automáticamente esta versión. El intento de compilación `715eac6` detectó campos de presentación ausentes en el cliente HTTP y un uso incorrecto de padding; se corrigieron antes de repetir. No se produjo ni publicó un AAB firmado; el usuario mantiene su firma manual desde Android Studio.
 
 ## Evidencia y límites de revisiones anteriores
 
@@ -120,4 +124,4 @@ La API `2011e32` quedó habilitada mediante el controlador de activación `7164c
 
 Se utilizó una cuenta QA existente del equipo y un participante ficticio creado exclusivamente para esta ejecución. La encuesta no generó una publicación en Social. Se retiraron la campaña, la planilla y el participante creado; su sesión dejó de ser válida. No hubo errores de limpieza. La evidencia no contiene credenciales ni identificadores de usuarios: [VALIDACION_PRODUCCION_FUNCIONAL.json](VALIDACION_PRODUCCION_FUNCIONAL.json).
 
-Esta comprobación acredita el flujo HTTP del servidor. La instalación Android con los cambios conjuntos `6adc49b` y su revisión visual en el emulador se documentarán con resultados propios; no se trasladan automáticamente los resultados de un APK anterior.
+Esta sección conserva la habilitación inicial de `2011e32`. La entrega y el APK actuales, con resultados propios, se describen al inicio del informe y en [Social, Momentos y avisos](../63-social-momentos-y-avisos-2026-10-03.md).

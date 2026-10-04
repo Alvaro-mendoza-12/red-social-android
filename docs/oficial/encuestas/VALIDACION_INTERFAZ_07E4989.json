@@ -1,0 +1,33 @@
+{
+  "utc": "2026-10-04T04:34:00.041747+00:00",
+  "androidSourceCommit": "07e4989db2957abbad2f219e50e7be60d6876419",
+  "embeddedBuildCommit": "07e4989",
+  "expectedTests": 39,
+  "passed": true,
+  "classes": [
+    "conectate.com.presentation.messages.PollMessageUiTest",
+    "conectate.com.presentation.profile.SystemAnnouncementAdminFormTest",
+    "conectate.com.presentation.profile.ProfileVisitorsContentTest",
+    "conectate.com.presentation.surveys.SurveyWorkbenchTest",
+    "conectate.com.presentation.surveys.SurveyDocumentContractTest",
+    "conectate.com.presentation.surveys.SurveyApiIntegrationTest",
+    "conectate.com.presentation.messages.ChatLinkUiTest",
+    "conectate.com.data.local.ProfileCacheMigrationTest",
+    "conectate.com.presentation.social.SocialFeedPagingUiTest",
+    "conectate.com.presentation.profile.SystemAnnouncementDialogTest",
+    "conectate.com.presentation.social.MomentMusicPickerUiTest",
+    "conectate.com.presentation.social.MomentMusicPresentationUiTest"
+  ],
+  "transport": "HTTPS Android to disposable local API and PostgreSQL for survey integration",
+  "scope": "Native Social paging, notice controls, music selection and previous mobile regression. Remote audio playback measured separately.",
+  "testArtifactCommit": "2a2b9bf",
+  "elapsedSeconds": 71.287,
+  "omitted": false,
+  "round": "finalFullDeviceScreenshots",
+  "previousRound": {
+    "utc": "2026-10-04T04:26:53.280133+00:00",
+    "passed": true,
+    "elapsedSeconds": 58.905,
+    "testArtifactCommit": "07e4989"
+  }
+}

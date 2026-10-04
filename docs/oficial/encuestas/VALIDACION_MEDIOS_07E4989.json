@@ -1,0 +1,45 @@
+{
+  "utc": "2026-10-04T04:34:54.848557+00:00",
+  "embeddedBuildCommit": "07e4989",
+  "expectedTests": 5,
+  "passed": true,
+  "omitted": false,
+  "timings": [
+    {
+      "name": "moment_photo",
+      "readyMs": 180
+    },
+    {
+      "name": "profile_audio",
+      "readyMs": 2133
+    },
+    {
+      "name": "community_audio_preview",
+      "readyMs": 4067
+    }
+  ],
+  "scope": "Actual Android playback/photo tests using owned remote synthetic media; host Gradle idle; audio timeout remains 10 seconds",
+  "testArtifactCommit": "2a2b9bf",
+  "elapsedSeconds": 27.733,
+  "round": "finalFullDeviceScreenshots",
+  "previousRound": {
+    "utc": "2026-10-04T04:28:42.437988+00:00",
+    "passed": true,
+    "elapsedSeconds": 26.484,
+    "testArtifactCommit": "07e4989",
+    "timings": [
+      {
+        "name": "moment_photo",
+        "readyMs": 124
+      },
+      {
+        "name": "profile_audio",
+        "readyMs": 4312
+      },
+      {
+        "name": "community_audio_preview",
+        "readyMs": 1131
+      }
+    ]
+  }
+}

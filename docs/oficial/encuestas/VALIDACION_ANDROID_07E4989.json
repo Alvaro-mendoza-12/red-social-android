@@ -1,0 +1,48 @@
+{
+  "utc": "2026-10-04T04:26:34.481020+00:00",
+  "androidSourceCommit": "07e4989db2957abbad2f219e50e7be60d6876419",
+  "embeddedBuildCommit": "07e4989",
+  "buildSuccessful": true,
+  "buildSeconds": 1117,
+  "unit": {
+    "suites": 278,
+    "tests": 1264,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "oldestSuiteTimestamp": "2026-10-04T01:11:12.986Z",
+    "newestSuiteTimestamp": "2026-10-04T01:11:56.938Z"
+  },
+  "apks": [
+    {
+      "path": "app/build/outputs/apk/debug/app-debug.apk",
+      "sha256": "86b89eb3cc98b07e950b077e463e82d53c394ad1eb2f03b533cb193731db3eac",
+      "bytes": 275939390
+    },
+    {
+      "path": "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+      "sha256": "4b464fc0b9d0f1defcb22359a2de5235ea69d6fc2165e311396c4e79110cf3de",
+      "bytes": 2303423
+    }
+  ],
+  "r8": {
+    "successful": true,
+    "signedReleaseArtifact": false,
+    "surveysBridgeRetained": true,
+    "bridgeMethods": [
+      "close",
+      "copy",
+      "download",
+      "ready",
+      "request",
+      "share"
+    ]
+  },
+  "testArtifactCommit": "2a2b9bf",
+  "testApkRebuiltSeconds": 88,
+  "previousTestApk": {
+    "path": "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+    "sha256": "4b464fc0b9d0f1defcb22359a2de5235ea69d6fc2165e311396c4e79110cf3de",
+    "bytes": 2303423
+  }
+}
