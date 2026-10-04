@@ -3,12 +3,12 @@ package conectate.com.presentation.social
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import conectate.com.data.music.ApprovedMomentMusic
 import conectate.com.data.model.MomentMusicPresentation
 import org.junit.Assert.assertEquals
@@ -64,10 +64,14 @@ class MomentMusicPickerUiTest {
     }
 
     private fun screenshot(name: String) {
+        compose.waitForIdle()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.waitForIdleSync()
+        val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
         File(compose.activity.externalCacheDir, name).outputStream().use {
-            compose.onNode(isDialog()).captureToImage().asAndroidBitmap()
-                .compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
+        bitmap.recycle()
     }
 
     @Test fun communityOpensWithSearchAndCanClearTheQuery() {
@@ -127,6 +131,7 @@ class MomentMusicPickerUiTest {
         compose.onNodeWithTag("music_presentation_option_card").assertIsSelected()
         compose.onNodeWithTag("music_presentation_option_label").performScrollTo().performClick().assertIsSelected()
         compose.onNodeWithTag("moment_music_presentation_label").assertExists()
+        screenshot("qa-music-label.png")
         compose.onNodeWithTag("music_presentation_option_audio").performScrollTo().performClick().assertIsSelected()
         compose.onNodeWithTag("moment_music_presentation_label").assertDoesNotExist()
         compose.onNodeWithText("Usar audio").assertIsDisplayed()
