@@ -19,6 +19,9 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import org.junit.Assert.assertTrue
 
 /** Native UI and one-tap playback, using an owned local WAV with no network or session changes. */
 @RunWith(AndroidJUnit4::class)
@@ -67,6 +70,22 @@ class MomentMusicPickerUiTest {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.waitForIdleSync()
+        // Compose idleness precedes the hardware renderer's frame commit.
+        // Capture only after every visible window has submitted its redraw.
+        var committed: CountDownLatch? = null
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            instrumentation.runOnMainSync {
+                val roots = android.view.inspector.WindowInspector.getGlobalWindowViews()
+                    .filter { it.isShown && it.isHardwareAccelerated }
+                committed = CountDownLatch(roots.size)
+                roots.forEach { root ->
+                    root.viewTreeObserver.registerFrameCommitCallback { committed!!.countDown() }
+                    root.postInvalidateOnAnimation()
+                }
+            }
+            assertTrue("Native windows did not commit the screenshot frame",
+                committed!!.await(3, TimeUnit.SECONDS))
+        }
         val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
         File(compose.activity.externalCacheDir, name).outputStream().use {
             bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
