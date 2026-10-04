@@ -12,6 +12,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.testTag
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import conectate.com.data.music.importMusicLyrics
+import conectate.com.data.music.readBoundedMusicLyrics
+import conectate.com.data.music.timedMusicLyrics
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AudioFile
@@ -75,6 +85,12 @@ fun CommunityMusicUploadDialog(
         onDispose { preparedCovers.forEach { it.delete() } }
     }
     var audioUri by remember(initialAudio?.uri) { mutableStateOf(initialAudio?.uri) }
+    val scope = rememberCoroutineScope()
+    var sourceStartMs by remember(initialAudio?.uri) { mutableLongStateOf(initialAudio?.sourceStartMs ?: 0L) }
+    var lyrics by remember(audioUri) { mutableStateOf("") }
+    var lyricsError by remember(audioUri) { mutableStateOf<String?>(null) }
+    var readingLyrics by remember { mutableStateOf(false) }
+    var showLyricsPicker by remember { mutableStateOf(false) }
     var audioName by remember(initialAudio?.uri) { mutableStateOf(initialAudio?.displayName.orEmpty()) }
     var title by remember(initialAudio?.uri) {
         mutableStateOf(
@@ -124,6 +140,7 @@ fun CommunityMusicUploadDialog(
                 detectedArtist = clip.artist
                 detectedAlbum = clip.album
                 durationMs = clip.durationMs
+                sourceStartMs = clip.sourceStartMs
                 showDeviceLibrary = false
             },
         )
@@ -153,6 +170,7 @@ fun CommunityMusicUploadDialog(
         readingMetadata = false
     }
 
+
     if (!showDeviceLibrary) {
         Dialog(
             onDismissRequest = { if (!state.isUploading) onDismiss() },
@@ -181,7 +199,8 @@ fun CommunityMusicUploadDialog(
                         .fillMaxSize()
                         .padding(padding)
                         .navigationBarsPadding()
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     Text(
@@ -220,7 +239,7 @@ fun CommunityMusicUploadDialog(
                                 }
                                 OutlinedButton(
                                     onClick = { showDeviceLibrary = true },
-                                    enabled = !state.isUploading,
+                                    enabled = !state.isUploading && !readingLyrics,
                                 ) { Text("Cambiar") }
                             }
                         }
@@ -235,6 +254,13 @@ fun CommunityMusicUploadDialog(
                     // archivo seleccionado. La declaración legal se confirma
                     // al pulsar publicar para mantener el flujo corto.
 
+                    CommunityMusicLyricsSection(
+                        lyrics = lyrics, durationMs = durationMs, reading = readingLyrics,
+                        error = lyricsError,
+                        onAdd = { showLyricsPicker = true },
+                        onRemove = { lyrics = ""; lyricsError = null },
+                        enabled = !state.isUploading && !readingMetadata && durationMs > 0,
+                    )
                     state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (!readingMetadata && !CommunityMusicPolicy.acceptsDuration(durationMs)) {
                         Text("Elige Cambiar para seleccionar un recorte de entre 5 segundos y 4:30.", color = MaterialTheme.colorScheme.error)
@@ -244,7 +270,7 @@ fun CommunityMusicUploadDialog(
                         Text("Publicando… ${(state.progress * 100).toInt()}%")
                     }
 
-                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.height(8.dp))
                     Button(
                         onClick = {
                             val selectedUri = audioUri ?: return@Button
@@ -259,6 +285,7 @@ fun CommunityMusicUploadDialog(
                                     mood = "",
                                     tags = emptyList(),
                                     description = "",
+                                    lyrics = lyrics,
                                     rightsType = "ORIGINAL_OWNER",
                                     visibility = "PUBLIC_REUSABLE",
                                     allowReuse = true,
@@ -269,7 +296,7 @@ fun CommunityMusicUploadDialog(
                                 ),
                             )
                         },
-                        enabled = !state.isUploading && !readingMetadata && audioUri != null && title.isNotBlank() && CommunityMusicPolicy.acceptsDuration(durationMs),
+                        enabled = !state.isUploading && !readingMetadata && !readingLyrics && audioUri != null && title.isNotBlank() && CommunityMusicPolicy.acceptsDuration(durationMs),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Publicar para la Comunidad")
@@ -284,6 +311,37 @@ fun CommunityMusicUploadDialog(
             }
         }
     }
+    if (showLyricsPicker) {
+        conectate.com.presentation.documents.DocumentPickerSheet(
+            onDismiss = { showLyricsPicker = false },
+            allowedExtensions = setOf("lrc"), pickerTitle = "Letra sincronizada",
+            onPicked = { uri ->
+                showLyricsPicker = false
+                val selectedAudio = audioUri
+                val selectedStart = sourceStartMs
+                val selectedDuration = durationMs
+                readingLyrics = true
+                scope.launch {
+                    try {
+                        val imported = withContext(Dispatchers.IO) {
+                            val bytes = context.contentResolver.openInputStream(uri)?.use(::readBoundedMusicLyrics)
+                                ?: throw IllegalArgumentException("No se pudo abrir la letra.")
+                            importMusicLyrics(bytes, selectedDuration, selectedStart)
+                        }
+                        if (audioUri == selectedAudio) { lyrics = imported; lyricsError = null }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        if (audioUri == selectedAudio) lyricsError = when (error) {
+                            is IllegalArgumentException -> error.message
+                            else -> "No se pudo leer la letra. Revisa el acceso al archivo y vuelve a intentar."
+                        }
+                    } finally { readingLyrics = false }
+                }
+            },
+        )
+    }
+
 }
 
 @Composable
@@ -302,6 +360,38 @@ private fun CommunityMusicSubmitted(onDismiss: () -> Unit) {
             Text("Ya está disponible para la Comunidad. También recibirás una notificación de confirmación.")
             Spacer(Modifier.height(18.dp))
             Button(onClick = onDismiss) { Text("Listo") }
+        }
+    }
+}
+
+/** Compact optional lyrics control, shared by the upload screen and its UI checks. */
+@Composable
+internal fun CommunityMusicLyricsSection(
+    lyrics: String,
+    durationMs: Long,
+    reading: Boolean,
+    error: String?,
+    onAdd: () -> Unit,
+    onRemove: () -> Unit,
+    enabled: Boolean,
+) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (reading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            if (lyrics.isBlank()) {
+                TextButton(onClick = onAdd, enabled = enabled && !reading,
+                    modifier = Modifier.testTag("community_music_add_lyrics")) { Text("Añadir letras (.lrc) · opcional") }
+                Text("Usa letras con tiempos reales de esta canción. No se generan automáticamente.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                val cues = remember(lyrics, durationMs) { timedMusicLyrics(lyrics, durationMs) }
+                Text("Letra sincronizada añadida · ${cues.count { it.text.isNotBlank() }} líneas",
+                    style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("community_music_lyrics_added"))
+                Text(cues.firstOrNull { it.text.isNotBlank() }?.text.orEmpty(), maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                TextButton(onClick = onRemove, enabled = enabled && !reading) { Text("Quitar letra") }
+            }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }

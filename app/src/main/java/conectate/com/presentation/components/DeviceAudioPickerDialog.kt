@@ -131,6 +131,8 @@ data class PreparedAudioClip(
     val artworkUri: Uri? = null,
     /** Original metadata/artwork source when the audio was exported as a crop. */
     val sourceUri: Uri? = null,
+    /** Exact source trim point; used to align imported LRC with the exported audio. */
+    val sourceStartMs: Long = 0L,
 )
 
 /**
@@ -589,13 +591,15 @@ fun DeviceAudioPickerDialog(
                                     if (allowFullTrack && selectedWholeTrack && audioFitsFullTrackLimit(track.durationMs, maxClipDurationMs)) {
                                         emitWholeTrack(track)
                                     } else {
+                                        val selectedStartMs = trimRangeMs.start.toLong()
+                                        val selectedEndMs = trimRangeMs.endInclusive.toLong()
                                         preparingClip = true
                                         scope.launch {
                                             val result = exportAudioClip(
                                                 context = context,
                                                 sourceUri = track.uri,
-                                                startMs = trimRangeMs.start.toLong(),
-                                                endMs = trimRangeMs.endInclusive.toLong(),
+                                                startMs = selectedStartMs,
+                                                endMs = selectedEndMs,
                                             )
                                             preparingClip = false
                                             result.fold(
@@ -611,9 +615,10 @@ fun DeviceAudioPickerDialog(
                                                             title = track.title,
                                                             artist = track.artist,
                                                             album = track.album,
-                                                            durationMs = (trimRangeMs.endInclusive - trimRangeMs.start).toLong(),
+                                                            durationMs = selectedEndMs - selectedStartMs,
                                                             artworkUri = track.artworkUri,
                                                             sourceUri = track.uri,
+                                                            sourceStartMs = selectedStartMs,
                                                         ),
                                                     )
                                                     if (dismissAfterConfirm) onDismiss()

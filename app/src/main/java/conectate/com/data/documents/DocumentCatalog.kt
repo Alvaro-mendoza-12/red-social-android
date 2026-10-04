@@ -58,9 +58,12 @@ fun filterDocuments(
     category: DocumentCategory,
     query: String,
     folderUri: String?,
+    allowedExtensions: Set<String>? = null,
 ): List<AvailableDocument> {
+    val extensions = allowedExtensions?.map { it.trim().removePrefix(".").lowercase(Locale.ROOT) }?.toSet()
     val words = searchKey(query.trim()).split(Regex("\\s+")).filter(String::isNotEmpty)
     return documents.asSequence()
+        .filter { extensions == null || it.name.substringAfterLast('.', "").lowercase(Locale.ROOT) in extensions }
         .filter { category == DocumentCategory.ALL || it.category == category }
         .filter { folderUri == null || folderUri in it.ancestorUris }
         .filter { document ->

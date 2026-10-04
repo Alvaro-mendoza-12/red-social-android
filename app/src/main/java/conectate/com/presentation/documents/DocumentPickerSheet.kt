@@ -36,6 +36,8 @@ fun DocumentPickerSheet(
     onDismiss: () -> Unit,
     onPicked: (Uri) -> Unit,
     viewModel: DocumentPickerViewModel = hiltViewModel(),
+    allowedExtensions: Set<String>? = null,
+    pickerTitle: String = "Documentos",
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
@@ -52,8 +54,8 @@ fun DocumentPickerSheet(
     val addDocuments = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) viewModel.addDocuments(uris)
     }
-    val documents by produceState<List<AvailableDocument>>(emptyList(), state.catalog.documents, query, category, activeFolderUri) {
-        value = withContext(Dispatchers.Default) { filterDocuments(state.catalog.documents, category, query, activeFolderUri) }
+    val documents by produceState<List<AvailableDocument>>(emptyList(), state.catalog.documents, query, category, activeFolderUri, allowedExtensions) {
+        value = withContext(Dispatchers.Default) { filterDocuments(state.catalog.documents, category, query, activeFolderUri, allowedExtensions) }
     }
     val childFolders = remember(state.catalog.folders, activeFolderUri) {
         state.catalog.folders.filter { it.parentUri == activeFolderUri }.sortedBy { it.name.lowercase() }
@@ -66,21 +68,21 @@ fun DocumentPickerSheet(
                 IconButton(onClick = {
                     if (folder != null) folderUri = folder.parentUri else onDismiss()
                 }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, if (folder != null) "Carpeta anterior" else "Cerrar documentos") }
-                Text("Documentos", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Text(pickerTitle, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 IconButton(onClick = { addingDocuments = true }, enabled = !state.loading) {
                     Icon(Icons.Default.Add, "Agregar documentos")
                 }
                 IconButton(onClick = viewModel::refresh, enabled = !state.loading) { Icon(Icons.Default.Refresh, "Actualizar documentos") }
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Cerrar selector") }
             }
-            Text("Selecciona un documento para verlo o enviarlo.", style = MaterialTheme.typography.bodySmall)
+            Text(if (allowedExtensions == null) "Selecciona un documento para verlo o enviarlo." else "Elige un archivo .lrc con tiempos sincronizados para esta canción.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
                 value = query, onValueChange = { query = it.take(120) }, modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                 singleLine = true, label = { Text("Buscar nombre o carpeta") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Limpiar búsqueda") } },
             )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (allowedExtensions == null) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(DocumentCategory.entries) { type ->
                     FilterChip(selected = category == type, onClick = { category = type }, label = { Text(type.label) })
                 }
@@ -92,7 +94,7 @@ fun DocumentPickerSheet(
                     Text("Agregar")
                 }
             }
-            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             (permissionError ?: state.error)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             if (state.catalog.limited) Text("Mostramos hasta 2500 archivos. Agrega una carpeta más específica si falta alguno.", style = MaterialTheme.typography.bodySmall)
             if (state.catalog.unavailableFolders > 0) Text("Algunos archivos o carpetas no están disponibles. Revisa su permiso o conexión.", style = MaterialTheme.typography.bodySmall)

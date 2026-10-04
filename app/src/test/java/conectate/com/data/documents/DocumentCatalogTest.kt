@@ -41,4 +41,16 @@ class DocumentCatalogTest {
         assertEquals("Tamaño no disponible", formatDocumentSize(-1))
         assertEquals("0 B", formatDocumentSize(0))
     }
+    @Test fun `optional extension restriction filters LRC without changing chat defaults`() {
+        val lyric = document("lyric", "Canción.LRC", ancestors = listOf("root", "music"))
+        val renamed = document("renamed", "fake.lrc.exe", ancestors = listOf("root", "music"))
+        val plain = document("plain", "notes.txt", ancestors = listOf("root", "music"))
+        val otherFolder = document("other", "Outside.lrc", ancestors = listOf("root", "other"))
+        val documents = listOf(lyric, renamed, plain, otherFolder)
+        assertEquals(listOf(lyric), filterDocuments(documents, DocumentCategory.ALL, "", "music", setOf(".LRC")))
+        assertEquals(listOf(lyric), filterDocuments(documents, DocumentCategory.ALL, "cancion", null, setOf("lrc")))
+        assertTrue(filterDocuments(documents, DocumentCategory.ALL, "", null, emptySet()).isEmpty())
+        assertEquals(4, filterDocuments(documents, DocumentCategory.ALL, "", null).size)
+    }
+
 }
