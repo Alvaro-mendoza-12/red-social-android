@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-04T12:42:45.423116+00:00",
+  "testedCodeCommit": "e6de71ca35b5c9d5178217e84162df479d0ef02e",
+  "versionCode": 117,
+  "versionName": "9.0.20",
+  "sourceFilesSha256": {
+    "infrastructure/local-fallback/api/src/moment-music-lyrics.js": "729df7e16856b08eb748fe88a4a42b90b21c73e17ff1ceca890c6ea62215ffa0",
+    "infrastructure/local-fallback/api/src/moment-music-renderer.js": "9dcc6d2ae2f34785f36a807a272a3f7d2cabf71da77670d772baa32f877f574b",
+    "infrastructure/local-fallback/api/src/moments-routes.js": "9a7f81256d473a2656e641859c3f187c7b7a4afb57eb6ac3138034b73a7c1ebd",
+    "infrastructure/local-fallback/api/src/postgrest-compat-routes.js": "1acb53e6bb1afb182e2cb2e9871d3c75cdb0b0de228453d6dee7c12cd4d66c41",
+    "infrastructure/local-fallback/api/tests/moment-music-lyrics.test.js": "f78538b1574049610f214baaf5ffd1485ac3d265b8c5e1b04b2bda749690b238",
+    "infrastructure/local-fallback/api/tests/moment-music-presentation.test.js": "bd5003f32e7160ed4a9f2c084b3b8bfd2a1d2c19fe3cb575b07e26d7190292d2",
+    "infrastructure/local-fallback/api/tests/moment-community-music-reference.test.js": "793219feefd774ce7bfb3016ae85732921512d48c58dab921074b6ff30077ee5",
+    "infrastructure/local-fallback/api/scripts/verify-moment-music-placement-local.js": "48b54db0484273226968888b15e3a1fa67be7d5a0c2cf7efe08e8d47a48609c4"
+  },
+  "privateLogIntegrity": {
+    "music-editor-api-full-suite-postgres.log": {
+      "sha256": "1668b99d3c11dd484c4ed036afaf8c157cb5dbfcb61532558dd760982271e06f",
+      "bytes": 44292
+    },
+    "music-placement-postgres-http-proof.log": {
+      "sha256": "df574904c93617273c6c69787789c950562406e45143c6203455711f889d06ff",
+      "bytes": 290
+    },
+    "music-survey-postgres-regression.log": {
+      "sha256": "f52e4e2e9f2bcecc313897b2f3bc681c4f24ad5ac9e745d8ec55402e7d6c3d0a",
+      "bytes": 2168
+    },
+    "music-editor-focal-corrected-build.log": {
+      "sha256": "d32c9d1b707093469a17d671c714525161bc192178632acbf2c66f0954b64ecf",
+      "bytes": 23894
+    }
+  },
+  "apiFullSuite": {
+    "total": 450,
+    "passed": 448,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 2,
+    "durationMs": 6933.1035,
+    "skippedFixtures": [
+      "isolated-restore-readiness (Linux bash)",
+      "public-read-path-monitor (Linux bash)"
+    ],
+    "environment": "Windows Node + disposable loopback PostgreSQL, isolated schemas"
+  },
+  "surveyPostgresRegression": {
+    "total": 22,
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0
+  },
+  "momentPostgresHttpFixture": {
+    "ok": true,
+    "fixture": "local PostgreSQL/HTTP moment placement",
+    "checks": [
+      "idempotent migration",
+      "create/feed placement and LRC",
+      "separate text placement",
+      "replace/rotation normalization",
+      "remove/reset",
+      "music relation cleanup"
+    ],
+    "storageAndAuthenticationIsolated": true,
+    "ffmpegTested": false
+  },
+  "androidFocalBeforeCanonicalLayout": {
+    "suites": 5,
+    "tests": 26,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "buildSeconds": 167,
+    "scope": "compiles app/instrumentation, tests LRC/geometry/model/DTO/highlight; last canonical layout change needs final build"
+  },
+  "limits": [
+    "No deployment of this commit: Tailscale SSH check pending",
+    "Moment SQL/HTTP fixture isolates authentication, storage ownership and transcoder",
+    "No real ffmpeg rendering, FCM or two-user calls proved by these fixtures",
+    "No new Motorola installation or startup timing claimed by this API record"
+  ],
+  "productionApiLastVerifiedCommit": "f42a3493ed4d06c9ff019acf71efc8b25b6b3a81"
+}
