@@ -71,6 +71,10 @@ approved_override() {
 check_image() {
   [[ "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" == "$revision" ]]
 }
+check_scanner() {
+  [[ "$(docker inspect --format '{{.Image}}' conectate-local-fallback-survey-antivirus-1)" == "$scanner_image" ]]
+  [[ "$(docker inspect --format '{{.State.Health.Status}}' conectate-local-fallback-survey-antivirus-1)" == healthy ]]
+}
 check_candidate() {
   python3 "$validator" candidate "$root" "$release/candidate-files.tar"
   python3 - "$release/candidate-files.tar" <<'PY'
@@ -106,6 +110,7 @@ if [[ "$mode" == prepare ]]; then
   grep -Fxq "commit=$previous_revision" "$root/.conectate-release"
   check_candidate
   check_image
+  check_scanner
   bash "$root/scripts/verify-backup.sh" "$backup"
   tar -cf "$release/predeploy-files.tar" api/Dockerfile api/package.json api/package-lock.json api/src api/scripts docker-compose.yml docker-compose.override.yml .conectate-release
   python3 "$validator" snapshot "$root" "$release/predeploy-files.tar"
@@ -157,6 +162,7 @@ cmp -s <(override_for "$previous_image") "$root/docker-compose.override.yml"
 [[ "$(docker inspect --format '{{.Image}}' conectate-local-fallback-api-main)" == "$previous_image" ]]
 python3 "$validator" unchanged "$root" "$release/predeploy-files.tar"
 check_image
+check_scanner
 bash "$root/scripts/verify-backup.sh" "$backup"
 trap failure ERR
 tar -xf "$release/candidate-files.tar" -C "$root"

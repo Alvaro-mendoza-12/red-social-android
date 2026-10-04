@@ -9,6 +9,25 @@ HELPERS = SOURCE[SOURCE.index("override_for() {"):SOURCE.index("check_image() {"
 
 
 class UpgradeGuardTest(unittest.TestCase):
+    def test_scanner_runtime_must_match_pinned_image_and_be_healthy(self):
+        function = SOURCE[SOURCE.index("check_scanner() {"):SOURCE.index("check_candidate() {")]
+        for stage in ("healthy", "wrong-image", "unhealthy", "inspect-failed"):
+            script = r'''
+set -Eeuo pipefail
+stage="$1"; scanner_image=expected-scanner
+docker() {
+  [[ "$stage" != inspect-failed ]] || return 1
+  if [[ "$*" == *"{{.Image}}"* ]]; then
+    if [[ "$stage" == wrong-image ]]; then echo foreign; else echo expected-scanner; fi
+  else
+    if [[ "$stage" == unhealthy ]]; then echo unhealthy; else echo healthy; fi
+  fi
+}
+'''
+            run = subprocess.run(["bash", "-s", "--", stage], input=script + function + '\ncheck_scanner\n',
+                text=True, capture_output=True)
+            self.assertEqual(run.returncode, 0 if stage == "healthy" else 1, run.stderr)
+
     def test_old_and_new_overrides_preserve_enabled_surveys_and_scanner(self):
         for image in ("old-api", "new-api"):
             script = 'set -Eeuo pipefail\nimage=new-api; previous_image=old-api; scanner_image=unchanged-scanner\n'
