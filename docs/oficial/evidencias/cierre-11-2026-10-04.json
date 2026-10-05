@@ -1,0 +1,1562 @@
+{
+  "schemaVersion": 2,
+  "updatedAtUtc": "2026-10-05T02:10:05.779396+00:00",
+  "scope": "11 puntos, cámara, encuestas y sorteos: evidencia por recorrido, sin certificación global de producción",
+  "repository": "feature/live-gifts",
+  "testedAndroidBuild": {
+    "unit": {
+      "tests": 1316,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 285,
+      "includesPublicAndroidLinkPattern": true
+    },
+    "primaryDebugApkSha256": "db7c23abbaa4d1fe6fd4cfe3a3b867e77ef5ac7466318528c80d3c6c04528d48",
+    "isolatedPhysicalMainApkSha256": "93f2d8ae66cdac96573850fd751d6815c37b0b4b7a5129d9acb612f7bcc51205",
+    "perScenarioArtifactIdentityRequired": true,
+    "description": "Current regression; different optimized and test APK identities are recorded per scenario below"
+  },
+  "currentServer": {
+    "sourceDigest": "a1299ad2435257c0cef15d30f65df7dc2124f9d35d5850a17c4ce681eb44a96b",
+    "archiveSha256": "2f79f7f77ae0a708608354c2a0e65659648318d1f6bc02ff3fe1c45e8e5baa84",
+    "release": "/home/alvaro/conectate-releases/live-gifts-cierre11-a1299ad",
+    "apiImage": "sha256:48a6efca86826def35ed2ed0147fe286ba9a76302c68f468103f585eeb21a58a",
+    "gatewayImage": "sha256:b3e36328854e030168cb9f578a1b3f1d0ecd83e7b562f1bd1376efa650a19a9a",
+    "allApiFilesMatched": 187,
+    "backupVerified": true,
+    "servicesReady": true,
+    "localTests": {
+      "passed": 498,
+      "skipped": 2,
+      "failed": 0
+    },
+    "linuxTests": {
+      "passed": 111,
+      "skipped": 0,
+      "failed": 0
+    },
+    "postDeployFunctionalHttp": 23,
+    "noticePolicyHttpChecksPassed": 11,
+    "provenanceScope": "187 selected API files including source, scripts and configuration; wider scope than the earlier 114 source files"
+  },
+  "candidateServer": {
+    "sourceDigest": "a1299ad2435257c0cef15d30f65df7dc2124f9d35d5850a17c4ce681eb44a96b",
+    "archiveSha256": "2f79f7f77ae0a708608354c2a0e65659648318d1f6bc02ff3fe1c45e8e5baa84",
+    "release": "/home/alvaro/conectate-releases/live-gifts-cierre11-a1299ad",
+    "apiImage": "sha256:48a6efca86826def35ed2ed0147fe286ba9a76302c68f468103f585eeb21a58a",
+    "gatewayImage": "sha256:b3e36328854e030168cb9f578a1b3f1d0ecd83e7b562f1bd1376efa650a19a9a",
+    "allApiFilesMatched": 187,
+    "backupVerified": true,
+    "servicesReady": true,
+    "localTests": {
+      "passed": 498,
+      "skipped": 2,
+      "failed": 0
+    },
+    "linuxTests": {
+      "passed": 111,
+      "skipped": 0,
+      "failed": 0
+    },
+    "postDeployFunctionalHttp": 23,
+    "deployed": true
+  },
+  "localBackend": {
+    "tests": 500,
+    "passed": 498,
+    "failed": 0,
+    "skipped": 2
+  },
+  "profileAndPhoto": {
+    "profileTapToPlaybackMs": 1037,
+    "profilePersistedAndReadableByPeer": true,
+    "profileAudioPositionAdvanced": true,
+    "profilePausedOnStop": true,
+    "photoFirstImageMs": 465,
+    "photoDecodedPixelsVerified": true,
+    "photoVisibleWithUnavailableMusic": true,
+    "ownMediaRemoved": true
+  },
+  "communityMusicImmediate": {
+    "tapToPlayingMs": 2192,
+    "oneTapPlayback": true,
+    "catalogReviewDelayMs": 0,
+    "noAutoplay": true,
+    "originalTrackSelected": true,
+    "trimWithinVideoAndTrack": true
+  },
+  "communityMusicAfterReview": {
+    "tapToPlayingMs": 500,
+    "oneTapPlayback": true,
+    "catalogReviewDelayMs": 1500,
+    "noAutoplay": true,
+    "originalTrackSelected": true,
+    "trimWithinVideoAndTrack": true
+  },
+  "liveJoin": {
+    "joinRequestMs": 563,
+    "joinToRenderedFirstFrameMs": 3148,
+    "actualRepositoryAndRenderer": true,
+    "ownerSessionPreserved": true
+  },
+  "twoDeviceMedia": {
+    "call": {
+      "samples": [
+        {
+          "flow": "call",
+          "role": "publisher",
+          "transport": "wifi",
+          "bidirectionalVideo": true,
+          "audioReceived": true,
+          "receivedFps": 28.85385357822717,
+          "firstFrameMs": 2807,
+          "candidateTypes": [
+            "relay",
+            "relay"
+          ],
+          "rttSeconds": 0.249,
+          "captureFps": 30.053315463240132
+        },
+        {
+          "flow": "call",
+          "role": "viewer",
+          "transport": "wifi",
+          "bidirectionalVideo": true,
+          "audioReceived": true,
+          "receivedFps": 30.791505239534516,
+          "firstFrameMs": 3012,
+          "candidateTypes": [
+            "relay",
+            "relay"
+          ],
+          "rttSeconds": 0.25,
+          "captureFps": 28.858686854968777
+        }
+      ],
+      "timingStart": "Después del intercambio de pares; no es tiempo de pulsación a conexión",
+      "acousticQualityVerified": false
+    },
+    "voice": {
+      "samples": [
+        {
+          "flow": "voice",
+          "role": "publisher",
+          "transport": "wifi",
+          "bidirectionalVideo": true,
+          "audioReceived": true,
+          "receivedFps": 28.854212988285045,
+          "firstFrameMs": 2909,
+          "candidateTypes": [
+            "host",
+            "prflx"
+          ],
+          "rttSeconds": 0.004,
+          "captureFps": 29.987049846629922
+        },
+        {
+          "flow": "voice",
+          "role": "viewer",
+          "transport": "wifi",
+          "bidirectionalVideo": true,
+          "audioReceived": true,
+          "receivedFps": 30.259265452065527,
+          "firstFrameMs": 3091,
+          "candidateTypes": [
+            "prflx",
+            "host"
+          ],
+          "rttSeconds": 0.006,
+          "captureFps": 28.992888624278237
+        }
+      ],
+      "timingStart": "Después del intercambio de pares; no es tiempo de pulsación a conexión",
+      "acousticQualityVerified": false
+    },
+    "live": {
+      "samples": [
+        {
+          "flow": "live",
+          "role": "publisher",
+          "transport": "wifi",
+          "bidirectionalVideo": false,
+          "audioReceived": true,
+          "receivedFps": 0,
+          "firstFrameMs": 1405,
+          "candidateTypes": [
+            "host",
+            "prflx"
+          ],
+          "rttSeconds": 0.006,
+          "captureFps": 29.976045089210828
+        },
+        {
+          "flow": "live",
+          "role": "viewer",
+          "transport": "wifi",
+          "bidirectionalVideo": false,
+          "audioReceived": true,
+          "receivedFps": 29.461106962967996,
+          "firstFrameMs": 1782,
+          "candidateTypes": [
+            "prflx",
+            "host"
+          ],
+          "rttSeconds": 0.004,
+          "captureFps": 0
+        }
+      ],
+      "timingStart": "Después del intercambio de pares; no es tiempo de pulsación a conexión",
+      "acousticQualityVerified": false
+    }
+  },
+  "optimizedStartupBeforeInboxChange": {
+    "device": "Motorola g04 Android 14",
+    "apkSha256": "3807ba601c124e75cecc4d35c6ada55a006430f5f22617ef8929020d5ab7bcfb",
+    "optimized": true,
+    "minified": true,
+    "debuggable": false,
+    "existingAccountAndDatabasePreserved": true,
+    "samples": [
+      {
+        "mode": "cold",
+        "sample": 1,
+        "ttidMs": 2251,
+        "ttfdMs": 7229,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "cold",
+        "sample": 2,
+        "ttidMs": 670,
+        "ttfdMs": 4698,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "cold",
+        "sample": 3,
+        "ttidMs": 364,
+        "ttfdMs": 4480,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "cold",
+        "sample": 4,
+        "ttidMs": 457,
+        "ttfdMs": 5076,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "cold",
+        "sample": 5,
+        "ttidMs": 463,
+        "ttfdMs": 4509,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "warm",
+        "sample": 1,
+        "ttidMs": 179,
+        "ttfdMs": 735,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "warm",
+        "sample": 2,
+        "ttidMs": 174,
+        "ttfdMs": 711,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "warm",
+        "sample": 3,
+        "ttidMs": 134,
+        "ttfdMs": 627,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "warm",
+        "sample": 4,
+        "ttidMs": 138,
+        "ttfdMs": 730,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "warm",
+        "sample": 5,
+        "ttidMs": 140,
+        "ttfdMs": 620,
+        "authenticatedInboxVisible": true
+      }
+    ],
+    "allWithinThreeSeconds": false
+  },
+  "remainingValidation": [
+    "Measure optimized primary APK on returned Motorola with preserved human account/database; old cold usable-inbox samples failed 3000ms",
+    "Explain/control LIVE join variability including retained 5450/5671ms two-engine tablet outliers; three separate-host samples do not prove P95 or all production UI routes",
+    "Full community music picker on tablet took 3172ms after 1500ms review; isolated prepared-player 82-103ms does not close catalog/picker latency across networks",
+    "Repeat administrative notice reception on physical tablet after server SSH authentication renewal; no notice dispatched in blocked attempt",
+    "Acoustic quality, external network handoff, longer-duration/battery/load coverage and broader application release checklist remain unverified"
+  ],
+  "humanAccountDataPreserved": true,
+  "postBaselineUnitRegression": {
+    "tests": 1316,
+    "suites": 285,
+    "failed": 0,
+    "skipped": 0
+  },
+  "nativeSelectorSurveysProfileLinksRegression": {
+    "passed": 28,
+    "failed": 0,
+    "device": "AOSP API35 emulator",
+    "durationSeconds": 80.819
+  },
+  "administrativeNoticeActualDelivery": {
+    "device": "Owned Google APIs emulator API35",
+    "ownRecipientOnly": true,
+    "actualFirebaseTokenObtained": true,
+    "actualPublicationAndOutbox": true,
+    "duplicateDidNotBroadcast": true,
+    "actualFcmNotificationReceived": true,
+    "titleAndBodyVerified": true,
+    "deliveryWorkerMs": 772,
+    "nativeTestSeconds": 5.498,
+    "nativeTestSecondsAreNotFcmLatency": true,
+    "temporarySchemaRemoved": true
+  },
+  "currentBackendRelease": {
+    "sourceDigest": "a1299ad2435257c0cef15d30f65df7dc2124f9d35d5850a17c4ce681eb44a96b",
+    "archiveSha256": "2f79f7f77ae0a708608354c2a0e65659648318d1f6bc02ff3fe1c45e8e5baa84",
+    "release": "/home/alvaro/conectate-releases/live-gifts-cierre11-a1299ad",
+    "apiImage": "sha256:48a6efca86826def35ed2ed0147fe286ba9a76302c68f468103f585eeb21a58a",
+    "gatewayImage": "sha256:b3e36328854e030168cb9f578a1b3f1d0ecd83e7b562f1bd1376efa650a19a9a",
+    "allApiFilesMatched": 187,
+    "backupVerified": true,
+    "servicesReady": true,
+    "localTests": {
+      "passed": 498,
+      "skipped": 2,
+      "failed": 0
+    },
+    "linuxTests": {
+      "passed": 111,
+      "skipped": 0,
+      "failed": 0
+    },
+    "postDeployFunctionalHttp": 23
+  },
+  "actualMp4Normalization": {
+    "passed": true,
+    "cases": 7,
+    "scope": "Own emulator camera clip and disposable generated fixtures; actual candidate FFmpeg",
+    "results": [
+      {
+        "name": "actual-camera-amr-to-aac",
+        "passed": true,
+        "audioTracks": 1,
+        "videoPacketsUnchanged": true,
+        "aacPacketsUnchanged": false,
+        "allAudioAacLc": true,
+        "decoded": true,
+        "faststart": true,
+        "bytes": 63789,
+        "durationSeconds": 3.913
+      },
+      {
+        "name": "existing-aac-packet-copy",
+        "passed": true,
+        "audioTracks": 1,
+        "videoPacketsUnchanged": true,
+        "aacPacketsUnchanged": true,
+        "allAudioAacLc": true,
+        "decoded": true,
+        "faststart": true,
+        "bytes": 63789,
+        "durationSeconds": 3.913
+      },
+      {
+        "name": "silent-video",
+        "passed": true,
+        "audioTracks": 0,
+        "videoPacketsUnchanged": true,
+        "aacPacketsUnchanged": false,
+        "allAudioAacLc": true,
+        "decoded": true,
+        "faststart": true,
+        "bytes": 50550,
+        "durationSeconds": 3.891767
+      },
+      {
+        "name": "mixed-aac-and-pcm-tracks",
+        "passed": true,
+        "audioTracks": 2,
+        "videoPacketsUnchanged": true,
+        "aacPacketsUnchanged": true,
+        "allAudioAacLc": true,
+        "decoded": true,
+        "faststart": true,
+        "bytes": 99951,
+        "durationSeconds": 3.892
+      },
+      {
+        "name": "size-limit",
+        "passed": true,
+        "originalPreserved": true,
+        "partialCleaned": true
+      },
+      {
+        "name": "invalid-input",
+        "passed": true,
+        "originalPreserved": true,
+        "partialCleaned": true
+      },
+      {
+        "name": "process-failure",
+        "passed": true,
+        "originalPreserved": true,
+        "partialCleaned": true
+      }
+    ]
+  },
+  "physicalDevicesAvailable": {
+    "tablet": "Samsung SM-X520 Android16 connected",
+    "motorola": "Human took Motorola g04; measurement awaits return",
+    "ownedEmulator": "Stopped after separate-host samples; only task-owned audit packages removed"
+  },
+  "photoEditorPhoneFirstAttempt": {
+    "tests": 31,
+    "passed": 30,
+    "failed": 1,
+    "durationSeconds": 65.483,
+    "failure": "Disabled text field removes SetText semantics action; test selector corrected, repeat pending"
+  },
+  "latestFullUnitRegression": {
+    "tests": 1316,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 285,
+    "includesPublicAndroidLinkPattern": true
+  },
+  "surveysProfileMusicMotorolaRegression": {
+    "passed": 24,
+    "failed": 0,
+    "durationSeconds": 71.038
+  },
+  "surveysMotorolaActualServerRecheck": {
+    "passed": 1,
+    "durationSeconds": 9.82,
+    "ownTemporaryResourcesRemoved": true
+  },
+  "actualMp4StreamIngress": {
+    "actualStreamIngress": true,
+    "previouslyRejectedOwnCameraClip": true,
+    "httpStatus": 200,
+    "peerDownloadStatus": 200,
+    "downloadBytes": 63789,
+    "ownedRoomAndObjectRemoved": true
+  },
+  "currentDebugApkSha256": "db7c23abbaa4d1fe6fd4cfe3a3b867e77ef5ac7466318528c80d3c6c04528d48",
+  "staticAndroidLint": {
+    "passed": true,
+    "durationSeconds": 894,
+    "Error": 0,
+    "Fatal": 0,
+    "Warning": 348,
+    "Information": 0,
+    "warningsAreNotCleared": true,
+    "scope": "Debug production source plus normal instrumentation/unit sources at this checkpoint"
+  },
+  "physicalEditorFinal": {
+    "motorola": {
+      "passed": 31,
+      "failed": 0,
+      "durationSeconds": 53.656,
+      "logSha256": "e4804e9d6a9d7e356df5eb81098c03bbf4a436c512a4621a38c3bdcf1da93508"
+    },
+    "tablet": {
+      "passed": 31,
+      "failed": 0,
+      "durationSeconds": 43.623,
+      "logSha256": "abf453f07ea42a2defaf43480f7e73daa7b31f2a31acaa8f936970c1885862ff"
+    },
+    "tabletFirstAttempt": {
+      "passed": 30,
+      "failed": 1,
+      "durationSeconds": 63.88,
+      "failure": "Crop confirmation callback timeout; isolated repeat and full repeat both passed, initial attempt preserved"
+    },
+    "scope": "Camera capture, blue links and actual browser intents, photo render pixels, byte snapshots, composer preparation and crop",
+    "mainApkSha256": "93f2d8ae66cdac96573850fd751d6815c37b0b4b7a5129d9acb612f7bcc51205",
+    "testApkSha256": "3ae86bed16f9b5cc3203f0094012399bcfcdb09e1b044ec974201b4357a21e8a",
+    "package": "conectate.com.qa.cierre11",
+    "primaryAndUnrelatedQaSessionsPreserved": true
+  },
+  "ownedFreshQaPhysical": {
+    "motorola": {
+      "passed": true,
+      "durationSeconds": 49.961
+    },
+    "tablet": {
+      "passed": true,
+      "durationSeconds": 4.93
+    },
+    "actualSignInAndFirebaseTokens": true,
+    "primaryAndUnrelatedQaSessionsPreserved": true,
+    "bootstrapDurationIsNotStartupMetric": true,
+    "tabletInitialAttempts": "No Internet, then foreground visibility timeout; normal shell launch and repeat passed"
+  },
+  "physicalMediaPair": {
+    "call": {
+      "passed": true,
+      "endpoints": [
+        {
+          "flow": "call",
+          "role": "publisher",
+          "transport": "wifi",
+          "remoteAudioPlaybackEnabled": false,
+          "bidirectionalVideo": true,
+          "audioReceived": true,
+          "receivedFps": 26.456413672270397,
+          "firstFrameMs": 2906,
+          "candidateTypes": [
+            "relay",
+            "relay"
+          ],
+          "rttSeconds": 0.274,
+          "captureFps": 29.78844981852378,
+          "videoStats": [
+            {
+              "direction": "inbound-rtp",
+              "framesPerSecond": 29,
+              "framesDecoded": 400,
+              "framesDropped": 1,
+              "totalDecodeTime": 1.323,
+              "freezeCount": 4,
+              "totalFreezesDuration": 0.87,
+              "packetsLost": 0,
+              "packetsReceived": 1446,
+              "nackCount": 194,
+              "pliCount": 0,
+              "jitterBufferDelay": 51.546200999999996,
+              "jitterBufferEmittedCount": 401,
+              "totalProcessingDelay": 54.033386,
+              "frameWidth": 640,
+              "frameHeight": 480,
+              "decoderImplementation": "c2.unisoc.vp8.decoder",
+              "codec": "video/VP8"
+            },
+            {
+              "direction": "outbound-rtp",
+              "framesPerSecond": 30,
+              "framesEncoded": 456,
+              "keyFramesEncoded": 2,
+              "totalEncodeTime": 3.282,
+              "nackCount": 65,
+              "pliCount": 0,
+              "frameWidth": 352,
+              "frameHeight": 288,
+              "encoderImplementation": "c2.unisoc.avc.encoder",
+              "codec": "video/H264"
+            }
+          ]
+        },
+        {
+          "flow": "call",
+          "role": "viewer",
+          "transport": "wifi",
+          "remoteAudioPlaybackEnabled": false,
+          "bidirectionalVideo": true,
+          "audioReceived": true,
+          "receivedFps": 25.922064322445454,
+          "firstFrameMs": 2919,
+          "candidateTypes": [
+            "relay",
+            "relay"
+          ],
+          "rttSeconds": 0.269,
+          "captureFps": 27.987828136458123,
+          "videoStats": [
+            {
+              "direction": "inbound-rtp",
+              "framesPerSecond": 15,
+              "framesDecoded": 392,
+              "framesDropped": 55,
+              "totalDecodeTime": 16.689,
+              "freezeCount": 3,
+              "totalFreezesDuration": 0.914,
+              "packetsLost": 0,
+              "packetsReceived": 710,
+              "nackCount": 67,
+              "pliCount": 0,
+              "jitterBufferDelay": 70.341177,
+              "jitterBufferEmittedCount": 449,
+              "totalProcessingDelay": 67.318162,
+              "frameWidth": 264,
+              "frameHeight": 216,
+              "decoderImplementation": "c2.exynos.h264.decoder",
+              "codec": "video/H264"
+            },
+            {
+              "direction": "outbound-rtp",
+              "framesPerSecond": 29,
+              "framesEncoded": 416,
+              "keyFramesEncoded": 3,
+              "totalEncodeTime": 6.605,
+              "nackCount": 193,
+              "pliCount": 0,
+              "frameWidth": 640,
+              "frameHeight": 480,
+              "encoderImplementation": "c2.exynos.vp8.encoder",
+              "codec": "video/VP8"
+            }
+          ]
+        }
+      ],
+      "firstFrameStartsAfterPeerExchange": true,
+      "transportAndFrameStatsDoNotCertifyAcousticQuality": true,
+      "logHashes": [
+        "34c1289c9f161b00deed20925ea2b0979fd00c560ffe3b01cae748aa053507ab",
+        "7911d5492c9eb030e677e4bb94bc89278d6960bccc1fc07b5ccca2fd84dc8694"
+      ]
+    },
+    "voice": {
+      "passed": true,
+      "endpoints": [
+        {
+          "flow": "voice",
+          "role": "publisher",
+          "transport": "wifi",
+          "remoteAudioPlaybackEnabled": false,
+          "bidirectionalVideo": true,
+          "audioReceived": true,
+          "receivedFps": 27.249334850765155,
+          "firstFrameMs": 1406,
+          "candidateTypes": [
+            "host",
+            "host"
+          ],
+          "rttSeconds": 0.011,
+          "captureFps": 29.78104980577453,
+          "videoStats": [
+            {
+              "direction": "inbound-rtp",
+              "framesPerSecond": 26,
+              "framesDecoded": 410,
+              "framesDropped": 8,
+              "totalDecodeTime": 1.793,
+              "freezeCount": 2,
+              "totalFreezesDuration": 0.662,
+              "packetsLost": 0,
+              "packetsReceived": 1316,
+              "nackCount": 0,
+              "pliCount": 0,
+              "jitterBufferDelay": 6.026718,
+              "jitterBufferEmittedCount": 418,
+              "totalProcessingDelay": 8.994117,
+              "frameWidth": 640,
+              "frameHeight": 480,
+              "decoderImplementation": "c2.unisoc.vp8.decoder",
+              "codec": "video/VP8"
+            },
+            {
+              "direction": "outbound-rtp",
+              "framesPerSecond": 31,
+              "framesEncoded": 450,
+              "keyFramesEncoded": 2,
+              "totalEncodeTime": 4.163,
+              "nackCount": 0,
+              "pliCount": 0,
+              "frameWidth": 352,
+              "frameHeight": 288,
+              "encoderImplementation": "c2.unisoc.avc.encoder",
+              "codec": "video/H264"
+            }
+          ]
+        },
+        {
+          "flow": "voice",
+          "role": "viewer",
+          "transport": "wifi",
+          "remoteAudioPlaybackEnabled": false,
+          "bidirectionalVideo": true,
+          "audioReceived": true,
+          "receivedFps": 29.51091310765516,
+          "firstFrameMs": 1305,
+          "candidateTypes": [
+            "host",
+            "host"
+          ],
+          "rttSeconds": 0.007,
+          "captureFps": 28.045356212040524,
+          "videoStats": [
+            {
+              "direction": "inbound-rtp",
+              "framesPerSecond": 30,
+              "framesDecoded": 448,
+              "framesDropped": 3,
+              "totalDecodeTime": 3.122,
+              "freezeCount": 1,
+              "totalFreezesDuration": 0.291,
+              "packetsLost": 0,
+              "packetsReceived": 659,
+              "nackCount": 0,
+              "pliCount": 0,
+              "jitterBufferDelay": 5.0305029999999995,
+              "jitterBufferEmittedCount": 451,
+              "totalProcessingDelay": 9.753001,
+              "frameWidth": 352,
+              "frameHeight": 288,
+              "decoderImplementation": "c2.exynos.h264.decoder",
+              "codec": "video/H264"
+            },
+            {
+              "direction": "outbound-rtp",
+              "framesPerSecond": 29,
+              "framesEncoded": 423,
+              "keyFramesEncoded": 4,
+              "totalEncodeTime": 4.285,
+              "nackCount": 0,
+              "pliCount": 0,
+              "frameWidth": 640,
+              "frameHeight": 480,
+              "encoderImplementation": "c2.exynos.vp8.encoder",
+              "codec": "video/VP8"
+            }
+          ]
+        }
+      ],
+      "firstFrameStartsAfterPeerExchange": true,
+      "transportAndFrameStatsDoNotCertifyAcousticQuality": true,
+      "logHashes": [
+        "e21b6bb9a490170c56894f4d8dbdc9f0ac40b979669f5ca775a3d67de990c4d0",
+        "a8636ef3126af6df4b411d422011c5da8c07f6b33d8a24010a322a8dfc4e3277"
+      ]
+    },
+    "live": {
+      "passed": true,
+      "endpoints": [
+        {
+          "flow": "live",
+          "role": "publisher",
+          "transport": "wifi",
+          "remoteAudioPlaybackEnabled": false,
+          "bidirectionalVideo": false,
+          "audioReceived": true,
+          "receivedFps": 0,
+          "firstFrameMs": 1404,
+          "candidateTypes": [
+            "host",
+            "host"
+          ],
+          "rttSeconds": 0.012,
+          "captureFps": 29.50488663355791,
+          "videoStats": [
+            {
+              "direction": "inbound-rtp",
+              "framesDecoded": 0,
+              "framesDropped": 0,
+              "totalDecodeTime": 0,
+              "freezeCount": 0,
+              "totalFreezesDuration": 0,
+              "packetsLost": 0,
+              "packetsReceived": 0,
+              "nackCount": 0,
+              "pliCount": 0,
+              "jitterBufferDelay": 0,
+              "jitterBufferEmittedCount": 0,
+              "totalProcessingDelay": 0
+            },
+            {
+              "direction": "outbound-rtp",
+              "framesPerSecond": 29,
+              "framesEncoded": 441,
+              "keyFramesEncoded": 2,
+              "totalEncodeTime": 3.379,
+              "nackCount": 0,
+              "pliCount": 0,
+              "frameWidth": 352,
+              "frameHeight": 288,
+              "encoderImplementation": "c2.unisoc.avc.encoder",
+              "codec": "video/H264"
+            }
+          ]
+        },
+        {
+          "flow": "live",
+          "role": "viewer",
+          "transport": "wifi",
+          "remoteAudioPlaybackEnabled": false,
+          "bidirectionalVideo": false,
+          "audioReceived": true,
+          "receivedFps": 28.72904867481644,
+          "firstFrameMs": 1709,
+          "candidateTypes": [
+            "host",
+            "host"
+          ],
+          "rttSeconds": 0.007,
+          "captureFps": 0,
+          "videoStats": [
+            {
+              "direction": "inbound-rtp",
+              "framesPerSecond": 19,
+              "framesDecoded": 434,
+              "framesDropped": 8,
+              "totalDecodeTime": 3.827,
+              "freezeCount": 1,
+              "totalFreezesDuration": 0.323,
+              "packetsLost": 0,
+              "packetsReceived": 619,
+              "nackCount": 0,
+              "pliCount": 0,
+              "jitterBufferDelay": 5.036632,
+              "jitterBufferEmittedCount": 442,
+              "totalProcessingDelay": 10.843211,
+              "frameWidth": 352,
+              "frameHeight": 288,
+              "decoderImplementation": "c2.exynos.h264.decoder",
+              "codec": "video/H264"
+            },
+            {
+              "direction": "outbound-rtp",
+              "framesEncoded": 0,
+              "keyFramesEncoded": 0,
+              "totalEncodeTime": 0,
+              "nackCount": 0,
+              "pliCount": 0,
+              "codec": "video/VP8"
+            }
+          ]
+        }
+      ],
+      "firstFrameStartsAfterPeerExchange": true,
+      "transportAndFrameStatsDoNotCertifyAcousticQuality": true,
+      "logHashes": [
+        "c32deeb55de35578d0491193197ae51c8801ef39c6330a7bff83cde8917003ab",
+        "797ec46730190c928bdbc3c86e428a7c0c5b6dac2e344ba15f7d7b97e1c45fc6"
+      ]
+    }
+  },
+  "tabletIncomingActualPush": {
+    "pushToNotificationMs": 2036,
+    "answerToConnectedMs": 2371,
+    "callConnected": true,
+    "ownerSessionPreserved": true,
+    "passed": true,
+    "actualFcmNotificationAndAccept": true
+  },
+  "tabletLiveFullJoin": {
+    "firstAttempt": {
+      "joinRequestMs": 419,
+      "joinToRenderedFirstFrameMs": 5450,
+      "actualRepositoryAndRenderer": true,
+      "ownerSessionPreserved": true
+    },
+    "additionalSamples": [
+      {
+        "joinRequestMs": 449,
+        "joinToRenderedFirstFrameMs": 3247,
+        "actualRepositoryAndRenderer": true,
+        "ownerSessionPreserved": true,
+        "sample": 1,
+        "nativeTestPassed": true
+      },
+      {
+        "joinRequestMs": 527,
+        "joinToRenderedFirstFrameMs": 5671,
+        "actualRepositoryAndRenderer": true,
+        "ownerSessionPreserved": true,
+        "sample": 2,
+        "nativeTestPassed": false
+      },
+      {
+        "joinRequestMs": 341,
+        "joinToRenderedFirstFrameMs": 3208,
+        "actualRepositoryAndRenderer": true,
+        "ownerSessionPreserved": true,
+        "sample": 3,
+        "nativeTestPassed": true
+      }
+    ],
+    "targetMs": 5000,
+    "allWithinTarget": false,
+    "notAP95Estimate": true,
+    "singlePhysicalDeviceHostsTwoNativeEndpoints": true
+  },
+  "optimizedPrimaryApk": {
+    "sha256": "a6767773f2557eee23b44ffbed3468b68040c92371e7ed028964d57bc3e5a846",
+    "r8AndShrunkResources": true,
+    "buildDurationSeconds": 917,
+    "motorolaMeasurementPending": "Human took Motorola; tablet remains connected"
+  },
+  "tabletCameraDeliveryFinal": {
+    "ownQaOnly": true,
+    "humanSessionNeverReplaced": true,
+    "checks": [
+      {
+        "context": "chats",
+        "type": "image",
+        "cameraAndEditor": true,
+        "confirmationRequired": true,
+        "productionRepositoryAndUpload": true,
+        "peerHttpAndRealtime": true,
+        "downloadDecoded": true,
+        "durationMs": 0,
+        "capturedDurationMs": 0,
+        "confirmedTrimDurationMs": 0
+      },
+      {
+        "context": "chats",
+        "type": "video",
+        "cameraAndEditor": true,
+        "confirmationRequired": true,
+        "productionRepositoryAndUpload": true,
+        "peerHttpAndRealtime": true,
+        "downloadDecoded": true,
+        "durationMs": 2971,
+        "capturedDurationMs": 4272,
+        "confirmedTrimDurationMs": 2938
+      },
+      {
+        "context": "groups",
+        "type": "image",
+        "cameraAndEditor": true,
+        "confirmationRequired": true,
+        "productionRepositoryAndUpload": true,
+        "peerHttpAndRealtime": true,
+        "downloadDecoded": true,
+        "durationMs": 0,
+        "capturedDurationMs": 0,
+        "confirmedTrimDurationMs": 0
+      },
+      {
+        "context": "groups",
+        "type": "video",
+        "cameraAndEditor": true,
+        "confirmationRequired": true,
+        "productionRepositoryAndUpload": true,
+        "peerHttpAndRealtime": true,
+        "downloadDecoded": true,
+        "durationMs": 2904,
+        "capturedDurationMs": 4206,
+        "confirmedTrimDurationMs": 2892
+      },
+      {
+        "context": "communities",
+        "type": "image",
+        "cameraAndEditor": true,
+        "confirmationRequired": true,
+        "productionRepositoryAndUpload": true,
+        "peerHttpAndRealtime": true,
+        "downloadDecoded": true,
+        "durationMs": 0,
+        "capturedDurationMs": 0,
+        "confirmedTrimDurationMs": 0
+      },
+      {
+        "context": "communities",
+        "type": "video",
+        "cameraAndEditor": true,
+        "confirmationRequired": true,
+        "productionRepositoryAndUpload": true,
+        "peerHttpAndRealtime": true,
+        "downloadDecoded": true,
+        "durationMs": 2971,
+        "capturedDurationMs": 4272,
+        "confirmedTrimDurationMs": 2938
+      }
+    ],
+    "ownedRoomsAndObjectsRemoved": true,
+    "nativeTestPassed": true,
+    "caseCount": 6,
+    "durationSeconds": 68.151,
+    "mainApkSha256": "93f2d8ae66cdac96573850fd751d6815c37b0b4b7a5129d9acb612f7bcc51205",
+    "testApkSha256": "dca3cd32974f86f6239e82e2fc5dbb8ce6820e47c199613ef65ce651f5b29e7f",
+    "logSha256": "ae02a07576520bced954a987d971a957883caa6800ed17f0b08eb13d2ffa8a89",
+    "scope": "Actual camera, shared composer, explicit confirmation, production repositories/upload, peer HTTP/WebSocket, download and decode; not every full ChatScreen navigation",
+    "deletionSemantics": "Owned objects and group/community fixtures removed through product APIs; direct chat DELETE hides/clears for owner and does not prove physical database erasure",
+    "priorHarnessFailures": [
+      "Cleanup omitted dedicated thumbnails bucket; original exception is now preserved with suppressed cleanup errors",
+      "System DNS reached private unroutable address; fixture now uses PublicBackendDns and configured production base URL",
+      "Fixed 3900ms trim assertion assumed capture duration; test now compares actual selected range and actual source duration with 200ms tolerance",
+      "Fixture bypassed normal parent room synchronization and hit SQLite FK; actual group/community synchronization now precedes send"
+    ]
+  },
+  "tabletSurveysProfileMusicRafflesRegression": {
+    "passed": 29,
+    "failed": 0,
+    "durationSeconds": 44.097,
+    "logSha256": "11ddb5d2a53ea7c1cada4d130a16e7bace0f4c84081a7bea6eec8c51eee00326"
+  },
+  "tabletSurveyActualServer": {
+    "passed": true,
+    "durationSeconds": 7.256,
+    "actualPackagedWebViewAndDeployedApi": true,
+    "publicationAndPeerResponse": true,
+    "logSha256": "9cfd0438b284d7ef8959ca1b1f771aa646e03cf82047c0c0bd75e0bbc05c613d"
+  },
+  "tabletProfileAndPhotoActualServer": {
+    "profileTapToPlaybackMs": 2226,
+    "profilePersistedAndReadableByPeer": true,
+    "profileAudioPositionAdvanced": true,
+    "profilePausedOnStop": true,
+    "photoFirstImageMs": 1233,
+    "photoDecodedPixelsVerified": true,
+    "photoVisibleWithUnavailableMusic": true,
+    "ownMediaRemoved": true,
+    "nativeTestPassed": true,
+    "device": "Samsung SM-X520 Android16",
+    "logSha256": "7fb2b10dd376a9a3cdbe87bf98b1a6a4a8570d63d34d06b05fc1c8da6351c0d2"
+  },
+  "tabletCommunityMusicActualPicker": {
+    "tapToPlayingMs": 3172,
+    "oneTapPlayback": true,
+    "catalogReviewDelayMs": 1500,
+    "noAutoplay": true,
+    "originalTrackSelected": true,
+    "trimWithinVideoAndTrack": true,
+    "nativeTestPassed": true,
+    "device": "Samsung SM-X520 Android16",
+    "emulatorLatencyDoesNotApplyToTablet": true,
+    "logSha256": "7fb2b10dd376a9a3cdbe87bf98b1a6a4a8570d63d34d06b05fc1c8da6351c0d2"
+  },
+  "tabletPublishedSoundProductionTransport": {
+    "results": [
+      {
+        "sourceIndex": 0,
+        "measurements": [
+          {
+            "mode": "baseline",
+            "tapToAudioMs": 2503,
+            "preparationMs": 0,
+            "audioPositionAdvanced": true,
+            "pauseVerified": true
+          },
+          {
+            "mode": "cold",
+            "tapToAudioMs": 3319,
+            "preparationMs": 0,
+            "audioPositionAdvanced": true,
+            "pauseVerified": true
+          },
+          {
+            "mode": "prepared",
+            "tapToAudioMs": 103,
+            "preparationMs": 141,
+            "audioPositionAdvanced": true,
+            "pauseVerified": true
+          }
+        ]
+      },
+      {
+        "sourceIndex": 1,
+        "measurements": [
+          {
+            "mode": "baseline",
+            "tapToAudioMs": 1165,
+            "preparationMs": 0,
+            "audioPositionAdvanced": true,
+            "pauseVerified": true
+          },
+          {
+            "mode": "cold",
+            "tapToAudioMs": 1240,
+            "preparationMs": 0,
+            "audioPositionAdvanced": true,
+            "pauseVerified": true
+          },
+          {
+            "mode": "prepared",
+            "tapToAudioMs": 82,
+            "preparationMs": 127,
+            "audioPositionAdvanced": true,
+            "pauseVerified": true
+          }
+        ]
+      }
+    ],
+    "fixtureDeleted": true,
+    "device": "samsung SM-X520",
+    "measurement": "ExoPlayer audio position advancing; muted output",
+    "nativeTestPassed": true,
+    "durationSeconds": 12.545,
+    "testApkSha256": "e10b490825c795fe4779b612d8fd2737d1d734772091317905c05426caaf56ad",
+    "logSha256": "cdb492689fc8264635935ea2476e2c2908a2dd903cfd3b11f47d9d521508166a",
+    "baselineUsesProductionStreamingTransportWithoutPreparedCache": true,
+    "initialFailure": "Baseline used system DNS instead of production transport; corrected in audit test only before final pass",
+    "interpretation": "Prepared playback follows completed preparation; cold path is not universally faster; this isolated player measure is not the full picker latency"
+  },
+  "tabletLiveSeparateHost": {
+    "targetMs": 5000,
+    "samples": [
+      {
+        "joinRequestMs": 438,
+        "joinToRenderedFirstFrameMs": 4424,
+        "actualRepositoryAndRenderer": true,
+        "hostOnSeparateDevice": true,
+        "includesCoordinatorPollingOverhead": true,
+        "humanSessionNeverReplaced": true,
+        "sample": 1,
+        "host": "Owned Google APIs emulator API35",
+        "viewer": "Samsung SM-X520 Android16",
+        "nativeHostAndViewerPassed": true
+      },
+      {
+        "joinRequestMs": 917,
+        "joinToRenderedFirstFrameMs": 4747,
+        "actualRepositoryAndRenderer": true,
+        "hostOnSeparateDevice": true,
+        "includesCoordinatorPollingOverhead": true,
+        "humanSessionNeverReplaced": true,
+        "sample": 2,
+        "host": "Owned Google APIs emulator API35",
+        "viewer": "Samsung SM-X520 Android16",
+        "nativeHostAndViewerPassed": true
+      },
+      {
+        "joinRequestMs": 946,
+        "joinToRenderedFirstFrameMs": 4012,
+        "actualRepositoryAndRenderer": true,
+        "hostOnSeparateDevice": true,
+        "includesCoordinatorPollingOverhead": true,
+        "humanSessionNeverReplaced": true,
+        "sample": 3,
+        "host": "Owned Google APIs emulator API35",
+        "viewer": "Samsung SM-X520 Android16",
+        "nativeHostAndViewerPassed": true
+      }
+    ],
+    "allRecordedSamplesWithinTarget": true,
+    "notAP95Estimate": true,
+    "fullNavigationNotMeasured": true,
+    "actualJoinRepositoryAndRenderer": true,
+    "mainApkSha256": "93f2d8ae66cdac96573850fd751d6815c37b0b4b7a5129d9acb612f7bcc51205",
+    "testApkSha256": "e10b490825c795fe4779b612d8fd2737d1d734772091317905c05426caaf56ad",
+    "viewerReceiveOnlyHostDoesNotRequireIncomingAudio": true,
+    "callsAndVoiceIncomingAudioAssertionsPreserved": true,
+    "logSha256": {
+      "1": {
+        "host": "5ace3d156f600c3d2564445f242864522d1ba2672eeed0db384f9f47c92e7207",
+        "viewer": "fcd186870d7e7f2c4068b0586463768dda200dbfa49c1927c6ba14f823a87fa3"
+      },
+      "2": {
+        "host": "3c049684696060771ccf65910efad57a95025e3f2d8efb09970caa0cf751cf4e",
+        "viewer": "7dcb43e01ae3c2e1d5c7342a9c8b5968c7553bcc7204259cc3bb2f6d322a7019"
+      },
+      "3": {
+        "host": "d4b6ddf329a3b6f041017c49211918e93baa784c9013a83f9034d512cb6922a2",
+        "viewer": "79598780728e8fa2ff6a995b4b6efa474d4fb0dc17a0ffd2c646bd5faa3bd7b6"
+      }
+    },
+    "priorTwoEnginesOnTabletOutliersRetained": true
+  },
+  "tabletLiveSoakAndRecovery": {
+    "flow": "live",
+    "relayOnly": false,
+    "firstFrameMs": 2315,
+    "receivedFps": 28.272916846502216,
+    "frames": 6809,
+    "captureFps": 28.306159243857387,
+    "candidateTypes": [
+      "host",
+      "host"
+    ],
+    "rttSeconds": 0.001,
+    "sampleSeconds": 240,
+    "memorySamples": [
+      {
+        "elapsedSeconds": 15,
+        "pssKb": 515868,
+        "frames": 417
+      },
+      {
+        "elapsedSeconds": 30,
+        "pssKb": 528112,
+        "frames": 844
+      },
+      {
+        "elapsedSeconds": 45,
+        "pssKb": 539865,
+        "frames": 1271
+      },
+      {
+        "elapsedSeconds": 60,
+        "pssKb": 524910,
+        "frames": 1697
+      },
+      {
+        "elapsedSeconds": 75,
+        "pssKb": 523214,
+        "frames": 2124
+      },
+      {
+        "elapsedSeconds": 90,
+        "pssKb": 535923,
+        "frames": 2551
+      },
+      {
+        "elapsedSeconds": 105,
+        "pssKb": 543655,
+        "frames": 2977
+      },
+      {
+        "elapsedSeconds": 120,
+        "pssKb": 530188,
+        "frames": 3404
+      },
+      {
+        "elapsedSeconds": 135,
+        "pssKb": 535764,
+        "frames": 3830
+      },
+      {
+        "elapsedSeconds": 150,
+        "pssKb": 540832,
+        "frames": 4257
+      },
+      {
+        "elapsedSeconds": 165,
+        "pssKb": 546384,
+        "frames": 4683
+      },
+      {
+        "elapsedSeconds": 180,
+        "pssKb": 553524,
+        "frames": 5110
+      },
+      {
+        "elapsedSeconds": 195,
+        "pssKb": 534596,
+        "frames": 5537
+      },
+      {
+        "elapsedSeconds": 210,
+        "pssKb": 540112,
+        "frames": 5964
+      },
+      {
+        "elapsedSeconds": 225,
+        "pssKb": 538709,
+        "frames": 6390
+      },
+      {
+        "elapsedSeconds": 240,
+        "pssKb": 522579,
+        "frames": 6804
+      }
+    ],
+    "pssGrowthKb": 33993,
+    "processCpuMs": 252200,
+    "publisherRtpBytes": 70348,
+    "publisherRtpKbps": 2.3449333333333335,
+    "physicalBatteryMeasured": false,
+    "iceRecoveryMs": 805,
+    "recoveryPreservedCameraAndMute": true,
+    "physicalNetworkHandoffTested": false,
+    "cameraDisableEnable": true,
+    "cameraSwitch": true,
+    "audioBothDirections": false,
+    "screenShare": false,
+    "differentScreenLuma": 0,
+    "nativeTestPassed": true,
+    "nativeTestDurationSeconds": 257.209,
+    "singleTabletHostsTwoEngines": true,
+    "notLeakFreeCertification": true,
+    "notCapacityOrBatteryBenchmark": true,
+    "logSha256": "b5c9e36e49f65303f24749341ddcaaa7e71ca6c2b924ec4913d7a59ed7660b6a"
+  },
+  "optimizedTabletStartupFinal": {
+    "device": "Samsung SM-X520 Android 16",
+    "package": "conectate.com.qa.cierre11",
+    "accountScope": "Task owned QA",
+    "apkSha256": "ee6e88b9b55f975de4709f58ed74c6e26747b634b42639da8ca8c581c2bb2864",
+    "optimized": true,
+    "minified": true,
+    "debuggable": false,
+    "existingAccountAndDatabasePreserved": true,
+    "ttfdScope": "Local account-scoped Room inbox actionable; remote refresh may still be pending",
+    "doesNotCertifyOtherDevices": true,
+    "samples": [
+      {
+        "mode": "cold",
+        "sample": 1,
+        "platformLaunchState": "COLD",
+        "processStateVerified": true,
+        "ttidMs": 257,
+        "ttfdMs": 606,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "cold",
+        "sample": 2,
+        "platformLaunchState": "COLD",
+        "processStateVerified": true,
+        "ttidMs": 238,
+        "ttfdMs": 565,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "cold",
+        "sample": 3,
+        "platformLaunchState": "COLD",
+        "processStateVerified": true,
+        "ttidMs": 256,
+        "ttfdMs": 530,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "cold",
+        "sample": 4,
+        "platformLaunchState": "COLD",
+        "processStateVerified": true,
+        "ttidMs": 251,
+        "ttfdMs": 569,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "cold",
+        "sample": 5,
+        "platformLaunchState": "COLD",
+        "processStateVerified": true,
+        "ttidMs": 223,
+        "ttfdMs": 513,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "warm",
+        "sample": 1,
+        "platformLaunchState": "WARM",
+        "processStateVerified": true,
+        "ttidMs": 79,
+        "ttfdMs": 296,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "warm",
+        "sample": 2,
+        "platformLaunchState": "WARM",
+        "processStateVerified": true,
+        "ttidMs": 73,
+        "ttfdMs": 283,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "warm",
+        "sample": 3,
+        "platformLaunchState": "WARM",
+        "processStateVerified": true,
+        "ttidMs": 95,
+        "ttfdMs": 278,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "warm",
+        "sample": 4,
+        "platformLaunchState": "WARM",
+        "processStateVerified": true,
+        "ttidMs": 78,
+        "ttfdMs": 292,
+        "authenticatedInboxVisible": true
+      },
+      {
+        "mode": "warm",
+        "sample": 5,
+        "platformLaunchState": "WARM",
+        "processStateVerified": true,
+        "ttidMs": 73,
+        "ttfdMs": 281,
+        "authenticatedInboxVisible": true
+      }
+    ],
+    "allWithinThreeSeconds": true,
+    "logSha256": "92b8ab2071b8c58b6b982396296741ea495e21865ad3441e0c0c93e85fb0e284",
+    "priorPass": {
+      "device": "Samsung SM-X520 Android 16",
+      "package": "conectate.com.qa.cierre11",
+      "accountScope": "Task owned QA",
+      "apkSha256": "ee6e88b9b55f975de4709f58ed74c6e26747b634b42639da8ca8c581c2bb2864",
+      "optimized": true,
+      "minified": true,
+      "debuggable": false,
+      "existingAccountAndDatabasePreserved": true,
+      "ttfdScope": "Local account-scoped Room inbox actionable; remote refresh may still be pending",
+      "doesNotCertifyOtherDevices": true,
+      "samples": [
+        {
+          "mode": "cold",
+          "sample": 1,
+          "ttidMs": 257,
+          "ttfdMs": 642,
+          "authenticatedInboxVisible": true
+        },
+        {
+          "mode": "cold",
+          "sample": 2,
+          "ttidMs": 232,
+          "ttfdMs": 536,
+          "authenticatedInboxVisible": true
+        },
+        {
+          "mode": "cold",
+          "sample": 3,
+          "ttidMs": 147,
+          "ttfdMs": 446,
+          "authenticatedInboxVisible": true
+        },
+        {
+          "mode": "cold",
+          "sample": 4,
+          "ttidMs": 229,
+          "ttfdMs": 525,
+          "authenticatedInboxVisible": true
+        },
+        {
+          "mode": "cold",
+          "sample": 5,
+          "ttidMs": 257,
+          "ttfdMs": 556,
+          "authenticatedInboxVisible": true
+        },
+        {
+          "mode": "warm",
+          "sample": 1,
+          "ttidMs": 90,
+          "ttfdMs": 320,
+          "authenticatedInboxVisible": true
+        },
+        {
+          "mode": "warm",
+          "sample": 2,
+          "ttidMs": 87,
+          "ttfdMs": 334,
+          "authenticatedInboxVisible": true
+        },
+        {
+          "mode": "warm",
+          "sample": 3,
+          "ttidMs": 99,
+          "ttfdMs": 300,
+          "authenticatedInboxVisible": true
+        },
+        {
+          "mode": "warm",
+          "sample": 4,
+          "ttidMs": 84,
+          "ttfdMs": 279,
+          "authenticatedInboxVisible": true
+        },
+        {
+          "mode": "warm",
+          "sample": 5,
+          "ttidMs": 78,
+          "ttfdMs": 260,
+          "authenticatedInboxVisible": true
+        }
+      ],
+      "allWithinThreeSeconds": true
+    },
+    "verifiedColdProcessAbsentAndWarmProcessPresent": true,
+    "noConcurrentEmulatorGradleTracingOrInstrumentation": true,
+    "firstInstallRebootDiskColdAndPopulatedMotorolaDatabaseNotMeasured": true,
+    "notAP95Estimate": true
+  },
+  "tabletAdministrativeNoticeRecheck": {
+    "status": "blocked_before_dispatch",
+    "cause": "Tailscale SSH periodic authentication renewal required during SCP",
+    "noticeSent": false,
+    "nativeTestStarted": false,
+    "previousActualGoogleApisEmulatorProofRetained": true,
+    "apiStillAvailableDuringOtherActualTests": true,
+    "logSha256": "55f89b2f06ab7bebbe5940338a79a1ced376471e1ac44ef31c42590f12a068f5"
+  },
+  "productionCertification": {
+    "status": "not_certified",
+    "allElevenEndToEndClosed": false,
+    "reason": "Available scenario evidence is recorded with artifact identities; remaining device, latency, acoustic/network and release scope checks cannot be inferred from passing suites",
+    "frontendFrozenArtifactsInEvidence": true,
+    "deployedBackend": "live-gifts-cierre11-a1299ad",
+    "signedStoreReleaseOrAabNotCertified": true,
+    "noP95Claim": true
+  },
+  "baselineAndroidBuild": {
+    "type": "debug",
+    "apkSha256": "136d62bc172224be9e73880673d62f30b53685068cd0b09c827f0ee99ec9c4d6",
+    "testApkSha256": "0723844aa197701faaa6155dc66c38baaec4dcc77e996080d4818159616c60d8",
+    "unit": {
+      "tests": 1309,
+      "suites": 284,
+      "failures": 0,
+      "skipped": 0
+    },
+    "fullMediaUi": {
+      "device": "Android emulator API 35",
+      "tests": 3,
+      "passed": 3
+    },
+    "refinementsAwaitingRebuild": [
+      "precarga al volver de selección al catálogo",
+      "pruebas de lifecycle del selector",
+      "animación y colores de sorteos del trabajo paralelo"
+    ]
+  },
+  "previousServerCheckpoint": {
+    "release": "live-gifts-cierre11-c646f9f",
+    "sourceDigest": "c646f9fb80d8590b455bdddffe0840181306af9f5239489e05e0eeb4f5f3301c",
+    "sourceFiles": 114,
+    "provenanceMatched": 114,
+    "provenanceScope": "API sources only",
+    "httpFunctionalChecksPassed": 23,
+    "noticePolicyHttpChecksPassed": 11,
+    "backupVerified": true,
+    "apiAndRealtimeHealthy": true,
+    "images": {
+      "api": "sha256:bef236c964a2ab2157885c48f475f7ae6c6c0753526c89fa1848b12617608319",
+      "realtime": "sha256:c0dbcd19a691e0b6fae47f5c90e1dd2b78f1a0ae1fa32dd198a5c653cd4aa290"
+    }
+  },
+  "previousCandidateCheckpoint": {
+    "release": "/home/alvaro/conectate-releases/live-gifts-cierre11-c646f9f",
+    "sourceDigest": "c646f9fb80d8590b455bdddffe0840181306af9f5239489e05e0eeb4f5f3301c",
+    "archiveSha256": "5422c2aa9af4e8106948e51e4a78635e7a1b88daf17d4afaa3bdc50a867c0b6b",
+    "linuxTests": {
+      "passed": 81,
+      "failed": 0,
+      "skipped": 0
+    },
+    "deployed": true
+  },
+  "previousLocalBackendCheckpoint": {
+    "tests": 470,
+    "passed": 468,
+    "failed": 0,
+    "skipped": 2
+  },
+  "tabletFixtureHygiene": {
+    "tablet": "Samsung SM-X520",
+    "installedOptimizedQaApkSha256": "ee6e88b9b55f975de4709f58ed74c6e26747b634b42639da8ca8c581c2bb2864",
+    "ownedOldQaFixtureCacheFilesRemoved": [
+      "media-qa-accounts.json",
+      "media-qa-login-private.json"
+    ],
+    "otherFilesPreserved": [],
+    "ownedExternalAuditReportsArchivedPrivatelyAndRemoved": true,
+    "ownedInstrumentationPackageRemoved": true,
+    "optimizedOwnQaAppRetainedForLaterReview": true,
+    "ownDisposableAccountsRetainedForMotorolaContinuation": true,
+    "primaryPlayAppAndOtherQaLoginNeverCleared": true,
+    "motorolaDisconnectedCleanupDeferred": true
+  },
+  "testedAndroidSourceCorrespondence": {
+    "app/src/main": {
+      "fileCount": 984,
+      "sha256": "770636cd0e27d688bbb822852b21aced4d963a64e73ac62565c57f15f13b586e",
+      "identicalToValidatedMirror": true
+    },
+    "app/src/test": {
+      "fileCount": 289,
+      "sha256": "a300ee914af3ed67586b1a4d606082f1d7b656f3a26c17910a3bb660e9d9c30b",
+      "identicalToValidatedMirror": true
+    }
+  }
+}

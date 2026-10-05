@@ -1,0 +1,235 @@
+{
+  "recordedAtUtc": "2026-10-04T15:22:21.112513+00:00",
+  "previousInstalledApkStartup": {
+    "utc": "2026-10-04T14:20:41.024908+00:00",
+    "sourceCommit": "fed15463ecf493e90cfdc18014c7bb3c8f83d486",
+    "embeddedBuildCommit": "fed1546",
+    "installedApkSha256": "0baba93b840aa4f485bf26615d4416e2f34c0a0d92f334c9a977ac529d26be76",
+    "artifactVerifiedBeforeAndAfter": true,
+    "device": {
+      "model": "Moto g04",
+      "android": "14",
+      "api": 34
+    },
+    "rounds": [
+      {
+        "round": 1,
+        "requestedMode": "COLD",
+        "androidLaunchState": "COLD",
+        "processAbsentConfirmedBeforeCold": true,
+        "processRetainedForWarm": false,
+        "thisTimeMs": null,
+        "totalTimeMs": 5881,
+        "waitTimeMs": 5898,
+        "thisTimeEmittedByAndroid": false,
+        "hostGradleWrapperIdle": true
+      },
+      {
+        "round": 2,
+        "requestedMode": "WARM",
+        "androidLaunchState": "WARM",
+        "processAbsentConfirmedBeforeCold": false,
+        "processRetainedForWarm": true,
+        "thisTimeMs": null,
+        "totalTimeMs": 3071,
+        "waitTimeMs": 3076,
+        "thisTimeEmittedByAndroid": false,
+        "hostGradleWrapperIdle": true
+      },
+      {
+        "round": 3,
+        "requestedMode": "COLD",
+        "androidLaunchState": "WARM",
+        "processAbsentConfirmedBeforeCold": true,
+        "processRetainedForWarm": false,
+        "thisTimeMs": null,
+        "totalTimeMs": 4492,
+        "waitTimeMs": 4499,
+        "thisTimeEmittedByAndroid": false,
+        "hostGradleWrapperIdle": true
+      }
+    ],
+    "privateDataDirectoryIdentityPreserved": true,
+    "appDataCleared": false,
+    "recompiled": false,
+    "traceEnabled": false,
+    "totalPssKiB": 273675,
+    "protocol": "COLD confirms process absent after force-stop; WARM recreates root activity with CLEAR_TASK while retaining process; each Android classification is recorded as emitted",
+    "limitations": [
+      "Framework first frame only; not time to usable Social/feed or fully drawn content",
+      "Only three sequential debug launches, not a production latency SLA",
+      "OS and disk caches are not flushed",
+      "Prior e729365 runs used am start -S for every request; protocol differs and does not isolate Home Lazy causality",
+      "No scrolling workload or sustained LIVE frame-rate measured"
+    ]
+  },
+  "serverAudioRangeComparison": {
+    "schemaVersion": 1,
+    "recordedAtUtc": "2026-10-04T14:34:45.819887+00:00",
+    "diagnosticScriptSha256": null,
+    "fixturePathRef": "5ecb9da7e34c8a76b5f8f0a00cf855c6a2af5625ffd01f24920f5951c46d8ef4",
+    "publicOriginRef": "dfbc68a83eaa41dfece0eef64f350b71d52dac8ffc4ff9813309ae1b06d323ec",
+    "requestUrlOrSecretsIncluded": false,
+    "readOnly": true,
+    "executed": true,
+    "scope": "Linux server fresh HTTP/1.1 connections; not Android/H2, acoustic output or mobile-network proof",
+    "apiBodyScope": "Direct API can return empty X-Accel-Redirect; that measures authorization/file metadata, not media delivery",
+    "samples": [
+      {
+        "route": "api",
+        "attempt": 1,
+        "status": 200,
+        "connectMs": 3.228,
+        "requestToHeadersMs": 5.217,
+        "firstBodyByteMs": null,
+        "totalMs": 8.639,
+        "bytesRead": 0,
+        "validRangeResponse": false,
+        "apiDelegatedToEdge": true,
+        "bodyRead": true,
+        "appDurationMs": 3.9,
+        "measurementValid": true
+      },
+      {
+        "route": "edge",
+        "attempt": 1,
+        "status": 206,
+        "connectMs": 0.124,
+        "requestToHeadersMs": 3.139,
+        "firstBodyByteMs": 3.168,
+        "totalMs": 3.381,
+        "bytesRead": 4096,
+        "validRangeResponse": true,
+        "apiDelegatedToEdge": false,
+        "bodyRead": true,
+        "appDurationMs": null,
+        "measurementValid": true
+      },
+      {
+        "route": "public",
+        "attempt": 1,
+        "status": 206,
+        "connectMs": 23.465,
+        "requestToHeadersMs": 33.99,
+        "firstBodyByteMs": 34.035,
+        "totalMs": 57.827,
+        "bytesRead": 4096,
+        "validRangeResponse": true,
+        "apiDelegatedToEdge": false,
+        "bodyRead": true,
+        "appDurationMs": null,
+        "measurementValid": true
+      },
+      {
+        "route": "api",
+        "attempt": 2,
+        "status": 200,
+        "connectMs": 0.214,
+        "requestToHeadersMs": 19.582,
+        "firstBodyByteMs": null,
+        "totalMs": 19.939,
+        "bytesRead": 0,
+        "validRangeResponse": false,
+        "apiDelegatedToEdge": true,
+        "bodyRead": true,
+        "appDurationMs": 18.1,
+        "measurementValid": true
+      },
+      {
+        "route": "edge",
+        "attempt": 2,
+        "status": 206,
+        "connectMs": 0.22,
+        "requestToHeadersMs": 8.757,
+        "firstBodyByteMs": 8.792,
+        "totalMs": 9.135,
+        "bytesRead": 4096,
+        "validRangeResponse": true,
+        "apiDelegatedToEdge": false,
+        "bodyRead": true,
+        "appDurationMs": null,
+        "measurementValid": true
+      },
+      {
+        "route": "public",
+        "attempt": 2,
+        "status": 206,
+        "connectMs": 10.741,
+        "requestToHeadersMs": 7.065,
+        "firstBodyByteMs": 7.091,
+        "totalMs": 18.012,
+        "bytesRead": 4096,
+        "validRangeResponse": true,
+        "apiDelegatedToEdge": false,
+        "bodyRead": true,
+        "appDurationMs": null,
+        "measurementValid": true
+      },
+      {
+        "route": "api",
+        "attempt": 3,
+        "status": 200,
+        "connectMs": 0.145,
+        "requestToHeadersMs": 2.796,
+        "firstBodyByteMs": null,
+        "totalMs": 3.038,
+        "bytesRead": 0,
+        "validRangeResponse": false,
+        "apiDelegatedToEdge": true,
+        "bodyRead": true,
+        "appDurationMs": 1.6,
+        "measurementValid": true
+      },
+      {
+        "route": "edge",
+        "attempt": 3,
+        "status": 206,
+        "connectMs": 0.128,
+        "requestToHeadersMs": 2.878,
+        "firstBodyByteMs": 2.902,
+        "totalMs": 3.091,
+        "bytesRead": 4096,
+        "validRangeResponse": true,
+        "apiDelegatedToEdge": false,
+        "bodyRead": true,
+        "appDurationMs": null,
+        "measurementValid": true
+      },
+      {
+        "route": "public",
+        "attempt": 3,
+        "status": 206,
+        "connectMs": 20.192,
+        "requestToHeadersMs": 3.476,
+        "firstBodyByteMs": 3.499,
+        "totalMs": 23.84,
+        "bytesRead": 4096,
+        "validRangeResponse": true,
+        "apiDelegatedToEdge": false,
+        "bodyRead": true,
+        "appDurationMs": null,
+        "measurementValid": true
+      }
+    ],
+    "containers": {
+      "api": {
+        "running": true,
+        "imageDigest": "sha256:8edd1817526d1c9978fe68943ec4363066eea47dfd3a61232f6e4547d0c876ed",
+        "revision": "f42a3493ed4d06c9ff019acf71efc8b25b6b3a81"
+      },
+      "edge": {
+        "running": true,
+        "imageDigest": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+        "revision": null
+      }
+    },
+    "invokedScriptSha256": "293e7f7a6e8dbf1854b2eab508249870743c345a7a68ad7ddbe00a34fc1cf3d2"
+  },
+  "offlineDiagnosticTestsPassed": 9,
+  "updatedApkPhysicalRegression": {
+    "evidence": "VALIDACION_SORTEOS.json",
+    "batchAllPassed": true
+  },
+  "deploymentPerformed": false,
+  "previousCallFlakeCauseDemonstrated": false
+}

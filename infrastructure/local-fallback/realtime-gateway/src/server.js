@@ -97,6 +97,8 @@ function subscriptionAuthorizationUrl(channel) {
     ['message-markers:chat:', (id) => `/v1/data/messages/markers/chat/${encodeURIComponent(id)}/access`],
     ['message-markers:group:', (id) => `/v1/data/messages/markers/group/${encodeURIComponent(id)}/access`],
     ['message-markers:community:', (id) => `/v1/data/messages/markers/community/${encodeURIComponent(id)}/access`],
+    ['raffles:group:', (id) => `/v1/data/raffles/group/${encodeURIComponent(id)}/access`],
+    ['raffles:community:', (id) => `/v1/data/raffles/community/${encodeURIComponent(id)}/access`],
     ['video-comments:', (id) => `/v1/data/videos/${encodeURIComponent(id)}`],
     ['live-comments:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
   ]

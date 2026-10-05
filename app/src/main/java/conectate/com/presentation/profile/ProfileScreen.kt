@@ -1164,8 +1164,10 @@ fun ProfileScreen(
                                     Spacer(Modifier.height(8.dp))
                                     ProfileMessageButton(onClick = {
                                         if (user.id.isNotBlank() && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                                            navController.navigate(Screen.Chat.createRoute(user.id)) {
-                                                launchSingleTop = true
+                                            openProfileConversation(mainNavController ?: navController, user.id) {
+                                                conectate.com.presentation.common.AppFeedbackBus.showError(
+                                                    "No se pudo abrir la conversación. Vuelve al perfil e inténtalo nuevamente."
+                                                )
                                             }
                                         }
                                     })

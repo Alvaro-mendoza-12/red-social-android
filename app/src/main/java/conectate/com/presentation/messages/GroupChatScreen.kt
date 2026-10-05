@@ -225,6 +225,7 @@ fun GroupChatScreen(
     }
 
     var showMediaComposer by remember { mutableStateOf(false) }
+    var composerInitialStep by remember { mutableStateOf("gallery") }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
         contract = PickPhoneContactContract()
@@ -383,6 +384,10 @@ fun GroupChatScreen(
                         Icon(Icons.Default.MoreVert, contentDescription = "Opciones del grupo")
                     }
                     DropdownMenu(expanded = showHeaderMenu, onDismissRequest = { showHeaderMenu = false }) {
+                        DropdownMenuItem(text = { Text("Sorteos") }, onClick = {
+                            showHeaderMenu = false
+                            navController.navigate(conectate.com.presentation.navigation.RaffleNavigation.createRoute("group", groupId))
+                        })
                         DropdownMenuItem(
                             text = { Text("Mi espacio y cronograma") },
                             enabled = state != null,
@@ -493,6 +498,10 @@ fun GroupChatScreen(
                                             viewModel.openPollOptionVoters(pollId, option)
                                         }
                                     )
+                                } else if (msg.content_type == "raffle") {
+                                    conectate.com.presentation.raffles.RaffleMessageCard(msg.content, msg.sender_name) {
+                                        navController.navigate(conectate.com.presentation.navigation.RaffleNavigation.createRoute("group", groupId, msg.media_url))
+                                    }
                                 } else {
                                     MessageBubble(
                                         message = msg,
@@ -778,7 +787,7 @@ fun GroupChatScreen(
                                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { if (messageText.isNotBlank()) { if (editingMessage != null) viewModel.confirmEditMessage() else viewModel.sendMessage() } }),
                                 colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent),
                                 trailingIcon = {
-                                    IconButton(onClick = { showMediaComposer = true }) {
+                                    IconButton(onClick = { composerInitialStep = "camera"; showMediaComposer = true }) {
                                         Icon(Icons.Default.CameraAlt, "Cámara", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
@@ -1416,10 +1425,12 @@ fun GroupChatScreen(
 
     if (showMediaComposer) {
         MessageMediaComposer(
+            initialStep = composerInitialStep,
             isSending = false,
-            onDismiss = { showMediaComposer = false },
+            onDismiss = { showMediaComposer = false; composerInitialStep = "gallery" },
             onSend = { mediaList, mediaCaption ->
                 showMediaComposer = false
+                composerInitialStep = "gallery"
                 mediaList.forEachIndexed { index, outgoingMedia ->
                     viewModel.sendMediaMessage(
                         uri = outgoingMedia.uri,

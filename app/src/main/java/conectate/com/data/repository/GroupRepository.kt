@@ -1570,7 +1570,7 @@ class GroupRepository @Inject constructor(
                     groupDao.updateMessageSyncStatus(msgId, status = "failed", isSynced = false, pendingAction = "send")
                     return@withContext Result.failure(error)
                 }
-            if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 msg = msg.copy(media_url = outgoingMediaUrl)
                 groupDao.insertMessages(
                     listOf(GroupMessageEntity.fromDomain(msg, isSynced = false, pendingAction = "send"))
@@ -1596,7 +1596,7 @@ class GroupRepository @Inject constructor(
 
             val syncResult = if (authService.isLocalFallbackSession()) {
                 val token = authService.getAccessTokenAwait()
-            if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 if (token.isNullOrBlank()) {
                     Result.failure(Exception("Sesion Ubuntu no disponible"))
                 } else {
@@ -1613,7 +1613,7 @@ class GroupRepository @Inject constructor(
                         forwardedFromMessageId = forwardedFromMessageId,
                         forwardedFromUserId = forwardedFromUserId
                     ).map { serverMessage ->
-            if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                        if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                         val synced = mergeSyncedGroupMessageWithLocalState(
                             incoming = acknowledgeGroupMessage(serverMessage, cleanId).copy(
                                 reply_to_id = serverMessage.reply_to_id ?: msg.reply_to_id,

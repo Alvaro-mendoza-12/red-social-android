@@ -25,6 +25,7 @@ class FileProviderPathContractTest {
         assertEquals(
             setOf(
                 "file-provider/crops/",
+                "file-provider/chat-captures/",
                 "file-provider/challenges/",
                 "file-provider/moment-captures/",
                 "file-provider/recovery-evidence/"

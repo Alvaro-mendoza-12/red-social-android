@@ -63,6 +63,22 @@ open class InboxPreviewReaderTest {
     }
     @After fun close() { db.close() }
 
+    @Test fun `an empty local snapshot signals readiness after Room was read`() = runBlocking {
+        var loaded: String? = null
+        val result = withTimeout(5_000) {
+            reader.observe(MutableStateFlow(account), onSnapshotLoaded = { loaded = it }).first()
+        }
+        assertTrue(result.isEmpty())
+        assertEquals("a", loaded)
+    }
+
+    @Test fun `missing authentication never signals local readiness`() = runBlocking {
+        account = null
+        var loaded = false
+        assertTrue(reader.observe(MutableStateFlow(account), onSnapshotLoaded = { loaded = true }).first().isEmpty())
+        assertFalse(loaded)
+    }
+
     @Test fun `normal inbox uses local latest and preserves cached identity`() = runBlocking {
         seed()
         val item = inbox().single()

@@ -1,0 +1,508 @@
+{
+  "recordedAtUtc": "2026-10-04T10:22:21.112513-05:00",
+  "branch": "feature/live-gifts",
+  "workingTreeChangesIncluded": true,
+  "androidValidatedSourceSha256": {
+    "app/src/androidTest/java/conectate/com/presentation/raffles/RaffleApiIntegrationTest.kt": "b96022e8fe78b5f1d99f25c3fa27bda4ad6f552c6880acaefa6b35000fce7570",
+    "app/src/androidTest/java/conectate/com/presentation/raffles/RaffleWheelUiTest.kt": "7c7738bb3d097ed5675962e44c411f558224c5018288c5331a37ca8a2267b0b6",
+    "app/src/main/java/conectate/com/data/raffles/RaffleModels.kt": "2c590e10dc4b7d74c13a1551e6594c7c31ca58d22fc005c3ed36608b6b56a048",
+    "app/src/main/java/conectate/com/data/raffles/RaffleRepository.kt": "cd0e4feaefb874e45baaea01ff1aebc659d18bd6df7be90dd816071457e5ee18",
+    "app/src/main/java/conectate/com/presentation/raffles/RaffleMessageCard.kt": "560e8e20dfd3faaa7ff1c46811ba16fa52d29874537fc7ef25224ff65ed64f4f",
+    "app/src/main/java/conectate/com/presentation/raffles/RafflesScreen.kt": "a973980b39119a039acaefbf9b1e853f18e44ed0b289217a1f6abaf02305d740",
+    "app/src/main/java/conectate/com/presentation/raffles/RafflesViewModel.kt": "e4d9677bd1d31932057fae4803b88e73541e4a774e5a967b68cb210369b5362e",
+    "app/src/main/java/conectate/com/presentation/raffles/RaffleWheel.kt": "e0e974fa62b6fd392b215d74a94595d8ddbab035d8d58a142fabd825cebf6305",
+    "app/src/test/java/conectate/com/presentation/raffles/RaffleStateTest.kt": "07417759c09f5d64a06d89a8320bd4dee076d8bc69d2e6520957217641be774b",
+    "app/src/main/java/conectate/com/presentation/navigation/RaffleNavigation.kt": "08edc4f433312bea22e337dbaa53abf79ddbae5bb0aef57ae90df6820f1b913d",
+    "app/src/main/java/conectate/com/presentation/messages/GroupChatScreen.kt": "7d4891a5e13f7285894257d946bbde305a65685f81ce6217af2d6908b85fc710",
+    "app/src/main/java/conectate/com/presentation/messages/CommunityChatScreen.kt": "a406e65d84d3ee2efd5e1251baadfc7023ce626c5d922bf5f0c4becfec524fc8",
+    "app/src/main/java/conectate/com/presentation/navigation/MainNavigationRoutes.kt": "ede801113588c32687bbb14df09400dcc4df5eeefa3cd72d2e123f1f2e851140",
+    "app/src/main/java/conectate/com/presentation/social/MomentMusicPickerDialog.kt": "aaee9bf76c819a1f6bcded079aeda10f18563246475d4977205c405979f633ed"
+  },
+  "backendSourceSha256": {
+    "infrastructure/local-fallback/api/src/raffles/routes.js": "d16947a5c62170eb9e1e1bb2d1ec783f4a8eb6960aa721b207bd053e706751d8",
+    "infrastructure/local-fallback/api/src/raffles/schema.sql": "665492465881a215ccb4afccade34a7dde81fb761fe8224717800ba804c53a79",
+    "infrastructure/local-fallback/api/src/raffles/service.js": "50e323ea57598870c0ebe198ecb404d52b996278c32590314e6bbd7d616593a2",
+    "infrastructure/local-fallback/api/scripts/start-raffles-device-fixture.cjs": "137761be97ae97ea32e2426a4c9ae8807d3e2e48abeec37ed246e9e8db9e8f70",
+    "infrastructure/local-fallback/realtime-gateway/src/server.js": "21904cb7fd3362bcdee908fc4ee4d4b8128e2f278677a2f8ffdeb262e4f36e72",
+    "infrastructure/local-fallback/api/src/data-routes.js": "4a4919f44a2029565711cd000954c1a626ab792b8089bb2e762fbf8faa70f343",
+    "infrastructure/local-fallback/api/src/server.js": "7289c31d83d8d8a3f5c8c8f1a8eeaa8ba63816c8b30023025fc80071d738b9b7",
+    "infrastructure/local-fallback/api/package.json": "dd33131aedb37df32b8679838d8076395717c655e8b2951441d8196617a40551",
+    "infrastructure/local-fallback/api/tests/raffles.test.js": "1b30ad86505437b3a6abd57c7ac83ddd5adb695fba4aaaebbd73297e451d97a3",
+    "infrastructure/local-fallback/realtime-gateway/tests/server.test.js": "a47077cff336cc68b9f3e69fd1f7deb0dc540abaf7d82ea47351c48e44e4e248"
+  },
+  "backend": {
+    "tests": 442,
+    "passed": 439,
+    "failed": 0,
+    "skipped": 3,
+    "rafflePostgresCasesPassed": 13,
+    "disposablePostgresVersion": 16,
+    "fullLogSha256": "c4980fdbe0d46501eca2c07ac2e3b0739db547e42d7020ca5b4c00a61a6392d7",
+    "gatewayPassed": true
+  },
+  "android": {
+    "debugBuildPassed": true,
+    "instrumentationBuildPassed": true,
+    "unit": {
+      "tests": 1300,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 283
+    },
+    "buildLogSha256": "b8662979dfef7956af6d611ccae5dfcb92ca8d3a9b3d57f054927875cefb3e6f",
+    "apkSha256": "597c2152fda874d47bbf9366c8770b0402c100092f0c33c9b5e306e00a2aec12",
+    "testApkSha256": "fbd4b5090badd3beccbd0f69ae421e7944bfc322ab2cc97ba6808d4151fccadb",
+    "releaseR8TestedForTheseChanges": false,
+    "signedAabProduced": false
+  },
+  "device": {
+    "model": "Moto g04",
+    "android": 14,
+    "api": 34,
+    "dataDirectoryIdentityPreserved": true,
+    "dataCleared": false,
+    "finalBatch": {
+      "tests": [
+        {
+          "class": "conectate.com.presentation.social.CommunityMusicLyricsUiTest",
+          "test": "actualTimedTextShowsPreviewAndCanBeRemovedWithLargeText",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.CommunityMusicLyricsUiTest",
+          "test": "optionalImportIsDisabledDuringReadingAndOpensWhenReady",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+          "test": "creationImportsMembersExcludesOneAddsManualAndSubmitsSelectedSnapshot",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+          "test": "emptyStateDarkThemeAndLargeFontRemainUsable",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+          "test": "socialCardOpensRaffleAndShowsCreatorAndStoredTitle",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+          "test": "animationFinishesOnceAndDoesNotModifyServerParticipantList",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+          "test": "supportsTwoFiveTenTwentyFiftyAndLargeGroupsWithAccessibleLabels",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.raffles.RaffleApiIntegrationTest",
+          "test": "groupsAndCommunitiesPersistAuthoritativeDrawsAcrossReconnectAndRetries",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "aFailedCatalogOffersRetryWithoutHidingItsSearch",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "timelineDragChangesTheActualStartWithoutChangingClipLength",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "synchronizedLyricsAdvanceWithTheActualAudioPlayer",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "threePresentationsConfirmTheStyleAndRetainTheExistingMix",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "confirmationStaysVisibleWithLongTitlesAndLargeText",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "timelineIsCompactWithoutLosingItsTouchTarget",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "communityOpensWithSearchAndCanClearTheQuery",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "realLyricsOfferThreeStylesAndConfirmTheExistingPlacement",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "instrumentalExcerptMustBeAdjustedBeforeConfirmingLyrics",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "durationOptionsStayWithinTheVideoAndConfirmationUsesTheChosenLength",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "oneTapOnTheSongStartsPlaybackAndShowsConfirmation",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+          "test": "photoDurationStaysWithinTheAuthoritativeSixSeconds",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+          "test": "cancellingTheVisibleInvitationClosesItsAnswerScreen",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+          "test": "cancellationStillClosesTheScreenWhenItIsInBackground",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+          "test": "cancellingAnotherCallDoesNotCloseThisInvitation",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+          "test": "aDelayedIntentForAnOldCancelledCallKeepsTheNewInvitation",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+          "test": "theRingTimeoutAlsoClosesTheAnswerScreen",
+          "statusCode": 0
+        },
+        {
+          "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+          "test": "anAlreadyCancelledInvitationCannotReopenOrAutoAccept",
+          "statusCode": 0
+        }
+      ],
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0,
+      "allPassed": true,
+      "durationSeconds": 118.998,
+      "privateLogSha256": "d26993548ae2f4151c47f602ddbaffb832438fb477ef010904a4b5c2f9e60cbd"
+    },
+    "earlierBatchFailuresPreserved": [
+      {
+        "tests": [
+          {
+            "class": "conectate.com.presentation.social.CommunityMusicLyricsUiTest",
+            "test": "actualTimedTextShowsPreviewAndCanBeRemovedWithLargeText",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.CommunityMusicLyricsUiTest",
+            "test": "optionalImportIsDisabledDuringReadingAndOpensWhenReady",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+            "test": "creationImportsMembersExcludesOneAddsManualAndSubmitsSelectedSnapshot",
+            "statusCode": -2
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+            "test": "emptyStateDarkThemeAndLargeFontRemainUsable",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+            "test": "socialCardOpensRaffleAndShowsCreatorAndStoredTitle",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+            "test": "animationFinishesOnceAndDoesNotModifyServerParticipantList",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+            "test": "supportsTwoFiveTenTwentyFiftyAndLargeGroupsWithAccessibleLabels",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleApiIntegrationTest",
+            "test": "groupsAndCommunitiesPersistAuthoritativeDrawsAcrossReconnectAndRetries",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "aFailedCatalogOffersRetryWithoutHidingItsSearch",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "timelineDragChangesTheActualStartWithoutChangingClipLength",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "synchronizedLyricsAdvanceWithTheActualAudioPlayer",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "threePresentationsConfirmTheStyleAndRetainTheExistingMix",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "confirmationStaysVisibleWithLongTitlesAndLargeText",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "timelineIsCompactWithoutLosingItsTouchTarget",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "communityOpensWithSearchAndCanClearTheQuery",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "realLyricsOfferThreeStylesAndConfirmTheExistingPlacement",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "instrumentalExcerptMustBeAdjustedBeforeConfirmingLyrics",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "durationOptionsStayWithinTheVideoAndConfirmationUsesTheChosenLength",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "oneTapOnTheSongStartsPlaybackAndShowsConfirmation",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "photoDurationStaysWithinTheAuthoritativeSixSeconds",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "cancellingTheVisibleInvitationClosesItsAnswerScreen",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "cancellationStillClosesTheScreenWhenItIsInBackground",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "cancellingAnotherCallDoesNotCloseThisInvitation",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "aDelayedIntentForAnOldCancelledCallKeepsTheNewInvitation",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "theRingTimeoutAlsoClosesTheAnswerScreen",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "anAlreadyCancelledInvitationCannotReopenOrAutoAccept",
+            "statusCode": 0
+          }
+        ],
+        "passed": 25,
+        "failed": 1,
+        "skipped": 0,
+        "allPassed": false,
+        "durationSeconds": 118.893,
+        "privateLogSha256": "8874518ca5be6412908a5e7975d6f0f1a54feb656f314a376f41d571f947c1e0"
+      },
+      {
+        "tests": [
+          {
+            "class": "conectate.com.presentation.social.CommunityMusicLyricsUiTest",
+            "test": "actualTimedTextShowsPreviewAndCanBeRemovedWithLargeText",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.CommunityMusicLyricsUiTest",
+            "test": "optionalImportIsDisabledDuringReadingAndOpensWhenReady",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+            "test": "creationImportsMembersExcludesOneAddsManualAndSubmitsSelectedSnapshot",
+            "statusCode": -2
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+            "test": "emptyStateDarkThemeAndLargeFontRemainUsable",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+            "test": "socialCardOpensRaffleAndShowsCreatorAndStoredTitle",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+            "test": "animationFinishesOnceAndDoesNotModifyServerParticipantList",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleWheelUiTest",
+            "test": "supportsTwoFiveTenTwentyFiftyAndLargeGroupsWithAccessibleLabels",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.raffles.RaffleApiIntegrationTest",
+            "test": "groupsAndCommunitiesPersistAuthoritativeDrawsAcrossReconnectAndRetries",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "aFailedCatalogOffersRetryWithoutHidingItsSearch",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "timelineDragChangesTheActualStartWithoutChangingClipLength",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "synchronizedLyricsAdvanceWithTheActualAudioPlayer",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "threePresentationsConfirmTheStyleAndRetainTheExistingMix",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "confirmationStaysVisibleWithLongTitlesAndLargeText",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "timelineIsCompactWithoutLosingItsTouchTarget",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "communityOpensWithSearchAndCanClearTheQuery",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "realLyricsOfferThreeStylesAndConfirmTheExistingPlacement",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "instrumentalExcerptMustBeAdjustedBeforeConfirmingLyrics",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "durationOptionsStayWithinTheVideoAndConfirmationUsesTheChosenLength",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "oneTapOnTheSongStartsPlaybackAndShowsConfirmation",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.social.MomentMusicPickerUiTest",
+            "test": "photoDurationStaysWithinTheAuthoritativeSixSeconds",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "cancellingTheVisibleInvitationClosesItsAnswerScreen",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "cancellationStillClosesTheScreenWhenItIsInBackground",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "cancellingAnotherCallDoesNotCloseThisInvitation",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "aDelayedIntentForAnOldCancelledCallKeepsTheNewInvitation",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "theRingTimeoutAlsoClosesTheAnswerScreen",
+            "statusCode": 0
+          },
+          {
+            "class": "conectate.com.presentation.calls.IncomingCallCancellationTest",
+            "test": "anAlreadyCancelledInvitationCannotReopenOrAutoAccept",
+            "statusCode": 0
+          }
+        ],
+        "passed": 25,
+        "failed": 1,
+        "skipped": 0,
+        "allPassed": false,
+        "durationSeconds": 114.959,
+        "privateLogSha256": "c121d03cbc5a34530167cc123afc26af5053a9e1c3b37e4e6a607d23302d13c5"
+      }
+    ],
+    "scope": "Native wheel/form/card UI and local HTTPS to raffle routes/service, JWT policy and disposable PostgreSQL; music/lyrics and synthetic call UI regression. No production rooms or human auth changes.",
+    "installedApkMatchesBuilt": true,
+    "snapshotsReviewed": [
+      "docs/oficial/capturas/sorteos-moto-g04/ruleta-5.png",
+      "docs/oficial/capturas/sorteos-moto-g04/ruleta-20.png",
+      "docs/oficial/capturas/sorteos-moto-g04/creacion-qa.png"
+    ]
+  },
+  "limits": [
+    "No production deployment",
+    "No two-device websocket flow against deployed memberships",
+    "No production-capacity SLA, sustained FPS or acoustic-latency measurement",
+    "Earlier call failures in previous checkpoints remain without a demonstrated cause"
+  ],
+  "qaCleanup": {
+    "disposableHttpsFixtureStopped": true,
+    "disposablePostgresStopped": true,
+    "ownedDeviceFixtureSchemasRemoved": true,
+    "adbReverseRemoved": true,
+    "productionModified": false
+  }
+}

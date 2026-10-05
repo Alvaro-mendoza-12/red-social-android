@@ -121,6 +121,32 @@ class MomentMusicPickerUiTest {
         assertEquals(6_000L, selection!!.endMs - selection!!.startMs)
     }
 
+    @Test fun returningFromAnInitialSelectionAllowsOneTapPlaybackWithoutAutoplay() {
+        val song = track()
+        var previews = 0
+        show(MusicCatalogUiState(items = listOf(song)),
+            MomentMusicSelection(song, 0, 6_000, 1f, 1f), onPreview = { previews++ })
+        compose.onNodeWithContentDescription("Pausar").assertDoesNotExist()
+        assertEquals(0, previews)
+        compose.onNodeWithContentDescription("Volver al catálogo").performClick()
+        compose.onNodeWithContentDescription("Escuchar").performClick()
+        compose.waitUntil(6_000) { compose.onAllNodesWithContentDescription("Pausar").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(1, previews)
+    }
+
+    @Test fun stoppingAndResumingASelectionDoesNotAutoplayAndCatalogCanPlayAgain() {
+        val song = track()
+        show(MusicCatalogUiState(items = listOf(song)), MomentMusicSelection(song, 0, 6_000, 1f, 1f))
+        compose.onNodeWithText("Escuchar").performClick()
+        compose.waitUntil(6_000) { compose.onAllNodesWithContentDescription("Pausar").fetchSemanticsNodes().isNotEmpty() }
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        compose.onNodeWithContentDescription("Pausar").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Volver al catálogo").performClick()
+        compose.onNodeWithContentDescription("Escuchar").performClick()
+        compose.waitUntil(6_000) { compose.onAllNodesWithContentDescription("Pausar").fetchSemanticsNodes().isNotEmpty() }
+    }
+
     @Test fun confirmationStaysVisibleWithLongTitlesAndLargeText() {
         val song = track().copy(title = "Una canción con un nombre largo que no debe ocultar los controles de selección")
         show(MusicCatalogUiState(), MomentMusicSelection(song, 0, 6_000, 1f, 1f), largeText = true)

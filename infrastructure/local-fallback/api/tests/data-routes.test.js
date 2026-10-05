@@ -202,6 +202,12 @@ assert.doesNotMatch(notificationsRouteSource, /\b(?:allPublicProfiles|localNotif
 assert.doesNotMatch(notificationsRouteSource, /importedRows\(pool,\s*'(?:notifications|profiles|posts|videos|moments)'/)
 assert.doesNotMatch(notificationsRouteSource, /localNotificationsByRecipientIds\(/)
 assert.doesNotMatch(notificationsRouteSource, /20_000/)
+const notificationCreateRouteSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf("app.post('/v1/data/notifications'"),
+  dataRoutesSource.indexOf("app.patch('/v1/data/notifications/:notificationId/read'"),
+)
+assert.match(notificationCreateRouteSource, /isServerManagedNotification\(req\.body\)/)
+assert.match(notificationCreateRouteSource, /status\(403\)\.json\(\{ error: 'SERVER_MANAGED_NOTIFICATION' \}\)/)
 assert.match(notificationsRouteSource, /localActivityNotificationsByRecipientIds\(/)
 const savedCollectionsRouteSource = dataRoutesSource.slice(
   dataRoutesSource.indexOf("app.get('/v1/data/saved-collections'"),

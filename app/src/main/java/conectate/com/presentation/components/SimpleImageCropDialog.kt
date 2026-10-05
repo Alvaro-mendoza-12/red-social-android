@@ -68,6 +68,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -182,9 +185,11 @@ fun SimpleImageCropDialog(
                             scope.launch {
                                 isSaving = true
                                 errorMessage = null
-                                runCatching {
-                                    cropImageToCache(context, sourceUri, crop)
-                                }.onSuccess(onCropped).onFailure {
+                                try {
+                                    onCropped(cropImageToCache(context, sourceUri, crop))
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
                                     errorMessage = "No se pudo recortar la imagen. Inténtalo otra vez."
                                     isSaving = false
                                 }
@@ -325,20 +330,34 @@ private suspend fun cropImageToCache(
     context: Context,
     sourceUri: Uri,
     crop: NormalizedImageCrop
-): Uri = withContext(Dispatchers.IO) {
-    if (crop == NormalizedImageCrop()) return@withContext sourceUri
-
-    val decoded = decodeScaledBitmap(context, sourceUri)
-    val cropped = cropBitmap(decoded, crop)
-    val output = File(ShareableMediaFileStore.crops(context), "crop_${UUID.randomUUID()}.jpg")
-    FileOutputStream(output).use { stream ->
-        check(cropped.compress(Bitmap.CompressFormat.JPEG, 92, stream)) {
-            "No se pudo comprimir el recorte"
+): Uri {
+    var output: File? = null
+    try {
+        return withContext(Dispatchers.IO) {
+            if (crop == NormalizedImageCrop()) return@withContext sourceUri
+            val decoded = decodeScaledBitmap(context, sourceUri)
+            var cropped: Bitmap? = null
+            try {
+                currentCoroutineContext().ensureActive()
+                val image = cropBitmap(decoded, crop)
+                cropped = image
+                val file = File(ShareableMediaFileStore.crops(context), "crop_${UUID.randomUUID()}.jpg")
+                output = file
+                FileOutputStream(file).use { stream ->
+                    check(image.compress(Bitmap.CompressFormat.JPEG, 92, stream)) { "No se pudo comprimir el recorte" }
+                }
+                check(file.length() > 0) { "El recorte está vacío" }
+                currentCoroutineContext().ensureActive()
+                FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+            } finally {
+                if (cropped !== decoded) cropped?.recycle()
+                decoded.recycle()
+            }
         }
+    } catch (failure: Throwable) {
+        output?.delete()
+        throw failure
     }
-    if (cropped !== decoded) decoded.recycle()
-    cropped.recycle()
-    FileProvider.getUriForFile(context, "${context.packageName}.provider", output)
 }
 
 private suspend fun readImageAspect(context: Context, uri: Uri): Float = withContext(Dispatchers.IO) {

@@ -228,6 +228,20 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+
+        // Same optimizer as release, installed separately for repeatable startup QA.
+        create("auditRelease") {
+            initWith(getByName("release"))
+            // The handset audit may preserve its existing account and database.
+            // The default remains an independently installed QA application.
+            if (providers.gradleProperty("startupAuditPrimaryPackage").orNull != "true") {
+                applicationIdSuffix = ".qa"
+            }
+            versionNameSuffix = "-qa-optimized"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            resValue("string", "app_name", "Novvin QA")
+        }
     }
 
     compileOptions {
@@ -374,6 +388,10 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.gif)
     implementation(libs.coil.video)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
+    implementation(libs.camera.video)
 
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
@@ -424,4 +442,5 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    add("auditImplementation", libs.androidx.compose.ui.test.manifest)
 }

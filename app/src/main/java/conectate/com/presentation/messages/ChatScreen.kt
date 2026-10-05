@@ -246,6 +246,7 @@ fun ChatScreen(
     }
     
     var showMediaComposer by remember { mutableStateOf(false) }
+    var composerInitialStep by remember { mutableStateOf("gallery") }
     var showAudioPickerDialog by remember { mutableStateOf(false) }
     var pendingAudioPreviewUri by remember { mutableStateOf<Uri?>(null) }
     var pendingDocumentUri by remember { mutableStateOf<Uri?>(null) }
@@ -1709,6 +1710,7 @@ fun ChatScreen(
                         trailingIcon = {
                              Row {
                                  IconButton(onClick = {
+                                     composerInitialStep = "camera"
                                      showMediaComposer = true
                                  }) {
                                      Icon(Icons.Default.CameraAlt, "Cámara", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2272,10 +2274,12 @@ fun ChatScreen(
 
     if (showMediaComposer) {
         MessageMediaComposer(
+            initialStep = composerInitialStep,
             isSending = false,
-            onDismiss = { showMediaComposer = false },
+            onDismiss = { showMediaComposer = false; composerInitialStep = "gallery" },
             onSend = { mediaList, mediaCaption ->
                 showMediaComposer = false
+                composerInitialStep = "gallery"
                 viewModel.sendMediaBatch(mediaList, mediaCaption)
             }
         )

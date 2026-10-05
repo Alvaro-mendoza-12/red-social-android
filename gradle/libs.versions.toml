@@ -34,6 +34,7 @@ hiltWork = "1.1.0"
 
 # Image & Video
 coil = "2.5.0"
+camerax = "1.6.2"
 media3 = "1.11.0"
 exifinterface = "1.4.2"
 
@@ -116,6 +117,10 @@ androidx-hilt-work = { group = "androidx.hilt", name = "hilt-work", version.ref 
 
 # Coil
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+camera-video = { group = "androidx.camera", name = "camera-video", version.ref = "camerax" }
 coil-gif = { group = "io.coil-kt", name = "coil-gif", version.ref = "coil" }
 coil-video = { group = "io.coil-kt", name = "coil-video", version.ref = "coil" }
 

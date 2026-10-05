@@ -4,13 +4,7 @@ import android.Manifest
 import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Color as AndroidColor
-import android.graphics.ImageDecoder
-import android.graphics.Matrix
-import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -21,7 +15,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,13 +45,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.EmojiEmotions
-import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.automirrored.filled.RotateRight
@@ -78,6 +71,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -94,20 +88,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -129,15 +121,15 @@ import coil.size.Size
 import coil.request.videoFrameMillis
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
 import java.util.Locale
 import java.util.UUID
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -158,26 +150,18 @@ internal data class DeviceMedia(
     val height: Int = 0
 )
 
-private data class NormalizedCrop(
-    val left: Float = 0f,
-    val top: Float = 0f,
-    val right: Float = 1f,
-    val bottom: Float = 1f
-)
-
 private data class ComposerEditState(
     val rotateQuarterTurns: Int = 0,
     val drawEnabled: Boolean = false,
-    val cropEnabled: Boolean = false,
-    val crop: NormalizedCrop = NormalizedCrop(),
     val brushColor: Color = Color.White,
     val overlayText: String = "",
     val overlayEmoji: String = "",
     val strokes: List<List<Offset>> = emptyList(),
-    val previewSize: IntSize = IntSize.Zero,
     val trimStartMs: Long = 0L,
     val trimEndMs: Long = 0L
 )
+
+private data class ComposerPhotoRepresentation(val source: Uri, val state: MessagePhotoRenderState)
 
 @Composable
 fun MessageMediaComposer(
@@ -222,6 +206,34 @@ fun MessageMediaComposer(
     var preparing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var cropTargetUri by remember { mutableStateOf<Uri?>(null) }
+    var cropOriginalUri by remember { mutableStateOf<Uri?>(null) }
+    val cropPreparedPhotos = remember { mutableStateListOf<Uri>() }
+    val readyPhotos = remember { mutableStateMapOf<Uri, ComposerPhotoRepresentation>() }
+    val photoSources = remember { mutableStateMapOf<Uri, Uri>() }
+    val sourceFailures = remember { mutableStateMapOf<Uri, Boolean>() }
+    val ownedCrops = remember { mutableStateListOf<Uri>() }
+    val photoSourceStore = remember(context) { MessagePhotoSourceStore(context) }
+    var sourceRetry by remember { mutableStateOf(0) }
+    DisposableEffect(photoSourceStore) {
+        onDispose {
+            photoSourceStore.close()
+            discardPreparedComposerOutputs(context, cropPreparedPhotos.toList())
+            discardOwnedComposerCrops(context, ownedCrops.toList())
+        }
+    }
+    LaunchedEffect(selected.map { it.uri to it.type }, sourceRetry) {
+        selected.toList().filter { it.type == "image" && it.uri !in photoSources }.forEach { item ->
+            try {
+                val source = photoSourceStore.sourceFor(item.uri)
+                if (selected.any { it.uri == item.uri }) {
+                    photoSources[item.uri] = source
+                    sourceFailures.remove(item.uri)
+                } else photoSourceStore.forget(item.uri)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) { sourceFailures[item.uri] = true }
+        }
+    }
     var viewOnceEnabled by remember { mutableStateOf(false) }
 
     val permissions = remember {
@@ -249,8 +261,8 @@ fun MessageMediaComposer(
         hasPermission = result.values.any { it }
     }
 
-    LaunchedEffect(Unit) {
-        if (!hasPermission) permissionLauncher.launch(permissions)
+    LaunchedEffect(step) {
+        if (step == "gallery" && !hasPermission) permissionLauncher.launch(permissions)
     }
 
     LaunchedEffect(initialSelectedUris) {
@@ -267,7 +279,8 @@ fun MessageMediaComposer(
         }
     }
 
-    LaunchedEffect(hasPermission) {
+    LaunchedEffect(hasPermission, step) {
+        if (step != "gallery") return@LaunchedEffect
         if (!hasPermission) {
             isLoading = false
             return@LaunchedEffect
@@ -288,6 +301,24 @@ fun MessageMediaComposer(
         KeepMediaCanvasFixedWhileTyping()
         Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
             when (step) {
+                "camera" -> ChatCameraCapture(
+                    allowedTypes = selectableMediaTypes,
+                    onClose = onDismiss,
+                    onGallery = { step = "gallery" },
+                    onCaptured = { captured, durationMs ->
+                        if (selected.size < maxItems.coerceAtLeast(1)) {
+                            selected.add(DeviceMedia(
+                                id = captured.uri.hashCode().toLong(),
+                                uri = captured.uri,
+                                type = captured.type,
+                                durationMs = durationMs,
+                                dateAdded = System.currentTimeMillis() / 1000,
+                            ))
+                            activeIndex = selected.lastIndex
+                            step = "editor"
+                        }
+                    },
+                )
                 "gallery" -> MessageGalleryStep(
                     media = media.filter { it.type in selectableMediaTypes },
                     filter = filter,
@@ -300,11 +331,19 @@ fun MessageMediaComposer(
                     onToggle = { item ->
                         if (selected.any { it.uri == item.uri }) {
                             selected.removeAll { it.uri == item.uri }
+                            photoSourceStore.forget(item.uri)
+                            photoSources.remove(item.uri)
+                            sourceFailures.remove(item.uri)
+                            readyPhotos.remove(item.uri)
+                            edits.remove(item.uri)
+                            if (ownedCrops.remove(item.uri)) discardOwnedComposerCrops(context, listOf(item.uri))
+                            if (cropPreparedPhotos.remove(item.uri)) discardPreparedComposerOutputs(context, listOf(item.uri))
                         } else if (selected.size < maxItems.coerceAtLeast(1)) {
                             selected.add(item)
                         }
                     },
                     title = title,
+                    onCamera = if (selected.size < maxItems.coerceAtLeast(1)) ({ step = "camera" }) else null,
                     onContinue = {
                         if (selected.isNotEmpty()) {
                             activeIndex = 0
@@ -315,6 +354,18 @@ fun MessageMediaComposer(
                 else -> MessageEditorStep(
                     selected = selected,
                     edits = edits,
+                    photoSources = photoSources,
+                    animatedPhotos = photoSources.keys.filter { photoSourceStore.mimeTypeFor(it) == "image/gif" }.toSet(),
+                    sourceFailures = sourceFailures,
+                    onRetrySource = { uri ->
+                        if (!isSending && !preparing) {
+                            photoSourceStore.forget(uri)
+                            photoSources.remove(uri)
+                            sourceFailures.remove(uri)
+                            readyPhotos.remove(uri)
+                            sourceRetry++
+                        }
+                    },
                     activeIndex = activeIndex.coerceIn(0, (selected.size - 1).coerceAtLeast(0)),
                     caption = caption,
                     viewOnceEnabled = viewOnceEnabled,
@@ -322,63 +373,122 @@ fun MessageMediaComposer(
                     showCaptionInput = showCaptionInput,
                     isSending = isSending || preparing,
                     error = error,
-                    confirmContentDescription = confirmContentDescription,
-                    onCaptionChange = { caption = it.take(800) },
-                    onViewOnceChange = { enabled ->
-                        viewOnceEnabled = enabled && selected.size == 1
+                    canSend = selected.getOrNull(activeIndex)?.let { item ->
+                        item.type != "image" || photoSources[item.uri]?.let { source ->
+                            readyPhotos[item.uri] == ComposerPhotoRepresentation(source, (edits[item.uri] ?: ComposerEditState()).photoState())
+                        } == true
+                    } == true,
+                    onPhotoReady = { uri, source, state, ready ->
+                        if (photoSources[uri] == source && (edits[uri] ?: ComposerEditState()).photoState() == state) {
+                            if (ready) readyPhotos[uri] = ComposerPhotoRepresentation(source, state) else readyPhotos.remove(uri)
+                        }
                     },
-                    onBack = { step = "gallery" },
+                    confirmContentDescription = confirmContentDescription,
+                    onCaptionChange = { if (!isSending && !preparing) caption = it.take(800) },
+                    onViewOnceChange = { enabled ->
+                        if (!isSending && !preparing) viewOnceEnabled = enabled && selected.size == 1
+                    },
+                    onBack = { if (!isSending && !preparing) step = "gallery" },
                     onDismiss = onDismiss,
-                    onActiveIndexChange = { activeIndex = it.coerceIn(0, selected.lastIndex) },
+                    onActiveIndexChange = { if (!isSending && !preparing) activeIndex = it.coerceIn(0, selected.lastIndex) },
                     onRemove = { item ->
+                        if (isSending || preparing) return@MessageEditorStep
                         selected.removeAll { it.uri == item.uri }
                         edits.remove(item.uri)
+                        readyPhotos.remove(item.uri)
+                        photoSourceStore.forget(item.uri)
+                        photoSources.remove(item.uri)
+                        sourceFailures.remove(item.uri)
+                        if (ownedCrops.remove(item.uri)) discardOwnedComposerCrops(context, listOf(item.uri))
+                        if (cropPreparedPhotos.remove(item.uri)) discardPreparedComposerOutputs(context, listOf(item.uri))
                         activeIndex = activeIndex.coerceAtMost((selected.size - 1).coerceAtLeast(0))
                         if (selected.isEmpty()) step = "gallery"
                     },
-                    onEditChange = { uri, edit -> edits[uri] = edit },
-                    onRequestCrop = { item -> cropTargetUri = item.uri },
+                    onEditChange = { uri, edit -> if (!isSending && !preparing) edits[uri] = edit },
+                    onRequestCrop = { item ->
+                        val state = (edits[item.uri] ?: ComposerEditState()).photoState()
+                        if (!isSending && !preparing && photoSources[item.uri]?.let { readyPhotos[item.uri] == ComposerPhotoRepresentation(it, state) } == true) {
+                            preparing = true
+                            error = null
+                            scope.launch {
+                                try {
+                                    // Bake all visible edits once; crop this exact representation.
+                                    val source = photoSources[item.uri] ?: photoSourceStore.sourceFor(item.uri)
+                                    val baked = exportMessagePhoto(context, source, state)
+                                    cropPreparedPhotos += baked
+                                    cropOriginalUri = item.uri
+                                    cropTargetUri = baked
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    error = "No se pudo preparar la foto para recortar. Inténtalo nuevamente."
+                                } finally { preparing = false }
+                            }
+                        }
+                    },
                     onSend = {
                         if (isSending || preparing || selected.isEmpty()) return@MessageEditorStep
+                        val active = selected.getOrNull(activeIndex) ?: return@MessageEditorStep
+                        if (active.type == "image" && photoSources[active.uri]?.let {
+                                readyPhotos[active.uri] == ComposerPhotoRepresentation(it, (edits[active.uri] ?: ComposerEditState()).photoState())
+                            } != true) {
+                            return@MessageEditorStep
+                        }
                         error = null
                         preparing = true
+                        val selectedSnapshot = selected.toList()
+                        val editsSnapshot = edits.toMap()
+                        val captionSnapshot = caption.trim()
+                        val viewOnceSnapshot = viewOnceEnabled
                         scope.launch {
                             val outgoing = mutableListOf<OutgoingMessageMedia>()
-                            selected.forEach { item ->
-                                val edit = edits[item.uri] ?: ComposerEditState()
-                                val isGif = context.contentResolver.getType(item.uri)
-                                    ?.equals("image/gif", ignoreCase = true) == true
-                                val outputUri = when {
-                                    item.type == "image" && !isGif -> withContext(Dispatchers.Default) {
-                                        runCatching { processComposerImage(context, item.uri, edit) }
-                                            .getOrElse { item.uri }
+                            val preparedOutputs = mutableListOf<Uri>()
+                            var failedPhoto: Uri? = null
+                            try {
+                                selectedSnapshot.forEach { item ->
+                                    failedPhoto = item.uri.takeIf { item.type == "image" }
+                                    val edit = editsSnapshot[item.uri] ?: ComposerEditState()
+                                    val source = if (item.type == "image") photoSourceStore.sourceFor(item.uri) else item.uri
+                                    val isGif = item.type == "image" && photoSourceStore.mimeTypeFor(item.uri) == "image/gif"
+                                    val outputUri = when {
+                                        item.type == "image" && isGif && !edit.hasRealEdits() ->
+                                            prepareComposerGif(context, source).also { preparedOutputs += it }
+                                        item.type == "image" ->
+                                            exportMessagePhoto(context, source, edit.photoState()).also { preparedOutputs += it }
+                                        item.type == "video" && shouldTrimVideo(item, edit) -> trimComposerVideo(
+                                            context = context,
+                                            sourceUri = item.uri,
+                                            startMs = edit.trimStartMs,
+                                            endMs = edit.trimEndMs.coerceAtMost(item.durationMs)
+                                        )
+                                        else -> item.uri
                                     }
-                                    item.type == "video" && shouldTrimVideo(item, edit) -> {
-                                        try {
-                                            trimComposerVideo(
-                                                context = context,
-                                                sourceUri = item.uri,
-                                                startMs = edit.trimStartMs,
-                                                endMs = edit.trimEndMs.coerceAtMost(item.durationMs)
-                                            )
-                                        } catch (trimError: Exception) {
-                                            if (trimError is CancellationException) throw trimError
-                                            error = "No se pudo recortar el video. Inténtalo nuevamente."
-                                            preparing = false
-                                            return@launch
-                                        }
+                                    if (outputUri != item.uri && outputUri !in preparedOutputs) preparedOutputs += outputUri
+                                    val outgoingType = if (viewOnceSnapshot && selectedSnapshot.size == 1) {
+                                        if (item.type == "video") "view_once_video" else "view_once_image"
+                                    } else {
+                                        item.type
                                     }
-                                    else -> item.uri
+                                    outgoing += OutgoingMessageMedia(outputUri, outgoingType)
+                                    failedPhoto = null
                                 }
-                                val outgoingType = if (viewOnceEnabled && selected.size == 1) {
-                                    if (item.type == "video") "view_once_video" else "view_once_image"
-                                } else {
-                                    item.type
+                            } catch (cancelled: CancellationException) {
+                                discardPreparedComposerOutputs(context, preparedOutputs)
+                                throw cancelled
+                            } catch (_: Exception) {
+                                discardPreparedComposerOutputs(context, preparedOutputs)
+                                failedPhoto?.let { uri ->
+                                    // Retry explicitly creates and represents a new snapshot before Send.
+                                    photoSources.remove(uri)
+                                    readyPhotos.remove(uri)
+                                    sourceFailures[uri] = true
                                 }
-                                outgoing += OutgoingMessageMedia(outputUri, outgoingType)
+                                error = "No se pudo preparar la foto o el video. Revisa el archivo e inténtalo nuevamente."
+                                return@launch
+                            } finally {
+                                preparing = false
                             }
-                            preparing = false
-                            onSend(outgoing, caption.trim())
+                            onSend(outgoing, captionSnapshot)
                         }
                     }
                 )
@@ -397,24 +507,39 @@ fun MessageMediaComposer(
                 ImageCropPreset.WIDE
             ),
             initialPreset = ImageCropPreset.FREE,
-            onDismiss = { cropTargetUri = null },
+            onDismiss = {
+                discardPreparedComposerOutputs(context, listOf(targetUri))
+                cropPreparedPhotos.remove(targetUri)
+                cropTargetUri = null
+                cropOriginalUri = null
+            },
             onCropped = { croppedUri ->
-                val index = selected.indexOfFirst { it.uri == targetUri }
+                val originalUri = cropOriginalUri
+                val index = selected.indexOfFirst { it.uri == originalUri }
                 if (index >= 0) {
                     val previous = selected[index]
-                    val previousEdit = edits.remove(targetUri) ?: ComposerEditState()
+                    originalUri?.let {
+                        edits.remove(it); readyPhotos.remove(it)
+                        photoSourceStore.forget(it); photoSources.remove(it); sourceFailures.remove(it)
+                        if (ownedCrops.remove(it)) discardOwnedComposerCrops(context, listOf(it))
+                        if (cropPreparedPhotos.remove(it)) discardPreparedComposerOutputs(context, listOf(it))
+                    }
+                    if (croppedUri != targetUri) ownedCrops += croppedUri
                     selected[index] = previous.copy(
                         id = croppedUri.hashCode().toLong(),
                         uri = croppedUri,
                         dateModified = System.currentTimeMillis()
                     )
-                    edits[croppedUri] = previousEdit.copy(
-                        cropEnabled = false,
-                        crop = NormalizedCrop()
-                    )
+                    // Rotation, text and strokes are already baked into the cropped pixels.
+                    edits[croppedUri] = ComposerEditState()
                     activeIndex = index
                 }
+                if (croppedUri != targetUri) {
+                    discardPreparedComposerOutputs(context, listOf(targetUri))
+                    cropPreparedPhotos.remove(targetUri)
+                }
                 cropTargetUri = null
+                cropOriginalUri = null
             }
         )
     }
@@ -458,7 +583,8 @@ internal fun MessageGalleryStep(
     onDismiss: () -> Unit,
     onToggle: (DeviceMedia) -> Unit,
     title: String,
-    onContinue: () -> Unit
+    onContinue: () -> Unit,
+    onCamera: (() -> Unit)? = null,
 ) {
     val filtered = remember(media, filter) {
         when (filter) {
@@ -489,6 +615,9 @@ internal fun MessageGalleryStep(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
+            if (onCamera != null) IconButton(onClick = onCamera) {
+                Icon(Icons.Default.CameraAlt, "Abrir cámara", tint = Color.White)
+            }
             if (selected.isNotEmpty()) {
                 FloatingActionButton(
                     onClick = onContinue,
@@ -620,6 +749,10 @@ private fun FilterChip(
 private fun MessageEditorStep(
     selected: List<DeviceMedia>,
     edits: Map<Uri, ComposerEditState>,
+    photoSources: Map<Uri, Uri>,
+    animatedPhotos: Set<Uri>,
+    sourceFailures: Map<Uri, Boolean>,
+    onRetrySource: (Uri) -> Unit,
     activeIndex: Int,
     caption: String,
     viewOnceEnabled: Boolean,
@@ -627,6 +760,8 @@ private fun MessageEditorStep(
     showCaptionInput: Boolean,
     isSending: Boolean,
     error: String?,
+    canSend: Boolean,
+    onPhotoReady: (Uri, Uri, MessagePhotoRenderState, Boolean) -> Unit,
     confirmContentDescription: String,
     onCaptionChange: (String) -> Unit,
     onViewOnceChange: (Boolean) -> Unit,
@@ -642,8 +777,7 @@ private fun MessageEditorStep(
     val reliableBottomPadding = rememberReliableBottomSafePadding()
     val active = selected.getOrNull(activeIndex) ?: return
     val edit = edits[active.uri] ?: ComposerEditState()
-    val strokes = remember(active.uri, edit.strokes) { mutableStateListOf<List<Offset>>().apply { addAll(edit.strokes) } }
-    var activeStroke by remember(active.uri) { mutableStateOf<List<Offset>>(emptyList()) }
+    val isAnimatedImage = active.uri in animatedPhotos
     val brushPalette = remember {
         listOf(
             Color.White,
@@ -679,7 +813,7 @@ private fun MessageEditorStep(
     ) {
         HorizontalPager(
             state = pagerState,
-            userScrollEnabled = !edit.drawEnabled && !edit.cropEnabled,
+            userScrollEnabled = !isSending && !edit.drawEnabled,
             modifier = Modifier.fillMaxSize()
         ) { page ->
             val pageItem = selected[page]
@@ -691,74 +825,31 @@ private fun MessageEditorStep(
                     isActive = page == activeIndex
                 )
             } else {
-                AsyncImage(
-                    model = pageItem.uri,
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(
-                            if (page == activeIndex) {
-                                Modifier
-                                    .onSizeChanged {
-                                        onEditChange(pageItem.uri, pageEdit.copy(previewSize = it))
-                                    }
-                                    .pointerInput(pageEdit.drawEnabled, pageItem.uri) {
-                                        if (!pageEdit.drawEnabled) return@pointerInput
-                                        detectDragGestures(
-                                            onDragStart = { offset -> activeStroke = listOf(offset) },
-                                            onDrag = { change, _ ->
-                                                change.consume()
-                                                activeStroke = activeStroke + change.position
-                                            },
-                                            onDragEnd = {
-                                                if (activeStroke.size > 1) {
-                                                    strokes.add(activeStroke)
-                                                    onEditChange(
-                                                        pageItem.uri,
-                                                        pageEdit.copy(strokes = strokes.toList())
-                                                    )
-                                                }
-                                                activeStroke = emptyList()
-                                            },
-                                            onDragCancel = { activeStroke = emptyList() }
-                                        )
-                                    }
-                            } else {
-                                Modifier
+                val photoState = pageEdit.photoState()
+                val source = photoSources[pageItem.uri]
+                if (source == null) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (sourceFailures[pageItem.uri] == true) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("No se pudo abrir la foto.", color = Color.White)
+                                TextButton(onClick = { onRetrySource(pageItem.uri) }, enabled = !isSending) { Text("Reintentar") }
                             }
-                        )
+                        } else CircularProgressIndicator()
+                    }
+                } else MessagePhotoPreview(
+                    sourceUri = source,
+                    state = photoState,
+                    drawEnabled = page == activeIndex && pageEdit.drawEnabled,
+                    interactionEnabled = page == activeIndex && !isSending,
+                    onStrokeAdded = { stroke ->
+                        onEditChange(pageItem.uri, pageEdit.copy(strokes = pageEdit.strokes + listOf(stroke)))
+                    },
+                    onReadyChanged = { ready -> onPhotoReady(pageItem.uri, source, photoState, ready) },
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
 
-        if (active.type == "image") {
-            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                (strokes + listOf(activeStroke)).forEach { stroke ->
-                    for (i in 1 until stroke.size) {
-                        drawLine(
-                            color = edit.brushColor,
-                            start = stroke[i - 1],
-                            end = stroke[i],
-                            strokeWidth = 6f,
-                            cap = StrokeCap.Round
-                        )
-                    }
-                }
-            }
-            if (edit.overlayText.isNotBlank() || edit.overlayEmoji.isNotBlank()) {
-                Text(
-                    text = listOf(edit.overlayEmoji, edit.overlayText).filter(String::isNotBlank).joinToString(" "),
-                    color = Color.White,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .background(Color.Black.copy(alpha = 0.38f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                )
-            }
-        }
 
         Row(
             modifier = Modifier
@@ -780,7 +871,8 @@ private fun MessageEditorStep(
                         RoundToolButton(
                             icon = Icons.Default.Visibility,
                             label = "Ver una vez",
-                            selected = viewOnceEnabled
+                            selected = viewOnceEnabled,
+                            enabled = !isSending,
                         ) {
                             onViewOnceChange(!viewOnceEnabled)
                         }
@@ -788,35 +880,33 @@ private fun MessageEditorStep(
                 }
                 if (active.type == "image") {
                     item {
-                        RoundToolButton(Icons.AutoMirrored.Filled.RotateRight, "Girar") {
+                        RoundToolButton(Icons.AutoMirrored.Filled.RotateRight, "Girar", enabled = !isSending) {
                             onEditChange(active.uri, edit.copy(rotateQuarterTurns = (edit.rotateQuarterTurns + 1) % 4))
                         }
                     }
                     item {
-                        RoundToolButton(Icons.Default.Crop, "Recortar libre") {
+                        RoundToolButton(Icons.Default.Crop, "Recortar libre", enabled = !isSending && canSend) {
                             onRequestCrop(active)
                         }
                     }
                     item {
-                        RoundToolButton(Icons.Default.Brush, "Dibujar", selected = edit.drawEnabled) {
+                        RoundToolButton(Icons.Default.Brush, "Dibujar", selected = edit.drawEnabled, enabled = !isSending) {
                             onEditChange(
                                 active.uri,
-                                edit.copy(drawEnabled = !edit.drawEnabled, cropEnabled = false)
+                                edit.copy(drawEnabled = !edit.drawEnabled)
                             )
                         }
                     }
                     item {
-                        RoundToolButton(Icons.Default.EmojiEmotions, "Emoji") {
+                        RoundToolButton(Icons.Default.EmojiEmotions, "Emoji", enabled = !isSending) {
                             onEditChange(active.uri, edit.copy(overlayEmoji = if (edit.overlayEmoji.isBlank()) "✨" else ""))
                         }
                     }
                     if (showCaptionInput) item {
-                        RoundToolButton(Icons.Default.TextFields, "Texto", selected = edit.overlayText.isNotBlank()) {
+                        RoundToolButton(Icons.Default.TextFields, "Texto", selected = edit.overlayText.isNotBlank(), enabled = !isSending) {
                             onEditChange(active.uri, edit.copy(overlayText = if (edit.overlayText.isBlank()) caption.take(32) else ""))
                         }
                     }
-                } else {
-                    item { RoundToolButton(Icons.Default.Hd, "HD") {} }
                 }
             }
             IconButton(onClick = onDismiss, enabled = !isSending) {
@@ -852,7 +942,7 @@ private fun MessageEditorStep(
                                 color = if (edit.brushColor == color) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.7f),
                                 shape = CircleShape
                             )
-                            .clickable { onEditChange(active.uri, edit.copy(brushColor = color, drawEnabled = true)) }
+                            .clickable(enabled = !isSending) { onEditChange(active.uri, edit.copy(brushColor = color, drawEnabled = true)) }
                     )
                 }
             }
@@ -883,7 +973,7 @@ private fun MessageEditorStep(
                                 color = MaterialTheme.colorScheme.primary,
                                 shape = RoundedCornerShape(10.dp)
                             )
-                            .clickable { onActiveIndexChange(index) }
+                            .clickable(enabled = !isSending) { onActiveIndexChange(index) }
                     ) {
                         AsyncImage(
                             model = composerThumbnailRequest(context, item),
@@ -896,6 +986,7 @@ private fun MessageEditorStep(
                         }
                         IconButton(
                             onClick = { onRemove(item) },
+                            enabled = !isSending,
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .size(20.dp)
@@ -920,6 +1011,7 @@ private fun MessageEditorStep(
                 )
                 RangeSlider(
                     value = trimStart.toFloat()..trimEnd.toFloat(),
+                    enabled = !isSending,
                     onValueChange = { range ->
                         val start = range.start.toLong()
                             .coerceAtMost((range.endInclusive.toLong() - 500L).coerceAtLeast(0L))
@@ -932,7 +1024,7 @@ private fun MessageEditorStep(
                         )
                     },
                     valueRange = 0f..active.durationMs.coerceAtLeast(1_000L).toFloat(),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().testTag("message_video_trim")
                 )
             }
 
@@ -963,6 +1055,7 @@ private fun MessageEditorStep(
                         OutlinedTextField(
                             value = caption,
                             onValueChange = onCaptionChange,
+                            enabled = !isSending,
                             placeholder = { Text("Añade un comentario...", color = Color.White.copy(alpha = 0.7f)) },
                             minLines = 1,
                             maxLines = 3,
@@ -983,6 +1076,10 @@ private fun MessageEditorStep(
                             )
                         )
                     }
+                    if (isAnimatedImage && edit.hasRealEdits()) {
+                        Text("Al editar un GIF se enviará como una foto fija.", color = Color.White,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
                     if (!error.isNullOrBlank()) {
                         Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
@@ -995,14 +1092,18 @@ private fun MessageEditorStep(
                 }
                 Spacer(Modifier.width(10.dp))
                 FloatingActionButton(
-                    onClick = { if (!isSending) onSend() },
+                    onClick = { if (!isSending && canSend) onSend() },
+                    modifier = Modifier.semantics {
+                        contentDescription = confirmContentDescription
+                        if (isSending || !canSend) disabled()
+                    },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
                     if (isSending) {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = confirmContentDescription)
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
                     }
                 }
             }
@@ -1015,10 +1116,12 @@ private fun RoundToolButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     selected: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     IconButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .padding(horizontal = 2.dp)
             .size(42.dp)
@@ -1184,35 +1287,53 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
 
 private fun ComposerEditState.hasRealEdits(): Boolean {
     return rotateQuarterTurns != 0 ||
-        crop != NormalizedCrop() ||
         overlayText.isNotBlank() ||
         overlayEmoji.isNotBlank() ||
         strokes.any { it.size > 1 }
 }
 
-private fun processComposerImage(context: Context, sourceUri: Uri, edit: ComposerEditState): Uri {
-    val decoded = decodeComposerBitmap(context, sourceUri) ?: return sourceUri
-    val rotated = rotateComposerBitmap(decoded, edit.rotateQuarterTurns)
-    val cropped = cropComposerBitmap(rotated, edit.crop)
-    val merged = drawComposerOverlays(cropped, edit)
-    val file = File(context.cacheDir, "message_media_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}.jpg")
-    FileOutputStream(file).use { output ->
-        flattenComposerBitmapForJpeg(merged).compress(Bitmap.CompressFormat.JPEG, 86, output)
+private fun ComposerEditState.photoState() = MessagePhotoRenderState(
+    rotateQuarterTurns = rotateQuarterTurns,
+    overlayText = overlayText,
+    overlayEmoji = overlayEmoji,
+    strokes = strokes,
+    brushColor = brushColor.toArgb(),
+)
+
+private fun discardPreparedComposerOutputs(context: Context, outputs: List<Uri>) {
+    outputs.filter { it.scheme == "file" }.forEach { uri ->
+        val file = File(uri.path ?: return@forEach).canonicalFile
+        if (file.parentFile == context.cacheDir.canonicalFile &&
+            (file.name.startsWith("message_media_") || file.name.startsWith("message_video_"))) file.delete()
     }
-    return file.toUri()
 }
 
-private fun cropComposerBitmap(bitmap: Bitmap, crop: NormalizedCrop): Bitmap {
-    if (crop == NormalizedCrop()) return bitmap
-    val left = (crop.left.coerceIn(0f, 1f) * bitmap.width).toInt()
-        .coerceIn(0, (bitmap.width - 1).coerceAtLeast(0))
-    val top = (crop.top.coerceIn(0f, 1f) * bitmap.height).toInt()
-        .coerceIn(0, (bitmap.height - 1).coerceAtLeast(0))
-    val right = (crop.right.coerceIn(0f, 1f) * bitmap.width).toInt()
-        .coerceIn(left + 1, bitmap.width)
-    val bottom = (crop.bottom.coerceIn(0f, 1f) * bitmap.height).toInt()
-        .coerceIn(top + 1, bitmap.height)
-    return Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
+// These content URIs are registered only from our crop callback; never delete an input URI.
+private fun discardOwnedComposerCrops(context: Context, outputs: List<Uri>) {
+    val root = conectate.com.core.media.ShareableMediaFileStore.crops(context).canonicalFile
+    outputs.filter { it.scheme == "content" && it.authority == "${context.packageName}.provider" }
+        .forEach { uri ->
+            if (uri.pathSegments.size != 2 || uri.pathSegments.first() != "shared_crops") return@forEach
+            val name = uri.lastPathSegment ?: return@forEach
+            if (!Regex("crop_[0-9a-f-]{36}\\.jpg").matches(name)) return@forEach
+            val file = File(root, name).canonicalFile
+            if (file.parentFile == root) file.delete()
+        }
+}
+
+private suspend fun prepareComposerGif(context: Context, source: Uri): Uri {
+    var output: File? = null
+    try {
+        return withContext(Dispatchers.IO) {
+            val file = File(context.cacheDir, "message_media_${UUID.randomUUID()}.gif")
+            output = file
+            val input = context.contentResolver.openInputStream(source) ?: throw java.io.IOException("IMAGE_SOURCE_UNAVAILABLE")
+            input.use { stream -> file.outputStream().use { stream.copyTo(it) } }
+            check(file.length() > 0) { "IMAGE_OUTPUT_EMPTY" }
+            currentCoroutineContext().ensureActive()
+            file.toUri()
+        }
+    } catch (failure: Throwable) { output?.delete(); throw failure }
 }
 
 private fun shouldTrimVideo(item: DeviceMedia, edit: ComposerEditState): Boolean {
@@ -1247,7 +1368,11 @@ private suspend fun trimComposerVideo(
                     composition: androidx.media3.transformer.Composition,
                     result: androidx.media3.transformer.ExportResult
                 ) {
-                    if (continuation.isActive) continuation.resume(output.toUri())
+                    if (!output.isFile || output.length() == 0L) {
+                        output.delete()
+                        if (continuation.isActive) continuation.resumeWithException(java.io.IOException("VIDEO_OUTPUT_EMPTY"))
+                    } else if (continuation.isActive) continuation.resume(output.toUri())
+                    else output.delete()
                 }
 
                 override fun onError(
@@ -1261,93 +1386,18 @@ private suspend fun trimComposerVideo(
             })
             .build()
         continuation.invokeOnCancellation {
-            transformer.cancel()
-            output.delete()
+            val cancelExport = Runnable {
+                try { transformer.cancel() } finally { output.delete() }
+            }
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) cancelExport.run()
+            else android.os.Handler(android.os.Looper.getMainLooper()).post(cancelExport)
         }
-        runCatching { transformer.start(clippedItem, output.absolutePath) }
+        if (continuation.isActive) runCatching { transformer.start(clippedItem, output.absolutePath) }
             .onFailure { error ->
                 output.delete()
                 if (continuation.isActive) continuation.resumeWithException(error)
             }
     }
-}
-
-private fun decodeComposerBitmap(context: Context, uri: Uri): Bitmap? {
-    val maxDimension = 2560
-    return runCatching {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val source = ImageDecoder.createSource(context.contentResolver, uri)
-            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-                decoder.isMutableRequired = true
-                val largest = maxOf(info.size.width, info.size.height)
-                if (largest > maxDimension) {
-                    val scale = maxDimension.toFloat() / largest.toFloat()
-                    decoder.setTargetSize((info.size.width * scale).toInt(), (info.size.height * scale).toInt())
-                }
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
-            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-        }
-    }.getOrNull()
-}
-
-private fun rotateComposerBitmap(bitmap: Bitmap, quarterTurns: Int): Bitmap {
-    val turns = ((quarterTurns % 4) + 4) % 4
-    if (turns == 0) return bitmap
-    val matrix = Matrix().apply { postRotate((turns * 90).toFloat()) }
-    return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-}
-
-private fun drawComposerOverlays(bitmap: Bitmap, edit: ComposerEditState): Bitmap {
-    val mutable = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-    val canvas = AndroidCanvas(mutable)
-    val w = mutable.width.toFloat()
-    val h = mutable.height.toFloat()
-    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AndroidColor.WHITE
-        textSize = max(32f, w * 0.052f)
-        setShadowLayer(8f, 0f, 0f, AndroidColor.BLACK)
-    }
-    val label = listOf(edit.overlayEmoji, edit.overlayText).filter(String::isNotBlank).joinToString(" ")
-    if (label.isNotBlank()) {
-        canvas.drawText(label.take(80), w * 0.08f, h * 0.18f, textPaint)
-    }
-
-    val size = edit.previewSize
-    val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = edit.brushColor.toArgb()
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-        strokeWidth = max(6f, w * 0.008f)
-    }
-    if (size.width > 0 && size.height > 0) {
-        edit.strokes.forEach { stroke ->
-            for (i in 1 until stroke.size) {
-                val p0 = stroke[i - 1]
-                val p1 = stroke[i]
-                canvas.drawLine(
-                    (p0.x / size.width.toFloat()).coerceIn(0f, 1f) * w,
-                    (p0.y / size.height.toFloat()).coerceIn(0f, 1f) * h,
-                    (p1.x / size.width.toFloat()).coerceIn(0f, 1f) * w,
-                    (p1.y / size.height.toFloat()).coerceIn(0f, 1f) * h,
-                    strokePaint
-                )
-            }
-        }
-    }
-    return mutable
-}
-
-private fun flattenComposerBitmapForJpeg(bitmap: Bitmap): Bitmap {
-    if (!bitmap.hasAlpha()) return bitmap
-    val flattened = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-    val canvas = AndroidCanvas(flattened)
-    canvas.drawColor(AndroidColor.WHITE)
-    canvas.drawBitmap(bitmap, 0f, 0f, null)
-    return flattened
 }
 
 private fun formatComposerDuration(durationMs: Long): String {

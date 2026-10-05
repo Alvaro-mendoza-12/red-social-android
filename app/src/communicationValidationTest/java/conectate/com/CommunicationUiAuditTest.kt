@@ -51,7 +51,7 @@ class CommunicationUiAuditTest {
         val notice = mutableStateOf(maintenance)
         var closed = 0
         compose.setContent { MaterialTheme {
-            conectate.com.presentation.common.SystemAnnouncementDialog(notice.value) { closed++ }
+            conectate.com.presentation.common.SystemAnnouncementDialog(notice.value, onDismiss = { closed++ })
         } }
         compose.onNodeWithText("Mantenimiento programado").assertIsDisplayed()
         compose.onNodeWithText("Actualizar").assertDoesNotExist()
@@ -71,7 +71,7 @@ class CommunicationUiAuditTest {
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.4f)) {
                 MaterialTheme { Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.safeDrawingPadding().width(300.dp).verticalScroll(rememberScrollState()).padding(16.dp)) {
-                        conectate.com.presentation.profile.SystemAnnouncementAdminForm(true, false) { published = it }
+                        conectate.com.presentation.profile.SystemAnnouncementAdminForm(true, false, onPublish = { published = it })
                     }
                 } }
             }

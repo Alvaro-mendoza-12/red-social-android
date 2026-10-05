@@ -5,6 +5,8 @@
   "description": "Local fallback API for Conectate when Supabase is restricted or unavailable.",
   "main": "src/server.js",
   "scripts": {
+    "test:raffles": "node --test tests/raffles.test.js",
+    "check:raffles": "node --check src/raffles/service.js && node --check src/raffles/routes.js",
     "precheck": "node --check src/distributed-rate-limit.js && node --check src/admin-capabilities.js && node --check src/message-insert-store.js && node --check src/message-markers-routes.js && node --check src/two-factor.js && node --check scripts/verify-two-factor-e2e.js",
     "test:message-inserts": "node --test tests/message-insert-store.test.js",
     "test:message-media": "node --test tests/message-media-access.test.js tests/sticker-media-policy.test.js",

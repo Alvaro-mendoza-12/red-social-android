@@ -11,6 +11,7 @@ import conectate.com.data.supabase.AuthService
 import conectate.com.data.repository.GroupRepository
 import conectate.com.data.repository.CommunityRepository
 import conectate.com.data.repository.message.InboxSyncPolicy
+import conectate.com.data.repository.message.inboxNeedsInitialLoading
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,7 +23,11 @@ import javax.inject.Inject
 
 sealed class ConversationsUiState {
     object Loading : ConversationsUiState()
-    data class Success(val conversations: List<ChatWithLastMessage>) : ConversationsUiState()
+    data class Success(
+        val conversations: List<ChatWithLastMessage>,
+        val isRefreshing: Boolean = false,
+        val isInitialSyncPending: Boolean = false,
+    ) : ConversationsUiState()
     data class Error(val message: String) : ConversationsUiState()
 }
 
@@ -120,11 +125,11 @@ class MessagingViewModel @Inject constructor(
         val selectedListFilter = input.selectedListFilter
         if (list.isEmpty()) {
             when {
-                !syncState.hasCompletedInitialSync || syncState.isRefreshing ->
+                inboxNeedsInitialLoading(syncState) ->
                     ConversationsUiState.Loading
-                !syncState.lastError.isNullOrBlank() ->
+                !syncState.isRefreshing && !syncState.lastError.isNullOrBlank() ->
                     ConversationsUiState.Error(syncState.lastError)
-                else -> ConversationsUiState.Success(emptyList())
+                else -> ConversationsUiState.Success(emptyList(), syncState.isRefreshing, !syncState.hasCompletedInitialSync)
             }
         } else {
             val distinctList = normalizedVisibleConversations(list, hiddenChatIds)
@@ -151,7 +156,7 @@ class MessagingViewModel @Inject constructor(
                     name.contains(query, ignoreCase = true) || lastMsg.contains(query, ignoreCase = true)
                 }
             }
-            ConversationsUiState.Success(filtered)
+            ConversationsUiState.Success(filtered, syncState.isRefreshing, !syncState.hasCompletedInitialSync)
         }
     }.stateIn(
         scope = viewModelScope,

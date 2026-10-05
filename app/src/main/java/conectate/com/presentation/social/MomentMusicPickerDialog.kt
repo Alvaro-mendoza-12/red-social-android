@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -68,6 +69,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,14 +94,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import coil.compose.AsyncImage
 import conectate.com.data.music.ApprovedMomentMusic
 import conectate.com.data.music.timedMusicLyrics
 import conectate.com.data.model.MomentMusicPresentation
-import conectate.com.util.MediaPlaybackDataSources
-import conectate.com.util.InteractiveAudioBuffer
+import conectate.com.util.InteractiveMusicPreview
 import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.delay
 
@@ -135,6 +134,12 @@ internal fun momentMusicRemoteUrl(track: ApprovedMomentMusic, useFullTrack: Bool
     if (useFullTrack || track.source == "novvin_community") track.audioUrl else track.previewUrl ?: track.audioUrl
 
 @OptIn(UnstableApi::class)
+private fun musicPreviewItem(track: ApprovedMomentMusic, uri: Uri): MediaItem =
+    MediaItem.Builder().setMediaId(track.id).setUri(uri).apply {
+        if (uri.scheme == "http" || uri.scheme == "https") setCustomCacheKey("${track.id}|$uri")
+    }.build()
+
+@OptIn(UnstableApi::class)
 @kotlin.OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MomentMusicPickerDialog(
@@ -159,6 +164,12 @@ fun MomentMusicPickerDialog(
     val effectiveContentDurationMs = if (hasOriginalAudio) contentDurationMs
         else minOf(6_000L, contentDurationMs?.takeIf { it > 0L } ?: 6_000L)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var isForeground by remember { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
+    val catalogListState = rememberLazyListState()
+    val firstVisibleTrackId by remember(state.items) {
+        val ids = state.items.map { it.id }.toSet()
+        derivedStateOf { catalogListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key in ids }?.key?.toString() }
+    }
     var query by remember { mutableStateOf(state.query) }
     val category = "Todo"
     var section by remember {
@@ -209,19 +220,9 @@ fun MomentMusicPickerDialog(
         fadeOutMs = fadeOutMs.coerceIn(0L, fadeLimit)
     }
 
-    val player = remember {
-        ExoPlayer.Builder(context)
-            .setLoadControl(InteractiveAudioBuffer.loadControl())
-            // Community music is streaming-only. Do not use an offline cache or
-            // a DownloadService for this catalog.
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(
-                    MediaPlaybackDataSources.interactiveAudioFactory(context),
-                ),
-            )
-            .setHandleAudioBecomingNoisy(true)
-            .build()
-            .apply {
+    val preview = remember {
+        InteractiveMusicPreview(context).also { preview ->
+            preview.player.apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(C.USAGE_MEDIA)
@@ -231,6 +232,21 @@ fun MomentMusicPickerDialog(
                 )
                 repeatMode = Player.REPEAT_MODE_OFF
             }
+        }
+    }
+    val player = preview.player
+
+    LaunchedEffect(state.items, firstVisibleTrackId, section, isForeground, selected?.id) {
+        if (!isForeground || section != "community") {
+            preview.clearPreload()
+        } else if (selected == null) {
+            val index = state.items.indexOfFirst { it.id == firstVisibleTrackId }.coerceAtLeast(0)
+            val start = (index - 1).coerceAtLeast(0)
+            preview.preload(state.items.drop(start).take(InteractiveMusicPreview.MAX_PRELOADED_TRACKS).map {
+                val rawUrl = momentMusicRemoteUrl(it, useFullTrack = true)
+                musicPreviewItem(it, Uri.parse(UbuntuMedia.resolveUrl(rawUrl) ?: rawUrl))
+            })
+        }
     }
 
     DisposableEffect(player) {
@@ -260,17 +276,21 @@ fun MomentMusicPickerDialog(
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
-            player.release()
+            preview.release()
         }
     }
 
     DisposableEffect(player, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
+                isForeground = false
                 player.pause()
+                player.stop()
+                preview.clearPreload()
                 playingId = null
                 isPlayerBuffering = false
             }
+            if (event == Lifecycle.Event.ON_START) isForeground = true
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
@@ -318,22 +338,10 @@ fun MomentMusicPickerDialog(
         val playbackUri = localUri ?: Uri.parse(UbuntuMedia.resolveUrl(rawRemoteUrl) ?: rawRemoteUrl)
         val loadedUri = player.currentMediaItem?.localConfiguration?.uri
         if (player.currentMediaItem?.mediaId != track.id || loadedUri != playbackUri) {
-            player.setMediaItem(
-                MediaItem.Builder()
-                    .setMediaId(track.id)
-                    .setUri(playbackUri)
-                    .apply {
-                        if (playbackUri.scheme == "http" || playbackUri.scheme == "https") {
-                            // Preview and original audio have different byte
-                            // ranges. Sharing the track id here can make a
-                            // previously cached 30-second preview shadow the
-                            // full community track.
-                            setCustomCacheKey("${track.id}|$playbackUri")
-                        }
-                    }
-                    .build(),
-                previewStartMs,
-            )
+            val item = musicPreviewItem(track, playbackUri)
+            val preparedSource = preview.mediaSource(item)
+            if (preparedSource != null) player.setMediaSource(preparedSource, previewStartMs)
+            else player.setMediaItem(item, previewStartMs)
             player.prepare()
         } else {
             player.seekTo(previewStartMs)
@@ -473,6 +481,7 @@ fun MomentMusicPickerDialog(
             ) { padding ->
                 if (selected == null) {
                     LazyColumn(
+                        state = catalogListState,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(padding)
@@ -656,7 +665,8 @@ fun MomentMusicPickerDialog(
                             Text("Fragmento", style = MaterialTheme.typography.titleSmall)
                             Box {
                                 TextButton(onClick = { showDurations = true }, enabled = durations.size > 1) {
-                                    Text("${(safeRange.endInclusive - safeRange.start).toLong() / 1_000} s")
+                                    Text("${(safeRange.endInclusive - safeRange.start).toLong() / 1_000} s",
+                                        color = if (durations.size == 1) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary)
                                     if (durations.size > 1) Icon(Icons.Default.ExpandMore, null)
                                 }
                                 DropdownMenu(expanded = showDurations, onDismissRequest = { showDurations = false }) {

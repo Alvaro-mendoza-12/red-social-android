@@ -240,6 +240,7 @@ fun CommunityChatScreen(
 
     // Media Launchers
     var showMediaComposer by remember { mutableStateOf(false) }
+    var composerInitialStep by remember { mutableStateOf("gallery") }
     var showAudioPickerDialog by remember { mutableStateOf(false) }
     var pendingAudioPreviewUri by remember { mutableStateOf<Uri?>(null) }
     var pendingDocumentUri by remember { mutableStateOf<Uri?>(null) }
@@ -395,6 +396,10 @@ fun CommunityChatScreen(
                         Icon(Icons.Default.MoreVert, contentDescription = "Opciones de la comunidad")
                     }
                     DropdownMenu(expanded = showHeaderMenu, onDismissRequest = { showHeaderMenu = false }) {
+                        DropdownMenuItem(text = { Text("Sorteos") }, onClick = {
+                            showHeaderMenu = false
+                            navController.navigate(conectate.com.presentation.navigation.RaffleNavigation.createRoute("community", communityId))
+                        })
                         DropdownMenuItem(
                             text = { Text("Mi espacio y cronograma") },
                             enabled = state != null,
@@ -572,6 +577,10 @@ fun CommunityChatScreen(
                                             viewModel.openPollOptionVoters(pollId, option)
                                         }
                                     )
+                                } else if (msg.content_type == "raffle") {
+                                    conectate.com.presentation.raffles.RaffleMessageCard(msg.content, msg.sender_name) {
+                                        navController.navigate(conectate.com.presentation.navigation.RaffleNavigation.createRoute("community", communityId, msg.media_url))
+                                    }
                                 } else {
                                     MessageBubble(
                                         message = msg,
@@ -908,6 +917,8 @@ fun CommunityChatScreen(
                                 colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent),
                                 trailingIcon = {
                                     IconButton(onClick = {
+                                        composerInitialStep = "camera"
+                                        composerInitialUris = emptyList()
                                         showMediaComposer = true
                                     }) {
                                         Icon(Icons.Default.CameraAlt, "Cámara", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1740,14 +1751,16 @@ fun CommunityChatScreen(
         MessageMediaComposer(
             initialFilter = composerInitialFilter,
             initialSelectedUris = composerInitialUris,
-            initialStep = if (composerInitialUris.isNotEmpty()) "editor" else "gallery",
+            initialStep = if (composerInitialUris.isNotEmpty()) "editor" else composerInitialStep,
             isSending = false,
             onDismiss = {
                 showMediaComposer = false
+                composerInitialStep = "gallery"
                 composerInitialUris = emptyList()
             },
             onSend = { mediaList, mediaCaption ->
                 showMediaComposer = false
+                composerInitialStep = "gallery"
                 mediaList.forEachIndexed { index, outgoingMedia ->
                     viewModel.sendMediaMessage(
                         uri = outgoingMedia.uri,

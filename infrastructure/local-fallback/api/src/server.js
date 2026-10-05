@@ -3823,6 +3823,7 @@ let creatorPayoutRunning = false
 let rateLimitCleanupTimer
 let resumableUploadCleanupTimer
 let surveyMaintenanceTimer
+let stopRaffleWorker
 
 withSchemaInitializationLock({
   pool,
@@ -3845,6 +3846,7 @@ withSchemaInitializationLock({
   },
 })
   .then(() => {
+    stopRaffleWorker = require('./raffles/routes').startRaffleWorker()
     const deliverSystemNotices = () => runSystemAnnouncementDeliveries().catch(() => console.warn('System announcement delivery will retry'))
     deliverSystemNotices()
     systemAnnouncementTimer = setInterval(deliverSystemNotices, 5_000)
@@ -3999,6 +4001,7 @@ withSchemaInitializationLock({
   })
 
 async function shutdown(signal) {
+  stopRaffleWorker?.()
   if (systemAnnouncementTimer) clearInterval(systemAnnouncementTimer)
   console.log(`received ${signal}, shutting down`)
   if (scheduledMessageTimer) clearInterval(scheduledMessageTimer)

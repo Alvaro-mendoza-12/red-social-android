@@ -46,7 +46,7 @@ sealed class Screen(val route: String) {
         ): String {
             val initial = initialMessage?.let { android.net.Uri.encode(it) } ?: ""
             val focus = focusMessageId?.let { android.net.Uri.encode(it) } ?: ""
-            return "chat/$userId?initialMessage=$initial&focusMessageId=$focus"
+            return "chat/${android.net.Uri.encode(userId.trim())}?initialMessage=$initial&focusMessageId=$focus"
         }
     }
     

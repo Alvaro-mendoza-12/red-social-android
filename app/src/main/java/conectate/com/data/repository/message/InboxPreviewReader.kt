@@ -25,7 +25,10 @@ internal class InboxPreviewReader(
     private val currentAccount: () -> String?,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun observe(accounts: Flow<String?>): Flow<List<ChatWithLastMessage>> = flow {
+    fun observe(
+        accounts: Flow<String?>,
+        onSnapshotLoaded: (String) -> Unit = {},
+    ): Flow<List<ChatWithLastMessage>> = flow {
         var previousAccount: String? = null
         emitAll(accounts.map { it?.trim()?.lowercase() }.distinctUntilChanged().flatMapLatest { account ->
             val changedAccount = previousAccount != null && previousAccount != account
@@ -34,7 +37,9 @@ internal class InboxPreviewReader(
                 database.invalidationTracker.createFlow("chats", "users", "messages", "message_deletions")
                     .mapLatest {
                         if (currentAccount()?.trim()?.lowercase() != account) emptyList()
-                        else read(account)
+                        else read(account).also {
+                            if (currentAccount()?.trim()?.lowercase() == account) onSnapshotLoaded(account)
+                        }
                     }
                     .onStart { if (changedAccount) emit(emptyList()) }
                     .map { if (currentAccount()?.trim()?.lowercase() == account) it else emptyList() }

@@ -8,6 +8,8 @@ import android.graphics.Bitmap
 import android.util.Log
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -46,6 +48,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /** Uses isolated accounts. The separate opt-in push test preserves the owner's session. */
 @RunWith(AndroidJUnit4::class)
@@ -187,7 +190,7 @@ class NativeMediaServerAuditTest {
         val repository = provider.get() as conectate.com.data.repository.LiveRepository
         assertNull("Do not interrupt an existing LIVE", repository.activeSession.value)
         val fixtures = checkNotNull(suppliedAccounts())
-        val host = Endpoint(fixtures.first(), "/live", false)
+        val host = Endpoint(fixtures.first { it.id != owner }, "/live", false)
         var scopeId: String? = null
         var track: VideoTrack? = null
         val frames = AtomicInteger()
@@ -320,6 +323,10 @@ class NativeMediaServerAuditTest {
         compose.setContent { MaterialTheme { Text("Prueba entre dispositivos: $flow / $role") } }
         val fixtures=checkNotNull(suppliedAccounts())
         val endpoint=Endpoint(fixtures[if(role=="publisher") 0 else 1],when(flow) { "live"->"/live"; "call"->"/call"; else->"" },flow=="call")
+        val audible = args.getString("crossDeviceAudioPlayback") == "true"
+        val audibleHoldSeconds = args.getString("crossDeviceAudibleHoldSeconds")?.toLongOrNull() ?: 0L
+        require(audibleHoldSeconds in 0L..60L)
+        endpoint.manager.setRemoteAudioPlaybackEnabled(audible)
         val peerFile=File(context.cacheDir,"media-qa-peer.json")
         val folder=context.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }
         val readyFile=File(folder,"cross-device-ready.json")
@@ -362,7 +369,9 @@ class NativeMediaServerAuditTest {
             val before=frames.get(); val localBefore=localFrames.get(); val sample=System.nanoTime(); Thread.sleep(15_000)
             val stats=endpoint.stats()
             val audio=stats.statsMap.values.any { it.type=="inbound-rtp" && it.members["kind"]=="audio" && ((it.members["packetsReceived"] as? Number)?.toLong() ?: 0)>0 }
-            assertTrue("No incoming audio on $role",audio)
+            val incomingAudioRequired = !(flow == "live" && role == "publisher" &&
+                args.getString("crossRequireIncomingAudio") == "false")
+            if (incomingAudioRequired) assertTrue("No incoming audio on $role",audio)
             val selectedId=stats.statsMap.values.firstOrNull { it.type=="transport" }?.members?.get("selectedCandidatePairId")?.toString()
             val pair=selectedId?.let(stats.statsMap::get)
             val types=listOf("localCandidateId","remoteCandidateId").mapNotNull { pair?.members?.get(it)?.toString()?.let(stats.statsMap::get)?.members?.get("candidateType") }
@@ -380,6 +389,7 @@ class NativeMediaServerAuditTest {
                 codec?.let { put("codec",it) }
             } })
             val report=JSONObject().put("scopeId",scopeId).put("flow",flow).put("role",role).put("transport",transport)
+                .put("remoteAudioPlaybackEnabled",audible)
                 .put("bidirectionalVideo",bothCameras).put("audioReceived",audio).put("receivedFps",fps).put("firstFrameMs",firstFrameMs)
                 .put("candidateTypes",JSONArray(types)).put("rttSeconds",pair?.members?.get("currentRoundTripTime"))
                 .put("captureFps",captureFps).put("videoStats",videoStats)
@@ -387,6 +397,7 @@ class NativeMediaServerAuditTest {
             val minimumRemoteFps = args.getString("minimumRemoteFps")?.toDoubleOrNull() ?: 8.0
             if(role=="viewer" || bothCameras) assertTrue("Second-device video is too slow: $fps < $minimumRemoteFps",fps>=minimumRemoteFps)
             if(flow=="call") assertTrue("Call must cross the public TURN server",types.contains("relay"))
+            if(audible && audibleHoldSeconds > 0) Thread.sleep(audibleHoldSeconds * 1_000L)
         } finally {
             localTrack?.let { runCatching { it.removeSink(localSink) } }
             remoteTrack?.let { runCatching { it.removeSink(sink) } }
@@ -469,7 +480,64 @@ class NativeMediaServerAuditTest {
         File(context.getExternalFilesDir("communication-qa")!!,"published-video-playback.json").writeText(results.toString(2))
     }
 
-    /** Explicitly authorized handset only: delivers a real FCM call and answers its action. */
+    /** Measures the actual LIVE repository and renderer without replacing the active session. */
+    @Test(timeout=120_000) fun nativeViewerRendersFirstFrameFromJoinRequest() {
+        Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("auditLiveJoin")=="true")
+        val entry=EntryPointAccessors.fromApplication(context,MessageNotificationReceiverEntryPoint::class.java)
+        val provider=entry.javaClass.getDeclaredField("liveRepositoryProvider").apply { isAccessible=true }.get(entry)
+            as javax.inject.Provider<*>
+        val repository=provider.get() as conectate.com.data.repository.LiveRepository
+        val auth=entry.authService()
+        val owner=checkNotNull(auth.getCurrentUserId())
+        assertNull("Do not interrupt a personal LIVE",repository.activeSession.value)
+        val host=Endpoint(checkNotNull(suppliedAccounts()).first { it.id != owner },"/live",false)
+        var scopeId: String?=null
+        val visibleAt=AtomicLong()
+        val shown=androidx.compose.runtime.mutableStateOf(true)
+        compose.setContent {
+            val video=repository.remoteVideoTracks.collectAsState().value.values.firstOrNull()
+            val egl=repository.eglBaseContext.collectAsState().value
+            MaterialTheme {
+                if(shown.value) conectate.com.presentation.components.WebRtcVideoView(video,egl,
+                    modifier=androidx.compose.ui.Modifier.fillMaxSize(),
+                    onFirstFrameRendered={ visibleAt.compareAndSet(0,System.nanoTime()) })
+            }
+        }
+        try {
+            host.socket.on("viewer-joined") { args -> (args.firstOrNull() as? JSONObject)?.let {
+                host.manager.onUserJoined(it.getString("socketId"),it.getString("userId"))
+            } }
+            host.connect()
+            scopeId=request("/v1/data/live",host.account,"POST",JSONObject()
+                .put("title","QA temporal de primera imagen LIVE").put("source","camera"),201)
+                .getJSONObject("stream").getString("id")
+            runBlocking { assertTrue(host.manager.startVideoAwait(isScreen=false,isFront=false,
+                targetWidth=640,targetHeight=480,targetFps=24)) }
+            host.join("join-live","viewer-count",JSONObject().put("liveId",scopeId).put("role","host")
+                .put("source","camera").put("videoEnabled",true).put("micEnabled",true))
+            val start=System.nanoTime()
+            runBlocking { repository.joinLiveAsViewer(scopeId).getOrThrow() }
+            val requestMs=(System.nanoTime()-start)/1_000_000
+            // Compose's test clock must keep advancing while the asynchronous
+            // repository publishes the track into the actual renderer.
+            compose.waitUntil(25_000) { visibleAt.get()>0 }
+            val fullMs=(visibleAt.get()-start)/1_000_000
+            assertEquals(owner,auth.getCurrentUserId())
+            File(context.getExternalFilesDir("communication-qa")!!,"live-full-join.json").writeText(JSONObject()
+                .put("joinRequestMs",requestMs).put("joinToRenderedFirstFrameMs",fullMs)
+                .put("actualRepositoryAndRenderer",true).put("ownerSessionPreserved",true).toString(2))
+            assertTrue("LIVE still takes too long from joining to visible video: $fullMs ms",fullMs<5_000)
+        } finally {
+            compose.runOnIdle { shown.value=false }
+            if(repository.activeSession.value?.stream?.id==scopeId) runBlocking { repository.endLive().getOrThrow() }
+            host.close()
+            scopeId?.let {
+                request("/v1/data/live/$it/state",host.account,"PATCH",JSONObject().put("isActive",false))
+                request("/v1/data/live/$it",host.account,"DELETE")
+            }
+        }
+    }
+
     @Test(timeout=120_000) fun incomingPushCanBeAnsweredOutsideTheApp() {
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("auditIncomingPush")=="true")
         val entry=EntryPointAccessors.fromApplication(context,MessageNotificationReceiverEntryPoint::class.java)
@@ -477,7 +545,7 @@ class NativeMediaServerAuditTest {
         val owner=checkNotNull(auth.getCurrentUserId()) { "An active handset account is required" }
         val repo=EntryPointAccessors.fromApplication(context,IncomingCallReceiverEntryPoint::class.java).callRepository()
         assertNull("Do not interrupt an existing personal call",repo.activeCall.value)
-        val fixture=checkNotNull(suppliedAccounts()).first()
+        val fixture=checkNotNull(suppliedAccounts()).first { it.id != owner }
         val caller=Endpoint(fixture,"/call",false)
         val callId=UUID.randomUUID().toString()
         val notifications=context.getSystemService(NotificationManager::class.java)

@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -21,8 +22,10 @@ fun WebRtcVideoView(
     sharedEglContext: EglBase.Context?,
     modifier: Modifier = Modifier,
     mirror: Boolean = false,
-    scalingType: RendererCommon.ScalingType = RendererCommon.ScalingType.SCALE_ASPECT_FILL
+    scalingType: RendererCommon.ScalingType = RendererCommon.ScalingType.SCALE_ASPECT_FILL,
+    onFirstFrameRendered: (() -> Unit)? = null,
 ) {
+    val firstFrameCallback by rememberUpdatedState(onFirstFrameRendered)
     if (sharedEglContext == null) {
         Box(modifier = modifier)
         return
@@ -37,7 +40,10 @@ fun WebRtcVideoView(
             factory = { ctx ->
                 SurfaceViewRenderer(ctx).also { view ->
                     runCatching {
-                        view.init(sharedEglContext, null)
+                        view.init(sharedEglContext, object : RendererCommon.RendererEvents {
+                            override fun onFirstFrameRendered() { firstFrameCallback?.invoke() }
+                            override fun onFrameResolutionChanged(width: Int, height: Int, rotation: Int) = Unit
+                        })
                         view.setEnableHardwareScaler(true)
                         view.setMirror(mirror)
                         view.setScalingType(scalingType)

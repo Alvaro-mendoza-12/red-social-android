@@ -31,35 +31,59 @@
   }
   function button(label, action, data = '', cls = '') { return `<button type="button" class="${cls}" data-action="${action}" data-id="${e(data)}">${e(label)}</button>` }
   function setBusy(value) { busy = value; app.setAttribute('aria-busy', String(value)) }
-  function input(label, path, value, kind = 'text', extra = '') { return `<label>${e(label)}<input data-field="${e(path)}" type="${kind}" value="${e(value)}" ${extra}></label>` }
-  function area(label, path, value, extra = '') { return `<label>${e(label)}<textarea data-field="${e(path)}" ${extra}>${e(value)}</textarea></label>` }
+  function input(label, path, value, kind = 'text', extra = '') { return `<label>${e(label)}<input aria-label="${e(label)}" data-field="${e(path)}" type="${kind}" value="${e(value)}" ${extra}></label>` }
+  function area(label, path, value, extra = '') { return `<label>${e(label)}<textarea aria-label="${e(label)}" data-field="${e(path)}" ${extra}>${e(value)}</textarea></label>` }
   function select(label, path, value, options) { return `<label>${e(label)}<select data-field="${e(path)}">${Object.entries(options).map(([k, v]) => `<option value="${e(k)}" ${k === String(value) ? 'selected' : ''}>${e(v)}</option>`).join('')}</select></label>` }
   function checkbox(label, path, value) { return `<label class="choice"><input data-field="${e(path)}" type="checkbox" ${value ? 'checked' : ''}>${e(label)}</label>` }
-  async function modal(title, body) {
+  function sizeModal() {
+    const d = document.getElementById('modal'); if (!d.open) return
+    const px = value => Number.parseFloat(value) || 0, style = getComputedStyle(d)
+    // Some Android WebViews under-measure automatic dialog height with enlarged text.
+    // Use the actual laid-out children and keep long dialogs scrollable above the keyboard.
+    const content = [...d.children].reduce((height, child) => {
+      const cs = getComputedStyle(child)
+      return height + child.offsetHeight + px(cs.marginTop) + px(cs.marginBottom)
+    }, 0) + px(style.paddingTop) + px(style.paddingBottom) + px(style.borderTopWidth) + px(style.borderBottomWidth)
+    const viewport = window.visualViewport, available = Math.max(0, (viewport?.height || innerHeight) - 32)
+    // WebView can retain viewport CSS units from its initial zero-sized native view.
+    d.style.maxHeight = `${Math.floor(available)}px`
+    d.style.minHeight = `${Math.min(180, Math.floor(available))}px`
+    d.style.height = `${Math.ceil(Math.min(content, available))}px`
+    d.style.top = `${(viewport?.offsetTop || 0) + (viewport?.height || innerHeight) / 2}px`
+  }
+  const modalObserver = new ResizeObserver(sizeModal)
+  document.querySelectorAll('#modal > *').forEach(child => modalObserver.observe(child))
+  window.visualViewport?.addEventListener('resize', sizeModal)
+  window.addEventListener('resize', sizeModal)
+  async function modal(title, body, accept = 'Confirmar', cancel = 'Cancelar') {
     const d = document.getElementById('modal'); if (d.open) return false
     document.getElementById('modal-title').textContent = title; document.getElementById('modal-body').innerHTML = body
-    d.returnValue = 'cancel'; d.showModal(); return new Promise(resolve => d.addEventListener('close', () => resolve(d.returnValue === 'ok'), { once: true }))
+    d.querySelector('[data-dialog="ok"]').textContent = accept
+    d.querySelector('[data-dialog="cancel"]').textContent = cancel
+    d.returnValue = 'cancel'; d.showModal(); sizeModal(); d.scrollTop = 0
+    requestAnimationFrame(() => { sizeModal(); d.scrollTop = 0 })
+    return new Promise(resolve => d.addEventListener('close', () => resolve(d.returnValue === 'ok'), { once: true }))
   }
   document.querySelectorAll('[data-dialog]').forEach(button => button.addEventListener('click', () => document.getElementById('modal').close(button.dataset.dialog)))
-  async function guard() { return !dirty || await modal('Hay cambios sin guardar', '<p>Si sales, conservarás un borrador en este dispositivo. ¿Deseas salir del editor?</p>') }
+  async function guard() { return !dirty || await modal('¿Salir del editor?', '<p>Tu borrador se conserva en este dispositivo. Puedes recuperarlo desde Mis encuestas.</p>', 'Salir y conservar', 'Seguir editando') }
   let undoStack = [], redoStack = [], rememberedSchema
   function markDirty() {
     if (rememberedSchema && JSON.stringify(form.schema) !== JSON.stringify(rememberedSchema)) { undoStack.push(rememberedSchema); if (undoStack.length > 50) undoStack.shift(); redoStack = [] }
     rememberedSchema = structuredClone(form.schema)
     dirty = true
     if (account) localStorage.setItem(`novvin-survey-form:${account.id}`, JSON.stringify(form))
-    const status = document.getElementById('save-status'); if (status) status.textContent = 'Cambios sin guardar · borrador local'
+    const status = document.getElementById('save-status'); if (status) status.textContent = 'Borrador en este dispositivo'
     const undo = app.querySelector('[data-action="undo"]'), redo = app.querySelector('[data-action="redo"]')
     if (undo) undo.disabled = !undoStack.length
     if (redo) redo.disabled = !redoStack.length
   }
   function newForm() {
     rememberedSchema = null; undoStack = []; redoStack = []
-    form = { schema: { title: 'Nueva encuesta', description: '', purpose: '', contact: '', retention: '', retentionDays: 180, consent: 'He leído el propósito y acepto participar voluntariamente. Entiendo que mi cuenta y mis respuestas serán visibles para quien creó la encuesta.', theme: 'violet', sections: [{ id: 'section1', title: 'Sección 1', description: '' }], questions: [] } }
+    form = { schema: { title: '', description: '', purpose: '', contact: account?.display_name ? `${account.display_name} (mensajes en Novvin)` : '', retention: 'Las respuestas se usarán para el propósito indicado en esta encuesta. El creador puede consultarlas y descargarlas. Las respuestas y sus adjuntos se eliminan de la encuesta al cumplir el plazo indicado; las descargas y los respaldos se conservan por separado.', retentionDays: 180, consent: 'He leído el propósito y acepto participar voluntariamente. Entiendo que mi cuenta y mis respuestas serán visibles para quien creó la encuesta.', theme: 'violet', sections: [{ id: 'section1', title: 'Sección 1', description: '' }], questions: [] } }
     addQuestion(); dirty = true; renderEditor()
   }
   function addQuestion() {
-    form.schema.questions.push({ id: id(), title: `Pregunta ${form.schema.questions.length + 1}`, description: '', section: form.schema.sections.at(-1).id, type: 'single', required: false, measure: 'nominal', role: 'descriptive', options: [{ id: id(), label: 'Opción 1' }, { id: id(), label: 'Opción 2' }], rows: [{ id: id(), label: 'Fila 1' }], min: null, max: null, maxLength: 500 })
+    form.schema.questions.push({ id: id(), title: '', description: '', section: form.schema.sections.at(-1).id, type: 'single', required: false, measure: 'nominal', role: 'descriptive', options: [{ id: id(), label: '' }, { id: id(), label: '' }], rows: [{ id: id(), label: 'Fila 1' }], min: null, max: null, maxLength: 500 })
     markDirty()
   }
   async function reportSurvey() {
@@ -92,9 +116,9 @@
   function renderHome() {
     const matches = row => filter === 'trash' ? !!row.trashed_at || row.status === 'trashed' : filter === 'archive' ? row.archived || row.status === 'archived' : !row.trashed_at && !row.archived && !['trashed', 'archived'].includes(row.status)
     const draft = account && localStorage.getItem(`novvin-survey-form:${account.id}`)
-    app.innerHTML = `<h1>Mis encuestas</h1><p class="muted">Crea planillas reutilizables, publícalas en Social y consulta las respuestas en privado.</p><div class="actions">${button('Crear encuesta', 'new', '', 'primary')}${draft ? button('Recuperar borrador', 'draft') : ''}${button('Actualizar', 'home')}</div><nav class="tabs" aria-label="Estado de encuestas">${[['active', 'Activas'], ['archive', 'Archivadas'], ['trash', 'Papelera']].map(([v, label]) => button(label, 'filter', v, filter === v ? 'active' : '')).join('')}</nav><h2>Planillas</h2><div class="grid">${allForms.filter(matches).map(f => `<article class="card"><h3>${e(f.schema.title)}</h3><small>Revisión ${f.revision} · ${date(f.updated_at)}</small><div class="actions">${button(f.trashed_at || f.archived ? 'Ver' : 'Editar', 'edit', f.id)}${button('Duplicar', 'duplicate', f.id)}${button('Historial', 'revisions', f.id)}${!f.trashed_at && !f.archived ? button('Archivar', 'form-archive', f.id) + button('Papelera', 'form-trash', f.id) : button('Restaurar', 'form-restore', f.id)}${f.trashed_at ? button('Eliminar definitivamente', 'form-purge', f.id, 'danger') : ''}</div></article>`).join('') || '<p class="empty">No hay planillas aquí.</p>'}</div><h2>Encuestas publicadas</h2><div class="grid">${allCampaigns.filter(matches).map(c => `<article class="card"><span class="chip">${c.status === 'open' && c.closes_at && Date.parse(c.closes_at) <= Date.now() ? 'Cerrada' : { open: 'Abierta', closed: 'Cerrada', archived: 'Archivada', trashed: 'Papelera' }[c.status]}</span><h3>${e(c.schema.title)}</h3><p>${c.response_count} respuestas · ${e({ public: 'Pública', followers: 'Seguidores', private: 'Solo tú' }[c.visibility])}</p><small>${date(c.closes_at)}${!c.post_exists ? ' · Sin publicación en Social' : ''}</small><div class="actions">${button('Administrar y resultados', 'manage', c.id)}${button('Ver encuesta', 'respond', c.id)}</div></article>`).join('') || '<p class="empty">Publica una planilla para empezar a recibir respuestas.</p>'}</div>`
+    app.innerHTML = `<h1>Mis encuestas</h1><p class="muted">Crea una encuesta y consulta las respuestas en privado.</p><div class="actions">${button('Crear encuesta', 'new', '', 'primary')}${draft ? button('Recuperar borrador', 'draft') : ''}${button('Actualizar', 'home')}</div><nav class="tabs" aria-label="Estado de encuestas">${[['active', 'Activas'], ['archive', 'Archivadas'], ['trash', 'Papelera']].map(([v, label]) => button(label, 'filter', v, filter === v ? 'active' : '')).join('')}</nav><h2>Encuestas guardadas</h2><div class="grid">${allForms.filter(matches).map(f => `<article class="card"><h3>${e(f.schema.title)}</h3><small>Revisión ${f.revision} · ${date(f.updated_at)}</small><div class="actions">${button(f.trashed_at || f.archived ? 'Ver' : 'Editar', 'edit', f.id)}${button('Duplicar', 'duplicate', f.id)}${button('Historial', 'revisions', f.id)}${!f.trashed_at && !f.archived ? button('Archivar', 'form-archive', f.id) + button('Papelera', 'form-trash', f.id) : button('Restaurar', 'form-restore', f.id)}${f.trashed_at ? button('Eliminar definitivamente', 'form-purge', f.id, 'danger') : ''}</div></article>`).join('') || '<p class="empty">Todavía no hay encuestas guardadas.</p>'}</div><h2>Encuestas publicadas</h2><div class="grid">${allCampaigns.filter(matches).map(c => `<article class="card"><span class="chip">${c.status === 'open' && c.closes_at && Date.parse(c.closes_at) <= Date.now() ? 'Cerrada' : { open: 'Abierta', closed: 'Cerrada', archived: 'Archivada', trashed: 'Papelera' }[c.status]}</span><h3>${e(c.schema.title)}</h3><p>${c.response_count} respuestas · ${e({ public: 'Pública', followers: 'Seguidores', private: 'Solo tú' }[c.visibility])}</p><small>${date(c.closes_at)}${!c.post_exists ? ' · Sin publicación en Social' : ''}</small><div class="actions">${button('Administrar y resultados', 'manage', c.id)}${button('Ver encuesta', 'respond', c.id)}</div></article>`).join('') || '<p class="empty">Publica una encuesta para recibir respuestas.</p>'}</div>`
     if (account.can_review_reports) app.querySelector('.actions').insertAdjacentHTML('beforeend', button('Revisar reportes', 'review-reports'))
-    app.querySelector('.tabs').insertAdjacentHTML('afterend', `<label>Buscar planillas y encuestas<input id="library-search" value="${e(librarySearch)}" placeholder="Título de la encuesta"></label>`)
+    app.querySelector('.tabs').insertAdjacentHTML('afterend', `<label>Buscar encuestas<input id="library-search" value="${e(librarySearch)}" placeholder="Título de la encuesta"></label>`)
     filterLibrary()
     app.querySelectorAll('.grid article.card').forEach(card => {
       const control = card.querySelector('[data-action="manage"]'), c = allCampaigns.find(item => item.id === control?.dataset.id)
@@ -103,43 +127,118 @@
     app.setAttribute('aria-busy', String(busy))
   }
   function filterLibrary() { document.querySelectorAll('#app .grid article.card').forEach(card => { card.hidden = !card.querySelector('h3').textContent.toLocaleLowerCase('es').includes(librarySearch.toLocaleLowerCase('es')) }) }
-  function renderEditor() {
-    view = 'editor'; const s = form.schema, locked = form.archived || form.trashed_at
-    app.innerHTML = `<h1>${form.id ? 'Editar planilla' : 'Crear encuesta'}</h1><p class="muted">Guardar crea una revisión de la planilla. Las encuestas ya publicadas mantienen sus preguntas originales.</p><fieldset ${locked ? 'disabled' : ''}><div class="card">${input('Título', 'title', s.title, 'text', 'maxlength="180" required')}${area('Descripción', 'description', s.description, 'maxlength="4000"')}${area('Propósito de la investigación *', 'purpose', s.purpose, 'maxlength="3000" required')}${input('Contacto del responsable *', 'contact', s.contact, 'text', 'maxlength="300" required')}${area('Uso y conservación de datos *', 'retention', s.retention, 'maxlength="800" required')}${input('Conservación de cada respuesta (días) *', 'retentionDays', s.retentionDays ?? '', 'number', 'min="1" max="3650" step="1" required')}<p class="muted">Las respuestas y sus adjuntos se eliminan al cumplir este plazo desde el envío. El plazo queda fijado al publicar. Las descargas del responsable y las copias de seguridad tienen su propia conservación.</p>${area('Texto de consentimiento *', 'consent', s.consent, 'maxlength="3000" required')}${select('Color', 'theme', s.theme, { violet: 'Violeta', blue: 'Azul', green: 'Verde' })}<p class="identity">Las respuestas no son anónimas: el creador ve la cuenta y el nombre. Los demás participantes solo ven la encuesta y la cantidad de respuestas.</p></div><h2>Secciones</h2>${s.sections.map((section, i) => `<details class="card"><summary>${e(section.title)}</summary>${input('Nombre', `sections.${i}.title`, section.title)}${area('Descripción', `sections.${i}.description`, section.description)}${s.sections.length > 1 ? button('Eliminar sección y mover sus preguntas a la primera', 'remove-section', section.id, 'danger') : ''}</details>`).join('')}<div class="actions">${button('Agregar sección', 'add-section')}</div><h2>Preguntas</h2>${s.questions.map((q, i) => `<details class="card question" open><summary>${i + 1}. ${e(q.title)}</summary>${input('Pregunta *', `questions.${i}.title`, q.title, 'text', 'maxlength="500"')}${area('Ayuda / descripción', `questions.${i}.description`, q.description)}<div class="grid">${select('Tipo', `questions.${i}.type`, q.type, typeLabels)}${select('Sección', `questions.${i}.section`, q.section, Object.fromEntries(s.sections.map(a => [a.id, a.title])))}${select('Medición', `questions.${i}.measure`, q.measure, measures)}${select('Rol de la variable', `questions.${i}.role`, q.role, roles)}</div>${checkbox('Respuesta obligatoria', `questions.${i}.required`, q.required)}<div class="file">${q.image ? `<img class="question-image" data-asset="${e(q.image)}" alt="Imagen de la pregunta">${button('Quitar imagen', 'remove-image', q.id)}` : ''}<label>Imagen de pregunta<input type="file" accept="image/*" data-upload-question="${e(q.id)}"></label></div>${['single', 'multiple', 'dropdown', 'matrix'].includes(q.type) ? `<h3>Opciones</h3>${q.options.map((o, j) => `<div class="card">${input(`Opción ${j + 1}`, `questions.${i}.options.${j}.label`, o.label)}${['single', 'dropdown'].includes(q.type) ? select('Después de esta sección', `questions.${i}.options.${j}.next`, o.next || '', { '': 'Continuar', ...Object.fromEntries(s.sections.slice(s.sections.findIndex(a => a.id === q.section) + 1).map(a => [a.id, a.title])), end: 'Enviar / terminar' }) : ''}<div class="file">${o.image ? `<img width="90" data-asset="${e(o.image)}" alt="Imagen de opción">${button('Quitar imagen de opción', 'remove-option-image', `${q.id}:${o.id}`)}` : ''}<label>Foto de opción<input type="file" accept="image/*" data-upload-option="${e(q.id)}:${e(o.id)}"></label>${button('Eliminar opción', 'remove-option', `${q.id}:${o.id}`, 'danger')}</div></div>`).join('')}${button('Agregar opción', 'add-option', q.id)}${checkbox('Mezclar opciones al responder', `questions.${i}.randomize`, q.randomize)}<small>Para usar saltos, esta debe ser la última pregunta de su sección.</small>` : ''}${q.type === 'matrix' ? `<h3>Filas</h3>${q.rows.map((r, j) => `<div class="inline">${input(`Fila ${j + 1}`, `questions.${i}.rows.${j}.label`, r.label)}${button('Eliminar fila', 'remove-row', `${q.id}:${r.id}`, 'danger')}</div>`).join('')}${button('Agregar fila', 'add-row', q.id)}` : ''}${['number', 'scale', 'multiple'].includes(q.type) ? `<div class="grid">${input(q.type === 'multiple' ? 'Mínimo de selecciones' : 'Mínimo', `questions.${i}.min`, q.min, 'number')}${input(q.type === 'multiple' ? 'Máximo de selecciones' : 'Máximo', `questions.${i}.max`, q.max, 'number')}</div>` : ''}${['text', 'paragraph'].includes(q.type) ? input('Máximo de caracteres', `questions.${i}.maxLength`, q.maxLength, 'number', 'min="1" max="10000"') : ''}${q.type === 'date' ? `<div class="grid">${input('Fecha mínima', `questions.${i}.minDate`, q.minDate, 'date')}${input('Fecha máxima', `questions.${i}.maxDate`, q.maxDate, 'date')}</div>` : ''}${q.type === 'file' ? '<p class="muted">Hasta 3 imágenes o PDF por pregunta, máximo 4 MB cada archivo. El servidor valida las imágenes y exige antivirus para PDF.</p>' : ''}<div class="actions">${button('↑ Subir', 'question-up', q.id)}${button('↓ Bajar', 'question-down', q.id)}${button('Duplicar pregunta', 'duplicate-question', q.id)}${button('Eliminar pregunta', 'remove-question', q.id, 'danger')}</div></details>`).join('')}<div class="actions">${button('Agregar pregunta', 'add-question')}</div></fieldset><div class="toolbar"><small id="save-status">${dirty ? 'Cambios sin guardar · borrador local' : `Guardado · revisión ${form.revision || 0}`}</small><div class="actions">${!locked ? button('Guardar planilla', 'save', '', 'primary') : ''}${button('Vista previa', 'preview')}${!locked ? button('Publicar', 'publish') : ''}${button('Mis encuestas', 'home')}</div></div>`
-    app.querySelector('.card')?.insertAdjacentHTML('beforeend', `<h3>Presentación</h3>${input('Minutos estimados', 'estimatedMinutes', s.estimatedMinutes || 5, 'number', 'min="1" max="120"')}${area('Mensaje al terminar', 'confirmation', s.confirmation || '')}${checkbox('Contiene temas sensibles', 'sensitive', s.sensitive)}${s.cover ? `<img class="question-image" data-asset="${e(s.cover)}" alt="${e(s.coverAlt || 'Portada de la encuesta')}">${button('Quitar portada', 'remove-cover')}` : ''}<label>Imagen de portada<input type="file" accept="image/*" data-upload-cover="1"></label>${input('Texto alternativo de portada', 'coverAlt', s.coverAlt || '')}`)
-    app.querySelectorAll('details.card').forEach((details, i) => {
-      if (i >= s.sections.length) return
-      const section = s.sections[i]
-      details.insertAdjacentHTML('beforeend', `${section.image ? `<img class="question-image" data-asset="${e(section.image)}" alt="${e(section.imageAlt || 'Imagen de sección')}">${button('Quitar imagen', 'remove-section-image', section.id)}` : ''}<label>Imagen de sección<input type="file" accept="image/*" data-upload-section="${e(section.id)}"></label>${input('Texto alternativo de imagen', `sections.${i}.imageAlt`, section.imageAlt || '')}`)
-    })
-    app.querySelectorAll('details.card.question').forEach((details, i) => {
-      const q = s.questions[i]
-      if (q.type === 'scale' || (q.type === 'number' && q.measure === 'ordinal')) details.insertAdjacentHTML('beforeend', checkbox('Tratar los puntos como intervalares para calcular media y Pearson (supuesto del investigador)', `questions.${i}.treatAsInterval`, q.treatAsInterval))
-      details.insertAdjacentHTML('beforeend', `${input('Texto alternativo de imagen de pregunta', `questions.${i}.imageAlt`, q.imageAlt || '')}${q.type === 'number' ? input('Unidad de medida', `questions.${i}.unit`, q.unit || '') : ''}${['text', 'paragraph'].includes(q.type) ? input('Mínimo de caracteres', `questions.${i}.minLength`, q.minLength || 0, 'number', 'min="0" max="10000"') : ''}`)
-    })
-    if (!locked) app.querySelector('.toolbar .actions')?.insertAdjacentHTML('afterbegin', button('Importar preguntas', 'import-questions'))
-    if (!locked) {
-      app.querySelector('.toolbar .actions')?.insertAdjacentHTML('afterbegin', button('Deshacer', 'undo') + button('Rehacer', 'redo'))
-      app.querySelector('[data-action="undo"]').disabled = !undoStack.length
-      app.querySelector('[data-action="redo"]').disabled = !redoStack.length
-      for (const action of ['preview', 'publish', 'save']) {
-        const control = app.querySelector(`.toolbar [data-action="${action}"]`)
-        control?.parentElement.prepend(control)
-      }
-    }
-    applyTheme(s.theme); hydrateImages()
+  function questionEditor(q, i, s) {
+    const path = `questions.${i}`, choices = ['single', 'multiple', 'dropdown', 'matrix'].includes(q.type)
+    const optionHtml = choices ? `<div class="option-list">${q.options.map((o, j) => `<div class="option-row">${input(`Opción ${j + 1}`, `${path}.options.${j}.label`, o.label, 'text', 'maxlength="300" placeholder="Escribe una opción"')}${button('Quitar', 'remove-option', `${q.id}:${o.id}`, 'danger remove-option')}</div>`).join('')}</div>${button('Agregar opción', 'add-option', q.id)}` : ''
+    const limits = ['number', 'scale', 'multiple'].includes(q.type) ? `<div class="grid">${input(q.type === 'multiple' ? 'Mínimo de selecciones' : 'Mínimo', `${path}.min`, q.min, 'number')}${input(q.type === 'multiple' ? 'Máximo de selecciones' : 'Máximo', `${path}.max`, q.max, 'number')}</div>` : ['text', 'paragraph'].includes(q.type) ? input('Máximo de caracteres', `${path}.maxLength`, q.maxLength, 'number', 'min="1" max="10000"') : q.type === 'date' ? `<div class="grid">${input('Fecha mínima', `${path}.minDate`, q.minDate, 'date')}${input('Fecha máxima', `${path}.maxDate`, q.maxDate, 'date')}</div>` : ''
+    return `<section class="card question" data-question="${e(q.id)}"><h3>Pregunta ${i + 1}</h3>${input('Pregunta', `${path}.title`, q.title, 'text', 'maxlength="500" placeholder="¿Qué quieres preguntar?"')}${select('Tipo de respuesta', `${path}.type`, q.type, typeLabels)}${optionHtml}${q.type === 'matrix' ? `<h3>Filas</h3>${q.rows.map((r, j) => `<div class="inline">${input(`Fila ${j + 1}`, `${path}.rows.${j}.label`, r.label, 'text', 'maxlength="300"')}${button('Quitar fila', 'remove-row', `${q.id}:${r.id}`, 'danger')}</div>`).join('')}${button('Agregar fila', 'add-row', q.id)}` : ''}${limits}${checkbox('Respuesta obligatoria', `${path}.required`, q.required)}<details class="advanced" data-panel="question-${e(q.id)}"><summary>Más ajustes de esta pregunta</summary>${area('Descripción (opcional)', `${path}.description`, q.description, 'maxlength="2000"')}${s.sections.length > 1 ? select('Sección', `${path}.section`, q.section, Object.fromEntries(s.sections.map(a => [a.id, a.title]))) : ''}<div class="file">${q.image ? `<img class="question-image" data-asset="${e(q.image)}" alt="${e(q.imageAlt || 'Imagen de pregunta')}">${button('Quitar imagen', 'remove-image', q.id)}` : ''}<label>Imagen de pregunta<input type="file" accept="image/*" data-upload-question="${e(q.id)}"></label></div>${q.image ? input('Descripción accesible de la imagen', `${path}.imageAlt`, q.imageAlt || '', 'text', 'maxlength="300"') : ''}${choices ? `${checkbox('Mezclar opciones al responder', `${path}.randomize`, q.randomize)}${q.options.map((o, j) => `<details class="option-settings" data-panel="option-${e(o.id)}"><summary>Imagen y salto de la opción ${j + 1}</summary>${['single', 'dropdown'].includes(q.type) ? select('Después de esta sección', `${path}.options.${j}.next`, o.next || '', { '': 'Continuar', ...Object.fromEntries(s.sections.slice(s.sections.findIndex(a => a.id === q.section) + 1).map(a => [a.id, a.title])), end: 'Enviar / terminar' }) : ''}${o.image ? `<img class="question-image" data-asset="${e(o.image)}" alt="${e(o.imageAlt || 'Imagen de opción')}">${button('Quitar imagen', 'remove-option-image', `${q.id}:${o.id}`)}` : ''}<label>Imagen de opción<input type="file" accept="image/*" data-upload-option="${e(q.id)}:${e(o.id)}"></label>${o.image ? input('Descripción accesible de la imagen', `${path}.options.${j}.imageAlt`, o.imageAlt || '', 'text', 'maxlength="300"') : ''}</details>`).join('')}<p class="muted">Los saltos se aplican a la última pregunta de cada sección.</p>` : ''}${q.type === 'file' ? '<p class="muted">Hasta 3 imágenes o PDF de 4 MB por archivo.</p>' : ''}${['text', 'paragraph'].includes(q.type) ? input('Mínimo de caracteres', `${path}.minLength`, q.minLength || 0, 'number', 'min="0" max="10000"') : ''}<details data-panel="analysis-${e(q.id)}"><summary>Análisis de variables</summary><div class="grid">${select('Medición', `${path}.measure`, q.measure, measures)}${select('Rol de la variable', `${path}.role`, q.role, roles)}</div>${q.type === 'number' ? input('Unidad de medida', `${path}.unit`, q.unit || '', 'text', 'maxlength="60"') : ''}${q.type === 'scale' || (q.type === 'number' && q.measure === 'ordinal') ? checkbox('Usar intervalos para media y Pearson (supuesto del investigador)', `${path}.treatAsInterval`, q.treatAsInterval) : ''}</details><div class="actions">${i > 0 ? button('↑ Subir', 'question-up', q.id) : ''}${i < s.questions.length - 1 ? button('↓ Bajar', 'question-down', q.id) : ''}${button('Duplicar', 'duplicate-question', q.id)}${button('Eliminar pregunta', 'remove-question', q.id, 'danger')}</div></details></section>`
   }
+  function renderEditor(focusField) {
+    const wasEditor = view === 'editor', scroll = wasEditor ? window.scrollY : 0
+    const openPanels = wasEditor ? new Set([...app.querySelectorAll('details[data-panel][open]')].map(d => d.dataset.panel)) : new Set()
+    view = 'editor'; const s = form.schema, locked = form.archived || form.trashed_at
+    app.innerHTML = `<h1>${form.id ? 'Editar encuesta' : 'Crear encuesta'}</h1><p class="muted">Escribe un título, agrega tus preguntas y publica.</p><div id="editor-errors" role="alert" hidden></div><fieldset ${locked ? 'disabled' : ''}><div class="card editor-intro">${input('Título de la encuesta', 'title', s.title, 'text', 'maxlength="180" placeholder="Ej. ¿Qué día nos reunimos?"')}${area('Descripción (opcional)', 'description', s.description, 'maxlength="4000" placeholder="Agrega una breve explicación"')}</div><h2>Preguntas</h2>${s.questions.map((q, i) => questionEditor(q, i, s)).join('')}<div class="actions">${button('Agregar pregunta', 'add-question')}</div><details class="card publishing-info" data-panel="publishing"><summary>Datos para publicar</summary><p class="muted">Quien responda verá esta información.</p>${area('¿Para qué usarás las respuestas?', 'purpose', s.purpose, 'maxlength="3000" placeholder="Ej. Elegir el horario de la próxima reunión"')}${input('Contacto del responsable', 'contact', s.contact, 'text', 'maxlength="300" placeholder="Tu nombre en Novvin o un correo de contacto"')}${input('Eliminar respuestas después de (días)', 'retentionDays', s.retentionDays ?? '', 'number', 'min="1" max="3650" step="1"')}<p class="identity">La encuesta no es anónima. Tú podrás ver quién respondió y sus respuestas.</p><details data-panel="privacy"><summary>Uso de datos y consentimiento</summary>${area('Uso y conservación de datos', 'retention', s.retention, 'maxlength="800"')}${area('Texto de consentimiento', 'consent', s.consent, 'maxlength="3000"')}<p class="muted">Las respuestas y sus adjuntos se eliminan al cumplir el plazo desde el envío. El registro mínimo de participación, las descargas y los respaldos tienen una conservación separada.</p></details></details><details class="card" data-panel="presentation"><summary>Presentación (opcional)</summary>${select('Color', 'theme', s.theme, { violet: 'Violeta', blue: 'Azul', green: 'Verde' })}${input('Minutos estimados', 'estimatedMinutes', s.estimatedMinutes || 5, 'number', 'min="1" max="120"')}${area('Mensaje al terminar', 'confirmation', s.confirmation || '', 'maxlength="1500"')}${checkbox('Contiene temas sensibles', 'sensitive', s.sensitive)}${s.cover ? `<img class="question-image" data-asset="${e(s.cover)}" alt="${e(s.coverAlt || 'Portada')}">${button('Quitar portada', 'remove-cover')}` : ''}<label>Imagen de portada<input type="file" accept="image/*" data-upload-cover="1"></label>${s.cover ? input('Descripción accesible de portada', 'coverAlt', s.coverAlt || '', 'text', 'maxlength="300"') : ''}</details><details class="card" data-panel="sections"><summary>Secciones y herramientas (opcional)</summary>${s.sections.map((section, i) => `<details class="advanced" data-panel="section-${e(section.id)}"><summary>${e(section.title || `Sección ${i + 1}`)}</summary>${input('Nombre de sección', `sections.${i}.title`, section.title, 'text', 'maxlength="180"')}${area('Descripción de sección', `sections.${i}.description`, section.description, 'maxlength="2000"')}${section.image ? `<img class="question-image" data-asset="${e(section.image)}" alt="${e(section.imageAlt || 'Imagen de sección')}">${button('Quitar imagen', 'remove-section-image', section.id)}` : ''}<label>Imagen de sección<input type="file" accept="image/*" data-upload-section="${e(section.id)}"></label>${section.image ? input('Descripción accesible de la imagen', `sections.${i}.imageAlt`, section.imageAlt || '', 'text', 'maxlength="300"') : ''}${s.sections.length > 1 ? button('Eliminar sección y mover sus preguntas', 'remove-section', section.id, 'danger') : ''}</details>`).join('')}<div class="actions">${button('Agregar sección', 'add-section')}${button('Importar preguntas', 'import-questions')}</div></details></fieldset><div class="editor-history actions">${!locked ? button('Deshacer', 'undo') + button('Rehacer', 'redo') : ''}</div><div class="toolbar"><small id="save-status">${dirty ? 'Borrador en este dispositivo' : `Guardado · revisión ${form.revision || 0}`}</small><div class="editor-actions">${!locked ? button('Publicar encuesta', 'publish', '', 'primary') : ''}${!locked ? button('Guardar borrador', 'save') : ''}${button('Vista previa', 'preview')}</div></div>`
+    app.querySelectorAll('details[data-panel]').forEach(d => { d.open = openPanels.has(d.dataset.panel) })
+    const undo = app.querySelector('[data-action="undo"]'), redo = app.querySelector('[data-action="redo"]')
+    if (undo) undo.disabled = !undoStack.length
+    if (redo) redo.disabled = !redoStack.length
+    app.querySelectorAll('[data-action="remove-option"]').forEach(b => {
+      const q = s.questions.find(q => q.id === b.dataset.id.split(':')[0]); b.disabled = q.options.length <= 2
+      b.setAttribute('aria-label', `Quitar opción ${q.options.findIndex(o => o.id === b.dataset.id.split(':')[1]) + 1}`)
+    })
+    applyTheme(s.theme); hydrateImages(); app.setAttribute('aria-busy', String(busy))
+    requestAnimationFrame(() => {
+      window.scrollTo(0, scroll)
+      if (focusField) revealField(focusField)
+    })
+  }
+  function editorValidation() {
+    const s = form.schema, errors = [], issue = (field, message) => errors.push({ field, message })
+    const checkText = (field, value, max, label, required = false) => {
+      if (required && !String(value || '').trim()) issue(field, `Completa ${label}.`)
+      else if (String(value || '').trim().length > max) issue(field, `${label}: máximo ${max} caracteres.`)
+    }
+    checkText('title', s.title, 180, 'el título de la encuesta', true)
+    checkText('description', s.description, 4000, 'la descripción')
+    if (!s.questions.length || s.questions.length > 100) issue('title', 'Agrega de 1 a 100 preguntas.')
+    s.questions.forEach((q, i) => {
+      const p = `questions.${i}`, name = `la pregunta ${i + 1}`
+      checkText(`${p}.title`, q.title, 500, name, true); checkText(`${p}.description`, q.description, 2000, `la descripción de ${name}`)
+      checkText(`${p}.imageAlt`, q.imageAlt, 300, `la descripción de imagen de ${name}`); checkText(`${p}.unit`, q.unit, 60, `la unidad de ${name}`)
+      if (['single', 'multiple', 'dropdown', 'matrix'].includes(q.type)) {
+        if (q.options.length < 2 || q.options.length > 40) issue(`${p}.title`, `${name}: agrega de 2 a 40 opciones.`)
+        q.options.forEach((o, j) => {
+          checkText(`${p}.options.${j}.label`, o.label, 300, `la opción ${j + 1} de ${name}`, true)
+          checkText(`${p}.options.${j}.imageAlt`, o.imageAlt, 300, `la descripción de imagen de la opción ${j + 1}`)
+          if (o.next && (!['single', 'dropdown'].includes(q.type) || (o.next !== 'end' && s.sections.findIndex(a => a.id === o.next) <= s.sections.findIndex(a => a.id === q.section)))) issue(`${p}.options.${j}.next`, `${name}: el salto debe ir a una sección posterior o al final.`)
+        })
+      }
+      if (q.type === 'matrix') {
+        if (!q.rows.length || q.rows.length > 30) issue(`${p}.title`, `${name}: agrega de 1 a 30 filas.`)
+        q.rows.forEach((r, j) => checkText(`${p}.rows.${j}.label`, r.label, 300, `la fila ${j + 1} de ${name}`, true))
+      }
+      if (q.min != null && q.max != null && q.min > q.max) issue(`${p}.min`, `${name}: el mínimo no puede superar al máximo.`)
+      if (q.type === 'scale' && (!Number.isInteger(q.min) || !Number.isInteger(q.max) || q.min >= q.max || q.max - q.min > 10)) issue(`${p}.min`, `${name}: usa una escala de 2 a 11 niveles enteros.`)
+      if (q.type === 'multiple' && [q.min, q.max].some(n => n != null && (!Number.isInteger(n) || n < 0 || n > q.options.length))) issue(`${p}.min`, `${name}: los límites deben estar entre 0 y ${q.options.length}.`)
+      if (['text', 'paragraph'].includes(q.type) && (!Number.isInteger(q.maxLength) || q.maxLength < 1 || q.maxLength > 10000 || !Number.isInteger(q.minLength || 0) || (q.minLength || 0) < 0 || (q.minLength || 0) > q.maxLength)) issue(`${p}.maxLength`, `${name}: revisa los límites de caracteres (1 a 10000).`)
+      const validDate = v => !v || (/^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v)
+      if (q.type === 'date' && (!validDate(q.minDate) || !validDate(q.maxDate) || (q.minDate && q.maxDate && q.minDate > q.maxDate))) issue(`${p}.minDate`, `${name}: revisa el rango de fechas.`)
+    })
+    checkText('purpose', s.purpose, 3000, 'para qué usarás las respuestas', true)
+    checkText('contact', s.contact, 300, 'el contacto del responsable', true)
+    checkText('retention', s.retention, 800, 'el uso y conservación de datos', true)
+    checkText('consent', s.consent, 3000, 'el texto de consentimiento', true)
+    if (!Number.isInteger(s.retentionDays) || s.retentionDays < 1 || s.retentionDays > 3650) issue('retentionDays', 'Elige un plazo de 1 a 3650 días completos.')
+    checkText('confirmation', s.confirmation, 1500, 'el mensaje al terminar'); checkText('coverAlt', s.coverAlt, 300, 'la descripción de portada')
+    if (!s.sections.length || s.sections.length > 30) issue('title', 'Usa de 1 a 30 secciones.')
+    s.sections.forEach((section, i) => {
+      checkText(`sections.${i}.title`, section.title, 180, `el nombre de la sección ${i + 1}`, true)
+      checkText(`sections.${i}.description`, section.description, 2000, `la descripción de la sección ${i + 1}`)
+      checkText(`sections.${i}.imageAlt`, section.imageAlt, 300, `la descripción de imagen de la sección ${i + 1}`)
+      const qs = s.questions.filter(q => q.section === section.id)
+      if (!qs.length) issue(`sections.${i}.title`, `Agrega una pregunta a la sección ${i + 1} o elimina esa sección.`)
+      qs.slice(0, -1).forEach(q => { if (['single', 'dropdown'].includes(q.type) && q.options.some(o => o.next)) issue(`questions.${s.questions.indexOf(q)}.title`, 'Mueve la pregunta con salto al final de su sección.') })
+    })
+    return errors
+  }
+  function revealField(path) {
+    const control = [...app.querySelectorAll('[data-field]')].find(el => el.dataset.field === path)
+    if (!control) return
+    for (let parent = control.parentElement; parent && parent !== app; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true
+    control.focus({ preventScroll: true }); control.scrollIntoView({ block: 'center', behavior: 'instant' })
+  }
+  function showEditorErrors(errors) {
+    app.querySelectorAll('.field-error').forEach(el => el.remove())
+    app.querySelectorAll('[aria-invalid]').forEach(el => { el.removeAttribute('aria-invalid'); el.removeAttribute('aria-describedby') })
+    const summary = document.getElementById('editor-errors'); summary.hidden = !errors.length
+    if (!errors.length) return
+    summary.className = 'error'; summary.textContent = `Revisa ${errors.length === 1 ? 'el campo señalado' : `los ${errors.length} campos señalados`} antes de publicar.`
+    errors.forEach(({ field, message }, i) => {
+      const control = [...app.querySelectorAll('[data-field]')].find(el => el.dataset.field === field)
+      if (!control || control.hasAttribute('aria-invalid')) return
+      control.setAttribute('aria-invalid', 'true'); control.setAttribute('aria-describedby', `field-error-${i}`)
+      control.insertAdjacentHTML('afterend', `<small class="field-error" id="field-error-${i}">${e(message)}</small>`)
+    })
+    revealField(errors[0].field)
+  }
+
   function applyTheme(theme) {
     const colors = matchMedia('(prefers-color-scheme:dark)').matches ? { violet: '#a38aed', blue: '#82b4ff', green: '#72cfac' } : { violet: '#6750c8', blue: '#245c9f', green: '#176742' }
     document.documentElement.style.setProperty('--accent', colors[theme] || colors.violet)
   }
-  async function save() {
+  async function save(quiet = false) {
+    if (editorValidation().length) {
+      localStorage.setItem(`novvin-survey-form:${account.id}`, JSON.stringify(form))
+      document.getElementById('save-status').textContent = 'Borrador guardado en este dispositivo'
+      toast('Borrador guardado. Puedes completarlo después desde Mis encuestas.'); return
+    }
     form = await request(form.id ? `/forms/${form.id}` : '/forms', form.id ? 'PUT' : 'POST', { schema: form.schema, revision: form.revision })
-    dirty = false; localStorage.removeItem(`novvin-survey-form:${account.id}`); renderEditor(); toast('Planilla guardada. Las encuestas publicadas siguen intactas.')
+    dirty = false; localStorage.removeItem(`novvin-survey-form:${account.id}`); renderEditor(); if (!quiet) toast('Encuesta guardada en tu cuenta.')
   }
   async function publish() {
-    if (dirty || !form.id) await save()
-    if (!await modal('Publicar encuesta', `<p>Se publicará una copia de la revisión ${form.revision}. Quien responda necesita una cuenta y deberá aceptar participar.</p><label>Audiencia<select id="publish-visibility"><option value="public">Pública</option><option value="followers">Seguidores</option><option value="private">Solo tú</option></select></label><label>Inicio programado (opcional, tu zona horaria)<input id="publish-open" type="datetime-local"></label><label>Fecha y hora de cierre (opcional, tu zona horaria)<input id="publish-close" type="datetime-local"></label><label>Texto para Social<textarea id="publish-caption" maxlength="2000"></textarea></label><label class="choice"><input id="publish-social" type="checkbox" checked>Publicar tarjeta en Social</label>`)) return
+    const errors = editorValidation(); showEditorErrors(errors); if (errors.length) return
+    if (dirty || !form.id) await save(true)
+    if (!await modal('Publicar encuesta', `<p><strong>${e(form.schema.title)}</strong> · ${form.schema.questions.length} ${form.schema.questions.length === 1 ? 'pregunta' : 'preguntas'}</p><label>¿Quién puede responder?<select id="publish-visibility"><option value="public">Todos en Novvin</option><option value="followers">Mis seguidores</option><option value="private">Solo yo</option></select></label><label class="choice"><input id="publish-social" type="checkbox" checked>Mostrar en Social</label><p class="muted">Verás la cuenta y las respuestas de cada participante.</p><details><summary>Fechas y texto para Social (opcional)</summary><label>Fecha de inicio<input id="publish-open" type="datetime-local"></label><label>Fecha de cierre<input id="publish-close" type="datetime-local"></label><label>Texto para Social<textarea id="publish-caption" maxlength="2000"></textarea></label></details>`, 'Publicar', 'Volver')) return
     const open = document.getElementById('publish-open').value
     const close = document.getElementById('publish-close').value
     const publicationStorageKey = `novvin-survey-publication:${account.id}:${form.id}:${form.revision}`
@@ -389,7 +488,7 @@
       markDirty(); renderEditor(); toast('Preguntas importadas a la planilla en edición.'); return
     }
     if (a === 'publish') return publish()
-    if (a === 'add-question') { addQuestion(); renderEditor(); return }
+    if (a === 'add-question') { if (form.schema.questions.length >= 100) throw new Error('Puedes agregar hasta 100 preguntas.'); addQuestion(); renderEditor(`questions.${form.schema.questions.length - 1}.title`); return }
     if (a === 'add-section') { form.schema.sections.push({ id: id(), title: `Sección ${form.schema.sections.length + 1}`, description: '' }); markDirty(); renderEditor(); return }
     if (a === 'remove-cover') { form.schema.cover = null; markDirty(); renderEditor(); return }
     if (a === 'remove-section-image') { form.schema.sections.find(s => s.id === target).image = null; markDirty(); renderEditor(); return }
@@ -404,13 +503,13 @@
       if (a === 'duplicate-question') { const copy = structuredClone(q); copy.id = id(); copy.options = copy.options.map(o => ({ ...o, id: id() })); copy.rows = copy.rows.map(r => ({ ...r, id: id() })); form.schema.questions.splice(i + 1, 0, copy) }
       if (a === 'question-up' && i > 0) [form.schema.questions[i], form.schema.questions[i - 1]] = [form.schema.questions[i - 1], q]
       if (a === 'question-down' && i < form.schema.questions.length - 1) [form.schema.questions[i], form.schema.questions[i + 1]] = [form.schema.questions[i + 1], q]
-      if (a === 'add-option') q.options.push({ id: id(), label: `Opción ${q.options.length + 1}` })
-      if (a === 'remove-option') q.options = q.options.filter(o => o.id !== oid)
+      if (a === 'add-option') { if (q.options.length >= 40) throw new Error('Puedes agregar hasta 40 opciones por pregunta.'); q.options.push({ id: id(), label: '' }) }
+      if (a === 'remove-option' && q.options.length > 2) q.options = q.options.filter(o => o.id !== oid)
       if (a === 'add-row') q.rows.push({ id: id(), label: `Fila ${q.rows.length + 1}` })
       if (a === 'remove-row') q.rows = q.rows.filter(r => r.id !== oid)
       if (a === 'remove-image') q.image = null
       if (a === 'remove-option-image') q.options.find(o => o.id === oid).image = null
-      markDirty(); renderEditor(); return
+      markDirty(); renderEditor(a === 'add-option' ? `questions.${i}.options.${q.options.length - 1}.label` : undefined); return
     }
       if (a === 'preview') { preview = true; survey = { schema: structuredClone(form.schema), status: 'open', response_count: 0 }; answers = {}; consent = false; sectionIndex = 0; sectionStack = []; renderRespond(); return }
     if (a === 'end-preview') { preview = false; renderEditor(); return }
@@ -490,6 +589,12 @@
     if (field?.startsWith('chart:')) { const q = stats.questions.find(q => q.id === field.slice(6)); document.getElementById(`chart-${q.id}`).innerHTML = chart(q, event.target.value); return }
     if (field && view === 'editor') {
       const path = field.split('.'); let obj = form.schema; path.slice(0, -1).forEach(k => obj = obj[k]); obj[path.at(-1)] = event.target.type === 'checkbox' ? event.target.checked : event.target.type === 'number' ? event.target.value === '' ? null : Number(event.target.value) : event.target.value; markDirty()
+      if (event.target.hasAttribute('aria-invalid')) {
+        document.getElementById(event.target.getAttribute('aria-describedby'))?.remove()
+        event.target.removeAttribute('aria-invalid'); event.target.removeAttribute('aria-describedby')
+        const remaining = app.querySelectorAll('[aria-invalid]').length, summary = document.getElementById('editor-errors')
+        summary.hidden = !remaining; summary.textContent = `Revisa los ${remaining} campos señalados antes de publicar.`
+      }
     }
     const qid = event.target.dataset.answer
     if (!qid || event.target.type === 'file') return

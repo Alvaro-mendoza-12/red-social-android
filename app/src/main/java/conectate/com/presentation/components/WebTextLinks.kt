@@ -1,14 +1,17 @@
 package conectate.com.presentation.components
 
 import android.net.Uri
-import androidx.core.util.PatternsCompat
+import android.util.Patterns
 import java.net.URI
+import java.util.regex.Pattern
 
 internal data class WebTextLink(val start: Int, val end: Int, val url: String)
 
+private val webTextPattern: Pattern = Pattern.compile(Patterns.WEB_URL.pattern(), Pattern.CASE_INSENSITIVE)
+
 /** Keeps sentence punctuation outside the link and normalizes bare web addresses. */
 internal fun findWebTextLinks(text: String): List<WebTextLink> {
-    val matcher = PatternsCompat.AUTOLINK_WEB_URL.matcher(text)
+    val matcher = webTextPattern.matcher(text)
     return buildList {
         while (matcher.find()) {
             val start = matcher.start()
@@ -31,6 +34,7 @@ internal fun findWebTextLinks(text: String): List<WebTextLink> {
                 }
             }
             if (displayed.isBlank()) continue
+            if (displayed.contains("://") && !displayed.startsWith("http://", true) && !displayed.startsWith("https://", true)) continue
             val candidate = if (displayed.startsWith("http://", true) || displayed.startsWith("https://", true)) {
                 displayed.substringBefore(':').lowercase() + displayed.substring(displayed.indexOf(':'))
             } else "https://$displayed"

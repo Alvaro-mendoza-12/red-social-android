@@ -11,11 +11,13 @@ process.env.LOCAL_FALLBACK_API_URL = 'http://api.invalid'
 const originalFetch = global.fetch
 let accountActive = true
 let chatAllowed = true
+let raffleAllowed = true
 global.fetch = async (url) => {
   if (String(url).endsWith('/v1/auth/me')) {
     return { ok: accountActive, json: async () => ({ user: { id: 'user-a' } }) }
   }
   if (String(url).includes('/messages/chats/')) return { ok: chatAllowed }
+  if (String(url).includes('/data/raffles/')) return { ok: raffleAllowed }
   return { ok: true, json: async () => ({}) }
 }
 
@@ -35,6 +37,8 @@ assert.equal(subscriptionAuthorizationUrl('random-chat:session-1'), '/v1/data/pr
 assert.equal(subscriptionAuthorizationUrl('video-comments:video-1'), '/v1/data/videos/video-1')
 assert.equal(subscriptionAuthorizationUrl('live-comments:live-1'), '/v1/data/live/live-1')
 assert.equal(subscriptionAuthorizationUrl('admin:live'), '/v1/data/admin/access')
+assert.equal(subscriptionAuthorizationUrl('raffles:group:group-1'), '/v1/data/raffles/group/group-1/access')
+assert.equal(subscriptionAuthorizationUrl('raffles:community:community-1'), '/v1/data/raffles/community/community-1/access')
 assert.equal(subscriptionAuthorizationUrl('room:private-room'), null)
 assert.equal(subscriptionAuthorizationUrl('unknown:value'), null)
 
@@ -62,6 +66,11 @@ async function run() {
   assert.equal(await maySubscribeToChannel('token', new Set(['user-a']), 'chat:chat-1'), true)
   assert.equal(await maySubscribeToChannel('token', new Set(['user-a']), 'feed:live'), true)
   assert.equal(await maySubscribeToChannel('token', new Set(['user-a']), 'unknown:value'), false)
+  assert.equal(await maySubscribeToChannel('token', new Set(['user-a']), 'raffles:group:group-1'), true)
+  raffleAllowed = false
+  assert.equal(await maySubscribeToChannel('token', new Set(['user-a']), 'raffles:group:group-1'), false)
+  assert.equal(await maySubscribeToChannel('token', new Set(['user-a']), 'raffles:community:community-1'), false)
+  raffleAllowed = true
 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()

@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { isRetiredNotification } = require('./retired-notifications')
+const { isServerManagedNotification } = require('./notification-event-policy')
 const { publicFeedPage } = require('./public-feed-page')
 const { loadCollectionReceipts, isCollectionMessageUnread, projectCollectionReceipt } = require('./collection-read-state')
 const bcrypt = require('bcrypt')
@@ -45,6 +46,8 @@ const { mayReuseMessageMedia } = require('./message-media-access')
 const { cleanUsername, usernameOwnedByAnother, usernameProblem } = require('./username-policy')
 const { ensureDirectMessageRequestPolicy, introPolicyError, publishAutomaticFriendRequest } = require('./direct-message-request-policy')
 const { ensureMessageMarkerTables, registerMessageMarkerRoutes } = require('./message-markers-routes')
+const { ensureRaffleTables } = require('./raffles/service')
+const { registerRaffleRoutes } = require('./raffles/routes')
 const { ensureVideoWatchLaterTables, registerVideoWatchLaterRoutes } = require('./video-watch-later-routes')
 const { ensureVideoHistoryColumns, registerVideoHistoryRoutes } = require('./video-history-routes')
 const { ensureVideoCollectionTables, registerVideoCollectionRoutes } = require('./video-collections-routes')
@@ -6699,6 +6702,7 @@ async function ensureLocalDataTables(pool) {
   await ensureCreatorPayoutTables(pool)
   await ensurePlayMatchTables(pool)
   await ensureMessageMarkerTables(pool)
+  await ensureRaffleTables(pool)
   await ensureVideoWatchLaterTables(pool)
   await ensureVideoHistoryColumns(pool)
   await ensureVideoCollectionTables(pool)
@@ -6715,6 +6719,11 @@ function registerDataRoutes(app, {
   const { publishChatMessageEvent, publishRealtimeEvent } = require('./realtime-publish')
   const { createMessageReadReceiptPublisher } = require('./message-read-receipts')
   const mayPublishConversationActivity = createConversationActivityAuthorizer({ privateChatAccessContext, loadCollectionRoomAccess })
+  registerRaffleRoutes(app, { pool, authRequired, getCurrentUser, userIdentity,
+    loadCollectionRoomAccess, memberUserId, rowMatchesAny, publicProfilesByIds,
+    ensureDefaultCommunityChannel, publishRoomCard: publishChatMessageEvent,
+    isSuspended: async (db, id) => Boolean(await require('./account-status').findActiveSuspension(db, id)),
+  })
   registerVisibleMessageReadRoute(app, {
     pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,
     publishReadReceipts: createMessageReadReceiptPublisher({
@@ -7847,6 +7856,12 @@ function registerDataRoutes(app, {
       const identity = userIdentity(user)
       const recipientId = normalizeId(req.body?.recipientId || req.body?.recipient_id || '')
       if (!recipientId) return res.status(400).json({ error: 'RECIPIENT_ID_REQUIRED' })
+
+      // Global notices are created atomically with their outbox by the admin
+      // route. A normal account cannot impersonate that server-managed event.
+      if (isServerManagedNotification(req.body)) {
+        return res.status(403).json({ error: 'SERVER_MANAGED_NOTIFICATION' })
+      }
 
       const notification = await createLocalNotification(pool, {
         recipientId,
@@ -11318,6 +11333,7 @@ function registerDataRoutes(app, {
       const roomId = normalizeId(req.params.roomId)
       const content = String(req.body?.content || '').trim()
       const contentType = String(req.body?.contentType || 'text').trim() || 'text'
+      if (contentType === 'raffle') return res.status(400).json({ error: 'RAFFLE_CREATE_ENDPOINT_REQUIRED' })
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
       const thumbnailUrl = String(req.body?.thumbnailUrl || req.body?.thumbnail_url || '').trim()
       const mediaSize = Math.max(0, Number(req.body?.mediaSize || 0))

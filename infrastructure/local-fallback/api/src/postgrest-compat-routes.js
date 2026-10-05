@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { isRetiredNotification } = require('./retired-notifications')
+const { isServerManagedNotification } = require('./notification-event-policy')
 const fs = require('fs')
 const jwt = require('jsonwebtoken')
 const {
@@ -1427,6 +1428,9 @@ async function requireAdminWrite(pool, identity, tableName) {
 
 async function prepareInsertRow(pool, tableName, identity, source) {
   let row = compactRow(source)
+  if (tableName === 'notifications' && isServerManagedNotification(row)) {
+    throw httpError('SERVER_MANAGED_NOTIFICATION', 403)
+  }
   if (SERVER_MUTATION_ONLY_TABLES.has(tableName)) {
     throw httpError('SERVER_MANAGED_RESOURCE', 403)
   }
@@ -1750,7 +1754,10 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
     return action === 'delete' || !Object.prototype.hasOwnProperty.call(patch || {}, 'role')
   }
   if (tableName === 'notifications') {
-    return identityOwnsRow(identity, row, ['recipient_id', 'user_id'])
+    return identityOwnsRow(identity, row, ['recipient_id', 'user_id']) &&
+      (action === 'delete' || patchOnlyContains(patch, new Set([
+        'is_read', 'read_at', 'updated_at',
+      ])))
   }
   if (tableName === 'friends') {
     return identityOwnsRow(identity, row, ['sender_id', 'receiver_id'])
@@ -2058,6 +2065,14 @@ function extractIdFilter(query) {
   return null
 }
 
+function profilePatchRow(current, patch) {
+  const next = { ...current, ...patch, updated_at: nowIso() }
+  // Read projections can contain a legacy display-name fallback as username.
+  // Only an explicitly requested username may reach the permanent-handle guard.
+  if (!Object.prototype.hasOwnProperty.call(patch, 'username')) delete next.username
+  return next
+}
+
 async function handlePatch(pool, tableName, auth, query, body) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
@@ -2072,7 +2087,7 @@ async function handlePatch(pool, tableName, auth, query, body) {
     }
     const next = { ...current, ...patch, updated_at: nowIso() }
     if (tableName === 'profiles' || tableName === 'users') {
-      rows.push(await upsertProfile(pool, auth, next))
+      rows.push(await upsertProfile(pool, auth, profilePatchRow(current, patch)))
     } else if (tableName === 'friends') {
       const status = normalizeIdentityValue(patch.status)
       if (!identityOwnsValue(identity, current.receiver_id) ||
@@ -6092,6 +6107,7 @@ function registerPostgrestCompatRoutes(app, { pool, authOptional }) {
 module.exports = {
   canReuseCatalogStickerMedia,
   _test: {
+    profilePatchRow,
     votePollOption,
     buildPollState,
     desiredStickerFavoriteState,

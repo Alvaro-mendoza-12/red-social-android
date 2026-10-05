@@ -55,7 +55,10 @@ class SoundPreviewLatencyAuditTest {
         val failure = AtomicReference<Int?>(null)
         try {
             instrumentation.runOnMainSync {
-                player = if (mode == "baseline") ExoPlayer.Builder(context).build() else SoundPreviewPlayback.create(context)
+                player = if (mode == "baseline") ExoPlayer.Builder(context)
+                    .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                        conectate.com.util.MediaPlaybackDataSources.streamingFactory(context)))
+                    .build() else SoundPreviewPlayback.create(context)
                 player!!.apply {
                     volume = 0f
                     trackSelectionParameters = trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build()
@@ -127,7 +130,7 @@ class SoundPreviewLatencyAuditTest {
             request("/rest/v1/rpc/delete_own_account", token, JSONObject())
             request("/v1/auth/me", token, expected = 401)
             File(context.filesDir, "sound-preview-audit.json").writeText(JSONObject()
-                .put("results", results).put("fixtureDeleted", true).put("device", "Android emulator")
+                .put("results", results).put("fixtureDeleted", true).put("device", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
                 .put("measurement", "ExoPlayer audio position advancing; muted output").toString(2))
         }
     }

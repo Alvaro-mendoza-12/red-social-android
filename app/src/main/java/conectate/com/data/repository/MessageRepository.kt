@@ -275,6 +275,7 @@ class MessageRepository @Inject constructor(
     fun clearData() {
         android.util.Log.w("MessageRepository", "CLEAR DATA: Purging in-memory state...")
         sessionWriteGuard.invalidate()
+        _inboxSyncState.value = InboxSyncState()
         _userChats.value = emptyList()
         _activeChatMessages.clear()
         chatHistoryFetchTimestamps.clear()
@@ -700,11 +701,17 @@ class MessageRepository @Inject constructor(
     private fun observeVisibleInbox(): Flow<List<ChatWithLastMessage>> = inboxPreviewReader.observe(
         authService.observeSession().map { session ->
             session?.user?.id?.trim()?.lowercase() ?: currentSessionUserId()
-        }
+        },
+        onSnapshotLoaded = { account ->
+            if (currentSessionUserId() == account) {
+                _inboxSyncState.update { it.copy(hasLoadedLocalSnapshot = true) }
+            }
+        },
     )
 
     suspend fun getUserChats(force: Boolean = false): Result<List<ChatWithLastMessage>> {
         return inboxSyncMutex.withLock {
+            val sessionSnapshot = captureSessionSnapshot()
             val now = System.currentTimeMillis()
             val currentState = _inboxSyncState.value
             if (!InboxSyncPolicy.shouldStart(
@@ -717,21 +724,26 @@ class MessageRepository @Inject constructor(
                 return@withLock Result.success(_userChats.value)
             }
 
-            _inboxSyncState.value = currentState.copy(isRefreshing = true, lastError = null)
+            _inboxSyncState.update { it.copy(isRefreshing = true, lastError = null) }
             try {
                 val result = runReadWithDeadline(InteractiveReadDeadlines.InboxMillis) {
                     syncUserChats().getOrThrow()
                 }
+                if (!isSessionSnapshotValid(sessionSnapshot, "inbox-refresh-state")) {
+                    return@withLock Result.failure(CancellationException("La cuenta de la bandeja cambió"))
+                }
                 val completedAt = System.currentTimeMillis()
-                _inboxSyncState.value = InboxSyncState(
+                _inboxSyncState.update { it.copy(
                     isRefreshing = false,
                     hasCompletedInitialSync = true,
                     lastError = result.exceptionOrNull()?.message,
                     lastCompletedAtMillis = completedAt,
-                )
+                ) }
                 result
             } catch (cancelled: CancellationException) {
-                _inboxSyncState.update { it.copy(isRefreshing = false) }
+                if (isSessionSnapshotValid(sessionSnapshot, "inbox-refresh-cancelled")) {
+                    _inboxSyncState.update { it.copy(isRefreshing = false) }
+                }
                 throw cancelled
             }
         }

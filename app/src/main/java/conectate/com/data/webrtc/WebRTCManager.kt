@@ -217,6 +217,7 @@ class WebRTCManager(
     val debugInfo = _debugInfo.asStateFlow()
 
     private val peerConnections = ConcurrentHashMap<String, PeerConnection>()
+    private val mediaCallbackGeneration = java.util.concurrent.atomic.AtomicLong()
     private val deferredPeerDisposals = DeferredNativeDisposals<PeerConnection>()
     @Volatile private var outgoingAudioEnabled = true
     private val remoteUserIds = ConcurrentHashMap<String, String>()
@@ -415,6 +416,7 @@ class WebRTCManager(
     }
 
     private fun hardResetInternal() {
+        mediaCallbackGeneration.incrementAndGet()
         networkRecoveryGeneration.incrementAndGet()
         networkRecoveryJob?.cancel()
         networkRecoveryJob = null
@@ -613,6 +615,7 @@ class WebRTCManager(
     }
     
     private fun destroyInternal() {
+        mediaCallbackGeneration.incrementAndGet()
         networkRecoveryGeneration.incrementAndGet()
         Log.d("WebRTCManager", "Internal cleanup starting...")
         unregisterNetworkHandoffMonitor()
@@ -1457,6 +1460,7 @@ class WebRTCManager(
     }
 
     private fun createPeerConnection(socketId: String, remoteUserId: String): PeerConnection? {
+        val callbackGeneration = mediaCallbackGeneration.get()
         // Wait for managed TURN credentials before falling back.  This matters a lot
         // for users outside the local network: signaling can work through Cloudflare,
         // but audio/video/screen-share needs TURN candidates ready before the first offer.
@@ -1484,6 +1488,7 @@ class WebRTCManager(
 
         return factory?.createPeerConnection(config, object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate) {
+                if (callbackGeneration != mediaCallbackGeneration.get()) return
                 val candidateType = if (candidate.sdp.contains("typ relay")) "RELAY (TURN)" 
                                     else if (candidate.sdp.contains("typ srflx")) "SRFLX (STUN)" 
                                     else "HOST (LOCAL)"
@@ -1499,6 +1504,7 @@ class WebRTCManager(
 
             override fun onRenegotiationNeeded() {
                 executor.execute {
+                    if (callbackGeneration != mediaCallbackGeneration.get()) return@execute
                     var pc = peerConnections[socketId] ?: return@execute
                     if (localSocketId.isBlank()) {
                         Log.w("WebRTC", "Skipping offer: localSocketId not yet set")
@@ -1543,161 +1549,185 @@ class WebRTCManager(
             }
 
             override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) {
-                var track = receiver?.track() ?: return
-                handleIncomingTrack(socketId, track)
+                if (callbackGeneration != mediaCallbackGeneration.get()) return
+                val track = receiver?.track() ?: return
+                executor.execute {
+                    if (callbackGeneration != mediaCallbackGeneration.get()) return@execute
+                    handleIncomingTrack(socketId, track)
+                }
             }
 
             override fun onTrack(transceiver: RtpTransceiver?) {
-                var track = transceiver?.receiver?.track() ?: return
-                handleIncomingTrack(socketId, track)
+                if (callbackGeneration != mediaCallbackGeneration.get()) return
+                val track = transceiver?.receiver?.track() ?: return
+                executor.execute {
+                    if (callbackGeneration != mediaCallbackGeneration.get()) return@execute
+                    handleIncomingTrack(socketId, track)
+                }
             }
 
             override fun onRemoveTrack(receiver: RtpReceiver?) {
-                var track = receiver?.track() ?: return
-                Log.w("WebRTCManager", "Remove Remote Track: ${track.kind()} ($socketId)")
-                if (track.kind() == "video") {
-                    var map = _remoteVideoTracks.value.toMutableMap()
-                    if (map[socketId]?.id() == track.id()) {
-                        map.remove(socketId)
+                if (callbackGeneration != mediaCallbackGeneration.get()) return
+                val track = receiver?.track() ?: return
+                executor.execute {
+                    if (callbackGeneration != mediaCallbackGeneration.get()) return@execute
+                    Log.w("WebRTCManager", "Remove Remote Track: ${track.kind()} ($socketId)")
+                    if (track.kind() == "video") {
+                        val map = _remoteVideoTracks.value.toMutableMap()
+                        if (map[socketId]?.id() == track.id()) {
+                            map.remove(socketId)
+                        }
+                        _remoteVideoTracks.value = map
                     }
-                    _remoteVideoTracks.value = map
-                }
-                if (track.kind() == "audio") {
-                    remoteAudioTracks.remove(socketId)
+                    if (track.kind() == "audio") {
+                        remoteAudioTracks.remove(socketId)
+                    }
                 }
             }
 
-            override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) { 
-                Log.d("WebRTC", "ICE $state ($socketId)") 
-                var map = _peerConnectionStates.value.toMutableMap()
-                map[socketId] = state
-                _peerConnectionStates.value = map
+            override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
+                // Native callbacks may arrive after close/dispose. Serialize state
+                // updates with reset and reject callbacks from the previous session.
+                executor.execute iceState@{
+                    if (callbackGeneration != mediaCallbackGeneration.get()) return@iceState
+                    Log.d("WebRTC", "ICE $state ($socketId)")
+                    var map = _peerConnectionStates.value.toMutableMap()
+                    map[socketId] = state
+                    _peerConnectionStates.value = map
                 
-                if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
-                    disconnectRecoveryJobs.remove(socketId)?.cancel()
-                    // Reinforce and check audio session on connection
-                    executor.execute {
-                        var am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                        if (am.mode != AudioManager.MODE_IN_COMMUNICATION) {
-                            am.mode = AudioManager.MODE_IN_COMMUNICATION
-                            Log.w("WebRTC", "Audio mode fixed to COMMUNICATION after ICE connected")
-                        }
+                    if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
+                        disconnectRecoveryJobs.remove(socketId)?.cancel()
+                        // Reinforce and check audio session on connection
+                        executor.execute {
+                            if (callbackGeneration != mediaCallbackGeneration.get()) return@execute
+                            var am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                            if (am.mode != AudioManager.MODE_IN_COMMUNICATION) {
+                                am.mode = AudioManager.MODE_IN_COMMUNICATION
+                                Log.w("WebRTC", "Audio mode fixed to COMMUNICATION after ICE connected")
+                            }
                         
-                        // v7.2.6: Reinforce transceivers to ensure local track is still active
-                        var pc = peerConnections[socketId]
-                        // getTransceivers() disposes its previous Java wrappers.
-                        // Snapshot the sender's native identity before reading it again.
-                        val primaryAudioSenderId = pc?.let(::getOrAddAudioTransceiver)?.sender?.id()
-                        pc?.transceivers?.forEach { t ->
-                            if (t.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO) {
-                                // Native getters create new Java wrappers. Reference
-                                // equality would clear every microphone sender here.
-                                val primaryAudio = isSameMediaSender(t.sender.id(), primaryAudioSenderId)
-                                if (primaryAudio && t.direction == RtpTransceiver.RtpTransceiverDirection.RECV_ONLY) {
+                            // v7.2.6: Reinforce transceivers to ensure local track is still active
+                            var pc = peerConnections[socketId]
+                            // getTransceivers() disposes its previous Java wrappers.
+                            // Snapshot the sender's native identity before reading it again.
+                            val primaryAudioSenderId = pc?.let(::getOrAddAudioTransceiver)?.sender?.id()
+                            pc?.transceivers?.forEach { t ->
+                                if (t.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO) {
+                                    // Native getters create new Java wrappers. Reference
+                                    // equality would clear every microphone sender here.
+                                    val primaryAudio = isSameMediaSender(t.sender.id(), primaryAudioSenderId)
+                                    if (primaryAudio && t.direction == RtpTransceiver.RtpTransceiverDirection.RECV_ONLY) {
+                                        t.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
+                                    }
+                                    t.sender.setTrack(if (primaryAudio) localAudioTrack else null, false)
+                                } else if (t.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) {
+                                    var activeVideoTrack = activeOutgoingVideoTrack()
+                                    t.sender.setTrack(activeVideoTrack, false)
                                     t.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
                                 }
-                                t.sender.setTrack(if (primaryAudio) localAudioTrack else null, false)
-                            } else if (t.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) {
-                                var activeVideoTrack = activeOutgoingVideoTrack()
-                                t.sender.setTrack(activeVideoTrack, false)
-                                t.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
                             }
-                        }
-                        pc?.setAudioPlayout(remoteAudioPlaybackEnabled)
-                        remoteAudioTracks[socketId]?.let { remoteTrack ->
-                            remoteTrack.setEnabled(remoteAudioPlaybackEnabled)
-                            remoteTrack.setVolume(if (remoteAudioPlaybackEnabled) REMOTE_AUDIO_GAIN else 0.0)
+                            pc?.setAudioPlayout(remoteAudioPlaybackEnabled)
+                            remoteAudioTracks[socketId]?.let { remoteTrack ->
+                                remoteTrack.setEnabled(remoteAudioPlaybackEnabled)
+                                remoteTrack.setVolume(if (remoteAudioPlaybackEnabled) REMOTE_AUDIO_GAIN else 0.0)
+                            }
                         }
                     }
-                }
-                if (state == PeerConnection.IceConnectionState.DISCONNECTED) {
-                    disconnectRecoveryJobs.remove(socketId)?.cancel()
-                    disconnectRecoveryJobs[socketId] = asyncScope.launch {
-                        delay(1_500)
-                        executor.execute {
-                            var pc = peerConnections[socketId] ?: return@execute
-                            val currentState = pc.iceConnectionState()
-                            if (
-                                currentState != PeerConnection.IceConnectionState.DISCONNECTED &&
-                                currentState != PeerConnection.IceConnectionState.FAILED
-                            ) {
-                                return@execute
-                            }
-
-                            Log.w("WebRTC", "ICE still disconnected for $socketId, forcing recovery offer")
-                            if (!shouldInitiateIceRecovery(socketId)) {
-                                Log.i("WebRTC", "Polite peer waiting for remote ICE recovery offer ($socketId)")
-                                return@execute
-                            }
-
-                            var audioTransceiver = getOrAddAudioTransceiver(pc)
-                            audioTransceiver.sender.setTrack(localAudioTrack, false)
-                            audioTransceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
-
-                            var videoTransceiver = getOrAddVideoTransceiver(pc)
-                            var activeVideoTrack = activeOutgoingVideoTrack()
-                            videoTransceiver.sender.setTrack(activeVideoTrack, false)
-                            videoTransceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
-
-                            requestOffer(
-                                socketId = socketId,
-                                pc = pc,
-                                iceRestart = true,
-                                reason = "ice-disconnected-recovery",
-                                retryDelayMs = 500L
-                            )
-                        }
-                    }
-                }
-                if (state == PeerConnection.IceConnectionState.FAILED) {
-                    disconnectRecoveryJobs.remove(socketId)?.cancel()
-                    Log.e("WebRTC", "❌ ICE FAILED! Possible firewall/networking issue ($socketId)")
-                    // v17.0: Dynamic Ice Restart on Failure with limit and delay
-                    executor.execute {
-                        var pc = peerConnections[socketId]
-                        val retries = iceRetryCount[socketId] ?: 0
-                        if (pc != null && pc.iceConnectionState() == PeerConnection.IceConnectionState.FAILED && retries < MAX_ICE_RETRIES) {
-                            if (!shouldInitiateIceRecovery(socketId)) {
-                                Log.i("WebRTC", "Polite peer waiting for remote ICE restart offer ($socketId)")
-                                return@execute
-                            }
-                            Log.w("WebRTC", "🔄 Attempting ICE RESTART for $socketId (Attempt ${retries + 1}/$MAX_ICE_RETRIES)...")
-                            iceRetryCount[socketId] = retries + 1
-                            
-                            asyncScope.launch {
-                                // A network hand-off or a long session may outlive the
-                                // credential used by the original allocation. Refresh it
-                                // before ICE restart instead of reusing stale ICE servers.
-                                refreshManagedIceServers(force = true)
-                                awaitManagedIceIfNeeded()
-                                delay(500)
-                                executor.execute retryPeerConnection@{
-                                    val activePc = peerConnections[socketId] ?: return@retryPeerConnection
-                                    activePc.setConfiguration(buildRtcConfiguration(currentIceServersSnapshot()))
-                                    requestOffer(
-                                        socketId = socketId,
-                                        pc = activePc,
-                                        iceRestart = true,
-                                        reason = "ice-failed-recovery",
-                                        retryDelayMs = 600L
-                                    )
+                    if (state == PeerConnection.IceConnectionState.DISCONNECTED) {
+                        disconnectRecoveryJobs.remove(socketId)?.cancel()
+                        disconnectRecoveryJobs[socketId] = asyncScope.launch {
+                            delay(1_500)
+                            executor.execute {
+                                if (callbackGeneration != mediaCallbackGeneration.get()) return@execute
+                                var pc = peerConnections[socketId] ?: return@execute
+                                val currentState = pc.iceConnectionState()
+                                if (
+                                    currentState != PeerConnection.IceConnectionState.DISCONNECTED &&
+                                    currentState != PeerConnection.IceConnectionState.FAILED
+                                ) {
+                                    return@execute
                                 }
+
+                                Log.w("WebRTC", "ICE still disconnected for $socketId, forcing recovery offer")
+                                if (!shouldInitiateIceRecovery(socketId)) {
+                                    Log.i("WebRTC", "Polite peer waiting for remote ICE recovery offer ($socketId)")
+                                    return@execute
+                                }
+
+                                var audioTransceiver = getOrAddAudioTransceiver(pc)
+                                audioTransceiver.sender.setTrack(localAudioTrack, false)
+                                audioTransceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
+
+                                var videoTransceiver = getOrAddVideoTransceiver(pc)
+                                var activeVideoTrack = activeOutgoingVideoTrack()
+                                videoTransceiver.sender.setTrack(activeVideoTrack, false)
+                                videoTransceiver.direction = RtpTransceiver.RtpTransceiverDirection.SEND_RECV
+
+                                requestOffer(
+                                    socketId = socketId,
+                                    pc = pc,
+                                    iceRestart = true,
+                                    reason = "ice-disconnected-recovery",
+                                    retryDelayMs = 500L
+                                )
                             }
-                        } else if (retries >= MAX_ICE_RETRIES) {
-                            Log.e("WebRTC", "❌ ICE Restart limit reached for $socketId. Please check your network/firewall.")
                         }
                     }
-                }
+                    if (state == PeerConnection.IceConnectionState.FAILED) {
+                        disconnectRecoveryJobs.remove(socketId)?.cancel()
+                        Log.e("WebRTC", "❌ ICE FAILED! Possible firewall/networking issue ($socketId)")
+                        // v17.0: Dynamic Ice Restart on Failure with limit and delay
+                        executor.execute {
+                            if (callbackGeneration != mediaCallbackGeneration.get()) return@execute
+                            var pc = peerConnections[socketId]
+                            val retries = iceRetryCount[socketId] ?: 0
+                            if (pc != null && pc.iceConnectionState() == PeerConnection.IceConnectionState.FAILED && retries < MAX_ICE_RETRIES) {
+                                if (!shouldInitiateIceRecovery(socketId)) {
+                                    Log.i("WebRTC", "Polite peer waiting for remote ICE restart offer ($socketId)")
+                                    return@execute
+                                }
+                                Log.w("WebRTC", "🔄 Attempting ICE RESTART for $socketId (Attempt ${retries + 1}/$MAX_ICE_RETRIES)...")
+                                iceRetryCount[socketId] = retries + 1
+                            
+                                asyncScope.launch {
+                                    // A network hand-off or a long session may outlive the
+                                    // credential used by the original allocation. Refresh it
+                                    // before ICE restart instead of reusing stale ICE servers.
+                                    refreshManagedIceServers(force = true)
+                                    awaitManagedIceIfNeeded()
+                                    delay(500)
+                                    executor.execute retryPeerConnection@{
+                                        if (callbackGeneration != mediaCallbackGeneration.get()) return@retryPeerConnection
+                                        val activePc = peerConnections[socketId] ?: return@retryPeerConnection
+                                        activePc.setConfiguration(buildRtcConfiguration(currentIceServersSnapshot()))
+                                        requestOffer(
+                                            socketId = socketId,
+                                            pc = activePc,
+                                            iceRestart = true,
+                                            reason = "ice-failed-recovery",
+                                            retryDelayMs = 600L
+                                        )
+                                    }
+                                }
+                            } else if (retries >= MAX_ICE_RETRIES) {
+                                Log.e("WebRTC", "❌ ICE Restart limit reached for $socketId. Please check your network/firewall.")
+                            }
+                        }
+                    }
                 
-                if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
-                    iceRetryCount[socketId] = 0 // Reset on success
+                    if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
+                        iceRetryCount[socketId] = 0 // Reset on success
+                    }
                 }
             }
             override fun onSignalingChange(state: PeerConnection.SignalingState) { 
-                Log.d("WebRTC", "SIG $state ($socketId)")
-                var map = _signalingStates.value.toMutableMap()
-                map[socketId] = state
-                _signalingStates.value = map
+                executor.execute signalingState@{
+                    if (callbackGeneration != mediaCallbackGeneration.get()) return@signalingState
+                    Log.d("WebRTC", "SIG $state ($socketId)")
+                    var map = _signalingStates.value.toMutableMap()
+                    map[socketId] = state
+                    _signalingStates.value = map
+                }
             }
             override fun onDataChannel(dc: DataChannel?) {}
             override fun onIceConnectionReceivingChange(b: Boolean) { Log.d("WebRTC", "ICE Receiving: $b ($socketId)") }
@@ -1705,10 +1735,14 @@ class WebRTCManager(
                 Log.d("WebRTC", "📡 ICE Gathering State: $state ($socketId)")
             }
             override fun onAddStream(stream: MediaStream) {
+                if (callbackGeneration != mediaCallbackGeneration.get()) return
                 // Compatibility with Play Store builds that still publish a
                 // legacy MediaStream instead of Unified Plan transceivers.
-                stream.audioTracks.forEach { handleIncomingTrack(socketId, it) }
-                stream.videoTracks.forEach { handleIncomingTrack(socketId, it) }
+                val tracks = stream.audioTracks.toList() + stream.videoTracks.toList()
+                executor.execute {
+                    if (callbackGeneration != mediaCallbackGeneration.get()) return@execute
+                    tracks.forEach { handleIncomingTrack(socketId, it) }
+                }
             }
             override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
             override fun onRemoveStream(stream: MediaStream) {}

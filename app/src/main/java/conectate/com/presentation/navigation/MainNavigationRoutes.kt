@@ -16,6 +16,7 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
     navController: NavHostController,
     isLoggedIn: Boolean
 ) {
+    addRaffleRoutes(navController, isLoggedIn)
     composable(Screen.Surveys.route, arguments = listOf(
         navArgument("id") { type = NavType.StringType; defaultValue = "" },
         navArgument("key") { type = NavType.StringType; defaultValue = "" },

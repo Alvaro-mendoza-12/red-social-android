@@ -22,6 +22,8 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import androidx.test.platform.app.InstrumentationRegistry
+import java.util.concurrent.atomic.AtomicReference
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -82,5 +84,36 @@ class ChatLinkUiTest {
         render(text, true, { fail("Owned post opened browser") }, { opened=it })
         clickAt(text,text.indexOf("post_"))
         compose.runOnIdle { assertEquals(text, opened) }
+    }
+
+    @Test fun externalLinkUsesTheAndroidViewIntentWithItsExactDestination() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val opened = AtomicReference<android.content.Intent?>()
+        val destination = "https://example.org/report?q=1"
+        val text = "Consulta $destination y dime."
+        val monitor = object : android.app.Instrumentation.ActivityMonitor() {
+            override fun onStartActivity(intent: android.content.Intent): android.app.Instrumentation.ActivityResult? {
+                if (intent.action != android.content.Intent.ACTION_VIEW) return null
+                opened.set(android.content.Intent(intent))
+                // Verify the OS handoff without depending on a remote test website.
+                return android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null)
+            }
+        }
+        instrumentation.addMonitor(monitor)
+        try {
+            compose.setContent {
+                MaterialTheme {
+                    Box(Modifier.width(300.dp)) {
+                        MessageBubble(Message(id = "qa-native-link", content = text, sender_id = "qa", content_type = "text"), false,
+                            onUrlClick = { fail("External URL entered an internal route") })
+                    }
+                }
+            }
+            clickAt(text, text.indexOf("example"))
+            assertEquals(android.content.Intent.ACTION_VIEW, opened.get()?.action)
+            assertEquals(destination, opened.get()?.dataString)
+        } finally {
+            instrumentation.removeMonitor(monitor)
+        }
     }
 }

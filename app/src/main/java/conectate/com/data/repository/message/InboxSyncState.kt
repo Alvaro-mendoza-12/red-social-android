@@ -2,14 +2,19 @@ package conectate.com.data.repository.message
 
 /**
  * Observable state for the account-scoped inbox refresh. Room remains the
- * source rendered by the UI; this state only describes the remote refresh.
+ * source rendered by the UI; this state tracks its first read and remote refresh.
  */
 data class InboxSyncState(
+    val hasLoadedLocalSnapshot: Boolean = false,
     val isRefreshing: Boolean = false,
     val hasCompletedInitialSync: Boolean = false,
     val lastError: String? = null,
     val lastCompletedAtMillis: Long = 0L,
 )
+
+/** A completed local read is usable even when the remote list is still refreshing. */
+fun inboxNeedsInitialLoading(state: InboxSyncState): Boolean =
+    !state.hasLoadedLocalSnapshot && !state.hasCompletedInitialSync
 
 /**
  * Keeps duplicate collectors, lifecycle resumes and fallback polling from

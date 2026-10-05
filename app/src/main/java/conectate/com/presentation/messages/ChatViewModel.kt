@@ -83,7 +83,7 @@ class ChatViewModel @Inject constructor(
     val isSecureTranslationAvailable: Boolean
         get() = advancedMessagingRepository.isSecureTranslationAvailable()
 
-    private val otherUserId: String = checkNotNull(savedStateHandle["userId"])
+    private val otherUserId: String = savedStateHandle.get<String>("userId").orEmpty().trim()
     private val initialMessage: String? = savedStateHandle["initialMessage"]
     private var initialMessageSent = false
     private var chatId: String? = null
@@ -323,6 +323,10 @@ class ChatViewModel @Inject constructor(
     }
 
     private suspend fun initializeChatWithinDeadline() {
+            if (otherUserId.isBlank()) {
+                _chatState.value = ChatUiState.Error("No se pudo identificar esta conversación. Vuelve al perfil e inténtalo nuevamente.")
+                return
+            }
             val currentId = authService.getCurrentUserId()
             if (currentId.isNullOrBlank()) {
                 _chatState.value = ChatUiState.Error("Sesion no valida. Inicia sesion de nuevo.")

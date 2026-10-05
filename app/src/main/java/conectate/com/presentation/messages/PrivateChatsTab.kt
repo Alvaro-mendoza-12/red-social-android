@@ -159,6 +159,9 @@ fun PrivateChatsTab(
                 }
             }
             is ConversationsUiState.Success -> {
+                if (state.isRefreshing) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = inboxRed)
+                }
                 // Filtrar SOLO chats privados (no grupos)
                 val privateChats = state.conversations.filter { !it.chat.is_group }
                 
@@ -174,6 +177,7 @@ fun PrivateChatsTab(
                         ) {
                             Text(
                                 text = when {
+                                    state.isInitialSyncPending -> "Buscando tus conversaciones…"
                                     selectedFolderId != null && searchQuery.isEmpty() ->
                                         "Esta carpeta está vacía. Agrega chats desde \"Todas\"."
                                     selectedListFilter == ChatListFilter.FAVORITES && searchQuery.isEmpty() ->

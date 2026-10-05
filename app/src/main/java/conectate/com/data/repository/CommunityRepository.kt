@@ -2499,7 +2499,7 @@ class CommunityRepository @Inject constructor(
                     communityDao.updateMessageSyncStatus(msgId, isSynced = false, pendingAction = "send")
                     return@withContext Result.failure(error)
                 }
-            if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 msg = msg.copy(media_url = outgoingMediaUrl)
                 communityDao.insertMessages(
                     listOf(CommunityMessageEntity.fromDomain(msg, isSynced = false, pendingAction = "send"))
@@ -2525,7 +2525,7 @@ class CommunityRepository @Inject constructor(
             }
             var result = if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 val token = authService.getAccessTokenAwait()
-            if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 if (token.isNullOrBlank()) {
                     Result.failure(Exception("Sesion Ubuntu no disponible"))
                 } else {
@@ -2543,7 +2543,7 @@ class CommunityRepository @Inject constructor(
                         forwardedFromMessageId = forwardedFromMessageId,
                         forwardedFromUserId = forwardedFromUserId
                     ).map { serverMessage ->
-            if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                        if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                         val synced = mergeSyncedCommunityMessageWithLocalState(
                             incoming = acknowledgeCommunityMessage(serverMessage, cleanId).copy(
                                 channel_id = serverMessage.channel_id ?: msg.channel_id,

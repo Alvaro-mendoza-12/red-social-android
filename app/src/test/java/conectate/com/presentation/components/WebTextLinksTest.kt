@@ -23,7 +23,7 @@ class WebTextLinksTest {
     }
 
     @Test fun emailsAndNonWebSchemesDoNotTurnIntoWebLinks() {
-        assertTrue(findWebTextLinks("user@example.org ftp://example.org file:///sdcard/private content://private").isEmpty())
+        assertTrue(findWebTextLinks("user@example.org ftp://example.org rtsp://example.org file:///sdcard/private content://private").isEmpty())
     }
 
     @Test fun acceptsUppercaseHttpAndPreservesQueryAndFragment() {
