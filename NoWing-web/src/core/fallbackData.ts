@@ -651,6 +651,7 @@ export async function uploadFallbackFile(
   bucket: string,
   file: File,
   path?: string,
+  expectedAccountId?: string,
 ): Promise<FallbackStorageObject> {
   if (['chat-media', 'group-media', 'community-media'].includes(bucket)) {
     return stageOfflineChatAttachment(bucket, file, path)
@@ -663,6 +664,7 @@ export async function uploadFallbackFile(
   const payload = await fallbackApiJson<{ object: FallbackStorageObject }>('/v1/storage/upload', {
     method: 'POST',
     body: formData,
+    ...(expectedAccountId ? { expectedAccountId } : {}),
   })
   return payload.object
 }

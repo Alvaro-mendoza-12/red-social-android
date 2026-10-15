@@ -16,6 +16,14 @@ Proyecto existente `red-social-android`, directorio raíz `NoWing-web`, instalac
 
 Ejecutar `vercel --prod` desde la raíz del repositorio, o `npm run deploy:production` desde `NoWing-web`. La exclusión de subida impide incluir archivos de entorno y datos locales.
 
+## Momentos
+
+Seleccionar una foto o un video abre el editor sin publicarlo. El botón «Publicar momento» confirma la descripción, audiencia, duración, texto y música. El catálogo de comunidad muestra pistas aprobadas y autorizadas para reutilización; se puede recorrer la canción completa para elegir el inicio del fragmento. También se puede usar audio del dispositivo. Las fotos duran seis segundos y los videos respetan su duración hasta veinticinco segundos.
+
+El visor usa el fragmento compatible que devuelve el servidor, sincroniza la música y pausa el audio y el video al mantener pulsado, escribir una respuesta, pausar o cambiar de pestaña. Los videos con audio ya mezclado desde Android no reproducen una segunda pista. El navegador puede exigir tocar «Audio ON» o «Reproducir» para permitir sonido.
+
+El editor permite texto y presentación musical de tarjeta, etiqueta o solo audio. La comparación completa con todas las herramientas creativas de Android sigue pendiente; no incluye un editor de letras sincronizadas ni composición avanzada de video. La publicación requiere conexión y conserva el borrador abierto si falla; no es una cola persistente de publicaciones.
+
 ## Verificación
 
 La compilación y las pruebas de código no prueban por sí solas cada acción de la aplicación. El informe de este trabajo enumera por separado las pruebas de navegador, sincronización, archivos y llamadas. El navegador necesita HTTPS y permiso del usuario para cámara, micrófono y notificaciones. No se garantiza una latencia de cero ni ejecución de tareas con el navegador cerrado.

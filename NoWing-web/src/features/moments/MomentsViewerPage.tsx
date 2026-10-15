@@ -1,4 +1,3 @@
-import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
@@ -6,11 +5,7 @@ import { friendlyError } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { getOrCreateDirectChat, sendDirectMessage } from '../messages/directChat'
 import { fetchMomentsFeed, recordMomentView, type MomentItem } from './momentsData'
-
-function getStoryDurationMs(moment: MomentItem): number {
-  if (moment.mediaType === 'video') return 8500
-  return 5000
-}
+import { MomentPlayback } from './MomentPlayback'
 
 export function MomentsViewerPage() {
   const { user } = useAuth()
@@ -19,7 +14,8 @@ export function MomentsViewerPage() {
   const [moments, setMoments] = useState<MomentItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [feedOwner, setFeedOwner] = useState('')
+  const [replyError, setReplyError] = useState('')
   const [progress, setProgress] = useState(0)
   const [replyDraft, setReplyDraft] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
@@ -29,35 +25,25 @@ export function MomentsViewerPage() {
   const [tabHidden, setTabHidden] = useState(false)
   const [muted, setMuted] = useState(true)
   const [manualPause, setManualPause] = useState(false)
-  const [mediaReady, setMediaReady] = useState(false)
-  const elapsedMsRef = useRef(0)
+  const request = useRef(0)
   const pointerStartRef = useRef<{ x: number; y: number; time: number; width: number } | null>(null)
 
-  const activeMoment = moments[activeIndex] ?? null
-  const shouldPause = !mediaReady || isPressing || replyFocused || sendingReply || tabHidden || manualPause
+  const activeIndex = Math.max(0, moments.findIndex(moment => moment.id === momentId))
+  const activeMoment = feedOwner === user?.id ? moments[activeIndex] ?? null : null
+  const shouldPause = isPressing || replyFocused || sendingReply || tabHidden || manualPause
 
   const loadMoments = useCallback(async () => {
-    if (!user) {
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    setError(null)
+    const sequence = ++request.current
+    if (!user?.id) { setMoments([]); setFeedOwner(''); setLoading(false); return }
+    setLoading(true); setError(null)
     try {
       const feed = await fetchMomentsFeed(user.id)
-      setMoments(feed)
-      const selectedIndex = feed.findIndex((moment) => moment.id === momentId)
-      setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0)
+      if (sequence === request.current) { setMoments(feed); setFeedOwner(user.id) }
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudieron cargar historias'))
-    } finally {
-      setLoading(false)
-    }
-  }, [momentId, user])
-
-  useEffect(() => {
-    void loadMoments()
-  }, [loadMoments])
+      if (sequence === request.current) setError(friendlyError(caught, 'No se pudieron cargar historias'))
+    } finally { if (sequence === request.current) setLoading(false) }
+  }, [user?.id])
+  useEffect(() => { void loadMoments(); return () => { request.current++ } }, [loadMoments])
 
   const goToMoment = useCallback(
     (index: number) => {
@@ -71,7 +57,6 @@ export function MomentsViewerPage() {
         return
       }
       const nextMoment = moments[index]
-      setActiveIndex(index)
       navigate(`/app/moments/view/${nextMoment.id}`, { replace: true })
     },
     [moments, navigate],
@@ -88,7 +73,9 @@ export function MomentsViewerPage() {
   useEffect(() => {
     if (!user || !activeMoment) return
     if (activeMoment.userId === user.id || activeMoment.viewedByMe) return
+    const sequence = request.current
     void recordMomentView(activeMoment.id, user.id).then(() => {
+      if (sequence !== request.current) return
       setMoments((current) =>
         current.map((moment) =>
           moment.id === activeMoment.id
@@ -96,16 +83,18 @@ export function MomentsViewerPage() {
             : moment,
         ),
       )
-    })
+    }).catch(() => { /* View receipts may retry on a later visit; playback remains available. */ })
   }, [activeMoment, user])
 
   useEffect(() => {
-    elapsedMsRef.current = 0
     setProgress(0)
     setReplyChatId(null)
     setMuted(true)
     setManualPause(false)
-    setMediaReady(false)
+    setReplyDraft('')
+    setReplyError('')
+    setIsPressing(false)
+    setReplyFocused(false)
   }, [activeMoment?.id])
 
   useEffect(() => {
@@ -116,27 +105,6 @@ export function MomentsViewerPage() {
     document.addEventListener('visibilitychange', syncVisibility)
     return () => document.removeEventListener('visibilitychange', syncVisibility)
   }, [])
-
-  useEffect(() => {
-    if (!activeMoment) return
-    if (shouldPause) return
-    const durationMs = getStoryDurationMs(activeMoment)
-    const startedAt = Date.now() - elapsedMsRef.current
-    const interval = window.setInterval(() => {
-      const elapsed = Date.now() - startedAt
-      elapsedMsRef.current = elapsed
-      const nextProgress = Math.min(100, (elapsed / durationMs) * 100)
-      setProgress(nextProgress)
-      if (elapsed >= durationMs) {
-        window.clearInterval(interval)
-        elapsedMsRef.current = 0
-        goNext()
-      }
-    }, 100)
-    return () => {
-      window.clearInterval(interval)
-    }
-  }, [activeMoment, goNext, shouldPause])
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -161,23 +129,6 @@ export function MomentsViewerPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [goNext, goPrev, navigate])
-
-  useEffect(() => {
-    const nearby = [moments[activeIndex - 1], moments[activeIndex + 1]].filter(
-      (entry): entry is MomentItem => Boolean(entry),
-    )
-    nearby.forEach((moment) => {
-      if (!moment.mediaUrl) return
-      if (moment.mediaType === 'video') {
-        const preloader = document.createElement('video')
-        preloader.preload = 'metadata'
-        preloader.src = moment.mediaUrl
-        return
-      }
-      const imagePreload = new Image()
-      imagePreload.src = moment.mediaUrl
-    })
-  }, [activeIndex, moments])
 
   const progressBars = useMemo(() => {
     return moments.map((moment, index) => {
@@ -236,7 +187,7 @@ export function MomentsViewerPage() {
     if (!user || !activeMoment || !replyDraft.trim() || sendingReply) return
     if (activeMoment.userId === user.id) return
     setSendingReply(true)
-    setError(null)
+    setReplyError('')
     try {
       const chatId = await getOrCreateDirectChat(user.id, activeMoment.userId)
       const message = `Respuesta a tu historia: ${replyDraft.trim()}`
@@ -244,7 +195,7 @@ export function MomentsViewerPage() {
       setReplyDraft('')
       setReplyChatId(chatId)
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo enviar respuesta a la historia'))
+      setReplyError(friendlyError(caught, 'No se pudo enviar respuesta a la historia'))
     } finally {
       setSendingReply(false)
     }
@@ -287,7 +238,7 @@ export function MomentsViewerPage() {
           </div>
           <div className="row-actions">
             <small className="story-state-pill">{shouldPause ? 'Pausado' : 'Reproduciendo'}</small>
-            {activeMoment.mediaType === 'video' ? (
+            {activeMoment.mediaType === 'video' || activeMoment.music ? (
               <button className="ghost-btn" type="button" onClick={() => setMuted((current) => !current)}>
                 {muted ? 'Audio OFF' : 'Audio ON'}
               </button>
@@ -313,32 +264,14 @@ export function MomentsViewerPage() {
           onPointerCancel={handleStoryPointerCancel}
           onPointerLeave={handleStoryPointerCancel}
         >
-          {activeMoment.mediaType === 'video' ? (
-            <StreamingVideo
-              className="story-viewer-media"
-              src={activeMoment.mediaUrl}
-              autoPlay
-              muted={muted}
-              playsInline
-              onCanPlay={() => setMediaReady(true)}
-              onEnded={() => goNext()}
-            />
-          ) : (
-            <StreamingImage
-              className="story-viewer-media"
-              src={activeMoment.mediaUrl}
-              alt={activeMoment.caption || 'Historia'}
-              decoding="async"
-              onLoad={() => setMediaReady(true)}
-            />
-          )}
-          {!mediaReady ? <div className="story-viewer-loading" role="status">Cargando…</div> : null}
+          <MomentPlayback key={`${user?.id}:${activeMoment.id}`} moment={activeMoment} paused={shouldPause} muted={muted} onProgress={setProgress} onComplete={goNext} />
         </article>
         <button className="story-nav-btn" type="button" onClick={() => goNext()}>
           ›
         </button>
       </div>
 
+      {replyError ? <p role="alert" className="error-text">{replyError}</p> : null}
       {activeMoment.userId !== user?.id && activeMoment.allowReplies ? (
         <footer className="story-reply-bar">
           <input

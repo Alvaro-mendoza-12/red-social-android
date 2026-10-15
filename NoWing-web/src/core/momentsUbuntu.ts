@@ -1,5 +1,6 @@
 import { fallbackApiJson } from './auth/fallbackAuth'
 import type { MomentItem } from '../features/moments/momentsData'
+import { mapMomentOverlay, mapMomentSound, momentDuration, type MomentOverlay } from '../features/moments/momentMusic'
 
 type FeedResponse = {
   items: Array<{
@@ -16,6 +17,7 @@ type FeedResponse = {
     views_count: number
     viewed_by_me: boolean
     viewer_preview: string[]
+    [key: string]: unknown
   }>
 }
 
@@ -37,6 +39,9 @@ export async function fetchUbuntuMomentsFeed(_currentUserId: string): Promise<Mo
     viewsCount: Number(row.views_count ?? 0),
     viewedByMe: Boolean(row.viewed_by_me),
     viewerPreview: row.viewer_preview ?? [],
+    displayDurationMs: momentDuration(row.media_type, Number(row.display_duration_ms)),
+    music: mapMomentSound(row),
+    overlay: mapMomentOverlay(row),
   }))
 }
 
@@ -47,9 +52,14 @@ export async function publishUbuntuMoment(input: {
   durationHours: number
   visibility: string
   allowReplies: boolean
+  displayDurationMs?: number
+  musicFields?: Record<string, unknown>
+  overlay?: MomentOverlay
+  expectedAccountId?: string
 }) {
   return fallbackApiJson('/v1/data/moments', {
     method: 'POST',
+    ...(input.expectedAccountId ? { expectedAccountId: input.expectedAccountId } : {}),
     body: JSON.stringify({
       mediaUrl: input.mediaUrl,
       mediaType: input.mediaType,
@@ -57,6 +67,9 @@ export async function publishUbuntuMoment(input: {
       durationHours: input.durationHours,
       visibility: input.visibility,
       allowReplies: input.allowReplies,
+      displayDurationMs: input.displayDurationMs,
+      ...(input.musicFields || {}),
+      ...(input.overlay ? { overlayText: input.overlay.text, overlayColor: `#FF${input.overlay.color.replace('#', '').slice(0, 6)}`, overlayFont: input.overlay.font, overlayX: input.overlay.x, overlayY: input.overlay.y } : {}),
     }),
   })
 }

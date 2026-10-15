@@ -1,9 +1,10 @@
-import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import { isFallbackAuthConfigured, readFallbackSession } from '../../core/auth/fallbackAuth'
 import { deleteUbuntuMoment, fetchUbuntuMomentsFeed, publishUbuntuMoment, recordUbuntuMomentView } from '../../core/momentsUbuntu'
 import { getDataClient } from '../../core/ubuntuDataClient'
 import { isUbuntuPrimary } from '../../core/ubuntuBackend'
 import { uploadFallbackFile } from '../../core/fallbackData'
 import { isMissingTableError, textOf, type GenericRow } from '../../core/utils'
+import { mapMomentOverlay, mapMomentSound, momentDuration, musicPublishFields, type MomentMusicSelection, type MomentOverlay, type MomentSound } from './momentMusic'
 
 export type MomentItem = {
   id: string
@@ -19,6 +20,9 @@ export type MomentItem = {
   viewsCount: number
   viewedByMe: boolean
   viewerPreview: string[]
+  displayDurationMs?: number
+  music?: MomentSound
+  overlay?: MomentOverlay
 }
 
 function toBoolean(value: unknown): boolean {
@@ -133,6 +137,9 @@ async function fetchLegacyMomentsFeed(currentUserId: string): Promise<MomentItem
         viewsCount: viewsByMoment.get(id) ?? 0,
         viewedByMe: viewedByMe.has(id),
         viewerPreview,
+        displayDurationMs: momentDuration(textOf(row, ['media_type'], 'image'), Number(row.display_duration_ms)),
+        music: mapMomentSound(row),
+        overlay: mapMomentOverlay(row),
       } satisfies MomentItem
     })
     .filter((moment) => {
@@ -185,12 +192,26 @@ export async function publishMoment(input: {
   durationHours: number
   visibility: string
   allowReplies: boolean
+  displayDurationMs?: number
+  music?: MomentMusicSelection
+  overlay?: MomentOverlay
+  expectedAccountId?: string
 }): Promise<void> {
   const mediaType = input.file.type.startsWith('video/') ? 'video' : 'image'
   const path = `moments/${Date.now()}_${mediaType}_${input.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
 
   if (isUbuntuPrimary || isFallbackAuthConfigured) {
-    const uploaded = await uploadFallbackFile('moment-media', input.file, path)
+    const session = readFallbackSession()
+    const account = session?.user.id
+    if (!account) throw new Error('Inicia sesión para publicar un momento.')
+    const profileAccount = session.user.supabaseUserId?.trim() || account
+    if (input.expectedAccountId && profileAccount !== input.expectedAccountId) throw new Error('Tu cuenta cambió. Abre de nuevo el editor para publicar.')
+    let audioUrl: string | undefined
+    if (input.music?.track.localFile) {
+      const audio = await uploadFallbackFile('community-music', input.music.track.localFile, `moments/music/${crypto.randomUUID()}`, account)
+      audioUrl = audio.publicUrl || audio.url
+    }
+    const uploaded = await uploadFallbackFile('moment-media', input.file, path, account)
     await publishUbuntuMoment({
       mediaUrl: uploaded.publicUrl || uploaded.url,
       mediaType,
@@ -198,6 +219,10 @@ export async function publishMoment(input: {
       durationHours: input.durationHours,
       visibility: input.visibility,
       allowReplies: input.allowReplies,
+      displayDurationMs: momentDuration(mediaType, input.displayDurationMs),
+      musicFields: musicPublishFields(input.music, momentDuration(mediaType, input.displayDurationMs), audioUrl),
+      overlay: input.overlay,
+      expectedAccountId: account,
     })
     return
   }

@@ -1,7 +1,7 @@
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Camera, Plus, X } from 'lucide-react'
+import { Camera, Plus } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
 import {
   removeRealtimeChannel,
@@ -11,7 +11,8 @@ import {
 } from '../../core/supabase'
 import { formatDateTime, friendlyError } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { fetchMomentsFeed, publishMoment, recordMomentView, removeMoment, type MomentItem } from './momentsData'
+import { fetchMomentsFeed, recordMomentView, removeMoment, type MomentItem } from './momentsData'
+import { MomentComposer } from './MomentComposer'
 import { isUbuntuPrimary } from '../../core/ubuntuBackend'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 
@@ -35,11 +36,7 @@ export function MomentsPage() {
   const [items, setItems] = useState<MomentItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [caption, setCaption] = useState('')
-  const [durationHours, setDurationHours] = useState(24)
-  const [visibility, setVisibility] = useState('all')
-  const [allowReplies, setAllowReplies] = useState(true)
+  const request = useRef(0)
   const [showComposer, setShowComposer] = useState(false)
   const sortedMoments = useMemo(() => {
     const me = user?.id ?? ''
@@ -55,26 +52,26 @@ export function MomentsPage() {
     return [...others, ...own]
   }, [items, user?.id])
 
-  const loadMoments = useCallback(async () => {
-    if (!user) {
-      setLoading(false)
-      return
-    }
-    setLoading(true)
+  const loadMoments = useCallback(async (quiet = false) => {
+    const sequence = ++request.current
+    if (!user?.id) { setItems([]); setLoading(false); return }
+    if (!quiet) setLoading(true)
     setError(null)
     try {
       const feed = await fetchMomentsFeed(user.id)
-      setItems(feed)
+      if (request.current === sequence) setItems(feed)
     } catch (caught) {
+      if (request.current !== sequence) return
       reportSupabaseServiceRestrictionIfPresent('moments-load', caught)
       setError(friendlyError(caught, 'No se pudieron cargar los momentos'))
-    } finally {
-      setLoading(false)
-    }
-  }, [user])
+    } finally { if (request.current === sequence) setLoading(false) }
+  }, [user?.id])
 
   useEffect(() => {
+    setItems([])
+    setShowComposer(false)
     void loadMoments()
+    return () => { request.current++ }
   }, [loadMoments])
 
   useEffect(() => {
@@ -82,7 +79,7 @@ export function MomentsPage() {
       return subscribeUbuntuRealtime({
         channel: 'moments:live',
         onEvent: () => {
-          void loadMoments()
+          void loadMoments(true)
         },
       })
     }
@@ -91,10 +88,10 @@ export function MomentsPage() {
     const channel = client
       .channel('moments-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'moments' }, () => {
-        void loadMoments()
+        void loadMoments(true)
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'moment_views' }, () => {
-        void loadMoments()
+        void loadMoments(true)
       })
     const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'moments-live' })
     return () => {
@@ -102,32 +99,11 @@ export function MomentsPage() {
     }
   }, [loadMoments, user])
 
-  async function handlePublish(file: File | null) {
-    if (!user || !file || uploading) return
-    setUploading(true)
-    setError(null)
-    try {
-      await publishMoment({
-        file,
-        caption: caption.trim(),
-        durationHours,
-        visibility,
-        allowReplies,
-      })
-      setCaption('')
-      await loadMoments()
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo publicar el momento'))
-    } finally {
-      setUploading(false)
-    }
-  }
-
   async function markViewed(moment: MomentItem) {
     if (!user || moment.userId === user.id) return
     try {
       await recordMomentView(moment.id, user.id)
-      await loadMoments()
+      await loadMoments(true)
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo registrar vista'))
     }
@@ -137,7 +113,7 @@ export function MomentsPage() {
     if (!user || !momentId) return
     try {
       await removeMoment(momentId, user.id)
-      await loadMoments()
+      await loadMoments(true)
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo eliminar el momento'))
     }
@@ -166,60 +142,7 @@ export function MomentsPage() {
         ))}
       </div>
 
-      {showComposer ? <div className="app-dialog-backdrop" role="presentation" onMouseDown={() => setShowComposer(false)}>
-      <article className="surface-card section-stack moments-composer-dialog" role="dialog" aria-modal="true" aria-label="Publicar momento" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="row-between"><h3>Publicar momento</h3><button className="icon-btn" type="button" onClick={() => setShowComposer(false)} title="Cerrar" aria-label="Cerrar"><X aria-hidden="true" /></button></div>
-        <div className="composer">
-          <input
-            className="text-input"
-            placeholder="Escribe un caption (opcional)..."
-            value={caption}
-            onChange={(event) => setCaption(event.target.value)}
-          />
-          <select
-            className="text-input tiny-input"
-            value={durationHours}
-            onChange={(event) => setDurationHours(Number(event.target.value))}
-          >
-            <option value={6}>6 horas</option>
-            <option value={12}>12 horas</option>
-            <option value={24}>24 horas</option>
-            <option value={48}>48 horas</option>
-          </select>
-          <select
-            className="text-input tiny-input"
-            value={visibility}
-            onChange={(event) => setVisibility(event.target.value)}
-          >
-            <option value="all">Todos</option>
-            <option value="friends">Amigos</option>
-            <option value="followers">Seguidores</option>
-          </select>
-          <label className="checkbox-inline">
-            <input
-              type="checkbox"
-              checked={allowReplies}
-              onChange={(event) => setAllowReplies(event.target.checked)}
-            />
-            Permitir respuestas
-          </label>
-          <label className="primary-btn file-pick-btn">
-            {uploading ? 'Publicando...' : 'Subir foto/video'}
-            <input
-              type="file"
-              hidden
-              accept="image/*,video/*"
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null
-                void handlePublish(file)
-                event.currentTarget.value = ''
-                setShowComposer(false)
-              }}
-            />
-          </label>
-        </div>
-      </article>
-      </div> : null}
+      {showComposer && user ? <MomentComposer key={user.id} onClose={() => setShowComposer(false)} onPublished={() => { setShowComposer(false); void loadMoments(true) }} /> : null}
 
       {loading ? (
         <StatusView title="Cargando momentos" description="Espera un momento..." />

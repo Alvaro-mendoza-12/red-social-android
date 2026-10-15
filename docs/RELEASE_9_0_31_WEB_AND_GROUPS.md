@@ -14,7 +14,7 @@
 
 - Android: compilación release firmada y 66 pruebas seleccionadas sin fallos. Incluyen tres pruebas con Room sobre conservación de chats por cuenta.
 - API Linux: 801 pruebas aprobadas y seis omitidas; 77 comprobaciones adicionales de PostgreSQL y 100 de membresía, permisos, avisos e historial con HTTP y bases desechables.
-- Web: compilación TypeScript/Vite; 240 pruebas de componentes y lógica; ocho pruebas del intermediario de multimedia; tres pruebas del contrato CORS de entrega y 13 comprobaciones con Nginx y archivos ficticios.
+- Web: compilación TypeScript/Vite; 270 pruebas de componentes y lógica; ocho pruebas del intermediario de multimedia; tres pruebas del contrato CORS de entrega y 13 comprobaciones con Nginx y archivos ficticios.
 - Navegador real, datos ficticios y red simulada: cola de texto, imagen, video, audio y documento; separación de cuentas; cancelación; persistencia al recargar; entrega posterior sin duplicar identificadores.
 - Sitio público: acceso QR con aprobación de una de las cuentas autorizadas; mensajes persistidos en ambos sentidos entre API y web (287 ms observados para recibir uno de ellos); vistas de mensajes sin desbordamiento horizontal entre 320 y 2560 píxeles. Es una medición puntual, no una garantía de latencia.
 - Entrega pública: Nginx conserva la decisión CORS de la API después de autorizar un archivo. Se comprobó reproducción del avatar en bucle y del feed de videos, con 43 respuestas de archivos, incluidas 31 parciales, sin errores. Los chats largos muestran primero los últimos 80 mensajes y permiten cargar los anteriores; los adjuntos fuera de la vista esperan a ser visibles.
@@ -30,3 +30,11 @@ El acceso como invitado permite leer contenido público en `/explore/videos`, `/
 Las galerías históricas con objetos JSON ahora tienen el mismo tratamiento en los analizadores JavaScript y PostgreSQL. Se repararon cinco enlaces de una publicación que todavía apuntaban a un túnel retirado, después de comprobar propietario, estado del análisis y SHA256 de los archivos. El cambio conservó los destinatarios y los orígenes autorizados. Los 22 objetos de la muestra pública posterior tenían archivo, metadatos, análisis válido y acceso de invitado autorizado. El descubrimiento firmado puede cambiar de dirección del mismo servicio sin dejar al invitado sin credenciales de multimedia.
 
 Vercel: proyecto `red-social-android`, raíz `NoWing-web`, salida `dist`. Las variables `VITE_FALLBACK_API_URL` y `VITE_BACKEND_DISCOVERY_PUBLIC_KEY` son públicas. No configurar secretos del servidor dentro del cliente web.
+
+## Editor y reproducción de momentos web
+
+La selección de archivos ya no publica automáticamente. El editor conserva la selección y descripción ante un fallo de publicación. Ofrece música aprobada de comunidad, audio del dispositivo, búsqueda paginada, elección del fragmento sobre la duración completa de la canción, volúmenes, fundidos, presentación musical, texto superpuesto y audiencia. Las cargas y la publicación quedan vinculadas a la cuenta original.
+
+El visor respeta seis segundos para fotos y la duración real del video hasta veinticinco segundos. Pausa los elementos multimedia al pausar, responder o cambiar de pestaña, y no solicita otra vez el catálogo al cambiar de momento. Reproduce el fragmento de audio compatible del servidor y evita duplicar los sonidos ya mezclados en Android. Ofrece reintento ante archivos no disponibles y conserva el momento visible si falla solo la música.
+
+La prueba de navegador con red simulada seleccionó un fragmento 2:00–2:06 de una canción de tres minutos, reprodujo la vista previa, comprobó recuperación del borrador, publicación privada y pausa real del audio. Editor y visor no desbordaron entre 320 y 2560 píxeles. Estas pruebas no certifican todas las herramientas creativas de Android ni las publicaciones sin conexión.
