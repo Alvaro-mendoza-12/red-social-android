@@ -730,6 +730,7 @@ export function LoginPage() {
           <p className="auth-foot">
             ¿No tienes cuenta? <Link to="/register">Regístrate</Link>
           </p>
+          <p className="auth-foot"><Link to="/explore/videos">Continuar como invitado</Link></p>
         </div>
       </div>
     </section>

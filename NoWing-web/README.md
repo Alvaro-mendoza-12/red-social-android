@@ -8,6 +8,8 @@ Node 24, `npm ci --legacy-peer-deps`, `npm run dev`. Para compilar: `npm run bui
 
 Variables públicas: `VITE_FALLBACK_API_URL` (origen HTTPS del servidor), `VITE_BACKEND_DISCOVERY_PUBLIC_KEY` (clave pública de descubrimiento). La web no debe recibir claves JWT, contraseñas de PostgreSQL ni claves administrativas. La autenticación funciona con contraseña o QR aprobado desde Android. Las cuentas y los permisos se comprueban en el servidor.
 
+`/explore/videos` permite entrar como invitado para leer videos, publicaciones, momentos y perfiles públicos. Usa la identidad de invitado del servidor, con el token solo en memoria y archivos autorizados para esa identidad. No crea una cuenta ni permite enviar mensajes o modificar contenido; al iniciar sesión se descartan sus credenciales y sus recursos de multimedia.
+
 ## Vercel
 
 Proyecto existente `red-social-android`, directorio raíz `NoWing-web`, instalación `npm ci --legacy-peer-deps`, compilación `npm run build`, salida `dist`. Las variables se definen en Vercel y se aplican al siguiente despliegue.

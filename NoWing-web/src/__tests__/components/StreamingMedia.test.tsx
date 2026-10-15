@@ -39,3 +39,12 @@ test('local pending attachment Blobs stay local', () => {
   expect(container.querySelector('video')).toHaveAttribute('src','blob:pending-attachment')
   expect(stream).not.toHaveBeenCalled()
 })
+
+test('guest media uses its own opaque handle and is removed on sign-in', async () => {
+  updateStorageReadIdentity('guest-session', 'guest')
+  const {container}=render(<StreamingVideo src={media} />)
+  await waitFor(()=>expect(container.querySelector('video')).toHaveAttribute('src','/__novvin_media/guest-session/video'))
+  act(()=>updateStorageReadIdentity('account-b','fallback'))
+  await waitFor(()=>expect(container.querySelector('video')).toHaveAttribute('src','/__novvin_media/account-b/video'))
+  expect(container.innerHTML).not.toContain('guest-session')
+})

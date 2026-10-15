@@ -173,12 +173,22 @@ CREATE OR REPLACE FUNCTION novvin_storage_guard.novvin_storage_content_urls(sour
               CONTINUE;
             END;
             IF jsonb_typeof(value)<>'array' THEN CONTINUE; END IF;
-            RETURN QUERY SELECT entry#>>'{}' FROM jsonb_array_elements(value) entry WHERE jsonb_typeof(entry)='string';
+            RETURN QUERY SELECT picked.url FROM (SELECT CASE
+              WHEN jsonb_typeof(entry)='string' THEN entry#>>'{}'
+              WHEN field='media_urls' AND jsonb_typeof(entry)='object' THEN CASE
+                WHEN jsonb_typeof(entry->'url')='string' AND length(btrim(entry->>'url'))>0 THEN entry->>'url'
+                WHEN jsonb_typeof(entry->'media_url')='string' AND length(btrim(entry->>'media_url'))>0 THEN entry->>'media_url'
+              END END AS url FROM jsonb_array_elements(value) entry) picked WHERE picked.url IS NOT NULL;
           ELSE
             RETURN NEXT;
           END IF;
         ELSIF jsonb_typeof(value)='array' THEN
-          RETURN QUERY SELECT entry#>>'{}' FROM jsonb_array_elements(value) entry WHERE jsonb_typeof(entry)='string';
+          RETURN QUERY SELECT picked.url FROM (SELECT CASE
+            WHEN jsonb_typeof(entry)='string' THEN entry#>>'{}'
+            WHEN field='media_urls' AND jsonb_typeof(entry)='object' THEN CASE
+              WHEN jsonb_typeof(entry->'url')='string' AND length(btrim(entry->>'url'))>0 THEN entry->>'url'
+              WHEN jsonb_typeof(entry->'media_url')='string' AND length(btrim(entry->>'media_url'))>0 THEN entry->>'media_url'
+            END END AS url FROM jsonb_array_elements(value) entry) picked WHERE picked.url IS NOT NULL;
         END IF;
       END LOOP;
     END $$;

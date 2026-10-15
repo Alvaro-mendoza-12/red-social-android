@@ -42,6 +42,19 @@ test('PostgreSQL content URL arrays preserve policy and transactional boundaries
     assert.deepEqual(await extracted('public',table,row),sourceUrls(table,row));
    }
   });
+  await t.test('explicit gallery objects match JavaScript without accepting unrelated nested URLs',async()=>{
+   const media=[{url:trusted,type:'image'},{media_url:second},{url:42,media_url:second},{url:'',media_url:trusted},
+    {url:{url:trusted}},{href:trusted},{thumbnail_url:trusted},[trusted],null,42];
+   for(const table of ['posts','fallback_posts'])for(const media_urls of [media,JSON.stringify(media)]){
+    const row={media_urls};assert.deepEqual(sourceUrls(table,row),[trusted,second,second,trusted]);
+    assert.deepEqual(await extracted('public',table,row),sourceUrls(table,row));
+    assert.deepEqual(await extracted('novvin_storage_guard',table,row),sourceUrls(table,row));
+   }
+   for(const row of [{media_url:{url:trusted}},{media_url:[{url:trusted}]},{media_urls:{url:trusted}}]){
+    assert.deepEqual(await extracted('public','posts',row),[]);
+    assert.deepEqual(await extracted('novvin_storage_guard','posts',row),[]);
+   }
+  });
   await t.test('PostgreSQL cast records Unicode numeric errors and accepted deep input independently',async()=>{
    await admin.query('BEGIN');const states=[];
    try{for(const [raw,expected] of [[JSON.stringify(['\u0000']),'22P05'],['["\\uD800"]','22P02'],[overflow,'22003'],[deep,null]]){

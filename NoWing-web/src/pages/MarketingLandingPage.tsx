@@ -53,7 +53,7 @@ export function MarketingLandingPage() {
             <a className="marketing-primary-btn" href={PLAY_STORE_URL} target="_blank" rel="noreferrer">
               Descargar en Google Play
             </a>
-            <Link className="marketing-secondary-btn" to="/register">Probar en la web</Link>
+            <Link className="marketing-secondary-btn" to="/explore/videos">Explorar sin cuenta</Link>
             <button type="button" className="marketing-share-btn" onClick={() => void shareNovvin()}>
               {shareStatus || 'Compartir Novvin'}
             </button>

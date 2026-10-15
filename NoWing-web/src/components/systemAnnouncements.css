@@ -3,7 +3,7 @@
   gap: 1rem; padding: 1rem; background: var(--surface, #20212b); color: var(--text, #fff);
   border-bottom: 2px solid #7672ed;
 }
-.system-notice-banner p { margin: .4rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.system-notice-banner p { margin: .4rem 0; white-space: pre-wrap; overflow-wrap: anywhere; color: inherit; }
 .system-notice-banner > div:first-child { min-width: 0; }
 .system-notice-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
 .system-notice-actions button, .system-notice-actions a { min-height: 44px; }

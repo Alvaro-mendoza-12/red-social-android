@@ -14,6 +14,7 @@ import './pages/marketing.css'
 const PostDetailPage = lazy(() =>
   import('./pages/feed/PostDetailPage').then((module) => ({ default: module.PostDetailPage })),
 )
+const ExplorePage = lazy(() => import('./pages/ExplorePage').then(module => ({ default: module.ExplorePage })))
 const MomentsViewerPage = lazy(() =>
   import('./features/moments/MomentsViewerPage').then((module) => ({ default: module.MomentsViewerPage })),
 )
@@ -150,6 +151,7 @@ function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<RootRoute />} />
+        <Route path="/explore/:kind?/:id?" element={<GuestOnlyRoute><RouteSuspense><ExplorePage /></RouteSuspense></GuestOnlyRoute>} />
         <Route path="/forgot-password" element={<GuestOnlyRoute><ForgotPasswordPage /></GuestOnlyRoute>} />
         <Route
           path="/login"

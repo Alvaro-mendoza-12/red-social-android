@@ -3,6 +3,7 @@ import { getRuntimeBackendUrl, subscribeRuntimeBackend } from '../runtimeBackend
 import { supabase } from '../supabase'
 import { getStorageReadIdentity, invalidateStorageReadBackend, requireStorageReadIdentity, type StorageReadIdentity } from './storageReadSession'
 import { isTrustedStorageReadUrl } from './boundedStorageRead'
+import { guestStorageToken } from '../auth/guestAccess'
 
 // Trusted discovery already verifies signed candidates before publishing this event.
 subscribeRuntimeBackend(() => invalidateStorageReadBackend())
@@ -17,6 +18,7 @@ export function trustedStorageBackend(url: string): string {
 
 export async function prepareStorageReadAccessToken(identity: StorageReadIdentity): Promise<string> {
   requireStorageReadIdentity(identity)
+  if (identity.provider === 'guest') return guestStorageToken(identity)
   if (identity.provider === 'fallback') {
     const token = await ensureFallbackAccessToken()
     requireStorageReadIdentity(identity)

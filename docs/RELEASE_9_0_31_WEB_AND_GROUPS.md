@@ -13,8 +13,8 @@
 ## Comprobaciones de esta revisión
 
 - Android: compilación release firmada y 66 pruebas seleccionadas sin fallos. Incluyen tres pruebas con Room sobre conservación de chats por cuenta.
-- API Linux: 798 pruebas aprobadas y seis omitidas; 76 comprobaciones adicionales de PostgreSQL y 100 de membresía, permisos, avisos e historial con HTTP y bases desechables.
-- Web: compilación TypeScript/Vite; 221 pruebas de componentes y lógica; ocho pruebas del intermediario de multimedia; tres pruebas del contrato CORS de entrega y 13 comprobaciones con Nginx y archivos ficticios.
+- API Linux: 801 pruebas aprobadas y seis omitidas; 77 comprobaciones adicionales de PostgreSQL y 100 de membresía, permisos, avisos e historial con HTTP y bases desechables.
+- Web: compilación TypeScript/Vite; 240 pruebas de componentes y lógica; ocho pruebas del intermediario de multimedia; tres pruebas del contrato CORS de entrega y 13 comprobaciones con Nginx y archivos ficticios.
 - Navegador real, datos ficticios y red simulada: cola de texto, imagen, video, audio y documento; separación de cuentas; cancelación; persistencia al recargar; entrega posterior sin duplicar identificadores.
 - Sitio público: acceso QR con aprobación de una de las cuentas autorizadas; mensajes persistidos en ambos sentidos entre API y web (287 ms observados para recibir uno de ellos); vistas de mensajes sin desbordamiento horizontal entre 320 y 2560 píxeles. Es una medición puntual, no una garantía de latencia.
 - Entrega pública: Nginx conserva la decisión CORS de la API después de autorizar un archivo. Se comprobó reproducción del avatar en bucle y del feed de videos, con 43 respuestas de archivos, incluidas 31 parciales, sin errores. Los chats largos muestran primero los últimos 80 mensajes y permiten cargar los anteriores; los adjuntos fuera de la vista esperan a ser visibles.
@@ -24,5 +24,9 @@ Estas comprobaciones tienen alcances diferentes. No constituyen una certificaci�
 ## Despliegue web
 
 La web incluye tarjetas de videos compartidos y selección de chats, grupos y comunidades, además de QR del perfil e historial de visitas con las preferencias de privacidad del servidor. La acción de compartir un video en el perfil se guarda en la API. El estado inicial de Personas cerca indica que se debe activar el radar; no presenta un error por una función todavía desactivada.
+
+El acceso como invitado permite leer contenido público en `/explore/videos`, `/explore/posts`, `/explore/moments` y perfiles públicos. Usa las rutas de invitado ya existentes del servidor; la credencial permanece en memoria y se invalida al salir o cambiar de identidad. Se comprobaron los cambios de cuenta durante solicitudes pendientes, la renovación limitada de la sesión y la navegación adaptable con errores simulados. Las comprobaciones públicas de reproducción se registran por separado en el informe de la revisión.
+
+Las galerías históricas con objetos JSON ahora tienen el mismo tratamiento en los analizadores JavaScript y PostgreSQL. Se repararon cinco enlaces de una publicación que todavía apuntaban a un túnel retirado, después de comprobar propietario, estado del análisis y SHA256 de los archivos. El cambio conservó los destinatarios y los orígenes autorizados. Los 22 objetos de la muestra pública posterior tenían archivo, metadatos, análisis válido y acceso de invitado autorizado. El descubrimiento firmado puede cambiar de dirección del mismo servicio sin dejar al invitado sin credenciales de multimedia.
 
 Vercel: proyecto `red-social-android`, raíz `NoWing-web`, salida `dist`. Las variables `VITE_FALLBACK_API_URL` y `VITE_BACKEND_DISCOVERY_PUBLIC_KEY` son públicas. No configurar secretos del servidor dentro del cliente web.

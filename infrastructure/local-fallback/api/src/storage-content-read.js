@@ -25,7 +25,17 @@ function sourceUrls(table,row) {
   const spec=SOURCES[table];if(!spec)return[];
   const source=spec.nested?row?.[spec.nested]:row;
   if(!source||typeof source!=='object'||Array.isArray(source))return[];
-  return spec.fields.flatMap(field=>Array.isArray(source[field])?source[field]:list(source[field]).length?list(source[field]):[source[field]]).filter(value=>typeof value==='string');
+  return spec.fields.flatMap(field=>{
+    const parsed=list(source[field]),array=Array.isArray(source[field])||parsed.length>0;
+    const values=array?parsed:[source[field]];
+    return values.map(value=>{
+      if(typeof value==='string')return value;
+      // Historical post galleries store explicit {url,...} or {media_url,...}
+      // descriptors. Only this declared media array may carry those objects.
+      if(!array||field!=='media_urls'||!value||typeof value!=='object'||Array.isArray(value))return null;
+      return ['url','media_url'].map(key=>value[key]).find(url=>typeof url==='string'&&url.trim());
+    });
+  }).filter(value=>typeof value==='string');
 }
 function referencesObject(table,row,object,origins) {
   return sourceUrls(table,row).some(url=>{const ref=parseObjectReference(url,origins);return ref?.bucket===object.bucket_id&&ref?.name===object.name;});
