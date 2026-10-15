@@ -924,6 +924,7 @@ export function AccountSettingsPage() {
               />
               Cuenta privada
             </label>
+            <label className="settings-privacy-field"><span>Quién puede ver tu perfil</span>
             <select
               className="text-input tiny-input"
               value={model.profileVisibility}
@@ -940,6 +941,9 @@ export function AccountSettingsPage() {
               <option value="friends">Amigos</option>
               <option value="nobody">Nadie</option>
             </select>
+              <small>Elige la audiencia de la información de tu perfil.</small>
+            </label>
+            <label className="settings-privacy-field"><span>Último acceso</span>
             <select
               className="text-input tiny-input"
               value={model.lastSeenVisibility}
@@ -954,6 +958,9 @@ export function AccountSettingsPage() {
               <option value="contacts">Último acceso: contactos</option>
               <option value="nobody">Último acceso: nadie</option>
             </select>
+              <small>Controla quién ve cuándo estuviste conectado.</small>
+            </label>
+            <label className="settings-privacy-field"><span>Estado en línea</span>
             <select
               className="text-input tiny-input"
               value={model.onlineStatusVisibility}
@@ -968,6 +975,8 @@ export function AccountSettingsPage() {
               <option value="contacts">Online: contactos</option>
               <option value="nobody">Online: nadie</option>
             </select>
+              <small>Elige quién puede ver que estás usando Novvin.</small>
+            </label>
             {hasPrivacyAcceptance ? (
               <label className="checkbox-inline">
                 <input

@@ -56,7 +56,7 @@ import {
 } from '../../core/profileMediaFields'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import { filterFriendFeedItems } from './reelFeedOrder'
-import { LiveFeedCard, LiveStrip } from '../live/LiveStrip'
+import { LiveFeedCard } from '../live/LiveStrip'
 
 type ReelItem = {
   id: string
@@ -188,15 +188,12 @@ function ReelFeedCard({
   onComments: (item: ReelItem) => void
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const [canLoad, setCanLoad] = useState(eager)
+  const [canLoad, setCanLoad] = useState(() => eager || typeof IntersectionObserver === 'undefined')
   const visibleRef = useRef(false)
   useEffect(() => {
     const node = videoRef.current
     if (!node || canLoad) return
-    if (typeof IntersectionObserver === 'undefined') {
-      setCanLoad(true)
-      return
-    }
+    if (typeof IntersectionObserver === 'undefined') return
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
@@ -210,6 +207,8 @@ function ReelFeedCard({
     return () => observer.disconnect()
   }, [canLoad])
   const [paused, setPaused] = useState(false)
+  const [buffering, setBuffering] = useState(true)
+  const [playbackError, setPlaybackError] = useState(false)
   useEffect(() => {
     const onVisibility = () => {
       if (document.hidden) videoRef.current?.pause()
@@ -243,8 +242,12 @@ function ReelFeedCard({
       <StreamingVideo
         ref={videoRef}
         onLoadedData={() => {
+          setBuffering(false); setPlaybackError(false)
           if (visibleRef.current) void videoRef.current?.play().catch(() => undefined)
         }}
+        onWaiting={() => setBuffering(true)}
+        onPlaying={() => { setBuffering(false); setPlaybackError(false) }}
+        onError={() => { setBuffering(false); setPlaybackError(true) }}
         loop
         muted={muted}
         playsInline
@@ -273,6 +276,7 @@ function ReelFeedCard({
         poster={canLoad ? item.coverUrl || undefined : undefined}
       />
       <div className="reel-feed-shade" />
+      {playbackError ? <div className="reel-media-status" role="status"><span>No se pudo cargar este video.</span><button className="ghost-btn" type="button" onClick={() => { setPlaybackError(false); setBuffering(true); videoRef.current?.load(); void videoRef.current?.play().catch(() => undefined) }}>Reintentar</button></div> : buffering && canLoad ? <div className="reel-media-status loading" role="status">Cargando video…</div> : null}
       {paused ? (
         <span className="reel-play-indicator" aria-hidden="true">
           <Play fill="white" size={30} />

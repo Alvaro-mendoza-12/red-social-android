@@ -101,3 +101,32 @@
 .challenge-timing-details { border-top: 1px solid var(--outline,#333); padding-top: 12px; font-size: 13px; color: var(--text-muted,#aaa); }.challenge-timing-details summary { cursor: pointer; }.challenge-timing-details .row-actions { margin-top: 12px; gap: 12px 22px; }
 
 .challenges-page { padding-inline: clamp(12px,2vw,24px); }.challenges-page .composer { display: flex; flex-wrap: wrap; gap: 10px; }.challenges-page .composer>.text-input { flex: 1 1 180px; width: auto; min-width: 0; }.challenges-page .composer>.primary-btn { flex: 0 0 auto; white-space: nowrap; margin-left: auto; min-width: 90px; }
+
+/* Keep media controls outside the search toolbar at every desktop width. */
+.reels-page .reel-sound-button { top: 96px; z-index: 3; border: 1px solid #ffffff50; }
+.reel-media-status { position: absolute; inset: 35% 48px auto; z-index: 4; display: grid; justify-items: center; gap: 14px; text-align: center; padding: 18px; border-radius: 14px; background: #101014dd; color: #fff; font-size: 14px; }
+.reel-media-status.loading { pointer-events: none; background: transparent; text-shadow: 0 1px 4px #000; }
+.chat-profile-hero { margin-top: 20px; padding-bottom: 2px; }
+.chat-profile-hero .chat-profile-cover { display: block; margin: 0; background: var(--surface-raised); }
+.chat-profile-hero .chat-profile-avatar { position: relative; display: block; margin: -35px 0 0 12px; object-fit: cover; flex-shrink: 0; }
+.chat-profile-hero.no-cover { padding-top: 20px; background: linear-gradient(135deg,#18676a33,#6852a033); border-radius: 12px; }
+.chat-profile-hero.no-cover .chat-profile-avatar { margin: 0 0 0 12px; }
+.chat-profile-panel .primary-btn { display: inline-flex; margin-bottom: 12px; }
+.social-page { width: min(100%,780px); margin-inline: auto; min-width: 0; }
+.social-page .feed-card { min-width: 0; overflow-wrap: anywhere; margin-top: 14px; border-top-width: 0; border-radius: 16px; }
+.social-page .feed-head .identity-link { flex: 1; overflow: hidden; }
+.social-page .feed-head .identity-link>.safe-avatar { flex: 0 0 42px; }
+.social-page .feed-head .identity-link>span:not(.safe-avatar) { min-width: 0; }
+.social-page .feed-head strong { overflow: hidden; text-overflow: ellipsis; }
+.social-page .feed-card .feed-media { min-height: 80px; max-height: min(760px,85dvh); }
+.social-page .feed-stats { gap: 14px; }
+.settings-page-shell #privacidad-ajustes>.composer { gap: 20px; padding-top: 10px; }
+.settings-privacy-field { display: grid; gap: 8px; font-size: 14px; font-weight: 600; }
+.settings-privacy-field small { color: var(--secondary-text); font-size: 12px; line-height: 1.5; font-weight: 400; }
+.settings-page-shell .settings-toggle-card { min-width: 0; align-items: start; padding: 20px; border: 1px solid var(--outline); }
+.settings-toggle-card>div { flex: 1; min-width: 0; }
+.settings-toggle-card p { margin: 7px 0 0; line-height: 1.55; font-size: 13px; }
+.settings-toggle-card>input[type=checkbox] { flex: 0 0 auto; margin-top: 4px; }
+.settings-toggle-card select { width: 100%; margin-top: 6px; }
+@media(min-width:800px) { .social-page { padding: 12px 20px 24px; } }
+@media(max-width:680px) { .settings-page-shell .settings-toggle-grid { grid-template-columns: minmax(0,1fr); } .social-page .feed-card { border-radius: 0; margin-top: 10px; } }

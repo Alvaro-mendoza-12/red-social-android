@@ -472,3 +472,17 @@
 }
 
 .theme-light .games-alert:not(.error){color:#156940}
+
+.games-profile-grid { grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); gap: 24px; }
+.games-profile-grid>.surface-card { padding: clamp(18px,2vw,28px); }
+.games-profile-grid>.games-player-profile { grid-row: span 3; }
+.games-profile-fieldset { display: grid; gap: 18px; min-width: 0; margin: 0; padding: 0 0 22px; border: 0; border-bottom: 1px solid var(--outline); }
+.games-profile-fieldset legend { padding: 0 0 16px; font-size: 14px; font-weight: 700; color: var(--primary); }
+.games-profile-fieldset:last-of-type { padding-bottom: 0; border-bottom: 0; }
+.games-profile-grid .games-form h3 { font-size: 18px; margin-bottom: 4px; }
+.games-profile-grid .games-form label { font-size: 13px; font-weight: 600; gap: 9px; }
+.games-profile-grid .games-form .text-input { min-height: 44px; font-weight: 400; }
+.games-profile-grid .games-check { align-items: flex-start; padding-block: 4px; }
+.games-profile-grid .games-check input { flex: 0 0 auto; margin-top: 3px; }
+.games-profile-grid .games-form>.primary-btn { justify-self: start; min-height: 44px; }
+@media(max-width:900px) { .games-profile-grid { grid-template-columns: minmax(0,1fr); } .games-profile-grid>.games-player-profile { grid-row: auto; } }

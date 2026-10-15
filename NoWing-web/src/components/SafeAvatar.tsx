@@ -1,5 +1,5 @@
 import { StreamingImage, StreamingVideo } from '../components/StreamingMedia'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { isVideoAvatarSource } from '../core/profileMediaFields'
 
 type AvatarSize = 'sm' | 'md' | 'lg'
@@ -53,6 +53,13 @@ export function SafeAvatar({
   const normalizedMediaType = (mediaType ?? '').trim()
   const signature = `${trimmedUrl}|${normalizedMediaType}`
   const [failedSignature, setFailedSignature] = useState('')
+  useEffect(() => {
+    if (!failedSignature) return
+    const retry = () => setFailedSignature('')
+    window.addEventListener('online', retry)
+    navigator.serviceWorker?.addEventListener('controllerchange', retry)
+    return () => { window.removeEventListener('online', retry); navigator.serviceWorker?.removeEventListener('controllerchange', retry) }
+  }, [failedSignature])
   const canRenderMedia = Boolean(trimmedUrl && failedSignature !== signature)
 
   const sizeClass = sizeClassByVariant[size]

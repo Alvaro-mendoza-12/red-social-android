@@ -5,7 +5,7 @@ import { invalidateStorageReadIdentity, updateStorageReadIdentity } from '../../
 
 jest.mock('../../core/runtimeBackend', () => ({ rewriteRuntimeStorageUrl: (url: string) => url, runtimeStoragePreviewUrl: (url: string) => url }))
 jest.mock('../../components/DocumentPreview', () => ({ DocumentPreview: () => <section aria-label="Vista previa del documento" /> }))
-jest.mock('../../core/media/browserStreaming', () => ({ browserStreamingSource: jest.fn(async () => '/__novvin_media/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') }))
+jest.mock('../../core/media/browserStreaming', () => ({ browserStreamingSource: jest.fn(async () => '/__novvin_media/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), subscribeBrowserStreamingRecovery: jest.fn(() => () => {}) }))
 jest.mock('../../core/media/storageReadClient', () => ({
   prepareStorageReadAccessToken: jest.fn(async () => 'synthetic.test.signature'),
   trustedStorageBackend: (url: string) => url.startsWith('https://backend.test/storage/v1/object/') ? 'https://backend.test' : '',
