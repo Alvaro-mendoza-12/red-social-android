@@ -23,6 +23,7 @@ function safeExternalUrl(value: string): string {
 }
 
 function attachmentName(url: string, fallback: string) {
+  if (/^[^/\\\u0000-\u001f]{1,180}\.[a-z0-9]{1,10}$/i.test(fallback.trim())) return fallback.trim()
   const name = url.split('/').at(-1)?.split(/[?#]/)[0] || fallback
   try { return decodeURIComponent(name) } catch { return name }
 }
