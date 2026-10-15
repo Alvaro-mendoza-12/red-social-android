@@ -231,7 +231,7 @@ class WebLoginScannerViewModel @Inject constructor(
 
             val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
             val refreshToken = authRepository.getCurrentRefreshToken()?.trim().orEmpty()
-            if (accessToken.isBlank() || refreshToken.isBlank()) {
+            if (!webPairingApprovalSessionValid(accessToken, refreshToken, webLoginPairingRepository.requiresRefreshTokenForApproval)) {
                 _uiState.update {
                     it.copy(
                         isSubmitting = false,

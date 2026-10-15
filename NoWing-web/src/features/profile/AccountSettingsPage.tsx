@@ -1,4 +1,5 @@
 import { StreamingImage } from '../../components/StreamingMedia'
+import { SafeAvatar } from '../../components/SafeAvatar'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link } from 'react-router-dom'
@@ -597,22 +598,10 @@ export function AccountSettingsPage() {
           </div>
           <div className="composer settings-stack">
             <div className="settings-profile-preview">
-              <div
-                className="settings-profile-cover"
-                style={
-                  model.coverUrl.trim()
-                    ? { backgroundImage: `url(${model.coverUrl.trim()})` }
-                    : undefined
-                }
-              />
+              {model.coverUrl.trim() ? <StreamingImage className="settings-profile-cover" src={model.coverUrl.trim()} alt="Portada de tu perfil" /> : <div className="settings-profile-cover" />}
               <div className="settings-profile-avatar">
                 {model.avatarUrl.trim() ? (
-                  <StreamingImage
-                    src={model.avatarUrl.trim()}
-                    alt=""
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
+                  <SafeAvatar url={model.avatarUrl.trim()} name={model.displayName || 'Tu perfil'} />
                 ) : (
                   <span>
                     {(model.displayName.trim() || currentEmail || 'U').charAt(0).toUpperCase()}

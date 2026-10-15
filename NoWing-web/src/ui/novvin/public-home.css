@@ -20,6 +20,16 @@
   padding: 24px 32px;
   margin: auto;
 }
+.public-footer-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: .8rem; color: var(--secondary-text); }
+.public-home main.public-info { max-width: 820px; padding-top: 45px; padding-bottom: 70px; }
+.public-info-back { color: var(--secondary-text); font-size: .85rem; display: inline-block; margin-bottom: 28px; }
+.public-info h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.2; max-width: 720px; letter-spacing: -1px; }
+.public-info-intro { color: var(--secondary-text); font-size: 1rem; line-height: 1.8; margin: 24px 0; }
+.public-info section { margin-top: 42px; }
+.public-info section h2 { font-size: 1.3rem; margin-bottom: 14px; }
+.public-info section p { color: var(--secondary-text); line-height: 1.85; font-size: .95rem; }
+.public-info > nav { display: flex; flex-wrap: wrap; gap: 16px 24px; border-top: 1px solid var(--outline); padding-top: 24px; margin-top: 48px; font-size: .85rem; }
+.public-info > nav a { color: #75dedb; text-decoration: underline; text-underline-offset: 4px; }
 .public-home-brand {
   display: flex;
   align-items: center;

@@ -5,6 +5,7 @@ import { SafeAvatar } from '../../components/SafeAvatar'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { loadFallbackLiveStreams, type FallbackLiveStream } from '../../core/fallbackData'
 import { numberOf, textOf } from '../../core/utils'
+import './live.css'
 
 export function LiveStrip({ compact = false }: { compact?: boolean }) {
   const { isFallbackSession } = useAuth()

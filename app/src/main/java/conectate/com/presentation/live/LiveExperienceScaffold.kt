@@ -228,7 +228,9 @@ internal fun NovvinLiveViewerExperience(
             when {
                 paused -> LiveStateBadge("DIRECTO EN PAUSA")
                 !videoEnabled -> LiveStateBadge(if (source == LiveSource.SCREEN) "PANTALLA DESACTIVADA" else "CÁMARA DESACTIVADA")
-                hostTrack == null -> ConnectingState(stream, "Conectando directo…")
+                hostTrack == null && matchingLiveParticipantIndex(
+                    stream?.hostUserId.orEmpty(), liveKitVideos.map { it.participantIdentity }
+                ) == null -> ConnectingState(stream, "Conectando directo…")
             }
         },
         actions = { metrics ->
@@ -984,7 +986,8 @@ internal fun LiveVideoLayout(
             onAttachLiveKit = onAttachLiveKit,
             onDetachLiveKit = onDetachLiveKit,
             modifier = modifier,
-            showLabel = false
+            showLabel = false,
+            showFallback = false
         )
         return
     }
@@ -1093,7 +1096,8 @@ private fun LiveParticipantCell(
     onAttachLiveKit: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Boolean,
     onDetachLiveKit: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Unit,
     modifier: Modifier,
-    showLabel: Boolean
+    showLabel: Boolean,
+    showFallback: Boolean = true
 ) {
     Box(
         modifier
@@ -1120,7 +1124,7 @@ private fun LiveParticipantCell(
                 modifier = Modifier.fillMaxSize(),
                 label = name,
             )
-        } else {
+        } else if (showFallback) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val captionHeight = with(LocalDensity.current) { 16.sp.toDp() }
                 val avatarSize = if (showLabel) minOf(58.dp, maxWidth * .65f,
@@ -1447,8 +1451,12 @@ private fun LiveAction(
         )
         Text(
             text = label,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.Black.copy(alpha = 0.72f))
+                .padding(horizontal = 5.dp, vertical = 2.dp),
             color = Color.White,
-            fontSize = 8.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1
         )

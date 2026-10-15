@@ -1,5 +1,6 @@
 import { PageMetadata } from './ui/novvin/PageMetadata'
 import { PublicHome } from './ui/novvin/PublicHome'
+import { PublicInfo } from './ui/novvin/PublicInfo'
 import { WebOutboxHost } from './components/WebOutboxHost'
 import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
@@ -198,6 +199,8 @@ function AppRouter() {
       <PageMetadata />
       <Routes>
         <Route path="/" element={<RootRoute />} />
+        <Route path="/novvin-web" element={<PublicInfo path="/novvin-web" />} />
+        <Route path="/ayuda/vincular-web" element={<PublicInfo path="/ayuda/vincular-web" />} />
         <Route
           path="/explore/:kind?/:id?"
           element={

@@ -781,6 +781,21 @@ async function privateChatAccessContext(pool, chatId, identity) {
   return { chat, participantRows, hasAccess }
 }
 
+function ownChatParticipant(rows, identity) {
+  // Local rows follow imported rows and hold the preferences saved by the current API.
+  const own = rows.filter(row => identity.ids.has(normalizeId(textOf(row, ['user_id', 'profile_id'], '')))).reverse()
+  return own.find(row => normalizeId(textOf(row, ['user_id', 'profile_id'], '')) === identity.displayUserId) || own[0] || {}
+}
+
+function chatPreferencesOf(row = {}) {
+  return {
+    isMuted: boolOf(row, ['is_muted', 'isMuted'], false),
+    isPinned: boolOf(row, ['is_pinned', 'isPinned'], false),
+    isArchived: boolOf(row, ['is_archived', 'isArchived'], false),
+    isFavorite: boolOf(row, ['is_favorite', 'isFavorite'], false),
+  }
+}
+
 function recipientIdsForChat(chat, participantRows, identity = null) {
   return Array.from(new Set([
     ...participantRows
@@ -13877,10 +13892,7 @@ function registerDataRoutes(app, {
           : null,
         messages,
         settings: {
-          isMuted: false,
-          isPinned: false,
-          isArchived: false,
-          isFavorite: false,
+          ...chatPreferencesOf(ownChatParticipant(memberRows, identity)),
           translateEnabled: false,
           targetLang: 'es',
         },
@@ -14619,6 +14631,8 @@ async function processBirthdayNotifications(
 }
 
 module.exports = {
+  ownChatParticipant,
+  chatPreferencesOf,
   findUniquePublicMention,
   notifyPublicMentions,
   profileMatchesQuery,

@@ -10,6 +10,7 @@ import {
   type FallbackLiveStream,
 } from '../../core/fallbackData'
 import { friendlyError, numberOf, textOf } from '../../core/utils'
+import './live.css'
 
 type LiveSource = 'camera' | 'screen'
 

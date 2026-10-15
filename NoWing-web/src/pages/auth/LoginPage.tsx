@@ -1,5 +1,5 @@
 import { StreamingImage } from '../../components/StreamingMedia'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
@@ -88,6 +88,10 @@ export function LoginPage() {
   const [creatingQr, setCreatingQr] = useState(false)
   const [consumingQr, setConsumingQr] = useState(false)
   const [qrRefreshKey, setQrRefreshKey] = useState(0)
+  const consumptionRef = useRef<{ key: string; request: Promise<WebLoginPairing> } | null>(null)
+  const qrPairId = qrPairing?.pairId
+  const qrNonce = qrPairing?.nonce
+  const qrStatus = qrPairing?.status
 
   function changeMode(nextMode: LoginMode) {
     const nextParams = new URLSearchParams(searchParams)
@@ -149,20 +153,21 @@ export function LoginPage() {
       return
     }
     const supabaseClient = client
+    const pairing = activePairing
 
     let cancelled = false
-    const pollId = window.setInterval(() => {
-      void (async () => {
+    let pollId: number | undefined
+    async function poll() {
         try {
           const next = await readWebLoginPairingStatus(
             supabaseClient,
-            activePairing.pairId,
-            activePairing.nonce ?? '',
+            pairing.pairId,
+            pairing.nonce ?? '',
           )
           if (cancelled) return
           setQrPairing((current) => ({
             ...next,
-            nonce: next.nonce ?? current?.nonce ?? activePairing.nonce,
+            nonce: next.nonce ?? current?.nonce ?? pairing.nonce,
           }))
           if (next.status === 'rejected') {
             setInfo('La aprobación fue rechazada desde el móvil.')
@@ -174,15 +179,17 @@ export function LoginPage() {
           if (!cancelled) {
             setError(toPairingError(caught, 'No se pudo revisar el estado del QR.'))
           }
+        } finally {
+          if (!cancelled) pollId = window.setTimeout(() => void poll(), 2500)
         }
-      })()
-    }, 2500)
+    }
+    void poll()
 
     return () => {
       cancelled = true
-      window.clearInterval(pollId)
+      window.clearTimeout(pollId)
     }
-  }, [client, mode, qrPairing])
+  }, [client, mode, qrPairId, qrNonce, qrStatus])
 
   useEffect(() => {
     const activePairing = qrPairing
@@ -190,8 +197,7 @@ export function LoginPage() {
       mode !== 'qr' ||
       !activePairing?.pairId ||
       !activePairing.nonce ||
-      activePairing.status !== 'approved' ||
-      consumingQr
+      activePairing.status !== 'approved'
     ) {
       return
     }
@@ -205,11 +211,12 @@ export function LoginPage() {
       setError(null)
       setInfo('Aprobado desde el móvil. Terminando el inicio de sesión...')
       try {
-        const consumed = await consumeApprovedWebLoginPairing(
-          supabaseClient,
-          pairing.pairId,
-          pairing.nonce ?? '',
-        )
+        const key = `${pairing.pairId}/${pairing.nonce}`
+        if (consumptionRef.current?.key !== key) {
+          consumptionRef.current = { key, request: consumeApprovedWebLoginPairing(supabaseClient, pairing.pairId, pairing.nonce ?? '') }
+        }
+        const consumed = await consumptionRef.current.request
+        if (cancelled) return
         if (isFallbackAuthConfigured) {
           persistFallbackSession(consumed)
           if (!cancelled) {
@@ -248,7 +255,7 @@ export function LoginPage() {
     return () => {
       cancelled = true
     }
-  }, [client, consumingQr, mode, navigate, nextPath, qrPairing])
+  }, [client, mode, navigate, nextPath, qrPairId, qrNonce, qrStatus])
 
   async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -678,6 +685,8 @@ export function LoginPage() {
                     title="Generando QR"
                     description="Preparando un QR temporal y seguro para Novvin Web..."
                   />
+                ) : qrPairing?.status === 'expired' || qrPairing?.status === 'rejected' ? (
+                  <StatusView title={qrPairing.status === 'expired' ? 'El código caducó' : 'Acceso rechazado'} description="Genera otro QR para volver a vincular este navegador." />
                 ) : qrPairing?.qrUrl ? (
                   <QrCodeTile
                     value={qrPairing.qrUrl}

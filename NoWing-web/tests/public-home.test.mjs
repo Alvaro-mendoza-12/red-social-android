@@ -22,10 +22,12 @@ test('private SPA shell does not contain public home markup', () => {
   assert.match(html, /<div id="root"><\/div>/)
   assert.doesNotMatch(html, /<h1>Novvin/)
 })
-test('only the public home is advertised in the sitemap', () => {
+test('only the public home and public guides are advertised in the sitemap', () => {
   const sitemap = fs.readFileSync(path.join(root, 'dist/sitemap.xml'), 'utf8')
   assert.match(sitemap, /<loc>https:\/\/red-social-android\.vercel\.app\/<\/loc>/)
-  assert.equal((sitemap.match(/<loc>/g) || []).length, 1)
+  assert.equal((sitemap.match(/<loc>/g) || []).length, 3)
+  assert.match(sitemap, /\/novvin-web<\/loc>/)
+  assert.match(sitemap, /\/ayuda\/vincular-web<\/loc>/)
   assert.doesNotMatch(sitemap, /\/app\/|\/login|\/profile/)
   const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'))
   assert.deepEqual(config.rewrites[0], { source: '/', destination: '/index.html' })
@@ -37,6 +39,18 @@ test('only the public home is advertised in the sitemap', () => {
     ),
   )
 })
+
+for (const [route, file] of [['/novvin-web', 'novvin-web.html'], ['/ayuda/vincular-web', 'vincular-web.html']]) {
+  test(`guide ${route} has readable HTML and its own canonical`, () => {
+    const html = fs.readFileSync(path.join(root, 'dist', file), 'utf8')
+    assert.match(html, /<h1>/)
+    assert.match(html, /href="\/login"/)
+    assert.ok(html.includes(`rel="canonical" href="https://red-social-android.vercel.app${route}"`))
+    assert.doesNotMatch(html, /noindex|access_token|accessToken/)
+    const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'))
+    assert.ok(config.rewrites.some(rule => rule.source === route && rule.destination === '/' + file))
+  })
+}
 
 test('site name schema is valid and permitted by the content security policy', () => {
   const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8')

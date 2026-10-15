@@ -103,7 +103,7 @@ export function PublicHome() {
         <a className="public-home-brand" href="/">
           Novvin
         </a>
-        <span>Conversa. Comparte. Descubre.</span>
+        <nav className="public-footer-links" aria-label="Conoce Novvin"><a href="/novvin-web">Novvin Web</a><a href="/ayuda/vincular-web">Ayuda con el QR</a></nav>
         <a href="/login">Entrar a mi cuenta</a>
       </footer>
     </div>

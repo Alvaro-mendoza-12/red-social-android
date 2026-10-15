@@ -148,12 +148,20 @@
   ],
   "rewrites": [
     {
-      "source": "/",
-      "destination": "/index.html"
+      "destination": "/index.html",
+      "source": "/"
     },
     {
-      "source": "/(.*)",
-      "destination": "/app-shell.html"
+      "destination": "/novvin-web.html",
+      "source": "/novvin-web"
+    },
+    {
+      "destination": "/vincular-web.html",
+      "source": "/ayuda/vincular-web"
+    },
+    {
+      "destination": "/app-shell.html",
+      "source": "/(.*)"
     }
   ]
 }

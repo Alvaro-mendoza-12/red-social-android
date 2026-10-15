@@ -1,12 +1,14 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
+import { publicInfoPage } from './PublicInfo'
 
 const base = 'https://red-social-android.vercel.app'
 export function PageMetadata() {
   const { pathname } = useLocation()
   useEffect(() => {
+    const info = publicInfoPage(pathname)
     const title =
-      pathname === '/'
+      info ? info.title : pathname === '/'
         ? 'Novvin — mensajes, videos y comunidades'
         : pathname === '/login'
           ? 'Iniciar sesión en Novvin Web'
@@ -28,7 +30,9 @@ export function PageMetadata() {
       robots.name = 'robots'
       document.head.append(robots)
     }
-    robots.content = pathname === '/' ? 'index, follow' : 'noindex, follow'
+    robots.content = pathname === '/' || info ? 'index, follow' : 'noindex, follow'
+    const description = document.head.querySelector<HTMLMetaElement>('meta[name="description"]')
+    if (description) description.content = info?.description || 'Descubre Novvin: mensajes, videos, momentos y comunidades. Conecta desde tu móvil o computadora con Novvin Web.'
     const canonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]')
     if (canonical) canonical.href = pathname === '/' ? base + '/' : base + pathname
   }, [pathname])

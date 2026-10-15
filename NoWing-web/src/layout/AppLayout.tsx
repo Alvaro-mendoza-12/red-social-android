@@ -374,6 +374,12 @@ export function AppLayout() {
   }, [loadShellCounters])
 
   useEffect(() => {
+    const reload = () => void loadShellCounters()
+    window.addEventListener('novvin:notifications-updated', reload)
+    return () => window.removeEventListener('novvin:notifications-updated', reload)
+  }, [loadShellCounters])
+
+  useEffect(() => {
     if (isFallbackSession && user) {
       let refreshTimer: ReturnType<typeof setTimeout> | null = null
       const scheduleRefresh = () => {

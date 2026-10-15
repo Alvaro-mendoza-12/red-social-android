@@ -1,4 +1,5 @@
 import { CollectionInfo } from '../../components/CollectionInfo'
+import { backendRpc } from '../../core/backendRpc'
 import { conversationWindow } from '../../core/conversationWindow'
 import { sharedVideoReference } from '../../core/sharedVideoReference'
 import { SharedVideoCard } from '../../components/SharedVideoCard'
@@ -29,6 +30,7 @@ import { ViewOnceMediaDialog } from '../../components/ViewOnceMediaDialog'
 import { requestViewOnceMedia } from '../../core/media/viewOnceClient'
 import type { ViewOnceLease } from '../../core/media/viewOnceLease'
 import { ChatAttachmentMedia, attachmentKind } from '../../components/ChatAttachmentMedia'
+import { StickerPicker } from '../../components/StickerPicker'
 
 type RoomScope = 'group' | 'community'
 
@@ -290,6 +292,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [showStickers, setShowStickers] = useState(false)
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
@@ -547,12 +550,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }, [stopAudioStream])
 
   const loadPollStates = useCallback(async (rows: RoomMessage[]) => {
-    if (useUbuntu) {
-      setPollStatesById({})
-      return
-    }
-    if (!supabase) return
-    const client = supabase
+    if (!supabase && !useUbuntu) return
     const pollIds = Array.from(
       new Set(rows.map((message) => message.pollId).filter((pollId): pollId is string => Boolean(pollId))),
     )
@@ -562,7 +560,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     }
     const entries = await Promise.all(
       pollIds.map(async (pollId) => {
-        const { data, error: pollError } = await client.rpc('secure_get_poll_state', { p_poll_id: pollId })
+        const { data, error: pollError } = await backendRpc('secure_get_poll_state', { p_poll_id: pollId })
         if (pollError) return [pollId, [] as PollState[]] as const
         return [pollId, ((data ?? []) as GenericRow[]).map(mapPollState)] as const
       }),
@@ -571,9 +569,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }, [useUbuntu])
 
   const refreshPollState = useCallback(async (pollId: string) => {
-    if (useUbuntu) return
-    if (!supabase || !pollId) return
-    const { data, error } = await supabase.rpc('secure_get_poll_state', { p_poll_id: pollId })
+    if ((!supabase && !useUbuntu) || !pollId) return
+    const { data, error } = await backendRpc('secure_get_poll_state', { p_poll_id: pollId })
     if (error) return
     setPollStatesById((current) => ({
       ...current,
@@ -666,7 +663,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         setTitle(response.title || (scope === 'group' ? 'Grupo' : 'Comunidad'))
         const mappedMessages = (response.messages ?? []).map(mapRoomMessage)
         setMessages(mappedMessages)
-        setPollStatesById({})
+        await loadPollStates(mappedMessages)
         setConsumedViewOnce({})
         return
       }
@@ -1056,11 +1053,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   async function createPoll() {
-    if (useUbuntu) {
-      setError('Las encuestas en grupos/comunidades se activarán en el servidor Ubuntu después de estabilizar mensajes y archivos.')
-      return
-    }
-    if (!supabase || !cleanRoomId || creatingPoll) return
+    if ((!supabase && !useUbuntu) || !cleanRoomId || creatingPoll) return
     const question = pollQuestion.trim()
     const options = pollOptions
       .split('\n')
@@ -1075,16 +1068,18 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     try {
       const payload: Record<string, unknown> = {
         [config.roomIdParam]: cleanRoomId,
+        p_message_id: crypto.randomUUID(),
         p_question: question,
         p_options: options,
         p_allows_multiple: pollAllowsMultiple,
       }
-      const { error: pollError } = await supabase.rpc(config.pollCreateRpc, payload)
+      const { error: pollError } = await backendRpc(config.pollCreateRpc, payload)
       if (pollError) throw pollError
       setPollQuestion('')
       setPollOptions('Si\nNo')
       setPollAllowsMultiple(false)
       setShowPollComposer(false)
+      void loadRoom({ silent: true })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo crear encuesta'))
     } finally {
@@ -1093,10 +1088,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   async function votePollOption(pollId: string, optionId: string, selected: boolean) {
-    if (useUbuntu) return
-    if (!supabase || !pollId || !optionId) return
+    if ((!supabase && !useUbuntu) || !pollId || !optionId) return
     try {
-      const { data, error: voteError } = await supabase.rpc('secure_vote_poll_option', {
+      const { data, error: voteError } = await backendRpc('secure_vote_poll_option', {
         p_poll_id: pollId,
         p_option_id: optionId,
         p_selected: selected,
@@ -1564,6 +1558,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         </div>
       ) : null}
 
+      {showStickers ? <StickerPicker onSelect={item => {
+        void sendMessage(item.title, item.mediaUrl, 'sticker', replyToId).then(() => { setShowStickers(false); setReplyToId(null) }).catch(caught => setError(friendlyError(caught, 'No se pudo enviar el sticker')))
+      }} onImport={file => void importRoomSticker(file)} onClose={() => setShowStickers(false)} /> : null}
+
       {pendingAttachments.length > 0 ? (
         <section className="attachment-draft-tray fade-in">
           <div className="row-between">
@@ -1628,6 +1626,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         }}>Borrar de mi lista</button>
       </section> : <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
         <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar">＋</summary><div className="chat-attachment-popover">
+        <button type="button" className="chat-attachment-option" onClick={event => { setShowStickers(true); event.currentTarget.closest('details')?.removeAttribute('open') }}>Buscar stickers</button>
         <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Importar sticker" aria-label="Importar sticker">
           <span aria-hidden="true">☺</span><span>Sticker</span>
           <input

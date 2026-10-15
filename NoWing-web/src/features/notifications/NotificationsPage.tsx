@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
+import { SafeAvatar } from '../../components/SafeAvatar'
+import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import {
   enqueueDeferredMutation,
   isBrowserOnline,
@@ -27,6 +29,8 @@ type NotificationItem = {
   type: string
   content: string
   actorId: string
+  actorName: string
+  actorAvatar: string
   targetType: string
   targetId: string
   chatId: string
@@ -104,6 +108,8 @@ function mapNotification(row: GenericRow): NotificationItem {
     type: textOf(row, ['type'], 'activity'),
     content: textOf(row, ['content'], ''),
     actorId: textOf(row, ['actor_id'], ''),
+    actorName: textOf(row, ['actor_name', 'sender_name'], 'Novvin'),
+    actorAvatar: textOf(row, ['actor_avatar_url', 'sender_avatar_url'], ''),
     targetType,
     targetId,
     chatId: textOf(row, ['chat_id'], fallbackMessageTarget || inferredChatId),
@@ -141,7 +147,7 @@ function typeLabel(type: string): string {
     case 'new_message':
       return 'Nuevo mensaje'
     default:
-      return type || 'Actividad'
+      return type.includes('mention') ? 'Te mencionaron' : 'Actividad'
   }
 }
 
@@ -180,7 +186,7 @@ function resolveNotificationAction(item: NotificationItem): NotificationAction |
   const postTargetId = item.postId || (targetType === 'post' ? item.targetId : '')
   const videoTargetId = item.videoId || (targetType === 'video' ? item.targetId : '')
 
-  if (postTargetId) return { label: 'Abrir post', path: `/app/feed/post/${postTargetId}` }
+  if (postTargetId) return { label: 'Ver publicación', path: `/app/feed/post/${postTargetId}` }
   if (videoTargetId) return { label: 'Abrir video', path: `/app/reels/${videoTargetId}` }
 
   if (targetType === 'group' && messageTargetId) {
@@ -222,6 +228,7 @@ export function NotificationsPage() {
   const [visibleCount, setVisibleCount] = useState(40)
   const [markingVisible, setMarkingVisible] = useState(false)
   const [openingId, setOpeningId] = useState<string | null>(null)
+  const requestGeneration = useRef(0)
 
   const unreadCount = useMemo(() => items.filter((item) => !item.isRead).length, [items])
   const normalizedQuery = useMemo(() => query.trim().toLowerCase(), [query])
@@ -246,7 +253,7 @@ export function NotificationsPage() {
         if (!matchesFilter(item, activeFilter)) return false
         if (!normalizedQuery) return true
         const haystack =
-          `${typeLabel(item.type)} ${item.content} ${item.actorId} ${item.targetType} ${item.targetId}`.toLowerCase()
+          `${typeLabel(item.type)} ${item.content} ${item.actorName}`.toLowerCase()
         return haystack.includes(normalizedQuery)
       }),
     [activeFilter, items, normalizedQuery],
@@ -258,17 +265,19 @@ export function NotificationsPage() {
     setVisibleCount(40)
   }, [activeFilter, normalizedQuery])
 
-  const loadNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async (silent = false) => {
+    const generation = ++requestGeneration.current
     if (!user) {
       setLoading(false)
       return
     }
-    setLoading(true)
-    setError(null)
+    if (!silent) { setLoading(true); setError(null) }
     try {
       if (isUsingFallback) {
         const payload = await loadFallbackNotifications(200)
+        if (generation !== requestGeneration.current) return
         setItems(((payload.items ?? []) as GenericRow[]).map(mapNotification))
+        setError(null)
         return
       }
 
@@ -284,8 +293,10 @@ export function NotificationsPage() {
         .order('created_at', { ascending: false })
         .limit(200)
       if (queryError) throw queryError
+      if (generation !== requestGeneration.current) return
       setItems(((data ?? []) as GenericRow[]).map(mapNotification))
     } catch (caught) {
+      if (generation !== requestGeneration.current || silent) return
       reportSupabaseServiceRestrictionIfPresent('notifications-load', caught)
       if (isMissingTableError(caught)) {
         setError('La tabla notifications no existe en este entorno Supabase.')
@@ -293,13 +304,27 @@ export function NotificationsPage() {
         setError(friendlyError(caught, 'No se pudieron cargar notificaciones'))
       }
     } finally {
-      setLoading(false)
+      if (generation === requestGeneration.current) setLoading(false)
     }
   }, [isUsingFallback, user])
 
   useEffect(() => {
+    setItems([])
     void loadNotifications()
+    return () => { requestGeneration.current += 1 }
   }, [loadNotifications])
+
+  useEffect(() => {
+    if (!isUsingFallback || !user) return
+    const reload = () => { if (document.visibilityState !== 'hidden') void loadNotifications(true) }
+    let timer: number | undefined
+    const schedule = () => { window.clearTimeout(timer); timer = window.setTimeout(reload, 250) }
+    const unsubscribe = subscribeUbuntuRealtime({ channel: `user:${user.id}`, onEvent: schedule })
+    const poll = window.setInterval(reload, 15000)
+    window.addEventListener('focus', reload)
+    document.addEventListener('visibilitychange', reload)
+    return () => { unsubscribe(); window.clearTimeout(timer); window.clearInterval(poll); window.removeEventListener('focus', reload); document.removeEventListener('visibilitychange', reload) }
+  }, [isUsingFallback, loadNotifications, user])
 
   useEffect(() => {
     const client = supabase
@@ -502,7 +527,7 @@ export function NotificationsPage() {
   if (error) return <StatusView title="Notificaciones no disponibles" description={error} />
 
   return (
-    <section className="section-stack">
+    <section className="section-stack notifications-page">
       <header className="section-header row-between">
         <div>
           <h2>Notificaciones</h2>
@@ -515,7 +540,7 @@ export function NotificationsPage() {
       <article className="surface-card notification-toolbar">
         <input
           className="text-input"
-          placeholder="Buscar por tipo, actor o contenido"
+          placeholder="Buscar notificaciones"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -582,15 +607,15 @@ export function NotificationsPage() {
             const action = resolveNotificationAction(item)
             const isOpening = openingId === item.id
             return (
-              <article key={item.id} className={item.isRead ? 'surface-card' : 'surface-card unread-card'}>
+              <article key={item.id} className={item.isRead ? 'surface-card notification-card' : 'surface-card notification-card unread-card'}>
+              <SafeAvatar url={item.actorAvatar} name={item.actorName} size="md" />
+              <div className="notification-body">
               <div className="row-between">
                 <strong>{typeLabel(item.type)}</strong>
                 <small>{formatDateTime(item.createdAt)}</small>
               </div>
-              <p>{item.content || `Actividad por @${item.actorId}`}</p>
+              <p>{item.content || `${item.actorName} tiene una novedad para ti`}</p>
               <div className="notification-meta">
-                <small>Actor: {item.actorId || 'sistema'}</small>
-                <small>Target: {item.targetType || 'general'}</small>
                 <span className={item.isRead ? 'notification-state read' : 'notification-state unread'}>
                   {item.isRead ? 'Leída' : 'Sin leer'}
                 </span>
@@ -606,6 +631,7 @@ export function NotificationsPage() {
                     Marcar leída
                   </button>
                 ) : null}
+              </div>
               </div>
             </article>
             )

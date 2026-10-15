@@ -268,21 +268,35 @@ export async function loadFallbackNotifications(limit = 200): Promise<FallbackNo
   )
 }
 
+export type ChatPreferencePatch = Partial<Record<'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite', boolean>>
+
+export async function saveFallbackChatPreferences(chatId: string, patch: ChatPreferencePatch) {
+  const result = await fallbackApiJson<{ ok: boolean }>(`/v1/data/messages/chats/${encodeURIComponent(chatId)}/preferences`, {
+    method: 'PATCH', body: JSON.stringify(patch),
+  })
+  window.dispatchEvent(new CustomEvent('novvin:conversation-preferences-changed', { detail: { chatId } }))
+  return result
+}
+
 export async function markFallbackNotificationRead(notificationId: string): Promise<{ ok: boolean }> {
-  return fallbackApiJson<{ ok: boolean }>(
+  const result = await fallbackApiJson<{ ok: boolean }>(
     `/v1/data/notifications/${encodeURIComponent(notificationId)}/read`,
     {
       method: 'PATCH',
       body: JSON.stringify({}),
     },
   )
+  window.dispatchEvent(new Event('novvin:notifications-updated'))
+  return result
 }
 
 export async function markAllFallbackNotificationsRead(): Promise<{ ok: boolean }> {
-  return fallbackApiJson<{ ok: boolean }>('/v1/data/notifications/read-all', {
+  const result = await fallbackApiJson<{ ok: boolean }>('/v1/data/notifications/read-all', {
     method: 'POST',
     body: JSON.stringify({}),
   })
+  window.dispatchEvent(new Event('novvin:notifications-updated'))
+  return result
 }
 
 export async function loadFallbackFeed(limit = 60): Promise<FallbackFeedResponse> {
@@ -392,6 +406,7 @@ export async function createFallbackLiveStream(input: {
 export async function updateFallbackLiveState(
   liveId: string,
   input: {
+    source?: 'camera' | 'screen'
     isActive?: boolean
     viewerCount?: number
     peakViewerCount?: number

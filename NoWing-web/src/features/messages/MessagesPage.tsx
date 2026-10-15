@@ -12,18 +12,15 @@ import {
 } from '../../core/reliability'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
-  loadFallbackFeed,
   loadFallbackMessagesInbox,
-  loadFallbackVideos,
   markFallbackChatRead,
   searchFallbackProfiles,
+  saveFallbackChatPreferences,
 } from '../../core/fallbackData'
 import {
   avatarMediaTypeSource,
   conversationAvatarSource,
-  findContentAvatarCandidate,
   profileAvatarSource,
-  profileIdentityAliases,
 } from '../../core/profileMediaFields'
 import {
   removeRealtimeChannel,
@@ -41,6 +38,7 @@ import {
   type GenericRow,
 } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { fallbackApiJson, isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import { ChatDetailPage } from './ChatDetailPage'
 import { dedupeInboxConversations } from './conversationInboxSupport'
 import { getOrCreateDirectChat } from './directChat'
@@ -193,50 +191,16 @@ function normalizeConversationAvatar<T extends { avatarUrl: string }>(item: T): 
 
 async function normalizeFallbackInboxItems(items: ConversationItem[]): Promise<ConversationItem[]> {
   const normalized = items.map(normalizeConversationAvatar)
-  const needsProfileLookup = normalized.some((item) => !item.avatarUrl && item.profileId)
-  if (!needsProfileLookup) return normalized
-
+  const missingIds = normalized.filter(item => !item.avatarUrl && item.profileId).map(item => item.profileId!)
+  if (!missingIds.length) return normalized
   try {
-    const [profilesResult, videosResult, postsResult] = await Promise.allSettled([
-      searchFallbackProfiles('', 200),
-      loadFallbackVideos(200, 0),
-      loadFallbackFeed(80),
-    ])
-    const profileByAlias = new Map<string, GenericRow>()
-    if (profilesResult.status === 'fulfilled') {
-      profilesResult.value.items.forEach((profile) => {
-        profileIdentityAliases(profile).forEach((alias) => profileByAlias.set(alias, profile))
-      })
-    }
-    const contentRows = [
-      ...(videosResult.status === 'fulfilled' ? videosResult.value.items : []),
-      ...(postsResult.status === 'fulfilled' ? postsResult.value.items : []),
-    ]
-
-    return normalized.map((item) => {
-      if (item.avatarUrl || !item.profileId) return item
-      const profile = profileByAlias.get(normalizeId(item.profileId))
-      const profileAvatarUrl = profile ? avatarFromProfile(profile) : ''
-      if (profileAvatarUrl) {
-        return {
-          ...item,
-          avatarUrl: profileAvatarUrl,
-          avatarMediaType: avatarMediaTypeSource(profile ?? {}, profileAvatarUrl),
-        }
-      }
-
-      const aliases = profile ? profileIdentityAliases(profile, [item.profileId]) : [item.profileId]
-      const contentAvatar = findContentAvatarCandidate(contentRows, aliases)
-      if (!contentAvatar) return item
-      return {
-        ...item,
-        avatarUrl: resolveSupabasePublicUrl('avatars', contentAvatar.url),
-        avatarMediaType: contentAvatar.mediaType,
-      }
+    // Resolve only these identities instead of downloading whole feeds to find an avatar.
+    const profiles = await fetchProfileMapByIds(missingIds)
+    return normalized.map(item => {
+      const profile = item.profileId ? profiles.get(normalizeId(item.profileId)) : undefined
+      return item.avatarUrl || !profile?.avatarUrl ? item : { ...item, avatarUrl: profile.avatarUrl, avatarMediaType: profile.avatarMediaType }
     })
-  } catch {
-    return normalized
-  }
+  } catch { return normalized }
 }
 
 function usernameFromProfile(row: GenericRow): string {
@@ -337,10 +301,24 @@ async function fetchProfileMapByIds(
   ids: string[],
 ): Promise<Map<string, { name: string; avatarUrl: string; avatarMediaType: string }>> {
   const map = new Map<string, { name: string; avatarUrl: string; avatarMediaType: string }>()
-  if (!supabase || ids.length === 0) return map
+  if (ids.length === 0) return map
 
   const uniqueIds = Array.from(new Set(ids.map(normalizeId).filter(Boolean)))
   if (uniqueIds.length === 0) return map
+
+  if (isFallbackAuthConfigured) {
+    const params = new URLSearchParams({ select: '*', id: `in.(${uniqueIds.join(',')})` })
+    const rows = await fallbackApiJson<GenericRow[]>(`/rest/v1/profiles_public?${params}`)
+    rows.forEach(profile => {
+      const id = normalizeId(textOf(profile, ['id'], ''))
+      if (id) {
+        const avatarUrl = avatarFromProfile(profile)
+        map.set(id, { name: nameFromProfile(profile), avatarUrl, avatarMediaType: avatarMediaTypeSource(profile, avatarUrl) })
+      }
+    })
+    return map
+  }
+  if (!supabase) return map
 
   const primary = await supabase.from('profiles').select('*').in('id', uniqueIds)
   if (!primary.error) {
@@ -437,7 +415,7 @@ function previewFromMessage(row: GenericRow): string {
 }
 
 function sortByUpdatedAt(items: ConversationItem[]): ConversationItem[] {
-  return [...items].sort((a, b) => toMillis(b.updatedAt) - toMillis(a.updatedAt))
+  return [...items].sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || toMillis(b.updatedAt) - toMillis(a.updatedAt))
 }
 
 async function loadRoomCollectionByMembership(options: {
@@ -726,7 +704,7 @@ export function MessagesPage() {
         if (isFallbackSession) {
           const response = await loadFallbackMessagesInbox(activeTab)
           const normalizedItems = await normalizeFallbackInboxItems(response.items)
-          const dedupedItems = dedupeInboxConversations(normalizedItems)
+          const dedupedItems = sortByUpdatedAt(dedupeInboxConversations(normalizedItems))
           setItems(dedupedItems)
           writeCachedValue(inboxCacheKey, dedupedItems)
           return
@@ -963,6 +941,12 @@ export function MessagesPage() {
     void loadCurrentTab({ silent: false })
   }, [inboxCacheKey, loadCurrentTab])
 
+  useEffect(() => {
+    const reload = () => void loadCurrentTab({ silent: true })
+    window.addEventListener('novvin:conversation-preferences-changed', reload)
+    return () => window.removeEventListener('novvin:conversation-preferences-changed', reload)
+  }, [loadCurrentTab])
+
   const updateChatPreferences = async (
     chatId: string,
     patch: Partial<Pick<ConversationItem, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>,
@@ -973,22 +957,16 @@ export function MessagesPage() {
     const nextPinned = patch.isPinned ?? current?.isPinned ?? false
     const nextArchived = patch.isArchived ?? current?.isArchived ?? false
     const nextFavorite = patch.isFavorite ?? current?.isFavorite ?? false
-    if (isFallbackSession || !supabase) {
-      setItems((currentItems) =>
-        currentItems.map((item) =>
-          item.id === chatId
-            ? {
-                ...item,
-                isMuted: nextMuted,
-                isPinned: nextPinned,
-                isArchived: nextArchived,
-                isFavorite: nextFavorite,
-              }
-            : item,
-        ),
-      )
+    if (isFallbackSession) {
+      try {
+        await saveFallbackChatPreferences(chatId, patch)
+        setItems(currentItems => sortByUpdatedAt(currentItems.map(item => item.id === chatId ? { ...item, ...patch } : item)))
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudieron guardar los cambios del chat'))
+      }
       return
     }
+    if (!supabase) return
     try {
       const { error: rpcError } = await supabase.rpc('secure_set_chat_preferences', {
         p_chat_id: chatId,

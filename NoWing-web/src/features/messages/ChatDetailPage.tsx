@@ -1,3 +1,4 @@
+import { backendRpc } from '../../core/backendRpc'
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { conversationWindow } from '../../core/conversationWindow'
@@ -25,6 +26,7 @@ import {
   sendFallbackChatMessage,
   toggleFallbackChatReaction,
   uploadFallbackFile,
+  saveFallbackChatPreferences,
 } from '../../core/fallbackData'
 import {
   removeRealtimeChannel,
@@ -47,6 +49,7 @@ import { ViewOnceMediaDialog } from '../../components/ViewOnceMediaDialog'
 import { requestViewOnceMedia } from '../../core/media/viewOnceClient'
 import type { ViewOnceLease } from '../../core/media/viewOnceLease'
 import { ChatAttachmentMedia } from '../../components/ChatAttachmentMedia'
+import { StickerPicker, type CatalogSticker } from '../../components/StickerPicker'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type ChatMessage = {
@@ -83,12 +86,7 @@ type PollState = {
   question: string
 }
 
-type StickerItem = {
-  stickerId: string
-  title: string
-  mediaUrl: string
-  isFavorite: boolean
-}
+type StickerItem = CatalogSticker
 
 type ChatSettings = {
   isMuted: boolean
@@ -408,14 +406,6 @@ function mapPollState(row: GenericRow): PollState {
   }
 }
 
-function mapSticker(row: GenericRow): StickerItem {
-  return {
-    stickerId: textOf(row, ['sticker_id'], ''),
-    title: textOf(row, ['title'], 'Sticker'),
-    mediaUrl: textOf(row, ['media_url', 'thumb_url'], ''),
-    isFavorite: toBoolean(row.is_favorite),
-  }
-}
 
 
 function profilePathFor(profileId: string, currentUserId?: string): string {
@@ -467,8 +457,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const [showScheduleComposer, setShowScheduleComposer] = useState(false)
   const [scheduling, setScheduling] = useState(false)
   const [showStickers, setShowStickers] = useState(false)
-  const [stickers, setStickers] = useState<StickerItem[]>([])
-  const [stickerQuery, setStickerQuery] = useState('')
   const [scheduledJobs, setScheduledJobs] = useState<ScheduledJob[]>([])
   const scheduleRequestKeyRef = useRef<string | null>(null)
   const [pollStatesById, setPollStatesById] = useState<Record<string, PollState[]>>({})
@@ -751,8 +739,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }, [stopAudioStream])
 
   const loadPollStates = useCallback(async (rows: ChatMessage[]) => {
-    if (!supabase) return
-    const client = supabase
+    if (!supabase && !useUbuntu) return
     const pollIds = Array.from(
       new Set(rows.map((message) => message.pollId).filter((pollId): pollId is string => Boolean(pollId))),
     )
@@ -763,22 +750,22 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
     const entries = await Promise.all(
       pollIds.map(async (pollId) => {
-        const { data, error: pollError } = await client.rpc('secure_get_poll_state', { p_poll_id: pollId })
+        const { data, error: pollError } = await backendRpc('secure_get_poll_state', { p_poll_id: pollId })
         if (pollError) return [pollId, [] as PollState[]] as const
         return [pollId, ((data ?? []) as GenericRow[]).map(mapPollState)] as const
       }),
     )
 
     setPollStatesById(Object.fromEntries(entries))
-  }, [])
+  }, [useUbuntu])
 
   const refreshPollState = useCallback(async (pollId: string) => {
-    if (!supabase || !pollId) return
-    const { data, error } = await supabase.rpc('secure_get_poll_state', { p_poll_id: pollId })
+    if ((!supabase && !useUbuntu) || !pollId) return
+    const { data, error } = await backendRpc('secure_get_poll_state', { p_poll_id: pollId })
     if (error) return
     const mapped = ((data ?? []) as GenericRow[]).map(mapPollState)
     setPollStatesById((current) => ({ ...current, [pollId]: mapped }))
-  }, [])
+  }, [useUbuntu])
 
   const refreshMessageById = useCallback(
     async (messageId: string) => {
@@ -994,10 +981,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         if (isStaleLoad()) return
         setTitle(response.title || 'Chat privado')
         setOtherParticipant(response.otherParticipant)
-        setMessages(response.messages.map(mapMessage))
+        const mappedMessages = response.messages.map(mapMessage)
+        setMessages(mappedMessages)
         setSettings(response.settings)
         setScheduledJobs([])
-        setPollStatesById({})
+        await loadPollStates(mappedMessages)
         setConsumedViewOnce({})
         return
       }
@@ -1509,7 +1497,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function createChatPoll() {
-    if (!supabase || !cleanChatId || creatingPoll) return
+    if ((!supabase && !useUbuntu) || !cleanChatId || creatingPoll) return
     const question = pollQuestion.trim()
     const options = pollOptions
       .split('\n')
@@ -1524,8 +1512,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     setCreatingPoll(true)
     setError(null)
     try {
-      const { error: pollError } = await supabase.rpc('secure_create_chat_poll_message', {
+      const { error: pollError } = await backendRpc('secure_create_chat_poll_message', {
         p_chat_id: cleanChatId,
+        p_message_id: crypto.randomUUID(),
         p_question: question,
         p_options: options,
         p_allows_multiple: pollAllowsMultiple,
@@ -1535,6 +1524,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       setPollOptions('Si\nNo')
       setPollAllowsMultiple(false)
       setShowPollComposer(false)
+      void loadChat({ silent: true })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo crear encuesta'))
     } finally {
@@ -1543,9 +1533,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function votePollOption(pollId: string, optionId: string, selected: boolean) {
-    if (!supabase || !pollId || !optionId) return
+    if ((!supabase && !useUbuntu) || !pollId || !optionId) return
     try {
-      const { data, error: voteError } = await supabase.rpc('secure_vote_poll_option', {
+      const { data, error: voteError } = await backendRpc('secure_vote_poll_option', {
         p_poll_id: pollId,
         p_option_id: optionId,
         p_selected: selected,
@@ -1571,23 +1561,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     } finally { viewOncePending.current = false }
   }
 
-  async function loadStickers(query: string) {
-    if (!supabase) return
-    try {
-      // setLoadingStickers(true)
-      const { data, error } = await supabase
-        .from('stickers')
-        .select('*')
-        .ilike('title', `%${query}%`)
-        .limit(20)
-      if (error) throw error
-      setStickers(((data ?? []) as GenericRow[]).map(mapSticker))
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudieron cargar stickers'))
-    } finally {
-      // setLoadingStickers(false)
-    }
-  }
 
   async function sendSticker(sticker: StickerItem) {
     try {
@@ -1656,7 +1629,14 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
   async function saveChatPreferences(patch: Partial<Pick<ChatSettings, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>) {
     if (useUbuntu) {
-      setSettings((current) => ({ ...current, ...patch }))
+      if (savingSettings) return
+      setSavingSettings(true)
+      try {
+        await saveFallbackChatPreferences(cleanChatId, patch)
+        setSettings(current => ({ ...current, ...patch }))
+      } catch (caught) {
+        setError(friendlyError(caught, 'No se pudieron guardar los cambios del chat'))
+      } finally { setSavingSettings(false) }
       return
     }
     if (!supabase || !user || !cleanChatId || savingSettings) return
@@ -2340,41 +2320,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         </div>
       ) : null}
 
-      {showStickers ? (
-        <div className="stickers-tray fade-in">
-          <div className="row-between p-2">
-            <input
-              className="text-input tiny-input flex-1"
-              placeholder="Buscar stickers..."
-              value={stickerQuery}
-              onChange={(e) => {
-                setStickerQuery(e.target.value)
-                void loadStickers(e.target.value)
-              }}
-            />
-            <label className="ghost-btn file-pick-btn">
-              Importar
-              <input
-                type="file"
-                hidden
-                accept="image/png,image/webp,image/gif,image/jpeg,.png,.webp,.gif,.jpg,.jpeg"
-                onChange={(event) => {
-                  void importSticker(event.target.files?.[0] ?? null)
-                  event.currentTarget.value = ''
-                }}
-              />
-            </label>
-            <button className="icon-btn-sm" onClick={() => setShowStickers(false)}>✕</button>
-          </div>
-          <div className="sticker-grid-compact">
-            {stickers.map((sticker) => (
-              <button key={sticker.stickerId} className="sticker-item-btn" onClick={() => void sendSticker(sticker)}>
-                <ChatAttachmentMedia url={sticker.mediaUrl} kind="image" title={sticker.title} imageLink={false} />
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {showStickers ? <StickerPicker onSelect={item => void sendSticker(item)} onImport={file => void importSticker(file)} onClose={() => setShowStickers(false)} /> : null}
 
       {pendingAttachments.length > 0 ? (
         <section className="attachment-draft-tray fade-in">
@@ -2436,7 +2382,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           <svg viewBox="0 0 24 24" width="24" height="24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" fill="currentColor" /></svg>
         </button>
 
-        <label className="icon-btn clickable">
+        <label className="icon-btn clickable" role="button" tabIndex={0} aria-label="Adjuntar archivos" title="Adjuntar archivos"
+          onKeyDown={event => { if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.querySelector<HTMLInputElement>('input')?.click() } }}>
             <svg viewBox="0 0 24 24" width="24" height="24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" /></svg>
           <input
             type="file"
@@ -2480,7 +2427,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           }}
         />
 
-        <button className="primary-btn circle-btn" type="submit" disabled={sending || uploading}>
+        <button className="primary-btn circle-btn" type="submit" aria-label="Enviar mensaje" disabled={sending || uploading}>
           {sending || uploading ? (
             '...'
           ) : (

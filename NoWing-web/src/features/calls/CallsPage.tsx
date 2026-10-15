@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useCallback, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Headphones, MessageCircle, PhoneCall } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { CallInterface } from './CallInterface'
+import './calls.css'
 
 type CallEntryIcon = 'call' | 'messages' | 'voice'
 
@@ -28,12 +29,6 @@ const callEntryCards = [
   },
 ]
 
-const readinessChecklist = [
-  'Permite micrófono y cámara sólo cuando vayas a iniciar la llamada.',
-  'Usa auriculares si compartes espacio o quieres evitar eco.',
-  'Si tu conexión está inestable, mantén desactivado el video al comenzar.',
-  'El flujo más estable sigue siendo iniciar desde una conversación real, igual que en Android.',
-]
 
 function CallEntryIconView({ name }: { name: CallEntryIcon }) {
   if (name === 'messages') return <MessageCircle aria-hidden="true" size={26} />
@@ -54,11 +49,6 @@ export function CallsPage() {
   const shouldJoinExistingCall = searchParams.get('join') === '1'
   const [activeCall, setActiveCall] = useState(Boolean(initialTargetId || initialCallId))
 
-  const displayName = useMemo(() => {
-    const metadataName = String(user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? '').trim()
-    if (metadataName) return metadataName
-    return user?.email?.split('@')[0] ?? 'tu cuenta'
-  }, [user?.email, user?.user_metadata?.display_name, user?.user_metadata?.full_name])
 
   const handleNewCall = useCallback(() => {
     setActiveCall(true)
@@ -75,25 +65,7 @@ export function CallsPage() {
 
   if (activeCall) {
     return (
-      <section className="section-stack">
-        <article className="surface-card calls-hero-card">
-          <div className="calls-hero-copy">
-            <div>
-              <span className="brand-tag">WebRTC web</span>
-              <h2>Llamada activa</h2>
-              <p>Sesión en curso para {displayName}. Mantén mensajes y voz a un toque de distancia.</p>
-            </div>
-            <div className="row-actions">
-              <button className="ghost-btn" type="button" onClick={() => setActiveCall(false)}>
-                Volver al hub
-              </button>
-              <Link className="ghost-btn" to="/app/messages">
-                Abrir mensajes
-              </Link>
-            </div>
-          </div>
-        </article>
-
+      <section className="section-stack calls-page">
         <section className="calls-live-shell">
           <CallInterface
             initialContextId={initialContextId}
@@ -109,33 +81,8 @@ export function CallsPage() {
   }
 
   return (
-    <section className="section-stack">
-      <article className="surface-card calls-hero-card">
-        <div className="calls-hero-copy">
-          <div>
-            <span className="brand-tag">Llamadas</span>
-            <h2>Habla ahora, vuelve al chat después</h2>
-            <p>
-              Inicia llamadas 1:1, salta a salas de voz o vuelve a mensajes cuando necesites
-              contexto.
-            </p>
-          </div>
-          <div className="calls-hero-stats">
-            <div className="calls-hero-stat">
-              <strong>1:1</strong>
-              <span>audio y video</span>
-            </div>
-            <div className="calls-hero-stat">
-              <strong>WebRTC</strong>
-              <span>base actual</span>
-            </div>
-            <div className="calls-hero-stat">
-              <strong>Móvil + web</strong>
-              <span>misma cuenta</span>
-            </div>
-          </div>
-        </div>
-      </article>
+    <section className="section-stack calls-page">
+      <header className="section-header"><h2>Llamadas</h2><p>Habla con tus contactos por voz o video.</p></header>
 
       <div className="calls-dashboard-grid">
         <section className="calls-action-grid">
@@ -167,22 +114,7 @@ export function CallsPage() {
           ))}
         </section>
 
-        <aside className="surface-card calls-side-panel">
-          <div className="section-stack">
-            <div>
-              <h3>Checklist rápida</h3>
-              <p>Antes de marcar, deja el navegador listo para una sesión limpia.</p>
-            </div>
-            <div className="calls-checklist">
-              {readinessChecklist.map((item) => (
-                <div key={item} className="calls-check-item">
-                  <span className="calls-check-dot" />
-                  <p>{item}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </aside>
+
       </div>
     </section>
   )

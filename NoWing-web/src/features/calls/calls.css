@@ -1,0 +1,48 @@
+.calls-page { max-width: 1000px; margin: auto; }
+.calls-action-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.calls-action-card { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.calls-action-icon { width: 42px; height: 42px; display: grid; place-items: center; background: var(--surface-raised); border-radius: 14px; }
+.calls-action-copy { flex: 1; gap: 16px; }
+.calls-action-copy p { font-size: .85rem; color: var(--secondary-text); margin-top: 8px; }
+.calls-action-copy button { align-self: flex-start; margin-top: auto; }
+.call-interface-container { display: flex; flex-direction: column; min-width: 0; max-width: 1000px; margin: auto; border: 1px solid var(--outline); border-radius: 18px; background: var(--surface); color: var(--foreground); overflow: hidden; }
+.call-interface-container .call-header { padding: 18px 20px; border-bottom: 1px solid var(--divider); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.call-interface-container .call-header h1 { font-size: 1.3rem; }
+.call-interface-container .call-header p { font-size: .85rem; color: var(--secondary-text); margin-top: 6px; }
+.call-interface-container .call-main { display: grid; gap: 20px; padding: 20px; min-width: 0; }
+.dialer-section { width: min(420px, 100%); margin: 12px auto; display: grid; gap: 16px; }
+.user-input { display: grid; gap: 8px; font-size: .85rem; }
+.user-id-input { width: 100%; min-width: 0; border: 1px solid var(--outline); border-radius: 12px; background: var(--background); color: var(--foreground); padding: 13px; }
+.dialer-actions, .call-mode-toggle { display: flex; align-items: center; gap: 12px; }
+.dialer-actions { justify-content: space-between; }
+.call-mode-toggle { font-size: .85rem; }
+.call-mode-toggle input { width: 18px; height: 18px; }
+.call-interface-container .call-btn, .call-interface-container .back-btn { padding: 11px 18px; border-radius: 24px; font-size: .85rem; min-height: 42px; }
+.call-interface-container .call-btn { background: var(--primary); color: var(--on-primary); }
+.call-interface-container .back-btn { background: var(--surface-raised); border: 1px solid var(--outline); }
+.call-footer, .call-actions { padding: 14px 20px; border-top: 1px solid var(--divider); }
+.local-video-section { display: grid; justify-items: center; gap: 12px; font-size: .85rem; }
+.local-video-preview { width: min(300px, 100%); height: 170px; object-fit: cover; background: #000; border-radius: 12px; }
+.videos-container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.call-interface-container .video-wrapper { position: relative; aspect-ratio: 4 / 3; min-width: 0; border-radius: 14px; overflow: hidden; background: #09090b; }
+.call-interface-container .remote-video-element, .call-interface-container .local-video-element { width: 100%; height: 100%; object-fit: contain; }
+.participant-overlay { position: absolute; left: 10px; bottom: 10px; right: 10px; display: flex; justify-content: space-between; align-items: center; background: #000b; color: #fff; border-radius: 12px; padding: 8px; }
+.participant-info { display: flex; min-width: 0; gap: 8px; align-items: center; }
+.participant-name { font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.participant-avatar { width: 28px; height: 28px; object-fit: cover; border-radius: 50%; }
+.local-video-overlay { position: absolute; right: 10px; top: 10px; display: flex; gap: 6px; background: #000a; color: white; border-radius: 16px; padding: 6px 10px; font-size: .75rem; }
+.call-controls .active-controls, .call-controls .incoming-controls { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.call-interface-container .control-btn { min-width: 44px; min-height: 44px; border: 1px solid var(--outline); border-radius: 24px; padding: 10px 15px; background: var(--surface-raised); font-size: .85rem; }
+.call-interface-container .end-call-btn, .call-interface-container .reject-btn { background: #a9233d; color: #fff; border-color: transparent; }
+.call-interface-container .answer-btn { background: #22643e; color: #fff; border-color: transparent; }
+.call-status { display: flex; flex-wrap: wrap; gap: 6px; font-size: .75rem; }
+.incoming-indicator, .screen-share-indicator { background: var(--surface-raised); border-radius: 16px; padding: 6px 10px; }
+@media (max-width: 760px) {
+  .calls-action-grid { grid-template-columns: 1fr; gap: 12px; }
+  .calls-action-card { flex-direction: row; padding: 16px; }
+  .calls-action-icon { flex-shrink: 0; }
+  .call-interface-container .call-header, .call-interface-container .call-main { padding: 14px; }
+  .videos-container { grid-template-columns: minmax(0, 1fr); }
+  .call-interface-container .video-wrapper { aspect-ratio: 16 / 10; }
+  .call-interface-container .local-video { width: min(180px, 45%); justify-self: end; }
+}

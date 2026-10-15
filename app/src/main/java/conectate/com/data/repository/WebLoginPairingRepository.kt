@@ -82,6 +82,9 @@ class WebLoginPairingRepository @Inject constructor(
     private val useUbuntuPrimary: Boolean
         get() = fallbackBaseUrl.startsWith("http://") || fallbackBaseUrl.startsWith("https://")
 
+    val requiresRefreshTokenForApproval: Boolean
+        get() = !useUbuntuPrimary
+
     private val functionUrl: String
         get() = if (useUbuntuPrimary) {
             "$fallbackBaseUrl/v1/auth/web-login-pairing"
@@ -214,7 +217,7 @@ class WebLoginPairingRepository @Inject constructor(
             val message = parsed?.message
                 ?: parsed?.error
                 ?: if (useUbuntuPrimary) {
-                    "No se pudo completar el QR con Ubuntu. Verifica que la VM, Docker y ngrok estén encendidos."
+                    "No se pudo verificar el código. Comprueba tu conexión e inténtalo de nuevo."
                 } else {
                     "No se pudo completar la operación QR segura."
                 }

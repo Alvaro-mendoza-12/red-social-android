@@ -1,6 +1,9 @@
 package conectate.com.presentation.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -10,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.viewinterop.AndroidView
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
@@ -34,7 +38,14 @@ fun WebRtcVideoView(
     // id() reads native memory. A queued recomposition can outlive a disposed
     // track when a call ends; use the Java object's identity as the UI key.
     var renderer by remember(sharedEglContext, videoTrack) { mutableStateOf<SurfaceViewRenderer?>(null) }
+    var frameRatio by remember(sharedEglContext, videoTrack) { mutableStateOf(0f) }
 
+    BoxWithConstraints(modifier = modifier) {
+    val fit = scalingType == RendererCommon.ScalingType.SCALE_ASPECT_FIT && frameRatio > 0f &&
+        maxWidth.value.isFinite() && maxHeight.value.isFinite() && maxHeight.value > 0f
+    val fractions = if (fit) containedVideoFraction(maxWidth / maxHeight, frameRatio) else 1f to 1f
+    val videoModifier = if (fit) Modifier.align(Alignment.Center).size(maxWidth * fractions.first, maxHeight * fractions.second)
+        else Modifier.fillMaxSize()
     key(sharedEglContext, videoTrack) {
         AndroidView(
             factory = { ctx ->
@@ -42,7 +53,11 @@ fun WebRtcVideoView(
                     runCatching {
                         view.init(sharedEglContext, object : RendererCommon.RendererEvents {
                             override fun onFirstFrameRendered() { firstFrameCallback?.invoke() }
-                            override fun onFrameResolutionChanged(width: Int, height: Int, rotation: Int) = Unit
+                            override fun onFrameResolutionChanged(width: Int, height: Int, rotation: Int) {
+                                if (width <= 0 || height <= 0) return
+                                val ratio = if (rotation % 180 == 0) width.toFloat() / height else height.toFloat() / width
+                                view.post { frameRatio = ratio }
+                            }
                         })
                         view.setEnableHardwareScaler(true)
                         view.setMirror(mirror)
@@ -64,8 +79,9 @@ fun WebRtcVideoView(
                 runCatching { view.clearImage() }
                 runCatching { view.release() }
             },
-            modifier = modifier
+            modifier = videoModifier
         )
+    }
     }
 
     DisposableEffect(renderer, videoTrack) {

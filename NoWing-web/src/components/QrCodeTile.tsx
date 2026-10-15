@@ -17,14 +17,17 @@ export function QrCodeTile({ value, title, description, compact = false }: QrCod
     let cancelled = false
 
     async function renderQr() {
+      setDataUrl('')
+      setError(null)
       if (!value.trim()) {
         setDataUrl('')
         return
       }
       try {
         const url = await QRCode.toDataURL(value, {
-          width: compact ? 180 : 240,
-          margin: 1,
+          width: compact ? 220 : 320,
+          margin: 4,
+          errorCorrectionLevel: 'M',
           color: {
             dark: '#18181b',
             light: '#ffffff',
@@ -36,7 +39,7 @@ export function QrCodeTile({ value, title, description, compact = false }: QrCod
         }
       } catch (caught) {
         if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : 'No se pudo dibujar el QR.')
+          setError('No se pudo preparar el código. Inténtalo de nuevo.')
         }
       }
     }
