@@ -1219,6 +1219,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
   async function sendMessage(input: SendMessageInput) {
     if (!user || !cleanChatId) return
+    forceScrollToBottomRef.current = true
+    scrollThreadToBottom('auto')
     if (useUbuntu) {
       const response = await sendFallbackChatMessage(cleanChatId, {
         content: input.content,
@@ -1230,6 +1232,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         forwardedFromMessageId: input.forwardedFromMessageId,
         forwardedFromUserId: input.forwardedFromUserId,
       })
+      forceScrollToBottomRef.current = true
       upsertMessageInState(mapMessage(response.message))
       return
     }
@@ -2289,8 +2292,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           <div className="chat-thread-bottom-anchor" />
         </section>
         {showScrollToBottom ? (
-          <button className="chat-scroll-bottom-btn" type="button" onClick={() => scrollThreadToBottom('smooth')}>
-            Ultimo ↓
+          <button className="chat-scroll-bottom-btn" type="button" aria-label="Ir al último mensaje" title="Ir al último mensaje" onClick={() => scrollThreadToBottom('smooth')}>
+            ↓
           </button>
         ) : null}
       </div>

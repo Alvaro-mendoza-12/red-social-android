@@ -874,6 +874,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     forwardedFromUserId: string | null = null,
   ) {
     if (!user || !cleanRoomId) return
+    forceScrollToBottomRef.current = true
+    scrollThreadToBottom('auto')
     if (useUbuntu) {
       const response = await sendFallbackRoomMessage(scope, cleanRoomId, {
         content,
@@ -884,6 +886,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         forwardedFromMessageId,
         forwardedFromUserId,
       })
+      forceScrollToBottomRef.current = true
       upsertMessageInState(mapRoomMessage(response.message))
       return
     }
@@ -1530,8 +1533,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           <div className="chat-thread-bottom-anchor" />
         </section>
         {showScrollToBottom ? (
-          <button className="chat-scroll-bottom-btn" type="button" onClick={() => scrollThreadToBottom('smooth')}>
-            Ultimo ↓
+          <button className="chat-scroll-bottom-btn" type="button" aria-label="Ir al último mensaje" title="Ir al último mensaje" onClick={() => scrollThreadToBottom('smooth')}>
+            ↓
           </button>
         ) : null}
       </div>

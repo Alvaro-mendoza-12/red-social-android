@@ -6,6 +6,7 @@
 - Android: la aprobación de Novvin Web acepta la sesión local vigente sin exigir un refresh token que ese proveedor no necesita. El proveedor heredado conserva su requisito de renovación.
 - Web: códigos QR de mayor resolución, margen de lectura completo, retiro inmediato del código anterior, consultas sin solapamiento y consumo único de la aprobación. Cancelar el flujo impide guardar una aprobación tardía.
 - Web: anclar, silenciar, archivar y marcar favoritos guardan la preferencia en la API. El listado ordena los chats anclados y refresca los cambios realizados desde una conversación.
+- Web: enviar un mensaje propio vuelve al final de la conversación; el botón para llegar al último mensaje tiene una flecha centrada y una etiqueta accesible.
 - Servidor: el detalle del chat devuelve las preferencias de su participante autenticado. Antes devolvía cuatro valores `false` constantes. La selección de preferencias locales no cambia el corte del historial de mensajes.
 - Web: los stickers usan el mismo catálogo autorizado del móvil. El selector está conectado en chats, grupos y comunidades; admite búsqueda e importación desde el equipo.
 - Web: encuestas y votos usan las rutas del servidor principal e incluyen el identificador de mensaje requerido. Se consultan sus resultados al cargar mensajes.
