@@ -22,9 +22,10 @@ export const StreamingImage = forwardRef<HTMLImageElement, ImgHTMLAttributes<HTM
   const source = useSource(src)
   return <img {...props} ref={ref} src={source} data-novvin-media={src ? '' : undefined} />
 })
-export const StreamingVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLVideoElement>>(function StreamingVideo({ src, ...props }, ref) {
+export const StreamingVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLVideoElement>>(function StreamingVideo({ src, poster, ...props }, ref) {
   const source = useSource(src)
-  return <video {...props} ref={ref} src={source} data-novvin-media={src ? '' : undefined} />
+  const posterSource = useSource(poster)
+  return <video {...props} ref={ref} src={source} poster={posterSource} data-novvin-media={src ? '' : undefined} />
 })
 export const StreamingAudio = forwardRef<HTMLAudioElement, AudioHTMLAttributes<HTMLAudioElement>>(function StreamingAudio({ src, ...props }, ref) {
   const source = useSource(src)

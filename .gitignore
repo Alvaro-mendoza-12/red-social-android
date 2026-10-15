@@ -159,3 +159,4 @@ blackbox_mcp_settings.json
 .blackbox/
 
 .playwright-cli/
+!NoWing-web/.env.example

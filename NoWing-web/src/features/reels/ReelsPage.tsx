@@ -152,6 +152,7 @@ function ReelFeedCard({
   onToggleProfileShare: (item: ReelItem) => void
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const visibleRef = useRef(false)
   const [shareMenuOpen, setShareMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -159,7 +160,8 @@ function ReelFeedCard({
     if (!video || typeof IntersectionObserver === 'undefined') return
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry?.isIntersecting && entry.intersectionRatio >= 0.72) {
+        visibleRef.current = Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.72)
+        if (visibleRef.current) {
           void video.play().catch(() => undefined)
         } else {
           video.pause()
@@ -175,6 +177,7 @@ function ReelFeedCard({
     <article className="reel-feed-item">
       <StreamingVideo
         ref={videoRef}
+        onLoadedData={() => { if (visibleRef.current) void videoRef.current?.play().catch(() => undefined) }}
         loop
         muted
         playsInline

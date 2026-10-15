@@ -1,4 +1,5 @@
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
+import { SafeAvatar } from '../../components/SafeAvatar'
 import { retryPendingWebMessage } from '../../core/webOutbox'
 import {
   Fragment,
@@ -421,29 +422,8 @@ function profilePathFor(profileId: string, currentUserId?: string): string {
   return `/app/profile/${clean}`
 }
 
-function initialsOf(name: string): string {
-  const clean = name.trim()
-  if (!clean) return 'U'
-  return clean[0]?.toUpperCase() ?? 'U'
-}
-
 function FallbackAvatar({ url, name, className }: { url: string; name: string; className: string }) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null)
-
-  if (url && failedUrl !== url) {
-    return (
-      <StreamingImage
-        src={url}
-        alt={name}
-        className={className}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => setFailedUrl(url)}
-      />
-    )
-  }
-
-  return <span className={`${className} avatar-fallback`}>{initialsOf(name)}</span>
+  return <SafeAvatar url={url} name={name} className={className} size="sm" />
 }
 
 type ChatDetailPageProps = {
@@ -586,6 +566,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     shouldStickToBottomRef.current = isNearBottom
     setShowScrollToBottom(!isNearBottom && messages.length > 0)
   }, [messages.length])
+  const keepLatestMessageVisible = useCallback(() => {
+    if (shouldStickToBottomRef.current) scrollThreadToBottom('auto')
+  }, [scrollThreadToBottom])
+  useEffect(() => {
+    window.addEventListener('resize', keepLatestMessageVisible)
+    return () => window.removeEventListener('resize', keepLatestMessageVisible)
+  }, [keepLatestMessageVisible])
 
   const queueAttachmentFiles = useCallback((input: FileList | File[] | null) => {
     if (!input || input.length === 0) return
@@ -2093,7 +2080,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       ) : null}
 
       <div className="chat-thread-shell">
-        <section className="chat-thread" ref={threadRef} onScroll={handleThreadScroll}>
+        <section className="chat-thread" ref={threadRef} onScroll={handleThreadScroll} onLoadCapture={keepLatestMessageVisible} onLoadedMetadataCapture={keepLatestMessageVisible}>
           {filteredMessages.length === 0 && normalizedMessageSearch ? (
             <div className="chat-search-empty">
               <small className="muted-line">No hay mensajes para ese filtro.</small>
