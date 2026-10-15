@@ -1263,41 +1263,6 @@ export function VoiceRoomPage() {
           </div>
         </div>
 
-        <div className="voice-room-controls" aria-label="Controles de sala">
-          {!isJoined ? (
-            <button className="voice-control-btn primary" type="button" onClick={() => void joinRoom()} disabled={isJoining}>
-              <Headphones aria-hidden="true" size={18} />
-              {isJoining ? 'Entrando' : 'Unirse'}
-            </button>
-          ) : (
-            <>
-              <button
-                className={isMuted ? 'voice-control-btn muted' : 'voice-control-btn'}
-                type="button"
-                onClick={() => void toggleMute()}
-                aria-pressed={isMuted}
-                title={isMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
-              >
-                {isMuted ? <MicOff aria-hidden="true" size={18} /> : <Mic aria-hidden="true" size={18} />}
-                {isMuted ? 'Silenciado' : 'Micrófono'}
-              </button>
-              <button
-                className={isDeafened ? 'voice-control-btn muted' : 'voice-control-btn'}
-                type="button"
-                onClick={toggleDeafen}
-                aria-pressed={isDeafened}
-                title={isDeafened ? 'Escuchar sala' : 'Silenciar audio de sala'}
-              >
-                {isDeafened ? <VolumeX aria-hidden="true" size={18} /> : <Volume2 aria-hidden="true" size={18} />}
-                {isDeafened ? 'Audio apagado' : 'Audio'}
-              </button>
-              <button className="voice-control-btn danger" type="button" onClick={() => void leaveRoom()} disabled={isLeaving}>
-                <PhoneOff aria-hidden="true" size={18} />
-                {isLeaving ? 'Saliendo' : 'Salir'}
-              </button>
-            </>
-          )}
-        </div>
       </header>
 
       {joinError ? (
@@ -1426,6 +1391,41 @@ export function VoiceRoomPage() {
           </section>
         </aside>
       </div>
+        <footer className="voice-room-controls" aria-label="Controles de sala">
+          {!isJoined ? (
+            <button className="voice-control-btn primary" type="button" onClick={() => void joinRoom()} disabled={isJoining}>
+              <Headphones aria-hidden="true" size={18} />
+              {isJoining ? 'Entrando' : 'Unirse'}
+            </button>
+          ) : (
+            <>
+              <button
+                className={isMuted ? 'voice-control-btn muted' : 'voice-control-btn'}
+                type="button"
+                onClick={() => void toggleMute()}
+                aria-pressed={isMuted}
+                title={isMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
+              >
+                {isMuted ? <MicOff aria-hidden="true" size={18} /> : <Mic aria-hidden="true" size={18} />}
+                {isMuted ? 'Silenciado' : 'Micrófono'}
+              </button>
+              <button
+                className={isDeafened ? 'voice-control-btn muted' : 'voice-control-btn'}
+                type="button"
+                onClick={toggleDeafen}
+                aria-pressed={isDeafened}
+                title={isDeafened ? 'Escuchar sala' : 'Silenciar audio de sala'}
+              >
+                {isDeafened ? <VolumeX aria-hidden="true" size={18} /> : <Volume2 aria-hidden="true" size={18} />}
+                {isDeafened ? 'Audio apagado' : 'Audio'}
+              </button>
+              <button className="voice-control-btn danger" type="button" onClick={() => void leaveRoom()} disabled={isLeaving}>
+                <PhoneOff aria-hidden="true" size={18} />
+                {isLeaving ? 'Saliendo' : 'Salir'}
+              </button>
+            </>
+          )}
+        </footer>
     </section>
   )
 }

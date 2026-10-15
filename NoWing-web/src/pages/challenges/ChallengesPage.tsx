@@ -532,15 +532,15 @@ export function ChallengesPage() {
   }
 
   return (
-    <section className="section-stack">
+    <section className="section-stack challenges-page">
       <header className="section-header">
         <div className="row-between">
           <h2>Retos</h2>
           <Link to="/app/challenges/ranking" className="inline-link">
-            Ver ranking global
+            Ver ranking
           </Link>
         </div>
-        <p>Reto activo compartido entre APK y web, con votación en tiempo real.</p>
+        <p>Participa en la ronda, comparte tu propuesta y vota por tus favoritas.</p>
       </header>
 
       {loading ? (

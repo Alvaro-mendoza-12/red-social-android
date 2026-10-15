@@ -146,6 +146,7 @@ function isMissingColumnError(error: unknown): boolean {
 }
 
 export function AccountSettingsPage() {
+  const [activeSection, setActiveSection] = useState('perfil')
   const { user, isFallbackSession } = useAuth()
   const [webPreferences, updateWebPreferences] = useWebPreferences()
   const [model, setModel] = useState<SettingsModel>({
@@ -353,7 +354,7 @@ export function AccountSettingsPage() {
           avatarUrl: textOf(profile, ['avatar_url', 'avatarUrl'], current.avatarUrl),
           coverUrl: textOf(profile, ['cover_url', 'coverUrl'], current.coverUrl),
         }))
-        setInfo('Perfil actualizado en Ubuntu.')
+        setInfo('Perfil actualizado.')
       } catch (caught) {
         setError(friendlyError(caught, 'No se pudo guardar perfil local'))
       } finally {
@@ -576,13 +577,9 @@ export function AccountSettingsPage() {
   }
 
   return (
-    <section className="section-stack settings-page-shell">
+    <section className="section-stack settings-page-shell" data-section={activeSection}>
       <nav className="settings-section-nav" aria-label="Apartados de ajustes">
-        <a href="#perfil-ajustes">Perfil</a>
-        <a href="#privacidad-ajustes">Privacidad</a>
-        <a href="#seguridad-ajustes">Seguridad</a>
-        <a href="#acceso-qr-ajustes">Acceso y QR</a>
-        <a href="#preferencias-web-ajustes">Apariencia</a>
+        {(['perfil', 'privacidad', 'seguridad', 'acceso-qr', 'preferencias-web'] as const).map((id, index) => <button type="button" key={id} aria-pressed={activeSection === id} onClick={() => setActiveSection(id)}>{['Perfil', 'Privacidad', 'Seguridad', 'Acceso y QR', 'Apariencia'][index]}</button>)}
       </nav>
       {error ? (
         <p className="error-text" role="alert">
@@ -654,6 +651,7 @@ export function AccountSettingsPage() {
             </div>
 
             <div className="settings-form-grid">
+              <details className="settings-advanced-media"><summary>Usar una imagen mediante un enlace</summary><div className="settings-mini-grid">
               <input
                 className="text-input"
                 placeholder="Avatar URL"
@@ -676,6 +674,7 @@ export function AccountSettingsPage() {
                   }))
                 }
               />
+              </div></details>
             </div>
 
             <div className="asset-upload-row">
@@ -722,7 +721,7 @@ export function AccountSettingsPage() {
               </label>
               <small>
                 {isFallbackSession
-                  ? 'La portada también queda guardada en tu storage Ubuntu.'
+                  ? 'La portada se guarda al actualizar el perfil.'
                   : 'El storage propio se activa con sesión Ubuntu.'}
               </small>
             </div>

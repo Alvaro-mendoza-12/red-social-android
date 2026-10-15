@@ -2,6 +2,7 @@ import { fallbackApiJson } from './auth/fallbackAuth'
 import { callUbuntuRpc } from './fallbackRpc'
 import { loadUbuntuRestTable } from './fallbackData'
 import { textOf, type GenericRow } from './utils'
+import { publicProfileSummaries } from './publicProfileSummaries'
 
 export type UbuntuActiveChallenge = {
   id: string
@@ -103,13 +104,12 @@ export async function loadUbuntuChallengesBundle(userId: string) {
 
   const winnerProfiles: { id: string; name: string }[] = []
   if (active.winnerIds.length > 0) {
-    const profiles = await loadUbuntuRestTable('profiles', `?limit=5000`)
-    const byId = new Map(profiles.map((profile) => [textOf(profile, ['id'], ''), profile]))
+    const byId = await publicProfileSummaries(active.winnerIds)
     active.winnerIds.forEach((id) => {
       const profile = byId.get(id)
       winnerProfiles.push({
         id,
-        name: textOf(profile ?? {}, ['display_name', 'displayName', 'full_name', 'username'], id),
+        name: textOf(profile ?? {}, ['display_name', 'displayName', 'full_name', 'username'], 'Usuario'),
       })
     })
   }

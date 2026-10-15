@@ -1,4 +1,34 @@
 export const publicInfoPages = {
+  '/mensajes': {
+    title: 'Mensajes de Novvin: chats, grupos y archivos en la web',
+    description: 'Conversa con tu gente en Novvin Web. Abre tus chats y grupos, comparte fotos y documentos desde la computadora y vincula tu cuenta con QR.',
+    heading: 'Tus conversaciones, de tu móvil a tu computadora.',
+    sections: [
+      { heading: 'Chats, grupos y comunidades', body: 'Entra con la misma cuenta del móvil y encuentra tus conversaciones en la web. La lista de chats y el mensaje abierto se adaptan al espacio disponible en tu pantalla.' },
+      { heading: 'Fotos, archivos y stickers', body: 'Adjunta archivos de tu computadora, revisa la selección antes de enviarla y abre las fotos en pantalla completa. Las fotos consecutivas se reúnen en un álbum para mantener ordenado el chat.' },
+      { heading: 'Mantén tus conversaciones a mano', body: 'Ancla conversaciones, silencia las que prefieras y consulta tus mensajes desde el móvil o el navegador. En una computadora compartida, cierra la sesión cuando termines.' },
+    ],
+  },
+  '/videos': {
+    title: 'Videos de Novvin: descubre y comparte desde tu navegador',
+    description: 'Descubre videos en Novvin, sigue a sus creadores y comparte tus favoritos con chats, grupos y comunidades. También puedes publicar desde la web.',
+    heading: 'Descubre tu próximo video en Novvin.',
+    sections: [
+      { heading: 'Un video a la vez', body: 'Explora videos verticales y pasa al siguiente desde tu teléfono, tablet o computadora. El reproductor se ajusta a la pantalla para mantener a la vista el contenido y sus controles.' },
+      { heading: 'Comparte con tu gente', body: 'Envía videos de Novvin a tus conversaciones, grupos o comunidades. Tus contactos pueden abrir la publicación desde la tarjeta compartida.' },
+      { heading: 'Publica tu propio video', body: 'Elige un video del equipo, añade título y descripción y revisa su portada antes de publicar. Usa una cuenta para crear contenido, comentar y guardar tus preferencias.' },
+    ],
+  },
+  '/salas-de-voz': {
+    title: 'Salas de voz de Novvin: conversa con tu comunidad',
+    description: 'Encuentra salas de voz en Novvin y conversa con tu comunidad desde el móvil o la web. Controla el micrófono y el audio al participar.',
+    heading: 'Encuentra una sala y únete a la conversación.',
+    sections: [
+      { heading: 'Salas con personas de tu comunidad', body: 'Consulta el tema de una sala y sus participantes antes de unirte. Desde Novvin Web puedes participar con el micrófono de tu computadora o tus auriculares.' },
+      { heading: 'Tú controlas tu audio', body: 'Activa o silencia el micrófono, desactiva el sonido de la sala y sal cuando lo necesites. El navegador te pedirá permiso para utilizar el micrófono.' },
+      { heading: 'También desde el móvil', body: 'Usa tu cuenta de Novvin para encontrar salas desde la aplicación y desde el navegador. Para conversar con estabilidad, mantén una conexión a internet y comprueba los permisos de audio.' },
+    ],
+  },
   '/novvin-web': {
     title: 'Novvin Web: mensajes, videos y momentos desde tu navegador',
     description: 'Usa Novvin desde una computadora, tablet o celular. Conoce los mensajes con archivos, los videos, Social y el acceso con tu cuenta móvil.',
@@ -39,7 +69,7 @@ export function PublicInfo({ path }: { path: string }) {
       <p className="public-info-intro">{page.description}</p>
       <div className="public-home-actions"><a className="primary-btn" href="/login">Entrar a Novvin</a><a className="ghost-btn" href="/explore/videos">Explorar videos</a></div>
       {page.sections.map(section => <section key={section.heading}><h2>{section.heading}</h2><p>{section.body}</p></section>)}
-      <nav aria-label="Guías de Novvin"><a href="/novvin-web">Conoce Novvin Web</a><a href="/ayuda/vincular-web">Ayuda para vincular con QR</a><a href="/register">Crear una cuenta</a></nav>
+      <nav aria-label="Guías de Novvin"><a href="/novvin-web">Novvin Web</a><a href="/mensajes">Mensajes</a><a href="/videos">Videos</a><a href="/salas-de-voz">Salas de voz</a><a href="/ayuda/vincular-web">Ayuda con el QR</a></nav>
     </main>
     <footer className="public-home-footer"><a className="public-home-brand" href="/">Novvin</a><span>Conversa. Comparte. Descubre.</span><a href="/login">Entrar a mi cuenta</a></footer>
   </div>

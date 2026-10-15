@@ -199,7 +199,10 @@ function AppRouter() {
       <PageMetadata />
       <Routes>
         <Route path="/" element={<RootRoute />} />
-        <Route path="/novvin-web" element={<PublicInfo path="/novvin-web" />} />
+      <Route path="/novvin-web" element={<PublicInfo path="/novvin-web" />} />
+      <Route path="/mensajes" element={<PublicInfo path="/mensajes" />} />
+      <Route path="/videos" element={<PublicInfo path="/videos" />} />
+      <Route path="/salas-de-voz" element={<PublicInfo path="/salas-de-voz" />} />
         <Route path="/ayuda/vincular-web" element={<PublicInfo path="/ayuda/vincular-web" />} />
         <Route
           path="/explore/:kind?/:id?"

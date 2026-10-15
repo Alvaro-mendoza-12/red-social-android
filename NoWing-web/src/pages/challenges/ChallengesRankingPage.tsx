@@ -250,16 +250,16 @@ export function ChallengesRankingPage() {
   }
 
   return (
-    <section className="section-stack">
+    <section className="section-stack ranking-page">
       <div className="row-between">
         <Link to="/app/challenges" className="inline-link">
           ← Volver a retos
         </Link>
-        <h2>Ranking Global</h2>
+        <h2>{isUbuntuPrimary ? 'Ranking de la ronda' : 'Ranking global'}</h2>
       </div>
 
       <article className="surface-card section-stack">
-        <h3>Filtro de periodo</h3>
+        {isUbuntuPrimary ? <p>Clasificación de la ronda actual según los votos recibidos.</p> : <><h3>Filtro de periodo</h3>
         <div className="chip-row">
           {[
             { key: 'all', label: 'Todo' },
@@ -275,7 +275,7 @@ export function ChallengesRankingPage() {
               {option.label}
             </button>
           ))}
-        </div>
+        </div></>}
         <div className="composer">
           <input
             className="text-input"

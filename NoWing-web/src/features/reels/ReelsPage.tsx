@@ -1731,7 +1731,7 @@ export function ReelsPage() {
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="row-between">
-              <h3>Publicar reel</h3>
+              <h3>Publicar video</h3>
               <button
                 className="icon-btn"
                 type="button"
@@ -1747,12 +1747,14 @@ export function ReelsPage() {
                 <input
                   className="text-input"
                   placeholder="Título"
+                  aria-label="Título del video"
                   value={titleDraft}
                   onChange={(event) => setTitleDraft(event.target.value)}
                 />
                 <input
                   className="text-input"
                   placeholder="Descripción"
+                  aria-label="Descripción del video"
                   value={descriptionDraft}
                   onChange={(event) => setDescriptionDraft(event.target.value)}
                 />
@@ -1762,6 +1764,7 @@ export function ReelsPage() {
                   className="text-input"
                   type="file"
                   accept="video/*"
+                  aria-label="Elegir video del equipo"
                   onChange={(event) => {
                     setVideoFile(event.target.files?.[0] ?? null)
                     setCoverFile(null)
@@ -1771,7 +1774,7 @@ export function ReelsPage() {
                   }}
                 />
                 <button className="primary-btn" type="submit" disabled={!canPublish}>
-                  {posting ? 'Publicando...' : 'Publicar reel'}
+                  {posting ? 'Publicando...' : 'Publicar video'}
                 </button>
               </div>
               <div className="chip-row">

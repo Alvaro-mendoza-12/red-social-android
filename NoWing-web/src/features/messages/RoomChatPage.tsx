@@ -1,4 +1,6 @@
 import { CollectionInfo } from '../../components/CollectionInfo'
+import { chatMediaAlbums } from '../../core/chatMediaAlbums'
+import { ChatMediaAlbum } from '../../components/ChatMediaAlbum'
 import { backendRpc } from '../../core/backendRpc'
 import { conversationWindow } from '../../core/conversationWindow'
 import { sharedVideoReference } from '../../core/sharedVideoReference'
@@ -312,6 +314,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [historyWindowSize, setHistoryWindowSize] = useState(80)
   useEffect(() => setHistoryWindowSize(80), [cleanRoomId])
   const renderedMessages = conversationWindow(filteredMessages, historyWindowSize, Boolean(normalizedMessageSearch))
+  const albums = chatMediaAlbums(renderedMessages, user?.id || '')
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
   const threadRef = useRef<HTMLElement | null>(null)
@@ -1393,6 +1396,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             !previousMessage || dayKeyOf(previousMessage.createdAt) !== dayKeyOf(message.createdAt)
           const deletedForMe = user ? message.deletedBy.includes(user.id) : false
           if (deletedForMe) return null
+          const album = albums.get(message.id)
+          if (album && album.leader !== message.id) return null
+          if (album) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum items={album.items} mine={message.senderId === user?.id} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteRoomMessage(item, false)} onDeleteForAll={item => void deleteRoomMessage(item, true)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
           if (message.contentType === "system_membership") return <div className="room-system-notice" key={message.id}>{message.content}</div>
           const mine = message.senderId === user?.id
           const replied = message.replyToId ? messageById.get(message.replyToId) : null
@@ -1413,7 +1419,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
-              <article className={mine ? 'bubble bubble-me' : 'bubble bubble-them'}>
+              <article className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}`}>
                 {message.isForwarded ? <small>Reenviado</small> : null}
                 {replied ? <div className="reply-preview">Respuesta a: {replied.content || 'Archivo'}</div> : null}
                 {message.deletedForAll ? (
@@ -1443,9 +1449,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   </div>
                 ) : (
                   <>
-                    {message.content ? <p>{message.content}</p> : null}
+                    {message.content && message.contentType !== 'sticker' ? <p>{message.content}</p> : null}
                     {message.mediaUrl && !isViewOnceType(message.contentType) ? (
-                      <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} />
+                      <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} imageClassName={message.contentType === 'sticker' ? 'sticker-preview' : undefined} imageLink={message.contentType !== 'sticker'} />
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
                       consumed ? (

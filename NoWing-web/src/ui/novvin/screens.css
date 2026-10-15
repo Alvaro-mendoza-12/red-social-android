@@ -345,6 +345,25 @@
   max-width: 100%;
   width: 280px;
 }
+.bubble.sticker-bubble { width: 176px; max-width: 65%; background: transparent; box-shadow: none; padding: 4px; }
+.bubble.sticker-bubble .sticker-preview { width: 160px; height: 160px; max-width: 100%; max-height: 160px; object-fit: contain; border-radius: 0; }
+.bubble.sticker-bubble .message-meta { padding: 3px 7px; border-radius: 10px; background: var(--surface); }
+.chat-album { width: min(340px, 82%); max-width: 82%; padding: 5px; }
+.chat-album-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; border-radius: 10px; overflow: hidden; }
+.chat-album-tile { position: relative; min-width: 0; aspect-ratio: 1; padding: 0; border: 0; overflow: hidden; background: var(--surface); }
+.chat-album-grid.count-3 .chat-album-tile:first-child { grid-row: span 2; aspect-ratio: auto; }
+.chat-album-tile > div { width: 100%; height: 100%; }
+.chat-album-tile .chat-media-card { width: 100%; height: 100%; padding: 0; border: 0; }
+.bubble .chat-album-image { width: 100%; height: 100%; max-height: none; object-fit: cover; border-radius: 0; }
+.chat-album-more { position: absolute; inset: 0; display: grid; place-items: center; color: white; font-size: 32px; font-weight: 700; background: #0007; pointer-events: none; }
+.chat-album-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px; font-size: 11px; }
+.chat-album-status { display: block; text-align: right; padding: 0 6px 3px; font-size: 11px; }
+.chat-album-actions { min-width: 0; }
+.chat-album-actions summary { cursor: pointer; }
+.chat-album-actions > div { display: grid; gap: 10px; padding: 10px 0; }
+.chat-album-actions section { display: flex; flex-wrap: wrap; gap: 5px; }
+.chat-album-actions section strong { flex-basis: 100%; }
+.chat-album-actions button { border: 1px solid var(--outline); border-radius: 8px; padding: 6px; background: var(--surface); color: inherit; }
 .message-menu {
   position: absolute;
   right: 2px;
@@ -1404,6 +1423,8 @@
   color: var(--secondary-text);
   font-size: 0.85rem;
   min-height: 52px;
+  min-width: 0;
+  white-space: nowrap;
 }
 .mobile-profile-tabs button.active {
   color: var(--foreground);
@@ -1418,9 +1439,12 @@
   height: 2px;
   background: var(--primary);
 }
-.mobile-profile-tabs button:last-child {
+.mobile-profile-tabs button:has(svg) {
   flex: 0 0 54px;
 }
+.settings-advanced-media { grid-column: 1/-1; border: 1px solid var(--outline); border-radius: 10px; padding: 12px; }
+.settings-advanced-media summary { cursor: pointer; color: var(--secondary-text); }
+.settings-advanced-media[open] .settings-mini-grid { margin-top: 12px; }
 .mobile-profile-tabs svg {
   width: 21px;
   height: 21px;
@@ -1458,15 +1482,29 @@
 }
 .mobile-profile-posts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 3px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+  padding: 16px;
 }
 .mobile-profile-post {
+  min-width: 0;
+  border-radius: 12px;
   position: relative;
   aspect-ratio: 1;
   background: var(--surface);
   overflow: hidden;
 }
+.settings-section-nav { display: flex; flex-wrap: wrap; gap: 6px; overflow: visible; padding-bottom: 8px; }
+.settings-section-nav button { flex: 1 1 auto; padding: 10px 14px; border: 1px solid var(--outline); border-radius: 10px; background: var(--surface); color: var(--foreground); white-space: nowrap; }
+.settings-section-nav button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); border-color: transparent; }
+.settings-page-shell[data-section="perfil"] .settings-grid > article:not(#perfil-ajustes),
+.settings-page-shell[data-section="privacidad"] .settings-grid > article:not(#privacidad-ajustes),
+.settings-page-shell[data-section="seguridad"] .settings-grid > article:not(#seguridad-ajustes),
+.settings-page-shell[data-section="acceso-qr"] .settings-grid > article:not(#acceso-qr-ajustes),
+.settings-page-shell[data-section="preferencias-web"] .settings-grid,
+.settings-page-shell:not([data-section="preferencias-web"]) > #preferencias-web-ajustes { display: none; }
+.settings-page-shell .settings-grid { grid-template-columns: minmax(0,1fr); }
+@media(max-width:480px) { .mobile-profile-posts { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 10px; gap: 8px; } }
 .mobile-profile-post img,
 .mobile-profile-post video {
   width: 100%;
@@ -1752,10 +1790,30 @@
 .settings-section-nav {
   display: flex;
   gap: 8px;
-  overflow: auto;
+  flex-wrap: wrap;
+  overflow: visible;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--divider);
 }
+.challenges-page,.ranking-page { width: 100%; max-width: 1000px; margin-inline: auto; min-width: 0; }
+.challenges-page .row-between,.ranking-page .row-between { flex-wrap: wrap; gap: 12px; }
+.challenges-page .row-actions,.ranking-page .row-actions { flex-wrap: wrap; gap: 8px; }
+.challenges-page .story-media,.challenges-page .video-frame { width: 100%; max-height: 380px; object-fit: contain; border-radius: 12px; }
+.challenges-page .surface-card,.ranking-page .surface-card { padding: 20px; }
+.ranking-page .surface-subcard { min-width: 0; padding: 14px; border-radius: 12px; }
+.ranking-page .surface-subcard>div { min-width: 0; }
+.ranking-page strong { overflow-wrap: anywhere; }
+.video-upload-dialog { width: min(720px,96vw); max-height: 90dvh; padding: 24px; }
+.video-upload-dialog form>.composer { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; }
+.video-upload-dialog form { min-width: 0; }
+.video-upload-dialog .section-stack { min-width: 0; }
+.video-upload-dialog video { width: 100%; max-width: 100%; object-fit: contain; }
+.video-upload-dialog .quality-gate-grid { display: grid; gap: 8px; min-width: 0; }
+.video-upload-dialog .quality-gate { padding: 8px 10px; border-radius: 8px; background: var(--surface-raised); overflow-wrap: anywhere; font-size: 12px; }
+.video-upload-dialog small { overflow-wrap: anywhere; }
+.video-upload-dialog .chip-row { flex-wrap: wrap; }
+.video-upload-dialog input[type=file] { padding: 14px; border: 1px dashed var(--outline); }
+@media(max-width:600px) { .video-upload-dialog { padding: 16px; } .challenges-page .surface-card,.ranking-page .surface-card { padding: 14px; } }
 .settings-section-nav a {
   padding: 10px 14px;
   border-radius: 20px;
@@ -2169,11 +2227,29 @@
   min-height: 40px;
   flex-shrink: 0;
 }
+.moments-page .story-grid { grid-template-columns: repeat(auto-fill,minmax(min(100%,170px),1fr)); gap: 16px; }
+.moment-card { min-width: 0; background: var(--surface); border: 1px solid var(--outline); border-radius: 16px; overflow: hidden; }
+.moment-card-preview { display: block; position: relative; aspect-ratio: 3/4; overflow: hidden; background: var(--surface-raised); }
+.moment-card-preview > img,.moment-card-preview > video { width: 100%; height: 100%; max-height: none; object-fit: cover; }
+.moment-card-preview:after { content: ''; position: absolute; inset: 55% 0 0; background: linear-gradient(transparent,#000b); pointer-events: none; }
+.moment-card-preview > strong { position: absolute; z-index: 1; bottom: 14px; left: 12px; right: 12px; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.moment-card.viewed { opacity: .8; }
+.moment-card-caption { margin: 10px 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; }
+.moment-card > .row-actions { padding: 10px; gap: 5px; flex-wrap: wrap; }
+.moment-card > p:last-child { padding: 0 10px 10px; font-size: 12px; }
+@media(max-width:480px) { .moments-page .story-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; } }
 .qr-tile .qr-image {
   max-width: 240px;
 }
 .notifications-page { max-width: 800px; margin: auto; }
 .notification-toolbar { display: grid; gap: 14px; }
+.friend-requests-page { width: 100%; max-width: 800px; margin-inline: auto; }
+.friend-requests-page .list-row { padding: 16px; border: 1px solid var(--outline); border-radius: 14px; gap: 16px; flex-wrap: wrap; background: var(--surface); }
+.friend-request-person { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.friend-request-person > div { min-width: 0; }
+.friend-request-person strong { display: block; overflow: hidden; text-overflow: ellipsis; }
+.friend-request-person small { display: block; margin-top: 4px; color: var(--secondary-text); }
+.friend-requests-page .inline-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .notification-toolbar .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .notification-toolbar .chip-btn { font-size: .78rem; padding: 8px 12px; }
 .notification-card { display: flex; align-items: flex-start; gap: 12px; }

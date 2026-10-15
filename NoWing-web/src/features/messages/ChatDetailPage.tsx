@@ -1,4 +1,6 @@
 import { backendRpc } from '../../core/backendRpc'
+import { chatMediaAlbums } from '../../core/chatMediaAlbums'
+import { ChatMediaAlbum } from '../../components/ChatMediaAlbum'
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { conversationWindow } from '../../core/conversationWindow'
@@ -498,6 +500,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const [historyWindowSize, setHistoryWindowSize] = useState(80)
   useEffect(() => setHistoryWindowSize(80), [cleanChatId])
   const renderedMessages = conversationWindow(filteredMessages, historyWindowSize, Boolean(normalizedMessageSearch))
+  const albums = chatMediaAlbums(renderedMessages, user?.id || '')
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
   const composerText = editingMessageId ? editingDraft : draft
   const deviceId = useMemo(() => {
@@ -2090,6 +2093,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             !previousMessage || dayKeyOf(previousMessage.createdAt) !== dayKeyOf(message.createdAt)
           const deletedForMe = user ? message.deletedBy.includes(user.id) : false
           if (deletedForMe) return null
+          const album = albums.get(message.id)
+          if (album && album.leader !== message.id) return null
+          if (album) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum items={album.items} mine={message.senderId === user?.id} deliveryState={item => mineDeliveryState(item, toMillis(item.createdAt) > 0 && toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(item.createdAt))} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteMessageForMe(item)} onDeleteForAll={item => void deleteMessageForAll(item)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
 
           const mine = message.senderId === user?.id
           const replied = message.replyToId ? messageById.get(message.replyToId) : null
@@ -2116,7 +2122,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                   <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
-              <article className={mine ? 'bubble bubble-me' : 'bubble bubble-them'}>
+              <article className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}`}>
                 {message.isForwarded ? <small>Reenviado</small> : null}
                 {replied ? <div className="reply-preview">Respuesta a: {replied.content || 'Archivo'}</div> : null}
 

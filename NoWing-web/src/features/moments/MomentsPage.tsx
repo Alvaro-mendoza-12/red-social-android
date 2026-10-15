@@ -1,7 +1,7 @@
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Camera, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
 import {
   removeRealtimeChannel,
@@ -9,9 +9,9 @@ import {
   subscribeRealtimeChannel,
   supabase,
 } from '../../core/supabase'
-import { formatDateTime, friendlyError } from '../../core/utils'
+import { friendlyError } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { fetchMomentsFeed, recordMomentView, removeMoment, type MomentItem } from './momentsData'
+import { fetchMomentsFeed, removeMoment, type MomentItem } from './momentsData'
 import { MomentComposer } from './MomentComposer'
 import { isUbuntuPrimary } from '../../core/ubuntuBackend'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
@@ -99,16 +99,6 @@ export function MomentsPage() {
     }
   }, [loadMoments, user])
 
-  async function markViewed(moment: MomentItem) {
-    if (!user || moment.userId === user.id) return
-    try {
-      await recordMomentView(moment.id, user.id)
-      await loadMoments(true)
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo registrar vista'))
-    }
-  }
-
   async function deleteMoment(momentId: string) {
     if (!user || !momentId) return
     try {
@@ -124,23 +114,11 @@ export function MomentsPage() {
   }
 
   return (
-    <section className="section-stack">
+    <section className="section-stack moments-page">
       <header className="section-header row-between moments-header">
         <p>Comparte un momento con tu gente</p>
         <button className="primary-btn moments-create-button" type="button" onClick={() => setShowComposer(true)}><Plus aria-hidden="true" />Crear</button>
       </header>
-
-      <div className="moments-rail" aria-label="Momentos activos">
-        <button className="moment-rail-item moment-rail-create" type="button" onClick={() => setShowComposer(true)}>
-          <span><Camera aria-hidden="true" /></span><strong>Tu momento</strong>
-        </button>
-        {sortedMoments.map((moment) => (
-          <Link key={moment.id} className={moment.viewedByMe ? 'moment-rail-item viewed' : 'moment-rail-item'} to={`/app/moments/view/${moment.id}`}>
-            <span>{moment.mediaType === 'video' ? <StreamingVideo src={moment.mediaUrl} muted preload="metadata" /> : <StreamingImage src={moment.mediaUrl} alt="" />}</span>
-            <strong>{moment.userId === user?.id ? 'Tu momento' : moment.ownerName}</strong>
-          </Link>
-        ))}
-      </div>
 
       {showComposer && user ? <MomentComposer key={user.id} onClose={() => setShowComposer(false)} onPublished={() => { setShowComposer(false); void loadMoments(true) }} /> : null}
 
@@ -155,43 +133,32 @@ export function MomentsPage() {
           {sortedMoments.map((moment) => {
             const mine = moment.userId === user?.id
             return (
-              <article key={moment.id} className="surface-card section-stack">
-                <div className="row-between">
-                  <strong>{mine ? 'Tu momento' : moment.ownerName}</strong>
-                  <small>Expira: {formatDateTime(moment.expiresAt)}</small>
-                </div>
+              <article key={moment.id} className={`moment-card${moment.viewedByMe ? ' viewed' : ''}`}>
+                <Link className="moment-card-preview" to={`/app/moments/view/${moment.id}`} aria-label={`Ver momento de ${mine ? 'tu perfil' : moment.ownerName}`}>
                 {moment.mediaType === 'video' ? (
-                  <StreamingVideo controls preload="metadata" src={moment.mediaUrl} className="video-frame" />
+                  <StreamingVideo muted preload="metadata" src={moment.mediaUrl} className="video-frame" />
                 ) : (
                   <StreamingImage src={moment.mediaUrl} alt={moment.caption || 'Momento'} className="story-media" />
                 )}
-                {moment.caption ? <p>{moment.caption}</p> : null}
+                <strong>{mine ? 'Tu momento' : moment.ownerName}</strong>
+                </Link>
+                {moment.caption ? <p className="moment-card-caption">{moment.caption}</p> : null}
                 <div className="row-actions">
-                  <span className="folder-tag">Visibilidad: {moment.visibility}</span>
-                  <span className="folder-tag">{moment.allowReplies ? 'Respuestas ON' : 'Respuestas OFF'}</span>
-                  <span className="folder-tag">Vistas: {moment.viewsCount}</span>
+                  {mine ? <span className="folder-tag">{moment.viewsCount} vistas</span> : null}
                   {mine ? (
                     <span className="folder-tag">Expira en: {expiresInLabel(moment.expiresAt)}</span>
                   ) : !moment.viewedByMe ? (
                     <span className="folder-tag">Nueva</span>
                   ) : null}
-                  <Link className="ghost-btn" to={`/app/moments/view/${moment.id}`}>
-                    Ver historia
-                  </Link>
-                  {!mine ? (
-                    <button className="ghost-btn" type="button" onClick={() => void markViewed(moment)}>
-                      {moment.viewedByMe ? 'Re-visto' : 'Marcar visto'}
-                    </button>
-                  ) : (
+                  {mine ? (
                     <button className="ghost-btn" type="button" onClick={() => void deleteMoment(moment.id)}>
                       Eliminar
                     </button>
-                  )}
+                  ) : null}
                 </div>
                 {mine && moment.viewerPreview.length > 0 ? (
                   <p>Vieron: {moment.viewerPreview.join(' · ')}</p>
                 ) : null}
-                <small>{formatDateTime(moment.createdAt)}</small>
               </article>
             )
           })}

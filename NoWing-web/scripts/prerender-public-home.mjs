@@ -33,7 +33,7 @@ if (home === html || !home.includes('N-O-V-V-I-N')) throw new Error('Public home
 fs.writeFileSync(path.join(root, 'dist/app-shell.html'), html)
 fs.writeFileSync(path.join(root, 'dist/index.html'), home)
 const escape = value => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-for (const [route, file] of [['/novvin-web', 'novvin-web.html'], ['/ayuda/vincular-web', 'vincular-web.html']]) {
+for (const [route, file] of [['/novvin-web', 'novvin-web.html'], ['/ayuda/vincular-web', 'vincular-web.html'], ['/mensajes', 'mensajes.html'], ['/videos', 'videos.html'], ['/salas-de-voz', 'salas-de-voz.html']]) {
   const info = infoModule.publicInfoPage(route)
   let template = html.replace(/<title>.*?<\/title>/, `<title>${escape(info.title)}</title>`)
   for (const key of ['description', 'og:description', 'twitter:description', 'og:title', 'twitter:title']) {

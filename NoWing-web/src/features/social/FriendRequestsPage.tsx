@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { SafeAvatar } from '../../components/SafeAvatar'
+import { publicProfileSummaries } from '../../core/publicProfileSummaries'
 import { StatusView } from '../../components/StatusView'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import {
   loadFallbackFriends,
-  sendFallbackFriendRequest,
   updateFallbackFriendRequest,
 } from '../../core/fallbackData'
 import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
@@ -37,8 +39,12 @@ export function FriendRequestsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tableAvailable, setTableAvailable] = useState(true)
+  const [profiles, setProfiles] = useState(new Map<string, GenericRow>())
+  const [pendingId, setPendingId] = useState('')
+  const sequence = useRef(0)
 
   const loadRequests = useCallback(async () => {
+    const current = ++sequence.current
     if (!user) {
       setLoading(false)
       return
@@ -48,7 +54,11 @@ export function FriendRequestsPage() {
     try {
       if (useUbuntu) {
         const response = await loadFallbackFriends('incoming')
-        setItems(response.items.map(mapRequest))
+        const mapped = response.items.map(mapRequest)
+        const people = await publicProfileSummaries(mapped.map(item => item.senderId)).catch(() => new Map())
+        if (sequence.current !== current) return
+        setProfiles(people)
+        setItems(mapped)
         setTableAvailable(true)
         return
       }
@@ -65,26 +75,35 @@ export function FriendRequestsPage() {
         .eq('receiver_id', user.id)
         .order('created_at', { ascending: false })
       if (queryError) throw queryError
-      setItems(((data ?? []) as GenericRow[]).map(mapRequest))
+      const mapped = ((data ?? []) as GenericRow[]).map(mapRequest)
+      const people = await publicProfileSummaries(mapped.map(item => item.senderId)).catch(() => new Map())
+      if (sequence.current !== current) return
+      setProfiles(people)
+      setItems(mapped)
       setTableAvailable(true)
     } catch (caught) {
+      if (sequence.current !== current) return
       if (isMissingTableError(caught)) {
         setTableAvailable(false)
-        setError('La tabla friends no existe en este entorno.')
+        setError('Las solicitudes no están disponibles en este momento.')
       } else {
         setError(friendlyError(caught, 'No se pudieron cargar las solicitudes'))
       }
     } finally {
-      setLoading(false)
+      if (sequence.current === current) setLoading(false)
     }
   }, [useUbuntu, user])
 
   useEffect(() => {
+    setItems([])
+    setProfiles(new Map())
     void loadRequests()
+    return () => { sequence.current++ }
   }, [loadRequests])
 
   async function updateStatus(id: string, status: 'accepted' | 'rejected') {
-    if (!user) return
+    if (!user || pendingId) return
+    setPendingId(id)
     try {
       if (useUbuntu) {
         await updateFallbackFriendRequest(id, status)
@@ -101,30 +120,7 @@ export function FriendRequestsPage() {
       await loadRequests()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo actualizar la solicitud'))
-    }
-  }
-
-  async function sendRequest(targetId: string) {
-    if (!user) return
-    const cleanTarget = targetId.trim().toLowerCase()
-    if (!cleanTarget) return
-    try {
-      if (useUbuntu) {
-        await sendFallbackFriendRequest(cleanTarget)
-        await loadRequests()
-        return
-      }
-      if (!supabase) return
-      const { error: insertError } = await supabase.from('friends').insert({
-        sender_id: user.id,
-        receiver_id: cleanTarget,
-        status: 'pending',
-      })
-      if (insertError) throw insertError
-      await loadRequests()
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo enviar solicitud'))
-    }
+    } finally { setPendingId('') }
   }
 
   if (!useUbuntu && !supabase && !isFallbackAuthConfigured) {
@@ -134,51 +130,44 @@ export function FriendRequestsPage() {
   if (error && !tableAvailable) return <StatusView title="Solicitudes no disponibles" description={error} />
 
   return (
-    <section className="section-stack">
+    <section className="section-stack friend-requests-page">
       <header className="section-header">
         <h2>Solicitudes de amistad</h2>
-        <p>Gestiona invitaciones en tu servidor Ubuntu.</p>
+        <p>Elige con quién conectar.</p>
       </header>
       {error ? <p className="error-text">{error}</p> : null}
       {items.length === 0 ? (
         <StatusView title="Sin solicitudes" description="No tienes invitaciones pendientes." />
       ) : (
         <ul className="list-stack">
-          {items.map((item) => (
+          {items.map((item) => {
+            const person = profiles.get(item.senderId) || {}
+            const name = textOf(person, ['display_name', 'username'], 'Usuario de Novvin')
+            return (
             <li key={item.id} className="list-row">
-              <div>
-                <strong>{item.senderId}</strong>
+              <Link className="friend-request-person" to={`/app/profile/${item.senderId}`}>
+                <SafeAvatar url={textOf(person, ['avatar_url'])} name={name} mediaType={textOf(person, ['avatar_media_type'])} size="lg" />
+              <div><strong>{name}</strong>
                 <small>{formatDateTime(item.createdAt)}</small>
               </div>
+              </Link>
               {item.status === 'pending' ? (
                 <div className="inline-actions">
-                  <button type="button" onClick={() => void updateStatus(item.id, 'accepted')}>
+                  <button className="primary-btn" type="button" disabled={Boolean(pendingId)} onClick={() => void updateStatus(item.id, 'accepted')}>
                     Aceptar
                   </button>
-                  <button type="button" className="ghost-btn" onClick={() => void updateStatus(item.id, 'rejected')}>
+                  <button type="button" className="ghost-btn" disabled={Boolean(pendingId)} onClick={() => void updateStatus(item.id, 'rejected')}>
                     Rechazar
                   </button>
                 </div>
               ) : (
-                <span>{item.status}</span>
+                <span>{item.status === 'accepted' ? 'Amigos' : 'Solicitud rechazada'}</span>
               )}
             </li>
-          ))}
+          )})}
         </ul>
       )}
-      <form
-        className="inline-form"
-        onSubmit={(event) => {
-          event.preventDefault()
-          const form = event.currentTarget
-          const input = form.elements.namedItem('targetId') as HTMLInputElement
-          void sendRequest(input.value)
-          input.value = ''
-        }}
-      >
-        <input name="targetId" placeholder="ID de usuario destino" required />
-        <button type="submit">Enviar solicitud</button>
-      </form>
+      <Link className="ghost-btn" to="/app/search">Buscar personas</Link>
     </section>
   )
 }

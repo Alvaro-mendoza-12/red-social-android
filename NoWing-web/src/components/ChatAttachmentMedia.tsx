@@ -43,9 +43,9 @@ export function attachmentKind(contentType: string, url: string): ChatAttachment
 }
 
 export function ChatAttachmentMedia({
-  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true,
+  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen,
 }: {
-  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean
+  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void
 }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const rewritten = rewriteRuntimeStorageUrl(url)
@@ -137,7 +137,7 @@ export function ChatAttachmentMedia({
     content = <div className="chat-file-card chat-file-card-loading" role="status"><span><strong>Preparando archivo</strong><small>{title}</small></span></div>
   } else if (kind === 'image') {
     const image = <img className={imageClassName} src={playbackUrl} alt={title} loading="lazy" decoding="async" onError={decodingFailed} />
-    content = imageLink ? <button type="button" className="chat-media-card" aria-label={`Ampliar ${title}`} onClick={()=>setViewerOpen(true)}>{image}</button> : image
+    content = imageLink ? <button type="button" className="chat-media-card" aria-label={`Ampliar ${title}`} onClick={()=>onImageOpen ? onImageOpen() : setViewerOpen(true)}>{image}</button> : image
   } else if (kind === 'pdf') {
     content = <div className="chat-pdf-card"><div className="chat-file-card"><strong>{title}</strong><button type="button" className="mini-action-btn" onClick={()=>setViewerOpen(true)}>Abrir documento</button></div><iframe className="chat-pdf-preview" src={playbackUrl} title={title} sandbox="allow-scripts allow-downloads" loading="lazy" /></div>
   } else {
