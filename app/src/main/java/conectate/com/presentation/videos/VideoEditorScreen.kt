@@ -102,7 +102,7 @@ fun VideoEditorScreen(
     val isPreparingTimeline by viewModel.isPreparingTimeline.collectAsState()
     val isImportingLut by viewModel.isImportingLut.collectAsState()
     var lutTargetClipId by rememberSaveable { mutableStateOf<Long?>(null) }
-    val colorLutPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val colorLutPicker = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri ->
         val target = lutTargetClipId
         lutTargetClipId = null
         if (uri != null && target != null) viewModel.importColorLut(context, target, uri)
@@ -663,9 +663,7 @@ fun VideoEditorScreen(
                                 val musicClip = audioTrack?.clips?.firstOrNull()
                                 
                                 // File picker launcher
-                                val audioPickerLauncher = rememberLauncherForActivityResult(
-                                    contract = ActivityResultContracts.OpenDocument()
-                                ) { uri: Uri? ->
+                                val audioPickerLauncher = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri: Uri? ->
                                     uri?.let {
                                         if (!retainVideoDocumentAccess(context, it)) {
                                             AppFeedbackBus.show("Al restaurar la edición, Android podría pedirte seleccionar de nuevo el audio.")
@@ -940,6 +938,8 @@ private fun EditorMusicPreviewPlayback(
     DisposableEffect(player) {
         onDispose { player?.release() }
     }
+
+    player?.let { conectate.com.presentation.components.PauseMediaPlayerOnBackground(it) }
 
     LaunchedEffect(player, clip?.musicVolume) {
         player?.volume = clip?.musicVolume?.coerceIn(0f, 1f) ?: 1f

@@ -12,6 +12,15 @@ import androidx.compose.ui.unit.dp
 class FullScreenMediaViewerTest {
 
     @Test
+    fun zoomWorksWhenOriginalLoadsWithoutPreviewAndWhenOnlyPreviewLoads() {
+        assertTrue(canZoomLoadedImage(true, true, false, false))
+        assertTrue(canZoomLoadedImage(true, false, true, false))
+        assertTrue(canZoomLoadedImage(true, false, false, true))
+        assertFalse(canZoomLoadedImage(true, false, false, false))
+        assertFalse(canZoomLoadedImage(false, true, true, true))
+    }
+
+    @Test
     fun socialOverlay_usesMeasuredInsetPlusClearanceWithoutScreenSpecificOffset() {
         assertEquals(40.dp, reliableBottomSafePadding(24.dp, 28.dp, 12.dp))
         assertEquals(60.dp, reliableBottomSafePadding(48.dp, 28.dp, 12.dp))

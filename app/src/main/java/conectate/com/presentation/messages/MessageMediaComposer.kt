@@ -673,6 +673,7 @@ internal fun MessageGalleryStep(
                                 stateDescription = if (selectedIndex >= 0) "Seleccionado, posición ${selectedIndex + 1}"
                                     else "Sin seleccionar"
                             }
+                            .testTag("composer_gallery_${item.type}_${item.id}")
                             .clickable(role = Role.Checkbox) { onToggle(item) }
                     ) {
                         AsyncImage(

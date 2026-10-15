@@ -97,7 +97,9 @@ fun MainActivityContent(
         val navController = rememberNavController()
         val universalForwardCoordinator = remember { UniversalForwardCoordinator() }
 
-        LaunchedEffect(currentIntent) {
+        val isInitializing by authRepository.isInitializing.collectAsStateWithLifecycle()
+        LaunchedEffect(currentIntent, isInitializing) {
+            if (isInitializing) return@LaunchedEffect
             currentIntent?.let { incomingIntent ->
                 if (!IntentRouter.hasPendingNavigationIntent(incomingIntent)) {
                     onIntentConsumed()
@@ -114,20 +116,23 @@ fun MainActivityContent(
             }
         }
 
-        val isInitializing by authRepository.isInitializing.collectAsStateWithLifecycle()
         val session by authRepository.getAuthStateFlow().collectAsStateWithLifecycle(initialValue = null)
         // Drive the first route from the asynchronously restored session StateFlow. Calling
         // AuthService.isLoggedIn() here reads encrypted preferences synchronously during Compose.
         val isLoggedIn = session?.user?.id?.isNotBlank() == true
         if (!isInitializing && !isLoggedIn) SystemAnnouncementHost(null)
         if (isLoggedIn) StartupPrompts(session?.user?.id)
-        val notificationRepository = if (isLoggedIn) notificationRepositoryProvider.get() else null
-        val voiceRoomRepository = if (isLoggedIn) voiceRoomRepositoryProvider.get() else null
-        val callRepository = if (isLoggedIn) callRepositoryProvider.get() else null
-        val liveRepository = if (isLoggedIn) liveRepositoryProvider.get() else null
+        val notificationRepository = authenticatedRepository(isLoggedIn, notificationRepositoryProvider, "notification repository")
+        val voiceRoomRepository = authenticatedRepository(isLoggedIn, voiceRoomRepositoryProvider, "voice repository")
+        val callRepository = authenticatedRepository(isLoggedIn, callRepositoryProvider, "call repository")
+        val liveRepository = authenticatedRepository(isLoggedIn, liveRepositoryProvider, "live repository")
         // Connectivity and sync are only needed by authenticated routes. Constructing their
         // dependency graph on the welcome screen adds work before the first usable frame.
+        val connectivityStarted = if (conectate.com.BuildConfig.DEBUG) android.os.SystemClock.elapsedRealtime() else 0L
         val connectivityViewModel = if (isLoggedIn) hiltViewModel<ConnectivityViewModel>() else null
+        if (conectate.com.BuildConfig.DEBUG && isLoggedIn) {
+            android.util.Log.d("StartupTiming", "connectivity model completed in ${android.os.SystemClock.elapsedRealtime() - connectivityStarted} ms")
+        }
         val accountSwitchState by authRepository.accountSwitchUiState.collectAsStateWithLifecycle()
         var accountSwitchSnapshot by remember { mutableStateOf<AccountSwitchUiState?>(null) }
         var showAccountSwitchOverlay by remember { mutableStateOf(false) }
@@ -265,6 +270,10 @@ fun MainActivityContent(
                 end = innerPadding.calculateEndPadding(layoutDirection),
                 bottom = innerPadding.calculateBottomPadding()
             )
+            conectate.com.presentation.components.GlobalAvatarMomentProvider(
+                accountId = if (accountSwitchState.isSwitching || !isLoggedIn) null else authRepository.getCurrentUserId(),
+                onOpen = { moment -> navController.navigate(Screen.MomentViewer.createRoute(moment.id)) { launchSingleTop = true } },
+            ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -399,8 +408,24 @@ fun MainActivityContent(
                     }
                 }
             }
+            }
         }
     }
+}
+
+/** Prepare singleton dependencies without blocking the first authenticated composition. */
+@Composable
+private fun <T> authenticatedRepository(authenticated: Boolean, provider: Lazy<T>, phase: String): T? {
+    val repository by androidx.compose.runtime.produceState<T?>(
+        initialValue = null,
+        authenticated,
+        provider
+    ) {
+        value = if (authenticated) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            conectate.com.core.observability.measureStartupPhase(phase) { provider.get() }
+        } else null
+    }
+    return if (authenticated) repository else null
 }
 
 @Composable

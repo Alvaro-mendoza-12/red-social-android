@@ -3,6 +3,8 @@
   const app = document.getElementById('app'), pending = new Map(), assets = new Map()
   const params = new URLSearchParams(location.search), typeLabels = { text: 'Respuesta corta', paragraph: 'Párrafo', single: 'Opción única', multiple: 'Varias opciones', dropdown: 'Lista desplegable', scale: 'Escala', number: 'Número', date: 'Fecha', matrix: 'Matriz', file: 'Archivos / fotos' }
   const measures = { nominal: 'Cualitativa nominal', ordinal: 'Cualitativa ordinal', discrete: 'Cuantitativa discreta', continuous: 'Cuantitativa continua' }, roles = { descriptive: 'Descriptiva', independent: 'Independiente', dependent: 'Dependiente', control: 'Control' }
+  let resultView = 'results', questionIndex = 0, responseIndex = 0
+  const RESPONSE_PAGE_SIZE = 50
   let account, form, dirty = false, view = 'home', campaign, survey, answers = {}, consent = false, sectionIndex = 0, sectionStack = [], editing = false, preview = false, sequence = 0, filter = 'active', librarySearch = '', allForms = [], allCampaigns = [], stats, page = 0, busy = false, clockOffset = 0, resultFilters = { from: '', to: '', search: '' }
   const e = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
   const id = () => crypto.randomUUID ? crypto.randomUUID() : `q${Date.now()}${Math.random().toString(36).slice(2)}`
@@ -26,8 +28,14 @@
     message.error ? p.reject(new Error(message.error)) : p.resolve(message.value)
   }
   function download(result) {
-    if (window.NovvinSurveys) window.NovvinSurveys.download(JSON.stringify(result))
-    else throw new Error('La descarga está disponible en la app Android.')
+    if (!window.NovvinSurveys) return Promise.reject(new Error('La descarga está disponible en la app Android.'))
+    return new Promise((resolve, reject) => {
+      const requestId = String(++sequence)
+      const timer = setTimeout(() => { pending.delete(requestId); reject(new Error('No se pudo confirmar la descarga. Revisa Descargas/Novvin antes de reintentar.')) }, 90000)
+      pending.set(requestId, { resolve, reject, timer })
+      try { window.NovvinSurveys.download(JSON.stringify({ ...result, requestId })) }
+      catch (error) { clearTimeout(timer); pending.delete(requestId); reject(error) }
+    }).then(value => { toast(`Archivo guardado: ${value.name}. Encuéntralo en ${value.location}.`); return value })
   }
   function button(label, action, data = '', cls = '') { return `<button type="button" class="${cls}" data-action="${action}" data-id="${e(data)}">${e(label)}</button>` }
   function setBusy(value) { busy = value; app.setAttribute('aria-busy', String(value)) }
@@ -116,7 +124,7 @@
   function renderHome() {
     const matches = row => filter === 'trash' ? !!row.trashed_at || row.status === 'trashed' : filter === 'archive' ? row.archived || row.status === 'archived' : !row.trashed_at && !row.archived && !['trashed', 'archived'].includes(row.status)
     const draft = account && localStorage.getItem(`novvin-survey-form:${account.id}`)
-    app.innerHTML = `<h1>Mis encuestas</h1><p class="muted">Crea una encuesta y consulta las respuestas en privado.</p><div class="actions">${button('Crear encuesta', 'new', '', 'primary')}${draft ? button('Recuperar borrador', 'draft') : ''}${button('Actualizar', 'home')}</div><nav class="tabs" aria-label="Estado de encuestas">${[['active', 'Activas'], ['archive', 'Archivadas'], ['trash', 'Papelera']].map(([v, label]) => button(label, 'filter', v, filter === v ? 'active' : '')).join('')}</nav><h2>Encuestas guardadas</h2><div class="grid">${allForms.filter(matches).map(f => `<article class="card"><h3>${e(f.schema.title)}</h3><small>Revisión ${f.revision} · ${date(f.updated_at)}</small><div class="actions">${button(f.trashed_at || f.archived ? 'Ver' : 'Editar', 'edit', f.id)}${button('Duplicar', 'duplicate', f.id)}${button('Historial', 'revisions', f.id)}${!f.trashed_at && !f.archived ? button('Archivar', 'form-archive', f.id) + button('Papelera', 'form-trash', f.id) : button('Restaurar', 'form-restore', f.id)}${f.trashed_at ? button('Eliminar definitivamente', 'form-purge', f.id, 'danger') : ''}</div></article>`).join('') || '<p class="empty">Todavía no hay encuestas guardadas.</p>'}</div><h2>Encuestas publicadas</h2><div class="grid">${allCampaigns.filter(matches).map(c => `<article class="card"><span class="chip">${c.status === 'open' && c.closes_at && Date.parse(c.closes_at) <= Date.now() ? 'Cerrada' : { open: 'Abierta', closed: 'Cerrada', archived: 'Archivada', trashed: 'Papelera' }[c.status]}</span><h3>${e(c.schema.title)}</h3><p>${c.response_count} respuestas · ${e({ public: 'Pública', followers: 'Seguidores', private: 'Solo tú' }[c.visibility])}</p><small>${date(c.closes_at)}${!c.post_exists ? ' · Sin publicación en Social' : ''}</small><div class="actions">${button('Administrar y resultados', 'manage', c.id)}${button('Ver encuesta', 'respond', c.id)}</div></article>`).join('') || '<p class="empty">Publica una encuesta para recibir respuestas.</p>'}</div>`
+    app.innerHTML = `<h1>Mis encuestas</h1><p class="muted">Crea una encuesta y consulta las respuestas en privado.</p><div class="actions">${button('Crear encuesta', 'new', '', 'primary')}${draft ? button('Recuperar borrador', 'draft') : ''}${button('Actualizar', 'home')}</div><nav class="tabs" aria-label="Estado de encuestas">${[['active', 'Activas'], ['archive', 'Archivadas'], ['trash', 'Papelera']].map(([v, label]) => button(label, 'filter', v, filter === v ? 'active' : '')).join('')}</nav><h2>Encuestas guardadas</h2><div class="grid">${allForms.filter(matches).map(f => `<article class="card"><h3>${e(f.schema.title)}</h3><small>Revisión ${f.revision} · ${date(f.updated_at)}</small><div class="actions">${button(f.trashed_at || f.archived ? 'Ver' : 'Editar', 'edit', f.id)}${button('Duplicar', 'duplicate', f.id)}${button('Historial', 'revisions', f.id)}${!f.trashed_at && !f.archived ? button('Archivar', 'form-archive', f.id) + button('Papelera', 'form-trash', f.id) : button('Restaurar', 'form-restore', f.id)}${f.trashed_at ? button('Eliminar definitivamente', 'form-purge', f.id, 'danger') : ''}</div></article>`).join('') || '<p class="empty">Todavía no hay encuestas guardadas.</p>'}</div><h2>Encuestas publicadas</h2><div class="grid">${allCampaigns.filter(matches).map(c => `<article class="card"><span class="chip">${c.status === 'open' && c.closes_at && Date.parse(c.closes_at) <= Date.now() ? 'Cerrada' : { open: 'Abierta', closed: 'Cerrada', archived: 'Archivada', trashed: 'Papelera' }[c.status]}</span><h3>${e(c.schema.title)}</h3><p>${c.response_count} respuestas · ${e({ public: 'Pública', followers: 'Seguidores', private: 'Solo tú' }[c.visibility])}</p><small>${date(c.closes_at)}${!c.post_exists ? ' · Sin publicación en Social' : ''}</small><div class="actions">${button('Ver respuestas', 'manage', c.id, 'primary')}${button('Ver encuesta', 'respond', c.id)}</div></article>`).join('') || '<p class="empty">Publica una encuesta para recibir respuestas.</p>'}</div>`
     if (account.can_review_reports) app.querySelector('.actions').insertAdjacentHTML('beforeend', button('Revisar reportes', 'review-reports'))
     app.querySelector('.tabs').insertAdjacentHTML('afterend', `<label>Buscar encuestas<input id="library-search" value="${e(librarySearch)}" placeholder="Título de la encuesta"></label>`)
     filterLibrary()
@@ -248,10 +256,21 @@
     await manage(campaign.id); sessionStorage.removeItem(publicationStorageKey); toast('Encuesta publicada.')
   }
   async function asset(id, cId) {
-    if (!assets.has(id)) { const a = await request(`/assets/${id}${cId ? `?campaignId=${encodeURIComponent(cId)}` : ''}`); assets.set(id, a) }
+    if (!assets.has(id)) { const a = await request(`/assets/${encodeURIComponent(id)}${cId ? `?campaignId=${encodeURIComponent(cId)}` : ''}`); assets.set(id, a) }
     return assets.get(id)
   }
-  function hydrateImages() { document.querySelectorAll('[data-asset]').forEach(async img => { try { const a = await asset(img.dataset.asset, survey?.id); if (a.mime.startsWith('image/')) img.src = `data:${a.mime};base64,${a.data}` } catch { img.alt = 'Imagen no disponible' } }) }
+  function hydrateImages() {
+    const campaignId = view === 'manage' ? campaign?.id : survey?.id
+    document.querySelectorAll('[data-asset]').forEach(async img => {
+      try {
+        const a = await asset(img.dataset.asset, campaignId)
+        if (/^image\/(png|jpeg|webp|gif)$/i.test(a.mime)) {
+          img.src = `data:${a.mime};base64,${a.data}`
+          window.SurveyImageViewer?.enable(img, () => { download(a).catch(error => toast(error.message)) })
+        }
+      } catch { img.alt = 'Imagen no disponible' }
+    })
+  }
   async function upload(file, campaignId) {
     if (!file || file.size > 4194304) throw new Error('Elige un archivo de hasta 4 MB.')
     const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file) })
@@ -329,17 +348,34 @@
     if (campaign?.id !== cId) resultFilters = { from: '', to: '', search: '' }
     campaign = (await request('/campaigns')).campaigns.find(c => c.id === cId)
     if (!campaign) throw new Error('Encuesta no disponible.')
-    view = 'manage'; dirty = false; renderManage()
+    view = 'manage'; dirty = false; page = 0; questionIndex = 0; responseIndex = 0; renderManage(); await results()
   }
   function renderManage() {
-    const c = campaign, open = c.status === 'open' && (!c.closes_at || Date.parse(c.closes_at) > Date.now())
-    app.innerHTML = `<h1>${e(c.schema.title)}</h1><p class="muted">Encuesta publicada · revisión ${c.revision} · ${c.response_count} respuestas · ${open ? 'Abierta' : 'Cerrada / archivada'}</p><p>${date(c.closes_at)}</p><div class="tabs">${button('Resumen y gráficos', 'results', c.id, 'primary')}${button('Respuestas individuales', 'individuals', c.id)}${button('Relaciones entre variables', 'relations', c.id)}${button('Descargar', 'exports', c.id)}${button('Compartir / QR', 'share', c.id)}${button('Historial', 'history', c.id)}${button('Ver formulario', 'respond', c.id)}</div><div class="card"><h2>Administrar participación</h2><p>Al reabrir se conservan las respuestas. Cada cuenta mantiene su única respuesta y el plazo de edición original.</p><div class="actions">${c.status === 'trashed' ? button('Restaurar cerrada', 'campaign-restore', c.id) + button('Eliminar encuesta y respuestas definitivamente', 'campaign-purge', c.id, 'danger') : open ? button('Cerrar ahora', 'campaign-close', c.id) + button('Programar / cambiar cierre', 'campaign-schedule', c.id) : button('Reabrir', 'campaign-reopen', c.id)}${c.status !== 'trashed' ? button('Archivar y retirar de Social', 'campaign-archive', c.id) + button('Enviar a papelera', 'campaign-trash', c.id) : ''}${c.post_exists ? button('Retirar publicación de Social', 'campaign-unpublish', c.id) : ''}</div><p class="muted">Retirar una publicación conserva la encuesta y sus respuestas en esta cuenta. La eliminación definitiva sí borra los datos y adjuntos de participación.</p></div><section id="result-panel"></section>`
-    if (c.status !== 'trashed') app.querySelector('.card .actions')?.insertAdjacentHTML('beforeend', button('Cambiar audiencia', 'campaign-audience', c.id))
-    if (!c.post_exists && !c.moderation_blocked && !['archived','trashed'].includes(c.status)) app.querySelector('.card .actions')?.insertAdjacentHTML('beforeend',button('Publicar de nuevo en Social','campaign-republish',c.id))
-    if (c.moderation_blocked) app.querySelector('.card')?.insertAdjacentHTML('afterbegin', `<p class="error">Restringida por moderación: ${e(c.moderation_note)}</p>`)
-    app.querySelector('h1 + p').textContent = `Encuesta publicada · revisión ${c.revision} · ${c.response_count} respuestas · ${campaignStatus(c)}`
-    app.querySelector('.tabs')?.insertAdjacentHTML('beforeend', button('Diccionario de variables', 'dictionary', c.id))
-    app.querySelector('#result-panel').insertAdjacentHTML('beforebegin', `<div class="card"><h2>Filtrar resultados</h2><p class="muted">Los filtros se aplican a gráficos, respuestas individuales, relaciones y descargas.</p><label>Desde<input id="filter-from" type="datetime-local" value="${e(resultFilters.from)}"></label><label>Hasta<input id="filter-to" type="datetime-local" value="${e(resultFilters.to)}"></label><label>Nombre o ID de participante<input id="filter-search" value="${e(resultFilters.search)}" maxlength="160"></label><div class="actions">${button('Aplicar filtros', 'apply-result-filters', '', 'primary')}${button('Limpiar filtros', 'clear-result-filters')}</div></div>`)
+    const c = campaign, open = campaignStatus(c) === 'Abierta'
+    app.innerHTML = `<h1>${e(c.schema.title)}</h1><div class="response-heading"><span class="chip">${e(campaignStatus(c))}</span><p>Las respuestas solo las ves tú.</p></div><nav class="result-tabs" aria-label="Ver respuestas">${[['results', 'Resumen'], ['questions', 'Pregunta'], ['individuals', 'Individual']].map(([action, label]) => button(label, action, '', action === resultView ? 'active' : '')).join('')}</nav><section id="result-panel" aria-live="polite"></section><details class="card result-filters" ${hasResultFilters() ? 'open' : ''}><summary>Filtrar respuestas${hasResultFilters() ? ' · filtros activos' : ''}</summary><label>Nombre del participante<input id="filter-search" value="${e(resultFilters.search)}" maxlength="160" placeholder="Buscar por nombre"></label><div class="grid"><label>Desde<input id="filter-from" type="datetime-local" value="${e(resultFilters.from)}"></label><label>Hasta<input id="filter-to" type="datetime-local" value="${e(resultFilters.to)}"></label></div><div id="result-filter-error" role="alert"></div><div class="actions">${button('Aplicar', 'apply-result-filters', '', 'primary')}${button('Quitar filtros', 'clear-result-filters')}</div></details><details class="card result-tools"><summary>Más opciones</summary><div class="actions">${button('Descargar respuestas', 'exports', c.id)}${button('Compartir encuesta', 'share', c.id)}${button('Ver formulario', 'respond', c.id)}</div><details><summary>Análisis avanzado</summary><div class="actions">${button('Relaciones entre variables', 'relations', c.id)}${button('Diccionario de variables', 'dictionary', c.id)}${button('Historial', 'history', c.id)}</div></details></details><details class="card participation-settings"><summary>Administrar participación</summary><p>${c.closes_at ? `Cierre: ${date(c.closes_at)}` : 'Sin cierre programado.'}</p><div class="actions">${c.status === 'trashed' ? button('Restaurar cerrada', 'campaign-restore', c.id) + button('Eliminar encuesta y respuestas definitivamente', 'campaign-purge', c.id, 'danger') : open ? button('Cerrar ahora', 'campaign-close', c.id) + button('Programar cierre', 'campaign-schedule', c.id) : button('Reabrir', 'campaign-reopen', c.id)}${c.status !== 'trashed' ? button('Archivar', 'campaign-archive', c.id) + button('Enviar a papelera', 'campaign-trash', c.id) + button('Cambiar audiencia', 'campaign-audience', c.id) : ''}${c.post_exists ? button('Retirar de Social', 'campaign-unpublish', c.id) : !c.moderation_blocked && !['archived', 'trashed'].includes(c.status) ? button('Publicar de nuevo en Social', 'campaign-republish', c.id) : ''}</div><p class="muted">Cerrar o retirar de Social conserva las respuestas. La eliminación definitiva borra las respuestas y los adjuntos.</p></details>`
+    if (c.moderation_blocked) app.querySelector('.response-heading').insertAdjacentHTML('afterend', `<p class="error">Restringida por moderación: ${e(c.moderation_note)}</p>`)
+    updateResultTabs()
+  }
+  function hasResultFilters() { return !!(resultFilters.from || resultFilters.to || resultFilters.search) }
+  function updateResultTabs() {
+    app.querySelectorAll('.result-tabs button').forEach(b => {
+      const selected = b.dataset.action === resultView
+      b.classList.toggle('active', selected); b.setAttribute('aria-pressed', String(selected))
+    })
+  }
+  async function loadResultStats() {
+    const panel = document.getElementById('result-panel')
+    panel.innerHTML = '<p role="status">Cargando respuestas…</p>'
+    try {
+      stats = await request(`/campaigns/${campaign.id}/results?page=${page}&${resultQuery()}`)
+      if (page > 0 && page >= stats.pages) { page = Math.max(0, stats.pages - 1); stats = await request(`/campaigns/${campaign.id}/results?page=${page}&${resultQuery()}`) }
+    } catch (error) {
+      panel.innerHTML = `<div class="error"><p>${e(error.message || 'No se pudieron cargar las respuestas.')}</p>${button('Reintentar', 'retry-results')}</div>`
+      throw error
+    }
+  }
+  function responseCount() {
+    return `<div class="response-count"><strong>${num(stats.total)}</strong><span>${stats.total === 1 ? 'respuesta' : 'respuestas'}${hasResultFilters() ? ' con estos filtros' : ''}</span></div>${hasResultFilters() ? `<div class="actions">${button('Ver todas las respuestas', 'clear-result-filters')}</div>` : ''}`
   }
   function resultQuery() {
     const query = new URLSearchParams()
@@ -387,16 +423,24 @@
     }
     return bars(q.frequencies, kind)
   }
-  async function results() {
-    stats = await request(`/campaigns/${campaign.id}/results?page=${page}&${resultQuery()}`)
-    const panel = document.getElementById('result-panel')
-    panel.innerHTML = `<div class="card"><h2>Resumen privado</h2><div class="stat"><small>Respuestas recibidas</small><strong>${stats.total}</strong></div><p class="muted">${e(stats.caveat)}</p><h3>Participación por día (UTC)</h3>${bars(stats.timeline.map(t => ({ label: t.date, absolute: t.count })))}</div>${stats.questions.map(q => `<article class="card"><h2>${e(q.title)}</h2><p class="muted">${e(measures[q.measure])} · ${e(roles[q.role])} · Respondidas ${q.answered} · Sin respuesta ${q.missing} · No aplicables ${q.notApplicable}</p>${statCards(q)}${select('Gráfico', `chart:${q.id}`, q.descriptive && q.measure === 'continuous' ? 'histogram' : 'bars', { bars: 'Barras', ...(['single', 'dropdown', 'scale'].includes(q.type) ? { pie: 'Pastel' } : {}), ...(q.descriptive ? { sticks: 'Bastones', histogram: 'Histograma', box: 'Caja y bigotes' } : {}) })}<div id="chart-${e(q.id)}">${chart(q, q.descriptive && q.measure === 'continuous' ? 'histogram' : 'bars')}</div><details><summary>Tabla de frecuencias</summary><div class="scroll"><table><thead><tr><th>Valor</th><th>Absoluta</th><th>Relativa</th><th>%</th><th>Acumulada</th></tr></thead><tbody>${q.frequencies.map(f => `<tr><td>${e(f.label)}</td><td>${f.absolute}</td><td>${num(f.relative)}</td><td>${num(f.relative * 100)}</td><td>${num(f.cumulative)}</td></tr>`).join('')}</tbody></table></div></details>${q.type === 'multiple' ? '<small>Porcentajes sobre cuentas que respondieron; pueden sumar más de 100 %.</small>' : ''}${['text', 'paragraph', 'file'].includes(q.type) ? '<small>Consulta el contenido en Respuestas individuales. Los textos libres no se interpretan como variables numéricas.</small>' : ''}</article>`).join('')}`
-    panel.querySelectorAll('article.card').forEach((card, i) => {
-      const q = stats.questions[i]
-      if (q.measure === 'ordinal') card.insertAdjacentHTML('beforeend', `<p class="muted">${q.treatAsInterval ? 'El investigador decidió tratar los puntos como intervalares. Media, desviación y Pearson dependen de ese supuesto.' : 'Escala ordinal: se muestran mediana, cuartiles y frecuencias. No se calcula media ni desviación estándar; las relaciones usan Spearman.'}</p>`)
-      if (q.answered && (q.frequencies.length || q.histogram.length)) card.insertAdjacentHTML('beforeend', `<div class="actions">${button('Descargar gráfico PNG', 'download-chart-png', q.id)}${button('Descargar gráfico SVG', 'download-chart-svg', q.id)}</div>`)
-    })
+  function questionResult(q, index) {
+    const textAnswer = ['text', 'paragraph', 'file'].includes(q.type)
+    const kind = q.descriptive && q.measure === 'continuous' ? 'histogram' : 'bars'
+    return `<article class="card response-question" data-result-question="${e(q.id)}"><p class="muted">Pregunta ${index + 1}</p><h2>${e(q.title)}</h2><p class="muted">${num(q.answered)} ${q.answered === 1 ? 'respuesta' : 'respuestas'}</p>${textAnswer ? `<p>Lee ${q.type === 'file' ? 'los archivos adjuntos' : 'las respuestas'} de cada persona en la vista Individual.</p>${button('Ver respuestas individuales', 'individuals')}` : `<div id="chart-${e(q.id)}">${chart(q, kind)}</div>`}${q.type === 'multiple' ? '<p class="muted">Se podía elegir más de una opción. Los porcentajes pueden sumar más de 100 %.</p>' : ''}<details class="result-analysis"><summary>Más detalles</summary><p class="muted">Sin respuesta: ${num(q.missing)} · No mostrada por salto: ${num(q.notApplicable)}</p>${textAnswer ? '' : `${select('Tipo de gráfico', `chart:${q.id}`, kind, { bars: 'Barras', ...(['single', 'dropdown', 'scale'].includes(q.type) ? { pie: 'Pastel' } : {}), ...(q.descriptive ? { sticks: 'Bastones', histogram: 'Histograma', box: 'Caja y bigotes' } : {}) })}${statCards(q)}<div class="scroll"><table><caption>Frecuencias de respuesta</caption><thead><tr><th>Respuesta</th><th>Cantidad</th><th>Porcentaje</th></tr></thead><tbody>${q.frequencies.map(f => `<tr><td>${e(f.label)}</td><td>${num(f.absolute)}</td><td>${num(f.relative * 100)} %</td></tr>`).join('')}</tbody></table></div>${q.answered && (q.frequencies.length || q.histogram.length) ? `<div class="actions">${button('Descargar gráfico PNG', 'download-chart-png', q.id)}${button('Descargar gráfico SVG', 'download-chart-svg', q.id)}</div>` : ''}`}<p class="muted">${e(measures[q.measure])} · ${e(roles[q.role])}${q.measure === 'ordinal' ? q.treatAsInterval ? '. Media y desviación dependen del supuesto de intervalos elegido.' : '. Escala ordinal: no se calcula media ni desviación estándar.' : ''}</p></details></article>`
   }
+  function renderResults() {
+    updateResultTabs()
+    document.getElementById('result-panel').innerHTML = `${responseCount()}${!stats.total ? '<div class="card empty"><h2>Aún no hay respuestas</h2><p>Comparte la encuesta para recibir respuestas.</p></div>' : ''}${stats.questions.map(questionResult).join('')}<details class="card"><summary>Participación y notas del análisis</summary><h3>Respuestas por día (UTC)</h3>${bars(stats.timeline.map(t => ({ label: t.date, absolute: t.count })))}<p class="muted">${e(stats.caveat)}</p></details>`
+  }
+  async function results() { resultView = 'results'; updateResultTabs(); await loadResultStats(); renderResults() }
+  function renderQuestionResults() {
+    updateResultTabs()
+    const questions = stats.questions
+    questionIndex = Math.max(0, Math.min(questionIndex, questions.length - 1))
+    const q = questions[questionIndex]
+    document.getElementById('result-panel').innerHTML = `${responseCount()}${q ? `<label>Elige una pregunta<select id="result-question-picker">${questions.map((item, i) => `<option value="${i}" ${i === questionIndex ? 'selected' : ''}>${i + 1}. ${e(item.title)}</option>`).join('')}</select></label><div class="response-navigation">${questionIndex ? button('Anterior', 'question-result-prev') : '<span></span>'}<span>${questionIndex + 1} de ${questions.length}</span>${questionIndex + 1 < questions.length ? button('Siguiente', 'question-result-next') : '<span></span>'}</div>${questionResult(q, questionIndex)}` : '<p>No hay preguntas.</p>'}`
+  }
+  async function questionResults() { resultView = 'questions'; updateResultTabs(); await loadResultStats(); renderQuestionResults() }
   function display(q, v) {
     if (v == null) return 'Sin respuesta'
     if (q.type === 'file') return v.map(a => button('Descargar adjunto', 'asset', a)).join('')
@@ -404,10 +448,23 @@
     if (typeof v === 'object') return q.rows.map(r => `${e(r.label)}: ${e(q.options.find(o => o.id === v[r.id])?.label || 'Sin respuesta')}`).join('<br>')
     return e(q.options.find(o => o.id === v)?.label || v)
   }
-  async function individuals() {
-    stats = await request(`/campaigns/${campaign.id}/results?page=${page}&${resultQuery()}`)
-    document.getElementById('result-panel').innerHTML = `<h2>Respuestas individuales · privadas</h2><p class="identity">Estos datos identifican a los participantes. Utilízalos según el consentimiento y el propósito declarados.</p>${stats.responses.map(r => `<details class="card"><summary>${e(r.display_name || 'Cuenta')} · ${date(r.submitted_at)}</summary><small>Cuenta: ${e(r.account_id)} · Actualizada ${date(r.updated_at)} · Revisión ${r.edit_revision}</small>${campaign.schema.questions.map(q => `<h3>${e(q.title)}</h3><p>${Object.hasOwn(r.answers, q.id) ? display(q, r.answers[q.id]) : 'No aplicable por salto'}</p>`).join('')}</details>`).join('') || '<p>No hay respuestas.</p>'}<div class="actions">${page ? button('Anterior', 'responses-prev') : ''}<span>Página ${page + 1} de ${Math.max(1, stats.pages)}</span>${page + 1 < stats.pages ? button('Siguiente', 'responses-next') : ''}</div>`
-    document.querySelectorAll('#result-panel details.card').forEach((details, i) => details.insertAdjacentHTML('beforeend', button('Eliminar esta respuesta y sus adjuntos', 'remove-response', stats.responses[i].id, 'danger')))
+  function renderIndividuals() {
+    updateResultTabs()
+    responseIndex = Math.max(0, Math.min(responseIndex, stats.responses.length - 1))
+    const r = stats.responses[responseIndex], ordinal = page * RESPONSE_PAGE_SIZE + responseIndex + 1
+    document.getElementById('result-panel').innerHTML = `${responseCount()}${r ? `<div class="response-navigation">${ordinal > 1 ? button('Anterior', 'responses-prev') : '<span></span>'}<span>Respuesta ${num(ordinal)} de ${num(stats.total)}</span>${ordinal < stats.total ? button('Siguiente', 'responses-next') : '<span></span>'}</div><section class="card individual-response"><h2>${e(r.display_name || 'Cuenta')}</h2><p class="muted">Enviada ${date(r.submitted_at)}</p>${campaign.schema.questions.map((q, i) => `<article class="individual-question"><h3>${i + 1}. ${e(q.title)}</h3><div class="answer-value">${Object.hasOwn(r.answers, q.id) ? display(q, r.answers[q.id]) : 'Esta pregunta no se mostró por un salto.'}</div></article>`).join('')}<details><summary>Más opciones de esta respuesta</summary><p class="muted">Cuenta: ${e(r.account_id)} · Actualizada ${date(r.updated_at)} · Revisión ${r.edit_revision}</p>${button('Eliminar respuesta y adjuntos', 'remove-response', r.id, 'danger')}</details></section>` : `<div class="card empty"><h2>${hasResultFilters() ? 'Sin respuestas con estos filtros' : 'Aún no hay respuestas'}</h2><p>${hasResultFilters() ? 'Prueba otro nombre o periodo.' : 'Comparte tu encuesta para empezar.'}</p></div>`}`
+  }
+  async function individuals() { resultView = 'individuals'; updateResultTabs(); await loadResultStats(); renderIndividuals() }
+  async function moveResponse(direction) {
+    const next = responseIndex + direction
+    if (next >= 0 && next < stats.responses.length) { responseIndex = next; renderIndividuals(); return }
+    if (direction < 0 && page > 0) { page--; await loadResultStats(); responseIndex = stats.responses.length - 1; renderIndividuals() }
+    else if (direction > 0 && page + 1 < stats.pages) { page++; responseIndex = 0; await individuals() }
+  }
+  async function refreshResultView() {
+    if (resultView === 'individuals') return individuals()
+    if (resultView === 'questions') return questionResults()
+    return results()
   }
   function relationsForm() {
     const eligible = campaign.schema.questions.filter(q => ['single', 'dropdown', 'number', 'scale', 'date'].includes(q.type))
@@ -428,6 +485,7 @@
   }
   function exportForm() {
     document.getElementById('result-panel').innerHTML = `<div class="card"><h2>Descargas privadas</h2><p>Excel incluye datos, diccionario, frecuencias, descriptivos, participación, gráficos y metadatos. Word y PDF incluyen un informe organizado o el instrumento en blanco.</p><label>Formato<select id="export-format"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV</option><option value="docx">Word (.docx)</option><option value="pdf">PDF</option></select></label><label class="choice"><input id="export-instrument" type="checkbox">Instrumento en blanco (Word o PDF)</label><label class="choice"><input id="export-identity" type="checkbox">Incluir cuenta y nombre de los participantes</label><p class="muted">Sin esta opción se omiten cuenta y nombre de la descarga. Las respuestas pueden contener datos personales escritos por los participantes.</p>${button('Generar y descargar', 'download-export', '', 'primary')}</div>`
+    document.getElementById('result-panel').scrollIntoView({ block: 'start', behavior: 'smooth' })
     const eligible = campaign.schema.questions.filter(q => ['single', 'dropdown', 'number', 'scale', 'date'].includes(q.type))
     const options = `<option value="">Sin relación adicional</option>${eligible.map(q => `<option value="${e(q.id)}">${e(q.title)}</option>`).join('')}`
     document.querySelector('#result-panel .card').insertAdjacentHTML('beforeend', `<details><summary>Incluir relación entre dos variables</summary><p class="muted">El informe describe asociaciones; no infiere causalidad.</p><label>Variable X<select id="export-x">${options}</select></label><label>Variable Y<select id="export-y">${options}</select></label></details>`)
@@ -521,13 +579,22 @@
     if (a === 'my-answer') { app.innerHTML = `<h1>Mi respuesta</h1>${survey.schema.questions.map(q => `<article class="card"><h2>${e(q.title)}</h2><div>${Object.hasOwn(survey.response.answers, q.id) ? display(q, survey.response.answers[q.id]) : 'No aplicable por salto'}</div></article>`).join('')}${button('Volver a la confirmación', 'answer-confirmation')}`; return }
     if (a === 'answer-confirmation') { renderRespond(); return }
     if (a === 'remove-answer-file') { const [qid, aid] = target.split(':'); answers[qid] = answers[qid].filter(v => v !== aid); renderRespond(); return }
-    if (a === 'asset') { download(await asset(target, survey?.id)); return }
+    if (a === 'asset') { const file = await asset(target, view === 'manage' ? campaign?.id : survey?.id); if (!window.SurveyImageViewer?.open(`data:${file.mime};base64,${file.data}`, file.name || 'Imagen adjunta', () => { download(file).catch(error => toast(error.message)) })) await download(file); return }
     if (a === 'manage') { page = 0; return manage(target) }
-    if (a === 'apply-result-filters') { resultFilters = { from: document.getElementById('filter-from').value, to: document.getElementById('filter-to').value, search: document.getElementById('filter-search').value.trim() }; page = 0; return results() }
-    if (a === 'clear-result-filters') { resultFilters = { from: '', to: '', search: '' }; page = 0; renderManage(); return results() }
-    if (a === 'results') return results()
-    if (a === 'individuals') { page = 0; return individuals() }
-    if (a === 'responses-prev' || a === 'responses-next') { page += a === 'responses-next' ? 1 : -1; return individuals() }
+    if (a === 'apply-result-filters') {
+      const next = { from: document.getElementById('filter-from').value, to: document.getElementById('filter-to').value, search: document.getElementById('filter-search').value.trim() }
+      const invalid = [next.from, next.to].some(value => value && !Number.isFinite(Date.parse(value))) || next.from && next.to && Date.parse(next.from) > Date.parse(next.to)
+      document.getElementById('result-filter-error').textContent = invalid ? 'Revisa las fechas: «Desde» debe ser anterior a «Hasta».' : ''
+      if (invalid) return
+      resultFilters = next; page = 0; responseIndex = 0; return refreshResultView()
+    }
+    if (a === 'clear-result-filters') { resultFilters = { from: '', to: '', search: '' }; page = 0; responseIndex = 0; renderManage(); return refreshResultView() }
+    if (a === 'retry-results') return refreshResultView()
+    if (a === 'results') { page = 0; return results() }
+    if (a === 'questions') { page = 0; return questionResults() }
+    if (a === 'question-result-prev' || a === 'question-result-next') { questionIndex += a === 'question-result-next' ? 1 : -1; renderQuestionResults(); return }
+    if (a === 'individuals') { page = 0; responseIndex = 0; return individuals() }
+    if (a === 'responses-prev' || a === 'responses-next') return moveResponse(a === 'responses-next' ? 1 : -1)
     if (a === 'remove-response') {
       if (!await modal('Eliminar respuesta', '<p>Se borrarán la respuesta y sus archivos. La cuenta seguirá marcada como participante y no podrá enviar otra respuesta a esta encuesta.</p>')) return
       await request(`/campaigns/${campaign.id}/responses/${target}`, 'DELETE', { confirm: 'ELIMINAR' })
@@ -546,12 +613,12 @@
     }
     if (a === 'calculate-relation') return calculateRelation()
     if (a === 'exports') return exportForm()
-    if (a === 'download-export') { const format = document.getElementById('export-format').value, instrument = document.getElementById('export-instrument').checked, x = document.getElementById('export-x').value, y = document.getElementById('export-y').value; if (instrument && !['pdf', 'docx'].includes(format)) throw new Error('El instrumento en blanco se descarga en Word o PDF.'); if (!!x !== !!y || (x && x === y)) throw new Error('Elige dos variables diferentes o deja ambas sin seleccionar.'); if (format === 'csv' && x) throw new Error('La relación entre variables se incluye en Excel, Word o PDF.'); download(await request(`/campaigns/${campaign.id}/export`, 'POST', { format, instrument, identity: document.getElementById('export-identity').checked, filters: exportFilters(), x, y })); return }
-    if (a === 'download-chart-png' || a === 'download-chart-svg') { const kind = [...document.querySelectorAll('[data-field]')].find(el => el.dataset.field === `chart:${target}`)?.value; download(await request(`/campaigns/${campaign.id}/charts/${target}/export`, 'POST', { format: a.endsWith('png') ? 'png' : 'svg', kind, filters: exportFilters() })); return }
+    if (a === 'download-export') { const format = document.getElementById('export-format').value, instrument = document.getElementById('export-instrument').checked, x = document.getElementById('export-x').value, y = document.getElementById('export-y').value; if (instrument && !['pdf', 'docx'].includes(format)) throw new Error('El instrumento en blanco se descarga en Word o PDF.'); if (!!x !== !!y || (x && x === y)) throw new Error('Elige dos variables diferentes o deja ambas sin seleccionar.'); if (format === 'csv' && x) throw new Error('La relación entre variables se incluye en Excel, Word o PDF.'); await download(await request(`/campaigns/${campaign.id}/export`, 'POST', { format, instrument, identity: document.getElementById('export-identity').checked, filters: exportFilters(), x, y })); return }
+    if (a === 'download-chart-png' || a === 'download-chart-svg') { const kind = [...document.querySelectorAll('[data-field]')].find(el => el.dataset.field === `chart:${target}`)?.value; await download(await request(`/campaigns/${campaign.id}/charts/${target}/export`, 'POST', { format: a.endsWith('png') ? 'png' : 'svg', kind, filters: exportFilters() })); return }
     if (a === 'share') return share()
     if (a === 'copy-link') { const i = document.getElementById('share-link'); if (window.NovvinSurveys) window.NovvinSurveys.copy(i.value); else { i.select(); document.execCommand('copy') }; return }
     if (a === 'share-link') { if (window.NovvinSurveys) window.NovvinSurveys.share(document.getElementById('share-link').value); return }
-    if (a === 'download-qr') { download(await request(`/campaigns/${campaign.id}/qr`, 'POST', { format: document.getElementById('qr-format').value })); return }
+    if (a === 'download-qr') { await download(await request(`/campaigns/${campaign.id}/qr`, 'POST', { format: document.getElementById('qr-format').value })); return }
     if (a === 'history') { const h = await request(`/campaigns/${campaign.id}/history`); document.getElementById('result-panel').innerHTML = `<div class="card"><h2>Historial</h2>${h.events.map(v => `<p>${date(v.created_at)} · ${e(v.action)}</p>`).join('')}</div>`; return }
     if (a === 'revisions') {
       const h = await request(`/forms/${target}/revisions`)
@@ -574,6 +641,7 @@
   })
   window.surveyBack = async () => {
     try {
+      if (window.SurveyImageViewer?.close()) return
       const dialog = document.getElementById('modal')
       if (dialog.open) { dialog.close('cancel'); return }
       if (busy) { toast('Espera a que termine la operación.'); return }
@@ -608,6 +676,7 @@
     const el = event.target, field = el.dataset.field
     if (field?.endsWith('.type')) { const q = form.schema.questions[Number(field.split('.')[1])]; q.measure = q.type === 'scale' ? 'ordinal' : q.type === 'number' ? 'continuous' : 'nominal'; if (q.type === 'scale') { q.min = 1; q.max = 5 } else { q.min = null; q.max = null } markDirty(); renderEditor(); return }
     if (field?.endsWith('.section')) { renderEditor(); return }
+    if (el.id === 'result-question-picker') { questionIndex = Number(el.value); renderQuestionResults(); return }
     if (el.type !== 'file') return
     if (!el.files?.length) return
     if (busy) { toast('Espera a que termine la operación anterior.'); return }

@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -59,35 +60,24 @@ import androidx.lifecycle.lifecycleScope
 import conectate.com.MainActivity
 import conectate.com.data.local.prefs.ThemePreferences
 import conectate.com.data.model.CallInvite
-import conectate.com.data.repository.CallRepository
-import conectate.com.data.service.IncomingCallAccountRouter
 import conectate.com.data.service.CallCancellationGuard
 import conectate.com.data.service.IncomingCallActionReceiver
 import conectate.com.util.notificationAccountTargetFromIntent
-import conectate.com.presentation.common.AppFeedbackBus
-import conectate.com.presentation.common.toUserFacingMessage
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.theme.RedSocialTheme
 import conectate.com.services.IncomingCallForegroundService
 import conectate.com.util.TrustedNavigationIntents.markTrusted
 
 import dagger.hilt.android.AndroidEntryPoint
-import dagger.Lazy
 import javax.inject.Inject
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.withTimeout
 import java.util.concurrent.atomic.AtomicBoolean
 
 @AndroidEntryPoint
 class IncomingCallActivity : ComponentActivity() {
 
-    @Inject
-    lateinit var callRepositoryProvider: Lazy<CallRepository>
-
-    @Inject
-    lateinit var accountRouter: Lazy<IncomingCallAccountRouter>
+    private val answerViewModel: IncomingCallAnswerViewModel by viewModels()
 
     @Inject
     lateinit var themePreferences: ThemePreferences
@@ -97,14 +87,9 @@ class IncomingCallActivity : ComponentActivity() {
     private val activeInviteState = mutableStateOf<CallInvite?>(null)
     private val callerAvatarState = mutableStateOf<Bitmap?>(null)
     private val handlingState = mutableStateOf(false)
+    private val answerErrorState = mutableStateOf<String?>(null)
     private val cancellationGuard by lazy { CallCancellationGuard(this) }
     private var cancellationObservation: Job? = null
-
-    // CallRepository owns WebRTC, sockets and audio services. Construct it only
-    // after the user accepts/declines so the incoming-call screen itself can
-    // appear immediately from a stopped process.
-    private val callRepository: CallRepository
-        get() = callRepositoryProvider.get()
 
     private val acceptPermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -124,13 +109,11 @@ class IncomingCallActivity : ComponentActivity() {
         } else {
             terminalActionStarted.set(false)
             handlingState.value = false
-            AppFeedbackBus.showError(
-                if (invite.isVideo) {
+            answerErrorState.value = if (invite.isVideo) {
                     "Activa micrófono y cámara para contestar la videollamada."
                 } else {
                     "Activa el micrófono para contestar la llamada."
                 }
-            )
         }
     }
 
@@ -156,6 +139,11 @@ class IncomingCallActivity : ComponentActivity() {
 
         val autoAccept = intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false)
         activeInviteState.value = invite
+        if (savedInstanceState?.getString("pending_permission_call") == invite.callId) {
+            pendingAcceptInvite = invite
+            terminalActionStarted.set(true)
+            handlingState.value = true
+        }
         callerAvatarState.value = intent.toAvatarBitmapOrNull()
         observeCancellation(invite)
 
@@ -180,12 +168,35 @@ class IncomingCallActivity : ComponentActivity() {
                         onAccept = { acceptInvite(current) },
                         onDecline = { declineInvite(current) },
                         isHandling = handlingState.value,
+                        errorMessage = answerErrorState.value,
                     )
                 }
             }
         }
 
-        if (savedInstanceState == null && autoAccept) {
+        lifecycleScope.launch {
+            answerViewModel.state.collect { state ->
+                val current = activeInviteState.value ?: return@collect
+                if (!state.callId.equals(current.callId, ignoreCase = true)) return@collect
+                when (state) {
+                    is IncomingAnswerState.Preparing -> handlingState.value = true
+                    is IncomingAnswerState.Ready -> {
+                        if (!closeIfCancelled(current)) {
+                            navigateToCall(current.callId)
+                            finish()
+                        }
+                    }
+                    is IncomingAnswerState.Failed -> {
+                        terminalActionStarted.set(false)
+                        handlingState.value = false
+                        answerErrorState.value = state.message
+                    }
+                    IncomingAnswerState.Idle -> Unit
+                }
+            }
+        }
+
+        if (autoAccept && answerViewModel.state.value == IncomingAnswerState.Idle) {
             lifecycleScope.launch {
                 acceptInvite(invite)
             }
@@ -207,9 +218,19 @@ class IncomingCallActivity : ComponentActivity() {
         super.onNewIntent(intent)
         val invite = intent.toInviteOrNull() ?: return
         if (closeIfCancelled(invite)) return
+        val answerInProgress = isIncomingAnswerInProgress(answerViewModel.state.value, pendingAcceptInvite != null)
+        if (answerInProgress && activeInviteState.value?.callId.equals(invite.callId, ignoreCase = true)) {
+            if (intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false)) acceptInvite(invite)
+            return
+        }
+        if (answerInProgress) {
+            IncomingCallActionReceiver.decline(this, invite, notificationAccountTargetFromIntent(intent))
+            return
+        }
         setIntent(intent)
         terminalActionStarted.set(false)
         handlingState.value = false
+        answerErrorState.value = null
         pendingAcceptInvite = null
         activeInviteState.value = invite
         callerAvatarState.value = intent.toAvatarBitmapOrNull()
@@ -217,6 +238,11 @@ class IncomingCallActivity : ComponentActivity() {
         if (intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false)) {
             acceptInvite(invite)
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        pendingAcceptInvite?.callId?.let { outState.putString("pending_permission_call", it) }
+        super.onSaveInstanceState(outState)
     }
 
     override fun onResume() {
@@ -256,6 +282,7 @@ class IncomingCallActivity : ComponentActivity() {
         if (closeIfCancelled(invite)) return
         if (!terminalActionStarted.compareAndSet(false, true)) return
         handlingState.value = true
+        answerErrorState.value = null
         val missingPermissions = requiredCallPermissions(invite)
             .filterNot(::hasPermission)
             .toTypedArray()
@@ -270,35 +297,9 @@ class IncomingCallActivity : ComponentActivity() {
     private fun performAcceptInvite(invite: CallInvite) {
         if (!activeInviteState.value?.callId.equals(invite.callId, ignoreCase = true)) return
         if (closeIfCancelled(invite)) return
-        lifecycleScope.launch {
-            clearIncomingCallNotification(invite.callId)
-            IncomingCallForegroundService.stop(this@IncomingCallActivity, invite.callId)
-            val accountReady = runCatching {
-                withTimeout(12_000L) { accountRouter.get().prepareAnswer(notificationAccountTargetFromIntent(intent)).getOrThrow() }
-            }.onFailure { if (it is CancellationException && it !is kotlinx.coroutines.TimeoutCancellationException) throw it }
-            if (accountReady.isFailure) {
-                AppFeedbackBus.showError(accountReady.exceptionOrNull()?.toUserFacingMessage("No se pudo abrir la cuenta de esta llamada.")
-                    ?: "No se pudo abrir la cuenta de esta llamada.")
-                finish()
-                return@launch
-            }
-            if (closeIfCancelled(invite)) return@launch
-            val result = callRepository.acceptIncomingCall(invite)
-            if (closeIfCancelled(invite)) return@launch
-            if (result.isFailure) {
-                AppFeedbackBus.showError(
-                    result.exceptionOrNull()?.toUserFacingMessage(
-                        "No se pudo conectar la llamada en este momento."
-                    ) ?: "No se pudo conectar la llamada en este momento."
-                )
-                finish()
-                return@launch
-            }
-            callRepository.refreshAudioSession()
-            navigateToCall(invite.callId)
-            callRepository.refreshAudioSessionRepeatedly(attempts = 3, delayMs = 400)
-            finish()
-        }
+        clearIncomingCallNotification(invite.callId)
+        IncomingCallForegroundService.stop(this, invite.callId)
+        answerViewModel.answer(invite, notificationAccountTargetFromIntent(intent))
     }
 
     private fun requiredCallPermissions(invite: CallInvite): List<String> {
@@ -379,6 +380,7 @@ internal fun IncomingCallScreen(
     onDecline: () -> Unit,
     accountLabel: String? = null,
     isHandling: Boolean = false,
+    errorMessage: String? = null,
 ) {
     BackHandler(enabled = true) {
         // Require explicit action
@@ -419,6 +421,11 @@ internal fun IncomingCallScreen(
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White.copy(alpha = 0.8f)
                 )
+                errorMessage?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium)
+                }
                 if (invite.title.isNotBlank() && !invite.title.equals(invite.callerName, ignoreCase = true)) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(

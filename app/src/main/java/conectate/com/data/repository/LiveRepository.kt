@@ -86,6 +86,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
@@ -248,6 +250,8 @@ class LiveRepository @Inject constructor(
     val guestRequests: StateFlow<List<LiveGuestRequest>> = _guestRequests.asStateFlow()
 
     private val _activeGuests = MutableStateFlow<List<LiveGuestParticipant>>(emptyList())
+    private val viewerStartupTrace = conectate.com.core.observability.MediaStartupTrace()
+    val viewerStartupPhases: StateFlow<Map<String, Long>> = viewerStartupTrace.snapshots
     val activeGuests: StateFlow<List<LiveGuestParticipant>> = _activeGuests.asStateFlow()
 
     private val _guestAccessState = MutableStateFlow(LiveGuestAccessState())
@@ -924,6 +928,9 @@ class LiveRepository @Inject constructor(
     val liveKitRemoteVideos: StateFlow<List<LiveKitRoomBridge.RemoteVideo>>
         get() = liveKitRoomBridge.remoteVideos
 
+    val liveKitRemoteParticipants: StateFlow<List<LiveKitRoomBridge.RemoteParticipant>>
+        get() = liveKitRoomBridge.remoteParticipants
+
     fun attachLiveKitRenderer(
         video: LiveKitRoomBridge.RemoteVideo,
         renderer: io.livekit.android.renderer.TextureViewRenderer
@@ -1275,6 +1282,7 @@ class LiveRepository @Inject constructor(
 
     suspend fun joinLiveAsViewer(streamId: String): Result<Unit> = withContext(Dispatchers.IO) {
         sessionStartupMutex.withLock {
+        val startupReady = CompletableDeferred<Unit>()
         try {
             val normalizedStreamId = normalizeLiveSessionId(streamId)
                 ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
@@ -1296,8 +1304,50 @@ class LiveRepository @Inject constructor(
                 return@withContext Result.failure(Exception("El live anterior todavía se está cerrando"))
             }
 
-            var stream = getLiveStreamById(normalizedStreamId).getOrNull()
-                ?: return@withContext Result.failure(Exception("Live no encontrado"))
+            viewerStartupTrace.start()
+            // Prepare the native engine while the authoritative access read runs.
+            // No signaling, publication or session is started before both complete.
+            val (loadedStream, mediaReady) = coroutineScope {
+                val media = async {
+                    initializeWebRTC(userId = currentUserId).also { ready ->
+                        if (ready) {
+                            webRTCManager?.setAudioEnabled(false)
+                            webRTCManager?.setVideoSendEnabled(false, renegotiate = false)
+                            viewerStartupTrace.mark("mediaEngineReady")
+                        }
+                    }
+                }
+                val streamRead = async {
+                    getLiveStreamById(normalizedStreamId).getOrNull().also {
+                        viewerStartupTrace.mark("authoritativeStreamLoaded")
+                    }
+                }
+                val profile = try {
+                    userRepository.getCachedUserById(currentUserId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) { null }
+                val viewerName = profile?.displayName ?: "Usuario"
+                val viewerAvatar = profile?.avatar_url
+                viewerStartupTrace.mark("localProfileLoaded")
+                currentCoroutineContext().ensureActive()
+                if (!currentUserId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
+                    throw CancellationException("The active account changed during LIVE preparation")
+                }
+                // Only establish authenticated signaling here. Room entry waits
+                // for authoritative access and native media preparation below.
+                connectSocket(normalizedStreamId, LiveRole.VIEWER, currentUserId,
+                    viewerName, viewerAvatar, startupReady = startupReady)
+                streamRead.await() to media.await()
+            }
+            val stream = loadedStream ?: run {
+                disconnectAndClear()
+                return@withContext Result.failure(Exception("Live no encontrado"))
+            }
+            currentCoroutineContext().ensureActive()
+            if (!currentUserId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
+                throw CancellationException("The active account changed during LIVE preparation")
+            }
 
             _viewerCount.value = stream.viewerCount
             _reactionCount.value = stream.totalReactions.coerceAtLeast(0)
@@ -1306,13 +1356,10 @@ class LiveRepository @Inject constructor(
             sessionReactionCount = stream.totalReactions.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
             _isMediaReady.value = false
 
-            if (!initializeWebRTC(userId = currentUserId)) {
+            if (!mediaReady) {
                 disconnectAndClear()
                 return@withContext Result.failure(Exception("No se pudo abrir el motor del live en este dispositivo."))
             }
-
-            webRTCManager?.setAudioEnabled(false)
-            webRTCManager?.setVideoSendEnabled(false, renegotiate = false)
             _activeSession.value = ActiveLiveSession(stream = stream, role = LiveRole.VIEWER, viewerCount = stream.viewerCount)
 
             _isMicEnabled.value = false
@@ -1321,27 +1368,11 @@ class LiveRepository @Inject constructor(
             _isVideoEnabled.value = _currentSource.value != LiveSource.AUDIO
             screenCaptureActive = false
             stopAdaptiveQualityMonitor()
-            // Display metadata is not an access check. The authoritative LIVE
-            // read above remains remote; a profile refresh must not delay media.
-            val profile = try {
-                userRepository.getCachedUserById(currentUserId)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) { null }
             currentCoroutineContext().ensureActive()
             if (!currentUserId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
                 throw CancellationException("The active account changed during LIVE startup")
             }
-            val viewerName = profile?.displayName ?: "Usuario"
-            val viewerAvatar = profile?.avatar_url
-
-            connectSocket(
-                liveId = stream.id,
-                role = LiveRole.VIEWER,
-                userId = currentUserId,
-                name = viewerName,
-                avatarUrl = viewerAvatar
-            )
+            startupReady.complete(Unit)
             subscribeToComments(stream.id)
             Result.success(Unit)
         } catch (cancelled: CancellationException) {
@@ -1351,6 +1382,9 @@ class LiveRepository @Inject constructor(
             android.util.Log.e("LiveRepository", "Join live as viewer failed", e)
             disconnectAndClear()
             Result.failure(Exception(resolveLiveStartupError(e, fallback = "No se pudo abrir el live.")))
+        } finally {
+            // An unsuccessful read/account change must never release room entry.
+            if (!startupReady.isCompleted) startupReady.cancel()
         }
         }
     }
@@ -1548,17 +1582,20 @@ class LiveRepository @Inject constructor(
 
     fun switchCamera(): Boolean {
         val session = _activeSession.value ?: return false
-        if (
-            session.role != LiveRole.HOST ||
-            _currentSource.value != LiveSource.CAMERA ||
-            !_isVideoEnabled.value ||
-            _isMediaTransitioning.value
-        ) return false
+        val hostCamera = session.role == LiveRole.HOST &&
+            _currentSource.value == LiveSource.CAMERA && _isVideoEnabled.value && !_isMediaTransitioning.value
+        val guestCamera = session.role == LiveRole.VIEWER &&
+            _guestAccessState.value.status == LiveGuestRequestStatus.ACCEPTED &&
+            _isGuestBroadcasting.value && _isGuestVideoEnabled.value &&
+            !guestMediaStartCoordinator.isStarting(session.stream.id)
+        if (!hostCamera && !guestCamera) return false
         val manager = webRTCManager ?: return false
+        val wasFront = _isFrontCamera.value
         return runCatching {
-            manager.switchCamera { succeeded ->
+            manager.switchCamera cameraSwitched@ { succeeded ->
+                if (_activeSession.value?.stream?.id != session.stream.id || webRTCManager !== manager) return@cameraSwitched
                 if (succeeded) {
-                    _isFrontCamera.value = !_isFrontCamera.value
+                    _isFrontCamera.value = !wasFront
                 } else {
                     _runtimeErrors.tryEmit("No se pudo cambiar de cámara. Inténtalo nuevamente.")
                 }
@@ -2111,6 +2148,7 @@ class LiveRepository @Inject constructor(
             _isGuestMicEnabled.value = micEnabled
             _isGuestVideoEnabled.value = videoEnabled
             _isGuestBroadcasting.value = true
+            publishGuestVideoState(false)
             manager.ensureLocalTracks()
             manager.setAudioEnabled(micEnabled)
             // Publish only after capture opens and the latest camera choice is checked.
@@ -2122,11 +2160,12 @@ class LiveRepository @Inject constructor(
             }
 
             val capture = nativeLiveGuestCaptureProfile(
-                conectate.com.util.AppPerformanceProfiles.detect(context).tier, _quality.value
+                conectate.com.util.AppPerformanceProfiles.detect(context).tier, _quality.value,
+                (context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).isActiveNetworkMetered
             )
             manager.startVideo(
                 isScreen = false,
-                isFront = true,
+                isFront = _isFrontCamera.value,
                 targetWidth = capture.width,
                 targetHeight = capture.height,
                 targetFps = capture.fps,
@@ -2146,13 +2185,16 @@ class LiveRepository @Inject constructor(
                             _isGuestBroadcasting.value = false
                             _isGuestVideoEnabled.value = false
                             _isGuestMicEnabled.value = false
+                            publishGuestVideoState(false)
                             manager.setAudioEnabled(false)
                             manager.setVideoSendEnabled(false, renegotiate = false)
                             _runtimeErrors.tryEmit("No se pudo iniciar la cámara del invitado.")
                         } else {
-                            // The SEND_RECV m-line already exists; replacing its track
-                            // does not require another offer or an ICE restart.
+                            // The viewer's initial answer had no camera sender.
+                            // Announce this first publication without restarting ICE.
                             manager.setVideoEnabled(_isGuestVideoEnabled.value)
+                            publishGuestVideoState(_isGuestVideoEnabled.value)
+                            manager.refreshMediaNegotiation()
                         }
                     }
                 }
@@ -2188,18 +2230,26 @@ class LiveRepository @Inject constructor(
         }
         val manager = webRTCManager ?: return@withLock false
         _isGuestVideoEnabled.value = enabled
-        if (enabled && !manager.hasLocalVideoTrack()) {
+        if (!enabled) {
+            guestMediaStartCoordinator.invalidate()
+            publishGuestVideoState(false)
+            manager.setVideoSendEnabled(false, renegotiate = false)
+            manager.stopVideo()
+            return@withLock true
+        }
+        if (!manager.hasLocalVideoTrack()) {
             // A pending start will apply this latest choice; do not open the
             // same camera again while its first capture is still starting.
             if (guestMediaStartCoordinator.isStarting(session.stream.id)) return@withLock true
             val attempt = guestMediaStartCoordinator.begin(session.stream.id)
             val capture = nativeLiveGuestCaptureProfile(
-                conectate.com.util.AppPerformanceProfiles.detect(context).tier, _quality.value
+                conectate.com.util.AppPerformanceProfiles.detect(context).tier, _quality.value,
+                (context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).isActiveNetworkMetered
             )
             manager.setVideoSendEnabled(false, renegotiate = false)
             manager.startVideo(
                 isScreen = false,
-                isFront = true,
+                isFront = _isFrontCamera.value,
                 targetWidth = capture.width,
                 targetHeight = capture.height,
                 targetFps = capture.fps,
@@ -2217,18 +2267,32 @@ class LiveRepository @Inject constructor(
                     ) {
                         if (!started) {
                             _isGuestVideoEnabled.value = false
+                            publishGuestVideoState(false)
                             manager.setVideoSendEnabled(false, renegotiate = false)
                             _runtimeErrors.tryEmit("No se pudo activar la cámara.")
                         } else {
                             manager.setVideoEnabled(_isGuestVideoEnabled.value)
+                            publishGuestVideoState(_isGuestVideoEnabled.value)
                         }
                     }
                 }
             )
         } else {
             manager.setVideoEnabled(enabled)
+            publishGuestVideoState(enabled)
         }
         true
+    }
+
+    private fun publishGuestVideoState(enabled: Boolean) {
+        val session = _activeSession.value ?: return
+        if (session.role != LiveRole.VIEWER || _guestAccessState.value.status != LiveGuestRequestStatus.ACCEPTED) return
+        val ownSocketId = socket?.id()
+        _activeGuests.update { guests -> guests.map { guest ->
+            if (guest.socketId == ownSocketId) guest.copy(videoEnabled = enabled) else guest
+        } }
+        socket?.emit("update-live-guest-media-state", org.json.JSONObject()
+            .put("liveId", session.stream.id).put("videoEnabled", enabled))
     }
 
     fun leaveGuestSeat() {
@@ -2802,12 +2866,18 @@ class LiveRepository @Inject constructor(
     private fun connectSocket(
         liveId: String, role: LiveRole, userId: String, name: String, avatarUrl: String?,
         pollingFallback: Boolean = false,
+        startupReady: CompletableDeferred<Unit>? = null,
     ) {
-        fun isCurrentSession() = _activeSession.value?.let { active ->
-            active.role == role && isCurrentMediaSignalingSession(
-                liveId, active.stream.id, userId, authService.getCurrentUserId(),
-            )
-        } == true
+        fun isCurrentSession(): Boolean {
+            val active = _activeSession.value
+            return if (active != null) {
+                active.role == role && isCurrentMediaSignalingSession(
+                    liveId, active.stream.id, userId, authService.getCurrentUserId())
+            } else {
+                role == LiveRole.VIEWER && startupReady != null && !startupReady.isCompleted &&
+                    userId.isNotBlank() && userId.equals(authService.getCurrentUserId(), ignoreCase = true)
+            }
+        }
         if (!isCurrentSession()) return
         try {
             socket?.off()
@@ -2815,7 +2885,7 @@ class LiveRepository @Inject constructor(
             socket = null
             if (userId.isBlank()) return
 
-            if (webRTCManager == null) {
+            if (webRTCManager == null && startupReady == null) {
                 _runtimeErrors.tryEmit("El motor del live no está preparado.")
                 return
             }
@@ -2861,7 +2931,7 @@ class LiveRepository @Inject constructor(
                             synchronized(this@LiveRepository) {
                                 if (isCurrentAttempt()) {
                                     android.util.Log.i("LiveRepository", "Direct live socket failed; trying polling fallback")
-                                    connectSocket(liveId, role, userId, name, avatarUrl, pollingFallback = true)
+                                    connectSocket(liveId, role, userId, name, avatarUrl, pollingFallback = true, startupReady = startupReady)
                                 }
                             }
                         }
@@ -2882,31 +2952,39 @@ class LiveRepository @Inject constructor(
 
             createdSocket.on(Socket.EVENT_CONNECT) {
                 if (!isCurrentAttempt()) return@on
-                val active = _activeSession.value
-                if (
-                    active?.role != role ||
-                    !active.stream.id.equals(liveId, ignoreCase = true)
-                ) return@on
-                val sid = createdSocket.id()
-                webRTCManager?.setCurrentUser(userId, sid)
-                webRTCManager?.refreshManagedIceServers(force = true)
+                if (role == LiveRole.VIEWER) viewerStartupTrace.mark("signalingConnected")
+                scope.launch {
+                    startupReady?.await()
+                    if (!isCurrentAttempt()) return@launch
+                    val active = _activeSession.value
+                    if (
+                        active?.role != role ||
+                        !active.stream.id.equals(liveId, ignoreCase = true)
+                    ) return@launch
+                    val sid = createdSocket.id()
+                    webRTCManager?.setCurrentUser(userId, sid)
+                    webRTCManager?.setRemoteAudioPlaybackEnabled(true)
+                    // Initialization and the SDK's network callback already refresh TURN.
+                    // A normal socket connect can reuse credentials that are still valid.
+                    webRTCManager?.refreshManagedIceServers()
 
-                createdSocket.emit(
-                    "join-live",
-                    org.json.JSONObject().apply {
-                        put("liveId", liveId.trim())
-                        put("userId", userId)
-                        put("name", name)
-                        put("avatarUrl", avatarUrl ?: "")
-                        put("role", if (role == LiveRole.HOST) "host" else "viewer")
-                        put("source", _currentSource.value.name.lowercase())
-                        put("isPaused", _isPaused.value)
-                        put("videoEnabled", _isVideoEnabled.value)
-                        put("micEnabled", _isMicEnabled.value)
+                    createdSocket.emit(
+                        "join-live",
+                        org.json.JSONObject().apply {
+                            put("liveId", liveId.trim())
+                            put("userId", userId)
+                            put("name", name)
+                            put("avatarUrl", avatarUrl ?: "")
+                            put("role", if (role == LiveRole.HOST) "host" else "viewer")
+                            put("source", _currentSource.value.name.lowercase())
+                            put("isPaused", _isPaused.value)
+                            put("videoEnabled", _isVideoEnabled.value)
+                            put("micEnabled", _isMicEnabled.value)
+                        }
+                    )
+                    if (role == LiveRole.VIEWER) {
+                        scheduleLiveMediaTimeout()
                     }
-                )
-                if (role == LiveRole.VIEWER) {
-                    scheduleLiveMediaTimeout()
                 }
             }
 
@@ -2989,6 +3067,7 @@ class LiveRepository @Inject constructor(
             createdSocket.on("host-info") { args ->
                 if (socket !== createdSocket) return@on
                 if (role != LiveRole.VIEWER) return@on
+                viewerStartupTrace.mark("hostAnnounced")
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
                     val sid = data.optString("socketId").trim()
@@ -3092,7 +3171,8 @@ class LiveRepository @Inject constructor(
                                     socketId = guestSocketId,
                                     userId = guestUserId,
                                     name = item.optString("name", "Invitado").ifBlank { "Invitado" },
-                                    avatarUrl = item.optString("avatarUrl").takeIf { it.isNotBlank() }
+                                    avatarUrl = item.optString("avatarUrl").takeIf { it.isNotBlank() },
+                                    videoEnabled = item.optBoolean("videoEnabled", true)
                                 )
                             )
                             if (shouldConnectLiveGuestPeer(
@@ -3136,6 +3216,9 @@ class LiveRepository @Inject constructor(
                     )
                     if (status != LiveGuestRequestStatus.ACCEPTED) {
                         stopGuestMedia(emitLeave = false)
+                    } else {
+                        publishGuestVideoState(_isGuestBroadcasting.value && _isGuestVideoEnabled.value &&
+                            webRTCManager?.hasLocalVideoTrack() == true)
                     }
                 }.onFailure { logMalformedSignal("live-guest-status", it) }
             }
@@ -3426,6 +3509,7 @@ class LiveRepository @Inject constructor(
 
             // WebRTC signaling
             createdSocket.on("offer") { args ->
+                if (role == LiveRole.VIEWER && socket === createdSocket) viewerStartupTrace.mark("offerReceived")
                 if (socket !== createdSocket) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
@@ -3564,6 +3648,9 @@ class LiveRepository @Inject constructor(
                     _eglBaseContext.value = created.getEglBaseContext()
                     scope.launch {
                         created.remoteVideoTracks.collect { tracks ->
+                            if (tracks.isNotEmpty() && _activeSession.value?.role == LiveRole.VIEWER) {
+                                viewerStartupTrace.mark("remoteVideoTrackAvailable")
+                            }
                             _remoteVideoTracks.value = tracks
                         }
                     }
@@ -3574,6 +3661,11 @@ class LiveRepository @Inject constructor(
                     }
                     scope.launch {
                         created.peerConnectionStates.collect { states ->
+                            if (_activeSession.value?.role == LiveRole.VIEWER &&
+                                states.values.any { it == org.webrtc.PeerConnection.IceConnectionState.CONNECTED ||
+                                    it == org.webrtc.PeerConnection.IceConnectionState.COMPLETED }) {
+                                viewerStartupTrace.mark("mediaTransportConnected")
+                            }
                             updateLiveMediaConnectionState(states)
                         }
                     }

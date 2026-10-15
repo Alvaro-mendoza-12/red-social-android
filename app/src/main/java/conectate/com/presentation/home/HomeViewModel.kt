@@ -3,7 +3,9 @@ package conectate.com.presentation.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.repository.UserRepository
-import conectate.com.data.repository.MessageRepository
+import conectate.com.data.repository.LocalInboxRepository
+import conectate.com.data.repository.forAccount
+import conectate.com.core.concurrency.deferredRepositoryFlow
 import conectate.com.data.repository.GroupRepository
 import conectate.com.data.repository.CommunityRepository
 import conectate.com.data.repository.VideoRepository
@@ -35,16 +37,16 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val authService: AuthService,
-    private val userRepository: UserRepository,
-    private val messageRepository: MessageRepository,
-    private val groupRepository: GroupRepository,
-    private val communityRepository: CommunityRepository,
+    private val userRepository: Lazy<UserRepository>,
+    private val localInboxRepository: LocalInboxRepository,
+    private val groupRepository: Lazy<GroupRepository>,
+    private val communityRepository: Lazy<CommunityRepository>,
     private val videoRepository: Lazy<VideoRepository>,
-    private val momentRepository: MomentRepository,
+    private val momentRepository: Lazy<MomentRepository>,
     private val postRepository: Lazy<PostRepository>,
     private val playMatchRepository: Lazy<PlayMatchRepository>,
-    private val notificationRepository: NotificationRepository,
-    private val friendRepository: FriendRepository,
+    private val notificationRepository: Lazy<NotificationRepository>,
+    private val friendRepository: Lazy<FriendRepository>,
     private val seenFriendRequestsPreferences: SeenFriendRequestsPreferences,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -56,19 +58,45 @@ class HomeViewModel @Inject constructor(
     private val _newFollowingPosts = MutableStateFlow(false)
     private val _newFriendRequests = MutableStateFlow(false)
     private var pendingFriendRequestIds: List<String> = emptyList()
-    val newSocialContent = combine(_newFollowingPosts, _newFollowingMoments, _newFriendRequests) { posts, moments, requests ->
-        posts || moments || requests
+    private val socialVisible = MutableStateFlow(false)
+    val newSocialContent = combine(_newFollowingPosts, _newFollowingMoments, _newFriendRequests, socialVisible) { posts, moments, requests, visible ->
+        !visible && (posts || moments || requests)
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     private val _newGames = MutableStateFlow(false)
     val newGames = _newGames.asStateFlow()
-    val unreadProfileNotifications = notificationRepository.unreadCount
+    val unreadProfileNotifications = deferredRepositoryFlow(notificationRepository) { it.unreadCount }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     private val foreground = MutableStateFlow(false)
     private var latestVideoAt: Instant? = null
     private var latestPostAt: Instant? = null
     private var gameKeys: Set<String> = emptySet()
 
     fun setForeground(visible: Boolean) { foreground.value = visible }
+
+    fun setSocialSectionVisible(visible: Boolean) {
+        if (socialVisible.value == visible) return
+        val userId = authService.getCurrentUserId()
+        if (userId != null) {
+            val seenAt = maxOf(Instant.now(), latestPostAt ?: Instant.EPOCH)
+            sectionVisits.edit().putString("$userId:social", seenAt.toString())
+                .putString("$userId:social-moments", Instant.now().toString())
+                .putStringSet("$userId:social-requests", pendingFriendRequestIds.toSet()).apply()
+        }
+        _newFollowingPosts.value = false
+        _newFollowingMoments.value = false
+        _newFriendRequests.value = false
+        socialVisible.value = visible
+    }
+
+    private fun hasUnacknowledgedRequests(userId: String): Boolean {
+        val acknowledged = sectionVisits.getStringSet("$userId:social-requests", emptySet()).orEmpty()
+        if (socialVisible.value) {
+            sectionVisits.edit().putStringSet("$userId:social-requests", pendingFriendRequestIds.toSet()).apply()
+            return false
+        }
+        return seenFriendRequestsPreferences.unseenCount(userId, pendingFriendRequestIds.filterNot { it in acknowledged }) > 0
+    }
 
     fun markFeedSeen(section: String, timestamps: List<String>) {
         val userId = authService.getCurrentUserId() ?: return
@@ -132,14 +160,14 @@ class HomeViewModel @Inject constructor(
                 _newFollowingPosts.value = HomeNoveltyPolicy.hasNewer(latestPostAt, lastSectionVisit(userId, "social"))
             }
         } }
-        launch { quietlyRefresh { momentRepository.refreshMoments() } }
-        launch { quietlyRefresh { notificationRepository.updateUnreadCount().getOrThrow() } }
+        launch { quietlyRefresh { resolveHomeRepository(momentRepository).refreshMoments() } }
+        launch { quietlyRefresh { resolveHomeRepository(notificationRepository).updateUnreadCount().getOrThrow() } }
         launch { quietlyRefresh {
-            val requests = friendRepository.getPendingRequests().getOrThrow()
+            val requests = resolveHomeRepository(friendRepository).getPendingRequests().getOrThrow()
             currentCoroutineContext().ensureActive()
             if (isCurrent(userId)) {
                 pendingFriendRequestIds = requests.map { it.id }
-                _newFriendRequests.value = seenFriendRequestsPreferences.unseenCount(userId, pendingFriendRequestIds) > 0
+                _newFriendRequests.value = hasUnacknowledgedRequests(userId)
             }
         } }
         launch { quietlyRefresh {
@@ -160,20 +188,23 @@ class HomeViewModel @Inject constructor(
     val currentUserAvatarUrl: StateFlow<String?> = _currentUserAvatarUrl.asStateFlow()
 
     // 1. Unread DMs (Number of conversations with unread messages)
-    val unreadDmsCount: StateFlow<Int> = messageRepository.getUserChatsFlow()
-        .map { chats ->
+    val unreadDmsCount: StateFlow<Int> = combine(localInboxRepository.snapshots, authService.currentSession) { snapshot, session ->
+        snapshot.forAccount(session?.user?.id)
+    }
+        .map { snapshot ->
+            val chats = snapshot.conversations.takeIf { snapshot.accountId == authService.getCurrentUserId()?.trim()?.lowercase() }.orEmpty()
             normalizedVisibleConversations(chats)
                 .count { it.unreadCount > 0 && !it.chat.is_group && !it.chat.is_archived }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // 2. Unread Groups
-    val unreadGroupsCount: StateFlow<Int> = groupRepository.getGroupsFlow()
+    val unreadGroupsCount: StateFlow<Int> = deferredRepositoryFlow(groupRepository) { it.getGroupsFlow() }
         .map { groups -> groups.count { it.unreadCount > 0 } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // 3. Unread Communities
-    val unreadCommunitiesCount: StateFlow<Int> = communityRepository.getCommunitiesFlow()
+    val unreadCommunitiesCount: StateFlow<Int> = deferredRepositoryFlow(communityRepository) { it.getCommunitiesFlow() }
         .map { communities -> communities.count { it.unreadCount > 0 } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -203,6 +234,7 @@ class HomeViewModel @Inject constructor(
                 _newFollowingPosts.value = false
                 _newGames.value = false
                 _newFriendRequests.value = false
+                socialVisible.value = false
                 pendingFriendRequestIds = emptyList()
                 latestVideoAt = null
                 latestPostAt = null
@@ -212,29 +244,29 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             seenFriendRequestsPreferences.revision.collect {
                 val userId = authService.getCurrentUserId() ?: return@collect
-                _newFriendRequests.value = seenFriendRequestsPreferences.unseenCount(userId, pendingFriendRequestIds) > 0
+                _newFriendRequests.value = hasUnacknowledgedRequests(userId)
                 quietlyRefresh {
-                    val requests = friendRepository.getPendingRequests().getOrThrow()
+                    val requests = resolveHomeRepository(friendRepository).getPendingRequests().getOrThrow()
                     if (isCurrent(userId)) {
                         pendingFriendRequestIds = requests.map { request -> request.id }
-                        _newFriendRequests.value = seenFriendRequestsPreferences.unseenCount(userId, pendingFriendRequestIds) > 0
+                        _newFriendRequests.value = hasUnacknowledgedRequests(userId)
                     }
                 }
             }
         }
         viewModelScope.launch {
             var previousUnread: Int? = null
-            notificationRepository.unreadCount.collect { unread ->
+            unreadProfileNotifications.collect { unread ->
                 val lastUnread = previousUnread
                 val shouldRefresh = lastUnread != null && unread > lastUnread
                 previousUnread = unread
                 if (!shouldRefresh) return@collect
                 val userId = authService.getCurrentUserId() ?: return@collect
                 quietlyRefresh {
-                    val requests = friendRepository.getPendingRequests().getOrThrow()
+                    val requests = resolveHomeRepository(friendRepository).getPendingRequests().getOrThrow()
                     if (isCurrent(userId)) {
                         pendingFriendRequestIds = requests.map { request -> request.id }
-                        _newFriendRequests.value = seenFriendRequestsPreferences.unseenCount(userId, pendingFriendRequestIds) > 0
+                        _newFriendRequests.value = hasUnacknowledgedRequests(userId)
                     }
                 }
             }
@@ -248,14 +280,15 @@ class HomeViewModel @Inject constructor(
                 lastSectionVisit(userId, "social")
                 coroutineScope {
                     launch {
-                        momentRepository.getMoments().collectLatest { moments -> quietlyRefresh {
+                        resolveHomeRepository(momentRepository).getMoments().collectLatest { moments -> quietlyRefresh {
                             val now = Instant.now()
                             val candidates = moments.filter {
                                 it.userId != userId && !it.isViewed &&
+                                    HomeNoveltyPolicy.instant(it.createdAt)?.isAfter(lastSectionVisit(userId, "social-moments")) == true &&
                                     HomeNoveltyPolicy.instant(it.expiresAt)?.isAfter(now) == true
                             }
                             val following = if (candidates.isEmpty()) emptySet() else
-                                userRepository.getFollowedUserIds(candidates.map { it.userId }.distinct()).getOrThrow()
+                                resolveHomeRepository(userRepository).getFollowedUserIds(candidates.map { it.userId }.distinct()).getOrThrow()
                             if (isCurrent(userId)) _newFollowingMoments.value = candidates.any { it.userId.lowercase() in following }
                         } }
                     }
@@ -283,9 +316,10 @@ class HomeViewModel @Inject constructor(
         avatarJob = viewModelScope.launch {
             fun isCurrent() = generation == avatarGeneration && userId == authService.getCurrentUserId()
             try {
-                val cached = userRepository.getCachedUserById(userId)
+                val repository = resolveHomeRepository(userRepository)
+                val cached = repository.getCachedUserById(userId)
                 if (isCurrent() && cached != null) _currentUserAvatarUrl.value = cached.profileImage.ifBlank { null }
-                val result = userRepository.getUserById(userId)
+                val result = repository.getUserById(userId)
                 if (isCurrent() && result.isSuccess) {
                     _currentUserAvatarUrl.value = result.getOrNull()?.profileImage?.ifBlank { null }
                 }

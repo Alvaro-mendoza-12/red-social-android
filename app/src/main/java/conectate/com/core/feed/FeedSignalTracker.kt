@@ -29,6 +29,7 @@ data class FeedSignalSnapshot(
 }
 
 interface FeedSignalTracker {
+    fun setAccount(accountId: String?) = Unit
     fun snapshot(): FeedSignalSnapshot
     fun recordImpressions(posts: List<Post>)
     fun recordInteraction(post: Post, action: FeedInteractionAction)
@@ -41,6 +42,18 @@ class InMemoryFeedSignalTracker @Inject constructor() : FeedSignalTracker {
     private var authorAffinity = mutableMapOf<String, Double>()
     private var mediaAffinity = mutableMapOf<String, Double>()
     private var seenPostIds = LinkedHashSet<String>()
+    private var activeAccountId: String? = null
+
+    override fun setAccount(accountId: String?) {
+        val canonical = accountId?.trim()?.lowercase(java.util.Locale.ROOT)?.takeIf { it.isNotBlank() }
+        synchronized(lock) {
+            if (canonical == activeAccountId) return
+            activeAccountId = canonical
+            authorAffinity.clear()
+            mediaAffinity.clear()
+            seenPostIds.clear()
+        }
+    }
 
     override fun snapshot(): FeedSignalSnapshot {
         synchronized(lock) {

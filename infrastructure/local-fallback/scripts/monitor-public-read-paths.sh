@@ -56,6 +56,9 @@ if [ -z "$api_image" ]; then
   exit 1
 fi
 
+# The monitor itself owns descriptor9. A timeout watchdog may outlive its
+# command on BusyBox; inheriting9 would keep the advisory lock after this
+# script exits and suppress subsequent checks. Close9 in bounded children.
 run_probe() {
   local name="$1" script="$2" output evidence_tmp started_ms elapsed_ms
   output="$probe_dir/$name.log"
@@ -69,7 +72,7 @@ run_probe() {
       -e SMOKE_API_BASE_URL="$public_url" \
       -e SMOKE_ACCESS_TOKEN="$access_token" \
       -e SMOKE_REQUIRE_CONTENT=true \
-      "$api_image" "scripts/$script" >"$output" 2>&1; then
+      "$api_image" "scripts/$script" 9>&- >"$output" 2>&1; then
     elapsed_ms=$(( $(date +%s%3N) - started_ms ))
     evidence_tmp="$STATE_DIR/public-$name.latest.log.tmp.$$"
     tail -n 160 "$output" > "$evidence_tmp"
@@ -94,7 +97,7 @@ if run_probe public-ingress verify-public-ingress.js; then
   # Bounded separately: a stalled API/DB must still leave a degraded state.
   access_token="$(timeout "$PROBE_TIMEOUT_SECONDS" docker compose exec -T api node -e \
     'require("./scripts/verify-social-read-paths").issueDiagnosticToken().then((token) => process.stdout.write(token))' \
-    2>"$probe_dir/token.log")" || access_token=""
+    9>&- 2>"$probe_dir/token.log")" || access_token=""
   if [[ "$access_token" =~ ^[^.]+\.[^.]+\.[^.]+$ ]]; then
     run_probe social verify-social-read-paths.js || true
     run_probe messaging verify-messaging-read-paths.js || true

@@ -67,6 +67,16 @@ fun GroupChatScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val messageText by viewModel.messageText.collectAsState()
+    val mentionMembers by viewModel.mentionMembers.collectAsState()
+    var mentionDraft by remember(groupId) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(messageText)) }
+    LaunchedEffect(messageText) {
+        if (mentionDraft.text != messageText) mentionDraft = androidx.compose.ui.text.input.TextFieldValue(messageText, androidx.compose.ui.text.TextRange(messageText.length))
+    }
+    val activeMention = conectate.com.data.model.activeMentionAt(mentionDraft.text, mentionDraft.selection.end)
+    LaunchedEffect(activeMention?.start) { if (activeMention != null) viewModel.refreshMentionMembers() }
+    val mentionSuggestions = if (activeMention == null) emptyList() else
+        conectate.com.data.model.roomMentionCandidates(mentionMembers, activeMention.query, viewModel.getCurrentUserId())
+
     val isSending by viewModel.isSending.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val markersViewModel: ConversationMarkersViewModel = hiltViewModel()
@@ -79,6 +89,7 @@ fun GroupChatScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val downloadChatMedia = rememberChatMediaDownload(viewModel::getCurrentUserId) { viewModel.getPlayableUrl(it) }
+    val shareChatMedia = rememberChatMediaShare(viewModel::getCurrentUserId) { viewModel.getPlayableUrl(it) }
     val universalForwardCoordinator = LocalUniversalForwardCoordinator.current
     val currentUserId = viewModel.getCurrentUserId()
     LaunchedEffect(currentUserId) { markersViewModel.refresh() }
@@ -124,7 +135,7 @@ fun GroupChatScreen(
     var workspaceKind by remember(groupId) { mutableStateOf(ChatWorkspaceKind.TASK) }
     var workspaceSource by remember(groupId) { mutableStateOf<conectate.com.data.model.Message?>(null) }
     var backgroundImageToCrop by remember { mutableStateOf<Uri?>(null) }
-    val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val backgroundPickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         backgroundImageToCrop = uri
     }
 
@@ -194,9 +205,7 @@ fun GroupChatScreen(
     var pendingAudioPreviewUri by remember { mutableStateOf<Uri?>(null) }
     var pendingDocumentUri by remember { mutableStateOf<Uri?>(null) }
     var pendingContactPayload by remember { mutableStateOf<DeviceContactPayload?>(null) }
-    val audioPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
+    val audioPickerLauncher = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri ->
         if (uri != null) {
             pendingAudioPreviewUri = uri
             showAudioPickerDialog = true
@@ -218,9 +227,7 @@ fun GroupChatScreen(
         )
     }
 
-    val gifPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
+    val gifPickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         uri?.let { viewModel.sendMediaMessage(it, context, forcedMessageType = "gif", customContent = "🌀 GIF") }
     }
 
@@ -468,6 +475,10 @@ fun GroupChatScreen(
                                 if (shouldShowDateSeparator(msg.created_at, previousIso)) {
                                     DateSeparator(label = formatDateSeparatorLabel(msg.created_at))
                                 }
+                                if (msg.content_type == "system_membership") {
+                                    CollectionSystemNotice(msg.content)
+                                    return@itemsIndexed
+                                }
                                 val mediaGroup = remember(chatMessages, msg.id) {
                                     conectate.com.presentation.components.mediaGridClusterAt(chatMessages, index)
                                 }
@@ -570,6 +581,11 @@ fun GroupChatScreen(
                                         },
                                         onSenderClick = { userId ->
                                             navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
+                                        },
+                                        onUrlClick = { url ->
+                                            conectate.com.data.model.videoIdFromSharedLink(url)?.let { id ->
+                                                navController.navigate(conectate.com.presentation.navigation.Screen.VideoPlayer.createRoute(id))
+                                            }
                                         },
                                         currentUserId = currentUserId,
                                         onReactionClick = { emoji ->
@@ -765,6 +781,14 @@ fun GroupChatScreen(
                         }
                     } else {
                         // STANDARD INPUT
+                        Column {
+                        conectate.com.presentation.components.MentionSuggestions(mentionSuggestions, onSelected = { user ->
+                            activeMention?.let { active ->
+                                val (text, cursor) = conectate.com.data.model.insertMention(mentionDraft.text, active, conectate.com.data.model.profilePublicHandle(user))
+                                mentionDraft = androidx.compose.ui.text.input.TextFieldValue(text, androidx.compose.ui.text.TextRange(cursor))
+                                viewModel.updateMessageText(text)
+                            }
+                        })
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp)
@@ -774,8 +798,9 @@ fun GroupChatScreen(
                             }
                             StickerButton(onClick = stickerKeyboardPanel.toggle, showingStickers = showStickerCatalogDialog)
                             TextField(
-                                value = messageText,
-                                onValueChange = { viewModel.updateMessageText(it) },
+                                value = mentionDraft,
+                                visualTransformation = conectate.com.presentation.components.mentionInputTransformation,
+                                onValueChange = { mentionDraft = it; viewModel.updateMessageText(it.text) },
                                 modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
                                     .focusRequester(stickerKeyboardPanel.inputFocusRequester)
                                     .onFocusChanged { if (it.isFocused) stickerKeyboardPanel.onInputFocused() },
@@ -818,6 +843,7 @@ fun GroupChatScreen(
                                     Icon(imageVector = if (messageText.isNotBlank()) Icons.AutoMirrored.Filled.Send else Icons.Default.Mic, contentDescription = if (messageText.isNotBlank()) "Enviar mensaje" else "Grabar audio")
                                 }
                             }
+                        }
                         }
                     }
                 } else {
@@ -898,6 +924,7 @@ fun GroupChatScreen(
             initialIndex = fullScreenImageInitialIndex!!,
             secureContent = oneTimeMediaItems.isNotEmpty(),
             onDownload = if (oneTimeMediaItems.isNotEmpty()) null else downloadChatMedia,
+            onShare = if (oneTimeMediaItems.isNotEmpty()) null else shareChatMedia,
             onDismiss = {
                 fullScreenImageInitialIndex = null
                 oneTimeMediaItems = emptyList()

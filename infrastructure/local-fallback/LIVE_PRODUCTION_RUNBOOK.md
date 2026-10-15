@@ -14,7 +14,7 @@ Las credenciales de LiveKit sólo se configuran en el `.env` del servidor Ubuntu
 ```env
 LIVE_GUESTS_BATTLES_ENABLED=true
 LIVE_SFU_ENABLED=true
-LIVE_MAX_GUESTS=4
+LIVE_MAX_GUESTS=6
 LIVEKIT_URL=wss://tu-proyecto.livekit.cloud
 LIVEKIT_API_KEY=...
 LIVEKIT_API_SECRET=...

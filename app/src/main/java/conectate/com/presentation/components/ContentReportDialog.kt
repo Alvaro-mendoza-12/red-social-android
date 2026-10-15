@@ -101,9 +101,7 @@ fun ContentReportDialog(
         (!requiresDetails || trimmedDetails.length >= minDetailsLength) &&
         !isSubmitting
 
-    val imagePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri -> evidenceUri = uri }
+    val imagePicker = conectate.com.presentation.components.rememberInAppMediaPicker() { uri -> evidenceUri = uri }
 
     Dialog(
         onDismissRequest = if (showConfirmation) ({}) else onDismiss,

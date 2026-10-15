@@ -30,7 +30,7 @@ internal fun MomentAuthorHeader(
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProfileImage(
+            CircularProfileImage(ownerId = moment.userId, 
                 imageUrl = moment.userAvatarUrl, size = 40.dp, showBorder = false,
                 fallbackName = moment.userDisplayName ?: moment.username,
             )

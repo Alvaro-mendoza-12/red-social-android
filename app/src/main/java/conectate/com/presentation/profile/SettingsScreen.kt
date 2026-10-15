@@ -121,9 +121,7 @@ fun SettingsScreen(
             )
         }
     }
-    val importBackupLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
+    val importBackupLauncher = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri ->
         if (uri != null) {
             viewModel.importSettingsBackup(uri).fold(
                 onSuccess = {

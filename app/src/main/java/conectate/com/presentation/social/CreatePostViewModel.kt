@@ -11,8 +11,29 @@ import javax.inject.Inject
 
 @HiltViewModel
 class CreatePostViewModel @Inject constructor(
-    private val postRepository: PostRepository
+    private val postRepository: PostRepository,
+    private val userRepository: conectate.com.data.repository.UserRepository,
+    private val authService: conectate.com.data.supabase.AuthService,
 ) : ViewModel() {
+
+    private val _mentionSuggestions = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
+    val mentionSuggestions = _mentionSuggestions.asStateFlow()
+    private var mentionJob: kotlinx.coroutines.Job? = null
+    private var mentionGeneration = 0L
+
+    fun updateMentionQuery(text: String, cursor: Int) {
+        mentionJob?.cancel()
+        val generation = ++mentionGeneration
+        _mentionSuggestions.value = emptyList()
+        val query = conectate.com.data.model.activeMentionAt(text, cursor)?.query?.takeIf { it.isNotBlank() } ?: return
+        val account = authService.getCurrentUserId() ?: return
+        mentionJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(180L)
+            val found = userRepository.searchMentionCandidates(query, excludeUserId = account, limit = 6)
+            if (generation == mentionGeneration && authService.getCurrentUserId() == account)
+                _mentionSuggestions.value = found.getOrDefault(emptyList())
+        }
+    }
 
     private val _isCreating = MutableStateFlow(false)
     val isCreating: StateFlow<Boolean> = _isCreating.asStateFlow()
@@ -31,8 +52,9 @@ class CreatePostViewModel @Inject constructor(
         remixAudience: String = "public",
         isSensitive: Boolean = false
     ) {
+        if (_isCreating.value) return
+        _isCreating.value = true
         viewModelScope.launch {
-            _isCreating.value = true
             try {
                 val result = postRepository.createPost(
                     content = caption,
@@ -47,6 +69,7 @@ class CreatePostViewModel @Inject constructor(
                 } else {
                     _error.value = result.exceptionOrNull()?.message ?: "Error desconocido"
                 }
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error
             } catch (e: Exception) {
                 _error.value = e.message ?: "No se pudo crear la publicación."
             } finally {

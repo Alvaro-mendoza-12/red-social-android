@@ -60,11 +60,15 @@ internal suspend fun saveDocumentToDownloads(context: Context, file: File, name:
     }
 
 private val documentDownloadClient = OkHttpClient.Builder().dns(conectate.com.core.network.PublicBackendDns)
+    .addInterceptor(conectate.com.core.media.StorageReadRequestInterceptor())
+    .addNetworkInterceptor(conectate.com.core.media.StorageReadNetworkInterceptor())
     .connectTimeout(15, TimeUnit.SECONDS)
     .readTimeout(30, TimeUnit.SECONDS).callTimeout(120, TimeUnit.SECONDS).followSslRedirects(false).build()
 
 /** The preview's 32 MB parsing ceiling must not prevent downloading a larger attachment. */
 internal suspend fun copyDocumentSource(context: Context, source: Uri, destination: Uri) = withContext(Dispatchers.IO) {
+    val guardedRead = conectate.com.core.media.StorageReadSession.isStorageRequest(source.toString())
+    val readIdentity = if (guardedRead) conectate.com.core.media.StorageReadSession.snapshot()?.identity else null
     val sink = context.contentResolver.openOutputStream(destination, "w") ?: error("No se pudo escribir el documento.")
     sink.use { output ->
         when (source.scheme?.lowercase()) {
@@ -79,7 +83,9 @@ internal suspend fun copyDocumentSource(context: Context, source: Uri, destinati
                 documentDownloadClient.newCall(request).execute().use { response ->
                     require(response.isSuccessful) { "No se pudo descargar el documento (${response.code})." }
                     val body = response.body ?: error("El documento está vacío.")
-                    body.byteStream().use { input -> copyDocumentStream(input, output) }
+                    conectate.com.core.media.StorageReadSession.guardInputStream(source.toString(), body.byteStream(), readIdentity)
+                        .use { input -> copyDocumentStream(input, output) }
+                    if (guardedRead) conectate.com.core.media.StorageReadSession.requireCurrent(readIdentity)
                 }
             }
             "content", "file" -> context.contentResolver.openInputStream(source)?.use { input ->

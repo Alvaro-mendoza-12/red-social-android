@@ -1,104 +1,124 @@
 package conectate.com.presentation.messages
 
-import android.app.DownloadManager
-import android.content.Context
+import android.Manifest
+import android.content.ClipData
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Environment
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
-import conectate.com.data.localfallback.UbuntuStorageUrl
-import conectate.com.core.media.resolveOfflineChatExportFile
-import conectate.com.core.media.chatMediaExportFilename
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.media3.datasource.DataSourceInputStream
+import androidx.media3.datasource.DataSpec
+import conectate.com.core.media.*
 import conectate.com.presentation.components.MediaItem
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import conectate.com.util.MediaPlaybackDataSources
+import java.io.File
+import kotlinx.coroutines.*
 
-/** Export is explicit and independent from retaining a private offline copy. Never use for view-once. */
 @Composable
-internal fun rememberChatMediaDownload(
-    currentAccountId: () -> String?,
-    resolve: suspend (String) -> String?
+internal fun rememberChatMediaDownload(currentAccountId: () -> String?, resolve: suspend (String) -> String?): (MediaItem) -> Unit =
+    rememberChatMediaExport(currentAccountId, resolve, share = false)
+
+@Composable
+internal fun rememberChatMediaShare(currentAccountId: () -> String?, resolve: suspend (String) -> String?): (MediaItem) -> Unit =
+    rememberChatMediaExport(currentAccountId, resolve, share = true)
+
+/** Explicit gallery export or Android Sharesheet. Private account copies stay private. */
+@Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun rememberChatMediaExport(
+    currentAccountId: () -> String?, resolve: suspend (String) -> String?, share: Boolean,
 ): (MediaItem) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val latestResolve by rememberUpdatedState(resolve)
     val latestAccountId by rememberUpdatedState(currentAccountId)
-    var pendingLocalSource by remember { mutableStateOf<String?>(null) }
-    var pendingAccount by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    val saveLocal = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { destination ->
-        val source = pendingLocalSource
-        val account = pendingAccount
-        pendingLocalSource = null
-        pendingAccount = null
-        if (destination != null && source != null) {
-            scope.launch {
-                try {
-                    withContext(Dispatchers.IO) {
-                        check(account != null && latestAccountId() == account) { "La cuenta activa cambió" }
-                        val file = resolveOfflineChatExportFile(context.filesDir, source, account)
-                        context.contentResolver.openOutputStream(destination, "wt").use { output ->
-                            checkNotNull(output) { "No se pudo abrir el destino" }
-                            file.inputStream().use { it.copyTo(output) }
+    var pending by remember { mutableStateOf<Pair<MediaItem, String>?>(null) }
+
+    fun export(item: MediaItem, account: String) {
+        busy = true
+        scope.launch {
+            var shareFile: File? = null
+            var delivered = false
+            try {
+                require(!item.type.startsWith("view_once"))
+                val source = latestResolve(item.url) ?: error("Multimedia no disponible")
+                val filename = chatMediaExportFilename(item.url, item.type, System.currentTimeMillis())
+                val mime = chatMediaExportMimeType(filename)
+                val coroutine = currentCoroutineContext()
+                val guard = {
+                    coroutine.ensureActive()
+                    check(latestAccountId()?.trim()?.lowercase() == account) { "La cuenta activa cambió" }
+                }
+                withContext(Dispatchers.IO) {
+                    guard()
+                    val local = if (source.startsWith("file:", ignoreCase = true))
+                        resolveOfflineChatExportFile(context.filesDir, source, account) else null
+                    require(local != null || Uri.parse(source).scheme in setOf("https", "http"))
+                    val write: (java.io.OutputStream) -> Unit = { output ->
+                        if (local != null) local.inputStream().use { copyMediaWithLimit(it, output, MAX_EXPORT_BYTES, guard) }
+                        else DataSourceInputStream(MediaPlaybackDataSources.httpFactory().createDataSource(), DataSpec(Uri.parse(source))).use {
+                            it.open()
+                            copyMediaWithLimit(it, output, MAX_EXPORT_BYTES, guard)
                         }
                     }
-                    Toast.makeText(context, "Archivo guardado", Toast.LENGTH_SHORT).show()
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    Toast.makeText(context, "No se pudo guardar el archivo. Comprueba el espacio y reintenta.", Toast.LENGTH_LONG).show()
-                } finally {
-                    busy = false
+                    if (share) {
+                        val directory = File(context.cacheDir, "file-provider/media-exports").apply { check(isDirectory || mkdirs()) }
+                        directory.listFiles()?.filter { it.isFile && it.lastModified() < System.currentTimeMillis() - 86_400_000 }?.forEach { it.delete() }
+                        shareFile = File.createTempFile("Novvin_", ".${filename.substringAfterLast('.')}", directory)
+                        checkNotNull(shareFile).outputStream().use(write)
+                        guard()
+                    } else savePublicMedia(context, filename, mime, guard, write)
                 }
+                guard()
+                if (share) {
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", checkNotNull(shareFile))
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = mime
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        clipData = ClipData.newRawUri("Multimedia", uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Compartir con"))
+                    delivered = true
+                } else Toast.makeText(context, "Archivo guardado", Toast.LENGTH_SHORT).show()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                Toast.makeText(context, "No se pudo ${if (share) "compartir" else "guardar"}. Comprueba la conexión y el espacio disponible.", Toast.LENGTH_LONG).show()
+            } finally {
+                if (!delivered) shareFile?.delete()
+                busy = false
             }
-        } else {
-            busy = false
         }
+    }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val request = pending
+        pending = null
+        busy = false
+        if (granted && request != null) export(request.first, request.second)
+        else Toast.makeText(context, "Permite guardar archivos para descargar la imagen o el video.", Toast.LENGTH_LONG).show()
     }
     return { item ->
         if (!busy) {
-            busy = true
-            scope.launch {
-                var awaitingDestination = false
-                try {
-                    val account = latestAccountId()?.takeIf { it.isNotBlank() } ?: error("No active account")
-                    val source = latestResolve(item.url) ?: error("Multimedia no disponible")
-                    check(latestAccountId() == account) { "La cuenta activa cambió" }
-                    val filename = chatMediaExportFilename(item.url, item.type, System.currentTimeMillis())
-                    if (source.startsWith("file:", ignoreCase = true)) {
-                        pendingLocalSource = source
-                        pendingAccount = account
-                        saveLocal.launch(filename)
-                        awaitingDestination = true
-                    } else {
-                        require(source.startsWith("https://") || source.startsWith("http://"))
-                        val request = DownloadManager.Request(Uri.parse(source))
-                            .setTitle("Descargando archivo")
-                            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
-                        UbuntuStorageUrl.publicRequestHeaders.forEach { (name, value) -> request.addRequestHeader(name, value) }
-                        (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
-                        Toast.makeText(context, "Descarga iniciada", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    Toast.makeText(context, "No se pudo iniciar la descarga. Reintenta.", Toast.LENGTH_LONG).show()
-                } finally {
-                    if (!awaitingDestination) busy = false
-                }
+            val account = latestAccountId()?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+            if (account != null && !item.type.startsWith("view_once")) {
+                if (!share && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    busy = true
+                    pending = item to account
+                    permission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                } else export(item, account)
             }
         }
     }
 }
+
+private const val MAX_EXPORT_BYTES = 256L * 1024 * 1024

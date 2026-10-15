@@ -1,3 +1,5 @@
+const { loadRecoveryCasePage, changeRecoveryReviewState } = require('./account-recovery-admin-queue')
+const { closeStorageUploadPools } = require('./storage-upload-admission')
 const bcrypt = require('bcrypt')
 const { requireBcryptPasswordLength } = require('./new-password-policy')
 const cors = require('cors')
@@ -38,6 +40,7 @@ const {
   cleanupExpiredResumableUploads,
   registerStorageRoutes,
   signStoredObjectReference,
+  storageScanReadiness,
 } = require('./storage-routes')
 const { registerAiRoutes } = require('./ai-routes')
 const { pushNotificationsStatus } = require('./push-notifications')
@@ -59,6 +62,7 @@ const {
   createDistributedRateLimitMiddleware,
   pruneExpiredRateLimitWindows,
 } = require('./distributed-rate-limit')
+const { processMessageDeletionOutbox } = require('./message-deletion-policy')
 const {
   ensureScheduledMessageTables,
   processDueScheduledMessageJobs,
@@ -80,6 +84,10 @@ const {
   serializeWebSessionCookie,
 } = require('./web-session-security')
 const { withSchemaInitializationLock } = require('./schema-initializer')
+const { ensureStorageReadSchema } = require('./storage-read-schema')
+const { storageReadConfiguration } = require('./storage-read-config')
+const storageReadConfig = storageReadConfiguration()
+const { assertSafeRuntimeDatabaseRole } = require('./database-role-policy')
 const { processPendingLiveFollowerNotifications } = require('./live-follower-notifications')
 const { startLiveDrawGuessReconciler } = require('./live-draw-guess-routes')
 const {
@@ -216,6 +224,7 @@ app.use(cors({
   credentials: true,
   exposedHeaders: [
     'x-request-id', 'server-timing', 'x-response-time', 'location',
+    'content-range', 'accept-ranges', 'content-length', 'etag',
     'tus-resumable', 'tus-version', 'tus-extension', 'tus-max-size',
     'upload-length', 'upload-offset', 'upload-expires', 'upload-object-path', 'upload-state',
   ],
@@ -1746,11 +1755,13 @@ app.get('/ready', async (_req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT NOW() AS now')
     const release = await loadReleaseMetadata()
+    const storageScan = await storageScanReadiness()
     res.json({
       ok: true,
       service: serviceName,
       version,
       release,
+      storageScan,
       capabilities: [
         'admin_users_v1',
         'hard_delete_suspended_users_v1',
@@ -2040,27 +2051,20 @@ async function recoveryAdminRequired(req, res, next) {
 
 app.get(['/v1/admin/account-recovery/cases', '/v1/data/admin/account-recovery/cases'], recoveryAdminRequired, async (req, res, next) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT c.id, c.identifier, c.alternate_contact, c.description, c.status, c.user_id,
-              c.reviewed_by, c.verification_ref, c.two_factor_reset, c.created_at, c.reviewed_at,
-              c.contact_type, c.profile_hint,
-              COALESCE(c.user_id, c.candidate_user_id) AS candidate_user_id,
-              c.contact_verified_at,
-              COALESCE((SELECT json_agg(json_build_object('id', e.id, 'name', e.name, 'mime', e.mime, 'size', e.size) ORDER BY e.created_at)
-                FROM fallback_recovery_evidence e WHERE e.case_id=c.id AND e.expires_at>NOW()), '[]'::json) AS evidence,
-              u.email AS candidate_email, u.display_name AS candidate_name,
-              o.profile->>'username' AS candidate_username
-       FROM fallback_account_recovery_cases c
-       LEFT JOIN fallback_users u ON u.id = COALESCE(c.user_id, c.candidate_user_id)
-       LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
-       ORDER BY CASE WHEN c.status = 'pending' THEN 0 ELSE 1 END, c.created_at DESC
-       LIMIT 100`,
-    )
+    const page = await loadRecoveryCasePage(pool, req.query)
     res.set('Cache-Control', 'no-store')
-    return res.json({ cases: rows })
-  } catch (error) {
-    return next(error)
-  }
+    return res.json(page)
+  } catch (error) { return next(error) }
+})
+
+app.post(['/v1/admin/account-recovery/cases/:id/review', '/v1/data/admin/account-recovery/cases/:id/review'], recoveryAdminRequired, async (req,res,next) => {
+  try {
+    if (!isUuidText(req.params.id)) return res.status(400).json({error:'CASE_REQUIRED'})
+    const result=await changeRecoveryReviewState(pool,{caseId:req.params.id,status:req.body?.status,
+      actor:req.auth?.sub || 'verified-operator-token',reason:cleanText(req.body?.verificationRef,240)})
+    res.set('Cache-Control','no-store')
+    return res.json(result)
+  } catch(error) {return next(error)}
 })
 
 app.get(['/v1/admin/account-recovery/accounts', '/v1/data/admin/account-recovery/accounts'], recoveryAdminRequired, async (req, res, next) => {
@@ -2093,7 +2097,7 @@ app.post(['/v1/admin/account-recovery/cases/:id/contact-code', '/v1/data/admin/a
       `UPDATE fallback_account_recovery_cases
        SET contact_code_hash = $2, contact_code_expires_at = NOW() + INTERVAL '30 minutes',
            contact_code_attempts = 0, contact_verified_at = NULL
-       WHERE id = $1 AND status = 'pending'
+       WHERE id = $1 AND status IN ('pending', 'in_review')
        RETURNING id`,
       [req.params.id, hashPasswordResetToken(code)],
     )
@@ -2109,7 +2113,7 @@ app.post(['/v1/admin/account-recovery/cases/:id/issue-code', '/v1/data/admin/acc
     if (!isUuidText(req.params.id) || !isUuidText(req.body?.userId)) {
       return res.status(400).json({ error: 'CASE_AND_USER_REQUIRED' })
     }
-    const reviewedBy = cleanText(req.body?.reviewedBy, 120)
+    const reviewedBy = req.auth?.sub || 'verified-operator-token'
     const verificationRef = cleanText(req.body?.verificationRef, 240)
     const resetTwoFactor = req.body?.resetTwoFactor === true
     if (reviewedBy.length < 3 || verificationRef.length < 20) {
@@ -2128,7 +2132,7 @@ app.post(['/v1/admin/account-recovery/cases/:id/issue-code', '/v1/data/admin/acc
     }
     const recoveryCase = await client.query(
       `SELECT id, user_id, alternate_contact, contact_type FROM fallback_account_recovery_cases
-       WHERE id = $1 AND status IN ('pending', 'issued') FOR UPDATE`,
+       WHERE id = $1 AND status IN ('pending', 'in_review', 'issued') FOR UPDATE`,
       [req.params.id],
     )
     if (!recoveryCase.rows[0]) {
@@ -2189,31 +2193,14 @@ app.post(['/v1/admin/account-recovery/cases/:id/issue-code', '/v1/data/admin/acc
   }
 })
 
-app.post(['/v1/admin/account-recovery/cases/:id/reject', '/v1/data/admin/account-recovery/cases/:id/reject'], recoveryAdminRequired, async (req, res, next) => {
+app.post(['/v1/admin/account-recovery/cases/:id/reject', '/v1/data/admin/account-recovery/cases/:id/reject'], recoveryAdminRequired, async (req,res,next) => {
   try {
-    if (!isUuidText(req.params.id)) {
-      return res.status(400).json({ error: 'CASE_REQUIRED' })
-    }
-    const reviewedBy = cleanText(req.body?.reviewedBy, 120)
-    const verificationRef = cleanText(req.body?.verificationRef, 240)
-    if (reviewedBy.length < 3 || verificationRef.length < 8) {
-      return res.status(400).json({ error: 'REVIEWER_AND_REASON_REQUIRED' })
-    }
-    const { rows } = await pool.query(
-      `UPDATE fallback_account_recovery_cases
-       SET status = 'rejected', reviewed_by = $2, verification_ref = $3, reviewed_at = NOW()
-       WHERE id = $1 AND status = 'pending' RETURNING id`,
-      [req.params.id, reviewedBy, verificationRef],
-    )
-    if (!rows[0]) return res.status(404).json({ error: 'PENDING_RECOVERY_CASE_NOT_FOUND' })
-    await recordAudit('admin_account_recovery_case_rejected', null, {
-      caseId: req.params.id, reviewedBy, verificationRef,
-    })
-    res.set('Cache-Control', 'no-store')
-    return res.json({ ok: true })
-  } catch (error) {
-    return next(error)
-  }
+    if (!isUuidText(req.params.id)) return res.status(400).json({error:'CASE_REQUIRED'})
+    const result=await changeRecoveryReviewState(pool,{caseId:req.params.id,status:'rejected',
+      actor:req.auth?.sub || 'verified-operator-token',reason:cleanText(req.body?.verificationRef,240)})
+    res.set('Cache-Control','no-store')
+    return res.json(result)
+  } catch(error) {return next(error)}
 })
 
 registerRecoveryEvidenceDownload(app, { pool, recoveryAdminRequired, recordAudit })
@@ -2321,7 +2308,9 @@ app.post('/v1/auth/register', requireBcryptPasswordLength('password'), async (re
     if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const email = normalizeEmail(req.body?.email)
     const password = String(req.body?.password || '')
-    const displayName = cleanText(req.body?.displayName || email.split('@')[0], 80)
+    const {normalizedDisplayName,displayNameProblem}=require('./display-name-policy')
+    const displayName = normalizedDisplayName(req.body?.displayName || 'Usuario')
+    if (displayNameProblem(displayName)) return res.status(400).json({error:'DISPLAY_NAME_INVALID',message:'El nombre debe tener entre 2 y 20 caracteres.'})
     // Older installed APKs and operational verification scripts do not send a
     // username. Give them a random, non-email handle while the new UI asks.
     const requestedUsername = cleanUsername(req.body?.username).toLowerCase()
@@ -3834,10 +3823,14 @@ withSchemaInitializationLock({
     15 * 60_000,
   ),
   task: async (client) => {
+    await assertSafeRuntimeDatabaseRole(client, isProduction)
     await ensureAuthMetadataColumns(client)
     await ensurePasswordMailOutboxSchema(client)
     await ensureLocalStorageTables(client)
     await ensureLocalDataTables(client)
+    if (storageReadConfig.origins.length) {
+      await ensureStorageReadSchema(client, { origins: storageReadConfig.origins })
+    }
     await require('./surveys/routes').ensureSurveyTables(client)
     await ensureSystemAnnouncementSchema(client)
     await ensureScheduledMessageTables(client)
@@ -3901,6 +3894,9 @@ withSchemaInitializationLock({
     surveyMaintenanceTimer.unref?.()
     liveDrawGuessReconciler = startLiveDrawGuessReconciler({ pool })
     const runScheduledMessages = () => {
+      void processMessageDeletionOutbox(pool).catch((error) => {
+        console.error('[message-deletion-outbox]', safeErrorLogDetails(error))
+      })
       void processDueScheduledMessageJobs(pool).catch((error) => {
         console.error('[scheduled-messages] worker failed', safeErrorLogDetails(error, { production: isProduction }))
       })
@@ -4018,10 +4014,12 @@ async function shutdown(signal) {
   await passwordResetMailOutbox?.stop()
   liveDrawGuessReconciler?.stop()
   if (!server) {
+    await closeStorageUploadPools(pool)
     await pool.end()
     process.exit(0)
   }
   server.close(async () => {
+    await closeStorageUploadPools(pool)
     await pool.end()
     process.exit(0)
   })

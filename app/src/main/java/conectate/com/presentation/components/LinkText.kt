@@ -34,6 +34,7 @@ fun LinkText(
     onUrlClick: ((String) -> Unit)? = null,
     onTextClick: (() -> Unit)? = null,
     backgroundColor: Color = Color.Unspecified,
+    onMentionClick: ((String) -> Unit)? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val surface = MaterialTheme.colorScheme.surface
@@ -69,7 +70,8 @@ fun LinkText(
         linkColors,
         onTextClick,
         urlClickListener,
-        textClickListener
+        textClickListener,
+        onMentionClick
     ) {
         buildAnnotatedString {
             var lastIndex = 0
@@ -78,7 +80,7 @@ fun LinkText(
                 fontSize = fontSize
             )
 
-            fun appendPlain(value: String) {
+            fun appendUnlinked(value: String) {
                 if (onTextClick != null) {
                     withLink(
                         LinkAnnotation.Clickable(
@@ -92,6 +94,21 @@ fun LinkText(
                 } else {
                     withStyle(style = plainStyle) { append(value) }
                 }
+            }
+
+            fun appendPlain(value: String) {
+                if (onMentionClick == null) { appendUnlinked(value); return }
+                var position = 0
+                conectate.com.data.model.publicMentionPattern.findAll(value).forEach { match ->
+                    appendUnlinked(value.substring(position, match.range.first))
+                    withLink(LinkAnnotation.Clickable(
+                        tag = match.groupValues[1],
+                        styles = TextLinkStyles(style = SpanStyle(color = linkColors.foreground)),
+                        linkInteractionListener = LinkInteractionListener { onMentionClick(match.groupValues[1]) },
+                    )) { append(match.value) }
+                    position = match.range.last + 1
+                }
+                appendUnlinked(value.substring(position))
             }
 
             for (link in findWebTextLinks(text)) {

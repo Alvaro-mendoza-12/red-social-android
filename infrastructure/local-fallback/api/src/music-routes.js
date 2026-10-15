@@ -1,3 +1,6 @@
+const { upsertStoredObject, storedObjectFilePath } = require('./storage-routes')
+const { cleanStorageRow } = require('./storage-scan-coordinator')
+const { trustedStorageUrl, scanEnforcementEnabled } = require('./storage-media-reference')
 const crypto = require('crypto')
 const { requireCommunityMusicDuration } = require('./community-music-policy')
 const { registerMusicLibraryRoutes } = require('./music-library-routes')
@@ -316,10 +319,11 @@ async function ensureMusicTables(pool) {
 }
 
 async function ownedMusicStorageObject(pool, ownerId, rawUrl) {
+  if (scanEnforcementEnabled() && !trustedStorageUrl(rawUrl)) return null
   const url = cleanText(rawUrl, 2000)
   if (!url) return null
   const { rows } = await pool.query(
-    `SELECT name, content_type, size_bytes, public_url, local_path
+    `SELECT *
        FROM fallback_storage_objects
       WHERE owner_id = $1::uuid
         AND bucket_id = 'community-music'
@@ -332,6 +336,7 @@ async function ownedMusicStorageObject(pool, ownerId, rawUrl) {
     [ownerId, url],
   )
   const row = rows[0]
+  if (scanEnforcementEnabled() && !cleanStorageRow(row)) return null
   if (!row || !AUDIO_TYPES.has(String(row.content_type || '').toLowerCase())) return null
   if (Number(row.size_bytes || 0) <= 0 || Number(row.size_bytes) > 80 * 1024 * 1024) return null
   return row
@@ -339,7 +344,8 @@ async function ownedMusicStorageObject(pool, ownerId, rawUrl) {
 
 function safeMusicLocalPath(storage) {
   const root = path.resolve(process.env.STORAGE_ROOT || path.join(process.cwd(), 'storage-data'))
-  const expected = path.resolve(root, 'community-music', String(storage?.name || ''))
+  if (String(process.env.STORAGE_SCAN_ENFORCE || '').toLowerCase() === 'true' && !cleanStorageRow(storage)) throw Object.assign(new Error('MUSIC_STORAGE_NOT_SCANNED'), { status: 409 })
+  const expected = storedObjectFilePath(storage, 'community-music', String(storage?.name || ''))
   const actual = path.resolve(storage?.local_path || expected)
   if (!actual.startsWith(`${root}${path.sep}`) || actual !== expected) {
     throw Object.assign(new Error('COMMUNITY_MUSIC_STORAGE_PATH_INVALID'), { status: 400 })
@@ -424,7 +430,8 @@ async function inspectAndCreateMusicPreview(pool, req, userId, storage, declared
     throw Object.assign(new Error('MUSIC_DURATION_MISMATCH'), { status: 400 })
   }
 
-  const { previewName, previewPath } = musicPreviewLocation(userId)
+  const { previewName, previewPath: previousPreviewPath } = musicPreviewLocation(userId)
+  const previewPath = path.join(path.dirname(previousPreviewPath), '..', '.preview-quarantine', crypto.randomUUID() + '.mp3')
   // Source objects can contain both the authenticated owner prefix and a
   // client-side profile prefix. Previews, however, must always be resolved
   // from the bucket root so their DB name, public URL and disk path agree.
@@ -436,15 +443,12 @@ async function inspectAndCreateMusicPreview(pool, req, userId, storage, declared
       { timeout: 60_000, maxBuffer: 2 * 1024 * 1024 },
     )
     const stat = await fs.promises.stat(previewPath)
-    const encodedName = previewName.split('/').map(encodeURIComponent).join('/')
-    const previewUrl = `${musicPublicBase(req)}/storage/v1/object/public/community-music/${encodedName}`
-    await pool.query(
-      `INSERT INTO fallback_storage_objects(bucket_id,name,owner_id,content_type,size_bytes,public_url,local_path,metadata)
-       VALUES('community-music',$1,$2::uuid,'audio/mpeg',$3,$4,$5,$6::jsonb)
-       ON CONFLICT(bucket_id,name) DO UPDATE SET size_bytes=EXCLUDED.size_bytes,public_url=EXCLUDED.public_url,
-         local_path=EXCLUDED.local_path,metadata=EXCLUDED.metadata,updated_at=NOW()`,
-      [previewName, userId, stat.size, previewUrl, previewPath, JSON.stringify({ role: 'safe-preview', sourceSha256 })],
-    )
+    const storedPreview = await upsertStoredObject(pool, req, {
+      bucket: 'community-music', objectPath: previewName, ownerId: userId, sourcePath: previewPath,
+      contentType: 'audio/mpeg', sizeBytes: stat.size, allowOverwrite: false,
+      metadata: { role: 'safe-preview', sourceSha256 },
+    })
+    const previewUrl = storedPreview.public_url
     return { previewUrl, sourceSha256, durationMs: probedDurationMs, antivirusValidation }
   } catch (error) {
     await fs.promises.unlink(previewPath).catch(() => {})
@@ -454,6 +458,7 @@ async function inspectAndCreateMusicPreview(pool, req, userId, storage, declared
 }
 
 async function ownedMusicCoverStorageObject(pool, ownerId, rawUrl) {
+  if (scanEnforcementEnabled() && !trustedStorageUrl(rawUrl)) return null
   const url = cleanText(rawUrl, 2000)
   if (!url) return null
   const { rows } = await pool.query(

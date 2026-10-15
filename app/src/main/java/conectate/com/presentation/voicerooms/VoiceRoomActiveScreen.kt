@@ -1113,6 +1113,7 @@ fun ParticipantCard(
                 .testTag("voice_participant_avatar")
         ) {
              CircularProfileImage(
+                 ownerId = participant.id,
                  imageUrl = participant.avatarUrl,
                  size = 80.dp,
                  showBorder = participant.isSpeaking,
@@ -1758,6 +1759,7 @@ fun ParticipantCinemaCard(participant: conectate.com.data.model.VoiceParticipant
                 .background(if (participant.isSpeaking) MaterialTheme.colorScheme.primary else Color.Gray)
         ) {
             CircularProfileImage(
+                ownerId = participant.id,
                 imageUrl = participant.avatarUrl,
                 size = 50.dp,
                 showBorder = participant.isSpeaking,
@@ -2140,6 +2142,7 @@ fun InviteUserItem(
         ) {
             // Profile Image
             CircularProfileImage(
+                ownerId = user.id,
                 imageUrl = user.avatarUrl,
                 size = 40.dp,
                 showBorder = false
@@ -2210,7 +2213,7 @@ fun FullScreenParticipantView(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                 CircularProfileImage(imageUrl = participant.avatarUrl, size = 120.dp)
+                 CircularProfileImage(ownerId = participant.id, imageUrl = participant.avatarUrl, size = 120.dp)
                  Spacer(Modifier.height(16.dp))
                  Text(participant.name, color = Color.White, style = MaterialTheme.typography.headlineMedium)
             }

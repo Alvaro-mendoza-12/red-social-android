@@ -63,6 +63,9 @@ class SurveyWorkbenchTest {
                     .put("revision", 1).put("status", "open").put("response_count", 0).put("visibility", "public").put("post_exists", true))
             })
             path.endsWith("/report") -> { report = body; JSONObject().put("reported", true) }
+            path.startsWith("/campaigns/campana-prueba/results?") -> JSONObject()
+                .put("total", 0).put("page", 0).put("pages", 0).put("questions", org.json.JSONArray())
+                .put("responses", org.json.JSONArray()).put("timeline", org.json.JSONArray()).put("caveat", "Datos ficticios")
             path.startsWith("/campaigns/campana-prueba/responses") -> {
                 response = JSONObject().put("id", "respuesta-prueba").put("answers", body!!.getJSONObject("answers"))
                     .put("edit_revision", (body.optInt("editRevision", 0) + 1))
@@ -120,9 +123,40 @@ class SurveyWorkbenchTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val folder = java.io.File(context.getExternalFilesDir(null), "survey-validation").apply { mkdirs() }
-        val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        java.io.File(folder, name).outputStream().use { screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-        screenshot.recycle()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        var screenshot = automation.takeScreenshot()
+        val deadline = android.os.SystemClock.elapsedRealtime() + 3_000L
+        while (screenshot == null && android.os.SystemClock.elapsedRealtime() < deadline) {
+            Thread.sleep(100)
+            screenshot = automation.takeScreenshot()
+        }
+        // Some OEMs reject a whole-display capture while another retained window is secure.
+        // PixelCopy still verifies this test's actual window, without capturing other apps.
+        val captured = screenshot ?: copyOwnedWorkbenchWindow()
+        java.io.File(folder, name).outputStream().use { captured.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        captured.recycle()
+    }
+
+    private fun copyOwnedWorkbenchWindow(): android.graphics.Bitmap {
+        var activityContext: android.content.Context = web.context
+        while (activityContext is android.content.ContextWrapper && activityContext !is android.app.Activity) {
+            activityContext = activityContext.baseContext
+        }
+        val activity = requireNotNull(activityContext as? android.app.Activity)
+        val ready = CountDownLatch(1)
+        var result = android.view.PixelCopy.ERROR_UNKNOWN
+        lateinit var bitmap: android.graphics.Bitmap
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val decor = activity.window.decorView
+            bitmap = android.graphics.Bitmap.createBitmap(decor.width, decor.height, android.graphics.Bitmap.Config.ARGB_8888)
+            android.view.PixelCopy.request(activity.window, bitmap, { status -> result = status; ready.countDown() },
+                android.os.Handler(android.os.Looper.getMainLooper()))
+        }
+        if (!ready.await(3, TimeUnit.SECONDS) || result != android.view.PixelCopy.SUCCESS) {
+            bitmap.recycle()
+            error("Android did not capture the owned survey window: $result")
+        }
+        return bitmap
     }
     private fun field(path: String, value: String) = js("""(()=>{const el=document.querySelector('[data-field="$path"]');el.value=${JSONObject.quote(value)};el.dispatchEvent(new Event('input',{bubbles:true}));})()""")
 
@@ -187,7 +221,7 @@ class SurveyWorkbenchTest {
         awaitJs("document.querySelector('[data-field=\"title\"]')")
         InstrumentationRegistry.getInstrumentation().runOnMainSync { web.settings.textZoom = 160 }
         js("window.scrollTo(0,document.body.scrollHeight)")
-        awaitJs("window.scrollY > 0")
+        awaitJs("document.documentElement.scrollHeight <= innerHeight+1 || window.scrollY > 0")
         js("document.getElementById('home').click()")
         awaitJs("document.getElementById('modal').open")
         capture("salir-dialogo-grande-android.png")

@@ -19,6 +19,7 @@ internal fun LiveViewerOverlayLayout(
     chat: @Composable () -> Unit,
     actions: @Composable () -> Unit,
     composer: @Composable () -> Unit,
+    onBottomAreaMeasured: (Int) -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     SubcomposeLayout(modifier.fillMaxSize().imePadding()) { constraints ->
@@ -46,6 +47,7 @@ internal fun LiveViewerOverlayLayout(
                 maxHeight = (height - chatBottom - topClearance).coerceAtLeast(0),
             )
         )
+        onBottomAreaMeasured(chatBottom + conversation.height)
         layout(width, height) {
             conversation.placeRelative(edge, (height - chatBottom - conversation.height).coerceAtLeast(0))
             controls.placeRelative(

@@ -1,0 +1,10 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {storageReadConfiguration}=require('../src/storage-read-config');
+test('integration is disabled by default without inventing a trusted origin',()=>{ assert.deepEqual(storageReadConfiguration({}),{enforced:false,origins:[]}); });
+test('enabled guard requires explicit origins',()=>{ assert.throws(()=>storageReadConfiguration({STORAGE_READ_ENFORCE:'true'}),/ORIGINS_REQUIRED/); });
+test('disabled guard still rejects invalid configured origins',()=>{ assert.throws(()=>storageReadConfiguration({STORAGE_READ_ORIGINS:'http://example.invalid'})); });
+test('misconfigured feature flag fails startup clearly',()=>{ assert.throws(()=>storageReadConfiguration({STORAGE_READ_ENFORCE:'yes'})); });
+test('configured HTTPS origins normalize and deduplicate once',()=>{ const config=storageReadConfiguration({STORAGE_READ_ENFORCE:'TRUE',STORAGE_READ_ORIGINS:'https://EXAMPLE.invalid,https://example.invalid/',PUBLIC_BASE_URL:'https://example.invalid'}); assert.equal(config.enforced,true);assert.deepEqual(config.origins,['https://example.invalid']);assert.ok(Object.isFrozen(config.origins)); });
+test('enforcement cannot derive upload reference origin from Host',()=>{ assert.throws(()=>storageReadConfiguration({STORAGE_READ_ENFORCE:'true',STORAGE_READ_ORIGINS:'https://example.invalid'}),/PUBLIC_BASE_URL_REQUIRED/); });
+test('enforcement canonical upload URL must belong to configured origins',()=>{ assert.throws(()=>storageReadConfiguration({STORAGE_READ_ENFORCE:'true',STORAGE_READ_ORIGINS:'https://example.invalid',PUBLIC_BASE_URL:'https://external.invalid'}),/UNTRUSTED/); });

@@ -108,12 +108,15 @@ function createRaffleService({ pool, getCurrentUser, userIdentity, loadCollectio
     const { rows } = await db.query('SELECT * FROM fallback_raffles WHERE id=$1 AND room_kind=$2 AND room_id=$3', [id, kind, roomId])
     const row = rows[0]
     if (!row) throw new RaffleError('RAFFLE_NOT_FOUND', 404)
-    const [original, latest, history] = await Promise.all([
-      db.query('SELECT * FROM fallback_raffle_participants WHERE raffle_id=$1 ORDER BY ordinal', [id]),
+    const [latest, history] = await Promise.all([
       db.query('SELECT * FROM fallback_raffle_rounds WHERE raffle_id=$1 ORDER BY number DESC LIMIT 1', [id]),
       db.query('SELECT * FROM fallback_raffle_rounds WHERE raffle_id=$1 AND number<$2 ORDER BY number DESC LIMIT 11', [id, beforeRound]),
     ])
-    return { raffle: mapRaffle(row), canManage: canManageRaffle(ctx, row), participants: original.rows.map(mapParticipant),
+    // Retained participant rows support historical result foreign keys. They are
+    // not the current roster and must not accumulate in every detail response.
+    const participants = latest.rows[0]?.participants ||
+      (await db.query('SELECT * FROM fallback_raffle_participants WHERE raffle_id=$1 ORDER BY ordinal', [id])).rows.map(mapParticipant)
+    return { raffle: mapRaffle(row), canManage: canManageRaffle(ctx, row), participants,
       currentRound: await readRound(db, latest.rows[0]),
       rounds: await Promise.all(history.rows.slice(0, 10).map((r) => readRound(db, r))),
       nextRound: history.rows.length > 10 ? history.rows[9].number : null }
@@ -219,7 +222,20 @@ function createRaffleService({ pool, getCurrentUser, userIdentity, loadCollectio
     const requestId = requireUuid(body.requestId)
     if (!Number.isInteger(body.expectedVersion) || body.expectedVersion < 0) throw new RaffleError('VERSION_REQUIRED')
     if (!['start', 'spin', 'automatic', 'new-round', 'cancel'].includes(action)) throw new RaffleError('INVALID_RAFFLE_ACTION')
-    const payloadHash = hash({ action, version: body.expectedVersion, automatic: body.automatic === true })
+    let selection = null
+    if (action === 'new-round' && (body.memberIds != null || body.manualNames != null)) {
+      if (!Array.isArray(body.memberIds) || !Array.isArray(body.manualNames) ||
+        body.memberIds.length + body.manualNames.length > MAX_PARTICIPANTS ||
+        body.memberIds.some(v => typeof v !== 'string') || body.manualNames.some(v => typeof v !== 'string')) throw new RaffleError('INVALID_PARTICIPANTS')
+      const memberIds = [...new Set(body.memberIds.map(requireUuid))].sort()
+      const manualNames = body.manualNames.map(v => clean(v).normalize('NFKC'))
+      if (manualNames.some(n => !n || n.length > 80 || /[\x00-\x1f]/.test(n))) throw new RaffleError('INVALID_MANUAL_NAME')
+      if (new Set(manualNames.map(lower)).size !== manualNames.length) throw new RaffleError('DUPLICATE_MANUAL_NAME')
+      if (!memberIds.length && !manualNames.length) throw new RaffleError('PARTICIPANT_LIMIT')
+      if (typeof body.memberSnapshotHash !== 'string' || !/^[0-9a-f]{64}$/.test(body.memberSnapshotHash)) throw new RaffleError('MEMBER_SNAPSHOT_REQUIRED')
+      selection = { memberIds, manualNames, memberSnapshotHash: body.memberSnapshotHash }
+    }
+    const payloadHash = hash({ action, version: body.expectedVersion, automatic: body.automatic === true, ...(selection ? { selection } : {}) })
     const response = await transaction(async (db) => {
       const ctx = await access(db, user, kind, roomId)
       const raffle = (await db.query('SELECT * FROM fallback_raffles WHERE id=$1 AND room_kind=$2 AND room_id=$3 FOR UPDATE', [id, kind, roomId])).rows[0]
@@ -242,8 +258,38 @@ function createRaffleService({ pool, getCurrentUser, userIdentity, loadCollectio
       } else {
         if (action === 'start' || action === 'new-round') {
           if ((action === 'start' && raffle.status !== 'prepared') || (action === 'new-round' && raffle.status !== 'completed')) throw new RaffleError('ROUND_STATE_INVALID', 409)
-          const participants = (await db.query('SELECT * FROM fallback_raffle_participants WHERE raffle_id=$1 ORDER BY ordinal', [id])).rows.map(mapParticipant)
-          await beginRound(db, id, ctx.identity, participants, body.automatic === true)
+          let participants
+          if (action === 'new-round') {
+            const { participants: available } = await eligible(db, user, kind, roomId)
+            const membershipHash = crypto.createHash('sha256').update(available.map(p => p.userId).sort().join('\n')).digest('hex')
+            if (selection && selection.memberSnapshotHash !== membershipHash) throw new RaffleError('MEMBERS_CHANGED', 409)
+            const byUser = new Map(available.map(p => [p.userId, p]))
+            const memberIds = selection?.memberIds || available.map(p => p.userId)
+            if (memberIds.some(memberId => !byUser.has(memberId))) throw new RaffleError('MEMBERS_CHANGED', 409)
+            const manualNames = selection?.manualNames || (round?.participants || []).filter(p => p.kind === 'MANUAL_PARTICIPANT').map(p => p.name)
+            if (memberIds.length + manualNames.length < 1 || memberIds.length + manualNames.length > MAX_PARTICIPANTS) throw new RaffleError('PARTICIPANT_LIMIT')
+            // Only identities selected for this round are loaded. The historical
+            // archive may outlive many rosters without growing this response/loop.
+            const old = (await db.query(`SELECT * FROM fallback_raffle_participants WHERE raffle_id=$1 AND
+              (user_id=ANY($2::text[]) OR (kind='MANUAL_PARTICIPANT' AND name=ANY($3::text[]))) ORDER BY ordinal`, [id, memberIds, manualNames])).rows
+            const oldByUser = new Map(old.filter(p => p.user_id).map(p => [p.user_id, p]))
+            const oldByManual = new Map()
+            for (const p of old) if (p.kind === 'MANUAL_PARTICIPANT' && !oldByManual.has(p.name)) oldByManual.set(p.name, p)
+            let ordinal = (await db.query('SELECT COALESCE(MAX(ordinal),-1)+1 AS next_ordinal FROM fallback_raffle_participants WHERE raffle_id=$1', [id])).rows[0].next_ordinal
+            participants = []
+            for (const source of [...memberIds.map(memberId => byUser.get(memberId)), ...manualNames.map(name => ({ kind: 'MANUAL_PARTICIPANT', userId: null, name, avatarUrl: '' }))]) {
+              const existing = source.userId ? oldByUser.get(source.userId) : oldByManual.get(source.name)
+              const participant = { ...source, id: existing?.id || crypto.randomUUID() }
+              if (!existing) await db.query('INSERT INTO fallback_raffle_participants(id,raffle_id,kind,user_id,name,avatar_url,ordinal) VALUES($1,$2,$3,$4,$5,$6,$7)',
+                [participant.id, id, participant.kind, participant.userId, participant.name, participant.avatarUrl, ordinal++])
+              participants.push(participant)
+            }
+            // Old rows/results are never deleted: round JSON preserves the historical names and membership.
+            await db.query('UPDATE fallback_raffles SET participant_count=$2 WHERE id=$1', [id, participants.length])
+            raffle.participant_count = participants.length
+          } else participants = (await db.query('SELECT * FROM fallback_raffle_participants WHERE raffle_id=$1 ORDER BY ordinal', [id])).rows.map(mapParticipant)
+          // A new round is ready with zero results. A separate spin/automatic command is required.
+          await beginRound(db, id, ctx.identity, participants, action === 'new-round' ? false : body.automatic === true)
           await updateCard(db, raffle, 'running')
         } else if (action === 'automatic') {
           if (round?.status !== 'running') throw new RaffleError('ROUND_NOT_RUNNING', 409)

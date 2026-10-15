@@ -36,12 +36,14 @@ class MessageRealtimeSync @Inject constructor(
     private val messageDao: MessageDao,
     private val chatDao: ChatDao,
     private val appMetrics: AppMetrics,
-    private val crashlytics: FirebaseCrashlytics
+    private val crashlytics: FirebaseCrashlytics,
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
     companion object {
         private const val TAG = "MessageRealtimeSync"
     }
 
+    private val deletedMessages by lazy { conectate.com.util.DeletedMessageStore(context) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var globalListenerJob: Job? = null
     private val chatMutexes = ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
@@ -84,10 +86,11 @@ class MessageRealtimeSync @Inject constructor(
             for (item in messageChannel) {
                 try {
                     val (action, record) = item
-                    val msg = parseMessageFromJson(record)
+                    if (authService.getCurrentUserId()?.trim()?.lowercase() != cleanUserId) continue
+                    val msg = deletedMessages.redact(parseMessageFromJson(record), cleanUserId)
                     when (action) {
                         QueuedMessageAction.Insert -> handleGlobalMessageInsert(msg, cleanUserId)
-                        QueuedMessageAction.Update -> handleGlobalMessageUpdate(msg)
+                        QueuedMessageAction.Update -> handleGlobalMessageUpdate(msg, cleanUserId)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in queue processor", e)
@@ -203,16 +206,17 @@ class MessageRealtimeSync @Inject constructor(
                     }
 
                     // 3. Insertar/actualizar en BD local
-                    messageDao.insertMessage(msg)
+                    val safe = deletedMessages.redact(msg, sessionUserId)
+                    messageDao.insertMessage(safe)
 
                     // 4. Emitir evento para UI
-                    _messageEvents.emit(msg)
+                    _messageEvents.emit(safe)
 
                     // 5. Actualizar last_message/unread en chats.
                     // Ubuntu realtime is the production path now. The notification could arrive,
                     // but the inbox badge/preview stayed stale because only the message row was
                     // inserted. Keep the conversation metadata authoritative here too.
-                    updateChatLastMessage(cleanId, msg, sessionUserId)
+                    if (!safe.deleted_for_all) updateChatLastMessage(cleanId, safe, sessionUserId)
 
                     Log.d(TAG, "✅ Mensaje insertado via realtime: ${msg.id} en chat $cleanId")
                 } catch (e: Exception) {
@@ -228,22 +232,28 @@ class MessageRealtimeSync @Inject constructor(
     /**
      * Maneja actualización de mensaje desde realtime (read receipts, status changes).
      */
-    private suspend fun handleGlobalMessageUpdate(msg: Message) {
+    private suspend fun handleGlobalMessageUpdate(msg: Message, sessionUserId: String) {
         var cleanId = msg.chat_id.trim().lowercase()
         var mutex = getMutexForChat(cleanId)
         mutex.withLock {
             try {
                     // Actualizar mensaje existente
-                    messageDao.updateMessage(msg)
+                    if (authService.getCurrentUserId()?.trim()?.lowercase() != sessionUserId) return@withLock
+                    val local = messageDao.getMessageById(msg.id)?.toDomain()?.takeIf { it.chat_id == cleanId }
+                    val safe = deletedMessages.redact(msg.copy(deleted_for_all = msg.deleted_for_all || local?.deleted_for_all == true), sessionUserId)
+                    messageDao.updateMessage(safe)
+                    if (safe.deleted_for_all) conectate.com.util.DeletedMessageIdentity.create(sessionUserId, "chat", cleanId, safe.id)?.let {
+                        conectate.com.util.MessageNotificationFactory.redactMessage(context, it, safe.created_at)
+                    }
 
                     // Emitir evento
-                    _messageEvents.emit(msg)
+                    _messageEvents.emit(safe)
 
                     val chat = chatDao.getChatById(cleanId)
                     if (chat?.last_message_id == msg.id) {
                         val timestamp = msg.created_at ?: msg.updated_at ?: Instant.now().toString()
-                        if (msg.deleted_for_all) {
-                            chatDao.clearLastMessage(cleanId, timestamp)
+                        if (safe.deleted_for_all) {
+                            chatDao.redactDeletedPreview(cleanId, msg.id)
                         } else {
                             chatDao.updateLastMessage(
                                 chatId = cleanId,

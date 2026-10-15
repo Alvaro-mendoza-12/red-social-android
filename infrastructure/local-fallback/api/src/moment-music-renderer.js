@@ -1,3 +1,4 @@
+const { cleanStorageRow } = require('./storage-scan-coordinator')
 'use strict'
 
 const { clippedMusicLyrics } = require('./moment-music-lyrics')
@@ -214,7 +215,7 @@ async function localStorageSource(pool, audioUrl) {
   const location = parseStorageObjectUrl(audioUrl)
   if (!location) return null
   const { rows } = await pool.query(
-    `SELECT local_path, size_bytes
+    `SELECT *
        FROM fallback_storage_objects
       WHERE bucket_id=$1 AND name=$2
       LIMIT 1`,
@@ -222,6 +223,7 @@ async function localStorageSource(pool, audioUrl) {
   )
   const row = rows[0]
   if (!row) return null
+  if (String(process.env.STORAGE_SCAN_ENFORCE || '').toLowerCase() === 'true' && !cleanStorageRow(row)) throw rendererError('MOMENT_MUSIC_SOURCE_NOT_SCANNED', 409)
   if (Number(row.size_bytes || 0) > MAX_SOURCE_BYTES) {
     throw rendererError('MOMENT_MUSIC_SOURCE_TOO_LARGE', 413)
   }

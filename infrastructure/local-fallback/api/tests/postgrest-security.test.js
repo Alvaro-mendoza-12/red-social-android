@@ -186,28 +186,15 @@ async function run() {
   const purgeQueries = []
   const purgedRows = await _test.purgeImportedIdentityRows({
     async query(sql, params) {
-      const text = String(sql)
-      if (text.includes('information_schema.columns')) {
-        return {
-          rows: [
-            { table_name: 'profiles', column_name: 'user_id' },
-            { table_name: 'rooms', column_name: 'creator_id' },
-            { table_name: 'rooms', column_name: 'participants' },
-            { table_name: 'chats', column_name: 'participants' },
-          ],
-        }
-      }
-      purgeQueries.push({ params, text })
-      return { rowCount: 1, rows: [] }
+      purgeQueries.push({ params, text: String(sql) })
+      return { rows: [{ affected: 3 }] }
     },
   }, ['user-1'])
   assert.equal(purgedRows, 3)
-  assert.equal(purgeQueries[0].params.length, 1, 'scalar-only imported tables must bind only $1')
-  assert.equal(purgeQueries[1].params.length, 2, 'tables with identity arrays must bind $1 and $2')
-  assert.deepEqual(purgeQueries[1].params[1], ['%user-1%'])
-  assert.equal(purgeQueries[2].params.length, 1, 'array-only imported tables must bind only $1')
-  assert.deepEqual(purgeQueries[2].params[0], ['%user-1%'])
-  assert.doesNotMatch(purgeQueries[2].text, /\$2/)
+  assert.equal(purgeQueries.length, 1)
+  assert.match(purgeQueries[0].text, /novvin_import_mutation\.purge_rows/)
+  assert.deepEqual(purgeQueries[0].params, [['user-1'], 'identity'])
+  assert.doesNotMatch(purgeQueries[0].text, /DELETE FROM|LIKE|information_schema/)
 
   const evidenceIdentity = {
     localUserId: identityRow().local_user_id,
@@ -357,6 +344,7 @@ async function run() {
   const chatId = '22222222-2222-4222-8222-222222222222'
   const messageId = '33333333-3333-4333-8333-333333333333'
   const calls = []
+  let persistedMessage
   const messageApp = createAppRecorder()
   registerPostgrestCompatRoutes(messageApp, {
     authOptional: (_req, _res, next) => next(),
@@ -368,9 +356,14 @@ async function run() {
         if (text.includes('AS local_user_id')) return { rows: [identityRow()] }
         if (text.includes('SELECT id::text AS chat_id')) return { rows: [{ chat_id: chatId }] }
         if (text.includes('FROM fallback_compat_rows')) return { rows: [] }
+        if (text.includes('SELECT * FROM fallback_messages')) {
+          assert.match(text, /ORDER BY created_at DESC, id DESC LIMIT 1 FOR SHARE/)
+          assert.deepEqual(params, [chatId])
+          assert.ok(persistedMessage, 'Summary reads the persisted row after INSERT')
+          return { rows: [persistedMessage] }
+        }
         if (text.includes('INSERT INTO fallback_messages')) {
-          return {
-            rows: [{
+          persistedMessage = {
               chat_id: params[1],
               content: params[3],
               content_type: params[4],
@@ -380,10 +373,14 @@ async function run() {
               media_url: params[5],
               sender_id: params[2],
               status: 'sent',
-            }],
           }
+          return { rows: [persistedMessage] }
         }
-        if (text.includes('UPDATE fallback_chats')) return { rowCount: 1, rows: [] }
+        if (text.includes('UPDATE fallback_chats')) {
+          assert.deepEqual(params, [chatId, 'mensaje persistido', persistedMessage.created_at, identityRow().public_user_id, messageId])
+          assert.match(text, /last_message_at <= \$3::timestamptz/)
+          return { rowCount: 1, rows: [] }
+        }
         if (text.includes('SELECT DISTINCT participant')) return { rows: [] }
         assert.fail(`Unexpected message query: ${text}`)
       },

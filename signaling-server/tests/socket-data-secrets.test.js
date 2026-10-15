@@ -14,8 +14,8 @@ test('bearer tokens are never stored in adapter-visible socket.data', () => {
 
 test('live gift broadcasts and battle scores require an authoritative committed receipt', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '..', 'index.js'), 'utf8');
-    assert.doesNotMatch(source, /socket\.on\(['"]live-gift['"]/);
-    assert.match(source, /socket\.on\(['"]gift-committed['"]/);
+    assert.doesNotMatch(source, /(?:socket\.on\(|safeSocketOn\(socket,\s*)['"]live-gift['"]/);
+    assert.match(source, /safeSocketOn\(socket,\s*['"]gift-committed['"]/);
     assert.match(source, /get_virtual_gift_receipt/);
     assert.match(source, /session\.battle\.hostScore \+= committedAmount/);
 });

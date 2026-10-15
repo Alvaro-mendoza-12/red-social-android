@@ -60,6 +60,7 @@ import conectate.com.util.buildCallEventPreview
 import conectate.com.util.buildConversationBackgroundPreview
 import conectate.com.util.ConversationNotificationPrefs
 import conectate.com.util.isCallEventContentType
+import conectate.com.util.isCollectionMembershipNotice
 import conectate.com.util.MessageNotificationFactory
 import conectate.com.util.MessageNotificationPayload
 import conectate.com.util.PendingOutgoingMediaStore
@@ -129,6 +130,22 @@ class GroupRepository @Inject constructor(
     private val readSynchronizer: conectate.com.data.repository.message.VisibleReadSynchronizer = conectate.com.data.repository.message.VisibleReadSynchronizer(readJournal, localFallbackApiClient, authService),
 ) : GroupSyncDataSource {
     private val maxForwardTargetsPerBatch = 20
+    private val deletedMessageStore by lazy { conectate.com.util.DeletedMessageStore(context) }
+
+    suspend fun handleDeletedMessage(identity: conectate.com.util.DeletedMessageIdentity, createdAt: String? = null, channelId: String? = null) {
+        if (identity.targetType != "group" || currentSessionUserId()?.trim()?.lowercase() != identity.accountId) return
+        val session = captureSessionSnapshot(identity.accountId)
+        if (!isSessionSnapshotValid(session, "deleted-message-start")) return
+        conectate.com.util.MessageNotificationFactory.redactMessage(context, identity, createdAt, channelContextId = channelId)
+        groupDao.redactDeletedMessage(identity.conversationId, identity.messageId)
+        if (!isSessionSnapshotValid(session, "deleted-message-preview")) return
+        groupDao.redactDeletedPreview(identity.conversationId, identity.messageId, createdAt)
+        val local = groupDao.getMessageById(identity.messageId)?.toDomain()
+        if (local != null && local.group_id == identity.conversationId && isSessionSnapshotValid(session, "deleted-message-flow")) {
+            updateGroupMessageInFlow(identity.conversationId, deletedMessageStore.redact(local, identity.accountId))
+        }
+    }
+
     private var scope = newSafeScope("GroupRepository", Dispatchers.IO)
     private var json = Json { ignoreUnknownKeys = true }
     private val transientNetworkRetryCodes = listOf("timeout", "timed out", "connection", "network", "502", "503", "504")
@@ -136,6 +153,9 @@ class GroupRepository @Inject constructor(
     private val collectionCreationRemoteStore = CollectionCreationRemoteStore(supabaseConfig)
     private val collectionMediaStore = CollectionMediaStore(storageService)
     private val collectionMessageEngagementStore = CollectionMessageEngagementStore(supabaseConfig, json)
+    private val collectionHistoryStore by lazy {
+        conectate.com.data.localfallback.CollectionHistoryAccessStore(context)
+    }
     private val collectionMemberProfileStore = CollectionMemberProfileStore(supabaseConfig)
     private val collectionMessageReceiptRemoteStore = CollectionMessageReceiptRemoteStore(supabaseConfig)
     private val collectionPollMessageRemoteStore = CollectionPollMessageRemoteStore(supabaseConfig, authService, json)
@@ -280,7 +300,7 @@ class GroupRepository @Inject constructor(
             // Clear system notifications for this group
             try {
                 var notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.cancel(cleanId.hashCode())
+                MessageNotificationFactory.cancelConversation(context, conectate.com.util.NotificationAccountTarget(userId = authService.getCurrentUserId()), "group", cleanId)
             } catch (e: Exception) {
                 android.util.Log.e("GroupRepository", "Error clearing notification", e)
             }
@@ -542,6 +562,7 @@ class GroupRepository @Inject constructor(
         msg: GroupMessage,
         sessionUserId: String? = currentSessionUserId()
     ) {
+        val msg = deletedMessageStore.redact(msg, sessionUserId)
         var sessionSnapshot = captureSessionSnapshot(sessionUserId)
         withContext(Dispatchers.IO) {
             if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-start:${msg.group_id}")) return@withContext
@@ -590,7 +611,7 @@ class GroupRepository @Inject constructor(
                         mergedMsg.copy(reply_to = reply)
                     } else mergedMsg
 
-                    val hydratedMsg = hydrateGroupMessage(normalizedMsg)
+                    val hydratedMsg = deletedMessageStore.redact(hydrateGroupMessage(normalizedMsg), currentUserId)
 
                     if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-before-db:$cleanId")) return@withContext
                     groupDao.insertMessages(listOf(conectate.com.data.local.entity.GroupMessageEntity.fromDomain(hydratedMsg)))
@@ -601,6 +622,13 @@ class GroupRepository @Inject constructor(
                     updateGroupMessageInFlow(cleanId, hydratedMsg)
                     android.util.Log.d("GroupRepository", "🔄 [FLOW-UPDATE] Flow actualizado para $cleanId")
                     
+                    if (hydratedMsg.deleted_for_all) {
+                        conectate.com.util.DeletedMessageIdentity.create(currentUserId, "group", cleanId, hydratedMsg.id)?.let {
+                            handleDeletedMessage(it, hydratedMsg.created_at)
+                        }
+                        return@withContext
+                    }
+
                     // 6. Actualizar Metadatos del Grupo (Lista de Chats) y Notificar
                     var cleanSenderId = msg.sender_id.trim().lowercase()
                     val isMyMessage = cleanSenderId == currentUserId
@@ -617,11 +645,11 @@ class GroupRepository @Inject constructor(
                         if (!isGroupCurrentlyOpen) {
                             android.util.Log.d("GroupRepository", "🔔 [UNREAD+1] Incrementando contador para $cleanId (grupo cerrado)")
                             if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-before-unread:$cleanId")) return@withContext
-                            if (!isCallEventContentType(msg.content_type)) {
+                            if (!isCallEventContentType(msg.content_type) && !isCollectionMembershipNotice(msg.content_type)) {
                                 showNotification(msg, localGroup.name)
                             }
                         } else {
-                            if (!isCallEventContentType(msg.content_type)) {
+                            if (!isCallEventContentType(msg.content_type) && !isCollectionMembershipNotice(msg.content_type)) {
                                 chatSoundPlayer.playReceive()
                             }
                         }
@@ -631,6 +659,7 @@ class GroupRepository @Inject constructor(
                     
                     // Actualizar last_message siempre (para todos los mensajes, incluso los míos)
                     if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-before-metadata:$cleanId")) return@withContext
+                    deletedMessageStore.recordSummary(currentUserId, "group", cleanId, hydratedMsg.id, hydratedMsg.created_at)
                     groupDao.updateMetadata(cleanId, 
                         buildConversationBackgroundPreview(msg.content_type, msg.content)
                             ?: buildCallEventPreview(msg.content_type, msg.content)
@@ -653,6 +682,9 @@ class GroupRepository @Inject constructor(
         var sessionSnapshot = captureSessionSnapshot(sessionUserId)
         withContext(Dispatchers.IO) {
             if (!isSessionSnapshotValid(sessionSnapshot, "group-update-start:${msg.id}")) return@withContext
+            if (msg.deleted_for_all) conectate.com.util.DeletedMessageIdentity.create(sessionSnapshot.accountId, "group", msg.group_id, msg.id)?.let {
+                handleDeletedMessage(it, msg.created_at)
+            }
             try {
                 var existing = groupDao.getMessageById(msg.id)
                 if (existing != null) {
@@ -665,7 +697,7 @@ class GroupRepository @Inject constructor(
                         incomingDeliveredAt = msg.delivered_at,
                         incomingReadAt = msg.read_at
                     )
-                    val finalMsg = currentDomain.copy(
+                    val finalMsg = deletedMessageStore.redact(currentDomain.copy(
                         content = if (msg.content.isNotEmpty()) msg.content else currentDomain.content,
                         is_edited = msg.is_edited || currentDomain.is_edited,
                         deleted_for_all = msg.deleted_for_all || currentDomain.deleted_for_all,
@@ -677,12 +709,15 @@ class GroupRepository @Inject constructor(
                         status = mergedReceipt.status,
                         delivered_at = mergedReceipt.deliveredAt,
                         read_at = mergedReceipt.readAt
-                    )
+                    ), sessionSnapshot.accountId)
                     
                     if (!isSessionSnapshotValid(sessionSnapshot, "group-update-before-db:${msg.id}")) return@withContext
                     groupDao.insertMessages(listOf(conectate.com.data.local.entity.GroupMessageEntity.fromDomain(finalMsg)))
                     if (!isSessionSnapshotValid(sessionSnapshot, "group-update-before-flow:${msg.id}")) return@withContext
                     updateGroupMessageInFlow(finalMsg.group_id, finalMsg)
+                    if (finalMsg.deleted_for_all) conectate.com.util.DeletedMessageIdentity.create(sessionSnapshot.accountId, "group", finalMsg.group_id, finalMsg.id)?.let {
+                        handleDeletedMessage(it, finalMsg.created_at)
+                    }
                     android.util.Log.d("GroupRepository", "✏️ [UPDATE] Mensaje actualizado: ${msg.id}")
                 }
                 Unit
@@ -753,10 +788,27 @@ class GroupRepository @Inject constructor(
 
 
     private suspend fun showNotification(msg: GroupMessage, groupName: String) {
+        if (isCollectionMembershipNotice(msg.content_type)) return
+        val receivingAccount = conectate.com.util.NotificationAccountTarget(userId = authService.getCurrentUserId(), email = authService.getCurrentUserEmail())
+        val photos = withContext(Dispatchers.IO) {
+            if (!receivingAccount.matches(authService.getCurrentUserId(), authService.getCurrentUserEmail())) return@withContext null
+            kotlinx.coroutines.coroutineScope {
+                val person = async { conectate.com.core.media.NotificationAvatarLoader.senderPhoto(context, userRepository, msg.sender_id) }
+                val room = async {
+                    val image = conectate.com.core.media.NotificationAvatarLoader.optionalValue {
+                        groupDao.getGroupById(msg.group_id.trim().lowercase())?.image
+                    }
+                    conectate.com.core.media.NotificationAvatarLoader.load(context, image)
+                }
+                person.await() to room.await()
+            }
+        }
         withContext(Dispatchers.Main) {
+            if (!receivingAccount.matches(authService.getCurrentUserId(), authService.getCurrentUserEmail())) return@withContext
             try {
                 var cleanId = msg.group_id.trim().lowercase()
-                if (ConversationNotificationPrefs(context).isMuted("group", cleanId)) {
+                if (cleanId == currentOpenedGroupId) return@withContext
+                if (ConversationNotificationPrefs(context).isMuted("group", cleanId, authService.getCurrentUserId())) {
                     android.util.Log.d("GroupRepository", "🔕 [NOTIFICATION] Group $cleanId muted locally. Skipping notification.")
                     return@withContext
                 }
@@ -766,7 +818,7 @@ class GroupRepository @Inject constructor(
                 val previewText = buildConversationBackgroundPreview(msg.content_type, msg.content)
                     ?: buildCallEventPreview(msg.content_type, msg.content)
                     ?: if (msg.content_type == "text") msg.content else "📎 Multimedia"
-                val notification = MessageNotificationFactory.build(
+                MessageNotificationFactory.post(
                     context = context,
                     payload = MessageNotificationPayload(
                         channelId = channelId,
@@ -776,15 +828,18 @@ class GroupRepository @Inject constructor(
                         targetType = "group",
                         conversationTitle = groupName,
                         senderName = msg.sender_name ?: "Alguien",
-                        messageBody = previewText,
+                        messageBody = conectate.com.util.mentionNotificationPreview(previewText,
+                            msg.mentioned_user_ids.any { it.equals(receivingAccount.userId, true) }),
                         notificationId = cleanId.hashCode(),
                         senderId = msg.sender_id,
                         messageId = msg.id,
-                        isGroupConversation = true
+                        largeIcon = photos?.first,
+                        conversationIcon = photos?.second,
+                        isGroupConversation = true,
+                        notificationAccountTarget = receivingAccount
                     )
                 )
 
-                notificationManager.notify(cleanId.hashCode(), notification)
                 android.util.Log.d("GroupRepository", "🔔 [NOTIFICATION] Sent notification for group $groupName, messageId=${msg.id}")
             } catch (e: Exception) {
                 android.util.Log.e("GroupRepository", "❌ [NOTIFICATION] Failed to show notification", e)
@@ -811,13 +866,13 @@ class GroupRepository @Inject constructor(
                     flowOf(emptyList())
                 } else {
                     groupDao.getGroupsForUserFlow(activeUserId)
-                        .distinctUntilChanged()
+                        .combine(deletedMessageStore.changes) { entities, _ -> entities }
                         .map { entities ->
                             entities
-                                .filter { it.is_member && !it.is_deleted }
+                                .filter { !it.is_deleted }
                                 .map { entity ->
                                     GroupWithLastMessage(
-                                        group = entity.toDomain(),
+                                        group = entity.toDomain().copy(is_member = groupDao.getUserRoleSync(entity.id, activeUserId) != null, last_message = deletedMessageStore.redactSummary(activeUserId, "group", entity.id, entity.last_message, entity.last_message_at)),
                                         unreadCount = entity.unread_count
                                     )
                                 }
@@ -873,11 +928,25 @@ class GroupRepository @Inject constructor(
     
 
 
+    private suspend fun cachedHistoryAccess(roomId: String, account: String): conectate.com.data.localfallback.CollectionHistoryAccess {
+        val room = groupDao.getGroupById(roomId)
+        return conectate.com.data.localfallback.resolveCachedCollectionHistory(
+            cached = collectionHistoryStore.load(account, "group", roomId),
+            joinedAt = groupDao.getMemberJoinedAt(roomId, account),
+            isCreator = room?.creator_id?.equals(account, ignoreCase = true) == true && groupDao.getUserRoleSync(roomId, account) != null,
+            isMember = groupDao.getUserRoleSync(roomId, account) != null
+        )
+    }
+
     suspend fun getCachedMessages(groupId: String): List<GroupMessage> = withContext(Dispatchers.IO) {
         var cleanId = groupId.trim().lowercase()
         if (cleanId.isBlank()) return@withContext emptyList()
-        var localMessages = groupDao.getMessagesSync(cleanId).map { it.toDomain() }
-        unifyGroupMessages(localMessages, currentSessionUserId())
+        val account = currentSessionUserId() ?: return@withContext emptyList()
+        val access = if (authService.isLocalFallbackSession()) cachedHistoryAccess(cleanId, account) else null
+        val localMessages = groupDao.getMessagesSync(cleanId).filter {
+            access == null || access.allows(it.created_at) || (!it.is_synced && it.pending_action == "send")
+        }.map { it.toDomain() }
+        unifyGroupMessages(localMessages, account)
     }
 
     fun getMessagesFlow(groupId: String): Flow<List<GroupMessage>> {
@@ -892,9 +961,13 @@ class GroupRepository @Inject constructor(
                 groupDao.getMessagesFlow(cleanId)
                     .distinctUntilChanged()
                     .collect { entities ->
-                        var localMessages = entities.map { it.toDomain() }
-                        val activeUserId = currentSessionUserId()
-                        state.update { current -> unifyGroupMessages(localMessages + current, activeUserId) }
+                        val activeUserId = currentSessionUserId() ?: return@collect
+                        val access = if (authService.isLocalFallbackSession()) cachedHistoryAccess(cleanId, activeUserId) else null
+                        val pendingIds = entities.filter { !it.is_synced && it.pending_action == "send" }.map { it.id }.toSet()
+                        val localMessages = entities.filter { access == null || access.allows(it.created_at) || it.id in pendingIds }.map { it.toDomain() }
+                        state.update { current ->
+                            unifyGroupMessages(localMessages + current.filter { access == null || access.allows(it.created_at) || it.id in pendingIds }, activeUserId)
+                        }
                     }
             }
             // 2. Initial Sync
@@ -1046,7 +1119,7 @@ class GroupRepository @Inject constructor(
         incoming: GroupMessage,
         local: GroupMessage?
     ): GroupMessage {
-        local ?: return incoming
+        local ?: return deletedMessageStore.redact(incoming, currentSessionUserId())
         var mergedReceipt = mergeGroupReceiptState(
             currentStatus = local.status,
             currentDeliveredAt = local.delivered_at,
@@ -1055,7 +1128,7 @@ class GroupRepository @Inject constructor(
             incomingDeliveredAt = incoming.delivered_at,
             incomingReadAt = incoming.read_at
         )
-        return incoming.copy(
+        return deletedMessageStore.redact(incoming.copy(
             group_id = incoming.group_id.ifBlank { local.group_id },
             sender_id = incoming.sender_id.ifBlank { local.sender_id },
             content = incoming.content.ifBlank { local.content },
@@ -1080,7 +1153,7 @@ class GroupRepository @Inject constructor(
             status = mergedReceipt.status,
             delivered_at = mergedReceipt.deliveredAt,
             read_at = mergedReceipt.readAt
-        )
+        ), currentSessionUserId())
     }
 
     private fun unifyGroupMessages(messages: List<GroupMessage>, currentUserId: String?): List<GroupMessage> {
@@ -1108,7 +1181,7 @@ class GroupRepository @Inject constructor(
             } else msg
         }
 
-        return hydrated.sortedBy { it.created_at } // Sort by created_at explicitly as backup
+        return hydrated.map { deletedMessageStore.redact(it, currentUserId) }.sortedBy { it.created_at } // Sort by created_at explicitly as backup
     }
 
     private fun updateGroupMessageInFlow(groupId: String, msg: GroupMessage) {
@@ -1198,36 +1271,57 @@ class GroupRepository @Inject constructor(
 
 
 
-    suspend fun markAsRead(groupId: String) {
-        var cleanId = groupId.trim().lowercase()
+    suspend fun markAsRead(
+        groupId: String,
+        requireRemoteConfirmation: Boolean = false,
+        expectedAccountId: String? = null
+    ) {
+        val cleanId = groupId.trim().lowercase()
         withContext(Dispatchers.IO) {
-            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
-            var token = authService.getAccessToken()
-            var now = java.time.Instant.now().toString()
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured && !token.isNullOrBlank()) {
-                localFallbackApiClient.markCollectionAsRead(token, "groups", cleanId)
-                    .onFailure { android.util.Log.w("GroupRepository", "Ubuntu mark group read failed for $cleanId", it) }
-            } else runCatching {
-                collectionMessageReceiptRemoteStore.markAllMessagesRead(
-                    logTag = "GroupRepository",
-                    messageTable = "group_messages",
-                    scopeColumn = "group_id",
-                    scopeId = cleanId,
-                    currentUserId = currentUserId,
-                    token = token,
-                    rpcFunctionName = "secure_mark_group_messages_read",
-                    rpcScopeKey = "p_group_id",
-                    requireReadAtNull = true
-                )
-            }.onFailure {
-                android.util.Log.w("GroupRepository", "markAsRead fallback to local state for $cleanId", it)
-            }
-            groupDao.markAllAsRead(cleanId, now, currentUserId)
-            groupDao.resetUnreadCount(cleanId)
-            runCatching {
-                var notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.cancel(cleanId.hashCode())
-            }
+            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+                ?: run {
+                    if (requireRemoteConfirmation) throw CancellationException("No active read receipt session")
+                    return@withContext
+                }
+            val session = captureSessionSnapshot(expectedAccountId ?: currentUserId)
+            val token = authService.getAccessToken()
+            val now = java.time.Instant.now().toString()
+            conectate.com.data.repository.collection.applyCollectionReadReceipt(
+                requireRemoteConfirmation = requireRemoteConfirmation,
+                isSessionCurrent = { isSessionSnapshotValid(session, "group-notification-read") },
+                synchronize = {
+                    if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured && !token.isNullOrBlank()) {
+                        localFallbackApiClient.markCollectionAsRead(token, "groups", cleanId)
+                            .onFailure { android.util.Log.w("GroupRepository", "Ubuntu mark group read failed for $cleanId", it) }.isSuccess
+                    } else runCatching {
+                        collectionMessageReceiptRemoteStore.markAllMessagesRead(
+                            logTag = "GroupRepository",
+                            messageTable = "group_messages",
+                            scopeColumn = "group_id",
+                            scopeId = cleanId,
+                            currentUserId = currentUserId,
+                            token = token,
+                            rpcFunctionName = "secure_mark_group_messages_read",
+                            rpcScopeKey = "p_group_id",
+                            requireReadAtNull = true
+                        )
+                    }.onFailure {
+                        android.util.Log.w("GroupRepository", "markAsRead fallback to local state for $cleanId", it)
+                    }.getOrDefault(false)
+                },
+                applyLocal = {
+                    groupDao.markAllAsRead(cleanId, now, currentUserId)
+                    if (!isSessionSnapshotValid(session, "group-read-before-unread"))
+                        throw CancellationException("Read receipt session changed")
+                    groupDao.resetUnreadCount(cleanId)
+                    if (!requireRemoteConfirmation && isSessionSnapshotValid(session, "group-read-before-cancel")) {
+                        runCatching {
+                            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                            MessageNotificationFactory.cancelConversation(context, conectate.com.util.NotificationAccountTarget(userId = authService.getCurrentUserId()), "group", cleanId)
+                        }
+                    }
+                }
+            )
         }
     }
 
@@ -1961,6 +2055,9 @@ class GroupRepository @Inject constructor(
 
             var normalizedUserId = userId.trim().lowercase()
             val existingLocal = groupDao.getMessageById(messageId)?.toDomain()
+            if (forEveryone && existingLocal?.sender_id?.trim()?.lowercase() != normalizedUserId) {
+                return@withContext Result.failure(IllegalStateException("Solo puedes eliminar para todos tus propios mensajes"))
+            }
             val optimisticMessage = existingLocal?.let { domain ->
                 if (forEveryone) {
                     domain.copy(deleted_for_all = true)
@@ -1977,6 +2074,9 @@ class GroupRepository @Inject constructor(
             if (optimisticMessage != null) {
                 groupDao.insertMessages(listOf(GroupMessageEntity.fromDomain(optimisticMessage)))
                 updateGroupMessageInFlow(optimisticMessage.group_id, optimisticMessage)
+                conectate.com.util.DeletedMessageIdentity.create(normalizedUserId, "group", optimisticMessage.group_id, optimisticMessage.id)?.let {
+                    MessageNotificationFactory.redactMessage(context, it, optimisticMessage.created_at, forEveryone = false)
+                }
             }
 
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
@@ -2166,6 +2266,20 @@ class GroupRepository @Inject constructor(
                         android.util.Log.e("GroupRepository", "Error syncing Ubuntu group messages for $groupId", error)
                         return@withContext
                     }
+                    val historyAccess = payload.historyAccess
+                    val pendingHistoryIds = groupDao.getMessagesSync(cleanId).filter { !it.is_synced && it.pending_action == "send" }.map { it.id }.toSet()
+                    if (historyAccess != null) {
+                        val inaccessible = groupDao.getMessagesSync(cleanId).filter {
+                            it.is_synced && it.pending_action == null && !historyAccess.allows(it.created_at)
+                        }.map { it.id }
+                        if (!isSessionSnapshotValid(sessionSnapshot, "group-history-access:$cleanId")) return@withContext
+                        collectionHistoryStore.save(normalizedSessionUserId, "group", cleanId, historyAccess)
+                        if (!historyAccess.isMember) {
+                            if (historyAccess.canReadHistory) groupDao.insertMembers(listOf(GroupMemberEntity(cleanId, normalizedSessionUserId, "former_member", historyAccess.joinedAt ?: java.time.Instant.now().toString())))
+                            else groupDao.removeMember(cleanId, normalizedSessionUserId)
+                        }
+                        if (inaccessible.isNotEmpty()) groupDao.deleteInaccessibleHistory(cleanId, inaccessible)
+                    }
                     val localMessagesById = groupDao.getMessagesSync(cleanId)
                         .associateBy { it.id.trim().lowercase() }
                         .mapValues { (_, entity) -> entity.toDomain() }
@@ -2190,7 +2304,7 @@ class GroupRepository @Inject constructor(
                     if (_activeGroupMessages.containsKey(cleanId)) {
                         val current = _activeGroupMessages[cleanId]?.value ?: emptyList()
                         _activeGroupMessages[cleanId]?.value = CollectionMessageSyncSupport.mergeActiveMessages(
-                            current = current,
+                            current = current.filter { historyAccess == null || historyAccess.allows(it.created_at) || it.id in pendingHistoryIds },
                             incoming = mergedResponse,
                             idSelector = { it.id },
                             createdAtSelector = { it.created_at }
@@ -2199,9 +2313,10 @@ class GroupRepository @Inject constructor(
                     if (mergedResponse.isNotEmpty()) {
                         groupDao.insertMessages(mergedResponse.map { GroupMessageEntity.fromDomain(it) })
                         mergedResponse.maxByOrNull { it.created_at }?.let { lastMsg ->
+                        deletedMessageStore.recordSummary(currentSessionUserId(), "group", cleanId, lastMsg.id, lastMsg.created_at)
                             groupDao.updateMetadata(
                                 cleanId,
-                                CollectionMessageSyncSupport.buildMetadataPreview(lastMsg.content_type, lastMsg.content),
+                                if (lastMsg.deleted_for_all) "Mensaje eliminado" else CollectionMessageSyncSupport.buildMetadataPreview(lastMsg.content_type, lastMsg.content),
                                 lastMsg.created_at
                             )
                         }
@@ -2263,10 +2378,11 @@ class GroupRepository @Inject constructor(
                     
                     val lastMsg = mergedResponse.maxByOrNull { it.created_at }
                     if (lastMsg != null) {
+                        deletedMessageStore.recordSummary(currentSessionUserId(), "group", cleanId, lastMsg.id, lastMsg.created_at)
                         if (!isSessionSnapshotValid(sessionSnapshot, "group-sync-messages-before-metadata:$cleanId")) return@withContext
                         groupDao.updateMetadata(
                             cleanId,
-                            CollectionMessageSyncSupport.buildMetadataPreview(lastMsg.content_type, lastMsg.content),
+                            if (lastMsg.deleted_for_all) "Mensaje eliminado" else CollectionMessageSyncSupport.buildMetadataPreview(lastMsg.content_type, lastMsg.content),
                             lastMsg.created_at
                         )
                     }
@@ -2295,7 +2411,9 @@ class GroupRepository @Inject constructor(
         val cleanId = item.id.trim().lowercase()
         val now = java.time.Instant.now().toString()
         val updatedAt = item.updatedAt.ifBlank { now }
-        val preview = item.subtitle.takeIf { it.isNotBlank() && it != "Sin actividad reciente" }
+        deletedMessageStore.recordSummary(currentUserId, "group", cleanId, item.lastMessageId, updatedAt)
+        val preview = deletedMessageStore.redactSummary(currentUserId, "group", cleanId,
+            item.subtitle.takeIf { it.isNotBlank() && it != "Sin actividad reciente" }, updatedAt)
         val creatorId = item.creatorId?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: currentUserId
         return Group(
             id = cleanId,
@@ -2306,7 +2424,7 @@ class GroupRepository @Inject constructor(
             creator_id = creatorId,
             last_message = preview,
             last_message_at = updatedAt,
-            is_member = true,
+            is_member = item.isMember,
             is_deleted = false,
             only_admins_can_talk = item.onlyAdminsCanTalk,
             rest_until = item.restUntil
@@ -2323,6 +2441,9 @@ class GroupRepository @Inject constructor(
             scope.launch { readSynchronizer.flush(userId, "group", token) }
             val inbox = localFallbackApiClient.loadMessagesInbox(token, "groups").getOrThrow()
             val activeItems = inbox.items.filter { it.id.isNotBlank() }
+            activeItems.forEach { item ->
+                item.historyAccess?.let { collectionHistoryStore.save(userId, "group", item.id.trim().lowercase(), it) }
+            }
             val activeIds = activeItems.map { it.id.trim().lowercase() }.distinct()
             val localUnreadCounts = groupDao.getUnreadCountRows(userId)
                 .associate { row -> row.groupId.trim().lowercase() to row.unreadCount.coerceAtLeast(0) }
@@ -2344,7 +2465,8 @@ class GroupRepository @Inject constructor(
             )
             groupDao.insertMembers(
                 activeIds.map { groupId ->
-                    GroupMemberEntity(groupId, userId, "member", java.time.Instant.now().toString())
+                    val item = activeItems.first { it.id.trim().lowercase() == groupId }
+                    GroupMemberEntity(groupId, userId, if (item.isMember) "member" else "former_member", item.historyAccess?.joinedAt ?: java.time.Instant.now().toString())
                 }
             )
             groupDao.markOthersAsNotMembers(activeIds)
@@ -2735,8 +2857,10 @@ class GroupRepository @Inject constructor(
                 ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
             val cleanId = groupId.trim().lowercase()
             val cleanUserId = userId.trim().lowercase()
-            localFallbackApiClient.leaveCollection(token, "groups", cleanId).getOrThrow()
-            groupDao.removeMember(cleanId, cleanUserId)
+            val exit = localFallbackApiClient.leaveCollectionWithHistory(token, "groups", cleanId).getOrThrow()
+            val history = exit.historyAccess ?: localFallbackApiClient.loadGroupRoom(token, cleanId).getOrNull()?.historyAccess
+            history?.let { collectionHistoryStore.save(cleanUserId, "group", cleanId, it) }
+            groupDao.insertMembers(listOf(GroupMemberEntity(cleanId, cleanUserId, "former_member", history?.joinedAt ?: java.time.Instant.now().toString())))
             groupDao.updateMembership(cleanId, false)
             return@withContext Result.success(Unit)
         }
@@ -2832,9 +2956,9 @@ class GroupRepository @Inject constructor(
             val notificationPrefs = ConversationNotificationPrefs(context)
             val untilMillis = runCatching { java.time.Instant.parse(restUntil).toEpochMilli() }.getOrNull()
             if (untilMillis != null) {
-                notificationPrefs.muteConversationUntil("group", cleanId, untilMillis)
+                notificationPrefs.muteConversationUntil("group", cleanId, untilMillis, authService.getCurrentUserId())
             } else {
-                notificationPrefs.unmuteConversation("group", cleanId)
+                notificationPrefs.unmuteConversation("group", cleanId, authService.getCurrentUserId())
             }
             groupDao.getGroupById(cleanId)?.let { cached ->
                 groupDao.upsertGroup(cached.copy(rest_until = restUntil))
@@ -2945,8 +3069,13 @@ class GroupRepository @Inject constructor(
     }
 
     suspend fun deleteGroupLocally(groupId: String) {
-        var cleanId = groupId.trim().lowercase()
-        groupDao.deleteGroup(cleanId)
+        val cleanId = groupId.trim().lowercase()
+        if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+            val token = authService.getAccessTokenAwait() ?: throw IllegalStateException("No se pudo borrar el chat. Inténtalo de nuevo.")
+            localFallbackApiClient.hideCollectionHistory(token, "groups", cleanId).getOrThrow()
+        }
+        val ownAccount = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
+        groupDao.removeMember(cleanId, ownAccount)
     }
 
 

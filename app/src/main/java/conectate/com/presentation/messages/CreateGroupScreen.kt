@@ -1,5 +1,7 @@
 package conectate.com.presentation.messages
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.clickable
@@ -75,7 +77,7 @@ fun CreateGroupScreen(
                         if (media.type == "video") {
                             VideoUtils.generateVideoThumbnail(context, media.uri)
                         } else {
-                            context.contentResolver.openInputStream(media.uri)?.use { it.readBytes() }
+                            runCatching { context.contentResolver.openInputStream(media.uri)?.use { it.readMediaBytesWithLimit(60L * 1024 * 1024) } }.getOrNull()
                         }
                     }
                     viewModel.setImageBytes(bytes)
@@ -218,7 +220,7 @@ fun CreateGroupScreen(
                                 items(selectedUsers) { user ->
                                     Box(contentAlignment = Alignment.TopEnd) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            CircularProfileImage(
+                                            CircularProfileImage(openMomentOnClick = false, ownerId = user.id, 
                                                 imageUrl = user.avatar_url,
                                                 size = 50.dp,
                                                 fallbackName = user.displayName
@@ -359,7 +361,7 @@ fun UserSelectionItem(user: User, isSelected: Boolean, onToggle: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(contentAlignment = Alignment.BottomEnd) {
-            CircularProfileImage(
+            CircularProfileImage(openMomentOnClick = false, ownerId = user.id, 
                 imageUrl = user.avatar_url,
                 size = 48.dp,
                 fallbackName = user.displayName

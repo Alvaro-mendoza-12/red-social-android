@@ -229,11 +229,19 @@ class OfflineVideoRepository @Inject constructor(
             "La dirección del archivo no es válida"
         }
         destination.parentFile?.mkdirs()
+        val storageRead = conectate.com.core.media.StorageReadSession.isStorageRequest(sourceUrl)
+        val storageCredential = if (storageRead) conectate.com.core.media.StorageReadSession.readySnapshot() else null
+        val storageIdentity = storageCredential?.identity
         val connection = (URL(sourceUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = true
+            instanceFollowRedirects = !storageRead
             requestMethod = "GET"
+            if (storageRead) {
+                conectate.com.core.media.StorageReadSession.requireCurrent(storageIdentity)
+                storageCredential?.accessToken?.let { setRequestProperty("Authorization", "Bearer $it") }
+                setRequestProperty("Cache-Control", "no-store")
+            }
             setRequestProperty("Accept", "*/*")
             UbuntuStorageUrl.publicRequestHeaders.forEach { (name, value) ->
                 setRequestProperty(name, value)
@@ -241,6 +249,7 @@ class OfflineVideoRepository @Inject constructor(
         }
         try {
             val status = connection.responseCode
+            if (storageRead) conectate.com.core.media.StorageReadSession.requireCurrent(storageIdentity)
             if (status !in 200..299) throw IllegalStateException("No se pudo descargar el archivo ($status)")
             val declaredLength = connection.contentLengthLong
             if (declaredLength > maximumBytes) {
@@ -252,7 +261,7 @@ class OfflineVideoRepository @Inject constructor(
             }
 
             var copied = 0L
-            connection.inputStream.buffered().use { input ->
+            conectate.com.core.media.StorageReadSession.guardInputStream(sourceUrl, connection.inputStream, storageIdentity).buffered().use { input ->
                 destination.outputStream().buffered().use { output ->
                     val buffer = ByteArray(DOWNLOAD_BUFFER_BYTES)
                     while (true) {

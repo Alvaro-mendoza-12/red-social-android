@@ -93,6 +93,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     @Inject
     lateinit var appSettingsPreferences: AppSettingsPreferences
 
+    @Inject lateinit var notificationUserRepository: conectate.com.data.repository.UserRepository
+
+    @Inject lateinit var notificationGroupDao: conectate.com.data.local.dao.GroupDao
+    @Inject lateinit var notificationCommunityDao: conectate.com.data.local.dao.CommunityDao
+
     private val serviceScope = newSafeScope("FirebaseMessagingService", Dispatchers.IO)
     private val callCancellationGuard by lazy { CallCancellationGuard(this) }
 
@@ -175,6 +180,30 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 TAG,
                 "Extraction: chatId=$chatId, groupId=$groupId, communityId=$communityId, isGroup=$isGroup, isCommunity=$isCommunity"
             )
+
+            // Deletions are data-only control events, processed before hints, repository inserts and alerts.
+            if (type.trim().equals("message_deleted", true)) {
+                val event = conectate.com.util.deletedMessageEvent(data) ?: return
+                val recipient = event.identity.accountId
+                val current = authService.getCurrentUserId()?.trim()?.lowercase()
+                val isKnownRecipient = recipient == current || accountSessionRepository.accounts.value.any {
+                    it.user_id?.trim()?.lowercase() == recipient
+                }
+                if (!isKnownRecipient) return
+                MessageNotificationFactory.redactMessage(this, event.identity, event.createdAt, channelContextId = event.channelId)
+                multiAccountInboxRepository.redactDeletedMessageHint(event.identity)
+                if (recipient == current) runBlocking(Dispatchers.IO) {
+                    when (event.identity.targetType) {
+                        "group" -> groupRepository.handleDeletedMessage(event.identity, event.createdAt, event.channelId)
+                        "community" -> communityRepository.handleDeletedMessage(event.identity, event.createdAt, event.channelId)
+                        else -> messageRepository.handleDeletedMessage(event.identity, event.createdAt, event.channelId)
+                    }
+                }
+                return
+            }
+            val incomingIdentity = conectate.com.util.DeletedMessageIdentity.create(
+                effectiveAccountTarget?.userId, if (isCommunity) "community" else if (isGroup) "group" else "chat", chatId, messageId)
+            if (incomingIdentity != null && conectate.com.util.DeletedMessageStore(this).isSuppressed(incomingIdentity)) return
 
             if (!isTargetingActiveAccount && !chatId.isNullOrBlank()) {
                 val pendingTargetType = when {
@@ -480,8 +509,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 !chatId.isNullOrBlank() &&
                 messageSessionStateStore.isActiveConversationVisible(activeConversationType, chatId)
             ) {
-                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-                    .cancel(chatId.hashCode())
+                MessageNotificationFactory.cancelConversation(this, effectiveAccountTarget, activeConversationType, chatId)
                 android.util.Log.d(TAG, "Conversation $activeConversationType/$chatId visible; notification skipped.")
                 return
             }
@@ -493,14 +521,24 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
             // 4. CHAT ROUTING
             if (isGroup || isCommunity) {
-                var groupName = data["group_name"] ?: data["groupName"] ?: data["community_name"] ?: "Grupo/Comunidad"
+                val cachedConversation = if (isTargetingActiveAccount && !chatId.isNullOrBlank()) runBlocking(Dispatchers.IO) {
+                    withTimeoutOrNull(300L) { conectate.com.core.media.NotificationAvatarLoader.optionalValue {
+                        if (isCommunity) notificationCommunityDao.getCommunityById(chatId)?.let { it.name to it.image }
+                        else notificationGroupDao.getGroupById(chatId)?.let { it.name to it.image }
+                    } }
+                } else null
+                val targetType = if (isCommunity) "community" else "group"
+                val suppliedName = data["conversation_title"] ?: data["community_name"] ?: data["communityName"] ?: data["group_name"] ?: data["groupName"]
+                val groupName = conectate.com.util.ConversationNotificationIdentity.title(targetType, suppliedName, cachedConversation?.first)
                 sendGroupNotification(
                     title = groupName,
-                    messageBody = displayContent,
+                    messageBody = conectate.com.util.mentionNotificationPreview(displayContent, data["mentioned"] == "true"),
                     chatId = chatId ?: "group_default",
                     senderId = senderId,
                     senderName = senderName,
                     groupName = groupName,
+                    conversationAvatar = data["conversation_avatar"] ?: data["community_avatar"] ?: data["group_avatar"] ?: cachedConversation?.second,
+                    channelContextId = data["channel_id"],
                     senderAvatar = data["sender_avatar"],
                     isGroup = isGroup,
                     isCommunity = isCommunity,
@@ -652,15 +690,20 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     ) {
         var conversationId = chatId?.trim()?.lowercase().orEmpty()
         if (conversationId.isBlank()) return
-        if (respectMutePreferences && ConversationNotificationPrefs(this).isMuted(targetType = "chat", conversationId = conversationId)) {
+        if (respectMutePreferences && ConversationNotificationPrefs(this).isMuted(targetType = "chat", conversationId = conversationId, accountId = authService.getCurrentUserId())) {
             android.util.Log.d(TAG, "Chat $conversationId muted via notification prefs. Notification skipped.")
             return
         }
 
-        var avatarBitmap = getAvatarBitmap(senderAvatar)
-        var notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val avatarBitmap = getMessageSenderBitmap(senderId, senderAvatar, respectMutePreferences)
+        if (respectMutePreferences && (
+                notificationAccountTarget?.matches(authService.getCurrentUserId(), authService.getCurrentUserEmail()) == false ||
+                messageSessionStateStore.isActiveConversationVisible("chat", conversationId) ||
+                ConversationNotificationPrefs(this).isMuted("chat", conversationId, authService.getCurrentUserId())
+                || messageRepository.isChatMutedLocally(conversationId)
+            )) return
         var notificationId = conversationId.hashCode()
-        var notification = MessageNotificationFactory.build(
+        MessageNotificationFactory.post(
             context = this,
             payload = MessageNotificationPayload(
                 channelId = getString(R.string.chat_notification_channel_id),
@@ -680,7 +723,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 allowInlineActions = allowInlineActions
             )
         )
-        notificationManager.notify(notificationId, notification)
     }
 
     @OptIn(ExperimentalFoundationApi::class)
@@ -691,6 +733,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         senderId: String?,
         senderName: String,
         groupName: String?,
+        conversationAvatar: String?,
+        channelContextId: String?,
         senderAvatar: String?,
         isGroup: Boolean,
         isCommunity: Boolean,
@@ -706,13 +750,18 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             else -> "chat"
         }
         var conversationId = chatId.trim().lowercase()
-        if (respectMutePreferences && ConversationNotificationPrefs(this).isMuted(targetType = targetType, conversationId = conversationId)) {
+        if (respectMutePreferences && ConversationNotificationPrefs(this).isMuted(targetType = targetType, conversationId = conversationId, accountId = authService.getCurrentUserId())) {
             android.util.Log.d(TAG, "$targetType $conversationId muted via notification prefs. Notification skipped.")
             return
         }
-        var avatarBitmap = getAvatarBitmap(senderAvatar)
-        var notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        var notification = MessageNotificationFactory.build(
+        val avatarBitmap = getMessageSenderBitmap(senderId, senderAvatar, respectMutePreferences)
+        val roomBitmap = getAvatarBitmap(conversationAvatar)
+        if (respectMutePreferences && (
+                notificationAccountTarget?.matches(authService.getCurrentUserId(), authService.getCurrentUserEmail()) == false ||
+                messageSessionStateStore.isActiveConversationVisible(targetType, conversationId) ||
+                ConversationNotificationPrefs(this).isMuted(targetType, conversationId, authService.getCurrentUserId())
+            )) return
+        MessageNotificationFactory.post(
             context = this,
             payload = MessageNotificationPayload(
                 channelId = channelId,
@@ -729,10 +778,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 largeIcon = avatarBitmap,
                 isGroupConversation = true,
                 notificationAccountTarget = notificationAccountTarget?.copy(displayName = accountLabel ?: notificationAccountTarget.displayName),
-                allowInlineActions = false
+                allowInlineActions = respectMutePreferences,
+                conversationIcon = roomBitmap,
+                channelContextId = channelContextId
             )
         )
-        notificationManager.notify(conversationId.hashCode(), notification)
     }
 
     private fun sendLiveStartedNotification(
@@ -877,24 +927,15 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         else notificationManager.notify("system:$stableId", stableId.hashCode(), notificationBuilder.build())
     }
 
-    private fun getAvatarBitmap(url: String?): Bitmap? {
-        if (url.isNullOrBlank()) return null
-        return try {
-            val connection = java.net.URL(url).openConnection().apply {
-                connectTimeout = 1500
-                readTimeout = 2000
-                useCaches = true
-            }
-            connection.doInput = true
-            connection.connect()
-            connection.getInputStream().use { input ->
-                BitmapFactory.decodeStream(input)
-            }
-        } catch (e: Exception) {
-            android.util.Log.e(TAG, "Avatar download failed: ${e.message}")
-            null
+    private fun getMessageSenderBitmap(senderId: String?, avatarUrl: String?, resolveProfile: Boolean): Bitmap? {
+        if (!resolveProfile || android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return getAvatarBitmap(avatarUrl)
+        return runBlocking(Dispatchers.IO) {
+            conectate.com.core.media.NotificationAvatarLoader.senderPhoto(this@MyFirebaseMessagingService, notificationUserRepository, senderId, avatarUrl)
         }
     }
+
+    private fun getAvatarBitmap(url: String?): Bitmap? =
+        conectate.com.core.media.NotificationAvatarLoader.loadBlocking(this, url)
 
     private fun sendIncomingCallNotification(invite: conectate.com.data.model.CallInvite, accountTarget: NotificationAccountTarget?) {
         val notificationStarted = android.os.SystemClock.elapsedRealtime()

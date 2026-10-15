@@ -114,28 +114,31 @@ interface GroupDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMembers(members: List<GroupMemberEntity>)
 
-    @Query("SELECT * FROM group_members WHERE group_id = :groupId")
+    @Query("SELECT * FROM group_members WHERE group_id = :groupId AND role != 'former_member'")
     fun getMembersFlow(groupId: String): Flow<List<GroupMemberEntity>>
+
+    @Query("SELECT joined_at FROM group_members WHERE group_id = :roomId AND user_id = :userId")
+    suspend fun getMemberJoinedAt(roomId: String, userId: String): String?
 
     @Query("DELETE FROM group_members WHERE group_id = :groupId AND user_id = :userId")
     suspend fun removeMember(groupId: String, userId: String)
 
-    @Query("SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id = :groupId AND user_id = :userId)")
+    @Query("SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id = :groupId AND user_id = :userId AND role != 'former_member')")
     fun isUserMemberFlow(groupId: String, userId: String): Flow<Boolean>
 
-    @Query("DELETE FROM group_members WHERE user_id = :userId AND group_id NOT IN (:validIds)")
+    @Query("DELETE FROM group_members WHERE user_id = :userId AND role != 'former_member' AND group_id NOT IN (:validIds)")
     suspend fun deleteMembershipsExcept(userId: String, validIds: List<String>)
 
-    @Query("DELETE FROM group_members WHERE user_id = :userId")
+    @Query("DELETE FROM group_members WHERE user_id = :userId AND role != 'former_member'")
     suspend fun deleteAllMembershipsForUser(userId: String)
 
-    @Query("DELETE FROM group_members WHERE user_id = :userId AND group_id NOT IN (:validGroupIds)")
+    @Query("DELETE FROM group_members WHERE user_id = :userId AND role != 'former_member' AND group_id NOT IN (:validGroupIds)")
     suspend fun deleteUserMembershipsNotIn(userId: String, validGroupIds: List<String>)
 
-    @Query("SELECT role FROM group_members WHERE group_id = :groupId AND user_id = :userId")
+    @Query("SELECT role FROM group_members WHERE group_id = :groupId AND user_id = :userId AND role != 'former_member'")
     fun getUserRoleFlow(groupId: String, userId: String): Flow<String?>
 
-    @Query("SELECT role FROM group_members WHERE group_id = :groupId AND user_id = :userId")
+    @Query("SELECT role FROM group_members WHERE group_id = :groupId AND user_id = :userId AND role != 'former_member'")
     suspend fun getUserRoleSync(groupId: String, userId: String): String?
 
     // MESSAGES
@@ -144,6 +147,10 @@ interface GroupDao {
 
     @Query("SELECT * FROM group_messages WHERE group_id = :groupId ORDER BY created_at ASC")
     suspend fun getMessagesSync(groupId: String): List<GroupMessageEntity>
+
+    @Query("DELETE FROM group_messages WHERE group_id = :roomId AND id IN (:ids) AND is_synced = 1 AND pending_action IS NULL")
+    suspend fun deleteInaccessibleHistory(roomId: String, ids: List<String>)
+
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<GroupMessageEntity>)
@@ -217,6 +224,12 @@ interface GroupDao {
         now: String,
         currentUserId: String
     )
+
+    @Query("UPDATE group_messages SET deleted_for_all = 1, content = '', content_type = 'text', media_url = NULL, poll_id = NULL, reply_to_id = NULL, reply_to_json = NULL, reactions_json = '{}' WHERE id = :messageId AND group_id = :conversationId")
+    suspend fun redactDeletedMessage(conversationId: String, messageId: String)
+
+    @Query("UPDATE groups SET last_message = 'Mensaje eliminado' WHERE id = :conversationId AND (SELECT id FROM group_messages WHERE group_id = :conversationId ORDER BY created_at DESC, id DESC LIMIT 1) = :messageId AND COALESCE(julianday(last_message_at), -1) = COALESCE(julianday(COALESCE((SELECT created_at FROM group_messages WHERE id = :messageId AND group_id = :conversationId), :createdAt)), -2)")
+    suspend fun redactDeletedPreview(conversationId: String, messageId: String, createdAt: String?)
 }
 
 

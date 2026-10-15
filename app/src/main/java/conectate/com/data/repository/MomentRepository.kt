@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -75,6 +77,13 @@ class MomentRepository @Inject constructor(
     private var viewsChannel: RealtimeChannel? = null
 
     private var observationJob: kotlinx.coroutines.Job? = null
+    @Volatile private var momentAccountGeneration = 0L
+    private val feedReadGeneration = java.util.concurrent.atomic.AtomicLong()
+    @Volatile private var avatarOwnerIds: List<String> = emptyList()
+    @Volatile private var globalAvatarOwnerIds: List<String> = emptyList()
+    private var momentAccountId: String? = authService.getCurrentUserId()?.trim()?.lowercase()
+    private val _momentAccount = MutableStateFlow(momentAccountId)
+    val momentAccount: StateFlow<String?> = _momentAccount.asStateFlow()
     private val locallyDeletedMomentIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     private fun canonicalMomentId(momentId: String): String =
@@ -91,6 +100,17 @@ class MomentRepository @Inject constructor(
                 var userId = session?.user?.id
                 android.util.Log.d("MomentRepository", "⚡ Auth session changed. Restarting Realtime... User: $userId")
                 
+                val account = authService.getCurrentUserId()?.trim()?.lowercase()
+                if (account != momentAccountId) {
+                    momentAccountId = account
+                    momentAccountGeneration++
+                    feedReadGeneration.incrementAndGet()
+                    avatarOwnerIds = emptyList()
+                    globalAvatarOwnerIds = emptyList()
+                    _moments.value = emptyList()
+                    _momentAccount.value = account
+                    locallyDeletedMomentIds.clear()
+                }
                 observationJob?.cancel()
                 observationJob = scope.launch {
                     val currentSession = session
@@ -261,6 +281,7 @@ class MomentRepository @Inject constructor(
     }
 
     private suspend fun fetchAndAddMoment(momentId: String) {
+        val generation = momentAccountGeneration
         try {
             var currentUserId = authService.getCurrentUserId() ?: return // Fetch the specific moment with profile join
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/moments") {
@@ -418,6 +439,7 @@ class MomentRepository @Inject constructor(
                 musicEmbedded = json["music_embedded"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false,
             ).normalizedStorageUrls()
 
+            if (generation != momentAccountGeneration || currentUserId != authService.getCurrentUserId()) return
             // Add or update in list
             var currentList = _moments.value.toMutableList()
             val existingIndex = currentList.indexOfFirst { it.id == momentId }
@@ -461,7 +483,26 @@ class MomentRepository @Inject constructor(
         }
     }
 
+    suspend fun refreshMomentsForAuthors(ownerIds: List<String>) {
+        val owners = conectate.com.data.model.momentAvatarOwnerIds(ownerIds)
+        if (owners == avatarOwnerIds) return
+        avatarOwnerIds = owners
+        refreshMoments()
+    }
+
+    /** Global visible avatars and Social authors share one authorized query. */
+    suspend fun refreshGlobalAvatarOwners(ownerIds: List<String>, expectedAccountId: String) {
+        if (!expectedAccountId.equals(authService.getCurrentUserId(), ignoreCase = true)) return
+        val owners = conectate.com.data.model.momentAvatarOwnerIds(ownerIds)
+        if (owners == globalAvatarOwnerIds) return
+        globalAvatarOwnerIds = owners
+        refreshMoments()
+    }
+
     suspend fun refreshMoments() {
+        val generation = momentAccountGeneration
+        val readTicket = feedReadGeneration.incrementAndGet()
+        val requestedOwners = conectate.com.data.model.momentAvatarOwnerIds(globalAvatarOwnerIds + avatarOwnerIds)
         android.util.Log.d("MomentRepository", ">>> refreshMoments() called")
         try {
             var currentUserId = authService.getCurrentUserId() ?: return
@@ -470,7 +511,7 @@ class MomentRepository @Inject constructor(
             if (shouldUseUbuntuBackend()) {
                 val token = authService.getAccessToken()?.trim().orEmpty()
                 if (token.isBlank()) return
-                val feed = localFallbackApiClient.loadMomentsFeed(token).getOrElse { error ->
+                val feed = localFallbackApiClient.loadMomentsFeed(token, requestedOwners).getOrElse { error ->
                     android.util.Log.e("MomentRepository", "Ubuntu moments feed failed", error)
                     return
                 }
@@ -538,6 +579,8 @@ class MomentRepository @Inject constructor(
                         isLikedByMe = json["reacted_by_me"]?.jsonPrimitive?.booleanOrNull ?: false
                     ).normalizedStorageUrls()
                 }
+                if (generation != momentAccountGeneration || currentUserId != authService.getCurrentUserId()) return
+                if (readTicket != feedReadGeneration.get()) return
                 _moments.value = parsed
                 return
             }
@@ -682,8 +725,12 @@ class MomentRepository @Inject constructor(
                             musicEmbedded = json["music_embedded"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false,
                         ).normalizedStorageUrls()
                 }
+                if (generation != momentAccountGeneration || currentUserId != authService.getCurrentUserId()) return
+                if (readTicket != feedReadGeneration.get()) return
                 _moments.value = parsedMoments
             }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             android.util.Log.e("MomentRepository", "Error refreshing moments", e)
         }
@@ -750,7 +797,7 @@ class MomentRepository @Inject constructor(
             val rawBytes = if (requestedVideo) {
                 readUriHeaderBytes(mediaUri)
             } else {
-                context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
+                context.contentResolver.openInputStream(mediaUri)?.use { it.readMediaBytesWithLimit(MAX_MOMENT_MEDIA_BYTES) }
             }
                 ?: return@withContext Result.failure(Exception("Failed to read media file"))
 

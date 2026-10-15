@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { redactDeletedMessage, refreshChatSummary } = require('./message-deletion-policy')
 const { publishChatMessageEvent } = require('./realtime-publish')
 
 const validScopes = new Set(['dm', 'group', 'community'])
@@ -289,7 +290,7 @@ async function deliverClaimedJob(client, job) {
     if (!rows[0]) {
       const existing = await client.query(
         `SELECT id::text, chat_id, sender_id, content, content_type, media_url,
-                status, created_at, updated_at
+                status, created_at, updated_at, deleted_for_all
          FROM fallback_messages WHERE id = $1::uuid LIMIT 1`,
         [job.message_id],
       )
@@ -297,13 +298,7 @@ async function deliverClaimedJob(client, job) {
     } else {
       message = rows[0]
     }
-    await client.query(
-      `UPDATE fallback_chats
-       SET last_message = $2, last_message_at = NOW(), last_message_sender_id = $3,
-           last_message_id = $4, updated_at = NOW()
-       WHERE id = $1::uuid`,
-      [job.target_id, job.content || `[${job.content_type}]`, identity.senderId, job.message_id],
-    )
+    await refreshChatSummary(client, job.target_id)
   } else {
     const { rows } = await client.query(
       `INSERT INTO fallback_room_messages(
@@ -319,7 +314,7 @@ async function deliverClaimedJob(client, job) {
     if (!rows[0]) {
       const existing = await client.query(
         `SELECT id::text, room_id, sender_id, content, content_type, media_url,
-                status, created_at, updated_at
+                status, created_at, updated_at, deleted_for_all
          FROM fallback_room_messages WHERE id = $1::uuid LIMIT 1`,
         [job.message_id],
       )
@@ -337,7 +332,7 @@ async function deliverClaimedJob(client, job) {
      WHERE id = $1::uuid`,
     [job.id],
   )
-  return { message, recipients }
+  return { message: redactDeletedMessage(message), recipients }
 }
 
 async function processDueScheduledMessageJobs(pool, options = {}) {
@@ -385,6 +380,7 @@ async function processDueScheduledMessageJobs(pool, options = {}) {
         ? claimedJob.target_id
         : `room:${claimedJob.scope_type}:${claimedJob.target_id}`
       void publishChatMessageEvent({
+        pool,
         chatId: channel,
         message: delivered.message,
         recipientIds: delivered.recipients,

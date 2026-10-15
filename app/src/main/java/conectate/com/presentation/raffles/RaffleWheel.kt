@@ -3,7 +3,7 @@ package conectate.com.presentation.raffles
 import android.graphics.Paint
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
@@ -31,6 +31,8 @@ import conectate.com.data.raffles.RaffleParticipant
 internal val raffleWheelColors = listOf(Color(0xFFD92D45), Color(0xFF245BDD), Color(0xFF13795B),
     Color(0xFFB85C00), Color(0xFF7734BF), Color(0xFF087E8B))
 
+internal val raffleSpinEasing = CubicBezierEasing(.12f, 0f, .08f, 1f)
+
 /** Segment zero begins at the fixed top pointer; probability is never calculated here. */
 fun wheelTargetRotation(current: Float, winnerIndex: Int, count: Int): Float {
     require(count > 0 && winnerIndex in 0 until count)
@@ -53,7 +55,7 @@ fun RaffleWheel(participants: List<RaffleParticipant>, winnerId: String? = null,
             if (index >= 0) {
                 // Equivalent visual orientation, bounded float precision across thousands of draws/rounds.
                 rotation.snapTo((rotation.value % 360f + 360f) % 360f)
-                rotation.animateTo(wheelTargetRotation(rotation.value, index, participants.size), tween(4000, easing = FastOutSlowInEasing))
+                rotation.animateTo(wheelTargetRotation(rotation.value, index, participants.size), tween(4000, easing = raffleSpinEasing))
             }
             finish()
         }
@@ -98,8 +100,14 @@ fun RaffleWheel(participants: List<RaffleParticipant>, winnerId: String? = null,
                 lineTo(center.x, 23.dp.toPx())
                 close()
             }
-            drawPath(pointer, outline)
-            drawPath(pointer, hub, style = Stroke(1.5.dp.toPx()))
+            // A small pointer tick follows visual sector boundaries, without changing the server winner.
+            val degrees = rotationState?.value ?: rotation.value
+            val phase = ((degrees / slice) % 1f + 1f) % 1f
+            val tick = if (animate) kotlin.math.sin(phase * kotlin.math.PI).toFloat() * 7f else 0f
+            rotate(-tick, Offset(center.x, 2.dp.toPx())) {
+                drawPath(pointer, outline)
+                drawPath(pointer, hub, style = Stroke(1.5.dp.toPx()))
+            }
         }
         if (participants.size > 12) Text("Todos los segmentos tienen la misma probabilidad. Consulta los nombres en la lista.",
             style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))

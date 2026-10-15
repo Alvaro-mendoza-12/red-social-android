@@ -17,4 +17,19 @@ class CallMediaSessionPolicyTest {
         assertTrue(canRefreshCallMedia(active,"call-a"))
         assertTrue(canRefreshCallMedia(active.copy(connectionState=CallConnectionState.CONNECTED),"CALL-A"))
     }
+    @Test fun reconnectionPreservesTheOriginalDuration() {
+        assertEquals(1_000L, connectedCallStartTime(active.copy(
+            connectionState=CallConnectionState.RECONNECTING, startedAtEpochMs=1_000L), 8_000L))
+    }
+    @Test fun firstConnectionStartsTheDuration() {
+        assertEquals(8_000L, connectedCallStartTime(active, 8_000L))
+    }
+    @Test fun signalingRejoinRenegotiatesAnExistingPeer() {
+        assertTrue(shouldRenegotiateCallParticipant(existingRemoteSocket=true, signalingRejoined=true))
+        assertFalse(shouldRenegotiateCallParticipant(existingRemoteSocket=true, signalingRejoined=false))
+    }
+    @Test fun newRemotePeersAlwaysNegotiate() {
+        assertTrue(shouldRenegotiateCallParticipant(existingRemoteSocket=false, signalingRejoined=false))
+        assertTrue(shouldRenegotiateCallParticipant(existingRemoteSocket=false, signalingRejoined=true))
+    }
 }

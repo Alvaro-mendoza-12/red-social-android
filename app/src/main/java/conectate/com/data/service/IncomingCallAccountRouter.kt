@@ -16,7 +16,7 @@ import kotlinx.serialization.json.put
 /** An explicit answer may switch account; declining never changes the active session. */
 class IncomingCallAccountRouter @Inject constructor(
     private val auth: AuthService,
-    private val accounts: AccountSessionRepository,
+    private val accounts: Lazy<AccountSessionRepository>,
     private val authRepository: Lazy<AuthRepository>,
     private val calls: Lazy<CallRepository>,
     private val api: LocalFallbackApiClient,
@@ -25,7 +25,7 @@ class IncomingCallAccountRouter @Inject constructor(
         if (target == null || target.matches(auth.getCurrentUserId(), auth.getCurrentUserEmail())) {
             return Result.success(Unit)
         }
-        val account = resolveStoredAccountForTarget(target, accounts.accounts.value)
+        val account = resolveStoredAccountForTarget(target, accounts.get().accounts.value)
             ?: return Result.failure(IllegalStateException("Inicia sesión en la cuenta que recibió esta llamada."))
         if (calls.get().activeCall.value != null) {
             return Result.failure(IllegalStateException("Termina la llamada actual antes de cambiar de cuenta."))
@@ -41,7 +41,7 @@ class IncomingCallAccountRouter @Inject constructor(
         if (target == null || target.matches(auth.getCurrentUserId(), auth.getCurrentUserEmail())) {
             return calls.get().declineIncomingCall(invite)
         }
-        val account = resolveStoredAccountForTarget(target, accounts.accounts.value)
+        val account = resolveStoredAccountForTarget(target, accounts.get().accounts.value)
             ?: return Result.failure(IllegalStateException("La cuenta que recibió la llamada ya no está guardada."))
         if (!auth.isLocalFallbackStoredSessionToken(account.access_token, account.refresh_token)) {
             return Result.failure(IllegalStateException("Abre esa cuenta para responder a la llamada."))

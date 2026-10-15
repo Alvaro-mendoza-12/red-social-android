@@ -6,6 +6,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LiveGuestCaptureProfileTest {
+    @Test fun meteredGuestUsesThirtyFramesAnd360pOnEveryDeviceTier() {
+        AppDeviceTier.entries.forEach { tier ->
+            assertEquals(LiveGuestCaptureProfile(640,360,30),
+                nativeLiveGuestCaptureProfile(tier,LiveQuality.P1080,metered=true))
+        }
+    }
     @Test fun lowTierGuestDoesNotOpen720pEvenWhen1080pWasRequested() {
         assertEquals(LiveGuestCaptureProfile(640, 360, 60), nativeLiveGuestCaptureProfile(AppDeviceTier.LOW, LiveQuality.P1080))
     }

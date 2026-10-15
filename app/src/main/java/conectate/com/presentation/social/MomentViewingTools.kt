@@ -1,11 +1,6 @@
 package conectate.com.presentation.social
 
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContract
-import android.app.Activity
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -18,18 +13,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import conectate.com.data.model.Moment
-
-/** Keep the chosen name and MIME together at launch, even if the current moment later changes. */
-private class CreateMomentDocument : ActivityResultContract<MomentExportTarget, Uri?>() {
-    override fun createIntent(context: Context, input: MomentExportTarget): Intent =
-        Intent(Intent.ACTION_CREATE_DOCUMENT)
-            .addCategory(Intent.CATEGORY_OPENABLE)
-            .setType(input.mimeType)
-            .putExtra(Intent.EXTRA_TITLE, input.fileName)
-
-    override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
-        intent?.data.takeIf { resultCode == Activity.RESULT_OK }
-}
 
 @Composable
 internal fun MomentViewingTools(
@@ -45,9 +28,15 @@ internal fun MomentViewingTools(
     val saving by viewModel.saving.collectAsState()
     val message by viewModel.message.collectAsState()
     val context = LocalContext.current
-    val createDocument = rememberLauncherForActivityResult(remember { CreateMomentDocument() }) { uri ->
+    val writePermission = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
         selectingFile = false
-        viewModel.saveTo(uri)
+        if (granted) viewModel.savePreparedDirect() else viewModel.saveTo(null)
+    }
+    val share = conectate.com.presentation.messages.rememberChatMediaShare(viewModel::currentAccountId) {
+        conectate.com.util.UbuntuMedia.resolveUrl(it)
+    }
+    val savePhoto = conectate.com.presentation.messages.rememberChatMediaDownload(viewModel::currentAccountId) {
+        conectate.com.util.UbuntuMedia.resolveUrl(it)
     }
     LaunchedEffect(showMenu, selectingFile) { onMenuChanged(showMenu || selectingFile) }
     LaunchedEffect(message) {
@@ -76,18 +65,24 @@ internal fun MomentViewingTools(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
                             if (viewModel.prepare(moment)) {
-                                selectingFile = true
                                 showMenu = false
-                                val target = momentExportTarget(moment.id, moment.mediaUrl, moment.mediaType)
-                                runCatching { createDocument.launch(target) }.onFailure {
-                                    selectingFile = false
-                                    viewModel.saveTo(null)
-                                    android.widget.Toast.makeText(context, "No hay una aplicación disponible para guardar archivos.", android.widget.Toast.LENGTH_LONG).show()
-                                }
+                                if (android.os.Build.VERSION.SDK_INT < 29 &&
+                                    androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                    selectingFile = true
+                                    writePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                } else viewModel.savePreparedDirect()
                             }
                         },
                     ) { Text(if (saving) "Guardando video…" else "Descargar video") }
                 }
+                if (!moment.isVideoMoment()) FilledTonalButton(onClick = {
+                    showMenu = false
+                    savePhoto(conectate.com.presentation.components.MediaItem(id = moment.id, url = moment.mediaUrl, type = "image"))
+                }) { Text("Descargar foto") }
+                TextButton(onClick = {
+                    showMenu = false
+                    share(conectate.com.presentation.components.MediaItem(id = moment.id, url = moment.mediaUrl, type = if (moment.isVideoMoment()) "video" else "image"))
+                }) { Text("Compartir con otra aplicación") }
                 if (saving) TextButton(onClick = viewModel::cancel) { Text("Cancelar descarga") }
             }
         },

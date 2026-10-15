@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -547,7 +549,7 @@ class ChallengeRepository @Inject constructor(
             val inputStream = context.contentResolver.openInputStream(uri) 
                 ?: return@withContext Result.failure(Exception("Cannot read file"))
             
-            var bytes = inputStream.use { it.readBytes() }
+            var bytes = inputStream.use { it.readMediaBytesWithLimit(30L * 1024 * 1024) }
             
             submitMedia(activeChallenge, bytes, mimeType, extension)
         } catch (e: Exception) { 
@@ -559,7 +561,7 @@ class ChallengeRepository @Inject constructor(
 
     suspend fun submitAudio(activeChallenge: ActiveChallenge, file: java.io.File): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            var bytes = file.readBytes()
+            var bytes = file.inputStream().use { it.readMediaBytesWithLimit(30L * 1024 * 1024) }
             submitMedia(activeChallenge, bytes, "audio/mp4", "mp4")
         } catch (e: Exception) {
             Result.failure(e)

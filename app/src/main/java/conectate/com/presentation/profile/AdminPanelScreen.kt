@@ -1,6 +1,7 @@
 package conectate.com.presentation.profile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -93,6 +95,12 @@ fun AdminPanelScreen(
     val suspendedProfiles by viewModel.suspendedProfiles.collectAsState()
     val moderationAppeals by viewModel.moderationAppeals.collectAsState()
     val recoveryCases by viewModel.recoveryCases.collectAsState()
+    val recoverySearch by viewModel.recoverySearch.collectAsState()
+    val recoveryFilter by viewModel.recoveryFilter.collectAsState()
+    val recoveryOffset by viewModel.recoveryOffset.collectAsState()
+    val recoveryTotal by viewModel.recoveryTotal.collectAsState()
+    val recoveryCounts by viewModel.recoveryCounts.collectAsState()
+    val recoveryPageLoading by viewModel.recoveryPageLoading.collectAsState()
     val recoveryAccounts by viewModel.recoveryAccounts.collectAsState()
     val recoverySecret by viewModel.recoverySecret.collectAsState()
     val recoverySecretCaseId by viewModel.recoverySecretCaseId.collectAsState()
@@ -690,7 +698,7 @@ fun AdminPanelScreen(
                 Tab(selected = selectedTabIndex == 3, onClick = { selectedTabIndex = 3 }, text = { Text("Reportes") })
                 Tab(selected = selectedTabIndex == 4, onClick = { selectedTabIndex = 4 }, text = { Text("Videos") })
                 Tab(selected = selectedTabIndex == 5, onClick = { selectedTabIndex = 5 }, text = { Text("Apelaciones") })
-                Tab(selected = selectedTabIndex == 6, onClick = { selectedTabIndex = 6; viewModel.refreshRecoveryCases() }, text = { Text("Recuperaciones (${recoveryCases.count { it.status == "pending" }})") })
+                Tab(selected = selectedTabIndex == 6, onClick = { selectedTabIndex = 6; viewModel.refreshRecoveryCases() }, text = { Text("Recuperaciones (${(recoveryCounts["pending"] ?: 0) + (recoveryCounts["in_review"] ?: 0)})") })
                 if ("admin.system.read" in adminAccess.capabilities) Tab(selected = selectedTabIndex == 7, onClick = { selectedTabIndex = 7 }, text = { Text("Avisos") })
             }
 
@@ -767,7 +775,7 @@ fun AdminPanelScreen(
                                 canManageAccess = adminAccess.isOwner,
                                 canDelete = adminAccess.canDeleteUsers,
                                 expanded = selectedUser?.id == summary.id,
-                                onOpen = { viewModel.loadUserDetails(summary.id) },
+                                onOpen = { viewModel.toggleUserDetails(summary.id) },
                                 onVerifiedChange = { viewModel.updateUserVerification(summary.id, it) },
                                 onBadgeChange = { badgeId, enabled ->
                                     viewModel.updateUserBadge(summary.id, badgeId, enabled)
@@ -848,7 +856,7 @@ fun AdminPanelScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 OutlinedButton(
-                                    onClick = viewModel::refreshRecoveryCases,
+                                    onClick = { viewModel.refreshRecoveryCases() },
                                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                                 ) { Text("Actualizar solicitudes") }
                                 recoverySecret?.let { secret ->
@@ -914,10 +922,35 @@ fun AdminPanelScreen(
                                 }
                             }
                         }
-                        if (recoveryCases.isEmpty()) item(key = "recovery-empty") { Text("No hay solicitudes de recuperación.") }
+                        item(key = "recovery-controls") {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                OutlinedTextField(value = recoverySearch, onValueChange = viewModel::setRecoverySearch,
+                                    label = { Text("Buscar solicitud, cuenta o contacto") }, singleLine = true,
+                                    modifier = Modifier.fillMaxWidth())
+                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("pending" to "Pendientes", "in_review" to "En revisión", "issued" to "Código emitido",
+                                        "completed" to "Completadas", "rejected" to "Rechazadas", "all" to "Todas").forEach { (value, label) ->
+                                        FilterChip(selected = recoveryFilter == value, onClick = {
+                                            expandedRecoveryCaseId = null; viewModel.setRecoveryFilter(value)
+                                        }, label = { Text("$label (${if (value == "all") recoveryCounts.values.sum() else recoveryCounts[value] ?: 0})") })
+                                    }
+                                }
+                                Text(if (recoveryTotal == 0) "0 solicitudes" else
+                                    "${recoveryOffset + 1}–${minOf(recoveryOffset + recoveryCases.size, recoveryTotal)} de $recoveryTotal · Antiguas primero")
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    OutlinedButton(onClick = { expandedRecoveryCaseId = null; viewModel.setRecoveryPage(recoveryOffset - 20) },
+                                        enabled = recoveryOffset > 0 && !recoveryPageLoading) { Text("Anterior") }
+                                    OutlinedButton(onClick = { expandedRecoveryCaseId = null; viewModel.setRecoveryPage(recoveryOffset + 20) },
+                                        enabled = recoveryOffset + 20 < recoveryTotal && !recoveryPageLoading) { Text("Siguiente") }
+                                }
+                                if (recoveryPageLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                            }
+                        }
+                        if (recoveryCases.isEmpty() && !recoveryPageLoading) item(key = "recovery-empty") { Text("No hay solicitudes de recuperación.") }
                         items(recoveryCases, key = { "recovery:${it.id}" }) { recovery ->
                             AdminRecoveryCard(
-                                recovery, recoveryAccounts, adminAccess.isOwner, recoveryBusy,
+                                recovery, recoveryAccounts, adminAccess.isOwner || "admin.access.manage" in adminAccess.capabilities, recoveryBusy || recoveryPageLoading,
                                 expanded = expandedRecoveryCaseId == recovery.id,
                                 onToggle = {
                                     expandedRecoveryCaseId = if (expandedRecoveryCaseId == recovery.id) null else recovery.id
@@ -969,6 +1002,7 @@ private fun AdminRecoveryCard(
     }
     val statusLabel = when (recovery.status) {
         "pending" -> "Pendiente"
+        "in_review" -> "En revisión"
         "issued" -> "Código emitido"
         "completed" -> "Completada"
         "rejected" -> "Rechazada"
@@ -1019,15 +1053,15 @@ private fun AdminRecoveryCard(
             }
             Text(
                 recovery.candidateName.ifBlank { recovery.identifier },
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "Solicitud #${recovery.id.take(8)} · ${recovery.identifier}",
+                "Solicitud #${recovery.id.take(8)} · ${recovery.createdAt.take(10)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Surface(
+            if (expanded) Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -1048,6 +1082,14 @@ private fun AdminRecoveryCard(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text(if (expanded) "Ocultar detalles" else "Revisar solicitud") }
             if (expanded) {
+                if (recovery.reviewedAt.isNotBlank()) Text("Última revisión: ${recovery.reviewedAt.take(16).replace('T', ' ')}",
+                    style = MaterialTheme.typography.bodySmall)
+                if (canReview && recovery.status in setOf("pending", "in_review")) {
+                    OutlinedButton(onClick = { onAction("review", if (recovery.status == "pending") "in_review" else "pending", "", false) },
+                        enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text(if (recovery.status == "pending") "Marcar en revisión" else "Volver a pendientes")
+                    }
+                }
                 OutlinedButton(onClick = {
                     (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
                         ?.setPrimaryClip(ClipData.newPlainText("Contacto recuperación Novvin", recovery.alternateContact))
@@ -1061,7 +1103,7 @@ private fun AdminRecoveryCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (recovery.status in setOf("pending", "issued") && canReview) {
+                if (recovery.status in setOf("pending", "in_review", "issued") && canReview) {
                     HorizontalDivider()
                     Text("1 · Confirma la cuenta", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (recovery.candidateUserId.isNotBlank()) Text(
@@ -1127,15 +1169,15 @@ private fun AdminRecoveryCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (recovery.status == "pending") {
+                    if (recovery.status in setOf("pending", "in_review", "issued")) {
                         OutlinedButton(
                             onClick = { onAction("reject", "", evidence.trim(), false) },
                             enabled = !busy && evidence.trim().length >= 20,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                         ) { Text("Rechazar solicitud") }
                     }
-                } else if (!canReview && recovery.status in setOf("pending", "issued")) {
-                    Text("Solo la cuenta propietaria puede aprobar o rechazar solicitudes.", style = MaterialTheme.typography.bodySmall)
+                } else if (!canReview && recovery.status in setOf("pending", "in_review", "issued")) {
+                    Text("Tu acceso permite consultar solicitudes. Necesitas permiso de gestión para revisarlas.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -1409,21 +1451,12 @@ private fun AdminUserCard(
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (user.avatarUrl.isNullOrBlank()) {
-                        Text(
-                            text = user.displayName.trim().firstOrNull()?.uppercase() ?: "?",
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    } else {
-                        AsyncImage(
-                            model = user.avatarUrl,
-                            contentDescription = "Foto de ${user.displayName}",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
+                    conectate.com.presentation.components.CircularProfileImage(
+                        imageUrl = user.avatarUrl,
+                        ownerId = user.id,
+                        fallbackName = user.displayName,
+                        size = 52.dp,
+                    )
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -1444,7 +1477,7 @@ private fun AdminUserCard(
                         )
                     }
                 }
-                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = "Ver detalles")
+                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = if (expanded) "Ocultar detalles" else "Ver detalles")
             }
 
             if (expanded) {

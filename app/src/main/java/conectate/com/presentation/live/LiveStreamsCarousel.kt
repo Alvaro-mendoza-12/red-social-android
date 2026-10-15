@@ -111,7 +111,7 @@ private fun LiveCarouselCard(
                 ) {
                     Box(modifier = Modifier.padding(3.dp)) {
                         if (!stream.hostAvatarUrl.isNullOrBlank()) {
-                            CircularProfileImage(imageUrl = stream.hostAvatarUrl, size = 48.dp)
+                            CircularProfileImage(ownerId = stream.hostUserId, imageUrl = stream.hostAvatarUrl, size = 48.dp)
                         } else {
                             Box(modifier = Modifier.size(48.dp).clip(CircleShape))
                         }

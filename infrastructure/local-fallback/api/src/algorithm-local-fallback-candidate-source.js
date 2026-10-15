@@ -4,8 +4,8 @@
  * Read-only, fail-closed candidate source for the isolated user-algorithm
  * recommendation route.
  *
- * This is intentionally separate from data-routes.js.  It reads only the
- * local-fallback tables and returns the narrow raw-candidate contract consumed
+ * This is intentionally separate from data-routes.js.  It reads canonical local-fallback tables and an optional,
+ * explicit public-field projection of imported videos and returns the narrow raw-candidate contract consumed
  * by algorithm-candidate-provider.js; it neither registers an endpoint nor
  * changes any legacy feed.  A host must still compose this source with the
  * candidate provider before registering the isolated recommendation route.
@@ -24,10 +24,13 @@
  */
 
 const crypto = require('crypto')
+const { loadImportedVideoCandidateRows } = require('./algorithm-imported-video-candidates')
 
 const SUPPORTED_SURFACES = new Set(['social', 'video'])
 const MAX_CANDIDATES = 200
 const MAX_ALIASES = 64
+const MAX_CANDIDATE_ALIASES = MAX_CANDIDATES * 32
+const MAX_BLOCK_EDGES = 4096
 const MAX_TAGS = 16
 const MAX_MEDIA = 10
 const PERMITTED_INFERENCE_SOURCES = new Set([
@@ -108,6 +111,7 @@ const SOCIAL_CANDIDATE_SQL = `
     post.media_type,
     post.created_at,
     post.updated_at,
+    to_char(post.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS pagination_updated_at,
     profile.updated_at AS profile_updated_at,
     classification.language_code,
     classification.format_key,
@@ -164,7 +168,7 @@ const SOCIAL_CANDIDATE_SQL = `
       NULLIF(profile.profile->>'is_private', ''),
       NULLIF(profile.profile->>'isPrivate', ''),
       'false'
-    )) NOT IN ('true', '1', 'yes')
+    )) IN ('false', '0', 'no')
     AND lower(COALESCE(
       NULLIF(profile.profile->>'break_mode', ''),
       NULLIF(profile.profile->>'breakMode', ''),
@@ -176,6 +180,8 @@ const SOCIAL_CANDIDATE_SQL = `
       OR lower(COALESCE(account.supabase_user_id::text, '')) = ANY($1::text[])
     )
     AND post.updated_at <= $2::timestamptz
+    AND isfinite(post.updated_at)
+    AND ($4::timestamptz IS NULL OR (post.updated_at, post.id::text COLLATE "C") < ($4::timestamptz, $5::text COLLATE "C"))
     AND NOT EXISTS (
       SELECT 1
       FROM fallback_profile_moderation moderation
@@ -203,7 +209,7 @@ const SOCIAL_CANDIDATE_SQL = `
         ]::text[]
       )
     )
-  ORDER BY post.updated_at DESC, post.id DESC
+  ORDER BY post.updated_at DESC, post.id::text COLLATE "C" DESC
   LIMIT $3
 `
 
@@ -242,6 +248,7 @@ const VIDEO_CANDIDATE_SQL = `
     video.share_count,
     video.created_at,
     video.updated_at,
+    to_char(video.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS pagination_updated_at,
     profile.updated_at AS profile_updated_at,
     classification.language_code,
     classification.format_key,
@@ -290,6 +297,8 @@ const VIDEO_CANDIDATE_SQL = `
   ) classification_topics ON classification_topics.entries IS NOT NULL
   WHERE video.is_public = TRUE
     AND video.updated_at <= $2::timestamptz
+    AND isfinite(video.updated_at)
+    AND ($4::timestamptz IS NULL OR (video.updated_at, video.id::text COLLATE "C") < ($4::timestamptz, $5::text COLLATE "C"))
     AND NOT EXISTS (
       SELECT 1
       FROM fallback_video_deletions deleted_video
@@ -304,7 +313,7 @@ const VIDEO_CANDIDATE_SQL = `
       NULLIF(profile.profile->>'is_private', ''),
       NULLIF(profile.profile->>'isPrivate', ''),
       'false'
-    )) NOT IN ('true', '1', 'yes')
+    )) IN ('false', '0', 'no')
     AND lower(COALESCE(
       NULLIF(profile.profile->>'break_mode', ''),
       NULLIF(profile.profile->>'breakMode', ''),
@@ -342,7 +351,7 @@ const VIDEO_CANDIDATE_SQL = `
         ]::text[]
       )
     )
-  ORDER BY video.updated_at DESC, video.id DESC
+  ORDER BY video.updated_at DESC, video.id::text COLLATE "C" DESC
   LIMIT $3
 `
 
@@ -809,6 +818,25 @@ function recommendationSnapshotTime(input, now) {
   return new Date(requestedTime).toISOString()
 }
 
+// Keep the database's microsecond timestamp in the keyset. Converting the
+// boundary through a JS Date would truncate it and skip equal-millisecond rows.
+function paginationBoundary(value) {
+  if (!value || typeof value !== 'object') return null
+  const updatedAt = String(value.updatedAt || '').trim()
+  const id = normalizeId(value.id)
+  if (!id || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(updatedAt)
+    || !Number.isFinite(Date.parse(updatedAt))) return null
+  return { updatedAt, id }
+}
+
+function compareCandidateRows(left, right) {
+  const leftTime = String(left.pagination_updated_at || safeTimestamp(left.updated_at) || '')
+  const rightTime = String(right.pagination_updated_at || safeTimestamp(right.updated_at) || '')
+  if (leftTime !== rightTime) return leftTime < rightTime ? 1 : -1
+  const leftId = normalizeId(left.id) || '', rightId = normalizeId(right.id) || ''
+  return leftId === rightId ? 0 : leftId < rightId ? 1 : -1
+}
+
 /**
  * Produces the two reader functions expected by createAlgorithmCandidateProvider.
  * The object is deliberately not coupled to Express or to data-routes.js.
@@ -826,19 +854,40 @@ function createAlgorithmLocalFallbackCandidateSource({ pool, now = () => Date.no
       const limit = boundedInteger(input.maxCandidates ?? input.limit, 1, MAX_CANDIDATES, MAX_CANDIDATES)
       const snapshotTime = recommendationSnapshotTime(input, now)
       const timestamp = Date.parse(snapshotTime)
+      const rawAfter = input?.cursor?.providerState?.after
+      const after = paginationBoundary(rawAfter)
+      if (rawAfter != null && !after) return emptyBatch(surface)
+      const parameters = [viewerIds, snapshotTime, limit + 1, after?.updatedAt || null, after?.id || null]
       try {
         const [result, inferredSignals] = await Promise.all([
-          pool.query(rawQueryFor(surface), [viewerIds, snapshotTime, limit]),
+          pool.query(rawQueryFor(surface), parameters),
           loadInferredSignals(pool, viewerIds, snapshotTime),
         ])
         if (!Array.isArray(result?.rows)) return emptyBatch(surface)
-        const candidates = result.rows
+        const importedRows = surface === 'video'
+          ? await loadImportedVideoCandidateRows(pool, VIDEO_CANDIDATE_SQL, parameters)
+          : []
+        const canonicalRows = new Map()
+        for (const row of [...importedRows, ...result.rows]) {
+          const id = normalizeId(row?.id)
+          if (id) canonicalRows.set(id, row)
+        }
+        const orderedRows = [...canonicalRows.values()].sort(compareCandidateRows)
+        const windowRows = orderedRows.slice(0, limit)
+        const lastRow = windowRows.at(-1)
+        const nextAfter = lastRow && paginationBoundary({ updatedAt: lastRow.pagination_updated_at, id: lastRow.id })
+        const candidates = windowRows
           .map((row) => rawMapperFor(surface)(row, timestamp))
           .filter(Boolean)
           .slice(0, MAX_CANDIDATES)
         return {
           snapshotId: snapshotId(surface, candidates),
-          providerState: { asOf: snapshotTime },
+          providerState: { asOf: snapshotTime, after },
+          // The lookahead is never ranked or delivered in this window. Its
+          // existence proves older rows remain, even if preferences/blocking
+          // remove every ranked candidate in the current window.
+          nextProviderState: orderedRows.length > limit && nextAfter
+            ? { asOf: snapshotTime, after: nextAfter } : null,
           inferredSignals,
           candidates,
         }
@@ -849,14 +898,14 @@ function createAlgorithmLocalFallbackCandidateSource({ pool, now = () => Date.no
 
     async loadBlockEdges(input = {}) {
       const viewerIds = uniqueIds(input.viewerIds)
-      const creatorIds = uniqueIds(input.creatorIds, MAX_CANDIDATES)
+      const creatorIds = uniqueIds(input.creatorIds, MAX_CANDIDATE_ALIASES)
       if (viewerIds.length === 0 || creatorIds.length === 0) return []
       if (!(await tablesAvailable(pool, ['fallback_user_blocks']))) {
         throw new LocalFallbackCandidateSourceError('RECOMMENDATION_PROVIDER_BLOCKS_UNAVAILABLE')
       }
       try {
-        const result = await pool.query(BLOCK_EDGE_SQL, [viewerIds, creatorIds, MAX_CANDIDATES * 2])
-        if (!Array.isArray(result?.rows)) {
+        const result = await pool.query(BLOCK_EDGE_SQL, [viewerIds, creatorIds, MAX_BLOCK_EDGES + 1])
+        if (!Array.isArray(result?.rows) || result.rows.length > MAX_BLOCK_EDGES) {
           throw new LocalFallbackCandidateSourceError('RECOMMENDATION_PROVIDER_BLOCKS_UNAVAILABLE')
         }
         return result.rows

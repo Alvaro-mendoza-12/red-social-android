@@ -1,6 +1,9 @@
 package conectate.com.presentation.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.platform.testTag
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,13 +48,13 @@ import conectate.com.presentation.navigation.Screen
 import androidx.compose.foundation.ExperimentalFoundationApi
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun PostCard(
     post: Post,
     onLikeClick: () -> Unit,
-    onReactionSelect: (String?) -> Unit = {},
-    onReactionSummaryClick: () -> Unit = {},
+    onReactionSelect: (String?) -> Unit,
+    onReactionSummaryClick: () -> Unit,
     onCommentClick: () -> Unit,
     onShareClick: () -> Unit,
     onUserClick: (String) -> Unit,
@@ -70,7 +73,13 @@ fun PostCard(
     onRemixPermissionClick: (Boolean, String) -> Unit = { _, _ -> },
     onOriginalPostClick: (String) -> Unit = {},
     showOwnerActions: Boolean = true,
-    showReportAction: Boolean = false
+    showReportAction: Boolean = false,
+    authorFollowState: conectate.com.data.model.AuthorFollowState? = null,
+    followBusy: Boolean = false,
+    onFollowClick: () -> Unit = {},
+    authorMoment: conectate.com.data.model.Moment? = null,
+    onMomentClick: (String) -> Unit = {},
+    onMentionClick: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val windowHeightDp = with(LocalDensity.current) {
@@ -111,7 +120,7 @@ fun PostCard(
                         .padding(horizontal = 20.dp, vertical = 14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProfileImage(
+                        CircularProfileImage(ownerId = post.userId, 
                             imageUrl = post.userProfileImage.orEmpty(),
                             size = 38.dp,
                             isVerified = post.isVerified,
@@ -222,6 +231,7 @@ fun PostCard(
 
     Card(
         modifier = Modifier
+            .then(if (conectate.com.BuildConfig.DEBUG) Modifier.semantics { testTagsAsResourceId = true }.testTag("feed_post_${post.id}") else Modifier)
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -236,23 +246,28 @@ fun PostCard(
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                CircularProfileImage(
+                CircularProfileImage(ownerId = post.userId, 
                     imageUrl = post.userProfileImage ?: "",
                     size = 40.dp,
                     isVerified = post.isVerified,
                     fallbackName = post.userName,
-                    modifier = Modifier.clickable { onUserClick(post.userId) }
+                    momentViewed = authorMoment?.isViewed,
+                    modifier = Modifier.clickable {
+                        if (authorMoment != null) onMomentClick(authorMoment.id) else onUserClick(post.userId)
+                    }
                 )
                 
                 Spacer(modifier = Modifier.width(12.dp))
                 
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = post.userName,
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable { onUserClick(post.userId) }
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false).clickable { onUserClick(post.userId) }
                         )
                         if (post.isVerified) {
                             Spacer(modifier = Modifier.width(4.dp))
@@ -271,8 +286,20 @@ fun PostCard(
                     )
                 }
                 
-                Spacer(modifier = Modifier.weight(1f))
-                
+                if (!isOwner && authorFollowState != null) {
+                    TextButton(
+                        onClick = {
+                            if (authorFollowState == conectate.com.data.model.AuthorFollowState.NOT_FOLLOWING) onFollowClick()
+                            else onUserClick(post.userId)
+                        },
+                        enabled = !followBusy,
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                    ) {
+                        if (followBusy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        else Text(authorFollowState.label, maxLines = 1, style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+
                 if ((isOwner && showOwnerActions) || (!isOwner && showReportAction)) {
                     var showMenu by remember { mutableStateOf(false) }
                     
@@ -453,6 +480,7 @@ fun PostCard(
                             },
                             onUrlClick = onUrlClick,
                             onTextClick = onPostClick,
+                            onMentionClick = onMentionClick,
                         )
                         if (contentHasOverflow || contentExpanded) {
                             Text(

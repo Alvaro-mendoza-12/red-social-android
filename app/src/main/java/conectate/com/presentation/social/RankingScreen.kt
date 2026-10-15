@@ -108,7 +108,7 @@ fun UserRanking(users: List<User>) {
                             modifier = Modifier.width(32.dp),
                             style = MaterialTheme.typography.bodyMedium
                         )
-                        CircularProfileImage(
+                        CircularProfileImage(ownerId = user.id, 
                             imageUrl = user.avatar_url ?: "",
                             size = 40.dp
                         )

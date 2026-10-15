@@ -1,3 +1,5 @@
+const { collectionMessageRecipients } = require('./collection-membership-policy')
+const { redactDeletedMessage, messageScope, withCurrentMessage } = require('./message-deletion-policy')
 const DEFAULT_URL = 'http://realtime-gateway:3002'
 const { canonicalizeStorageUrls } = require('./storage-url-canonicalization')
 const { stableKey } = require('./request-security')
@@ -32,7 +34,15 @@ async function publishRealtimeEvent(channel, payload) {
   }
 }
 
-async function publishChatMessageEvent({ chatId, message, recipientIds = [], action = 'created' }) {
+async function publishChatMessageEvent({ pool, chatId, message, recipientIds = [], action = 'created', privateCollection = false }) {
+  if (pool && ['created', 'updated'].includes(action) && message?.id) {
+    const scope = messageScope({ chatId, message })
+    return withCurrentMessage(pool, scope, async (current, db) => {
+      const isCollection = ['group','community'].includes(scope?.kind)
+      const allowed = isCollection ? await collectionMessageRecipients(db, scope.kind, scope.scopeId, current, recipientIds) : recipientIds
+      return publishChatMessageEvent({ chatId, message: { ...message, ...current }, recipientIds: allowed, action, privateCollection: isCollection })
+    })
+  }
   const normalizedChatId = String(chatId || '').trim()
   if (!normalizedChatId) return
 
@@ -40,12 +50,13 @@ async function publishChatMessageEvent({ chatId, message, recipientIds = [], act
     event: 'message',
     action,
     chatId: normalizedChatId,
-    message: message || {},
+    message: redactDeletedMessage(message) || {},
   }
 
   const recipients = Array.isArray(recipientIds) ? [...new Set(recipientIds)] : []
   await Promise.all([
-    publishRealtimeEvent(`chat:${normalizedChatId}`, envelope),
+    publishRealtimeEvent(`chat:${normalizedChatId}`, privateCollection
+      ? { event: 'collection_changed', action, chatId: normalizedChatId } : envelope),
     ...recipients
       .map((id) => String(id || '').trim())
       .filter(Boolean)

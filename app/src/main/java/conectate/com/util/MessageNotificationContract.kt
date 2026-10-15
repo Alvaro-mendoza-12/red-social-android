@@ -12,6 +12,9 @@ object MessageNotificationContract {
     const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
     const val EXTRA_CONVERSATION_TITLE = "extra_conversation_title"
 
+    const val EXTRA_CHANNEL_ID = "extra_channel_id"
+    const val EXTRA_REPLY_ID = "extra_reply_id"
+
     const val KEY_TEXT_REPLY = "key_text_reply"
 }
 

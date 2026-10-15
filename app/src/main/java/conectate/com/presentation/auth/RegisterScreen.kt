@@ -180,9 +180,7 @@ fun RegisterScreen(
 
     
     // Image picker
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
+    val imagePickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri: Uri? ->
         pendingProfileCropUri = uri
     }
 
@@ -272,7 +270,7 @@ fun RegisterScreen(
                     OutlinedTextField(
                         value = name,
                         onValueChange = {
-                            name = it.take(60)
+                            name = conectate.com.data.model.DisplayNamePolicy.input(it)
                             if (!usernameEditedManually) username = ""
                         },
                         label = { Text("Nombre visible") },
@@ -280,7 +278,7 @@ fun RegisterScreen(
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                         keyboardActions = KeyboardActions(onNext = {
-                            if (name.trim().length >= 2) {
+                            if (conectate.com.data.model.DisplayNamePolicy.valid(name)) {
                                 if (username.isBlank()) {
                                     username = suggestedPublicUsername(name)
                                     autoSuggestUsername = true
@@ -288,7 +286,7 @@ fun RegisterScreen(
                                 registrationStep = 1
                             }
                         }),
-                        supportingText = { Text("Podrás cambiarlo más adelante.") },
+                        supportingText = { Text("${conectate.com.data.model.DisplayNamePolicy.length(name)}/20 caracteres") },
                     )
                 } else {
                     OutlinedTextField(
@@ -346,7 +344,7 @@ fun RegisterScreen(
                 Button(
                     onClick = {
                         if (registrationStep == 0) {
-                            if (name.trim().length < 2) {
+                            if (!conectate.com.data.model.DisplayNamePolicy.valid(name)) {
                                 AppFeedbackBus.showError("Escribe un nombre de al menos dos caracteres.")
                             } else {
                                 if (username.isBlank()) {
@@ -705,7 +703,7 @@ fun RegisterScreen(
         
         // Register Button
         val validationMessage = when {
-            name.isBlank() -> "Escribe tu nombre."
+            !conectate.com.data.model.DisplayNamePolicy.valid(name) -> "El nombre debe tener entre 2 y 20 caracteres."
             !usernameAvailable -> "Comprueba que tu @usuario esté disponible."
             email.isBlank() -> "Escribe el correo que usarás para iniciar sesión."
             !emailIsValid -> "Escribe un correo válido."

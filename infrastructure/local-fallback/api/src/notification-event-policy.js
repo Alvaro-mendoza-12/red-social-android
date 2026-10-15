@@ -7,8 +7,8 @@ function isServerManagedNotification(row) {
     try { extra = JSON.parse(extra) } catch { extra = {} }
   }
   return [row?.type, row?.notification_type, row?.notificationType,
-    extra?.notification_type, extra?.notificationType]
-    .some(value => String(value || '').trim().toLowerCase() === 'system_announcement')
+    extra?.type, extra?.notification_type, extra?.notificationType]
+    .some(value => String(value || '').trim().toLowerCase() === 'system_announcement' || String(value || '').trim().toLowerCase() === 'message_deleted')
 }
 
 module.exports = { isServerManagedNotification }

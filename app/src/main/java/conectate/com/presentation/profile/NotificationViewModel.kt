@@ -95,7 +95,8 @@ class NotificationViewModel @Inject constructor(
                             "like", "like_post" -> "Le gusta tu publicación"
                             "comment", "comment_post" -> "Comentó tu publicación"
                             "reply_post" -> "Respondió a tu comentario"
-                            "mention_post", "mention" -> "Te mencionó en un comentario"
+                            "mention_post" -> conectate.com.util.postMentionAction(notification)
+                            "mention" -> "Te mencionó en un comentario"
                             "voice_invite" -> "Te invitó a una sala de voz"
                             "live_started", "new_live" -> "Inició un directo"
                             "challenge_invite" -> "Te desafió a un reto"

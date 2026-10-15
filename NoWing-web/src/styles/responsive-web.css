@@ -1,0 +1,39 @@
+/* Shared spacing and browser viewport behavior for the web client. */
+:root { color-scheme: dark; --brand-cyan: #1cd4dd; --brand-purple: #7656f5; }
+html { min-width: 280px; scroll-padding-top: 5rem; }
+body { margin: 0; overflow-x: clip; }
+img, video, canvas { max-width: 100%; }
+button, input, textarea, select { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--brand-cyan); outline-offset: 3px; }
+.retained-chat-notice { padding: 1rem; border-top: 1px solid var(--app-line); background: var(--app-panel); }
+.retained-chat-notice p { margin: .5rem 0; color: var(--app-muted); }
+.chat-input-field, .text-input, .composer, .chat-bubble { min-width: 0; }
+.chat-bubble { overflow-wrap: anywhere; }
+.safe-avatar { flex-shrink: 0; object-fit: cover; }
+@media (max-width: 600px) {
+  .auth-page, .marketing-page { overflow-x: clip; }
+  .auth-card { width: 100%; max-width: 100%; box-sizing: border-box; }
+  .marketing-nav-actions { gap: .5rem; flex-wrap: wrap; }
+  .marketing-cta-row { flex-wrap: wrap; }
+  .chat-composer { padding-bottom: max(.5rem, env(safe-area-inset-bottom)); }
+  input, textarea, select { font-size: 16px; }
+}
+@media (min-width: 1920px) {
+  .marketing-page { max-width: 1920px; margin-inline: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+.mention-suggestions { border: 1px solid var(--app-line); border-radius: 12px; padding: .4rem; background: var(--app-panel-raised); max-height: 240px; overflow-y: auto; }
+.mention-candidate { display: flex; align-items: center; gap: .7rem; width: 100%; text-align: left; padding: .6rem; border: 0; border-radius: 8px; background: transparent; color: var(--app-text); }
+.mention-candidate:hover { background: var(--app-panel-soft); }
+.mention-candidate span { display: grid; }
+.mention-candidate small { color: var(--app-muted); }
+.room-system-notice { text-align: center; padding: .4rem .8rem; margin: .4rem auto; border-radius: 12px; font-size: .8rem; color: var(--app-muted); background: var(--app-panel); max-width: 90%; }
+.collection-info { width: min(560px, 94vw); max-height: 88dvh; overflow-y: auto; padding: 1rem; }
+.collection-member { display: flex; align-items: center; gap: .7rem; margin: .8rem 0; }
+.collection-member span { display: grid; min-width: 0; flex: 1; }
+.collection-member small { color: var(--app-muted); }
+.collection-policy { display: flex; align-items: center; gap: .6rem; margin: 1rem 0; }
+.collection-info-trigger { margin: .4rem; }

@@ -220,7 +220,9 @@ class MultiAccountInboxRepository @Inject constructor(
             userId = destination.normalizedUserId,
             conversationTitle = destination.conversationTitle?.trim()?.ifBlank { null },
             senderName = destination.senderName?.trim()?.ifBlank { null },
-            preview = destination.preview?.trim()?.ifBlank { null },
+            preview = if (conectate.com.util.DeletedMessageIdentity.create(account.user_id, destination.normalizedTargetType,
+                    normalizedConversationId, destination.focusMessageId)?.let { conectate.com.util.DeletedMessageStore(context).isDeleted(it) } == true)
+                "Mensaje eliminado" else destination.preview?.trim()?.ifBlank { null },
             focusMessageId = destination.focusMessageId?.trim()?.ifBlank { null }
         )
         val updated = loadPendingConversationKeys(account)
@@ -233,6 +235,14 @@ class MultiAccountInboxRepository @Inject constructor(
                 json.encodeToString(normalizedDestination)
             )
             .apply()
+    }
+
+    fun redactDeletedMessageHint(identity: conectate.com.util.DeletedMessageIdentity) {
+        val account = accountSessionRepository.accounts.value.firstOrNull { it.user_id?.trim()?.lowercase() == identity.accountId } ?: return
+        val latest = loadLatestPendingDestination(account) ?: return
+        if (latest.normalizedTargetType != identity.targetType || latest.normalizedConversationId != identity.conversationId ||
+            latest.focusMessageId?.trim()?.lowercase() != identity.messageId) return
+        prefs.edit().putString(latestDestinationKey(account), json.encodeToString(latest.copy(preview = "Mensaje eliminado"))).apply()
     }
 
     fun registerUnreadDirectConversationHint(

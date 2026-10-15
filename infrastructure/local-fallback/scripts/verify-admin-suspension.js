@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict')
-const WebSocket = require('../../../Conectate-web/node_modules/ws')
-const { io } = require('../../../Conectate-web/node_modules/socket.io-client')
+const WebSocket = require('../../../NoWing-web/node_modules/ws')
+const { io } = require('../../../NoWing-web/node_modules/socket.io-client')
 
 const apiUrl = String(process.argv[2] || process.env.API_URL || 'http://127.0.0.1:3080').replace(/\/+$/, '')
 const adminEmail = String(process.env.ADMIN_TEST_EMAIL || '').trim()

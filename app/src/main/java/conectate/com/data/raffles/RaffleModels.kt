@@ -55,7 +55,11 @@ data class CreateRaffleRequest(
 )
 
 @Serializable
-data class RaffleCommandRequest(val requestId: String, val expectedVersion: Int, val automatic: Boolean = false)
+data class RaffleCommandRequest(
+    val requestId: String, val expectedVersion: Int, val automatic: Boolean = false,
+    val memberIds: List<String>? = null, val manualNames: List<String>? = null,
+    val memberSnapshotHash: String? = null,
+)
 
 /** Derived presentation state; only server results remove candidates. */
 fun RaffleRound.remainingParticipants(): List<RaffleParticipant> {

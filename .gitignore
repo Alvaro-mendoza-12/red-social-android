@@ -157,3 +157,5 @@ infrastructure/local-fallback/imports/*.csv
 # Config de herramientas externas (no del proyecto)
 blackbox_mcp_settings.json
 .blackbox/
+
+.playwright-cli/

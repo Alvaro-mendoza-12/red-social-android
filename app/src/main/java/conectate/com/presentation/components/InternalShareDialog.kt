@@ -29,7 +29,14 @@ fun InternalShareDialog(
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<User>>(emptyList()) }
     var selectedUser by remember { mutableStateOf<User?>(null) }
-    val scope = rememberCoroutineScope()
+    LaunchedEffect(searchQuery) {
+        selectedUser = null
+        searchResults = emptyList()
+        if (searchQuery.trim().length >= 2) {
+            kotlinx.coroutines.delay(180)
+            searchResults = userRepository.searchUsers(searchQuery.trim()).getOrDefault(emptyList()).deduplicateShareTargets()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -38,19 +45,7 @@ fun InternalShareDialog(
             Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.72f)) {
                 OutlinedTextField(
                     value = searchQuery,
-                    onValueChange = { 
-                        searchQuery = it
-                        if (it.length >= 2) {
-                            scope.launch {
-                                userRepository.searchUsers(it).onSuccess { users ->
-                                    searchResults = users.deduplicateShareTargets()
-                                }
-                            }
-                        } else {
-                            searchResults = emptyList()
-                            selectedUser = null
-                        }
-                    },
+                    onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Buscar usuario") },
                     leadingIcon = { Icon(Icons.Default.Search, null) }
@@ -74,7 +69,7 @@ fun InternalShareDialog(
                                 .padding(vertical = 8.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CircularProfileImage(
+                            CircularProfileImage(openMomentOnClick = false, ownerId = user.id, 
                                 imageUrl = user.avatar_url ?: "",
                                 size = 40.dp,
                                 isVerified = user.is_verified
@@ -83,13 +78,14 @@ fun InternalShareDialog(
                             Column {
                                 Text(
                                     text = user.displayName,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                                 )
                                 val handle = conectate.com.data.model.profilePublicHandle(user)
                                 Text(
                                     text = "@$handle",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.Gray
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -115,38 +111,8 @@ fun InternalShareDialog(
     )
 }
 
-private fun List<User>.deduplicateShareTargets(): List<User> {
-    val indexByKey = LinkedHashMap<String, Int>()
-    val deduped = mutableListOf<User>()
-    for (user in this) {
-        val keys = listOf(
-            user.id,
-            user.email,
-            user.username.orEmpty(),
-            user.display_name.orEmpty(),
-            user.full_name.orEmpty()
-        )
-            .map { it.trim().lowercase() }
-            .filter { it.isNotBlank() && it != "null" }
-            .distinct()
-        if (keys.isEmpty()) continue
-        val existingIndex = keys.firstNotNullOfOrNull { indexByKey[it] }
-        if (existingIndex == null) {
-            val newIndex = deduped.size
-            deduped += user
-            keys.forEach { indexByKey[it] = newIndex }
-        } else {
-            val existing = deduped[existingIndex]
-            deduped[existingIndex] = when {
-                existing.avatar_url.isNullOrBlank() && !user.avatar_url.isNullOrBlank() -> user
-                existing.email.isBlank() && user.email.isNotBlank() -> user
-                else -> existing
-            }
-            keys.forEach { indexByKey[it] = existingIndex }
-        }
-    }
-    return deduped
-}
+private fun List<User>.deduplicateShareTargets(): List<User> =
+    filter { it.id.isNotBlank() }.distinctBy { it.id.trim().lowercase() }
 
 // Helper to use MutableState in a more concise way if needed, but standard is fine
 @Composable

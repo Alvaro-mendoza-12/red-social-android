@@ -64,6 +64,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : ViewModel() {
+    fun beginMediaPreview(): Long = api.beginMediaPreview()
+    fun endMediaPreview(lease: Long) = api.endMediaPreview(lease)
     private val _identity = MutableStateFlow<GuestIdentity?>(api.savedIdentity())
     val identity = _identity.asStateFlow()
     private val _videos = MutableStateFlow<List<GuestContent>>(emptyList())
@@ -184,6 +186,10 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hiltViewModel()) {
+    DisposableEffect(viewModel) {
+        val lease = viewModel.beginMediaPreview()
+        onDispose { viewModel.endMediaPreview(lease) }
+    }
     val identity by viewModel.identity.collectAsState()
     val videos by viewModel.videos.collectAsState()
     val posts by viewModel.posts.collectAsState()
@@ -257,7 +263,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
         AlertDialog(
             onDismissRequest = { previewImage = null },
             title = { Text("Momento público") },
-            text = { AsyncImage(model = url, contentDescription = "Momento público", modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) },
+            text = { AsyncImage(model = conectate.com.util.UbuntuMedia.resolveUrl(url), contentDescription = "Momento público", modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) },
             confirmButton = { TextButton(onClick = { previewImage = null }) { Text("Cerrar") } },
         )
     }
@@ -281,7 +287,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                                 GuestVideoPlayer(media)
                             } else {
                                 HorizontalPager(state = photoPager, modifier = Modifier.fillMaxWidth().height(photoHeight)) { page ->
-                                    AsyncImage(model = photos[page],
+                                    AsyncImage(model = conectate.com.util.UbuntuMedia.resolveUrl(photos[page]),
                                         contentDescription = "Imagen ${page + 1} de ${photos.size} de la publicación",
                                         modifier = Modifier.fillMaxSize())
                                 }
@@ -414,7 +420,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                                         else previewImage = moment.mediaUrl
                                     }, modifier = Modifier.width(110.dp)) {
                                         Column(Modifier.padding(8.dp)) {
-                                            AsyncImage(model = moment.thumbnailUrl ?: moment.mediaUrl,
+                                            AsyncImage(model = listOf(moment.thumbnailUrl, moment.mediaUrl).firstOrNull { !it.isNullOrBlank() }?.let(conectate.com.util.UbuntuMedia::resolveUrl),
                                                 contentDescription = "Momento público",
                                                 modifier = Modifier.fillMaxWidth().height(90.dp))
                                             Text(moment.caption.ifBlank { "Ver momento" }, maxLines = 1)
@@ -515,17 +521,18 @@ private fun GuestContentList(
             ElevatedCard(onClick = { onOpen(content) }, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
                     TextButton(onClick = { onProfile(content) }) { Text(content.userName) }
-                    val image = content.thumbnailUrl ?: content.coverUrl ?: content.mediaUrl
-                    val mediaIsVideo = content.mediaType == "video" ||
-                        (content.videoUrl == null && image?.substringBefore('?')?.endsWith(".mp4", true) == true)
+                    val image = listOf(content.thumbnailUrl, content.coverUrl, content.mediaUrl)
+                        .firstOrNull { !it.isNullOrBlank() }
+                    val mediaIsVideo = image?.substringBefore('?')?.endsWith(".mp4", true) == true
+                    val hasVideo = content.mediaType == "video" || !content.videoUrl.isNullOrBlank()
                     if (!image.isNullOrBlank() && !mediaIsVideo) {
-                        AsyncImage(model = image, contentDescription = "Vista previa pública", modifier = Modifier.fillMaxWidth().height(180.dp))
+                        AsyncImage(model = conectate.com.util.UbuntuMedia.resolveUrl(image), contentDescription = "Vista previa pública", modifier = Modifier.fillMaxWidth().height(180.dp))
                         val photoCount = guestPhotos(content).size
                         if (photoCount > 1) {
                             Text("1 / $photoCount · Toca para ver todas las fotos",
                                 color = MaterialTheme.colorScheme.primary)
                         }
-                    } else if (mediaIsVideo) {
+                    } else if (mediaIsVideo || hasVideo) {
                         Icon(Icons.Default.PlayCircle, contentDescription = "Video público",
                             modifier = Modifier.fillMaxWidth().height(96.dp))
                     }

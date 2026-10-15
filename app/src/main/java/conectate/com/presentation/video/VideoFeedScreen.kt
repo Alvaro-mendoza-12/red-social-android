@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,6 +53,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
@@ -291,6 +294,10 @@ fun VideoFeedScreen(
     val selectedTab by viewModel.selectedTab.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val recommendationError by viewModel.feedError.collectAsState()
+    val noMatchingRecommendations by viewModel.noMatchingRecommendations.collectAsState()
+    val authoritativeFeedAccepted by viewModel.authoritativeFeedAccepted.collectAsState()
+    val authoritativeContinuationPending by viewModel.authoritativeContinuationPending.collectAsState()
+    val recommendedFeedExhausted by viewModel.recommendedFeedExhausted.collectAsState()
     val followingError by viewModel.followingFeedError.collectAsState()
     val feedError = if (selectedTab == 1) followingError else recommendationError
     val currentFollowingCallback by rememberUpdatedState(onFollowingFeedVisible)
@@ -372,6 +379,7 @@ fun VideoFeedScreen(
         }
     }
     
+    val videoShareCoordinator = conectate.com.presentation.messages.LocalUniversalForwardCoordinator.current
     var showInternalShareDialog by remember { mutableStateOf(false) }
     var selectedVideoForShare by remember { mutableStateOf<conectate.com.data.model.Video?>(null) }
     var selectedVideoForReport by remember { mutableStateOf<conectate.com.data.model.Video?>(null) }
@@ -414,7 +422,7 @@ fun VideoFeedScreen(
     var optionsPositionMs by remember { mutableLongStateOf(0L) }
     var optionsDurationMs by remember { mutableLongStateOf(0L) }
     var personalMarkers by remember(currentUserId) { mutableStateOf<List<VideoPersonalMarker>>(emptyList()) }
-    val playbackOverlayOpen = commentsSheetOpen || showInternalShareDialog || showPlaybackOptions || showWatchLater || showVideoHistory || showVideoCollections ||
+    val playbackOverlayOpen = (videoShareCoordinator?.videoRequest != null) || commentsSheetOpen || showInternalShareDialog || showPlaybackOptions || showWatchLater || showVideoHistory || showVideoCollections ||
         showCreateMenu || selectedVideoForReport != null || videoPendingDeletion != null ||
         explanationVideo != null || notInterestedVideo != null || topicVideo != null ||
         selectedSound != null || sessionLimitReached || isSearchMode
@@ -462,9 +470,11 @@ fun VideoFeedScreen(
         forYouVideos.isEmpty(),
         isLoading,
         feedError,
+        authoritativeFeedAccepted,
     ) {
         if (
             !isProfileFeed &&
+            !authoritativeFeedAccepted &&
             selectedTab == 0 &&
             FeedRecoveryPolicy.shouldRetry(
                 isConnected = isConnected,
@@ -521,9 +531,17 @@ fun VideoFeedScreen(
             socialPosts = if (!isProfileFeed && !isSearchMode && selectedTab == 0) socialHighlights else emptyList(),
             recommendedPeople = if (!isProfileFeed && !isSearchMode && selectedTab == 0) recommendedPeople else emptyList(),
             socializationCards = if (!isProfileFeed && !isSearchMode && selectedTab == 0) socializationCards else emptyList(),
+            includeTail = !isProfileFeed && !isSearchMode && selectedTab == 0,
         )
     }
     val pagerState = rememberPagerState(pageCount = { feedEntries.size })
+    MaintainVideoFeedTailAppendAnchor(
+        pagerState, currentVideos, feedEntries, forYouFeed.sessionId,
+        enabled = !isProfileFeed && !isSearchMode && selectedTab == 0,
+    )
+    ContinueRecommendedFeedAtTail(pagerState, feedEntries, forYouFeed.sessionId, isLoading, feedError,
+        enabled = !isProfileFeed && !isSearchMode && selectedTab == 0 && currentVideos.isNotEmpty(),
+        onContinue = viewModel::continueRecommendedFeed)
     var initialVideoPositionApplied by rememberSaveable(initialVideoId) { mutableStateOf(false) }
 
     LaunchedEffect(initialVideoId, isProfileFeed) {
@@ -630,6 +648,9 @@ fun VideoFeedScreen(
     var manuallyStartedVideoId by remember { mutableStateOf<String?>(null) }
     val settledVideo = (feedEntries.getOrNull(pagerState.settledPage) as? VideoFeedVideoEntry)?.video
     val settledVideoId = settledVideo?.id
+    LaunchedEffect(settledVideoId, forYouFeed.sessionId, selectedTab, isProfileFeed, feedLifecycleState) {
+        if (feedLifecycleState == androidx.lifecycle.Lifecycle.State.RESUMED && !isProfileFeed && selectedTab == 0) viewModel.onVideoVisible(settledVideoId, forYouFeed.sessionId)
+    }
     val settledVideoIndex = remember(currentVideos, settledVideoId) {
         currentVideos.indexOfFirst { it.id == settledVideoId }
     }
@@ -842,11 +863,13 @@ fun VideoFeedScreen(
     
     // Keep the pager synchronized when ExoPlayer advances to the next item and
     // recover bounded transport failures without retrying corrupt codecs forever.
+    var renderedVideoId by remember(exoPlayer) { mutableStateOf<String?>(null) }
     val latestFeedEntries by rememberUpdatedState(feedEntries)
     val latestReviewLoop by rememberUpdatedState(reviewLoop)
     DisposableEffect(exoPlayer, autoAdvanceEnabled, scrollingLocked) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                renderedVideoId = null
                 exhaustedPlaybackVideoId = null
                 latestReviewLoop?.takeIf {
                     reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT && it.videoId == mediaItem?.mediaId
@@ -864,7 +887,13 @@ fun VideoFeedScreen(
                 }
             }
 
+            override fun onRenderedFirstFrame() {
+                renderedVideoId = exoPlayer.currentMediaItem?.mediaId
+                if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("FeedPlaybackAudit", "first_frame:$renderedVideoId")
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("FeedPlaybackAudit", "state=$playbackState requested=${exoPlayer.playWhenReady} playing=${exoPlayer.isPlaying} suppression=${exoPlayer.playbackSuppressionReason}")
                 if (playbackState == Player.STATE_READY) {
                     exhaustedPlaybackVideoId = null
                     // READY can last only a frame before the source fails
@@ -873,6 +902,7 @@ fun VideoFeedScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("FeedPlaybackAudit", "error_code=${error.errorCode}")
                 val videoId = exoPlayer.currentMediaItem?.mediaId
                     ?.takeIf { it.isNotBlank() }
                     ?: return
@@ -937,9 +967,12 @@ fun VideoFeedScreen(
 
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.onFeedBackgrounded()
             exoPlayer.pause()
         }
     }
+
+    LaunchedEffect(viewModel) { viewModel.onFeedResumed() }
 
     DisposableEffect(exoPlayer) {
         onDispose { exoPlayer.release() }
@@ -992,6 +1025,13 @@ fun VideoFeedScreen(
                     if (exoPlayer.playbackState == Player.STATE_IDLE) exoPlayer.prepare()
                     playerPlaylistGeneration += 1
                 }
+                is VideoPlaylistUpdate.ReplaceTail -> {
+                    // Replace only upcoming items. The active source, decoder,
+                    // buffered bytes and rendered frame remain attached.
+                    exoPlayer.replaceMediaItems(update.fromIndex, exoPlayer.mediaItemCount,
+                        desiredPlaylist.drop(update.fromIndex).map { buildVideoMediaItem(it.mediaId, it.playbackUri) })
+                    playerPlaylistGeneration += 1
+                }
                 is VideoPlaylistUpdate.Replace -> {
                     val resumeWhenReady = exoPlayer.playWhenReady && latestPlaybackAllowed.value
                     exoPlayer.setMediaItems(
@@ -1020,8 +1060,11 @@ fun VideoFeedScreen(
         }
     }
 
-    LaunchedEffect(settledVideoId, currentVideos.size, isProfileFeed) {
-        if (settledVideoId == null || settledVideoIndex < 0) return@LaunchedEffect
+    LaunchedEffect(settledVideoId, currentVideos.size, isProfileFeed, isLoading, feedError) {
+        // A two-item provisional page can settle while the initial request is
+        // still loading. Retry admission once that request completes, but never
+        // spin on a failed network page.
+        if (settledVideoId == null || settledVideoIndex < 0 || isLoading || feedError != null) return@LaunchedEffect
 
         if (isProfileFeed) {
             if (settledVideoIndex >= currentVideos.size - 3) {
@@ -1069,6 +1112,8 @@ fun VideoFeedScreen(
             settledVideoId,
             ignoreCase = true,
         ) == true
+
+        if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("FeedPlaybackAudit", "gate allowed=$canPlay playlist=$playlistMatchesSelection count=${exoPlayer.mediaItemCount} selected=$settledVideoIndex overlay=$playbackOverlayOpen resumed=$lifecycleResumed requested=$playbackRequested")
 
         // Reconciliation and playback run in independent coroutines. Never
         // seek by an index that still belongs to the previous playlist.
@@ -1241,40 +1286,12 @@ fun VideoFeedScreen(
         )
     }
 
-    if (showInternalShareDialog && selectedVideoForShare != null) {
-        conectate.com.presentation.components.InternalShareDialog(
-            userRepository = viewModel.userRepository,
-            onDismiss = { 
-                showInternalShareDialog = false
-                selectedVideoForShare = null
-            },
-            onShareWithUser = { user ->
-                android.util.Log.d("VideoFeedScreen", "onShareWithUser: Start. User=${user.id}")
-                
-                // 1. Prepare the route
-                val video = selectedVideoForShare
-                val videoLink = video?.let { videoWebLink(it.id) }.orEmpty()
-                val route = Screen.Chat.createRoute(
-                    user.id,
-                    initialMessage = "¡Mira este video!\n$videoLink\n\n${video?.title ?: ""}"
-                )
-                
-                android.util.Log.d("VideoFeedScreen", "Route prepared: $route")
-
-                // 2. Close dialog and hide keyboard
-                focusManager.clearFocus()
-                android.util.Log.d("VideoFeedScreen", "Focus cleared")
-                
-                showInternalShareDialog = false
-                android.util.Log.d("VideoFeedScreen", "showInternalShareDialog set to false")
-                
-                // 3. Set pending route
-                pendingNavigationRoute = route
-                
-                // Reset selected video
-                selectedVideoForShare = null
-            }
-        )
+    LaunchedEffect(showInternalShareDialog, selectedVideoForShare?.id) {
+        if (showInternalShareDialog) {
+            selectedVideoForShare?.let { videoShareCoordinator?.openVideo(it) }
+            showInternalShareDialog = false
+            selectedVideoForShare = null
+        }
     }
 
     explanationVideo?.let { selected ->
@@ -1802,6 +1819,32 @@ fun VideoFeedScreen(
                  Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Color.White)
                 }
+            } else if (currentVideos.isEmpty() && !isProfileFeed && !isSearchMode && selectedTab == 0 && noMatchingRecommendations) {
+                VideoFeedNoMatchesPage(
+                    onReviewPreferences = { navController.navigate(Screen.SettingsCategory.createRoute("algorithm")) },
+                    onRefresh = viewModel::refreshFeed,
+                )
+            } else if (currentVideos.isEmpty() && !isProfileFeed && !isSearchMode && selectedTab == 0 && authoritativeFeedAccepted) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(horizontal = 32.dp),
+                    ) {
+                        Text(
+                            text = feedError ?: if (authoritativeContinuationPending)
+                                "Podemos seguir buscando videos para ti."
+                            else "Todavía no hay videos disponibles para ti. Actualiza para comprobar novedades.",
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                        )
+                        if (authoritativeContinuationPending || feedError != null) {
+                            Button(onClick = { viewModel.loadMoreVideos() }, enabled = !isLoading) {
+                                Text(if (feedError != null) "Reintentar" else "Continuar")
+                            }
+                        }
+                    }
+                }
             } else if (feedEntries.isEmpty() && feedError != null) {
                  Box(
                      modifier = Modifier.fillMaxSize(),
@@ -1859,6 +1902,18 @@ fun VideoFeedScreen(
                      }
                  }
             } else {
+                if (!isProfileFeed && !isSearchMode && selectedTab == 0 && authoritativeFeedAccepted && feedError != null) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomCenter).zIndex(2f).padding(bottom = 92.dp, start = 16.dp, end = 16.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {
+                            Text("No pudimos cargar más videos", modifier = Modifier.weight(1f))
+                            TextButton(onClick = { viewModel.loadMoreVideos() }, enabled = !isLoading) { Text("Reintentar") }
+                        }
+                    }
+                }
                 if (isSearchMode) {
                     LaunchedEffect(Unit) {
                         exoPlayer.pause()
@@ -1900,6 +1955,7 @@ fun VideoFeedScreen(
                             VideoItem(
                             video = video,
                             exoPlayer = exoPlayer, // Pass the SINGLE player
+                            renderedVideoId = renderedVideoId,
                             isSelected = pagerState.settledPage == page && !isSystemBusy,
                             showCellularPlayHint = cellularAutoplayBlocked && manuallyStartedVideoId != video.id,
                             onTogglePlayback = {
@@ -2009,6 +2065,14 @@ fun VideoFeedScreen(
                                 onDismiss = { viewModel.dismissSocializationCard(it.id) },
                             )
                         }
+                        VideoFeedTailEntry -> VideoFeedTailPage(
+                            exhausted = recommendedFeedExhausted,
+                            loading = isLoading,
+                            error = feedError,
+                            onContinue = { viewModel.continueRecommendedFeed() },
+                            onRefresh = { viewModel.continueRecommendedFeed() },
+                            onSearch = { viewModel.toggleSearchMode(true) },
+                        )
                         null -> Unit
                     }
                 }
@@ -2348,7 +2412,7 @@ private fun LiveFeedRecommendation(
                 modifier = Modifier.clickable(onClick = onOpenProfile),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                conectate.com.presentation.components.CircularProfileImage(
+                conectate.com.presentation.components.CircularProfileImage(ownerId = stream.hostUserId, 
                     imageUrl = stream.hostAvatarUrl,
                     size = 44.dp,
                     showBorder = true
@@ -2392,11 +2456,12 @@ private fun LiveFeedRecommendation(
 
 @Composable
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 fun VideoItem(
     video: Video, 
     exoPlayer: ExoPlayer, 
     isSelected: Boolean,
+    renderedVideoId: String?,
     showCellularPlayHint: Boolean,
     onTogglePlayback: () -> Unit,
     onLikeClick: () -> Unit,
@@ -2463,6 +2528,7 @@ fun VideoItem(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .then(if (conectate.com.BuildConfig.DEBUG) Modifier.semantics { testTagsAsResourceId = true }.testTag("feed_video_${video.id}") else Modifier)
             .pointerInput(video.id) {
                 detectHorizontalDragGestures(
                     onHorizontalDrag = { _, dragAmount ->
@@ -2500,14 +2566,15 @@ fun VideoItem(
         // 🚀 SMART TRANSITION STATE
         // Keep thumbnail visible until the FIRST FRAME is actually rendered by the player.
         // This eliminates the black flash completely.
-        var isFirstFrameRendered by remember(video.id) { mutableStateOf(false) }
+        var isFirstFrameRendered by remember(video.id) { mutableStateOf(renderedVideoId == video.id) }
         
         // Reset the transition guard both for a new item and when an item is
         // selected again after another page owned the shared player. Without
         // this, a stale first frame can remain visible while ExoPlayer is
         // preparing the newly selected source.
-        LaunchedEffect(video.id, isSelected) {
+        LaunchedEffect(video.id, isSelected, renderedVideoId) {
             if (!isSelected) isFirstFrameRendered = false
+            else if (renderedVideoId == video.id) isFirstFrameRendered = true
         }
         
         DisposableEffect(video.id, isSelected, exoPlayer) {
@@ -2519,7 +2586,9 @@ fun VideoItem(
                     
                     override fun onRenderedFirstFrame() {
                         super.onRenderedFirstFrame()
-                        if (exoPlayer.currentMediaItem?.mediaId == video.id) isFirstFrameRendered = true
+                        if (exoPlayer.currentMediaItem?.mediaId == video.id) {
+                            isFirstFrameRendered = true
+                        }
                     }
                     
                 }
@@ -2683,7 +2752,7 @@ fun VideoItem(
             val showFollowButton = !isOwnVideo && !isFollowing
 
             Box(modifier = Modifier.size(width = 54.dp, height = 65.dp)) {
-                conectate.com.presentation.components.CircularProfileImage(
+                conectate.com.presentation.components.CircularProfileImage(ownerId = video.userId, 
                     modifier = Modifier.align(Alignment.TopCenter)
                         .clickable { onProfileClick(video.userId) },
                     imageUrl = if (video.userProfileImage.isNotEmpty()) video.userProfileImage else null,
@@ -3026,20 +3095,6 @@ fun VideoItem(
     }
 }
 
-private sealed interface VideoFeedEntry {
-    val stableKey: String
-}
-
-private data class VideoFeedVideoEntry(val video: Video) : VideoFeedEntry {
-    override val stableKey: String = "video:${video.id}"
-}
-
-private data class VideoFeedLiveEntry(
-    val stream: conectate.com.data.model.LiveStream
-) : VideoFeedEntry {
-    override val stableKey: String = "live:${stream.id}"
-}
-
 private const val INITIAL_EMPTY_STATE_GRACE_MS = 2_000L
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
@@ -3056,81 +3111,6 @@ private fun buildVideoMediaItem(videoId: String, resolvedUrl: String): MediaItem
 
 private fun Throwable.causeSequence(): Sequence<Throwable> =
     generateSequence(this as Throwable?) { throwable -> throwable.cause }
-
-private data class VideoFeedSocialEntry(
-    val posts: List<Post>
-) : VideoFeedEntry {
-    override val stableKey: String = "social:${posts.joinToString(",") { it.id }}"
-}
-
-private data class VideoFeedPeopleEntry(
-    val users: List<conectate.com.data.model.User>
-) : VideoFeedEntry {
-    override val stableKey: String = "people:${users.joinToString(",") { it.id }}"
-}
-
-private data class VideoFeedSocializationEntry(
-    val cards: List<conectate.com.data.model.SocializationCard>,
-) : VideoFeedEntry {
-    override val stableKey: String = "socialize:${cards.joinToString(",") { it.id }}"
-}
-
-private fun mixedVideoFeed(
-    videos: List<Video>,
-    streams: List<conectate.com.data.model.LiveStream>,
-    includeLives: Boolean,
-    socialPosts: List<Post> = emptyList(),
-    recommendedPeople: List<conectate.com.data.model.User> = emptyList(),
-    socializationCards: List<conectate.com.data.model.SocializationCard> = emptyList(),
-): List<VideoFeedEntry> {
-    if (videos.isEmpty()) {
-        // Auxiliary cards are inserted only after real videos. Rendering them
-        // first creates a flash and a jump while the primary page loads.
-        return emptyList()
-    }
-
-    val result = ArrayList<VideoFeedEntry>(videos.size + (videos.size / 10) + 2)
-    var nextLiveAfter = 12
-    var liveIndex = 0
-    var socialInserted = false
-    var peopleInserted = false
-    var socializationInserted = false
-    videos.forEachIndexed { index, video ->
-        result += VideoFeedVideoEntry(video)
-        val videoCount = index + 1
-        if (includeLives && streams.isNotEmpty() && videoCount == nextLiveAfter) {
-            result += VideoFeedLiveEntry(streams[liveIndex % streams.size])
-            liveIndex += 1
-            nextLiveAfter += when (liveIndex % 3) {
-                0 -> 10
-                1 -> 12
-                else -> 15
-            }
-        }
-        if (!socialInserted && socialPosts.isNotEmpty() && videoCount == 8) {
-            result += VideoFeedSocialEntry(socialPosts.take(8))
-            socialInserted = true
-        }
-        if (!peopleInserted && recommendedPeople.isNotEmpty() && videoCount == 15) {
-            result += VideoFeedPeopleEntry(recommendedPeople.take(10))
-            peopleInserted = true
-        }
-        if (!socializationInserted && socializationCards.isNotEmpty() && videoCount == 12) {
-            result += VideoFeedSocializationEntry(socializationCards.take(4))
-            socializationInserted = true
-        }
-    }
-    if (!peopleInserted && recommendedPeople.isNotEmpty()) {
-        result += VideoFeedPeopleEntry(recommendedPeople.take(10))
-    }
-    if (!socialInserted && socialPosts.isNotEmpty()) {
-        result += VideoFeedSocialEntry(socialPosts.take(8))
-    }
-    if (!socializationInserted && socializationCards.isNotEmpty()) {
-        result += VideoFeedSocializationEntry(socializationCards.take(4))
-    }
-    return result
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

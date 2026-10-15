@@ -446,34 +446,42 @@ class VideoPlayerViewModel @Inject constructor(
     private val _audioProgress = MutableStateFlow(0f)
     val audioProgress: StateFlow<Float> = _audioProgress.asStateFlow()
 
-    fun playAudio(comment: VideoComment) {
-        if (_currentPlayingCommentId.value == comment.id) {
-            stopAudio()
-            return
-        }
+    private var audioPrepareJob: Job? = null
+    private var audioDelivery: conectate.com.util.NativeAudioDelivery? = null
+    private var audioAttempt = 0L
 
+    fun playAudio(comment: VideoComment) {
+        val url = comment.mediaUrl ?: return
+        if (_currentPlayingCommentId.value == comment.id) { stopAudio(); return }
         stopAudio()
-        
-        mediaPlayer = MediaPlayer().apply {
+        val attempt = audioAttempt
+        _currentPlayingCommentId.value = comment.id
+        audioPrepareJob = viewModelScope.launch {
+            var prepared: conectate.com.util.NativeAudioDelivery? = null
             try {
-                val audioUrl = comment.mediaUrl ?: return
-                UbuntuMedia.setDataSource(this, audioUrl)
-                prepareAsync()
-                setOnPreparedListener { 
-                    start()
-                    _currentPlayingCommentId.value = comment.id
-                    startProgressUpdate()
+                val delivery = videoRepository.prepareNativeAudio(url)
+                prepared = delivery
+                if (attempt != audioAttempt) { delivery.close(); return@launch }
+                delivery.requireCurrent()
+                audioDelivery = delivery
+                val player = MediaPlayer()
+                mediaPlayer = player
+                player.setOnPreparedListener { ready ->
+                    if (mediaPlayer !== ready || attempt != audioAttempt) return@setOnPreparedListener
+                    try { delivery.requireCurrent(); ready.start(); startProgressUpdate() }
+                    catch (_: Exception) { stopAudio() }
                 }
-                setOnCompletionListener { 
-                    stopAudio()
-                }
-                setOnErrorListener { _, _, _ ->
-                    stopAudio()
-                    true
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("VideoPlayerVM", "Error playing audio", e)
-                stopAudio()
+                player.setOnCompletionListener { if (mediaPlayer === it) stopAudio() }
+                player.setOnErrorListener { failed, _, _ -> if (mediaPlayer === failed) stopAudio(); true }
+                UbuntuMedia.setDataSource(player, delivery.source)
+                player.prepareAsync()
+            } catch (cancelled: CancellationException) {
+                prepared?.close()
+                throw cancelled
+            } catch (error: Exception) {
+                prepared?.close()
+                if (attempt == audioAttempt) stopAudio()
+                android.util.Log.e("VideoCommentAudio", "No se pudo abrir el audio", error)
             }
         }
     }
@@ -610,6 +618,8 @@ class VideoPlayerViewModel @Inject constructor(
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
             while (mediaPlayer?.isPlaying == true) {
+                try { audioDelivery?.requireCurrent() }
+                catch (_: Exception) { stopAudio(); break }
                 val progress = mediaPlayer?.let { it.currentPosition.toFloat() / it.duration } ?: 0f
                 _audioProgress.value = progress
                 delay(50)
@@ -617,13 +627,23 @@ class VideoPlayerViewModel @Inject constructor(
         }
     }
 
+    fun onPlaybackBackgrounded() = stopAudio()
+
     private fun stopAudio() {
         _currentPlayingCommentId.value = null
         _audioProgress.value = 0f
         progressJob?.cancel()
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
+        audioAttempt++
+        audioPrepareJob?.cancel()
+        audioPrepareJob = null
+        val oldPlayer = mediaPlayer
         mediaPlayer = null
+        oldPlayer?.setOnPreparedListener(null)
+        oldPlayer?.setOnCompletionListener(null)
+        oldPlayer?.setOnErrorListener(null)
+        runCatching { oldPlayer?.release() }
+        audioDelivery?.close()
+        audioDelivery = null
     }
 
     override fun onCleared() {
@@ -761,6 +781,7 @@ fun VideoPlayerScreen(
     val videoAutoplayOnMobile by viewModel.videoAutoplayOnMobile.collectAsState()
     val cellularAutoplayBlocked = isCellular && !videoAutoplayOnMobile
     
+    val videoShareCoordinator = conectate.com.presentation.messages.LocalUniversalForwardCoordinator.current
     var showInternalShareDialog by remember { mutableStateOf(false) }
     var showReportDialog by remember { mutableStateOf(false) }
     var showStickerPanel by remember { mutableStateOf(false) }
@@ -804,7 +825,7 @@ fun VideoPlayerScreen(
         onDispose { recoveryRunner.cancel() }
     }
     val playbackGateOpen = lifecycleResumed &&
-        !showInternalShareDialog &&
+        !showInternalShareDialog && videoShareCoordinator?.videoRequest == null &&
         !showReportDialog &&
         currentVideo != null
     val playbackGateOpenRef = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
@@ -951,6 +972,7 @@ fun VideoPlayerScreen(
             lifecycleResumed = lifecycleOwner.lifecycle.currentState
                 .isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
             if (!lifecycleResumed) {
+                viewModel.onPlaybackBackgrounded()
                 playbackGateOpenRef.set(false)
                 exoPlayer.pause()
             }
@@ -962,8 +984,8 @@ fun VideoPlayerScreen(
         }
     }
 
-    DisposableEffect(exoPlayer) {
-        onDispose { exoPlayer.release() }
+    DisposableEffect(exoPlayer, viewModel) {
+        onDispose { viewModel.onPlaybackBackgrounded(); exoPlayer.release() }
     }
 
     LaunchedEffect(playbackGateOpen, playbackRequested, currentVideo?.id) {
@@ -1132,26 +1154,12 @@ fun VideoPlayerScreen(
             
             // Internal Share Dialog (placed outside TopAppBar for stability)
             val currentState = uiState
-            if (showInternalShareDialog && currentState is VideoPlayerUiState.Success) {
-                conectate.com.presentation.components.InternalShareDialog(
-                    userRepository = viewModel.userRepo,
-                    onDismiss = { showInternalShareDialog = false },
-                    onShareWithUser = { user ->
-                        showInternalShareDialog = false
-                        val videoLink = videoWebLink(currentState.video.id)
-                        val route = Screen.Chat.createRoute(
-                            user.id,
-                            initialMessage = "¡Mira este video!\n$videoLink\n\n${currentState.video.title}"
-                        )
-                        // Root fix: Deactivate player more aggressively to free main thread
-                        exoPlayer.playWhenReady = false
-                        exoPlayer.pause()
-                        
-                        // Root fix: Clear state and navigate immediately
-                        showInternalShareDialog = false
-                        navController.navigate(route = route)
-                    }
-                )
+            LaunchedEffect(showInternalShareDialog) {
+                if (showInternalShareDialog && currentState is VideoPlayerUiState.Success) {
+                    exoPlayer.pause()
+                    videoShareCoordinator?.openVideo(currentState.video)
+                    showInternalShareDialog = false
+                }
             }
 
             if (showReportDialog && currentState is VideoPlayerUiState.Success) {
@@ -1722,7 +1730,7 @@ fun VideoPlayerScreen(
                                                             .padding(horizontal = 12.dp, vertical = 8.dp),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        CircularProfileImage(
+                                                        CircularProfileImage(ownerId = user.id, 
                                                             imageUrl = user.avatar_url ?: "",
                                                             size = 26.dp,
                                                             fallbackName = user.displayName

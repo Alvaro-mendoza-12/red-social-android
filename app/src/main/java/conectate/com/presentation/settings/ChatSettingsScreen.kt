@@ -70,6 +70,7 @@ class ChatSettingsViewModel @Inject constructor(
     val textScale = themePreferences.textScale
     val isEnterToSendEnabled = messagesPreferences.enterToSendEnabled
     val isMediaAutoDownloadEnabled = messagesPreferences.mediaAutoDownloadEnabled
+    val receivedImagesGallery = messagesPreferences.receivedImagesGallery
     val isReadReceiptsEnabled = messagesPreferences.readReceiptsEnabled
     val chatSoundsEnabled = messagesPreferences.chatSoundsEnabled
     val typingIndicatorsEnabled = messagesPreferences.typingIndicatorsEnabled
@@ -83,6 +84,7 @@ class ChatSettingsViewModel @Inject constructor(
     fun setTextScale(scale: Float) = themePreferences.setTextScale(scale)
     fun toggleEnterToSend(enabled: Boolean) = messagesPreferences.setEnterToSendEnabled(enabled)
     fun toggleMediaAutoDownload(enabled: Boolean) = messagesPreferences.setMediaAutoDownloadEnabled(enabled)
+    fun toggleReceivedImagesGallery(enabled: Boolean) = messagesPreferences.setReceivedImagesGallery(enabled)
     fun toggleReadReceipts(enabled: Boolean) = messagesPreferences.setReadReceiptsEnabled(enabled)
     fun toggleChatSounds(enabled: Boolean) = messagesPreferences.setChatSoundsEnabled(enabled)
     fun toggleTypingIndicators(enabled: Boolean) = messagesPreferences.setTypingIndicatorsEnabled(enabled)
@@ -103,6 +105,7 @@ fun ChatSettingsScreen(
     val textScale by viewModel.textScale.collectAsState()
     val isEnterToSendEnabled by viewModel.isEnterToSendEnabled.collectAsState()
     val isMediaAutoDownloadEnabled by viewModel.isMediaAutoDownloadEnabled.collectAsState()
+    val receivedImagesGallery by viewModel.receivedImagesGallery.collectAsState()
     val isReadReceiptsEnabled by viewModel.isReadReceiptsEnabled.collectAsState()
     val chatSoundsEnabled by viewModel.chatSoundsEnabled.collectAsState()
     val typingIndicatorsEnabled by viewModel.typingIndicatorsEnabled.collectAsState()
@@ -196,9 +199,17 @@ fun ChatSettingsScreen(
                 SettingSwitchRow(
                     icon = Icons.Default.Download,
                     title = "Descarga automática",
-                    subtitle = "Precarga fotos, audios y videos de chats.",
+                    subtitle = "Precarga fotos, audios y videos según tus ajustes de Wi-Fi y datos móviles.",
                     checked = isMediaAutoDownloadEnabled,
                     onCheckedChange = viewModel::toggleMediaAutoDownload
+                )
+                SettingDivider()
+                SettingSwitchRow(
+                    icon = Icons.Default.Download,
+                    title = "Imágenes recibidas en galería",
+                    subtitle = "Guarda fotos de chats, grupos y comunidades. Excluye las de una sola visualización.",
+                    checked = receivedImagesGallery,
+                    onCheckedChange = viewModel::toggleReceivedImagesGallery
                 )
                 SettingDivider()
                 SettingSwitchRow(

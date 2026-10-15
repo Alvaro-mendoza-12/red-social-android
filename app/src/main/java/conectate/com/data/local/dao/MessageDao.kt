@@ -140,4 +140,7 @@ interface MessageDao {
         currentUserId: String,
         now: String
     )
+
+    @Query("UPDATE messages SET deleted_for_all = 1, content = '', content_type = 'text', media_url = NULL, thumbnail_url = NULL, media_size = 0, poll_id = NULL, reply_to_id = NULL, reply_to_json = NULL, reactions_json = '{}' WHERE id = :messageId AND chat_id = :conversationId")
+    suspend fun redactDeletedMessage(conversationId: String, messageId: String)
 }

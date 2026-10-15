@@ -65,6 +65,13 @@ class MomentEditorCanvasUiTest {
         compose.onNodeWithContentDescription("Publicar").assertIsDisplayed()
         capture("qa-moment-editor-label.png")
     }
+    @Test fun previewHasAnExplicitPauseAndResumeControl() {
+        show()
+        compose.onNodeWithContentDescription("Pausar vista previa").performClick()
+        compose.onNodeWithContentDescription("Reproducir vista previa").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Pausar vista previa").assertIsDisplayed()
+    }
+
     @Test fun draggingMovesTheMusicInsteadOfTheCaption() {
         show()
         val before = selection.overlayX

@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "types": ["vite/client", "jest", "node", "@testing-library/jest-dom"],
+    "isolatedModules": true,
+    "noEmit": false
+  },
+  "include": ["src"]
+}

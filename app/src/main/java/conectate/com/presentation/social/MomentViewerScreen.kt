@@ -33,6 +33,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -336,7 +339,7 @@ fun MomentViewerScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProfileImage(
+                    CircularProfileImage(ownerId = currentMoment.userId, 
                         imageUrl = currentMoment.userAvatarUrl,
                         size = 40.dp,
                         showBorder = false
@@ -688,7 +691,9 @@ fun MomentViewerScreen(
     val resumed = momentPlaybackResumed()
     var automaticAdvance by rememberSaveable { mutableStateOf(true) }
     var toolsOpen by remember { mutableStateOf(false) }
-    val playbackPaused = paused || toolsOpen || !resumed || pagerState.isScrollInProgress
+    var zoomedMomentId by remember { mutableStateOf<String?>(null) }
+    val imageZoomed = zoomedMomentId != null && zoomedMomentId == visibleMoments.getOrNull(pagerState.currentPage)?.id
+    val playbackPaused = paused || imageZoomed || toolsOpen || !resumed || pagerState.isScrollInProgress
     var showViewersSheet by remember { mutableStateOf(false) }
     var showHighlightDialog by remember { mutableStateOf(false) }
     var highlightTitle by remember { mutableStateOf("") }
@@ -792,6 +797,9 @@ fun MomentViewerScreen(
         activePrepared = activePrepared,
         reliableBottomPadding = reliableBottomPadding,
         onPauseChanged = { paused = it },
+        onImageZoomChanged = { id, zoomed ->
+            if (zoomed) zoomedMomentId = id else if (zoomedMomentId == id) zoomedMomentId = null
+        },
         onClose = navController::popBackStack,
         onPrevious = {
             scope.launch { if (pagerState.currentPage > 0) pagerState.animateScrollToPage(pagerState.currentPage - 1) }
@@ -908,6 +916,7 @@ private fun MomentViewerCanvas(
     activePrepared: Boolean,
     reliableBottomPadding: androidx.compose.ui.unit.Dp,
     onPauseChanged: (Boolean) -> Unit,
+    onImageZoomChanged: (String, Boolean) -> Unit,
     onClose: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -923,7 +932,13 @@ private fun MomentViewerCanvas(
     onVideoProgress: (String, Float) -> Unit,
     onVideoEnded: (String) -> Unit
 ) {
+    val currentMoment = moments.getOrNull(pagerState.currentPage)
     Box(Modifier.fillMaxSize().background(Color.Black)) {
+        MomentViewerGestureLayer(
+            isOwner = currentMoment?.userId == currentUserId,
+            onPauseChanged = onPauseChanged, onPrevious = onPrevious, onNext = onNext,
+            onOpenViewers = { currentMoment?.let(onOpenViewers) }, onClose = onClose
+        ) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
@@ -949,21 +964,18 @@ private fun MomentViewerCanvas(
                     onMusicPrepared = onMusicPrepared,
                     onMusicStarted = onMusicStarted,
                     onVideoProgress = onVideoProgress,
-                    onVideoEnded = onVideoEnded
+                    onVideoEnded = onVideoEnded,
+                    onImageZoomChanged = { onImageZoomChanged(moment.id, it) },
+                    onImagePauseChanged = onPauseChanged,
+                    onImageTap = { fraction ->
+                        if (fraction < .25f) onPrevious() else if (fraction > .75f) onNext()
+                    }
                 )
             }
         }
 
-        val currentMoment = moments.getOrNull(pagerState.currentPage)
+        }
         if (currentMoment != null) {
-            MomentViewerGestureLayer(
-                isOwner = currentMoment.userId == currentUserId,
-                onPauseChanged = onPauseChanged,
-                onPrevious = onPrevious,
-                onNext = onNext,
-                onOpenViewers = { onOpenViewers(currentMoment) },
-                onClose = onClose
-            )
             // Interactive attribution belongs above the navigation gesture layer.
             MomentViewerHeader(
                 moments = moments,
@@ -1052,13 +1064,14 @@ private fun MomentViewerHeader(
 }
 
 @Composable
-private fun MomentViewerGestureLayer(
+internal fun MomentViewerGestureLayer(
     isOwner: Boolean,
     onPauseChanged: (Boolean) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onOpenViewers: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    content: @Composable () -> Unit = {}
 ) {
     var dragTotal by remember { mutableStateOf(0f) }
     Box(
@@ -1082,7 +1095,7 @@ private fun MomentViewerGestureLayer(
                     onPress = { tryAwaitRelease(); onPauseChanged(false) }
                 )
             }
-    )
+    ) { content() }
 }
 
 @Composable
@@ -1246,7 +1259,10 @@ fun MomentContent(
     onMusicStarted: (String) -> Unit = {},
     onVideoProgress: (String, Float) -> Unit,
     onVideoEnded: (String) -> Unit,
-    allowImageZoom: Boolean = false,
+    allowImageZoom: Boolean = true,
+    onImageZoomChanged: (Boolean) -> Unit = {},
+    onImagePauseChanged: (Boolean) -> Unit = {},
+    onImageTap: (Float) -> Unit = {},
 ) {
     val context = LocalContext.current
     var videoPlaying by remember(moment.id, moment.mediaUrl) { mutableStateOf(false) }
@@ -1425,6 +1441,9 @@ fun MomentContent(
                     thumbnailUrl = moment.thumbnailUrl,
                     momentId = moment.id,
                     zoomEnabled = allowImageZoom,
+                    onZoomChanged = onImageZoomChanged,
+                    onPauseChanged = onImagePauseChanged,
+                    onTapFraction = onImageTap,
                     onImageSettled = { onImageReady(moment.id) },
                     onAspectRatioKnown = { mediaAspectRatio = it },
                 )
@@ -1492,11 +1511,20 @@ internal fun ZoomableMomentImage(
     thumbnailUrl: String?,
     momentId: String,
     zoomEnabled: Boolean,
+    onZoomChanged: (Boolean) -> Unit = {},
+    onPauseChanged: (Boolean) -> Unit = {},
+    onTapFraction: (Float) -> Unit = {},
     onAspectRatioKnown: (Float) -> Unit = {},
     onImageSettled: () -> Unit,
 ) {
-    var scale by remember(momentId) { mutableFloatStateOf(1f) }
-    var offset by remember(momentId) { mutableStateOf(Offset.Zero) }
+    var transforming by remember(momentId, mediaUrl) { mutableStateOf(false) }
+    var scale by remember(momentId, mediaUrl) { mutableFloatStateOf(1f) }
+    val latestZoomChanged by rememberUpdatedState(onZoomChanged)
+    val latestPauseChanged by rememberUpdatedState(onPauseChanged)
+    val latestTapFraction by rememberUpdatedState(onTapFraction)
+    LaunchedEffect(scale > 1.01f, transforming) { latestZoomChanged(scale > 1.01f || transforming) }
+    DisposableEffect(momentId, mediaUrl) { onDispose { latestZoomChanged(false) } }
+    var offset by remember(momentId, mediaUrl) { mutableStateOf(Offset.Zero) }
     var imageState by remember(momentId, mediaUrl) { mutableStateOf(MomentImageLoadState.LOADING) }
     var retry by remember(momentId, mediaUrl) { mutableIntStateOf(0) }
     val context = LocalContext.current
@@ -1504,7 +1532,7 @@ internal fun ZoomableMomentImage(
         Modifier
     } else {
         Modifier
-            .pointerInput(momentId) {
+            .pointerInput(momentId, mediaUrl) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     var keepGoing: Boolean
@@ -1512,6 +1540,7 @@ internal fun ZoomableMomentImage(
                         val event = awaitPointerEvent()
                         val pressed = event.changes.filter { it.pressed }
                         val multiTouch = pressed.size >= 2
+                        transforming = multiTouch
                         if (multiTouch || scale > 1f) {
                             val nextScale = (scale * event.calculateZoom()).coerceIn(1f, 4f)
                             val maxX = size.width * (nextScale - 1f) / 2f
@@ -1526,14 +1555,18 @@ internal fun ZoomableMomentImage(
                                     y = (offset.y + pan.y).coerceIn(-maxY, maxY),
                                 )
                             }
-                            event.changes.forEach { it.consume() }
+                            event.changes.forEach { if (it.position != it.previousPosition) it.consume() }
                         }
                         keepGoing = event.changes.any { it.pressed }
                     } while (keepGoing)
+                    transforming = false
                 }
             }
-            .pointerInput(momentId) {
+            .pointerInput(momentId, mediaUrl) {
                 detectTapGestures(
+                    onTap = { if (scale <= 1.01f) latestTapFraction(it.x / size.width.coerceAtLeast(1)) },
+                    onLongPress = { latestPauseChanged(true) },
+                    onPress = { tryAwaitRelease(); latestPauseChanged(false) },
                     onDoubleTap = {
                         if (scale > 1f) {
                             scale = 1f
@@ -1546,7 +1579,8 @@ internal fun ZoomableMomentImage(
             }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF15171B))) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF15171B)).testTag("moment_zoom_viewer")
+        .semantics { stateDescription = "Ampliación ${(scale * 100).toInt()} %" }) {
         val decodeSize = momentImageDecodeSize(constraints.maxWidth, constraints.maxHeight)
         val imageUrl = momentImagePreviewUrl(mediaUrl, decodeSize.first)
         val thumbnail = thumbnailUrl?.let { UbuntuMedia.resolveUrl(it) ?: it }?.takeIf { it != imageUrl }
@@ -1782,7 +1816,7 @@ fun ViewersList(
                         .padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProfileImage(
+                    CircularProfileImage(ownerId = viewer.userId, 
                         imageUrl = viewer.userAvatarUrl,
                         size = 48.dp,
                         showBorder = false

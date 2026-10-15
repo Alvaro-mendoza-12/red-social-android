@@ -43,6 +43,19 @@ fun PostDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var commentText by remember { mutableStateOf("") }
+    var showReactions by remember(postId) { mutableStateOf(false) }
+    var reactionFilter by remember(postId) { mutableStateOf<String?>(null) }
+    val reactionState by viewModel.reactionUsersState.collectAsStateWithLifecycle()
+    LaunchedEffect(postId, showReactions, reactionFilter) {
+        if (showReactions) viewModel.loadPostReactions(postId, reactionFilter) else viewModel.clearPostReactions()
+    }
+    if (showReactions) uiState.post?.let { post ->
+        PostReactionsSheet(post, reactionState, reactionFilter, { reactionFilter = it },
+            { viewModel.loadPostReactions(postId, reactionFilter) },
+            { userId -> showReactions = false; viewModel.clearPostReactions()
+                navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId)) },
+            { showReactions = false; viewModel.clearPostReactions() })
+    }
     var replyingTo by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
     var commentToEdit by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
     var postToReport by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
@@ -272,7 +285,7 @@ fun PostDetailScreen(
                                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                conectate.com.presentation.components.CircularProfileImage(
+                                                conectate.com.presentation.components.CircularProfileImage(ownerId = user.id, 
                                                     imageUrl = user.avatar_url ?: "",
                                                     size = 28.dp,
                                                     fallbackName = user.display_name ?: user.full_name ?: user.username ?: user.email
@@ -400,6 +413,8 @@ fun PostDetailScreen(
                         PostCard(
                             post = state.post,
                             onLikeClick = { viewModel.toggleLike(postId) },
+                            onReactionSelect = { viewModel.setReaction(postId, it) },
+                            onReactionSummaryClick = { reactionFilter = null; showReactions = true },
                             onCommentClick = { /* Already here */ },
                             onShareClick = { viewModel.toggleShare(postId) },
                             onUserClick = { userId ->

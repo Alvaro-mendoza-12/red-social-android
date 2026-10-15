@@ -726,7 +726,13 @@ fun MessageBubble(
                         }
                     }
                     "text" -> {
-                        LinkText(
+                        val videoReference = remember(message.content) { conectate.com.data.model.sharedVideoReference(message.content) }
+                        if (videoReference != null) {
+                            SharedVideoMessageCard(videoReference, onUrlClick)
+                            if (videoReference.caption.isNotBlank()) Text(videoReference.caption,
+                                color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
+                                style = MaterialTheme.typography.bodyMedium)
+                        } else LinkText(
                             text = message.content,
                             backgroundColor = backgroundColor,
                             color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,

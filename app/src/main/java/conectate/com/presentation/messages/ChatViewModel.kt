@@ -88,6 +88,7 @@ class ChatViewModel @Inject constructor(
     private var initialMessageSent = false
     private var chatId: String? = null
     private var isPlaceholder: Boolean = false
+    private var isDirectConversation = true
     private var resolvedTargetUserId: String? = null
     private val ownerAccountId = authService.getCurrentUserId()?.trim()?.lowercase()
 
@@ -107,6 +108,64 @@ class ChatViewModel @Inject constructor(
 
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
+    private val _messageRequest = MutableStateFlow(conectate.com.data.model.DirectMessageRequestState())
+    val messageRequest = _messageRequest.asStateFlow()
+    private val _requestWarningAcknowledged = MutableStateFlow(false)
+    val requestWarningAcknowledged = _requestWarningAcknowledged.asStateFlow()
+    private val _requestDecisionBusy = MutableStateFlow(false)
+    val requestDecisionBusy = _requestDecisionBusy.asStateFlow()
+    private var requestRefreshJob: Job? = null
+    private var requestPollJob: Job? = null
+    private var introductionReservedAtMillis = 0L
+
+    private fun reserveIntroduction() {
+        if (_messageRequest.value.status == "new") {
+            introductionReservedAtMillis = System.currentTimeMillis()
+            _messageRequest.value = conectate.com.data.model.DirectMessageRequestState("pending_outgoing")
+        }
+    }
+
+    fun acknowledgeMessageRequestWarning() { _requestWarningAcknowledged.value = true }
+
+    fun refreshMessageRequest() {
+        if (requestRefreshJob?.isActive == true) return
+        val cid = chatId ?: return
+        val target = resolvedTargetUserId ?: otherUserId
+        if (!isDirectConversation) {
+            _messageRequest.value = conectate.com.data.model.DirectMessageRequestState("open"); return
+        }
+        requestRefreshJob = viewModelScope.launch {
+            val result = messageRepository.loadDirectMessageRequest(if (isPlaceholder) null else cid, target)
+            if (ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase()) return@launch
+            result.fold(
+                onSuccess = { state ->
+                    val unsent = (_chatState.value as? ChatUiState.Success)?.messages.orEmpty().any {
+                        it.sender_id.equals(authService.getCurrentUserId(), true) && it.status in setOf("pending", "sending", "queued", "uploading")
+                    }
+                    val reserved = unsent || _isSending.value || System.currentTimeMillis() - introductionReservedAtMillis < 15_000L
+                    if (!(state.status == "new" && _messageRequest.value.status == "pending_outgoing" && reserved))
+                        _messageRequest.value = state
+                },
+                onFailure = { _messageRequest.value = _messageRequest.value.afterVerificationFailure() },
+            )
+        }
+    }
+
+    fun decideMessageRequest(accept: Boolean) {
+        if (_requestDecisionBusy.value || _messageRequest.value.status != "pending_incoming") return
+        val cid = chatId ?: return
+        _requestDecisionBusy.value = true
+        viewModelScope.launch {
+            try {
+                val result = messageRepository.decideDirectMessageRequest(cid, accept)
+                if (ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase()) return@launch
+                result.fold(onSuccess = { _messageRequest.value = it }, onFailure = {
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo actualizar la solicitud. Inténtalo nuevamente.")
+                })
+            } finally { _requestDecisionBusy.value = false }
+        }
+    }
+
     
     private val _isBlocked = MutableStateFlow(false)
     val isBlocked: StateFlow<Boolean> = _isBlocked.asStateFlow()
@@ -379,6 +438,10 @@ class ChatViewModel @Inject constructor(
             
             if (resolvedChat != null) {
                 chatId = resolvedChat.id
+                isDirectConversation = !resolvedChat.is_group
+                _messageRequest.value = if (resolvedChat.is_group) conectate.com.data.model.DirectMessageRequestState("open")
+                    else conectate.com.data.model.DirectMessageRequestState()
+                refreshMessageRequest()
                 val isRealChat = !isPlaceholder && !resolvedChat.id.startsWith("placeholder_", ignoreCase = true)
                 val cleanChatId = chatId?.trim()?.lowercase()
                 if (isRealChat && !cleanChatId.isNullOrBlank()) {
@@ -731,7 +794,13 @@ class ChatViewModel @Inject constructor(
 
     private fun normalizeSendError(raw: String): String {
         val clean = raw.trim()
-        return if (clean.contains("chat_blocked_by_recipient", ignoreCase = true)) {
+        return if (clean.contains("MESSAGE_REQUEST_PENDING", ignoreCase = true)) {
+            _messageRequest.value = conectate.com.data.model.DirectMessageRequestState("pending_outgoing")
+            "Espera a que acepte o responda tu solicitud."
+        } else if (clean.contains("MESSAGE_REQUEST_REJECTED", ignoreCase = true)) {
+            _messageRequest.value = conectate.com.data.model.DirectMessageRequestState("rejected")
+            "La solicitud de mensaje fue rechazada."
+        } else if (clean.contains("chat_blocked_by_recipient", ignoreCase = true)) {
             applyBlockRelationship(
                 relationship = BlockRelationship(
                     blockedByMe = _isBlockedByMe.value,
@@ -771,6 +840,7 @@ class ChatViewModel @Inject constructor(
         if (!ensureNotBlockedForSending()) return
         if (chatId == null) return
         val submission = textComposer.beginSend(forcedContent) ?: return
+        reserveIntroduction()
         viewModelScope.launch {
             
             try {
@@ -828,6 +898,7 @@ class ChatViewModel @Inject constructor(
         if (!ensureNotBlockedForSending()) return
         if (chatId == null) return
         val replySnapshot = textComposer.captureReply()
+        reserveIntroduction()
         viewModelScope.launch {
             _isSending.value = true
             try {
@@ -888,9 +959,10 @@ class ChatViewModel @Inject constructor(
 
     fun sendMediaBatch(items: List<OutgoingMessageMedia>, caption: String = "") {
         if (!ensureNotBlockedForSending()) return
-        val mediaItems = items.filter { it.uri != Uri.EMPTY && it.type.isNotBlank() }
+        val mediaItems = items.filter { it.uri != Uri.EMPTY && it.type.isNotBlank() }.let { if (_messageRequest.value.status == "new") it.take(1) else it }
         if (mediaItems.isEmpty()) return
         val replySnapshot = textComposer.captureReply()
+        reserveIntroduction()
         viewModelScope.launch {
             _isSending.value = true
             try {
@@ -967,6 +1039,7 @@ class ChatViewModel @Inject constructor(
     fun sendRecentGif(mediaUrl: String) {
         if (!ensureNotBlockedForSending()) return
         val cid = chatId ?: return
+        reserveIntroduction()
         viewModelScope.launch {
             _isSending.value = true
             val result = messageRepository.sendMessage(
@@ -1003,6 +1076,7 @@ class ChatViewModel @Inject constructor(
             return
         }
         val replySnapshot = textComposer.captureReply()
+        reserveIntroduction()
         viewModelScope.launch {
             _isSending.value = true
             try {
@@ -1079,7 +1153,7 @@ class ChatViewModel @Inject constructor(
         if (message.status !in setOf("failed", "sending", "pending") ||
             !message.sender_id.equals(ownerId, ignoreCase = true) ||
             chatId?.equals(message.chat_id, ignoreCase = true) != true) return
-        if (!ensureNotBlockedForSending() || _isSending.value) return
+        if (!ensureNotBlockedForSending(allowPendingRetry = true) || _isSending.value) return
         viewModelScope.launch {
             _isSending.value = true
             try {
@@ -1220,6 +1294,10 @@ class ChatViewModel @Inject constructor(
         selfDestructSeconds: Int? = null,
         translateTo: String? = null
     ) {
+        if (_messageRequest.value.status != "open") {
+            _advancedMessage.value = "Acepta la solicitud de mensaje antes de programar envíos."
+            return
+        }
         if (!ensureNotBlockedForSending()) return
         if (_isSending.value) return
         val text = _messageText.value.trim()
@@ -1243,6 +1321,10 @@ class ChatViewModel @Inject constructor(
         selfDestructSeconds: Int? = null,
         translateTo: String? = null
     ) {
+        if (_messageRequest.value.status != "open") {
+            _advancedMessage.value = "Acepta la solicitud de mensaje antes de programar envíos."
+            return
+        }
         if (!ensureNotBlockedForSending()) return
         val text = (content ?: _messageText.value).trim()
         if (text.isBlank()) {
@@ -1275,6 +1357,10 @@ class ChatViewModel @Inject constructor(
         selfDestructSeconds: Int? = null,
         translateTo: String? = null
     ) {
+        if (_messageRequest.value.status != "open") {
+            _advancedMessage.value = "Acepta la solicitud de mensaje antes de programar envíos."
+            return
+        }
         if (!ensureNotBlockedForSending()) return
         val scheduledMs = parseDateTimeToEpochMillis(dateIso, time24h)
         if (scheduledMs == null) {
@@ -1415,6 +1501,7 @@ class ChatViewModel @Inject constructor(
         if (!ensureNotBlockedForSending()) return
         if (_isSending.value) return
         val replySnapshot = textComposer.captureReply()
+        reserveIntroduction()
         viewModelScope.launch {
             _isSending.value = true
             try {
@@ -1698,6 +1785,16 @@ class ChatViewModel @Inject constructor(
     fun onScreenVisibilityChanged(isVisible: Boolean) {
         if (ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase()) return
         _isScreenActive.value = isVisible
+        requestPollJob?.cancel()
+        if (isVisible) {
+            refreshMessageRequest()
+            requestPollJob = viewModelScope.launch {
+                while (isActive) {
+                    delay(4_000L)
+                    if (_messageRequest.value.status != "open") refreshMessageRequest()
+                }
+            }
+        }
         if (isPlaceholder || chatId?.startsWith("placeholder_", ignoreCase = true) == true) return
         val cleanChatId = chatId?.trim()?.lowercase() ?: return
         if (cleanChatId.isBlank()) return
@@ -2117,9 +2214,18 @@ class ChatViewModel @Inject constructor(
         return if (valid) cleaned else null
     }
 
-    private fun ensureNotBlockedForSending(): Boolean {
+    private fun ensureNotBlockedForSending(allowPendingRetry: Boolean = false): Boolean {
         if (ownerAccountId.isNullOrBlank() || ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase()) {
             conectate.com.presentation.common.AppFeedbackBus.showError("La cuenta cambió. Vuelve a abrir la conversación.")
+            return false
+        }
+        if ((!_messageRequest.value.permitsLocalQueue && !(allowPendingRetry && _messageRequest.value.status == "pending_outgoing")) ||
+            (_messageRequest.value.needsFirstMessageWarning && !_requestWarningAcknowledged.value) || _requestDecisionBusy.value) {
+            conectate.com.presentation.common.AppFeedbackBus.showError(
+                if (_messageRequest.value.status == "pending_outgoing") "Espera a que acepte o responda tu solicitud."
+                else if (_messageRequest.value.status == "rejected") "La solicitud de mensaje fue rechazada."
+                else "Revisa la solicitud de mensaje antes de enviar."
+            )
             return false
         }
         if (!_isBlocked.value) return true

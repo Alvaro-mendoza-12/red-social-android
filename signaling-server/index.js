@@ -6,6 +6,53 @@ const { Server } = require('socket.io');
 const PORT = Number(process.env.PORT || 3001);
 const { resolveLink } = require('./resolver');
 const { normalizeSignalPayload } = require('./payload-policy');
+const { registerSafeSocketEvent, validateSocketPayload } = require('./socket-event-guard');
+const { authorizeCallJoin } = require('./call-join-policy');
+const { updateLiveGuestMediaState } = require('./live-guest-media-state');
+
+const callPermissionCache = new WeakMap();
+async function refreshCallPermission(socket, force = false) {
+    const callId = Array.from(socket.data.joinedCallIds || [])[0];
+    if (!callId) return false;
+    const cached = callPermissionCache.get(socket);
+    if (!force && cached?.callId === callId && Date.now() - cached.at < 2000) return true;
+    try {
+        const access = await callUbuntuApi(`/v1/data/calls/${encodeURIComponent(callId)}/access`, {
+            method: 'POST', accessToken: getSocketAuthToken(socket), body: {}, timeoutMs: 4000
+        });
+        if (access?.allowed !== true || access.callId !== callId || access.userId !== socket.data.authUserId ||
+            !['ringing', 'active'].includes(access.state)) {
+            throw Object.assign(new Error('CALL_ACCESS_DENIED'), { status: 403 });
+        }
+        if (!socket.connected || !socket.data.joinedCallIds.has(callId)) return false;
+        callPermissionCache.set(socket, { callId, at: Date.now() });
+        return true;
+    } catch (error) {
+        callPermissionCache.delete(socket);
+        if (!error?.status || error.status >= 500 || error.status === 429) {
+            // Temporary API failures pause signaling while existing media and reconnects survive.
+            socket.emit('call-access-unavailable', { callId, error: 'CALL_ACCESS_UNAVAILABLE' });
+            return false;
+        }
+        try {
+            socket.emit('call-access-revoked', { callId, error: 'CALL_ACCESS_DENIED' });
+            socket.disconnect(false);
+        } catch {}
+        return false;
+    }
+}
+
+function safeSocketOn(socket, event, listener) {
+    const guarded = socket.nsp?.name === '/call' && !['join-call', 'disconnect', 'disconnecting'].includes(event)
+        ? async function (...args) {
+            if (!(await refreshCallPermission(socket))) return;
+            return listener.apply(this, args);
+        }
+        : listener;
+    return registerSafeSocketEvent(socket, event, guarded, (name, error) => {
+        console.error('[SIGNAL_EVENT_FAILED]', { event: name, error: diagnosticError(error) });
+    });
+}
 const { classifyLiveLookupFailure } = require('./live-access-policy');
 const { connectDistributedAdapter } = require('./distributed-adapter');
 const { fetchNamespaceScopeMembers, sharesNamespaceScope } = require('./distributed-scope');
@@ -47,8 +94,8 @@ const httpRateLimitPerMinute = clampInt(process.env.HTTP_RATE_LIMIT_PER_MINUTE, 
 const socketRateLimitPerMinute = clampInt(process.env.SOCKET_RATE_LIMIT_PER_MINUTE, 90, 10, 2000);
 const socketEventRateLimitPerMinute = clampInt(process.env.SOCKET_EVENT_RATE_LIMIT_PER_MINUTE, 900, 120, 10_000);
 // Keep signaling capacity aligned with the API capability advertised to Android.
-// The default mirrors the current mobile co-host layout: host + three guests.
-const maxLiveGuests = clampInt(process.env.LIVE_MAX_GUESTS, 3, 1, 8);
+// The default allows one host and six guests in the adaptive Android grid.
+const maxLiveGuests = clampInt(process.env.LIVE_MAX_GUESTS, 6, 1, 8);
 const liveInternalEventsToken = String(process.env.LIVE_INTERNAL_EVENTS_TOKEN || '').trim();
 const signalingInstanceId = crypto.randomUUID();
 const allowedOrigins = parseAllowedOrigins(process.env.SIGNALING_ALLOWED_ORIGINS);
@@ -303,7 +350,8 @@ async function callUbuntuApi(path, options = {}) {
     const response = await fetch(buildUbuntuApiUrl(path), {
         method,
         headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body)
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: AbortSignal.timeout(Math.max(1000, Math.min(10000, Number(options.timeoutMs) || 5000)))
     });
 
     const text = await response.text();
@@ -367,7 +415,13 @@ function extractSocketToken(socket) {
 }
 
 function installSocketPacketGuard(socket) {
-    socket.use(([event], next) => {
+    socket.use(([event, payload], next) => {
+        const validation = validateSocketPayload(event, payload);
+        if (!validation.ok) {
+            socket.emit('signal-error', { event: String(event).slice(0, 80), error: validation.code });
+            next(new Error(validation.code));
+            return;
+        }
         const eventName = typeof event === 'string' ? event.slice(0, 80) : 'unknown';
         if (consumeRateLimitToken('socket-event', socket.id, socketEventRateLimitPerMinute, 60 * 1000)) {
             next();
@@ -1102,7 +1156,7 @@ io.on('connection', (socket) => {
     socket.data.joinedRoomIds = new Set();
     console.log(`[IDENTITY] [VOICE] Socket connected: socketId=${socket.id} | userRef=${diagnosticRef(socket.data.authUserId)}`);
 
-    socket.on('join-room', async (rawData) => {
+    safeSocketOn(socket, 'join-room', async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const roomId = data.roomId?.toString().trim();
         const userId = requireSocketUser(socket, data.userId);
@@ -1221,25 +1275,25 @@ io.on('connection', (socket) => {
     });
 
     // --- EVENTOS MODO CINE ---
-    socket.on("cinema-state", (data) => {
+    safeSocketOn(socket, "cinema-state", (data) => {
         const roomId = requireCinemaController(socket, data?.roomId, 'cinema-state');
         if (!roomId) return;
         io.to(roomId).emit("cinema-state", { ...data, roomId });
     });
 
-    socket.on("cinema-sync", (data) => {
+    safeSocketOn(socket, "cinema-sync", (data) => {
         const roomId = requireCinemaController(socket, data?.roomId, 'cinema-sync');
         if (!roomId) return;
         io.to(roomId).emit("cinema-sync", { ...data, roomId });
     });
 
-    socket.on("cinema-control", (data) => {
+    safeSocketOn(socket, "cinema-control", (data) => {
         const roomId = requireCinemaController(socket, data?.roomId, 'cinema-control');
         if (!roomId) return;
         io.to(roomId).emit("cinema-control", { ...data, roomId });
     });
 
-    socket.on("resolve-link", async (rawData) => {
+    safeSocketOn(socket, "resolve-link", async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const { url, requestId } = data;
         const roomId = requireCinemaController(socket, data.roomId, 'resolve-link');
@@ -1259,14 +1313,14 @@ io.on('connection', (socket) => {
     });
     // --------------------------
 
-    socket.on('chat-message', (data) => {
+    safeSocketOn(socket, 'chat-message', (data) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'chat-message');
         const userId = requireSocketUser(socket, data.userId);
         if (!roomId || !userId) return;
         socket.to(roomId).emit('chat-message', { ...data, userId });
     });
 
-    socket.on('reaction', (data) => {
+    safeSocketOn(socket, 'reaction', (data) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'reaction');
         const userId = requireSocketUser(socket, data.userId);
         if (!roomId || !userId) return;
@@ -1278,7 +1332,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('caption-consent', async (data) => {
+    safeSocketOn(socket, 'caption-consent', async (data) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'caption-consent');
         const userId = requireSocketUser(socket, data?.userId);
         if (!roomId || !userId) return;
@@ -1311,7 +1365,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('live-caption', async (data) => {
+    safeSocketOn(socket, 'live-caption', async (data) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'live-caption');
         const userId = requireSocketUser(socket, data?.userId);
         if (!roomId || !userId) return;
@@ -1362,7 +1416,7 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('live-caption', caption);
     });
 
-    socket.on('voice-summary-request', (data) => {
+    safeSocketOn(socket, 'voice-summary-request', (data) => {
         const roomId = requireJoinedScope(
             socket,
             'joinedRoomIds',
@@ -1415,7 +1469,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('speaking-status', async (data) => {
+    safeSocketOn(socket, 'speaking-status', async (data) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'speaking-status');
         const userId = requireSocketUser(socket, data.userId);
         if (!roomId || !userId) return;
@@ -1426,7 +1480,7 @@ io.on('connection', (socket) => {
         socket.to(roomId).emit('speaking-status', { ...data, userId });
     });
 
-    socket?.on('mute-state', async (data) => {
+    safeSocketOn(socket, 'mute-state', async (data) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'mute-state');
         const userId = requireSocketUser(socket, data.userId);
         if (!roomId || !userId) return;
@@ -1442,7 +1496,7 @@ io.on('connection', (socket) => {
         socket.to(roomId).emit('mute-state', { ...data, userId });
     });
 
-    socket?.on('media-status', async (data) => {
+    safeSocketOn(socket, 'media-status', async (data) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'media-status');
         const { isCameraSharing, isScreenSharing } = data;
         const userId = requireSocketUser(socket, data.userId);
@@ -1467,7 +1521,7 @@ io.on('connection', (socket) => {
 
     // WebRTC Signaling: Forwarding Offer, Answer, and ICE Candidates
 
-    socket.on('offer', async (rawData) => {
+    safeSocketOn(socket, 'offer', async (rawData) => {
         const data = normalizeSignalPayload(rawData, 'offer');
         if (!data) {
             socket.emit('signal-error', { error: 'Malformed offer payload' });
@@ -1486,7 +1540,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('answer', async (rawData) => {
+    safeSocketOn(socket, 'answer', async (rawData) => {
         const data = normalizeSignalPayload(rawData, 'answer');
         if (!data) {
             socket.emit('signal-error', { error: 'Malformed answer payload' });
@@ -1505,7 +1559,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('ice-candidate', async (rawData) => {
+    safeSocketOn(socket, 'ice-candidate', async (rawData) => {
         const data = normalizeSignalPayload(rawData, 'ice-candidate');
         if (!data) {
             socket.emit('signal-error', { error: 'Malformed ICE candidate payload' });
@@ -1524,7 +1578,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('disconnecting', async () => {
+    safeSocketOn(socket, 'disconnecting', async () => {
         const joinedRoomIds = Array.from(socket.data.joinedRoomIds || []);
 
         for (const roomId of joinedRoomIds) {
@@ -1549,7 +1603,7 @@ io.on('connection', (socket) => {
         setVoiceParticipantSocketData(socket, null);
     });
 
-    socket.on('disconnect', () => {
+    safeSocketOn(socket, 'disconnect', () => {
         console.log(`[SOCKET_DEBUG] User disconnected: ${socket.id}`);
     });
 });
@@ -1561,9 +1615,13 @@ const calls = new Map();
 callIo.on('connection', (socket) => {
     installSocketPacketGuard(socket);
     socket.data.joinedCallIds = new Set();
+    const callAccessHeartbeat = setInterval(() => {
+        if (socket.connected && socket.data.joinedCallIds.size) void refreshCallPermission(socket, true);
+    }, 30000);
+    callAccessHeartbeat.unref();
     console.log(`[IDENTITY] [CALL] Socket connected: socketId=${socket.id} | userRef=${diagnosticRef(socket.data.authUserId)}`);
 
-    socket.on('join-call', async (rawData) => {
+    safeSocketOn(socket, 'join-call', async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const callId = data.callId?.toString().trim();
         const userId = requireSocketUser(socket, data.userId);
@@ -1572,7 +1630,19 @@ callIo.on('connection', (socket) => {
 
         if (!callId || callId.length > 128 || !userId) return;
 
-        socket.join(callId);
+        const callAccess = await authorizeCallJoin({
+            socket, callId, userId,
+            lookupAccess: id => callUbuntuApi(`/v1/data/calls/${encodeURIComponent(id)}/access`, {
+                method: 'POST', accessToken: getSocketAuthToken(socket), body: {}, timeoutMs: 4000
+            })
+        });
+        if (!callAccess.allowed) {
+            socket.emit('call-join-error', { callId, error: callAccess.error });
+            return;
+        }
+        try {
+        await socket.join(callId);
+        if (!socket.connected) return;
 
         if (!calls.has(callId)) {
             calls.set(callId, new Map());
@@ -1648,9 +1718,10 @@ callIo.on('connection', (socket) => {
         });
 
         socket.emit('current-participants', participants);
+        } finally { callAccess.release(); }
     });
 
-    socket.on('reaction', (data) => {
+    safeSocketOn(socket, 'reaction', (data) => {
         const callId = requireJoinedScope(socket, 'joinedCallIds', data?.callId, 'call', 'reaction');
         const userId = requireSocketUser(socket, data.userId);
         if (!callId || !userId) return;
@@ -1662,14 +1733,14 @@ callIo.on('connection', (socket) => {
         });
     });
 
-    socket.on('mute-state', (data) => {
+    safeSocketOn(socket, 'mute-state', (data) => {
         const callId = requireJoinedScope(socket, 'joinedCallIds', data?.callId, 'call', 'mute-state');
         const userId = requireSocketUser(socket, data.userId);
         if (!callId || !userId) return;
         socket.to(callId).emit('mute-state', { ...data, userId });
     });
 
-    socket.on('video-state', (data) => {
+    safeSocketOn(socket, 'video-state', (data) => {
         const callId = requireJoinedScope(socket, 'joinedCallIds', data?.callId, 'call', 'video-state');
         const userId = requireSocketUser(socket, data?.userId);
         if (!callId || !userId) return;
@@ -1687,7 +1758,7 @@ callIo.on('connection', (socket) => {
     });
 
     // WebRTC signaling (scoped to /call namespace)
-    socket.on('offer', async (rawData) => {
+    safeSocketOn(socket, 'offer', async (rawData) => {
         const data = normalizeSignalPayload(rawData, 'offer');
         if (!data) {
             socket.emit('signal-error', { error: 'Malformed offer payload' });
@@ -1705,7 +1776,7 @@ callIo.on('connection', (socket) => {
         });
     });
 
-    socket.on('answer', async (rawData) => {
+    safeSocketOn(socket, 'answer', async (rawData) => {
         const data = normalizeSignalPayload(rawData, 'answer');
         if (!data) {
             socket.emit('signal-error', { error: 'Malformed answer payload' });
@@ -1723,7 +1794,7 @@ callIo.on('connection', (socket) => {
         });
     });
 
-    socket.on('ice-candidate', async (rawData) => {
+    safeSocketOn(socket, 'ice-candidate', async (rawData) => {
         const data = normalizeSignalPayload(rawData, 'ice-candidate');
         if (!data) {
             socket.emit('signal-error', { error: 'Malformed ICE candidate payload' });
@@ -1741,7 +1812,7 @@ callIo.on('connection', (socket) => {
         });
     });
 
-    socket.on('disconnecting', () => {
+    safeSocketOn(socket, 'disconnecting', () => {
         const joinedCallIds = Array.from(socket.data.joinedCallIds || []);
 
         for (const callId of joinedCallIds) {
@@ -1763,7 +1834,9 @@ callIo.on('connection', (socket) => {
         setCallParticipantSocketData(socket, null);
     });
 
-    socket.on('disconnect', () => {
+    safeSocketOn(socket, 'disconnect', () => {
+        clearInterval(callAccessHeartbeat);
+        callPermissionCache.delete(socket);
         console.log(`[SOCKET_DEBUG] [CALL] User disconnected: ${socket.id}`);
     });
 });
@@ -1848,7 +1921,8 @@ function publicLiveGuest(viewer, socketId) {
         socketId,
         userId: String(viewer?.userId || '').trim(),
         name: String(viewer?.name || 'Usuario').trim() || 'Usuario',
-        avatarUrl: String(viewer?.avatarUrl || '').trim()
+        avatarUrl: String(viewer?.avatarUrl || '').trim(),
+        videoEnabled: viewer?.videoEnabled !== false
     };
 }
 
@@ -2044,7 +2118,7 @@ liveIo.on('connection', (socket) => {
 
     console.log(`[SOCKET_DEBUG] [LIVE] Socket connected: ${socket.id} userRef=${diagnosticRef(socket.data.authUserId)}`);
 
-    socket.on('join-live', async (rawData) => {
+    safeSocketOn(socket, 'join-live', async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = data.liveId?.toString().trim();
         const userId = requireSocketUser(socket, data.userId);
@@ -2384,8 +2458,13 @@ liveIo.on('connection', (socket) => {
             });
         }
         if (session.recoverableGuests.has(userId)) {
+            const recoveredGuest = session.recoverableGuests.get(userId);
             session.recoverableGuests.delete(userId);
-            session.guests.set(socket.id, session.viewers.get(socket.id));
+            session.guests.set(socket.id, {
+                ...session.viewers.get(socket.id),
+                ...(typeof recoveredGuest?.videoEnabled === 'boolean'
+                    ? { videoEnabled: recoveredGuest.videoEnabled } : {})
+            });
         }
         if (session.battle?.opponentUserId === userId) {
             session.battle.opponentSocketId = socket.id;
@@ -2425,7 +2504,7 @@ liveIo.on('connection', (socket) => {
         emitLiveModerationState(liveId, session);
     });
 
-    socket.on('end-live', async (data, acknowledge) => {
+    safeSocketOn(socket, 'end-live', async (data, acknowledge) => {
         const requestedLiveId = data?.liveId?.toString().trim() || '';
         const denyEnd = (reason) => {
             socket.emit('end-live-denied', { liveId: requestedLiveId, reason });
@@ -2455,7 +2534,7 @@ liveIo.on('connection', (socket) => {
     });
 
     // Free hearts are ephemeral UI events; this process owns the room aggregate.
-    socket.on('send-reaction', (data) => {
+    safeSocketOn(socket, 'send-reaction', (data) => {
         const liveId = requireJoinedScope(
             socket,
             'joinedLiveIds',
@@ -2486,7 +2565,7 @@ liveIo.on('connection', (socket) => {
 
     // Mobile clients aggregate rapid taps for 500 ms (or ten taps). The batch
     // id prevents a reconnect/retry from counting the same hearts twice.
-    socket.on('send-reaction-batch', (data) => {
+    safeSocketOn(socket, 'send-reaction-batch', (data) => {
         const liveId = requireJoinedScope(
             socket,
             'joinedLiveIds',
@@ -2544,7 +2623,7 @@ liveIo.on('connection', (socket) => {
 
     // Cosmetic gift events are accepted only after the Ubuntu API verifies the
     // committed transaction for this authenticated sender.
-    socket.on('gift-committed', async (data) => {
+    safeSocketOn(socket, 'gift-committed', async (data) => {
         const liveId = requireJoinedScope(
             socket,
             'joinedLiveIds',
@@ -2611,7 +2690,7 @@ liveIo.on('connection', (socket) => {
         }
     });
 
-    socket.on('update-live-state', (data) => {
+    safeSocketOn(socket, 'update-live-state', (data) => {
         const liveId = requireJoinedScope(
             socket,
             'joinedLiveIds',
@@ -2635,7 +2714,7 @@ liveIo.on('connection', (socket) => {
         persistLiveSessionInBackground(liveId, session);
     });
 
-    socket.on('live-guest-request', async (rawData) => {
+    safeSocketOn(socket, 'live-guest-request', async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = requireJoinedScope(
             socket,
@@ -2683,7 +2762,7 @@ liveIo.on('connection', (socket) => {
         persistLiveSessionInBackground(liveId, session);
     });
 
-    socket.on('live-guest-cancel', (rawData) => {
+    safeSocketOn(socket, 'live-guest-cancel', (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = requireJoinedScope(
             socket,
@@ -2702,7 +2781,7 @@ liveIo.on('connection', (socket) => {
         persistLiveSessionInBackground(liveId, session);
     });
 
-    socket.on('live-guest-response', (rawData) => {
+    safeSocketOn(socket, 'live-guest-response', (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = requireJoinedScope(
             socket,
@@ -2734,7 +2813,17 @@ liveIo.on('connection', (socket) => {
         persistLiveSessionInBackground(liveId, session);
     });
 
-    socket.on('live-guest-leave', (rawData) => {
+    safeSocketOn(socket, 'update-live-guest-media-state', (data) => {
+        const liveId = requireJoinedScope(socket, 'joinedLiveIds', data.liveId || socket.data.liveId,
+            'live', 'update-live-guest-media-state');
+        if (!liveId) return;
+        const session = lives.get(liveId);
+        if (!updateLiveGuestMediaState(session, socket, data)) return;
+        emitLiveGuestState(liveId, session);
+        persistLiveSessionInBackground(liveId, session);
+    });
+
+    safeSocketOn(socket, 'live-guest-leave', (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = requireJoinedScope(
             socket,
@@ -2754,7 +2843,7 @@ liveIo.on('connection', (socket) => {
         persistLiveSessionInBackground(liveId, session);
     });
 
-    socket.on('live-battle-start', (rawData) => {
+    safeSocketOn(socket, 'live-battle-start', (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = requireJoinedScope(socket, 'joinedLiveIds', data.liveId || socket.data.liveId, 'live', 'live-battle-start');
         if (!liveId) return;
@@ -2787,7 +2876,7 @@ liveIo.on('connection', (socket) => {
         persistLiveSessionInBackground(liveId, session);
     });
 
-    socket.on('live-battle-response', (rawData) => {
+    safeSocketOn(socket, 'live-battle-response', (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = requireJoinedScope(socket, 'joinedLiveIds', data.liveId || socket.data.liveId, 'live', 'live-battle-response');
         if (!liveId) return;
@@ -2807,7 +2896,7 @@ liveIo.on('connection', (socket) => {
         persistLiveSessionInBackground(liveId, session);
     });
 
-    socket.on('live-moderation-command', async (rawData) => {
+    safeSocketOn(socket, 'live-moderation-command', async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = requireJoinedScope(
             socket,
@@ -2923,7 +3012,7 @@ liveIo.on('connection', (socket) => {
     });
 
     // WebRTC signaling (scoped to /live namespace)
-    socket.on('offer', async (rawData) => {
+    safeSocketOn(socket, 'offer', async (rawData) => {
         const data = normalizeSignalPayload(rawData, 'offer');
         if (!data) {
             socket.emit('signal-error', { error: 'Malformed offer payload' });
@@ -2941,7 +3030,7 @@ liveIo.on('connection', (socket) => {
         });
     });
 
-    socket.on('answer', async (rawData) => {
+    safeSocketOn(socket, 'answer', async (rawData) => {
         const data = normalizeSignalPayload(rawData, 'answer');
         if (!data) {
             socket.emit('signal-error', { error: 'Malformed answer payload' });
@@ -2959,7 +3048,7 @@ liveIo.on('connection', (socket) => {
         });
     });
 
-    socket.on('ice-candidate', async (rawData) => {
+    safeSocketOn(socket, 'ice-candidate', async (rawData) => {
         const data = normalizeSignalPayload(rawData, 'ice-candidate');
         if (!data) {
             socket.emit('signal-error', { error: 'Malformed ICE candidate payload' });
@@ -2977,7 +3066,7 @@ liveIo.on('connection', (socket) => {
         });
     });
 
-    socket.on('disconnecting', async () => {
+    safeSocketOn(socket, 'disconnecting', async () => {
         const joined = Array.from(socket.data.joinedLiveIds || []);
 
         for (const liveId of joined) {
@@ -3042,7 +3131,7 @@ liveIo.on('connection', (socket) => {
         delete socket.data.liveParticipant;
     });
 
-    socket.on('disconnect', () => {
+    safeSocketOn(socket, 'disconnect', () => {
         console.log(`[SOCKET_DEBUG] [LIVE] User disconnected: ${socket.id}`);
     });
 });

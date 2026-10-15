@@ -180,6 +180,20 @@ class RafflesViewModel @Inject constructor(
         saved["rafflePendingBody"] = json.encodeToString(RaffleCommandRequest(UUID.randomUUID().toString(), detail.raffle.version, automatic))
         retryPending()
     }
+    fun confirmNewRound(members: List<String>, manuals: List<String>) {
+        val state = _state.value
+        val detail = state.detail ?: return
+        if (!detail.canManage || state.busy || !state.membersComplete || detail.raffle.status != "completed" || !accountIsCurrent()) return
+        if (saved.get<String>("rafflePendingAction") != null) { retryPending(); return }
+        val snapshot = state.members.mapNotNull { it.userId }.distinct().sorted().joinToString("\n")
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(snapshot.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 255) }
+        saved["rafflePendingAction"] = "new-round"
+        saved["rafflePendingId"] = detail.raffle.id
+        saved["rafflePendingBody"] = json.encodeToString(RaffleCommandRequest(UUID.randomUUID().toString(), detail.raffle.version,
+            automatic = false, memberIds = members, manualNames = manuals, memberSnapshotHash = hash))
+        retryPending()
+    }
     fun retryPending() {
         viewModelScope.launch {
             if (!gate.tryLock()) return@launch

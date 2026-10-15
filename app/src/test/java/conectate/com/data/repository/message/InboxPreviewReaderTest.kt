@@ -9,6 +9,7 @@ import conectate.com.data.local.entity.ChatEntity
 import conectate.com.data.local.entity.MessageDeletionEntity
 import conectate.com.data.local.entity.MessageEntity
 import conectate.com.data.model.Chat
+import conectate.com.data.model.ChatWithLastMessage
 import conectate.com.data.model.Message
 import conectate.com.test.UnitTestApplication
 import kotlinx.coroutines.*
@@ -32,7 +33,7 @@ open class InboxPreviewReaderTest {
     @get:Rule val files = TemporaryFolder()
     private lateinit var db: AppDatabase
     private var account: String? = "a"
-    private val reader get() = InboxPreviewReader(db) { account }
+    private val reader get() = InboxPreviewReader(db, currentAccount = { account })
     private fun message(id: String = "new", second: Int = 2, chat: String = "chat", sender: String = "b") =
         MessageEntity.fromDomain(Message(
             id = id, chat_id = chat, sender_id = sender, content = "private-$id",
@@ -329,4 +330,68 @@ open class InboxPreviewReaderTest {
         val reopened = withTimeout(10_000) { reader.observe(MutableStateFlow(account)).first() }
         assertEquals("new", reopened.single().lastMessage?.id)
     }
+    @Test fun `notification mute updates the actual Room projection without modifying a chat row`() = runBlocking {
+        seed()
+        val changes=MutableStateFlow(0L)
+        val muted=mutableSetOf<Pair<String,String>>()
+        val projection=InboxPreviewReader(db, { account }, preferenceChanges=changes,
+            isChatMuted={ owner, id, remote -> remote || (owner to id) in muted })
+        val values=Channel<List<conectate.com.data.model.ChatWithLastMessage>>(Channel.UNLIMITED)
+        val observer=launch { projection.observe(MutableStateFlow(account)).collect { values.send(it) } }
+        suspend fun awaitMute(expected: Boolean) = withTimeout(10000) {
+            while(values.receive().singleOrNull()?.chat?.is_muted != expected) { }
+        }
+        try {
+            awaitMute(false)
+            muted.add("a" to "chat");changes.value=1L;awaitMute(true)
+            assertFalse(db.chatDao().getChatByIdSync("chat")!!.is_muted)
+            muted.clear();changes.value=2L;awaitMute(false)
+        } finally { observer.cancelAndJoin();values.close() }
+    }
+    @Test fun `timed notification mute does not cross accounts or override a server mute`() = runBlocking {
+        seed()
+        val projection=InboxPreviewReader(db,{account},isChatMuted={owner,_,remote -> remote || owner=="a"})
+        assertTrue(projection.read("a").single().chat.is_muted)
+        account="b";assertFalse(projection.read("b").single().chat.is_muted)
+        db.chatDao().updateMuteState("chat",true)
+        assertTrue(projection.read("b").single().chat.is_muted)
+    }
+
+    @Test fun `startup inbox factory observes real notification preferences and manual reactivation`() = runBlocking {
+        seed()
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("conversation_notification_prefs",Context.MODE_PRIVATE).edit().clear().commit()
+        val preferences=conectate.com.util.ConversationNotificationPrefs(context)
+        val projection=conectate.com.data.repository.createLocalInboxReader(db,{account},context)
+        val values=Channel<List<ChatWithLastMessage>>(Channel.UNLIMITED)
+        val observer=launch { projection.observe(MutableStateFlow(account)).collect { values.send(it) } }
+        suspend fun awaitMute(expected:Boolean)=withTimeout(10000) {
+            while(values.receive().singleOrNull()?.chat?.is_muted != expected) { }
+        }
+        try {
+            awaitMute(false)
+            preferences.muteConversationUntil("chat","chat",System.currentTimeMillis()+60000,"a")
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            awaitMute(true)
+            assertFalse(db.chatDao().getChatByIdSync("chat")!!.is_muted)
+            preferences.unmuteConversation("chat","chat","a")
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            awaitMute(false)
+        } finally { observer.cancelAndJoin();values.close();preferences.unmuteConversation("chat","chat","a") }
+    }
+    @Test fun `startup inbox factory keeps mute scoped to the account and preserves server preferences`() = runBlocking {
+        seed()
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("conversation_notification_prefs",Context.MODE_PRIVATE).edit().clear().commit()
+        val preferences=conectate.com.util.ConversationNotificationPrefs(context)
+        val projection=conectate.com.data.repository.createLocalInboxReader(db,{account},context)
+        try {
+            preferences.muteConversationUntil("chat","chat",System.currentTimeMillis()+60000,"a")
+            assertTrue(projection.read("a").single().chat.is_muted)
+            account="b";assertFalse(projection.read("b").single().chat.is_muted)
+            db.chatDao().updateMuteState("chat",true)
+            assertTrue(projection.read("b").single().chat.is_muted)
+        } finally { preferences.unmuteConversation("chat","chat","a") }
+    }
+
 }

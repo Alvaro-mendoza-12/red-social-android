@@ -75,7 +75,11 @@ fun DocumentPickerSheet(
                 IconButton(onClick = viewModel::refresh, enabled = !state.loading) { Icon(Icons.Default.Refresh, "Actualizar documentos") }
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Cerrar selector") }
             }
-            Text(if (allowedExtensions == null) "Selecciona un documento para verlo o enviarlo." else "Elige un archivo .lrc con tiempos sincronizados para esta canción.", style = MaterialTheme.typography.bodySmall)
+            Text(when {
+                allowedExtensions == null -> "Selecciona un documento para verlo o enviarlo."
+                allowedExtensions == setOf("lrc") -> "Elige un archivo .lrc con tiempos sincronizados para esta canción."
+                else -> "Selecciona uno de los archivos compatibles."
+            }, style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
                 value = query, onValueChange = { query = it.take(120) }, modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                 singleLine = true, label = { Text("Buscar nombre o carpeta") },

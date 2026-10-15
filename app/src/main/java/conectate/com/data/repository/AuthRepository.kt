@@ -141,7 +141,10 @@ class AuthRepository @Inject constructor(
         }
 
         val acceptedAt = java.time.OffsetDateTime.now().toString()
-        val normalizedName = name.trim()
+        val normalizedName = conectate.com.data.model.DisplayNamePolicy.normalized(name)
+        if (!conectate.com.data.model.DisplayNamePolicy.valid(normalizedName)) {
+            return Result.failure(Exception("El nombre debe tener entre 2 y 20 caracteres."))
+        }
         val normalizedUsername = username.trim().removePrefix("@").lowercase(java.util.Locale.ROOT)
         if (!Regex("[a-z0-9_.-]{3,24}").matches(normalizedUsername)) {
             return Result.failure(Exception("El @usuario debe tener entre 3 y 24 letras, números, puntos, guiones o guiones bajos."))

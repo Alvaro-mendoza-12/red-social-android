@@ -753,7 +753,25 @@ async function visibleMomentForInteraction(pool, identity, requestedId, now = Da
   return momentAudienceAllows({ row, identityIds: identity.ids, followRows, chatRows }) ? row : null
 }
 
-async function buildMomentsFeed(pool, identity) {
+function requestedMomentOwners(value) {
+  if (value == null || value === '') return []
+  if (typeof value !== 'string' || value.length > 3700) return null
+  const owners = value.split(',').map(value => value.trim().toLowerCase())
+  if (owners.length > 100 || owners.some(value => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value))) return null
+  return [...new Set(owners)]
+}
+
+async function importedMomentsForOwners(pool, ownerIds) {
+  if (!ownerIds.length) return []
+  const { rows } = await pool.query('SELECT to_regclass($1) AS oid', ['supabase_import.moments'])
+  if (!rows[0]?.oid) return []
+  const result = await pool.query(`SELECT to_jsonb(t) AS row FROM supabase_import.moments t
+    WHERE lower(to_jsonb(t)->>'user_id') = ANY($1::text[])
+    ORDER BY to_jsonb(t)->>'created_at' DESC LIMIT 2000`, [ownerIds])
+  return result.rows.map(entry => entry.row || {})
+}
+
+async function buildMomentsFeed(pool, identity, ownerIds = []) {
   const now = Date.now()
   const { rows: localRows } = await pool.query(
     `SELECT id::text, user_id, media_url, media_type, thumbnail_url, caption,
@@ -768,11 +786,18 @@ async function buildMomentsFeed(pool, identity) {
      LIMIT 300`,
   )
   const imported = await importedRows(pool, 'moments', 500)
+  // Supplement the discovery window before applying the same audience and expiry rules.
+  // Active publications are limited to ten per owner; requests contain at most 100 owners.
+  const [authorLocal, authorImported] = ownerIds.length ? await Promise.all([
+    pool.query(`SELECT * FROM fallback_moments WHERE lower(user_id) = ANY($1::text[])
+      ORDER BY created_at DESC LIMIT 2000`, [ownerIds]).then(result => result.rows),
+    importedMomentsForOwners(pool, ownerIds),
+  ]) : [[], []]
   const { rows: deletedRows } = await pool.query(
     `SELECT lower(moment_id) AS moment_id FROM fallback_moment_deletions`,
   )
   const deletedIds = new Set(deletedRows.map((row) => row.moment_id).filter(Boolean))
-  const merged = [...localRows.map((row) => ({ ...row, id: textOf(row, ['id'], '') })), ...imported]
+  const merged = [...imported, ...authorImported, ...localRows, ...authorLocal].map(row => ({ ...row, id: textOf(row, ['id'], '') }))
   const byId = new Map()
   merged.forEach((row) => {
     const id = textOf(row, ['id'], crypto.randomUUID())
@@ -1030,7 +1055,9 @@ function registerMomentsRoutes(
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
-      const items = await buildMomentsFeed(pool, identity)
+      const owners = requestedMomentOwners(req.query?.owner_ids)
+      if (owners === null) return res.status(400).json({ error: 'MOMENT_OWNERS_INVALID' })
+      const items = await buildMomentsFeed(pool, identity, owners)
       res.json({ items })
     } catch (error) {
       next(error)
@@ -1565,6 +1592,7 @@ module.exports = {
   ensureMomentsTables,
   registerMomentsRoutes,
   buildMomentsFeed,
+  requestedMomentOwners,
   visibleMomentForInteraction,
   momentAudienceAllows,
   mergeMomentOwnerProfile,

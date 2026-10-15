@@ -46,12 +46,14 @@ class VideoCacheLocalPlaybackTest {
 
     private fun read(file: File, position: Long, length: Long): ByteArray {
         val source = VideoCache.getCacheDataSourceFactory(context).createDataSource()
-        // Do not allow a cache-init failure to conceal the original cached-upstream regression.
-        assertTrue(source is CacheDataSource)
+        // Verify the guard is installed; verify the actual cache delegate after URI selection.
+        assertTrue(source is StorageReadDataSource)
         val spec = DataSpec.Builder().setUri(Uri.fromFile(file)).setPosition(position).setLength(length)
             .setKey(UbuntuMedia.mediaItem(file.toURI().toString()).localConfiguration?.customCacheKey).build()
         return try {
             source.open(spec)
+            val delegateField = StorageReadDataSource::class.java.getDeclaredField("delegate").apply { isAccessible = true }
+            assertTrue("Local files retain the Media3 cache delegate", delegateField.get(source) is CacheDataSource)
             val output = ByteArrayOutputStream()
             val buffer = ByteArray(1024)
             while (true) {

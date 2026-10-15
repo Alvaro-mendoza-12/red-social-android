@@ -17,6 +17,19 @@ internal fun chatMediaExportFilename(source: String, mediaType: String, timestam
 
 private val EXPORT_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "mp4", "webm", "mkv", "3gp")
 
+internal fun chatMediaExportMimeType(filename: String): String = when (filename.substringAfterLast('.').lowercase()) {
+    "jpg", "jpeg" -> "image/jpeg"
+    "png" -> "image/png"
+    "webp" -> "image/webp"
+    "gif" -> "image/gif"
+    "heic" -> "image/heic"
+    "mp4" -> "video/mp4"
+    "webm" -> "video/webm"
+    "mkv" -> "video/x-matroska"
+    "3gp" -> "video/3gpp"
+    else -> "application/octet-stream"
+}
+
 /** Resolve only a complete offline file from the account that requested the export. */
 internal fun resolveOfflineChatExportFile(filesDirectory: File, source: String, accountId: String?): File {
     val account = accountId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }

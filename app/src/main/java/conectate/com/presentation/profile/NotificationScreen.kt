@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import conectate.com.data.model.Notification
+import conectate.com.util.postMentionAction
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.navigation.Screen
 import conectate.com.util.DateUtils
@@ -271,7 +272,7 @@ fun NotificationItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.size(58.dp)) {
-            CircularProfileImage(
+            CircularProfileImage(ownerId = notification.actorId, 
                 imageUrl = notification.actorAvatarUrl ?: "",
                 size = 54.dp
             )
@@ -488,7 +489,7 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
         "comment_post" -> " comentó tu publicación"
         "share_post" -> " compartió tu publicación"
         "reply_post" -> " respondió a tu comentario en una publicación"
-        "mention_post" -> " te mencionó en un comentario"
+        "mention_post" -> " " + postMentionAction(n).replaceFirstChar { it.lowercaseChar() }
         "follow" -> " te empezó a seguir"
         "new_video" -> " subió un video nuevo"
         "new_post" -> " hizo una nueva publicación"

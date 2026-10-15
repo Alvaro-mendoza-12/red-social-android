@@ -80,14 +80,15 @@ private fun HighlightPlayback(items: List<MomentHighlightItemPreview>, title: St
     var musicReady by remember(session) { mutableStateOf(false) }
     var progress by remember(session) { mutableFloatStateOf(0f) }
     var userPaused by remember { mutableStateOf(false) }
+    var imageZoomed by remember(session) { mutableStateOf(false) }
     var closing by remember { mutableStateOf(false) }
     val close = { closing = true; onClose() }
     BackHandler(onBack = close)
-    val canPlay = resumed && !userPaused && !pager.isScrollInProgress && !completed && !closing
+    val canPlay = resumed && !userPaused && !imageZoomed && !pager.isScrollInProgress && !completed && !closing
     val moment = current.asMoment()
     val finish: (String) -> Unit = { itemId ->
         val target = if (closing) null else session.finish(
-            itemId, pager.settledPage, pager.isScrollInProgress, resumed && !userPaused,
+            itemId, pager.settledPage, pager.isScrollInProgress, resumed && !userPaused && !imageZoomed,
             currentSession = latestSession.value,
         )
         if (target != null) {
@@ -143,6 +144,8 @@ private fun HighlightPlayback(items: List<MomentHighlightItemPreview>, title: St
                     onVideoProgress = { _, value -> if (!completed) progress = value.coerceIn(0f, 1f) },
                     onVideoEnded = { finish(item.id) },
                     allowImageZoom = true,
+                    onImageZoomChanged = { imageZoomed = it },
+                    onImagePauseChanged = { userPaused = it },
                 )
             }
         }

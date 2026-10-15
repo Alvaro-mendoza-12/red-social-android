@@ -48,6 +48,8 @@ interface SignalingEvents {
     fun onSendOffer(targetSocketId: String, offer: JSONObject)
     fun onSendAnswer(targetSocketId: String, answer: JSONObject)
     fun onSendIceCandidate(targetSocketId: String, candidate: JSONObject)
+    /** Reopen signaling on the new default network instead of waiting for TCP's old path. */
+    fun onNetworkChanged(): Boolean = false
 }
 
 /**
@@ -347,15 +349,15 @@ class WebRTCManager(
                 )
             }
             
-            initializeFactory()
-            createLocalAudioTrack()
-            
-            // Managed TURN fetch via authenticated self-hosted coturn endpoint.
+            // Fetch authenticated TURN credentials while native codecs/audio initialize.
+            // Peers still wait for usable credentials before creating their first offer.
             if (hasManagedTurnConfigured) {
                 refreshManagedIceServers(force = true)
             } else {
                 Log.i("WebRTC", "Managed TURN not configured. Using fallback ICE servers only.")
             }
+            initializeFactory()
+            createLocalAudioTrack()
             registerNetworkHandoffMonitor()
             
             // v22.0: Background Stats Monitor for Audio Levels
@@ -727,6 +729,10 @@ class WebRTCManager(
             delay(350L)
             if (peerConnections.isEmpty()) return@launch
 
+            val signalingWillRejoin = runCatching { signalingEvents.onNetworkChanged() }
+                .onFailure { reportFailure("webrtc_signaling_network_recovery", "Signaling network recovery failed", it) }
+                .getOrDefault(false)
+
             ensureLocalTracks()
             refreshManagedIceServers(force = true)
             awaitManagedIceIfNeeded()
@@ -754,13 +760,18 @@ class WebRTCManager(
 
                         iceRetryCount[peerKey] = 0
                         disconnectRecoveryJobs.remove(peerKey)?.cancel()
-                        requestOffer(
-                            socketId = peerKey,
-                            pc = pc,
-                            iceRestart = true,
-                            reason = reason,
-                            retryDelayMs = 600L
-                        )
+                        // Rejoining signaling renegotiates from its authoritative participant
+                        // snapshot. Sending first would queue SDP before join-call and collide
+                        // with the remote peer recreated for our new socket id.
+                        if (!signalingWillRejoin) {
+                            requestOffer(
+                                socketId = peerKey,
+                                pc = pc,
+                                iceRestart = true,
+                                reason = reason,
+                                retryDelayMs = 600L
+                            )
+                        }
                         updateDebugInfo(peerKey, "Recuperando conexión tras cambio de red")
                     }.onFailure { error ->
                         Log.e("WebRTCManager", "Network recovery failed for $peerKey", error)
@@ -2635,6 +2646,11 @@ class WebRTCManager(
         }
     }
 
+    /** Announces a newly introduced sender while preserving the healthy ICE transport. */
+    fun refreshMediaNegotiation() {
+        renegotiateAll(iceRestart = false, force = true)
+    }
+
     fun hasLocalVideoTrack(): Boolean {
         return _localVideoTrackFlow.value != null
     }
@@ -2842,7 +2858,8 @@ class WebRTCManager(
                 val params = sender.parameters
                 if (params.encodings.isNotEmpty()) {
                     val isScreen = track.id().contains("SCREEN")
-                    val maxBitrate = if (isScreen) 2_500_000 else when (deviceTier) {
+                    val meteredCamera = !isScreen && connectivityManager.isActiveNetworkMetered
+                    val maxBitrate = if (isScreen) 2_500_000 else if (meteredCamera) 450_000 else when (deviceTier) {
                         conectate.com.util.AppDeviceTier.LOW -> 600_000
                         conectate.com.util.AppDeviceTier.BALANCED -> 1_200_000
                         conectate.com.util.AppDeviceTier.HIGH -> 1_800_000
@@ -2851,7 +2868,10 @@ class WebRTCManager(
                     params.degradationPreference = if (isScreen)
                         RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION else
                         RtpParameters.DegradationPreference.MAINTAIN_FRAMERATE
-                    params.encodings.forEach { it.maxBitrateBps = maxBitrate }
+                    params.encodings.forEach {
+                        it.maxBitrateBps = maxBitrate
+                        it.maxFramerate = if (meteredCamera) 30 else null
+                    }
                     if (!sender.setParameters(params)) {
                         Log.w("WebRTC", "Encoder parameters were rejected for $socketId")
                     }

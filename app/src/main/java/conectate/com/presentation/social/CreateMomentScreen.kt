@@ -263,7 +263,7 @@ fun CreateMomentScreen(
         )
     }
 
-    val deviceAudioFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val deviceAudioFileLauncher = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri ->
         pendingDeviceAudioUri = uri
     }
 
@@ -291,6 +291,7 @@ fun CreateMomentScreen(
             } else 6_000L,
             allowFullTrack = false,
             defaultToFullTrack = false,
+            selectSourceForExcerpt = true,
             catalogTracks = emptyList(),
             enableOpenCatalog = false,
             onBrowseFiles = { deviceAudioFileLauncher.launch(arrayOf("audio/*")) },
@@ -299,7 +300,9 @@ fun CreateMomentScreen(
                 pendingDeviceAudioUri = null
             },
             onClipReady = { clip ->
-                musicSelection = clip.toMomentMusicSelection().let { selected ->
+                musicSelection = clip.toMomentMusicSelection(
+                        initialExcerptDurationMs = if (finalMediaType == "video") finalMediaDurationMs ?: 6_000L else 6_000L,
+                    ).let { selected ->
                     musicSelection?.let { previous ->
                         selected.copy(
                             musicVolume = previous.musicVolume,
@@ -803,6 +806,8 @@ internal fun MomentEditorView(
     var showMusicDialog by remember { mutableStateOf(false) }
     var showAudioMixDialog by remember { mutableStateOf(false) }
     var showLifetimeDialog by remember { mutableStateOf(false) }
+    var previewPaused by rememberSaveable(uri) { mutableStateOf(false) }
+    val previewResumed = momentPlaybackResumed()
     var toolbarHeight by remember { mutableIntStateOf(0) }
     var footerHeight by remember { mutableIntStateOf(0) }
     var mediaAspectRatio by remember(uri) { mutableFloatStateOf(1f) }
@@ -847,7 +852,7 @@ internal fun MomentEditorView(
                 volume = musicSelection?.let {
                     it.originalAudioVolume * if (it.duckOriginalAudio) 0.35f else 1f
                 } ?: 1f,
-                playWhenReady = !showMusicDialog && !suspendMusicPlayback,
+                playWhenReady = !previewPaused && previewResumed && !showMusicDialog && !suspendMusicPlayback,
                 modifier = Modifier.fillMaxSize(),
                 onAspectRatioChanged = { mediaAspectRatio = it },
             )
@@ -928,6 +933,7 @@ internal fun MomentEditorView(
                 startMs = musicSelection.startMs,
                 durationMs = musicSelection.endMs - musicSelection.startMs,
                 volume = musicSelection.musicVolume,
+                playWhenReady = !previewPaused && previewResumed,
                 onPositionChanged = { musicClock.value = it },
             )
         }
@@ -952,6 +958,14 @@ internal fun MomentEditorView(
                 )
             }
             Spacer(Modifier.weight(1f))
+            if (musicSelection != null || isVideo) {
+                MomentEditorToolButton(
+                    icon = if (previewPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                    label = if (previewPaused) "Reproducir vista previa" else "Pausar vista previa",
+                    onClick = { previewPaused = !previewPaused },
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             if (!isVideo) {
                 MomentEditorToolButton(
                     icon = Icons.Default.TextFields,
@@ -1222,6 +1236,7 @@ internal fun formatMomentMusicDuration(durationMs: Long): String {
 @Composable
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 private fun MomentEditorMusicPlayback(uri: Uri, startMs: Long, durationMs: Long, volume: Float,
+    playWhenReady: Boolean,
     onPositionChanged: (Long) -> Unit = {}) {
     val context = LocalContext.current
     val positionCallback by rememberUpdatedState(onPositionChanged)
@@ -1250,18 +1265,18 @@ private fun MomentEditorMusicPlayback(uri: Uri, startMs: Long, durationMs: Long,
         }
     }
     LaunchedEffect(volume) { exoPlayer.volume = volume.coerceIn(0f, 1f) }
+    LaunchedEffect(playWhenReady) { exoPlayer.playWhenReady = playWhenReady }
+    PauseMomentPlayerOnBackground(exoPlayer)
     LaunchedEffect(uri, startMs, durationMs, exoPlayer) {
         val safeStart = startMs.coerceAtLeast(0L)
         val safeDuration = durationMs.coerceIn(1_000L, 60_000L)
         exoPlayer.seekTo(safeStart)
-        exoPlayer.playWhenReady = true
         while (true) {
             positionCallback(exoPlayer.currentPosition.coerceAtLeast(0L))
-            if (exoPlayer.currentPosition >= safeStart + safeDuration ||
-                exoPlayer.playbackState == androidx.media3.common.Player.STATE_ENDED
+            if (exoPlayer.playWhenReady && (exoPlayer.currentPosition >= safeStart + safeDuration ||
+                exoPlayer.playbackState == androidx.media3.common.Player.STATE_ENDED)
             ) {
                 exoPlayer.seekTo(safeStart)
-                exoPlayer.playWhenReady = true
             }
             kotlinx.coroutines.delay(150)
         }
@@ -1443,7 +1458,7 @@ private fun MomentPeopleDialog(
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CircularProfileImage(imageUrl = user.avatar_url, size = 38.dp, fallbackName = user.displayName)
+                            CircularProfileImage(openMomentOnClick = false, ownerId = user.id, imageUrl = user.avatar_url, size = 38.dp, fallbackName = user.displayName)
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(user.displayName, fontWeight = FontWeight.SemiBold)
@@ -1504,13 +1519,13 @@ fun MomentVideoPlayer(
     // Handle range/trimming preview
     LaunchedEffect(volume) { exoPlayer.volume = volume.coerceIn(0f, 1f) }
     LaunchedEffect(playWhenReady) { exoPlayer.playWhenReady = playWhenReady }
+    PauseMomentPlayerOnBackground(exoPlayer)
     LaunchedEffect(startMs, endMs) {
         if (endMs != -1L) {
             exoPlayer.seekTo(startMs)
             while (true) {
-                if (exoPlayer.currentPosition >= endMs || exoPlayer.playbackState == androidx.media3.common.Player.STATE_ENDED) {
+                if (exoPlayer.playWhenReady && (exoPlayer.currentPosition >= endMs || exoPlayer.playbackState == androidx.media3.common.Player.STATE_ENDED)) {
                     exoPlayer.seekTo(startMs)
-                    exoPlayer.play()
                 }
                 kotlinx.coroutines.delay(100)
             }

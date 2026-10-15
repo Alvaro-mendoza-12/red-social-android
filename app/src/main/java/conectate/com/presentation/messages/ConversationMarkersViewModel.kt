@@ -58,7 +58,9 @@ class ConversationMarkersViewModel @Inject constructor(
         refresh()
     }
 
-    fun refresh() {
+    fun refresh() = refresh(false)
+    fun refreshFromUser() = refresh(true)
+    private fun refresh(userInitiated: Boolean) {
         val (kind, roomId) = target ?: return
         val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
         if (boundUserId != currentUserId) markersUnavailable = false
@@ -72,7 +74,7 @@ class ConversationMarkersViewModel @Inject constructor(
             _loading.value = true
             val token = authService.ensureValidAccessToken().getOrElse {
                 if (revision == refreshRevision) {
-                    _feedback.value = "Inicia sesión para ver mensajes guardados."
+                    _feedback.value = conversationMarkerFailureFeedback(it, userInitiated)
                     _loading.value = false
                 }
                 return@launch
@@ -94,7 +96,7 @@ class ConversationMarkersViewModel @Inject constructor(
                             markersUnavailable = true
                             _feedback.value = null
                         } else {
-                            _feedback.value = it.message ?: "No se pudieron cargar los mensajes guardados."
+                            _feedback.value = conversationMarkerFailureFeedback(it, userInitiated)
                         }
                     },
                 )
@@ -143,7 +145,7 @@ class ConversationMarkersViewModel @Inject constructor(
                     _feedback.value = when {
                         error.message?.contains("PIN_LIMIT_REACHED") == true -> "Solo se pueden fijar 10 mensajes por conversación."
                         error.message?.contains("PIN_REQUIRES_ADMIN") == true -> "Solo administradores pueden fijar mensajes aquí."
-                        else -> error.message ?: "No se pudo actualizar el mensaje."
+                        else -> conversationMarkerFailureFeedback(error, true)
                     }
                 },
             )

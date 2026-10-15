@@ -181,7 +181,7 @@ internal fun ProfileEditSections(
                     onValueChange = onNameChange,
                     label = { Text("Nombre") },
                     enabled = canChangeName,
-                    supportingText = { Text("Puedes cambiarlo una vez cada 7 días") },
+                    supportingText = { Text("${conectate.com.data.model.DisplayNamePolicy.length(name)}/20 · puedes cambiarlo cada 7 días") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -497,7 +497,7 @@ private fun ProfileAppearanceEditor(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        CircularProfileImage(
+        CircularProfileImage(openMomentOnClick = false, ownerId = user.id, 
             imageUrl = imageUri?.toString() ?: user.avatar_url,
             size = 112.dp,
             mediaType = avatarMediaType ?: user.avatar_media_type,

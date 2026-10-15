@@ -1,5 +1,11 @@
 package conectate.com.data.repository
 
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.utils.io.jvm.javaio.toInputStream
+import kotlinx.coroutines.ensureActive
+
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import android.content.Context
 import android.net.Uri
 import coil.Coil
@@ -786,28 +792,25 @@ class StickerRepository @Inject constructor(
         // Never fingerprint a thumbnail or just an animation's first frame.
         val sourceKey = UbuntuStorageUrl.stableCacheKey(url)
         val cache = Coil.imageLoader(context).diskCache
-        for (key in listOfNotNull(sourceKey?.let { "animated-source:$it" }, sourceKey, url).distinct()) {
+        val allowLegacyCache = !conectate.com.core.media.StorageReadSession.isStorageRequest(url)
+        for (key in if (allowLegacyCache) listOfNotNull(sourceKey?.let { "animated-source:$it" }, sourceKey, url).distinct() else emptyList()) {
             val cached = runCatching {
                 cache?.openSnapshot(key)?.use { snapshot ->
                     val file = snapshot.data.toFile()
-                    if (file.length() in 1L..(8L * 1024 * 1024)) StickerIdentity.fingerprint(file.readBytes()) else null
+                    if (file.length() in 1L..(8L * 1024 * 1024)) StickerIdentity.fingerprint(file.inputStream().use { it.readMediaBytesWithLimit(8L * 1024 * 1024) }) else null
                 }
             }.getOrNull()
             if (cached != null) return cached
         }
         return withTimeoutOrNull(6_000) {
             runCatching {
-                val response = supabaseConfig.httpClient.get(url) {
-                    UbuntuStorageUrl.publicRequestHeaders.forEach { (name, value) -> header(name, value) }
-                }
-                if (!response.status.isSuccess()) return@runCatching null
                 val maxBytes = 8 * 1024 * 1024
-                if ((response.headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: 0) > maxBytes) {
-                    return@runCatching null
-                }
-                val bytes = response.body<ByteArray>()
+                val bytes = conectate.com.core.media.StorageReadDownloads.readBytes(url, maxBytes.toLong(), 6_000)
                 if (bytes.isEmpty() || bytes.size > maxBytes) null else StickerIdentity.fingerprint(bytes)
-            }.getOrNull()
+            }.getOrElse { error ->
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                null
+            }
         }
     }
 
@@ -984,7 +987,7 @@ class StickerRepository @Inject constructor(
     private fun readUriBytes(uri: Uri, maxBytes: Int): ByteArray? {
         return runCatching {
             context.contentResolver.openInputStream(uri)?.use { input ->
-                var bytes = input.readBytes()
+                var bytes = input.readMediaBytesWithLimit(maxBytes.toLong())
                 if (bytes.size > maxBytes) {
                     null
                 } else {

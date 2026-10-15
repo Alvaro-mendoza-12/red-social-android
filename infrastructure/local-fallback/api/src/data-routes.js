@@ -1,7 +1,10 @@
 const crypto = require('crypto')
+const { SYSTEM_MEMBERSHIP, ensureCollectionMembershipTables, loadCollectionMembershipState, collectionHistoryAllows, registerCollectionMembershipRoutes } = require('./collection-membership-policy')
+const { patchImportedRow, deleteImportedRow, deleteImportedPost } = require('./imported-mutation-capabilities')
 const { isRetiredNotification } = require('./retired-notifications')
 const { isServerManagedNotification } = require('./notification-event-policy')
 const { publicFeedPage } = require('./public-feed-page')
+const { deniedPublicCreatorIds, publicCreatorVisibility } = require('./public-creator-visibility')
 const { loadCollectionReceipts, isCollectionMessageUnread, projectCollectionReceipt } = require('./collection-read-state')
 const bcrypt = require('bcrypt')
 const { requireBcryptPasswordLength } = require('./new-password-policy')
@@ -40,11 +43,16 @@ const {
 } = require('./playmatch-routes')
 const { stableKey } = require('./request-security')
 const { safeErrorLogDetails } = require('./request-observability')
+const { isDeletedForAll, redactDeletedMessage, mergeMessageRows, deleteMessageForAll, refreshChatSummary, ensureMessageDeletionTables, processMessageDeletionOutbox } = require('./message-deletion-policy')
 const { insertMessageOnce } = require('./message-insert-store')
 const { upsertOwnedCollectionRoom } = require('./collection-room-create-store')
 const { mayReuseMessageMedia } = require('./message-media-access')
+const { cleanStorageRow } = require('./storage-scan-coordinator')
+const { trustedStorageUrl, scanEnforcementEnabled, readyStorageSql } = require('./storage-media-reference')
+const storageScanEnforced = scanEnforcementEnabled()
+const scanReadySql = readyStorageSql()
 const { cleanUsername, usernameOwnedByAnother, usernameProblem } = require('./username-policy')
-const { ensureDirectMessageRequestPolicy, introPolicyError, publishAutomaticFriendRequest } = require('./direct-message-request-policy')
+const { ensureDirectMessageRequestPolicy, introPolicyError, publishAutomaticFriendRequest, registerDirectMessageRequestRoutes } = require('./direct-message-request-policy')
 const { ensureMessageMarkerTables, registerMessageMarkerRoutes } = require('./message-markers-routes')
 const { ensureRaffleTables } = require('./raffles/service')
 const { registerRaffleRoutes } = require('./raffles/routes')
@@ -278,6 +286,7 @@ function sortByDateDesc(rows, keys) {
 }
 
 function previewFromMessage(row) {
+  if (isDeletedForAll(row)) return 'Mensaje eliminado'
   const contentType = textOf(row, ['content_type'], '').toLowerCase()
   if (contentType === 'contact') return 'Contacto'
   const content = messageContentOf(row)
@@ -413,7 +422,7 @@ function normalizeMessageRow(row) {
     ? normalized.reactions
     : {}
   normalized.is_forwarded = boolOf(normalized, ['is_forwarded', 'isForwarded'], false)
-  return normalized
+  return redactDeletedMessage(normalized)
 }
 
 function profileName(row, fallback = 'Usuario') {
@@ -848,55 +857,7 @@ async function getFallbackMessage(pool, chatId, messageId) {
 }
 
 async function updateFallbackChatLastMessage(pool, chatId) {
-  const cleanChatId = normalizeId(chatId)
-  const { rows } = await pool.query(
-    `SELECT
-        id::text,
-        chat_id,
-        sender_id,
-        content,
-        content_type,
-        media_url,
-        thumbnail_url,
-        media_size,
-        status,
-        reply_to_id,
-        poll_id,
-        delivered_at,
-        read_at,
-        reactions,
-        deleted_by,
-        deleted_for_all,
-        is_edited,
-        is_forwarded,
-        forwarded_from_message_id,
-        forwarded_from_user_id,
-        created_at,
-        updated_at
-     FROM fallback_messages
-     WHERE lower(chat_id) = $1 AND deleted_for_all = FALSE
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [cleanChatId],
-  )
-  const latest = rows[0] ? normalizeMessageRow(rows[0]) : null
-  await pool.query(
-    `UPDATE fallback_chats
-     SET last_message = $2,
-         last_message_at = $3::timestamptz,
-         last_message_sender_id = $4,
-         last_message_id = $5,
-         updated_at = NOW()
-     WHERE lower(id::text) = $1`,
-    [
-      cleanChatId,
-      latest ? previewFromMessage(latest) : null,
-      latest ? textOf(latest, ['created_at'], '') || null : null,
-      latest ? textOf(latest, ['sender_id'], '') : null,
-      latest ? textOf(latest, ['id'], '') : null,
-    ],
-  )
-  return latest
+  return refreshChatSummary(pool, chatId)
 }
 
 function toggleReactionMap(current, emoji, userId) {
@@ -1104,10 +1065,12 @@ async function lookupMarkerMessages(pool, kind, roomId, messageIds, identity) {
   const table = kind === 'chat' ? 'messages' : `${kind}_messages`
   const imported = await importedRowsByFieldValues(pool, table, ['id'], ids, ids.length)
   const roomKey = kind === 'chat' ? 'chat_id' : `${kind}_id`
+  const history = kind === 'chat' ? null : (await loadCollectionMembershipState(pool, kind, roomId, identity.ids)).history
   const previews = new Map()
   for (const candidate of [...imported, ...local.rows]) {
     const id = normalizeId(textOf(candidate, ['id'], ''))
     if (!ids.includes(id) || normalizeId(textOf(candidate, [roomKey, 'room_id'], '')) !== roomId ||
+        (history && !collectionHistoryAllows(history, candidate)) ||
         !messageVisibleTo(candidate, identity) || boolOf(candidate, ['deleted_for_all', 'deletedForAll'], false) ||
         textOf(candidate, ['content_type', 'contentType'], '').startsWith('view_once_')) {
       previews.delete(id)
@@ -3336,7 +3299,7 @@ async function findUniquePublicMention(pool, handle) {
   return matches.size === 1 ? [...matches.values()][0] : null
 }
 
-async function notifyPublicMentions(pool, { content, targetId, commentId, actor, identity, type }) {
+async function notifyPublicMentions(pool, { content, targetId, commentId, actor, identity, type, publication = null }) {
   const handles = publicMentionHandles(content)
   const delivered = new Set()
   for (const handle of handles) {
@@ -3344,6 +3307,23 @@ async function notifyPublicMentions(pool, { content, targetId, commentId, actor,
     const recipientId = normalizeId(profile?.id)
     if (!recipientId || identity.ids.has(recipientId) || delivered.has(recipientId)) continue
     if ((await blockRelationshipForPair(pool, identity, recipientId)).isBlocked) continue
+    if (publication) {
+      // An @handle never grants access to a private post or a restricted creator.
+      const recipient = await fallbackUserByProfileAlias(pool, recipientId)
+      if (!recipient) continue
+      const recipientIdentity = userIdentity(recipient)
+      const [localEdges, importedEdges, profiles] = await Promise.all([
+        localFollowsByFollowerIds(pool, recipientIdentity.values, 20_000),
+        importedRowsByFieldValues(pool, 'follows', ['follower_id', 'user_id'], recipientIdentity.values, 20_000),
+        publicProfilesByIds(pool, identity.values),
+      ])
+      const followingIds = cleanSet([...localEdges, ...importedEdges]
+        .filter(edge => rowMatchesAny(edge, ['follower_id', 'user_id'], recipientIdentity.ids))
+        .map(edge => textOf(edge, ['following_id', 'target_user_id'], '')))
+      const deniedIds = await deniedPublicCreatorIds(pool, { profiles, ownerIds: identity.values, viewerIds: recipientIdentity.values })
+      const visibleCreator = publicCreatorVisibility({ profiles, viewerIds: recipientIdentity.ids, followingIds, deniedIds })
+      if (!visibleCreator(postOwnerId(publication)) || !feedPostVisible(publication, { identityIds: recipientIdentity.ids, followingIds })) continue
+    }
     delivered.add(recipientId)
     await createLocalNotificationBestEffort(pool, {
       recipientId,
@@ -3353,10 +3333,10 @@ async function notifyPublicMentions(pool, { content, targetId, commentId, actor,
       type,
       targetId,
       targetType: type.includes('video') ? 'video' : 'post',
-      content: type === 'mention_video_description'
+      content: publication ? 'Te mencionó en esta publicación.' : type === 'mention_video_description'
         ? 'Te mencionó en la descripción de un video.'
         : type === 'mention_video' ? 'Te mencionó en un comentario de video.' : 'Te mencionó en un comentario.',
-      extraData: { ...(commentId ? { comment_id: commentId } : {}), mention_handle: handle },
+      extraData: { ...(commentId ? { comment_id: commentId } : {}), ...(publication ? { mention_context: 'publication', post_id: targetId } : {}), mention_handle: handle },
     })
   }
 }
@@ -3396,7 +3376,8 @@ function normalizeProfileForPublic(row, fallbackId = '') {
   const followersCount = numberOf(row, ['followers_count', 'follower_count'], 0)
   return {
     id,
-    user_id: textOf(row, ['user_id', 'userId'], ''),
+    // Keep the local identity when `id` is projected to the Supabase identity.
+    user_id: textOf(row, ['user_id', 'userId'], textOf(row, ['id'], '')),
     profile_id: textOf(row, ['profile_id', 'profileId'], ''),
     supabase_user_id: textOf(row, ['supabase_user_id', 'supabaseUserId'], ''),
     display_name: profileName(row),
@@ -4066,6 +4047,7 @@ function canMutateLocalPost(row, identity) {
 }
 
 function parsePublicStorageObjectUrl(rawUrl, allowedBuckets = []) {
+  if (storageScanEnforced && !trustedStorageUrl(rawUrl)) return null
   const value = String(rawUrl || '').trim()
   if (!value) return null
   try {
@@ -4301,7 +4283,8 @@ async function currentUserOwnsStorageObject(pool, currentUserId, rawUrl, allowed
      WHERE bucket_id = $1
        AND owner_id = $2::uuid
        AND name = ANY($3::text[])
-     LIMIT 1`,
+     ${scanReadySql}
+      LIMIT 1`,
     [reference.bucket, currentUserId, candidateNames],
   )
   return Boolean(rows[0])
@@ -4317,7 +4300,9 @@ async function resolveOwnedStorageUrl(pool, currentUserId, rawUrl, allowedBucket
   const { rows } = await pool.query(
     `SELECT name FROM fallback_storage_objects
      WHERE bucket_id = $1 AND owner_id = $2::uuid AND name = ANY($3::text[])
-     ORDER BY array_position($3::text[], name) LIMIT 1`,
+     ${scanReadySql}
+      ORDER BY array_position($3::text[], name) ${scanReadySql}
+      LIMIT 1`,
     [reference.bucket, currentUserId, candidateNames],
   )
   if (!rows[0]) return null
@@ -4359,7 +4344,7 @@ async function ownedVideoStorageRows(pool, row, identity) {
 
   for (const reference of uniqueReferences.values()) {
     const { rows } = await pool.query(
-      `SELECT id::text, bucket_id, name, local_path
+      `SELECT *, id::text
        FROM fallback_storage_objects
        WHERE bucket_id = $1
          AND name = $2
@@ -4395,7 +4380,8 @@ async function storageObjectExists(pool, rawUrl, allowedBuckets) {
     `SELECT 1
      FROM fallback_storage_objects
      WHERE bucket_id = $1 AND name = $2
-     LIMIT 1`,
+     ${scanReadySql}
+      LIMIT 1`,
     [reference.bucket, reference.objectPath],
   )
   return Boolean(rows[0])
@@ -4473,7 +4459,8 @@ async function forwardedMessageMediaIsAccessible(pool, user, identity, sourceMes
       !(await blockRelationshipForChat(pool, access.chat, access.participantRows, identity)).isBlocked
   }
   if (kind === 'group' || kind === 'community') {
-    return Boolean(await loadCollectionRoomAccess(pool, user, kind, scopeId))
+    const state = await loadCollectionMembershipState(pool, kind, scopeId, identity.ids)
+    return collectionHistoryAllows(state.history, source)
   }
   return false
 }
@@ -4509,6 +4496,14 @@ async function currentUserMayReferenceMessageMedia(
   { mediaUrl, contentType, allowedOwnedBuckets, isForwarded = false, forwardedFromMessageId = null },
 ) {
   if (!mediaUrl) return true
+  if (storageScanEnforced) {
+    const reference = parsePublicStorageObjectUrl(mediaUrl, messageMediaBuckets)
+    if (!reference) return false
+    const candidates = [reference.objectPath, `${user.id}/${reference.objectPath}`]
+    const scanned = await pool.query(`SELECT * FROM fallback_storage_objects WHERE bucket_id=$1 AND name=ANY($2::text[])`, [reference.bucket, candidates])
+    if (!scanned.rows.some(cleanStorageRow)) return false
+  }
+
   // Forwarding must validate the source even when the requester owns its file.
   // Otherwise deletion/view-once restrictions can be bypassed by the owner path.
   if (isForwarded) {
@@ -5013,6 +5008,7 @@ function collectionRoomAvatar(row) {
 }
 
 function enrichCollectionMessage(row, config, profilesById) {
+  row = redactDeletedMessage(row)
   const senderId = normalizeId(textOf(row, ['sender_id', 'user_id', 'profile_id', 'author_id'], ''))
   const profile = senderId ? profilesById.get(senderId) : null
   const roomId = textOf(row, [config.roomKey, 'room_id'], '')
@@ -5043,7 +5039,7 @@ function enrichCollectionMessage(row, config, profilesById) {
   }
 }
 
-async function loadCollectionRoomAccess(pool, user, kind, roomId, { allowPrivatePreview = false } = {}) {
+async function loadCollectionRoomAccess(pool, user, kind, roomId, { allowPrivatePreview = false, allowRetainedHistory = false } = {}) {
   const config = collectionConfig(kind)
   const cleanRoomId = normalizeId(roomId)
   if (!config || !cleanRoomId) return null
@@ -5069,22 +5065,25 @@ async function loadCollectionRoomAccess(pool, user, kind, roomId, { allowPrivate
   const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
   const isMember = roomMembers.some((row) => identity.ids.has(memberUserId(row)))
   const isPublicRoom = boolOf(room, ['is_public', 'public'], config.kind === 'community')
-  const hasAccess = isCreator || isMember || isPublicRoom || allowPrivatePreview
+  const membershipState = await loadCollectionMembershipState(pool, config.kind, cleanRoomId, identity.ids)
+  const retainedAccess = allowRetainedHistory && membershipState.history.canReadHistory
+  if (membershipState.denied && !allowPrivatePreview && !retainedAccess) return null
+  const hasAccess = membershipState.member || retainedAccess || isPublicRoom || allowPrivatePreview
   if (!hasAccess) return null
 
-  return { config, cleanRoomId, identity, room, roomMembers }
+  return { config, cleanRoomId, identity, room, roomMembers, historyAccess: membershipState.history }
 }
 
 async function loadCollectionRoomPayload(pool, user, kind, roomId, options = {}) {
   const access = await loadCollectionRoomAccess(pool, user, kind, roomId, options)
   if (!access) return null
-  const { config, cleanRoomId, identity, room, roomMembers } = access
+  const { config, cleanRoomId, identity, room, roomMembers, historyAccess } = access
   const [importedMessages, localMessages] = await Promise.all([
     importedRowsByFieldValues(pool, config.messageTable, [config.roomKey, 'room_id'], [cleanRoomId], 10_000),
     localCollectionMessages(pool, config.kind, cleanRoomId),
   ])
 
-  const rawMessages = mergeRowsById([...importedMessages, ...localMessages])
+  const rawMessages = mergeMessageRows([...importedMessages, ...localMessages]).filter(message => collectionHistoryAllows(historyAccess, message))
   const [viewerReceipts, readStates] = await Promise.all([
     loadCollectionReceipts(pool, config.kind, identity, [cleanRoomId]),
     localCollectionReadStates(pool, config.kind, identity.displayUserId),
@@ -5099,15 +5098,19 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId, options = {})
     ...rawMessages.map((row) => textOf(row, ['sender_id', 'user_id', 'profile_id', 'author_id'], '')),
   ]
   const profilesById = indexProfiles(await publicProfilesByIds(pool, profileIds))
+  const visibleIds = new Set(rawMessages.map(message => normalizeId(message.id)))
   const messages = rawMessages
+    .map(message => message.reply_to_id && !visibleIds.has(normalizeId(message.reply_to_id))
+      ? { ...message, reply_to_id: null, reply_to: null, reply_to_json: null } : message)
     .map((row) => enrichCollectionMessage(row, config, profilesById))
     .map((message) => projectCollectionReceipt(message, identity, viewerReadAt, viewerReceipts.get(`${cleanRoomId}/${normalizeId(message.id)}`)))
     .filter((message) => messageVisibleTo(message, identity))
     .sort((a, b) => toMillis(textOf(a, ['created_at'], '')) - toMillis(textOf(b, ['created_at'], '')))
 
   return {
-    chat: room,
-    room,
+    chat: { ...room, last_message: previewFromMessage(messages.at(-1) || {}), last_message_at: messages.at(-1)?.created_at || null },
+    room: { ...room, last_message: previewFromMessage(messages.at(-1) || {}), last_message_at: messages.at(-1)?.created_at || null },
+    historyAccess,
     title: collectionRoomTitle(room, config.titleFallback),
     otherParticipant: null,
     participants: roomMembers.map((row) => {
@@ -5118,6 +5121,7 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId, options = {})
         id,
         name: textOf(row, ['user_name', 'display_name', 'name'], '') || profileName(profile, id || 'Usuario'),
         avatarUrl: textOf(row, ['user_avatar_url', 'avatar_url'], '') || profileAvatar(profile),
+        username: profile ? require('./collection-mentions').profileHandle(profile) : '',
         role: normalizeCollectionRole(textOf(row, ['role'], 'member'), { isCreator: isRoomCreator }),
         joinedAt: textOf(row, ['joined_at', 'created_at'], ''),
         restUntil: textOf(row, ['rest_until', 'restUntil'], '') || null,
@@ -5399,6 +5403,7 @@ async function publishVoiceRoomsLiveEvent(payload) {
 }
 
 async function ensureLocalDataTables(pool) {
+  await ensureMessageDeletionTables(pool)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_chats (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -6706,6 +6711,8 @@ async function ensureLocalDataTables(pool) {
   await ensureVideoWatchLaterTables(pool)
   await ensureVideoHistoryColumns(pool)
   await ensureVideoCollectionTables(pool)
+  await require('./call-access-store').ensureCallAccessTables(pool)
+  await ensureCollectionMembershipTables(pool)
 }
 
 function registerDataRoutes(app, {
@@ -6717,6 +6724,43 @@ function registerDataRoutes(app, {
 }) {
   const { createConversationActivityAuthorizer, registerVisibleMessageReadRoute, registerVisibleCollectionReadRoutes } = require('./conversation-activity-routes')
   const { publishChatMessageEvent, publishRealtimeEvent } = require('./realtime-publish')
+  registerCollectionMembershipRoutes(app, { pool, authRequired, getCurrentUser,
+    invalidate: invalidateImportedDataCache,
+    onChanged: async ({ user, kind, roomId, targetUserId, eventId, added }) => {
+      const state = await loadCollectionMembershipState(pool, kind, roomId, userIdentity(user).ids)
+      const event = await pool.query('SELECT * FROM fallback_room_messages WHERE id=$1', [eventId])
+      if (event.rows[0]) await publishChatMessageEvent({ pool, chatId: `room:${kind}:${roomId}`,
+        message: { ...event.rows[0], [`${kind}_id`]: roomId },
+        recipientIds: [...new Set([
+          ...state.members.filter(row => !boolOf(row, ['is_deleted','deleted'], false)).map(memberUserId),
+          ...['creator_id','owner_id','user_id'].map(field => normalizeId(state.room?.[field])).filter(Boolean),
+        ])] })
+      if (added && targetUserId && !userIdentity(user).ids.has(targetUserId)) await createLocalNotificationBestEffort(pool, {
+        recipientId: targetUserId, actorId: userIdentity(user).displayUserId,
+        actorName: publicNotificationName(user), actorAvatarUrl: user.avatar_url || '',
+        type: `${kind}_member_added`, targetId: roomId, targetType: kind,
+        content: collectionRoomTitle(state.room, kind === 'group' ? 'Grupo' : 'Comunidad'),
+        extraData: { [`${kind}_id`]: roomId, notification_type: `${kind}_member_added` },
+      })
+    },
+  })
+  const callAccessStore = require('./call-access-store').registerCallAccessRoutes(app, {
+    pool, authRequired, getCurrentUser,
+    loadContext: async (db, user, kind, contextId) => {
+      const identity = userIdentity(user)
+      if (kind === 'dm') {
+        const context = await privateChatAccessContext(db, contextId, identity)
+        if (!context.chat || !context.hasAccess) return null
+        return { memberIds: recipientIdsForChat(context.chat, context.participantRows) }
+      }
+      const context = await loadCollectionRoomAccess(db, user, kind, contextId)
+      if (!context) return null
+      return { memberIds: [
+        ...context.roomMembers.map(memberUserId),
+        ...['creator_id', 'owner_id', 'user_id'].map(field => normalizeId(context.room[field])).filter(Boolean),
+      ] }
+    },
+  })
   const { createMessageReadReceiptPublisher } = require('./message-read-receipts')
   const mayPublishConversationActivity = createConversationActivityAuthorizer({ privateChatAccessContext, loadCollectionRoomAccess })
   registerRaffleRoutes(app, { pool, authRequired, getCurrentUser, userIdentity,
@@ -6730,6 +6774,7 @@ function registerDataRoutes(app, {
       pool, normalizeMessageRow, recipientIdsForChat, publishChatMessageEvent,
     }),
   })
+  registerDirectMessageRequestRoutes(app, { pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext })
   registerVisibleCollectionReadRoutes(app, { pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext, loadCollectionRoomAccess })
   registerMessageMarkerRoutes(app, {
     pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,
@@ -7004,6 +7049,10 @@ function registerDataRoutes(app, {
       const currentProfileOverride = await localProfileOverride(pool, user.id)
       const trimUrl = (value) => String(value || '').trim()
       const currentProfile = buildProfileForUser(user, importedProfile, currentProfileOverride)
+      if (Object.hasOwn(patch,'display_name')) {
+        patch.display_name=require('./display-name-policy').validateDisplayNameChange(patch.display_name,currentProfile.display_name)
+        patch.full_name=patch.display_name
+      }
       const currentAvatarUrl = trimUrl(currentProfile.avatar_url)
       const currentCoverUrl = trimUrl(currentProfile.cover_url)
       const currentMusicUrl = trimUrl(currentProfile.favorite_music_url)
@@ -7863,16 +7912,17 @@ function registerDataRoutes(app, {
         return res.status(403).json({ error: 'SERVER_MANAGED_NOTIFICATION' })
       }
 
+      const validatedAlert = await callAccessStore.validateAlert(user, req.body || {})
       const notification = await createLocalNotification(pool, {
-        recipientId,
+        recipientId: validatedAlert.recipientId || recipientId,
         actorId: identity.displayUserId,
         actorName: user.display_name || user.email || 'Usuario',
         actorAvatarUrl: user.avatar_url || '',
         type: req.body?.type,
-        targetId: req.body?.targetId || req.body?.target_id,
+        targetId: validatedAlert.targetId || req.body?.targetId || req.body?.target_id,
         targetType: req.body?.targetType || req.body?.target_type,
         content: req.body?.content,
-        extraData: req.body?.extraData || req.body?.extra_data,
+        extraData: validatedAlert.extraData || req.body?.extraData || req.body?.extra_data,
       })
       if (!notification) return res.status(400).json({ error: 'NOTIFICATION_NOT_CREATED' })
       res.status(201).json({ notification })
@@ -8360,12 +8410,20 @@ function registerDataRoutes(app, {
           .filter((row) => rowMatchesAny(row, ['follower_id', 'user_id'], identity.ids))
           .map((row) => textOf(row, ['following_id', 'target_user_id'], '')),
       )
+      // A followed Supabase identity and the author's local UUID are one account.
+      const followedProfiles = await publicProfilesByIds(pool, followingIds)
+      for (const profile of followedProfiles) {
+        if (Array.from(profileAliasSet(profile)).some(alias => followingIds.has(alias))) {
+          profileAliasSet(profile).forEach(alias => followingIds.add(alias))
+        }
+      }
       const requestedOwnerIds = requestedUserId
         ? cleanSet([requestedUserId])
         : mode === 'following'
           ? cleanSet([...identity.values, ...followingIds])
           : new Set()
-      const readCandidates = candidateReadLimit => {
+      let creatorVisible = () => false
+      const readCandidates = async candidateReadLimit => {
         const importedPostRead = requestedOwnerIds.size > 0
           ? importedRowsByFieldValues(
             pool,
@@ -8378,10 +8436,17 @@ function registerDataRoutes(app, {
         const fallbackPostRead = requestedOwnerIds.size > 0
         ? localPostsByOwnerIds(pool, requestedOwnerIds, candidateReadLimit)
         : localPosts(pool, candidateReadLimit)
-        return Promise.all([importedPostRead, fallbackPostRead])
+        const groups = await Promise.all([importedPostRead, fallbackPostRead])
+        const ownerIds = cleanSet(groups.flat().map(postOwnerId))
+        const profiles = await publicProfilesByIds(pool, ownerIds)
+        const deniedIds = await deniedPublicCreatorIds(pool, { profiles, ownerIds, viewerIds: identity.ids })
+        creatorVisible = publicCreatorVisibility({ profiles, viewerIds: identity.ids, followingIds, deniedIds })
+        // Preserve the unfiltered source sizes: hidden rows must not signal exhaustion.
+        return groups
       }
       const page = await publicFeedPage({ read: readCandidates, offset, limit,
-        visible: row => feedPostVisible(row, { identityIds: identity.ids, followingIds, mode, requestedUserId }),
+        visible: row => creatorVisible(postOwnerId(row)) &&
+          feedPostVisible(row, { identityIds: identity.ids, followingIds, mode, requestedUserId }),
         order: rows => sortByDateDesc(rows, ['created_at', 'updated_at']),
       })
       const pagePosts = page.items
@@ -8525,6 +8590,9 @@ function registerDataRoutes(app, {
 
       const storedPost = normalizeImportedRow(rows[0])
       await ingestTrustedContentClassification(pool, 'post', storedPost)
+      await notifyPublicMentions(pool, {
+        content, targetId: storedPost.id, actor: user, identity, type: 'mention_post', publication: storedPost,
+      }).catch(error => console.error('[post-mention] notification failed', safeErrorLogDetails(error)))
       res.status(201).json({ post: storedPost })
     } catch (error) {
       next(error)
@@ -8695,6 +8763,9 @@ function registerDataRoutes(app, {
       })
       const storedPost = normalizeImportedRow(rows[0])
       await ingestTrustedContentClassification(pool, 'post', storedPost)
+      await notifyPublicMentions(pool, {
+        content, targetId: storedPost.id, actor: user, identity, type: 'mention_post', publication: storedPost,
+      }).catch(error => console.error('[post-mention] notification failed', safeErrorLogDetails(error)))
       res.status(201).json({ post: storedPost })
     } catch (error) {
       next(error)
@@ -8766,27 +8837,14 @@ function registerDataRoutes(app, {
         if (!(await tableExists(pool, 'posts'))) {
           return res.status(404).json({ error: 'POST_IMPORT_TABLE_NOT_FOUND' })
         }
-        const assignments = []
-        const values = []
+        const supportedPatch = {}
         for (const [key, value] of Object.entries(patch)) {
-          if (await columnExists(pool, 'posts', key)) {
-            values.push(value)
-            assignments.push(`${quoteIdentifier(key)} = $${values.length}`)
-          }
+          if (await columnExists(pool, 'posts', key)) supportedPatch[key] = value
         }
-        if (await columnExists(pool, 'posts', 'updated_at')) {
-          assignments.push('updated_at = NOW()')
-        }
-        if (assignments.length === 0) {
+        if (Object.keys(supportedPatch).length === 0) {
           return res.status(400).json({ error: 'POST_PATCH_UNSUPPORTED_FOR_IMPORT' })
         }
-        values.push(postId)
-        const { rowCount } = await pool.query(
-          `UPDATE supabase_import.posts
-           SET ${assignments.join(', ')}
-           WHERE lower(id::text) = $${values.length}`,
-          values,
-        )
+        const { rowCount } = await patchImportedRow(pool, 'posts', postId, supportedPatch)
         if (!rowCount) return res.status(404).json({ error: 'POST_NOT_FOUND' })
       }
 
@@ -8828,26 +8886,7 @@ function registerDataRoutes(app, {
         if (!rowCount) return res.status(404).json({ error: 'POST_NOT_FOUND' })
       } else {
         await pool.query('DELETE FROM fallback_saved_posts WHERE lower(post_id) = $1', [postId])
-        const relatedTables = [
-          ['post_comments', 'post_id'],
-          ['post_likes', 'post_id'],
-          ['post_reactions', 'post_id'],
-          ['shares', 'post_id'],
-        ]
-        for (const [tableName, columnName] of relatedTables) {
-          if ((await tableExists(pool, tableName)) && (await columnExists(pool, tableName, columnName))) {
-            await pool.query(
-              `DELETE FROM supabase_import.${quoteIdentifier(tableName)}
-               WHERE lower(${quoteIdentifier(columnName)}::text) = $1`,
-              [postId],
-            )
-          }
-        }
-        const { rowCount } = await pool.query(
-          `DELETE FROM supabase_import.posts
-           WHERE lower(id::text) = $1`,
-          [postId],
-        )
+        const { rowCount } = await deleteImportedPost(pool, postId)
         if (!rowCount) return res.status(404).json({ error: 'POST_NOT_FOUND' })
       }
 
@@ -8977,11 +9016,7 @@ function registerDataRoutes(app, {
            WHERE lower(id::text) = $1 AND is_deleted = FALSE`,
           [commentId],
         )
-        : await pool.query(
-          `DELETE FROM supabase_import.post_comments
-           WHERE lower(id::text) = $1`,
-          [commentId],
-        )
+        : await deleteImportedRow(pool, 'post_comments', commentId)
       if (!rowCount) return res.status(404).json({ error: 'COMMENT_NOT_FOUND' })
       if (commentSource === 'imported') clearImportedRowCaches('post_comments')
       res.json({ ok: true })
@@ -9037,13 +9072,7 @@ function registerDataRoutes(app, {
         )
         updated = rows[0]
       } else {
-        const { rows } = await pool.query(
-          `UPDATE supabase_import.post_comments
-           SET content = $1, updated_at = NOW()
-           WHERE lower(id::text) = $2
-           RETURNING *`,
-          [content, commentId],
-        )
+        const { rows } = await patchImportedRow(pool, 'post_comments', commentId, { content })
         updated = rows[0]
         clearImportedRowCaches('post_comments')
       }
@@ -9528,6 +9557,10 @@ function registerDataRoutes(app, {
             .filter(([, rows]) => rows.length > 0)
             .map(([roomId, rows]) => [roomId, rows[rows.length - 1]]),
         )
+        const histories = new Map(await Promise.all(rooms.map(async row => {
+          const roomId = normalizeId(row.id)
+          return [roomId, (await loadCollectionMembershipState(pool, config.kind, roomId, identity.ids)).history]
+        })))
         const items = rooms
           .filter((row) => {
             const cleanId = normalizeId(textOf(row, ['id'], ''))
@@ -9535,9 +9568,9 @@ function registerDataRoutes(app, {
             const isMember = roomIds.has(cleanId)
             const isCreator = creatorId && identity.ids.has(creatorId)
             const isPublicRoom = boolOf(row, ['is_public', 'public'], config.kind === 'community') && !boolOf(row, ['is_private'], false)
-            return config.kind === 'community'
-              ? true
-              : isMember
+            const history=histories.get(cleanId)
+            if(history?.hidden) return false
+            return history?.isMember || history?.canReadHistory || (config.kind==='community' && isPublicRoom)
           })
           .map((row) => {
           const id = textOf(row, ['id'], '')
@@ -9554,24 +9587,20 @@ function registerDataRoutes(app, {
               ? normalizeCollectionRole(textOf(currentMembership || {}, ['role'], 'member'))
               : '')
           const isPublicRoom = boolOf(row, ['is_public', 'public'], config.kind === 'community') && !boolOf(row, ['is_private'], false)
-          const importedLatest = importedLatestByRoom.get(cleanId)
-          const localLatest = localLatestByRoom.get(cleanId)
-          const latest = toMillis(textOf(localLatest || {}, ['created_at'], '')) > toMillis(textOf(importedLatest || {}, ['created_at'], ''))
-            ? localLatest
-            : importedLatest
           const lastReadAt = lastReadByRoom.get(cleanId)
-          const allRoomMessages = [
-            ...importedMessages.filter((message) => roomIdOf(message, config.roomKey) === cleanId),
+          const allRoomMessages = mergeMessageRows([
+            ...importedMessages.filter(message => roomIdOf(message, config.roomKey) === cleanId),
             ...(localMessagesByRoom.get(cleanId) || []),
-          ]
-          const unreadMessageIds = roomIds.has(cleanId) ? mergeRowsById(allRoomMessages)
+          ]).filter(message => collectionHistoryAllows(histories.get(cleanId), message) && messageVisibleTo(message, identity))
+          const latest = sortMessagesNewestFirst(allRoomMessages)[0]
+          const unreadMessageIds = histories.get(cleanId)?.isMember ? mergeMessageRows(allRoomMessages)
             .filter((message) => isCollectionMessageUnread(message, identity, lastReadAt, viewerReceipts.get(`${cleanId}/${normalizeId(message.id)}`)))
             .map((message) => normalizeId(message.id)).filter(Boolean) : []
           const unreadCount = unreadMessageIds.length
           return {
             id,
             title: collectionRoomTitle(row, config.titleFallback),
-            subtitle: previewFromMessage(latest || {}) || textOf(row, ['last_message', 'description', 'about'], 'Sin actividad reciente'),
+            subtitle: previewFromMessage(latest || {}) || textOf(row, ['description', 'about'], 'Sin actividad reciente'),
             description: textOf(row, ['description', 'about'], ''),
             category: config.kind === 'community' ? textOf(row, ['category'], '') : '',
             updatedAt: textOf(latest || {}, ['created_at', 'updated_at'], '') || textOf(row, ['last_message_at', 'updated_at', 'created_at'], ''),
@@ -9583,7 +9612,8 @@ function registerDataRoutes(app, {
             unreadMessageIds,
             lastMessageSenderId: textOf(latest || {}, ['sender_id'], ''),
             lastMessageContentType: textOf(latest || {}, ['content_type'], 'text') || 'text',
-            isMember: roomIds.has(cleanId) || Boolean(isCreator),
+            isMember: histories.get(cleanId)?.isMember === true,
+            historyAccess: histories.get(cleanId),
             isPinned: false,
             isMuted: false,
             isArchived: false,
@@ -9655,7 +9685,7 @@ function registerDataRoutes(app, {
         importedRowsByFieldValues(pool, 'messages', ['chat_id', 'chatId'], chatIds, 10_000),
         localMessages(pool, chatIds),
       ])
-      const messages = [...importedMessages, ...fallbackMessages]
+      const messages = mergeMessageRows([...importedMessages, ...fallbackMessages])
         .filter((message) => messageVisibleTo(message, identity))
 
       const participantByChat = new Map()
@@ -9691,6 +9721,7 @@ function registerDataRoutes(app, {
         if (clearedAt && messageAt && messageAt <= clearedAt) continue
 
         if (!latestByChat.has(chatId)) latestByChat.set(chatId, message)
+        if (isDeletedForAll(message)) continue
         const senderId = normalizeId(textOf(message, ['sender_id'], ''))
         const readAt = textOf(message, ['read_at'], '')
         const status = textOf(message, ['status'], '').toLowerCase()
@@ -10216,7 +10247,7 @@ function registerDataRoutes(app, {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
-      const payload = await loadCollectionRoomPayload(pool, user, messageCollectionFromRequest(req), req.params.roomId)
+      const payload = await loadCollectionRoomPayload(pool, user, messageCollectionFromRequest(req), req.params.roomId, { allowRetainedHistory: true })
       if (!payload) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
       res.json(payload)
     } catch (error) {
@@ -10954,106 +10985,6 @@ function registerDataRoutes(app, {
     }
   })
 
-  app.post('/v1/data/messages/groups/:roomId/invites', authRequired, async (req, res, next) => {
-    try {
-      const user = await getCurrentUser(pool, req)
-      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
-
-      const roomId = normalizeId(req.params.roomId)
-      if (!validUuid(roomId)) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
-      const identity = userIdentity(user)
-      const payload = await loadCollectionRoomPayload(pool, user, 'group', roomId)
-      if (!payload) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
-      const room = payload.room || payload.chat || {}
-      const me = (payload.participants || []).find((participant) => identity.ids.has(normalizeId(participant.id)))
-      const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
-      if (!isCollectionAdminRole(me?.role, { isCreator })) {
-        return res.status(403).json({ error: 'GROUP_INVITE_CREATE_DENIED' })
-      }
-
-      const requestedHours = Number(req.body?.expiresInHours || 72)
-      const expiresInHours = Math.max(1, Math.min(Number.isFinite(requestedHours) ? Math.trunc(requestedHours) : 72, 168))
-      const requestedUses = Number(req.body?.maxUses || 100)
-      const maxUses = Math.max(1, Math.min(Number.isFinite(requestedUses) ? Math.trunc(requestedUses) : 100, 500))
-      const token = crypto.randomBytes(32).toString('base64url')
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
-      const { rows } = await pool.query(
-        `INSERT INTO fallback_collection_invites(
-           room_kind, room_id, token_hash, created_by, expires_at, max_uses
-         )
-         VALUES ('group', $1, $2, $3, NOW() + ($4::text || ' hours')::interval, $5)
-         RETURNING id::text, expires_at, max_uses`,
-        [roomId, tokenHash, identity.displayUserId, String(expiresInHours), maxUses],
-      )
-      res.status(201).json({
-        inviteId: rows[0]?.id,
-        token,
-        roomId,
-        expiresAt: rows[0]?.expires_at,
-        maxUses: rows[0]?.max_uses,
-      })
-    } catch (error) {
-      next(error)
-    }
-  })
-
-  app.post('/v1/data/messages/groups/:roomId/join-invite', authRequired, async (req, res, next) => {
-    const client = await pool.connect()
-    try {
-      const user = await getCurrentUser(pool, req)
-      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
-      const roomId = normalizeId(req.params.roomId)
-      const token = String(req.body?.token || '').trim()
-      if (!validUuid(roomId) || token.length < 32 || token.length > 200) {
-        return res.status(400).json({ error: 'GROUP_INVITE_INVALID' })
-      }
-      const identity = userIdentity(user)
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
-
-      await client.query('BEGIN')
-      const inviteResult = await client.query(
-        `UPDATE fallback_collection_invites
-         SET use_count = use_count + 1
-         WHERE room_kind = 'group'
-           AND lower(room_id) = $1
-           AND token_hash = $2
-           AND revoked_at IS NULL
-           AND expires_at > NOW()
-           AND use_count < max_uses
-         RETURNING id::text`,
-        [roomId, tokenHash],
-      )
-      if (inviteResult.rows.length === 0) {
-        await client.query('ROLLBACK')
-        return res.status(410).json({ error: 'GROUP_INVITE_EXPIRED_OR_USED' })
-      }
-      const roomResult = await client.query(
-        `SELECT id::text FROM fallback_collection_rooms
-         WHERE room_kind = 'group' AND lower(id::text) = $1 AND is_deleted = FALSE
-         LIMIT 1`,
-        [roomId],
-      )
-      if (roomResult.rows.length === 0) {
-        await client.query('ROLLBACK')
-        return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
-      }
-      await client.query(
-        `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at, is_deleted)
-         VALUES ('group', $1, $2, 'member', NOW(), FALSE)
-         ON CONFLICT (room_kind, room_id, user_id)
-         DO UPDATE SET is_deleted = FALSE`,
-        [roomId, identity.displayUserId],
-      )
-      await client.query('COMMIT')
-      res.json({ ok: true, roomId })
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => {})
-      next(error)
-    } finally {
-      client.release()
-    }
-  })
-
   app.patch('/v1/data/messages/groups/:roomId/member-settings', authRequired, async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
@@ -11083,133 +11014,6 @@ function registerDataRoutes(app, {
       )
       if (rows.length === 0) return res.status(403).json({ error: 'ROOM_ACCESS_DENIED' })
       res.json({ ok: true, roomId, restUntil: rows[0]?.rest_until || null })
-    } catch (error) {
-      next(error)
-    }
-  })
-
-  app.post(['/v1/data/messages/groups/:roomId/join', '/v1/data/messages/communities/:roomId/join'], authRequired, async (req, res, next) => {
-    try {
-      const user = await getCurrentUser(pool, req)
-      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
-
-      const config = collectionConfig(messageCollectionFromRequest(req))
-      const roomId = normalizeId(req.params.roomId)
-      if (!config || !roomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
-
-      const identity = userIdentity(user)
-      const targetUserId = normalizeId(req.body?.userId) || identity.displayUserId
-      const requestedRole = cleanText(req.body?.role, 40).toLowerCase()
-      const hasRequestedRole = requestedRole.length > 0
-      if (hasRequestedRole && !['admin', 'moderator', 'member'].includes(requestedRole)) {
-        return res.status(400).json({ error: 'ROLE_INVALID' })
-      }
-      const role = ['admin', 'moderator', 'member'].includes(requestedRole)
-        ? requestedRole
-        : 'member'
-      const room = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
-      if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
-      const roomRow = room.room || room.chat || {}
-      const isSelf = identity.ids.has(targetUserId)
-      const creatorId = normalizeId(textOf(roomRow, ['creator_id', 'owner_id', 'user_id'], ''))
-      if (creatorId && targetUserId === creatorId && !isSelf) {
-        return res.status(403).json({ error: 'CREATOR_ROLE_IMMUTABLE' })
-      }
-      if (creatorId && targetUserId === creatorId && role !== 'member') {
-        return res.status(403).json({ error: 'CREATOR_ROLE_IMMUTABLE' })
-      }
-      if (!isSelf) {
-        const membersRows = await pool.query(
-          `SELECT role FROM fallback_collection_members
-           WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(user_id) = ANY($3)`,
-          [config.kind, roomId, Array.from(identity.ids)],
-        )
-        const myRole = membersRows.rows[0]?.role?.toLowerCase()
-        const isCreator = rowMatchesAny(roomRow, ['creator_id', 'owner_id', 'user_id'], identity.ids)
-        const isAdmin = isCollectionAdminRole(myRole, { isCreator })
-        if (!isAdmin) return res.status(403).json({ error: 'ADD_MEMBER_DENIED' })
-      }
-      const effectiveRole = isSelf && role !== 'member' ? 'member' : role
-      const mayReplaceExistingRole = !isSelf && hasRequestedRole
-      await pool.query(
-        `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at, is_deleted)
-         VALUES ($1, $2, $3, $4, NOW(), FALSE)
-         ON CONFLICT (room_kind, room_id, user_id)
-         DO UPDATE SET
-            role = CASE
-              WHEN $5::boolean THEN EXCLUDED.role
-              WHEN EXCLUDED.role = 'member' AND fallback_collection_members.role IN ('owner', 'admin', 'moderator', 'creator')
-              THEN fallback_collection_members.role
-              ELSE EXCLUDED.role
-            END,
-            is_deleted = FALSE`,
-        [config.kind, roomId, targetUserId, effectiveRole, mayReplaceExistingRole],
-      )
-
-      if (targetUserId && !identity.ids.has(targetUserId)) {
-        await createLocalNotificationBestEffort(pool, {
-          recipientId: targetUserId,
-          actorId: identity.displayUserId,
-          actorName: publicNotificationName(user),
-          actorAvatarUrl: user.avatar_url || '',
-          type: `${config.kind}_member_added`,
-          targetId: roomId,
-          targetType: config.kind,
-          content: room?.title || config.titleFallback,
-          extraData: {
-            [`${config.kind}_id`]: roomId,
-            notification_type: `${config.kind}_member_added`,
-          },
-        })
-      }
-
-      res.json({ ok: true })
-    } catch (error) {
-      next(error)
-    }
-  })
-
-  app.post(['/v1/data/messages/groups/:roomId/leave', '/v1/data/messages/communities/:roomId/leave'], authRequired, async (req, res, next) => {
-    try {
-      const user = await getCurrentUser(pool, req)
-      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
-
-      const config = collectionConfig(messageCollectionFromRequest(req))
-      const roomId = normalizeId(req.params.roomId)
-      if (!config || !roomId) return res.status(400).json({ error: 'ROOM_ID_REQUIRED' })
-
-      const identity = userIdentity(user)
-      const targetUserId = normalizeId(req.body?.userId) || identity.displayUserId
-      const isSelf = identity.ids.has(targetUserId)
-      const room = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
-      if (!room) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
-      const roomRow = room.room || room.chat || {}
-      const creatorId = normalizeId(textOf(roomRow, ['creator_id', 'owner_id', 'user_id'], ''))
-      if (creatorId && targetUserId === creatorId) {
-        return res.status(403).json({ error: 'CREATOR_CANNOT_BE_REMOVED' })
-      }
-
-      if (!isSelf) {
-        const membersRows = await pool.query(
-          `SELECT role FROM fallback_collection_members
-           WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(user_id) = ANY($3)`,
-          [config.kind, roomId, Array.from(identity.ids)],
-        )
-        const myRole = membersRows.rows[0]?.role?.toLowerCase()
-        const isCreator = rowMatchesAny(roomRow, ['creator_id', 'owner_id', 'user_id'], identity.ids)
-        const isAdmin = isCollectionAdminRole(myRole, { isCreator })
-        if (!isAdmin) return res.status(403).json({ error: 'REMOVE_MEMBER_DENIED' })
-      }
-
-      await pool.query(
-        `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at, is_deleted)
-         VALUES ($1, $2, $3, 'member', NOW(), TRUE)
-         ON CONFLICT (room_kind, room_id, user_id)
-         DO UPDATE SET is_deleted = TRUE`,
-        [config.kind, roomId, targetUserId],
-      )
-
-      res.json({ ok: true })
     } catch (error) {
       next(error)
     }
@@ -11333,6 +11137,7 @@ function registerDataRoutes(app, {
       const roomId = normalizeId(req.params.roomId)
       const content = String(req.body?.content || '').trim()
       const contentType = String(req.body?.contentType || 'text').trim() || 'text'
+      if (contentType.toLowerCase().startsWith('system_')) return res.status(400).json({ error: 'RESERVED_MESSAGE_TYPE' })
       if (contentType === 'raffle') return res.status(400).json({ error: 'RAFFLE_CREATE_ENDPOINT_REQUIRED' })
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
       const thumbnailUrl = String(req.body?.thumbnailUrl || req.body?.thumbnail_url || '').trim()
@@ -11457,10 +11262,24 @@ function registerDataRoutes(app, {
         })
         .map((participant) => normalizeId(participant.id))
         .filter((participantId) => participantId && !identity.ids.has(participantId))
-      const roomMessage = enrichCollectionMessage(normalizeImportedRow(rows[0]), config, profilesById)
+      const mentionProfiles = content.includes('@') && contentType === 'text'
+        ? await publicProfilesByIds(pool, roomRecipients) : []
+      const mentionedIds = require('./collection-mentions').collectionMentionRecipients({
+        content: contentType === 'text' ? content : '', profiles: mentionProfiles,
+        memberIds: roomRecipients, actorIds: Array.from(identity.ids),
+      })
+      const mentionedRecipients = new Set()
+      for (const recipientId of mentionedIds) {
+        if (!(await blockRelationshipForPair(pool, identity, recipientId)).isBlocked) mentionedRecipients.add(recipientId)
+      }
+      const roomMessage = {
+        ...enrichCollectionMessage(normalizeImportedRow(rows[0]), config, profilesById),
+        mentioned_user_ids: Array.from(mentionedRecipients),
+      }
       // Publicar primero el mensaje completo. Así Room puede recibirlo antes
       // que la notificación sea tocada y FCM queda como respaldo/wake-up.
       await publishChatMessageEvent({
+        pool,
         chatId: `room:${config.kind}:${roomId}`,
         message: roomMessage,
         recipientIds: roomRecipients,
@@ -11478,6 +11297,12 @@ function registerDataRoutes(app, {
             content: content || previewFromMessage({ content_type: contentType }),
             extraData: {
               [`${config.kind}_id`]: roomId,
+              // Identity comes from the authorized room, including when the
+              // recipient's account is inactive or its local cache is empty.
+              mentioned: String(mentionedRecipients.has(participantId)),
+              mention_context: mentionedRecipients.has(participantId) ? config.kind : '',
+              conversation_title: collectionRoomTitle(roomRow, config.titleFallback),
+              conversation_avatar: collectionRoomAvatar(roomRow) || '',
               channel_id: textOf(rows[0], ['channel_id'], ''),
               message_id: textOf(rows[0], ['id'], ''),
               content_type: textOf(rows[0], ['content_type'], 'text'),
@@ -11542,7 +11367,7 @@ function registerDataRoutes(app, {
       [config.kind, roomId, messageId],
     )
     const existing = rows[0] ? normalizeImportedRow(rows[0]) : null
-    if (!existing) {
+    if (!existing || !collectionHistoryAllows(roomPayload.historyAccess, existing) || existing.content_type === SYSTEM_MEMBERSHIP) {
       res.status(404).json({ error: 'MESSAGE_NOT_FOUND' })
       return null
     }
@@ -11579,16 +11404,18 @@ function registerDataRoutes(app, {
            SET content = $4,
                is_edited = TRUE,
                updated_at = NOW()
-           WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(id::text) = $3
+           WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(id::text) = $3 AND deleted_for_all = FALSE
            RETURNING *`,
           [config.kind, roomId, messageId, content],
         )
+        if (!rows[0]) return res.status(409).json({ error: 'MESSAGE_DELETED' })
         const profilesById = indexProfiles(await publicProfilesByIds(
           pool,
           [textOf(rows[0], ['sender_id'], '')],
         ))
         const message = enrichCollectionMessage(normalizeImportedRow(rows[0]), config, profilesById)
         void publishChatMessageEvent({
+          pool,
           chatId: `room:${config.kind}:${roomId}`,
           message,
           recipientIds,
@@ -11617,14 +11444,8 @@ function registerDataRoutes(app, {
 
         let rows
         if (forEveryone) {
-          ;({ rows } = await pool.query(
-            `UPDATE fallback_room_messages
-             SET deleted_for_all = TRUE,
-                 updated_at = NOW()
-             WHERE room_kind = $1 AND lower(room_id) = $2 AND lower(id::text) = $3
-             RETURNING *`,
-            [config.kind, roomId, messageId],
-          ))
+          rows = [await deleteMessageForAll(pool, { kind: config.kind, scopeId: roomId, messageId,
+            actorIds: identity.values, recipientIds: [...recipientIds, ...identity.values] })]
         } else {
           const deletedBy = Array.from(new Set([
             ...arrayOf(existing, ['deleted_by', 'deletedBy']).map(normalizeId),
@@ -11646,7 +11467,8 @@ function registerDataRoutes(app, {
         ))
         const message = enrichCollectionMessage(normalizeImportedRow(rows[0]), config, profilesById)
         if (forEveryone) {
-          void publishChatMessageEvent({
+          await publishChatMessageEvent({
+            pool,
             chatId: `room:${config.kind}:${roomId}`,
             message,
             recipientIds,
@@ -11661,6 +11483,7 @@ function registerDataRoutes(app, {
             scope: config.kind,
           })
         }
+        if (forEveryone) void processMessageDeletionOutbox(pool).catch(() => {})
         res.json({ message })
       } catch (error) {
         next(error)
@@ -12208,16 +12031,16 @@ function registerDataRoutes(app, {
       const requiresBroadLegacyScan = Boolean(
         requestedUserId || requestedSharedBy || requestedFavoritedBy || searchQuery || requestedSoundId || followingOnly,
       )
-      // The old endpoint used to materialise 5,000 videos before returning a
-      // 20-item page. Keep a wider pool for searches/profile views, but bound
-      // the ordinary fallback feed to a ranking window proportional to the
-      // requested page. The authoritative endpoint remains the primary feed.
+      // The authoritative cursor handles full-catalog continuation. Legacy
+      // recommendations use a fixed bounded catalog: growing it with offset
+      // reranked already displayed items and repeated/omitted videos. Searches
+      // retain their wider scope; ordinary chronological reads stay proportional.
       const candidateReadLimit = requiresBroadLegacyScan
         ? followingOnly
           ? Math.min(1_000, Math.max(240, offset + (limit * 8)))
           : 5_000
         : recommended
-          ? Math.min(1_000, Math.max(240, offset + (limit * 8)))
+          ? 1_000
           : Math.min(1_000, Math.max(limit, offset + limit))
       const [importedVideos, fallbackVideos] = await Promise.all([
         requestedSoundId
@@ -12234,8 +12057,9 @@ function registerDataRoutes(app, {
           : localVideos(pool, candidateReadLimit),
       ])
       const mergedVideos = mergeRowsById([...importedVideos, ...fallbackVideos])
+      // Private/follower profiles also require follow edges in the ordinary fallback feed.
       let followingOwnerIds = new Set()
-      if (followingOnly || searchQuery) {
+      {
         const [importedFollowing, fallbackFollowing] = await Promise.all([
           importedRowsByFieldValues(
             pool,
@@ -12260,7 +12084,7 @@ function registerDataRoutes(app, {
         ...mergedVideos.flatMap((row) => Array.from(videoOwnerIds(row))),
       ])
       const publicProfiles = await publicProfilesByIds(pool, profileCandidateIds)
-      if (followingOnly || searchQuery) {
+      {
         // Imported follow records may use a Supabase alias while the video
         // row uses the local UUID (or the reverse). Expand the allow-list with
         // every public-profile alias before filtering rows.
@@ -12315,14 +12139,16 @@ function registerDataRoutes(app, {
       }
       const mergedVideoIds = mergedVideos.map((row) => textOf(row, ['id'], '')).filter(Boolean)
       const deletedVideoIds = await localVideoDeletionIds(pool, mergedVideoIds)
-      const searchProfilesById = searchQuery ? indexProfiles(publicProfiles) : new Map()
+      const deniedCreatorIds = await deniedPublicCreatorIds(pool, {
+        profiles: publicProfiles, ownerIds: profileCandidateIds, viewerIds: identity.ids,
+      })
+      const creatorVisible = publicCreatorVisibility({ profiles: publicProfiles,
+        viewerIds: identity.ids, followingIds: followingOwnerIds, deniedIds: deniedCreatorIds })
       const searchCandidateIds = new Set(mergedVideos.filter((row) => {
         if (!searchQuery) return false
         if (deletedVideoIds.has(normalizeId(textOf(row, ['id'], '')))) return false
         if (!boolOf(row, ['is_public', 'isPublic'], true) && !rowMatchesAny(row, ['user_id', 'userId'], identity.ids)) return false
-        const owner = searchProfilesById.get(normalizeId(textOf(row, ['user_id', 'userId'], '')))
-        return !owner || profileVisibleToViewer(owner, { viewerIds: identity.ids,
-          isFollowing: Array.from(profileAliasSet(owner)).some((id) => followingOwnerIds.has(id)) })
+        return creatorVisible(textOf(row, ['user_id', 'userId', 'owner_id', 'author_id', 'creator_id'], ''))
       }).map((row) => normalizeId(textOf(row, ['id'], ''))))
       // Candidate membership and final video visibility stay independent of comment matches.
       const commentMatchIds = searchQuery.length >= 2
@@ -12331,7 +12157,8 @@ function registerDataRoutes(app, {
       const followingVisibleOwnerIds = new Set([...identity.ids, ...followingOwnerIds])
       let videos = mergedVideos.filter((row) => {
         if (deletedVideoIds.has(normalizeId(textOf(row, ['id'], '')))) return false
-        const ownerId = textOf(row, ['user_id', 'userId'], '')
+        const ownerId = textOf(row, ['user_id', 'userId', 'owner_id', 'author_id', 'creator_id'], '')
+        if (!creatorVisible(ownerId)) return false
         const isPublic = boolOf(row, ['is_public', 'isPublic'], true)
         if (requestedUserId && !ownerMatchesRequestedProfile(row, requestedOwnerIds)) return false
         if (requestedSoundId) {
@@ -13541,11 +13368,7 @@ function registerDataRoutes(app, {
            WHERE lower(id::text) = $1 AND is_deleted = FALSE`,
           [commentId],
         )
-        : await pool.query(
-          `DELETE FROM supabase_import.video_comments
-           WHERE lower(id::text) = $1`,
-          [commentId],
-        )
+        : await deleteImportedRow(pool, 'video_comments', commentId)
       if (rowCount === 0) return res.status(404).json({ error: 'VIDEO_COMMENT_NOT_FOUND' })
       await pool.query(`DELETE FROM fallback_video_comment_reactions WHERE lower(comment_id) = $1`, [commentId])
       if (commentSource === 'imported') clearImportedRowCaches('video_comments')
@@ -14036,7 +13859,7 @@ function registerDataRoutes(app, {
         importedRowsByFieldValues(pool, 'messages', ['chat_id', 'chatId'], [chatId], 10_000),
         localMessages(pool, [chatId]),
       ])
-      const messages = [...importedMessages, ...fallbackMessages]
+      const messages = mergeMessageRows([...importedMessages, ...fallbackMessages])
        .sort((a, b) => toMillis(textOf(a, ['created_at'], '')) - toMillis(textOf(b, ['created_at'], '')))
        .filter((msg) => messageVisibleTo(msg, identity))
        .filter((msg) => !myClearedAt || toMillis(textOf(msg, ['created_at'], '')) > myClearedAt)
@@ -14139,26 +13962,7 @@ function registerDataRoutes(app, {
            AND lower(user_id) = $2`,
         [chatId, senderId],
       )
-      await pool.query(
-        `UPDATE fallback_chats
-         SET last_message = $2,
-             last_message_at = COALESCE($3::timestamptz, NOW()),
-             last_message_sender_id = $4,
-             last_message_id = $5,
-             updated_at = NOW()
-         WHERE lower(id::text) = $1
-           AND (
-             fallback_chats.last_message_at IS NULL
-             OR fallback_chats.last_message_at <= COALESCE($3::timestamptz, NOW())
-           )`,
-        [
-          chatId,
-          previewFromMessage(insertedMessage),
-          textOf(insertedMessage, ['created_at'], '') || null,
-          senderId,
-          textOf(insertedMessage, ['id'], ''),
-        ],
-      )
+      await refreshChatSummary(pool, chatId)
       const recipientIds = new Set([
         ...accessContext.participantRows
           .map((row) => normalizeId(textOf(row, ['user_id', 'profile_id'], ''))),
@@ -14170,13 +13974,13 @@ function registerDataRoutes(app, {
       // El evento autoritativo debe adelantarse a FCM para evitar que un
       // placeholder parcial pise citas o que el tap abra un chat aún vacío.
       await publishChatMessageEvent({
+        pool,
         chatId,
         message: insertedMessage,
         recipientIds: recipientList,
       })
-      // The database trigger persists the first-message friendship request.
-      // Relay that exact notification without inserting or announcing it twice
-      // on idempotent retries, and without delaying the message response for push.
+      // The database guard persists the one-message introduction policy.
+      // Keep the legacy relay call compatible; the actual message owns the alert.
       void publishAutomaticFriendRequest(pool, {
         senderId, chatId, messageId: textOf(insertedMessage, ['id'], ''),
       }).catch((error) => {
@@ -14246,7 +14050,7 @@ function registerDataRoutes(app, {
          SET content = $3,
              is_edited = TRUE,
              updated_at = NOW()
-         WHERE lower(chat_id) = $1 AND lower(id::text) = $2
+         WHERE lower(chat_id) = $1 AND lower(id::text) = $2 AND deleted_for_all = FALSE
          RETURNING
             id::text,
             chat_id,
@@ -14270,16 +14074,12 @@ function registerDataRoutes(app, {
             updated_at`,
         [chatId, messageId, content],
       )
+      if (!rows[0]) return res.status(409).json({ error: 'MESSAGE_DELETED' })
       const updatedMessage = normalizeMessageRow(rows[0])
-      await pool.query(
-        `UPDATE fallback_chats
-         SET last_message = $3,
-             updated_at = NOW()
-         WHERE lower(id::text) = $1 AND lower(COALESCE(last_message_id, '')) = $2`,
-        [chatId, messageId, previewFromMessage(updatedMessage)],
-      )
+      await refreshChatSummary(pool, chatId)
 
       void publishChatMessageEvent({
+        pool,
         chatId,
         message: updatedMessage,
         recipientIds: recipientIdsForChat(chat, participantRows, identity),
@@ -14312,37 +14112,10 @@ function registerDataRoutes(app, {
 
       let updatedMessage
       if (forEveryone) {
-        const { rows } = await pool.query(
-          `UPDATE fallback_messages
-           SET deleted_for_all = TRUE,
-               updated_at = NOW()
-           WHERE lower(chat_id) = $1 AND lower(id::text) = $2
-           RETURNING
-              id::text,
-              chat_id,
-              sender_id,
-              content,
-              content_type,
-              media_url,
-              media_size,
-              status,
-              reply_to_id,
-              delivered_at,
-              read_at,
-              reactions,
-              deleted_by,
-              deleted_for_all,
-              is_edited,
-              is_forwarded,
-              forwarded_from_message_id,
-              forwarded_from_user_id,
-              created_at,
-              updated_at`,
-          [chatId, messageId],
-        )
-        updatedMessage = normalizeMessageRow(rows[0])
-        await updateFallbackChatLastMessage(pool, chatId)
-        void publishChatMessageEvent({
+        updatedMessage = await deleteMessageForAll(pool, { scopeId: chatId, messageId,
+          actorIds: identity.values, recipientIds: recipientIdsForChat(chat, participantRows, identity) })
+        await publishChatMessageEvent({
+          pool,
           chatId,
           message: updatedMessage,
           recipientIds: recipientIdsForChat(chat, participantRows, identity),
@@ -14391,6 +14164,7 @@ function registerDataRoutes(app, {
         })
       }
 
+      if (forEveryone) void processMessageDeletionOutbox(pool).catch(() => {})
       res.json({ message: updatedMessage })
     } catch (error) {
       next(error)
@@ -14445,6 +14219,7 @@ function registerDataRoutes(app, {
       )
       const updatedMessage = normalizeMessageRow(rows[0])
       void publishChatMessageEvent({
+        pool,
         chatId,
         message: updatedMessage,
         recipientIds: recipientIdsForChat(chat, participantRows, identity),
@@ -14845,6 +14620,7 @@ async function processBirthdayNotifications(
 
 module.exports = {
   findUniquePublicMention,
+  notifyPublicMentions,
   profileMatchesQuery,
   publicMentionHandle,
   publicMentionHandles,

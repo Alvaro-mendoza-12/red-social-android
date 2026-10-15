@@ -1,3 +1,4 @@
+const { loadCollectionMembershipState, collectionHistoryAllows } = require('./collection-membership-policy')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function selectedMessageIds(body) {
@@ -73,6 +74,10 @@ function registerVisibleMessageReadRoute(app, {
 }
 
 async function markSelectedCollectionMessagesRead(pool, kind, roomId, identity, ids) {
+  if (!ids.length) return []
+  const state = await loadCollectionMembershipState(pool, kind, roomId, identity.ids)
+  const candidates = await pool.query('SELECT id::text,created_at FROM fallback_room_messages WHERE room_kind=$1 AND lower(room_id)=$2 AND id=ANY($3::uuid[])',[kind,roomId,ids])
+  ids = candidates.rows.filter(row => collectionHistoryAllows(state.history,row)).map(row=>row.id)
   if (!ids.length) return []
   const { rows } = await pool.query(
     `INSERT INTO fallback_collection_message_receipts(room_kind, room_id, message_id, user_id, delivered_at, read_at, updated_at)

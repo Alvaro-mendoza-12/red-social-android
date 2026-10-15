@@ -1,6 +1,7 @@
 FROM node:22.23.2-alpine
 
-RUN apk add --no-cache ffmpeg clamav su-exec font-dejavu \
+# The base image can retain an older zlib; install the distribution security fix.
+RUN apk add --no-cache --upgrade 'zlib>=1.3.2-r1' ffmpeg clamav su-exec font-dejavu \
   && addgroup -S -g 10001 novvin \
   && adduser -S -D -H -u 10001 -G novvin novvin
 

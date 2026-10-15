@@ -1,18 +1,22 @@
 *
-!Conectate-web
-!Conectate-web/**
+!NoWing-web
+!NoWing-web/**
 !config
 !config/backend-discovery-public-key.txt
 
 # Nunca incluir secretos ni metadatos locales reintroducidos por la regla anterior.
-Conectate-web/.env
-Conectate-web/.env.*
-Conectate-web/.vercel/
+NoWing-web/.env
+NoWing-web/.env.*
+NoWing-web/.vercel/
 
-Conectate-web/node_modules/
-Conectate-web/dist/
-Conectate-web/tmp/
-Conectate-web/coverage/
-Conectate-web/cypress/screenshots/
-Conectate-web/cypress/videos/
-Conectate-web/*.log
+NoWing-web/node_modules/
+NoWing-web/dist/
+NoWing-web/tmp/
+NoWing-web/coverage/
+NoWing-web/cypress/screenshots/
+NoWing-web/cypress/videos/
+NoWing-web/*.log
+
+NoWing-web/.playwright-cli/
+NoWing-web/tests/
+NoWing-web/src/__tests__/

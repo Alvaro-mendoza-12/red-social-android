@@ -1,5 +1,7 @@
 package conectate.com.presentation.messages
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,6 +19,7 @@ import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import conectate.com.data.repository.MessageRepository
@@ -177,6 +180,9 @@ class GroupChatViewModel @Inject constructor(
             .sortedBy { it.title.lowercase() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _mentionMembers = MutableStateFlow<List<User>>(emptyList())
+    val mentionMembers: StateFlow<List<User>> = _mentionMembers.asStateFlow()
+
     init {
         viewModelScope.launch {
             groupRepository.observePollUpdates().collect { pollRefresh.requestRefresh(it) }
@@ -193,6 +199,7 @@ class GroupChatViewModel @Inject constructor(
             _visibleMessageIds.value = emptySet()
         }
         this.groupId = cleanId
+        observeMentionMembers()
         _activeGroupId.value = cleanId
         observeChatBackground(cleanId)
         voiceMessageManager.reset()
@@ -226,6 +233,7 @@ class GroupChatViewModel @Inject constructor(
     }
 
     fun onScreenVisibilityChanged(isVisible: Boolean) {
+        if (!isVisible) stopAudio()
         _isScreenActive.value = isVisible
         refreshVisiblePolls()
         val cleanId = groupId.trim().lowercase()
@@ -366,6 +374,34 @@ class GroupChatViewModel @Inject constructor(
                 maybeMarkAsRead(groupId.trim().lowercase(), messages, _visibleMessageIds.value)
             }
         }
+    }
+
+    private var mentionMembersJob: kotlinx.coroutines.Job? = null
+    private fun observeMentionMembers() {
+        mentionMembersJob?.cancel()
+        _mentionMembers.value = emptyList()
+        val roomId = groupId
+        mentionMembersJob = viewModelScope.launch {
+            groupRepository.getMembersFlow(roomId).collectLatest { members ->
+                if (ownerAccountId == null || ownerAccountId != authService.getCurrentUserId()) {
+                    _mentionMembers.value = emptyList(); return@collectLatest
+                }
+                val ids = members.map { it.user_id.trim().lowercase() }.toSet()
+                val cached = _mentionMembers.value.associateBy { it.id.trim().lowercase() }
+                _mentionMembers.value = conectate.com.data.model.resolvedRoomMentionMembers(ids, cached.values)
+                val fetched = if (ids.isEmpty()) emptyMap() else userRepository.getUsersByIds(ids.toList()).getOrDefault(emptyList())
+                    .associateBy { it.id.trim().lowercase() }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (roomId == groupId && ownerAccountId == authService.getCurrentUserId())
+                    _mentionMembers.value = conectate.com.data.model.resolvedRoomMentionMembers(ids, fetched.values + cached.values)
+            }
+        }
+    }
+
+    fun refreshMentionMembers() {
+        if (ownerAccountId == null || ownerAccountId != authService.getCurrentUserId()) return
+        val roomId = groupId
+        viewModelScope.launch { groupRepository.getGroupMembers(roomId) }
     }
 
     fun updateMessageText(text: String) {
@@ -1043,7 +1079,21 @@ class GroupChatViewModel @Inject constructor(
          if (durationMs > 1000) {
             viewModelScope.launch {
                 _isSending.value = true
-                val bytes = withContext(Dispatchers.IO) { file.readBytes() }
+                val bytes = try {
+                    withContext(Dispatchers.IO) {
+                        val coroutine = kotlinx.coroutines.currentCoroutineContext()
+                        file.inputStream().use { input ->
+                            input.readMediaBytesWithLimit(60L * 1024 * 1024) { coroutine.ensureActive() }
+                        }
+                    }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    _isSending.value = false
+                    throw cancelled
+                } catch (error: Exception) {
+                    _errorMessage.value = "No se pudo preparar el audio. Verifica el archivo y vuelve a intentarlo."
+                    _isSending.value = false
+                    return@launch
+                }
                 val uploadResult = groupRepository.uploadGroupAudio(groupId, bytes)
                 if (uploadResult.isSuccess) {
                     val url = uploadResult.getOrThrow()
@@ -1075,60 +1125,59 @@ class GroupChatViewModel @Inject constructor(
         return voiceMessageManager.formatDuration(ms)
     }
 
+    private var audioPrepareJob: kotlinx.coroutines.Job? = null
+    private var audioDelivery: conectate.com.util.NativeAudioDelivery? = null
+    private var audioAttempt = 0L
+
     fun playAudio(message: conectate.com.data.model.Message) {
         val id = message.id
         val url = message.media_url ?: return
-
         voiceMessageManager.pausePreview()
-
         if (_currentPlayingAudioId.value == id) {
-            mediaPlayer?.let {
-                if (it.isPlaying) {
-                    it.pause()
-                    _isAudioPlaying.value = false
-                } else {
-                    applyAudioPlaybackSpeed(it)
-                    it.start()
-                    _isAudioPlaying.value = true
-                    startProgressTracker()
-                }
-                return
-            }
-        }
-
-        stopAudio()
-
-        viewModelScope.launch {
+            val current = mediaPlayer
+            if (current == null) { stopAudio(); return }
             try {
-                mediaPlayer = android.media.MediaPlayer().apply {
-                    setAudioAttributes(
-                        android.media.AudioAttributes.Builder()
-                            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
-                    )
-                    val playable = messageRepository.getPlayableUrl(url).getOrNull() ?: url
-                    if (playable.startsWith("file:", ignoreCase = true)) {
-                        setDataSource(android.net.Uri.parse(playable).path)
-                    } else {
-                        UbuntuMedia.setDataSource(this, playable)
-                    }
-                    prepareAsync()
-                    setOnPreparedListener {
-                        _currentPlayingAudioId.value = id
-                        applyAudioPlaybackSpeed(this)
-                        start()
-                        _isAudioPlaying.value = true
-                        startProgressTracker()
-                    }
-                    setOnCompletionListener { stopAudio() }
-                    setOnErrorListener { _, _, _ ->
-                        stopAudio()
-                        false
-                    }
+                audioDelivery?.requireCurrent()
+                if (current.isPlaying) { current.pause(); _isAudioPlaying.value = false }
+                else { applyAudioPlaybackSpeed(current); current.start(); _isAudioPlaying.value = true; startProgressTracker() }
+            } catch (_: Exception) { stopAudio() }
+            return
+        }
+        stopAudio()
+        val attempt = audioAttempt
+        _currentPlayingAudioId.value = id
+        audioPrepareJob = viewModelScope.launch {
+            var prepared: conectate.com.util.NativeAudioDelivery? = null
+            try {
+                val delivery = messageRepository.prepareNativeAudio(url)
+                prepared = delivery
+                if (attempt != audioAttempt || !_isScreenActive.value) { delivery.close(); return@launch }
+                delivery.requireCurrent()
+                audioDelivery = delivery
+                val player = android.media.MediaPlayer()
+                mediaPlayer = player
+                player.setAudioAttributes(android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                player.setOnPreparedListener { ready ->
+                    if (mediaPlayer !== ready || attempt != audioAttempt) return@setOnPreparedListener
+                    try {
+                        delivery.requireCurrent()
+                        if (!_isScreenActive.value) { stopAudio(); return@setOnPreparedListener }
+                        applyAudioPlaybackSpeed(ready); ready.start()
+                        _isAudioPlaying.value = true; startProgressTracker()
+                    } catch (_: Exception) { stopAudio() }
                 }
-            } catch (e: Exception) {
-                stopAudio()
+                player.setOnCompletionListener { if (mediaPlayer === it) stopAudio() }
+                player.setOnErrorListener { failed, _, _ -> if (mediaPlayer === failed) stopAudio(); true }
+                if (delivery.source.startsWith("file:", true)) player.setDataSource(android.net.Uri.parse(delivery.source).path)
+                else UbuntuMedia.setDataSource(player, delivery.source)
+                player.prepareAsync()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                prepared?.close(); throw cancelled
+            } catch (_: Exception) {
+                prepared?.close()
+                if (attempt == audioAttempt) stopAudio()
             }
         }
     }
@@ -1137,6 +1186,8 @@ class GroupChatViewModel @Inject constructor(
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
             while (true) {
+                try { audioDelivery?.requireCurrent() }
+                catch (_: Exception) { stopAudio(); break }
                 mediaPlayer?.let {
                     if (it.isPlaying) {
                         _audioProgress.value = it.currentPosition.toFloat() / it.duration.toFloat()
@@ -1180,8 +1231,17 @@ class GroupChatViewModel @Inject constructor(
         _isAudioPlaying.value = false
         _audioProgress.value = 0f
         _audioDurationLabel.value = "0:00"
-        mediaPlayer?.release()
+        audioAttempt++
+        audioPrepareJob?.cancel()
+        audioPrepareJob = null
+        val oldPlayer = mediaPlayer
         mediaPlayer = null
+        oldPlayer?.setOnPreparedListener(null)
+        oldPlayer?.setOnCompletionListener(null)
+        oldPlayer?.setOnErrorListener(null)
+        runCatching { oldPlayer?.release() }
+        audioDelivery?.close()
+        audioDelivery = null
     }
 
     override fun onCleared() {
@@ -1212,8 +1272,9 @@ class GroupChatViewModel @Inject constructor(
 
     fun deleteGroupLocally(onSuccess: () -> Unit) {
         viewModelScope.launch {
-            groupRepository.deleteGroup(groupId) // This already deletes locally in Repo
-            onSuccess()
+            runCatching { groupRepository.deleteGroupLocally(groupId) }
+                .onSuccess { onSuccess() }
+                .onFailure { _errorMessage.value = "No se pudo borrar el chat. Inténtalo de nuevo." }
         }
     }
 

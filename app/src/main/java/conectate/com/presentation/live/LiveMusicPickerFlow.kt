@@ -37,7 +37,7 @@ internal fun LiveMusicPickerFlow(
     var pendingFileUri by remember { mutableStateOf<Uri?>(null) }
     var pendingCommunityAudio by remember { mutableStateOf<PreparedAudioClip?>(null) }
 
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val filePicker = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri ->
         pendingFileUri = uri
         if (uri != null) showDeviceLibrary = true
     }

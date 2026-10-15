@@ -50,8 +50,10 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
             } else {
                 try {
                     val persisted = withContext(Dispatchers.IO) {
-                        val recovery = EmailRecoveryDraftStore(context).read() != null
-                        recovery to (!isLoggedIn && !recovery && hasSavedGuestSession(context))
+                        conectate.com.core.observability.measureStartupPhase("startup recovery routing") {
+                            val recovery = EmailRecoveryDraftStore(context).read() != null
+                            recovery to (!isLoggedIn && !recovery && hasSavedGuestSession(context))
+                        }
                     }
                     val targetRoute = when (startupDestination(isLoggedIn, persisted.first, persisted.second)) {
                         StartupDestination.ADD_ACCOUNT -> Screen.AddAccountLogin.route

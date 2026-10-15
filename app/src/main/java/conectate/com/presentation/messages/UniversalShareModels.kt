@@ -20,7 +20,8 @@ data class ShareDestination(
     val type: ShareDestinationType,
     val title: String,
     val imageUrl: String? = null,
-    val subtitle: String? = null
+    val subtitle: String? = null,
+    val peerUserId: String? = null,
 ) {
     val key: String
         get() = "${type.name.lowercase()}:$id"
@@ -55,7 +56,16 @@ data class UniversalForwardRequest(
     val initiallySelectedIds: Set<String>
 )
 
+data class InternalVideoShareRequest(val video: conectate.com.data.model.Video, val requestId: String = UUID.randomUUID().toString())
+
 class UniversalForwardCoordinator {
+    var videoRequest by mutableStateOf<InternalVideoShareRequest?>(null)
+        private set
+    fun openVideo(video: conectate.com.data.model.Video) {
+        request = null
+        videoRequest = InternalVideoShareRequest(video)
+    }
+
     var request by mutableStateOf<UniversalForwardRequest?>(null)
         private set
 
@@ -73,6 +83,7 @@ class UniversalForwardCoordinator {
         if (eligible.isEmpty()) return
         val eligibleIds = eligible.mapTo(mutableSetOf(), ForwardMessagePayload::id)
         val initial = initiallySelectedIds.intersect(eligibleIds).ifEmpty { setOf(eligible.last().id) }
+        videoRequest = null
         request = UniversalForwardRequest(
             candidates = eligible,
             initiallySelectedIds = initial
@@ -81,6 +92,7 @@ class UniversalForwardCoordinator {
 
     fun dismiss() {
         request = null
+        videoRequest = null
     }
 }
 

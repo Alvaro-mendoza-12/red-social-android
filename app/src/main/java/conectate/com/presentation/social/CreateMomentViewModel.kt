@@ -283,21 +283,42 @@ class CreateMomentViewModel @Inject constructor(
             if (_isUploading.value) return@launch
             _isUploading.value = true
             var generatedComposition: java.io.File? = null
+            var generatedMusicExcerpt: java.io.File? = null
             try {
                 var publicationUri = uri
                 var musicEmbedded = false
-                val selectedMusicUri = musicUri
+                var publicationMusicUri = musicUri
+                var publicationMusicStartMs = musicStartMs
+                var publicationLyrics = musicLyrics
+                if (musicUri != null) {
+                    val excerpt = kotlinx.coroutines.withTimeout(60_000L) {
+                        conectate.com.presentation.components.exportAudioClip(context.applicationContext, musicUri,
+                            musicStartMs, musicStartMs.coerceAtLeast(0L) + musicDurationMs.coerceIn(1_000L, 60_000L))
+                    }.getOrElse { error ->
+                        if (error is kotlinx.coroutines.CancellationException) throw error
+                        onError("No se pudo preparar el fragmento de música. Prueba otra canción.")
+                        return@launch
+                    }
+                    generatedMusicExcerpt = excerpt.path?.let { java.io.File(it) }
+                    publicationMusicUri = excerpt
+                    publicationMusicStartMs = 0L
+                    publicationLyrics = musicLyrics?.let { lyrics ->
+                        runCatching { conectate.com.data.music.importMusicLyrics(lyrics.toByteArray(Charsets.UTF_8),
+                            musicDurationMs, musicStartMs.coerceAtLeast(0L)) }.getOrNull()
+                    }
+                }
+                val selectedMusicUri = publicationMusicUri
                     ?: musicRemoteUrl?.takeIf(String::isNotBlank)?.let { remoteUrl ->
                         Uri.parse(UbuntuMedia.resolveUrl(remoteUrl) ?: remoteUrl)
                     }
                 if (mediaType.equals("video", ignoreCase = true) && selectedMusicUri != null) {
-                    val segmentEndMs = musicStartMs.coerceAtLeast(0L) + musicDurationMs.coerceAtLeast(1_000L)
+                    val segmentEndMs = publicationMusicStartMs.coerceAtLeast(0L) + musicDurationMs.coerceAtLeast(1_000L)
                     val mixed = MomentMusicCompositionExporter.export(
                         context = context.applicationContext,
                         request = MomentMusicMixRequest(
                             videoUri = uri,
                             musicUri = selectedMusicUri,
-                            musicStartMs = musicStartMs,
+                            musicStartMs = publicationMusicStartMs,
                             musicEndMs = segmentEndMs,
                             musicVolume = musicVolume,
                             originalAudioVolume = originalAudioVolume,
@@ -330,7 +351,7 @@ class CreateMomentViewModel @Inject constructor(
                     overlayScale = overlayScale,
                     overlayX = overlayX,
                     overlayY = overlayY,
-                    musicUri = musicUri,
+                    musicUri = publicationMusicUri,
                     musicRemoteUrl = musicRemoteUrl,
                     musicTitle = musicTitle,
                     musicId = musicId,
@@ -341,12 +362,12 @@ class CreateMomentViewModel @Inject constructor(
                     musicOverlayY = conectate.com.data.model.normalizedMomentMusicPosition(musicOverlayY),
                     musicOverlayScale = conectate.com.data.model.normalizedMomentMusicScale(musicOverlayScale),
                     musicOverlayRotation = conectate.com.data.model.normalizedMomentMusicRotation(musicOverlayRotation),
-                    musicLyrics = musicLyrics?.takeIf { it.length <= 12_000 },
+                    musicLyrics = publicationLyrics?.takeIf { it.length <= 12_000 },
                     musicSource = musicSource,
                     musicSourceUrl = musicSourceUrl,
                     musicLicense = musicLicense,
                     musicLicenseUrl = musicLicenseUrl,
-                    musicStartMs = musicStartMs,
+                    musicStartMs = publicationMusicStartMs,
                     musicDurationMs = musicDurationMs,
                     musicVolume = musicVolume,
                     originalAudioVolume = originalAudioVolume,
@@ -374,6 +395,7 @@ class CreateMomentViewModel @Inject constructor(
                 onError(error.message ?: "No se pudo publicar el momento")
             } finally {
                 generatedComposition?.delete()
+                generatedMusicExcerpt?.delete()
                 _isUploading.value = false
             }
         }

@@ -21,8 +21,8 @@ const {
 
 const LIVE_GUESTS_BATTLES_FLAG = 'LIVE_GUESTS_BATTLES_ENABLED'
 const LIVE_SFU_FLAG = 'LIVE_SFU_ENABLED'
-// Current Android multi-guest layout is one host plus three guests.
-const DEFAULT_MAX_LIVE_GUESTS = 3
+// Android lays out one host plus up to eight guests; six is the default room budget.
+const DEFAULT_MAX_LIVE_GUESTS = 6
 const INVITATION_TTL_MINUTES = 5
 
 function envFlag(name) {
@@ -50,18 +50,19 @@ function liveRoomName(liveId) {
   return `novvin-live-${normalizeId(liveId)}`
 }
 
-function roleGrant(role) {
+function roleGrant(role, audioMutedByHost = false) {
   const isPublisher = role === 'host' || role === 'guest'
   return {
     roomJoin: true,
     canPublish: isPublisher,
+    ...(role === 'guest' && audioMutedByHost ? { canPublishSources: ['camera', 'screen_share'] } : {}),
     canSubscribe: true,
     canPublishData: isPublisher,
     canUpdateOwnMetadata: role === 'host' || role === 'guest',
   }
 }
 
-function issueLiveSfuToken({ liveId, roomName, userId, displayName, role, configuration, now = Math.floor(Date.now() / 1000) }) {
+function issueLiveSfuToken({ liveId, roomName, userId, displayName, role, configuration, audioMutedByHost = false, now = Math.floor(Date.now() / 1000) }) {
   const expiresAt = now + 10 * 60
   const token = jwt.sign(
     {
@@ -72,7 +73,7 @@ function issueLiveSfuToken({ liveId, roomName, userId, displayName, role, config
       nbf: now - 5,
       exp: expiresAt,
       video: {
-        ...roleGrant(role),
+        ...roleGrant(role, audioMutedByHost),
         room: cleanText(roomName, 240) || liveRoomName(liveId),
       },
       metadata: JSON.stringify({ liveId: normalizeId(liveId), role }),
@@ -529,6 +530,11 @@ async function activeCrossLiveBattle(pool, liveId) {
   return rows[0] || null
 }
 
+async function effectiveLiveRoomName(pool, liveId) {
+  const battle = await activeCrossLiveBattle(pool, liveId)
+  return battle?.room_name || liveRoomName(liveId)
+}
+
 async function chaptersForLive(pool, liveId) {
   const { rows } = await pool.query(
     `SELECT id::text, live_id::text, title, offset_ms::float8 AS offset_ms,
@@ -827,12 +833,19 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       // duplicated guest or a black placeholder.
       const activeBattle = await activeCrossLiveBattle(pool, liveId)
       const resolvedRoomName = activeBattle?.room_name || liveRoomName(liveId)
+      const moderationState = await pool.query(
+        `SELECT audio_muted_by_host FROM fallback_live_participants
+         WHERE live_id = $1::uuid AND lower(user_id) = ANY($2::text[]) LIMIT 1`,
+        [liveId, identity.values],
+      )
+      const audioMutedByHost = requestedRole === 'guest' && moderationState.rows[0]?.audio_muted_by_host === true
       const participant = issueLiveSfuToken({
         liveId,
         roomName: resolvedRoomName,
         userId: identity.displayUserId,
         displayName: identity.displayName,
         role: requestedRole,
+        audioMutedByHost,
         configuration,
       })
       await pool.query(
@@ -845,7 +858,6 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
                        participant_identity = EXCLUDED.participant_identity,
                        state = 'invited',
                        left_at = NULL,
-                       audio_muted_by_host = FALSE,
                        updated_at = NOW()` ,
         [liveId, identity.displayUserId, requestedRole, identity.displayUserId],
       )
@@ -1122,7 +1134,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         try {
           await removeLiveKitParticipant({
             configuration: liveSfuConfiguration(),
-            roomName: liveRoomName(liveId),
+            roomName: await effectiveLiveRoomName(pool, liveId),
             participantIdentity: participant.participant_identity,
           })
         } catch (_error) {
@@ -1202,7 +1214,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!participant) return res.status(404).json({ error: 'LIVE_PARTICIPANT_NOT_CONNECTED' })
       const result = await muteLiveKitParticipantAudio({
         configuration: liveSfuConfiguration(),
-        roomName: liveRoomName(liveId),
+        roomName: await effectiveLiveRoomName(pool, liveId),
         participantIdentity: participant.participant_identity,
       }).catch(() => null)
       if (!result) return res.status(502).json({ error: 'LIVE_PARTICIPANT_MUTE_FAILED' })

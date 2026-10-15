@@ -86,11 +86,33 @@ class GuestModeApi @Inject constructor(
     private val conversionPrefs = context.getSharedPreferences("guest_conversion", Context.MODE_PRIVATE)
     private val previewPrefs = context.getSharedPreferences("guest_preview", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
+    private val mediaGuestIdPattern = Regex("^guest_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
     private val identityMutex = Mutex()
     private val sessionStateLock = Any()
     private var sessionRevision = 0L
+    private var mediaPreviewSequence = 0L
+    private val mediaPreviews = mutableSetOf<Long>()
     private val _pendingPreview = MutableStateFlow(readPendingPreview())
     val pendingPreview = _pendingPreview.asStateFlow()
+    init {
+        conectate.com.core.media.StorageReadSession.installGuest(
+            credentials = { storageReadCredential() },
+            prepare = { expected -> storageReadCredential()?.takeIf { it.identity == expected } },
+            active = { synchronized(sessionStateLock) { mediaPreviews.isNotEmpty() } },
+        )
+    }
+
+    private fun storageReadCredential(): conectate.com.core.media.StorageReadCredential? {
+        val revision = currentSessionRevision()
+        val guest = savedIdentity()?.takeIf {
+            it.role == "guest" && mediaGuestIdPattern.matches(it.id)
+        } ?: return null
+        if (revision != currentSessionRevision()) return null
+        return conectate.com.core.media.StorageReadCredential(
+            conectate.com.core.media.StorageReadIdentity(guest.id, revision), guest.accessToken,
+        )
+    }
+
     private suspend fun endpoint(): String = RuntimeBackendEndpoint.authenticationEndpoint()
         ?: error("El servidor no está disponible. Revisa tu conexión e inténtalo nuevamente.")
 
@@ -147,9 +169,18 @@ class GuestModeApi @Inject constructor(
         }
     }
 
+    fun beginMediaPreview(): Long = synchronized(sessionStateLock) {
+        val lease = ++mediaPreviewSequence
+        mediaPreviews.add(lease)
+        lease
+    }
+
+    fun endMediaPreview(lease: Long) { synchronized(sessionStateLock) { mediaPreviews.remove(lease) } }
+
     fun clear() {
         synchronized(sessionStateLock) {
             sessionRevision += 1
+            mediaPreviews.clear()
             prefs.edit().clear().apply()
         }
     }

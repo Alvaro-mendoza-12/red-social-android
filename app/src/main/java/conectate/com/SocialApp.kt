@@ -184,6 +184,9 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
         val performanceProfile = AppPerformanceProfiles.detect(this)
         val okHttpClient = okhttp3.OkHttpClient.Builder()
             .dns(conectate.com.core.network.PublicBackendDns)
+            .addInterceptor(conectate.com.core.media.StorageReadRequestInterceptor())
+            .addNetworkInterceptor(conectate.com.core.media.StorageReadNetworkInterceptor())
+            .followSslRedirects(false)
             .addInterceptor { chain ->
                 val request = chain.request()
                 val host = request.url.host
@@ -216,6 +219,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
             .diskCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .components {
+                add(conectate.com.core.media.StorageReadCoilInterceptor())
                 add(coil.decode.VideoFrameDecoder.Factory())
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     add(ImageDecoderDecoder.Factory())

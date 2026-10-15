@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -38,6 +39,7 @@ class DocumentPreviewDeviceAuditTest {
                 val page = document.startPage(PdfDocument.PageInfo.Builder(400, 600, index + 1).create())
                 page.canvas.drawColor(Color.WHITE)
                 page.canvas.drawText("Pagina ${index + 1}", 40f, 80f, Paint().apply { color=Color.BLUE; textSize=30f })
+                page.canvas.drawRect(120f, 240f, 280f, 360f, Paint().apply { color = Color.BLUE })
                 document.finishPage(page)
             }
             file.outputStream().use(document::writeTo)
@@ -58,6 +60,14 @@ class DocumentPreviewDeviceAuditTest {
                 pinch(center-Offset(35f,0f),center+Offset(35f,0f),center-Offset(110f,0f),center+Offset(110f,0f),600)
             }
             compose.waitForIdle()
+            // Pinch lifts both fingers. The final pointer event must preserve a visible page.
+            val pixels = compose.onNodeWithContentDescription("Página 2").captureToImage().toPixelMap()
+            var blueSamples = 0
+            for (y in 0 until pixels.height step 8) for (x in 0 until pixels.width step 8) {
+                val color = pixels[x, y]
+                if (color.blue > .6f && color.red < .3f && color.green < .3f) blueSamples++
+            }
+            assertTrue("El PDF debe seguir visible al levantar los dedos después del zoom", blueSamples > 20)
             val zoomScreenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
             File(context.getExternalFilesDir("communication-qa"), "pdf-zoom-diagnostic.png").outputStream().use {
                 zoomScreenshot?.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)

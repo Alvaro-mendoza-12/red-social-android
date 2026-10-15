@@ -236,10 +236,12 @@ fun MomentMusicPickerDialog(
     }
     val player = preview.player
 
-    LaunchedEffect(state.items, firstVisibleTrackId, section, isForeground, selected?.id) {
+    LaunchedEffect(state.items, firstVisibleTrackId, section, isForeground, selected?.id, playingId) {
         if (!isForeground || section != "community") {
             preview.clearPreload()
-        } else if (selected == null) {
+        } else if (selected != null || playingId != null) {
+            preview.prioritizePlayback()
+        } else {
             val index = state.items.indexOfFirst { it.id == firstVisibleTrackId }.coerceAtLeast(0)
             val start = (index - 1).coerceAtLeast(0)
             preview.preload(state.items.drop(start).take(InteractiveMusicPreview.MAX_PRELOADED_TRACKS).map {
@@ -282,7 +284,7 @@ fun MomentMusicPickerDialog(
 
     DisposableEffect(player, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
                 isForeground = false
                 player.pause()
                 player.stop()
@@ -330,6 +332,7 @@ fun MomentMusicPickerDialog(
             playingId = null
             return
         }
+        preview.prioritizePlayback()
         previewStartMs = startMs.coerceAtLeast(0L)
         previewEndMs = endMs.coerceAtLeast(previewStartMs + 1L)
         playingSelection = loopSelection
@@ -649,7 +652,7 @@ fun MomentMusicPickerDialog(
                             verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             val hasLyrics = timedMusicLyrics(track.lyrics, track.durationMs).isNotEmpty()
                             listOf(MomentMusicPresentation.CARD, MomentMusicPresentation.LABEL,
-                                if (hasLyrics) MomentMusicPresentation.LYRICS else MomentMusicPresentation.AUDIO_ONLY).forEach { option ->
+                                MomentMusicPresentation.AUDIO_ONLY, MomentMusicPresentation.LYRICS).forEach { option ->
                                 val label = when (option) {
                                     MomentMusicPresentation.CARD -> "Tarjeta"
                                     MomentMusicPresentation.LABEL -> "Etiqueta"
@@ -657,6 +660,7 @@ fun MomentMusicPickerDialog(
                                     MomentMusicPresentation.LYRICS -> "Letras"
                                 }
                                 FilterChip(selected = presentation == option, onClick = { presentation = option },
+                                    enabled = option != MomentMusicPresentation.LYRICS || hasLyrics,
                                     label = { Text(label) }, modifier = Modifier.testTag("music_presentation_option_${option.wireValue}"))
                             }
                         }

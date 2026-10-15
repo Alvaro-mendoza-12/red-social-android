@@ -78,7 +78,7 @@ class StorageService @Inject constructor(
         .dns(PublicBackendDns)
         .connectTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.MINUTES)
-        .readTimeout(2, TimeUnit.MINUTES)
+        .readTimeout(conectate.com.data.localfallback.StorageUploadPolicy.RESPONSE_IDLE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
         .callTimeout(20, TimeUnit.MINUTES)
         // Uploads are mutable PUT requests. If the response is lost after the
         // server commits the object, an implicit retry can upload twice or

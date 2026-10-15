@@ -7,7 +7,6 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.cache.CacheDataSource
-import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import conectate.com.data.localfallback.UbuntuStorageUrl
@@ -15,6 +14,7 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
@@ -51,7 +51,7 @@ object VideoCache {
         val upstreamDataSourceFactory = MediaPlaybackDataSources.streamingFactory(context)
 
         val cache = getOrCreateCache(context)
-        return if (cache != null) {
+        val cachedFactory = if (cache != null) {
             CacheDataSource.Factory()
                 .setCache(cache)
                 .setUpstreamDataSourceFactory(upstreamDataSourceFactory)
@@ -59,6 +59,9 @@ object VideoCache {
         } else {
             upstreamDataSourceFactory
         }
+        // Cached bytes cannot prove current membership. Own storage always uses
+        // the authenticated upstream; explicit file:/ offline copies are preserved.
+        return DataSource.Factory { StorageReadDataSource(upstreamDataSourceFactory, cachedFactory) { spec -> PlaybackCacheAdmission.key(spec) } }
     }
 
     /**
@@ -88,16 +91,26 @@ object VideoCache {
     ) = coroutineScope {
         val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return@coroutineScope
         val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return@coroutineScope
-        val dataSource = getCacheDataSourceFactory(context.applicationContext)
-            .createDataSource() as? CacheDataSource ?: return@coroutineScope
+        val cache = getOrCreateCache(context.applicationContext) ?: return@coroutineScope
+        val dataSource = getCacheDataSourceFactory(context.applicationContext).createDataSource()
         val dataSpec = DataSpec.Builder()
             .setUri(resolvedUrl)
             .setPosition(0)
             .setLength(byteCount)
             .setKey(cacheKey)
             .build()
-        val writer = CacheWriter(dataSource, dataSpec, null, null)
-        val task = async(Dispatchers.IO) { writer.cache() }
+        val task = async(Dispatchers.IO) {
+            try {
+                dataSource.open(dataSpec)
+                val scratch = ByteArray(32 * 1024)
+                var read = 0L
+                while (read < byteCount && kotlinx.coroutines.currentCoroutineContext().isActive) {
+                    val count = dataSource.read(scratch, 0, minOf(scratch.size.toLong(), byteCount - read).toInt())
+                    if (count < 0) break
+                    read += count
+                }
+            } finally { dataSource.close() }
+        }
         var completedWithinBudget = false
         try {
             // Prefetch is strictly best-effort. On a slow mobile network it
@@ -112,8 +125,8 @@ object VideoCache {
             // an old prefetch consuming the same mobile connection as the
             // visible player after a fast swipe or recycled chat row.
             if (!completedWithinBudget) {
-                writer.cancel()
                 task.cancel()
+                runCatching { dataSource.close() }
             }
         }
     }

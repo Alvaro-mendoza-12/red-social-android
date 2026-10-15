@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { purgeImportedRows } = require('./imported-mutation-capabilities')
 const fs = require('fs')
 const path = require('path')
 const { publishRealtimeEvent } = require('./realtime-publish')
@@ -1084,45 +1085,7 @@ async function purgeFallbackUserData(client, localUserId, identityValues, relati
 }
 
 async function purgeImportedUserData(client, relatedValues) {
-  const { rows } = await client.query(
-    `SELECT table_name, column_name
-     FROM information_schema.columns
-     WHERE table_schema = 'supabase_import'
-       AND (column_name = ANY($1::text[]) OR column_name = ANY($2::text[]))
-     ORDER BY table_name, ordinal_position`,
-    [IMPORT_RELATED_FIELDS, IMPORT_IDENTITY_ARRAY_FIELDS],
-  )
-  const columnsByTable = new Map()
-  for (const row of rows) {
-    if (!columnsByTable.has(row.table_name)) columnsByTable.set(row.table_name, [])
-    columnsByTable.get(row.table_name).push(row.column_name)
-  }
-  const patterns = relatedValues.map((value) => `%${value}%`)
-  let deletedRows = 0
-  for (const [tableName, columns] of columnsByTable) {
-    const exactColumns = columns.filter((column) => IMPORT_RELATED_FIELDS.includes(column))
-    const arrayColumns = columns.filter((column) => IMPORT_IDENTITY_ARRAY_FIELDS.includes(column))
-    const arrayParameter = exactColumns.length > 0 ? '$2' : '$1'
-    const predicates = exactColumns.map((column) =>
-      `lower(COALESCE(${quoteIdentifier(column)}::text, '')) = ANY($1::text[])`,
-    )
-    predicates.push(...arrayColumns.map((column) =>
-      `lower(COALESCE(${quoteIdentifier(column)}::text, '')) LIKE ANY(${arrayParameter}::text[])`,
-    ))
-    if (predicates.length === 0) continue
-    const params = exactColumns.length > 0 && arrayColumns.length > 0
-      ? [relatedValues, patterns]
-      : exactColumns.length > 0
-        ? [relatedValues]
-        : [patterns]
-    const result = await client.query(
-      `DELETE FROM ${quoteIdentifier('supabase_import')}.${quoteIdentifier(tableName)}
-       WHERE ${predicates.join(' OR ')}`,
-      params,
-    )
-    deletedRows += Number(result.rowCount) || 0
-  }
-  return deletedRows
+  return purgeImportedRows(client, relatedValues, 'related')
 }
 
 async function purgeCompatUserData(client, relatedValues) {
@@ -2352,6 +2315,12 @@ function registerAdminModerationRoutes(app, {
              updated_at = NOW()`,
           [target.id, reason, window.suspendedUntil, decision.id],
         )
+        await recordModerationEvent(client, context.identity.displayUserId, {
+          context: 'admin_suspend_user',
+          contentRef: decision.id,
+          verdict: window.days === 0 ? 'suspended_permanently' : `suspended_${window.days}_days`,
+          metadataPreview: `${rule.id}: ${reason}`,
+        })
         await client.query('COMMIT')
       } catch (error) {
         await client.query('ROLLBACK').catch(() => {})
@@ -2359,12 +2328,7 @@ function registerAdminModerationRoutes(app, {
       } finally {
         client.release()
       }
-      await recordModerationEvent(pool, context.identity.displayUserId, {
-        context: 'admin_suspend_user',
-        contentRef: decision.id,
-        verdict: window.days === 0 ? 'suspended_permanently' : `suspended_${window.days}_days`,
-        metadataPreview: `${rule.id}: ${reason}`,
-      })
+
 
       res.json({
         success: true,

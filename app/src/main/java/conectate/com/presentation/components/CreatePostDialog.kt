@@ -31,8 +31,24 @@ fun CreatePostDialog(
     initialText: String? = null,
     initialUri: Uri? = null,
     ownerId: String? = null,
+    mentionCandidates: List<conectate.com.data.model.User> = emptyList(),
+    onMentionQueryChanged: (String, Int) -> Unit = { _, _ -> },
 ) {
-    var content by remember(ownerId, initialText) { mutableStateOf(initialText ?: "") }
+    var contentDraft by remember(ownerId, initialText) {
+        mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(initialText.orEmpty()))
+    }
+    var content by remember(ownerId, initialText) { mutableStateOf(initialText.orEmpty()) }
+    LaunchedEffect(content) {
+        if (contentDraft.text != content) contentDraft = androidx.compose.ui.text.input.TextFieldValue(content, androidx.compose.ui.text.TextRange(content.length))
+    }
+    val activeMention = conectate.com.data.model.activeMentionAt(contentDraft.text, contentDraft.selection.end)
+    val mentionSuggestions = activeMention?.let {
+        conectate.com.data.model.roomMentionCandidates(mentionCandidates, it.query, ownerId)
+    }.orEmpty()
+    LaunchedEffect(contentDraft, ownerId) {
+        onMentionQueryChanged(contentDraft.text, contentDraft.selection.end)
+    }
+    DisposableEffect(ownerId) { onDispose { onMentionQueryChanged("", 0) } }
     var selectedImageUris by remember(ownerId, initialUri) {
         mutableStateOf<List<Uri>>(if (initialUri != null) listOf(initialUri) else emptyList())
     }
@@ -183,14 +199,22 @@ fun CreatePostDialog(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
                 OutlinedTextField(
-                    value = content,
-                    onValueChange = { content = it },
+                    value = contentDraft,
+                    visualTransformation = mentionInputTransformation,
+                    onValueChange = { contentDraft = it; content = it.text },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(120.dp),
                     placeholder = { Text("¿Qué estás pensando?") },
                     label = { Text("Contenido") }
                 )
+                MentionSuggestions(mentionSuggestions, onSelected = { user ->
+                    conectate.com.data.model.activeMentionAt(contentDraft.text, contentDraft.selection.end)?.let { active ->
+                        val (text, cursor) = conectate.com.data.model.insertMention(contentDraft.text, active, conectate.com.data.model.profilePublicHandle(user))
+                        contentDraft = androidx.compose.ui.text.input.TextFieldValue(text, androidx.compose.ui.text.TextRange(cursor))
+                        content = text
+                    }
+                })
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 

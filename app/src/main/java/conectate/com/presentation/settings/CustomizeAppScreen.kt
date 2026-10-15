@@ -141,9 +141,7 @@ fun CustomizeAppScreen(
     var showProfileMusicPicker by remember { mutableStateOf(false) }
     var externalProfileMusicUri by remember { mutableStateOf<Uri?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
-    val profileMusicPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
+    val profileMusicPicker = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri ->
         if (uri != null) {
             externalProfileMusicUri = uri
             showProfileMusicPicker = true

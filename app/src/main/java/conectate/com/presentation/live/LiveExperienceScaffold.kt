@@ -1,6 +1,10 @@
 package conectate.com.presentation.live
 
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -141,6 +145,7 @@ internal fun NovvinLiveViewerExperience(
     hostTrack: VideoTrack?,
     remoteTracks: Map<String, VideoTrack>,
     liveKitVideos: List<LiveKitRoomBridge.RemoteVideo>,
+    liveKitParticipants: List<LiveKitRoomBridge.RemoteParticipant> = emptyList(),
     onAttachLiveKit: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Boolean,
     onDetachLiveKit: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Unit,
     activeGuests: List<LiveGuestParticipant>,
@@ -171,6 +176,7 @@ internal fun NovvinLiveViewerExperience(
     onStartGuest: (Boolean, Boolean) -> Unit,
     onGuestMic: (Boolean) -> Unit,
     onGuestVideo: (Boolean) -> Unit,
+    onGuestSwitchCamera: () -> Unit,
     onLeaveGuest: () -> Unit,
     onBattleResponse: (Boolean) -> Unit,
     onModerate: () -> Unit
@@ -195,10 +201,14 @@ internal fun NovvinLiveViewerExperience(
     LiveExperienceFrame(
         primaryTrack = if (paused || !videoEnabled) null else hostTrack,
         primaryName = stream?.hostName?.ifBlank { "Streamer" } ?: "Streamer",
+        primaryUserId = stream?.hostUserId.orEmpty(),
         primaryAvatar = stream?.hostAvatarUrl,
         primaryMirror = false,
         remoteTracks = remoteTracks,
-        liveKitVideos = liveKitVideos,
+        liveKitVideos = if (paused || !videoEnabled) liveKitVideos.filterNot {
+            it.participantIdentity.equals(stream?.hostUserId.orEmpty(), true)
+        } else liveKitVideos,
+        liveKitParticipants = liveKitParticipants,
         onAttachLiveKit = onAttachLiveKit,
         onDetachLiveKit = onDetachLiveKit,
         guests = battleAwareGuests(activeGuests, battle),
@@ -290,6 +300,7 @@ internal fun NovvinLiveViewerExperience(
             onStart = onStartGuest,
             onMic = onGuestMic,
             onVideo = onGuestVideo,
+            onSwitchCamera = onGuestSwitchCamera,
             onLeave = {
                 onLeaveGuest()
                 panel = null
@@ -334,6 +345,7 @@ internal fun NovvinLiveHostExperience(
     localTrack: VideoTrack?,
     remoteTracks: Map<String, VideoTrack>,
     liveKitVideos: List<LiveKitRoomBridge.RemoteVideo>,
+    liveKitParticipants: List<LiveKitRoomBridge.RemoteParticipant> = emptyList(),
     onAttachLiveKit: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Boolean,
     onDetachLiveKit: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Unit,
     activeGuests: List<LiveGuestParticipant>,
@@ -390,10 +402,12 @@ internal fun NovvinLiveHostExperience(
     LiveExperienceFrame(
         primaryTrack = if (!paused && videoEnabled) localTrack else null,
         primaryName = stream?.hostName?.ifBlank { "Tú" } ?: "Tú",
+        primaryUserId = stream?.hostUserId.orEmpty(),
         primaryAvatar = stream?.hostAvatarUrl,
         primaryMirror = source == LiveSource.CAMERA && isFrontCamera,
         remoteTracks = remoteTracks,
         liveKitVideos = liveKitVideos,
+        liveKitParticipants = liveKitParticipants,
         onAttachLiveKit = onAttachLiveKit,
         onDetachLiveKit = onDetachLiveKit,
         guests = battleAwareGuests(activeGuests, battle),
@@ -802,13 +816,15 @@ private fun SummaryStatCard(
 private enum class HostPanel { REQUESTS, GIFTS, NOTIFICATIONS, BATTLE, TOOLS, MUSIC }
 
 @Composable
-private fun LiveExperienceFrame(
+internal fun LiveExperienceFrame(
     primaryTrack: VideoTrack?,
     primaryName: String,
+    primaryUserId: String,
     primaryAvatar: String?,
     primaryMirror: Boolean,
     remoteTracks: Map<String, VideoTrack>,
     liveKitVideos: List<LiveKitRoomBridge.RemoteVideo>,
+    liveKitParticipants: List<LiveKitRoomBridge.RemoteParticipant>,
     onAttachLiveKit: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Boolean,
     onDetachLiveKit: (LiveKitRoomBridge.RemoteVideo, TextureViewRenderer) -> Unit,
     guests: List<LiveGuestParticipant>,
@@ -828,10 +844,25 @@ private fun LiveExperienceFrame(
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
         val metrics = liveMetrics(maxWidth, maxHeight)
         val paneWidth = minOf(maxWidth, 560.dp)
+        val hasParticipantGrid = guests.isNotEmpty() ||
+            liveKitParticipants.any { !it.userId.equals(primaryUserId, true) } ||
+            liveKitVideos.any { !it.participantIdentity.equals(primaryUserId, true) }
+        // Keep interaction controls below the participant cells during collaborations.
+        val interactionMetrics = if (hasParticipantGrid) metrics.copy(horizontalActions = true) else metrics
+        var measuredViewerBottomPx by remember { mutableStateOf(0) }
+        val measuredViewerBottom = with(LocalDensity.current) { measuredViewerBottomPx.toDp() }
+        val visibleChatHeight = if (hasParticipantGrid) minOf(metrics.chatHeight, 88.dp) else metrics.chatHeight
+        val battleVisible = battle.status == LiveBattleStatus.ACTIVE || battle.status == LiveBattleStatus.FINISHED
+        val videoModifier = if (hasParticipantGrid) Modifier.fillMaxSize()
+            .statusBarsPadding().navigationBarsPadding().padding(
+                top = if (battleVisible) 160.dp else 112.dp,
+                bottom = maxOf(visibleChatHeight + 100.dp, measuredViewerBottom + 8.dp)
+            ) else Modifier.fillMaxSize()
         Box(Modifier.align(Alignment.Center).width(paneWidth).fillMaxHeight().background(Color.Black)) {
             LiveVideoLayout(
                 primaryTrack,
                 primaryName,
+                primaryUserId,
                 primaryAvatar,
                 primaryMirror,
                 remoteTracks,
@@ -841,7 +872,8 @@ private fun LiveExperienceFrame(
                 guests,
                 egl,
                 scaling,
-                Modifier.fillMaxSize()
+                videoModifier,
+                liveKitParticipants
             )
             Box(
                 Modifier.fillMaxSize().background(
@@ -892,7 +924,7 @@ private fun LiveExperienceFrame(
                 ) {
                     CompactChat(
                         comments,
-                        metrics.chatHeight,
+                        visibleChatHeight,
                         Modifier.padding(horizontal = metrics.horizontalPadding).fillMaxWidth(0.90f)
                     )
                     Box(Modifier.fillMaxWidth().padding(horizontal = metrics.horizontalPadding)) {
@@ -902,10 +934,11 @@ private fun LiveExperienceFrame(
                 }
             } else {
                 LiveViewerOverlayLayout(
-                    metrics = metrics,
-                    chat = { CompactChat(comments, metrics.chatHeight, Modifier.fillMaxWidth()) },
-                    actions = { actions(metrics) },
+                    metrics = interactionMetrics,
+                    chat = { CompactChat(comments, visibleChatHeight, Modifier.fillMaxWidth()) },
+                    actions = { actions(interactionMetrics) },
                     composer = { bottom(metrics) },
+                    onBottomAreaMeasured = { measuredViewerBottomPx = it },
                 )
             }
         }
@@ -913,9 +946,10 @@ private fun LiveExperienceFrame(
 }
 
 @Composable
-private fun LiveVideoLayout(
+internal fun LiveVideoLayout(
     primaryTrack: VideoTrack?,
     primaryName: String,
+    primaryUserId: String,
     primaryAvatar: String?,
     primaryMirror: Boolean,
     remoteTracks: Map<String, VideoTrack>,
@@ -925,10 +959,20 @@ private fun LiveVideoLayout(
     guests: List<LiveGuestParticipant>,
     egl: EglBase.Context?,
     scaling: RendererCommon.ScalingType,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    liveKitParticipants: List<LiveKitRoomBridge.RemoteParticipant> = emptyList()
 ) {
-    val visibleGuests = guests.take(3)
-    if (visibleGuests.isEmpty()) {
+    val visibleGuests = (guests + liveKitParticipants.filterNot { it.userId.equals(primaryUserId, true) }.map {
+        LiveGuestParticipant("sfu:${it.userId}", it.userId, it.name, it.avatarUrl)
+    }).distinctBy { it.userId.ifBlank { it.socketId }.lowercase() }.take(MAX_VISIBLE_LIVE_GUESTS)
+    val identities = liveKitVideos.map { it.participantIdentity }
+    val primaryLiveKitVideo = matchingLiveParticipantIndex(primaryUserId, identities)?.let(liveKitVideos::get)
+    val additionalVideos = liveKitVideos.filter { video ->
+        video !== primaryLiveKitVideo && visibleGuests.none { guest ->
+            guest.userId.isNotBlank() && guest.userId.equals(video.participantIdentity, true)
+        }
+    }.take((MAX_VISIBLE_LIVE_GUESTS - visibleGuests.size).coerceAtLeast(0))
+    if (visibleGuests.isEmpty() && additionalVideos.isEmpty()) {
         LiveParticipantCell(
             track = primaryTrack,
             name = primaryName,
@@ -936,7 +980,7 @@ private fun LiveVideoLayout(
             egl = egl,
             mirror = primaryMirror,
             scaling = scaling,
-            liveKitVideo = null,
+            liveKitVideo = primaryLiveKitVideo,
             onAttachLiveKit = onAttachLiveKit,
             onDetachLiveKit = onDetachLiveKit,
             modifier = modifier,
@@ -949,24 +993,28 @@ private fun LiveVideoLayout(
         add(
             LiveVideoCell(
                 track = primaryTrack,
+                liveKitVideo = primaryLiveKitVideo,
                 name = primaryName,
                 avatarUrl = primaryAvatar,
                 mirror = primaryMirror
             )
         )
-        visibleGuests.forEachIndexed { index, guest ->
-            val liveKitVideo = liveKitVideos.firstOrNull {
-                it.participantName.equals(guest.name, ignoreCase = true)
-            } ?: liveKitVideos.getOrNull(index)
+        visibleGuests.forEach { guest ->
+            val liveKitVideo = if (guest.videoEnabled)
+                matchingLiveParticipantIndex(guest.userId, identities)?.let(liveKitVideos::get) else null
+            val usesLiveKit = liveKitParticipants.any { it.userId.equals(guest.userId, true) }
             add(
                 LiveVideoCell(
-                    track = remoteTracks[guest.socketId],
+                    track = if (guest.videoEnabled && !usesLiveKit) remoteTracks[guest.socketId] else null,
                     liveKitVideo = liveKitVideo,
                     name = guest.name,
                     avatarUrl = guest.avatarUrl,
                     mirror = false
                 )
             )
+        }
+        additionalVideos.forEach { video ->
+            add(LiveVideoCell(null, video, video.participantName, null, false))
         }
     }
 
@@ -976,33 +1024,13 @@ private fun LiveVideoLayout(
             .padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Row(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            cells.take(2).forEach { cell ->
-                LiveParticipantCell(
-                    track = cell.track,
-                    name = cell.name,
-                    avatarUrl = cell.avatarUrl,
-                    egl = egl,
-                    mirror = cell.mirror,
-                    scaling = scaling,
-                    liveKitVideo = cell.liveKitVideo,
-                    onAttachLiveKit = onAttachLiveKit,
-                    onDetachLiveKit = onDetachLiveKit,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    showLabel = true
-                )
-            }
-            if (cells.size == 1) Spacer(Modifier.weight(1f))
-        }
-        if (cells.size > 2) {
+        val columns = liveParticipantColumnCount(cells.size)
+        cells.chunked(columns).forEachIndexed { rowIndex, row ->
             Row(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                cells.drop(2).take(2).forEach { cell ->
+                row.forEachIndexed { columnIndex, cell ->
                     LiveParticipantCell(
                         track = cell.track,
                         name = cell.name,
@@ -1013,11 +1041,12 @@ private fun LiveVideoLayout(
                         liveKitVideo = cell.liveKitVideo,
                         onAttachLiveKit = onAttachLiveKit,
                         onDetachLiveKit = onDetachLiveKit,
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                            .testTag("live_participant_${rowIndex * columns + columnIndex}"),
                         showLabel = true
                     )
                 }
-                if (cells.size == 3) Spacer(Modifier.weight(1f))
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -1092,29 +1121,36 @@ private fun LiveParticipantCell(
                 label = name,
             )
         } else {
-            Column(
-                Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val captionHeight = with(LocalDensity.current) { 16.sp.toDp() }
+                val avatarSize = if (showLabel) minOf(58.dp, maxWidth * .65f,
+                    (maxHeight - captionHeight - 18.dp).coerceAtLeast(12.dp)) else 76.dp
+                Column(
+                    Modifier.fillMaxSize().padding(if (showLabel) 6.dp else 0.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
                 CircularProfileImage(
                     imageUrl = avatarUrl,
                     fallbackName = name,
-                    size = if (showLabel) 58.dp else 76.dp,
+                    size = avatarSize,
                     showBorder = true,
                     borderColor = LivePalette.Purple
                 )
                 Text(
                     text = name,
+                    modifier = Modifier.padding(top = 4.dp),
                     color = Color.White,
                     fontSize = if (showLabel) 12.sp else 14.sp,
+                    lineHeight = if (showLabel) 16.sp else 20.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                }
             }
         }
-        if (showLabel) {
+        if (showLabel && (track != null || liveKitVideo != null)) {
             LivePill(
                 text = name,
                 modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
@@ -1141,7 +1177,7 @@ private fun ViewerTopBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        CircularProfileImage(
+        CircularProfileImage(ownerId = stream?.hostUserId, 
             imageUrl = stream?.hostAvatarUrl,
             fallbackName = stream?.hostName,
             size = metrics.topAvatarSize,
@@ -1316,7 +1352,7 @@ private fun ConnectingState(stream: LiveStream?, text: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        CircularProfileImage(
+        CircularProfileImage(ownerId = stream?.hostUserId, 
             imageUrl = stream?.hostAvatarUrl,
             fallbackName = stream?.hostName,
             size = 72.dp,
@@ -1611,6 +1647,7 @@ private fun GuestSetupSheet(
     onStart: (Boolean, Boolean) -> Unit,
     onMic: (Boolean) -> Unit,
     onVideo: (Boolean) -> Unit,
+    onSwitchCamera: () -> Unit,
     onLeave: () -> Unit
 ) {
     var selectedMic by remember(micEnabled, broadcasting) { mutableStateOf(micEnabled) }
@@ -1664,6 +1701,14 @@ private fun GuestSetupSheet(
                 )
             }
             if (broadcasting) {
+                if (videoEnabled) {
+                    SheetOutlineButton(
+                        text = "Girar cámara",
+                        icon = Icons.Filled.Cameraswitch,
+                        onClick = onSwitchCamera,
+                        modifier = Modifier.padding(horizontal = 18.dp)
+                    )
+                }
                 SheetOutlineButton(
                     text = "Salir como invitado",
                     icon = Icons.Filled.CallEnd,
@@ -2000,6 +2045,7 @@ private fun GuestRequestBanner(
         horizontalArrangement = Arrangement.spacedBy(9.dp)
     ) {
         CircularProfileImage(
+            ownerId = request.userId,
             imageUrl = request.avatarUrl,
             fallbackName = request.name,
             size = 32.dp,
@@ -2255,6 +2301,7 @@ private fun GuestRequestsSheet(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             CircularProfileImage(
+                                ownerId = request.userId,
                                 imageUrl = request.avatarUrl,
                                 fallbackName = request.name,
                                 size = 40.dp,
@@ -2612,10 +2659,16 @@ private fun HostMusicSheet(
 }
 
 @Composable
-private fun BattleScoreOverlay(
+internal fun BattleScoreOverlay(
     battle: LiveBattleState,
     modifier: Modifier = Modifier
 ) {
+    val host = battle.hostScore.coerceAtLeast(0).toFloat()
+    val opponent = battle.opponentScore.coerceAtLeast(0).toFloat()
+    val hostFraction by animateFloatAsState(
+        targetValue = if (host + opponent == 0f) .5f else (host / (host + opponent)).coerceIn(.15f, .85f),
+        animationSpec = tween(300), label = "battleScoreBalance"
+    )
     val remaining by produceState(
         initialValue = remainingBattleSeconds(battle),
         key1 = battle.startedAtMs,
@@ -2637,7 +2690,7 @@ private fun BattleScoreOverlay(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                Modifier.weight(1f).fillMaxHeight().background(LivePalette.Purple.copy(alpha = 0.75f)),
+                Modifier.weight(hostFraction).fillMaxHeight().background(LivePalette.Purple.copy(alpha = 0.75f)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -2659,7 +2712,7 @@ private fun BattleScoreOverlay(
                 )
             }
             Box(
-                Modifier.weight(1f).fillMaxHeight().background(LivePalette.Cyan.copy(alpha = 0.75f)),
+                Modifier.weight(1f - hostFraction).fillMaxHeight().background(LivePalette.Cyan.copy(alpha = 0.75f)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -2669,6 +2722,18 @@ private fun BattleScoreOverlay(
                     fontWeight = FontWeight.Black
                 )
             }
+        }
+        if (battle.status == LiveBattleStatus.ACTIVE) {
+            Text(
+                text = when {
+                    battle.hostScore > battle.opponentScore -> "Anfitrión en ventaja"
+                    battle.hostScore < battle.opponentScore -> "${battle.opponentName.ifBlank { "Oponente" }} en ventaja"
+                    else -> "Batalla empatada"
+                },
+                color = Color.White, fontSize = 11.sp,
+                modifier = Modifier.background(Color.Black.copy(alpha = .65f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            )
         }
         if (battle.status == LiveBattleStatus.FINISHED) {
             LivePill(

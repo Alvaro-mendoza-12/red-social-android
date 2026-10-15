@@ -756,9 +756,7 @@ fun VideoUploadScreen(
     }
 
     val selectionScope = rememberCoroutineScope()
-    val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
+    val videoPickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri: Uri? ->
         uri?.let { selectedUri ->
             if (!retainVideoDocumentAccess(context, selectedUri)) {
                 AppFeedbackBus.show("Al restaurar la edición, Android podría pedirte seleccionar de nuevo el video.")
@@ -777,9 +775,7 @@ fun VideoUploadScreen(
         }
     }
 
-    val thumbnailPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
+    val thumbnailPickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri: Uri? ->
         uri?.let { retainVideoDocumentAccess(context, it) }
         thumbnailToCrop = uri
     }

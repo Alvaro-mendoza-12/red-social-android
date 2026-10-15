@@ -7,6 +7,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
@@ -23,6 +24,10 @@ import kotlinx.coroutines.withContext
 internal class InboxPreviewReader(
     private val database: AppDatabase,
     private val currentAccount: () -> String?,
+    private val deletionChanges: Flow<Long> = flowOf(0L),
+    private val preferenceChanges: Flow<Long> = flowOf(0L),
+    private val isChatMuted: (String, String, Boolean) -> Boolean = { _, _, remote -> remote },
+    private val redact: (conectate.com.data.model.Message, String) -> conectate.com.data.model.Message = { message, _ -> message },
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
     fun observe(
@@ -35,6 +40,8 @@ internal class InboxPreviewReader(
             previousAccount = account
             if (account.isNullOrBlank()) flowOf(emptyList()) else {
                 database.invalidationTracker.createFlow("chats", "users", "messages", "message_deletions")
+                    .combine(deletionChanges) { tables, _ -> tables }
+                    .combine(preferenceChanges) { tables, _ -> tables }
                     .mapLatest {
                         if (currentAccount()?.trim()?.lowercase() != account) emptyList()
                         else read(account).also {
@@ -65,7 +72,7 @@ internal class InboxPreviewReader(
                 val chat = entity.chat
                 val intents = deletions[chat.id].orEmpty()
                 fun visible(message: conectate.com.data.model.Message?) =
-                    visibleInboxMessage(message, chat.id, chat.cleared_at, intents, account)
+                    visibleInboxMessage(message?.let { redact(it, account) }, chat.id, chat.cleared_at, intents, account)
                 val stored = latest[chat.id]
                 var cursor = stored
                 var localPreview = visible(stored?.toSafeInboxMessage())
@@ -87,7 +94,10 @@ internal class InboxPreviewReader(
                 val summaryRow = summary?.id?.takeUnless { it.startsWith("inbox-summary:") }
                     ?.let { id -> if (stored?.id == id) stored else database.messageDao().getMessageById(id) }
                 val safeSummary = visible(if (summaryRow != null) summaryRow.toSafeInboxMessage() else summary)
-                buildVisibleInboxConversation(entity, newestInboxMessage(localPreview, safeSummary))
+                val conversation = buildVisibleInboxConversation(entity, newestInboxMessage(localPreview, safeSummary))
+                conversation.copy(chat = conversation.chat.copy(
+                    is_muted = isChatMuted(account, chat.id, conversation.chat.is_muted),
+                ))
             }.sortedWith(
                 compareBy<ChatWithLastMessage> { it.chat.is_archived }
                     .thenByDescending { it.chat.is_pinned }

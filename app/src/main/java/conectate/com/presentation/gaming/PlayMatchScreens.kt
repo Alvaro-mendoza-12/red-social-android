@@ -241,13 +241,13 @@ fun GamingProfileScreen(
     var discoveryLevel by rememberSaveable { mutableFloatStateOf(50f) }
     var showAvailabilityEditor by remember { mutableStateOf(false) }
     var editing by rememberSaveable { mutableStateOf(false) }
-    val gamerAvatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val gamerAvatarPicker = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         uri?.let { viewModel.uploadGamerAvatar(it) { uploaded, mediaType ->
             gamerAvatarUrl = uploaded
             gamerAvatarMediaType = mediaType
         } }
     }
-    val gamerPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val gamerPhotoPicker = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         uri?.let(viewModel::uploadGamerPhoto)
     }
     LaunchedEffect(Unit) { viewModel.loadProfile() }
@@ -284,7 +284,7 @@ fun GamingProfileScreen(
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(contentAlignment = Alignment.BottomEnd) {
-                    CircularProfileImage(imageUrl = gamerAvatarUrl, mediaType = gamerAvatarMediaType, size = 80.dp, showBorder = true, borderColor = PlayMatchColors.Primary, borderWidth = 2.dp)
+                    CircularProfileImage(openMomentOnClick = false, ownerId = conectate.com.presentation.components.LocalProfileIdentityAccount.current, imageUrl = gamerAvatarUrl, mediaType = gamerAvatarMediaType, size = 80.dp, showBorder = true, borderColor = PlayMatchColors.Primary, borderWidth = 2.dp)
                     if (editing) {
                         IconButton(
                             onClick = { gamerAvatarPicker.launch(arrayOf("image/*", "video/mp4")) },
@@ -659,9 +659,9 @@ fun MatchFoundScreen(
         item { Text("${match.score}% compatible", color = GamingEnd, fontWeight = FontWeight.Bold, fontSize = 22.sp) }
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                CircularProfileImage(imageUrl = state.profile?.avatarUrl, mediaType = state.profile?.avatarMediaType, size = 92.dp, showBorder = true, borderColor = GamingStart, borderWidth = 3.dp)
+                CircularProfileImage(ownerId = state.profile?.userId, imageUrl = state.profile?.avatarUrl, mediaType = state.profile?.avatarMediaType, size = 92.dp, showBorder = true, borderColor = GamingStart, borderWidth = 3.dp)
                 Surface(color = PlayMatchColors.Card, shape = RoundedCornerShape(50)) { Icon(Icons.Default.FavoriteBorder, "Coincidencia", Modifier.padding(14.dp), tint = GamingEnd) }
-                CircularProfileImage(imageUrl = player.avatarUrl, mediaType = player.avatarMediaType, size = 92.dp, showBorder = true, borderColor = GamingStart, borderWidth = 3.dp)
+                CircularProfileImage(ownerId = player.userId, imageUrl = player.avatarUrl, mediaType = player.avatarMediaType, size = 92.dp, showBorder = true, borderColor = GamingStart, borderWidth = 3.dp)
             }
         }
         item { Text("¡Tú y ${player.displayName} tienen mucho en común!", color = PlayMatchColors.SecondaryText, fontSize = 17.sp) }
@@ -707,6 +707,7 @@ fun MatchFoundScreen(
                 Icon(Icons.Default.AccountCircle, "Abrir mi perfil gamer", tint = PlayMatchColors.White)
             } else {
                 CircularProfileImage(
+                    ownerId = conectate.com.presentation.components.LocalProfileIdentityAccount.current,
                     imageUrl = gamerAvatarUrl,
                     mediaType = gamerAvatarMediaType,
                     size = 38.dp,
@@ -873,7 +874,7 @@ private fun CompactFilterMenu(
 @Composable private fun PlayerRecommendationCard(player: PlayMatchProfile, onOpen: (String) -> Unit, onConnect: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable { onOpen(player.userId) }, shape = RoundedCornerShape(PlayMatchDimensions.CardRadius), colors = CardDefaults.cardColors(containerColor = Color(0xFF17142F)), border = BorderStroke(1.dp, Color(0xFF30275D))) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            CircularProfileImage(imageUrl = player.avatarUrl, mediaType = player.avatarMediaType, size = 56.dp, showBorder = true, borderColor = PlayMatchColors.Primary)
+            CircularProfileImage(ownerId = player.userId, imageUrl = player.avatarUrl, mediaType = player.avatarMediaType, size = 56.dp, showBorder = true, borderColor = PlayMatchColors.Primary)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) { Text(player.displayName, color = PlayMatchColors.White, fontWeight = FontWeight.Bold, fontSize = 17.sp); Text(player.games.take(2).joinToString(" / ") { it.gameName }, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color(0xFF22B8CF)); Text(listOf(player.games.firstOrNull()?.platform, player.playStyle).filterNotNull().filter(String::isNotBlank).joinToString(" · "), fontSize = 12.sp, color = PlayMatchColors.SecondaryText, maxLines = 1) }
             Button(onClick = onConnect, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6), contentColor = PlayMatchColors.White), contentPadding = PaddingValues(horizontal = 15.dp), shape = RoundedCornerShape(11.dp), modifier = Modifier.heightIn(min = 48.dp)) { Text("Conectar", fontWeight = FontWeight.Bold) }
         }
@@ -889,7 +890,7 @@ private fun GameConversationCard(connection: PlayMatchConnection, onOpen: () -> 
         border = BorderStroke(1.dp, PlayMatchColors.Border),
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            CircularProfileImage(imageUrl = connection.otherAvatarUrl, size = 44.dp, showBorder = true, borderColor = PlayMatchColors.Accent)
+            CircularProfileImage(ownerId = connection.otherUserId, imageUrl = connection.otherAvatarUrl, size = 44.dp, showBorder = true, borderColor = PlayMatchColors.Accent)
             Column(Modifier.weight(1f)) {
                 Text(connection.otherName, color = PlayMatchColors.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("Chat de PlayMatch", color = PlayMatchColors.SecondaryText, fontSize = 12.sp)
@@ -935,7 +936,7 @@ private fun GameConversationCard(connection: PlayMatchConnection, onOpen: () -> 
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CircularProfileImage(imageUrl = match.player?.avatarUrl, mediaType = match.player?.avatarMediaType, size = 48.dp, showBorder = true, borderColor = GamingEnd)
+                CircularProfileImage(ownerId = match.player?.userId, imageUrl = match.player?.avatarUrl, mediaType = match.player?.avatarMediaType, size = 48.dp, showBorder = true, borderColor = GamingEnd)
                 Column(Modifier.weight(1f)) { Text(match.player?.displayName ?: "Jugador", color = PlayMatchColors.White, fontWeight = FontWeight.Bold); Text("${match.score}% compatible", color = GamingEnd) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1256,7 +1257,7 @@ private fun PlayerIdentityHeader(player: PlayMatchProfile) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            CircularProfileImage(
+            CircularProfileImage(ownerId = player.userId, 
                 imageUrl = player.avatarUrl,
                 mediaType = player.avatarMediaType,
                 fallbackName = player.displayName,

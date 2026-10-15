@@ -333,7 +333,7 @@ fun PollOptionVotersDialog(
                         ) {
                             items(voters) { voter ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProfileImage(
+                                    CircularProfileImage(ownerId = voter.userId, 
                                         imageUrl = voter.avatarUrl.orEmpty(),
                                         size = 28.dp,
                                         fallbackName = voter.fullName?.ifBlank { null }

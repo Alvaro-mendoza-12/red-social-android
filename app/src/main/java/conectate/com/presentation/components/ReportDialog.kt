@@ -33,9 +33,7 @@ fun ReportDialog(
     var isSubmitting by remember { mutableStateOf(false) }
     var showConfirmation by remember { mutableStateOf(false) }
     
-    val imagePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri -> evidenceUri = uri }
+    val imagePicker = conectate.com.presentation.components.rememberInAppMediaPicker() { uri -> evidenceUri = uri }
     
     Dialog(
         onDismissRequest = if (showConfirmation) ({}) else onDismiss,

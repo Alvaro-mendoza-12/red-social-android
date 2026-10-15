@@ -262,6 +262,7 @@ function validDate(value) {
 }
 
 async function upsertObject(pool, item, localPath, importInfo) {
+  if (String(process.env.STORAGE_SCAN_ENFORCE || '').toLowerCase() === 'true') throw new Error('STORAGE_IMPORT_REQUIRES_SCANNED_BACKFILL')
   const bucket = cleanBucketName(item.bucket)
   const objectPath = normalizeObjectPath(item.sourcePath, item.entry?.name)
   const publicUrl = publicObjectUrl(publicBaseUrl, bucket, objectPath)
@@ -326,6 +327,7 @@ async function upsertObject(pool, item, localPath, importInfo) {
 }
 
 async function importObject(pool, item, stats) {
+  if (String(process.env.STORAGE_SCAN_ENFORCE || '').toLowerCase() === 'true') throw new Error('STORAGE_IMPORT_REQUIRES_SCANNED_BACKFILL')
   const bucket = cleanBucketName(item.bucket)
   if (!bucket) {
     stats.failed += 1

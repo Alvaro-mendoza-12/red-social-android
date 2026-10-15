@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -115,6 +117,8 @@ class UserRepository @Inject constructor(
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
     )
     val profileUpdates: kotlinx.coroutines.flow.SharedFlow<User> = _profileUpdates.asSharedFlow()
+    private val _followUpdates = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val followUpdates = _followUpdates.asSharedFlow()
 
     private fun shouldUseUbuntuBackend(): Boolean =
         localFallbackApiClient.isConfigured &&
@@ -1070,10 +1074,13 @@ class UserRepository @Inject constructor(
                 throw Exception("No se pudieron cargar los perfiles visitantes (${profilesResponse.status.value})")
             }
             val users = profilesResponse.body<List<User>>().associateBy { normalizePrivacyUserId(it.id) }
+            if (ownerId != authService.getCurrentUserId()?.let(::normalizePrivacyUserId)) {
+                return@runCatching emptyList()
+            }
             orderedVisits.mapNotNull { (id, viewedAt) ->
                 users[id]?.let { ProfileViewer(applyLocalUserOverrides(it), viewedAt) }
             }
-        }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     suspend fun clearProfileViewHistory(): Result<Unit> {
@@ -2037,7 +2044,7 @@ class UserRepository @Inject constructor(
                 ?: return Result.failure(Exception("No user logged in"))
             val bytes = context.contentResolver
                 .openInputStream(uri)
-                ?.use { it.readBytes() }
+                ?.use { it.readMediaBytesWithLimit(50L * 1024 * 1024) }
                 ?: return Result.failure(Exception("No se pudo leer el archivo."))
             val hintedMime = context.contentResolver.getType(uri)
                 ?.substringBefore(";")
@@ -2252,7 +2259,7 @@ class UserRepository @Inject constructor(
 
             var bytes = context.contentResolver
                 .openInputStream(uri)
-                ?.use { it.readBytes() }
+                ?.use { it.readMediaBytesWithLimit(50L * 1024 * 1024) }
                 ?: return Result.failure(Exception("Cannot read file"))
 
             val allowedImageMimeTypes = setOf("image/jpeg", "image/png", "image/webp")
@@ -2801,6 +2808,7 @@ class UserRepository @Inject constructor(
                 // Ignore key violation (already following)
                 if (response.status == HttpStatusCode.Conflict || err.contains("duplicate key")) {
                     android.util.Log.w("UserRepository", "Already following $targetUserId (409). Treating as success.")
+                    _followUpdates.tryEmit(Unit)
                     return Result.success(Unit)
                 }
                 android.util.Log.e("UserRepository", "Follow failed: ${response.status} - $err")
@@ -2810,6 +2818,7 @@ class UserRepository @Inject constructor(
             // 2. COUNTERS ARE NOW HANDLED BY DATABASE TRIGGERS
             // (on_follow_insert in database_social_triggers.sql)
 
+            _followUpdates.tryEmit(Unit)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -2840,6 +2849,7 @@ class UserRepository @Inject constructor(
             // 2. COUNTERS ARE NOW HANDLED BY DATABASE TRIGGERS
             // (on_follow_delete in database_social_triggers.sql)
 
+            _followUpdates.tryEmit(Unit)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -2884,54 +2894,41 @@ class UserRepository @Inject constructor(
         }
     }
 
-    suspend fun getFollowedUserIds(targetUserIds: Collection<String>): Result<Set<String>> {
+    suspend fun getFollowedUserIds(targetUserIds: Collection<String>): Result<Set<String>> =
+        getFollowDirection(targetUserIds, incoming = false)
+
+    suspend fun getFollowingViewerIds(targetUserIds: Collection<String>): Result<Set<String>> =
+        getFollowDirection(targetUserIds, incoming = true)
+
+    private suspend fun getFollowDirection(targetUserIds: Collection<String>, incoming: Boolean): Result<Set<String>> {
         return try {
-            val cleanTargetIds = targetUserIds
-                .map { it.trim().lowercase() }
-                .filter { it.isNotBlank() }
-                .distinct()
-
-            if (cleanTargetIds.isEmpty()) {
-                return Result.success(emptySet())
+            val targets = targetUserIds.map { it.trim().lowercase() }.distinct()
+            require(targets.size <= 100 && targets.all {
+                runCatching { java.util.UUID.fromString(it).toString() == it }.getOrDefault(false)
+            }) { "Identificadores de seguimiento inválidos" }
+            if (targets.isEmpty()) return Result.success(emptySet())
+            val token = authService.getAccessTokenAwait() ?: error("No hay sesión")
+            val account = authService.getCurrentUserId() ?: error("No hay usuario")
+            val selected = if (incoming) "follower_id" else "following_id"
+            val owner = if (incoming) "following_id" else "follower_id"
+            val found = mutableSetOf<String>()
+            for (chunk in targets.chunked(50)) {
+                val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/follows") {
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Authorization", "Bearer $token")
+                    parameter(owner, "eq.$account")
+                    parameter(selected, "in.(${chunk.joinToString(",")})")
+                    parameter("select", selected)
+                    parameter("limit", 100)
+                }
+                check(response.status.isSuccess()) { "No se pudo consultar el seguimiento" }
+                val rows = networkJson.decodeFromString<List<Map<String, String>>>(response.body<String>())
+                found += rows.mapNotNull { it[selected]?.trim()?.lowercase() }.filter { it in targets }
+                check(authService.getCurrentUserId() == account) { "La cuenta cambió" }
             }
-
-            var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No token"))
-            var currentUserId = authService.getCurrentUserId()
-                ?: return Result.failure(Exception("No user"))
-
-            var response = supabaseConfig.httpClient.get(
-                "${supabaseConfig.supabaseUrl}/rest/v1/follows"
-            ) {
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Authorization", "Bearer $accessToken")
-                parameter("follower_id", "eq.$currentUserId")
-                parameter("following_id", "in.(${cleanTargetIds.joinToString(",")})")
-                parameter("select", "following_id")
-            }
-
-            if (!response.status.isSuccess()) {
-                var err = response.body<String>()
-                android.util.Log.e("UserRepository", "getFollowedUserIds error: ${response.status} - $err")
-                return Result.failure(Exception("Check failed: $err"))
-            }
-
-            var bodyStr = response.body<String>()
-            val followedIds = try {
-                val json = networkJson
-                json.decodeFromString<List<Map<String, String>>>(bodyStr)
-                    .mapNotNull { it["following_id"]?.trim()?.lowercase() }
-                    .filter { it.isNotBlank() }
-                    .toSet()
-            } catch (e: Exception) {
-                android.util.Log.w("UserRepository", "Error parsing getFollowedUserIds: $bodyStr", e)
-                emptySet()
-            }
-
-            Result.success(followedIds)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+            Result.success(found)
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
     }
 
     suspend fun getFollowers(userId: String): Result<List<User>> {

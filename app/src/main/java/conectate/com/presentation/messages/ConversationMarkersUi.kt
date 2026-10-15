@@ -81,7 +81,7 @@ fun ConversationMarkersBar(markersViewModel: ConversationMarkersViewModel, onJum
     val state by markersViewModel.markers.collectAsState()
     var open by remember { mutableStateOf(false) }
     if (state.pins.isEmpty() && state.saved.isEmpty()) return
-    TextButton(onClick = { markersViewModel.refresh(); open = true }, modifier = Modifier.fillMaxWidth()) {
+    TextButton(onClick = { markersViewModel.refreshFromUser(); open = true }, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Default.PushPin, null)
         Spacer(Modifier.width(8.dp))
         Text("Fijados (${state.pins.size}) · Guardados (${state.saved.size})")

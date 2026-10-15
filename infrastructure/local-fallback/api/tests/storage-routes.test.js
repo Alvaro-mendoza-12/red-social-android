@@ -408,7 +408,7 @@ async function run() {
 
   assert.deepEqual(
     requestedImageVariant({ width: '720', quality: '76', format: 'webp' }, 'image/jpeg'),
-    { width: 720, quality: 76, format: 'webp' },
+    { width: 720, quality: 78, format: 'webp' },
   )
   assert.equal(requestedImageVariant({ width: '720' }, 'video/mp4'), null)
   await expectRejected(
@@ -537,6 +537,7 @@ async function run() {
   const resumableApp = express()
   registerStorageRoutes(resumableApp, {
     pool: resumablePool,
+    storageFinalizationConnection: () => resumablePool.connect(), storageUploadAdmission: { async reserve({ id = crypto.randomUUID(), ownerId }) { return { id, assertAlive() {}, async finish() {} } }, async claimTus(id) { return { id, assertAlive() {}, async finish() {} } } },
     authRequired(req, _res, next) {
       req.auth = { sub: String(req.headers['x-test-user'] || 'test-user') }
       next()

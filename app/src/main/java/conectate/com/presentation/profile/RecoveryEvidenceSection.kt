@@ -8,7 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import coil.compose.AsyncImage
+import conectate.com.presentation.components.FullScreenImageDialog
 import conectate.com.data.localfallback.AdminRecoveryEvidence
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -23,7 +23,6 @@ fun RecoveryEvidenceSection(files: List<AdminRecoveryEvidence>, onLoad: suspend 
     var loading by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var image by remember { mutableStateOf<File?>(null) }
-    var imageName by remember { mutableStateOf("") }
     Text("Archivos de evidencia (${files.size})", style = MaterialTheme.typography.titleMedium)
     Text("Privados · disponibles durante 30 días", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     files.forEach { evidence ->
@@ -44,7 +43,7 @@ fun RecoveryEvidenceSection(files: List<AdminRecoveryEvidence>, onLoad: suspend 
                         }
                         File(folder, "${evidence.id}.$extension").apply { writeBytes(bytes) }
                     }
-                    if (evidence.mime.startsWith("image/")) { image = file; imageName = evidence.name }
+                    if (evidence.mime.startsWith("image/")) { image = file }
                     else {
                         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
                         context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, evidence.mime)
@@ -59,8 +58,7 @@ fun RecoveryEvidenceSection(files: List<AdminRecoveryEvidence>, onLoad: suspend 
         }
     }
     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-    image?.let { file -> AlertDialog(onDismissRequest = { image = null },
-        title = { Text(imageName, maxLines = 2) },
-        text = { AsyncImage(model = file, contentDescription = imageName, modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 420.dp)) },
-        confirmButton = { TextButton(onClick = { image = null }) { Text("Cerrar") } }) }
+    image?.let { file ->
+        FullScreenImageDialog(imageUrl = android.net.Uri.fromFile(file).toString(), onDismiss = { image = null })
+    }
 }

@@ -65,7 +65,7 @@ fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
         val observer = LifecycleEventObserver { _, event ->
             if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("InteractiveAudioState",
                 "lifecycle_event=$event player_attached=${owned != null}")
-            if (event == Lifecycle.Event.ON_STOP) { owned?.pause(); isPlaying = false; isLoading = false }
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) { owned?.pause(); isPlaying = false; isLoading = false }
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }

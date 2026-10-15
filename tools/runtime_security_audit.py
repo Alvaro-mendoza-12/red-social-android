@@ -429,12 +429,12 @@ def scan_runtime_security(root: Path) -> list[Finding]:
             "trustCandidate",
             "discovery_envelope",
         ),
-        "Conectate-web/src/core/backendTrust.ts": (
+        "NoWing-web/src/core/backendTrust.ts": (
             "verifyBackendDiscoveryEnvelope",
             "ECDSA",
             "MAX_DISCOVERY_TTL_SECONDS",
         ),
-        "Conectate-web/src/core/runtimeBackend.ts": (
+        "NoWing-web/src/core/runtimeBackend.ts": (
             "VITE_BACKEND_DISCOVERY_PUBLIC_KEY",
             "trustCandidate",
             "requiredCapabilities",
@@ -488,7 +488,7 @@ def scan_runtime_security(root: Path) -> list[Finding]:
                 )
             )
 
-    public_backend_config = root / "Conectate-web/public/backend-config.json"
+    public_backend_config = root / "NoWing-web/public/backend-config.json"
     public_backend_config_text = (
         public_backend_config.read_text(encoding="utf-8", errors="ignore")
         if public_backend_config.exists()
@@ -501,7 +501,7 @@ def scan_runtime_security(root: Path) -> list[Finding]:
                 rule="UNSIGNED_PUBLIC_BACKEND_CONFIG",
                 subject="trycloudflare.com",
                 message="Public web config contains an unsigned temporary backend origin.",
-                file_path="Conectate-web/public/backend-config.json",
+                file_path="NoWing-web/public/backend-config.json",
             )
         )
 

@@ -77,7 +77,12 @@ class SupabaseConfig @Inject constructor(
 
     val httpClient = HttpClient(OkHttp) {
         engine {
-            config { dns(PublicBackendDns) }
+            config {
+                dns(PublicBackendDns)
+                // Ktor retries only safe reads through AutomaticRetryPolicy.
+                // Disable hidden transport retries of mutable upload requests.
+                retryOnConnectionFailure(false)
+            }
         }
         install(HttpTimeout) {
             requestTimeoutMillis = 25_000

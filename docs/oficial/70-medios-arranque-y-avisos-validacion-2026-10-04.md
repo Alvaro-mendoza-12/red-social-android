@@ -4,7 +4,7 @@
 
 Este documento complementa la auditoría de los once puntos. Los resultados corresponden a los artefactos y dispositivos indicados. El registro reproducible, sin cuentas ni tokens, está en [evidencia consolidada](evidencias/cierre-11-2026-10-04.json). El editor móvil de encuestas se documenta en [el informe 69](69-encuestas-editor-movil-y-publicacion-2026-10-04.md).
 
-**Estado vigente:** sección 8, resultados consolidados en tablet. Los apartados anteriores conservan checkpoints históricos y pendientes que después se actualizaron. La certificación general de producción continúa pendiente.
+**Estado vigente:** la continuación del 5 de octubre está en el [informe 72](72-medios-social-y-live-redes-distintas-2026-10-05.md): 1.358 unitarias y 77/77 pruebas de regresión v19 en Motorola. El video LIVE con cámara compartida se recuperó en ambos extremos, pero excedió diez segundos. Las secciones de este informe conservan los resultados y pendientes de cada candidato anterior. La certificación general de producción continúa pendiente.
 
 ## 1. Música de perfil y fotografías de momentos
 
@@ -206,3 +206,77 @@ La regresión Android completa quedó en **1.316/1.316, 285 suites, cero fallos/
 ### 8.6 Estado de los dispositivos y fixtures
 
 Se archivaron en el directorio privado los reportes externos de la copia C11 de tablet y se retiraron de ese dispositivo; se desinstaló solo el paquete de instrumentación creado para esta tarea. La copia QA optimizada queda instalada y detenida para revisión posterior. Se verificó su hash antes de limpiar. Se retiraron de la caché de la QA antigua únicamente dos archivos de fixture cuyos IDs coincidían con las cuentas propias; no se borró su autenticación ni la instalación Play. Las cuentas desechables de coordinación se conservan para continuar con el Motorola; no se afirma que todas las cuentas/filas del fixture estén eliminadas. La limpieza de archivos propios del teléfono desconectado queda pendiente de su regreso.
+
+## 9. Continuación con Motorola y tablet conectados
+
+Esta sección actualiza el estado de disponibilidad, aviso físico, acústica y arranque de la sección 8. Los resultados anteriores permanecen como historial, con sus artefactos identificados en el JSON.
+
+### 9.1 Aviso administrativo físico recibido
+
+SSH volvió a estar disponible. Se ejecutó el worker real de publicación y outbox en un esquema temporal aislado, con un solo token FCM perteneciente a la cuenta QA propia de la tablet. La notificación llegó con título y cuerpo correctos. El test nativo pasó en **2,960 s**; el worker de entrega tardó **814 ms**, y repetir la publicación no volvió a difundir el aviso. Se retiró el esquema temporal y no se cambiaron archivos de fuente del servidor ni se publicó a cuentas humanas.
+
+Se conserva un primer intento fallido: Windows leyó el texto del worker como cp1252 y alteró caracteres UTF-8 del cuerpo. La lectura se corrigió explícitamente a UTF-8 y se repitió el recorrido; ese error de fixture no se presenta como defecto confirmado del aplicativo.
+
+### 9.2 Audio y transición Wi-Fi/datos móviles
+
+El usuario confirmó audio claro cuando ambos equipos estaban en Wi-Fi. En la primera llamada audible reportó que al pasar el Motorola a datos se perdía el audio recibido. Ese fixture usaba el motor nativo y el servidor real, pero tenía desactivada la reconexión de su socket: no ejercitaba CallRepository.
+
+La segunda prueba usó **CallRepository real como receptor en Motorola** y un emisor nativo en tablet con reconexión de señalización. Después de pasar a datos y volver a Wi-Fi se exigieron ocho muestras consecutivas con paquetes RTP de audio nuevos en cada extremo. Ambos tests pasaron; el usuario confirmó que volvió el audio en los dos cambios. La recuperación inicial del receptor a datos fue **20.117 ms**, incluida la espera para que Android cambiara su red por defecto; al volver a Wi-Fi, **1.385 ms**. Estos valores no separaban todavía la transición del sistema de la recuperación del reproductor/transporte.
+
+Se prepara una corrección que vuelve a abrir la señalización al detectar el cambio de red, sin esperar a que expire la conexión TCP antigua. Conserva la cuenta, llamada, micrófono, mute y duración original; el estado de pérdida de ICE muestra «Reconectando». La repetición mide por separado red por defecto disponible y paquetes nuevos recibidos. La confirmación acústica de la segunda prueba no certifica por sí sola esta nueva versión, P95, operadores adicionales o toda la navegación de llamadas.
+
+### 9.3 Arranque del Motorola con sus datos conservados
+
+Se actualizó la instalación principal en sitio, con la misma firma y sin borrar la cuenta o la base local. El APK optimizado anterior produjo:
+
+| Muestra fría | TTID | Bandeja local utilizable, TTFD |
+| --- | ---: | ---: |
+| 1 | 1.099 ms | 5.101 ms |
+| 2 | 409 ms | 4.292 ms |
+
+**No cumple el máximo de 3.000 ms.** El tercer intento se detuvo porque Android informó WARM aunque el proceso estaba ausente; se conserva la discrepancia y no se convierte en una muestra fría aprobada.
+
+El diagnóstico numérico en una compilación debug localizó **3.124 ms al construir las dependencias de llamadas en el hilo principal de Compose**. La lectura de recuperación de cuenta tardó 123 ms. La preparación de repositorios autenticados se movió a IO; otra observación confirmó que la construcción de llamadas, de 3.245 ms, ocurrió en un hilo de trabajo. Son diagnósticos, no un benchmark optimizado ni evidencia de cumplir TTFD. La marca de bandeja utilizable sigue dependiendo de la lectura local de Room y de sus controles; no se adelanta para ocultar demoras.
+
+### 9.4 Decisión de esta continuación
+
+El aviso físico y la acústica de los recorridos descritos tienen evidencia nueva. Continúan pendientes la medición del arranque corregido, reducir y comprobar la demora de reconexión, controlar variación LIVE/selector musical y completar la revisión general de entrega. **La aplicación todavía no tiene certificación global de producción.**
+
+La observación de cambios de red se contrastó con [la documentación oficial de NetworkCallback](https://developer.android.com/reference/android/net/ConnectivityManager.NetworkCallback) y [la guía oficial de estado de red](https://developer.android.com/develop/connectivity/network-ops/reading-network-state).
+
+## 10. Reconexión medida continuamente y separación de la bandeja local — 5 de octubre
+
+### 10.1 Permiso del monitor nativo y orden de reconexión
+
+El APK original carecía de `CHANGE_NETWORK_STATE`. Se verificó en el manifiesto empaquetado y en el bytecode del SDK resuelto `io.github.webrtc-sdk:android:137.7151.05`. El monitor nativo solicita una red móvil para gestionar varias redes; su documentación exige ese permiso normal junto a `ACCESS_NETWORK_STATE`. Se añadió al producto. Referencia primaria: [NetworkMonitor de WebRTC](https://webrtc.googlesource.com/src/+/448691c8b9332fcfe483dc7e3a5e26b9e73dfa78/sdk/android/api/org/webrtc/NetworkMonitor.java).
+
+CallRepository vuelve a conectar la señalización al cambiar la red por defecto. La nueva negociación espera a `join-call` y a su lista de participantes; evita enviar SDP antes de ingresar nuevamente al espacio. Mantiene los tracks locales, identidad y tiempo de inicio. Las cuatro regresiones nuevas de política de duración/participantes pasaron dentro de 1.320 pruebas unitarias, 285 suites, sin fallos u omisiones. Esa tanda precede a la separación de bandeja descrita en 10.3.
+
+Ambos extremos nativos pasaron la transición Wi-Fi → datos → Wi-Fi. El receptor fue CallRepository real en Motorola; el emisor fue un motor nativo propio en tablet. No se cambió ninguna sesión humana.
+
+| Transición | Mayor intervalo sin avance RTP, tablet / Motorola | Red disponible en ambos → ocho muestras consecutivas con avance, tablet / Motorola |
+| --- | ---: | ---: |
+| Motorola pasa a datos | 3.846 / 4.226 ms | 2.133 / 1.986 ms |
+| Motorola vuelve a Wi-Fi | 7.346 / 6.964 ms | 8.397 / 8.311 ms |
+
+El primer indicador procede de consultas de estadísticas nativas cada 200 ms durante toda la transición, con la consulta serializada con el cierre de los pares. Es un indicador de transporte; no equivale a silencio medido en el altavoz. El segundo incluye la comprobación de estabilidad mediante ocho muestras y no es el tiempo del primer paquete. **Se recupera el audio, pero no se certifica una transición sin pausas.** La confirmación acústica del usuario corresponde a la segunda llamada anterior descrita en 9.2.
+
+Se conservó una prueba diagnóstica con relay forzado exclusivamente en QA. Tardó aproximadamente 9–10 s desde las redes listas y no acreditó mejora. El producto conserva la política ALL. También se conserva un intento que el coordinador detuvo antes de terminar el receptor: Android registró force-stop solicitado por el propio coordinador; no acredita un crash nativo. Se corrigieron las barreras entre ambos tests.
+
+### 10.2 Selector musical y LIVE físico
+
+El selector musical de comunidad se repitió con catálogo y pista reales en tablet. Sin espera previa, el primer toque mostró reproducción en 1.760 ms: 43 ms de despacho del driver y 1.716 ms desde solicitar reproducción. Tras revisar el catálogo durante 1.500 ms, mostró reproducción en 310 ms: 35 ms de despacho y 274 ms desde la solicitud. Ambas pruebas verificaron primer toque, pista original, recorte dentro del video y ausencia de autoplay. La observación es `onIsPlaying` en UI; no mide avance físico del altavoz ni P95. Se preservan las muestras anteriores.
+
+En LIVE, la nueva pareja física tablet emisora/Motorola espectador produjo **7.898 ms hasta la primera imagen renderizada**; superó el presupuesto de cinco segundos y el test falló. El retorno de `joinLiveAsViewer`, que incluye metadatos y preparación nativa, tardó 1.545 ms: no debe atribuirse íntegramente a HTTP. Incluye coordinación entre dispositivos. El espacio propio se cerró y eliminó. Las tres muestras previas con espectador en tablet no sustituyen este fallo.
+
+### 10.3 Arranque: dependencia compartida que todavía detenía Home
+
+El APK optimizado que prepara los cuatro repositorios autenticados en IO mostró TTID de 973 ms y TTFD de **4.687 ms** en Motorola con su cuenta/base conservadas. La tanda se interrumpió en el siguiente intento al no cumplirse la ausencia del proceso tras force-stop. Se mantiene la muestra parcial y no se etiqueta como una tanda de diez aprobada.
+
+Un diagnóstico adicional debug midió Home en 2.810 ms en el hilo principal, mientras llamadas preparaba su grafo compartido en un worker durante 3.278 ms. Mensajes tardó 16 ms después; el modelo de importación de stickers, construido aun sin imagen compartida, 533 ms. Son medidas diagnósticas, no métricas release.
+
+La siguiente corrección introduce `LocalInboxRepository`: usa sesión y Room en IO y reutiliza `InboxPreviewReader`, incluyendo visibilidad, borrados y límite de cuenta. La bandeja inicial puede leer el historial sin construir envío, llamadas o repositorios de otras pestañas. Home y Mensajes difieren sus dependencias; las operaciones conservan sus repositorios existentes y los resuelven en IO. Cuentas guardadas prepara su grafo en IO; importación de stickers se construye cuando llega una imagen compartida. La sesión vuelve a comprobarse al proyectar snapshots almacenados para impedir mostrar filas de otra cuenta.
+
+**Validación del candidato de bandeja:** compilación completa y R8 aprobados; 1.327 unitarias en 287 suites, cero fallos/errores/omisiones. El Motorola conservó cuenta y datos y pasó diez muestras optimizadas bajo tres segundos: COLD 2.001 / 1.474 / 1.318 / 1.337 / 2.841 ms; WARM 611 / 494 / 540 / 445 / 443 ms. No había Gradle, emulador ni instrumentación simultáneos. Dos intentos de preparación detectaron un proceso durante el asentamiento tras force-stop y no generaron muestra; se mantienen registrados. `ReportDrawnWhen` exige bandeja local utilizable, no refresco remoto terminado. No representa P95, instalación nueva ni reinicio. APK SHA-256 `0f696d882d7160ff4ae7a99fdfdcde8dc7871f4a79d64d0af87b17c7ac2af0d6`.
+
+La tanda nativa de 56 casos tuvo un fallo en cada dispositivo: foco de encuesta en Motorola y pulsación de Enviar antes de terminar la preparación de foto en tablet. La encuesta aislada pasó 13,113 s; el fixture de cámara ahora espera el botón habilitado sin ampliar los límites de captura. La primera tanda posterior pasó 13 casos en cada dispositivo, incluida captura y envío confirmado. La comprobación de launcher con ActivityScenario verificó sus aserciones pero falló durante teardown; no se presentó como aprobada y se cambia el mecanismo de apertura del fixture. Los cambios multimedia/selector posteriores mantienen validación propia en curso. Los once recorridos y la aplicación completa continúan sin certificación global.

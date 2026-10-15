@@ -61,6 +61,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.encodeURLParameter
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
@@ -180,7 +181,14 @@ data class AdminRecoveryCase(
     val candidateEmail: String,
     val contactVerified: Boolean,
     val createdAt: String,
+    val reviewedAt: String = "",
+    val reviewedBy: String = "",
     val evidence: List<AdminRecoveryEvidence> = emptyList(),
+)
+
+data class AdminRecoveryPage(
+    val items: List<AdminRecoveryCase>, val total: Int, val offset: Int, val limit: Int,
+    val statusCounts: Map<String, Int>
 )
 
 data class AdminRecoveryAccount(
@@ -309,6 +317,7 @@ data class LocalFallbackInboxItem(
     @SerialName("cleared_at")
     val clearedAtSnake: String? = null,
     val isMember: Boolean = true,
+    val historyAccess: CollectionHistoryAccess? = null,
     val isPinned: Boolean = false,
     val isMuted: Boolean = false,
     val isArchived: Boolean = false,
@@ -409,7 +418,8 @@ data class LocalFallbackChatResponse(
     val otherParticipant: LocalFallbackParticipant? = null,
     val participants: List<LocalFallbackParticipant> = emptyList(),
     val messages: List<JsonObject> = emptyList(),
-    val settings: LocalFallbackChatSettings = LocalFallbackChatSettings()
+    val settings: LocalFallbackChatSettings = LocalFallbackChatSettings(),
+    val historyAccess: CollectionHistoryAccess? = null
 )
 
 @Serializable
@@ -1995,6 +2005,26 @@ class LocalFallbackApiClient @Inject constructor(
         else Result.failure(toException(response, decodeError(response.bodyAsText())))
     } catch (error: Exception) { Result.failure(error) }
 
+    suspend fun loadDirectMessageRequest(accessToken: String, chatId: String?, targetUserId: String): Result<conectate.com.data.model.DirectMessageRequestState> =
+        requestJson(
+            if (chatId == null) "$baseUrl/v1/data/messages/requests/eligibility/${urlEncode(targetUserId)}"
+            else "$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}/request", accessToken,
+        )
+
+    suspend fun decideDirectMessageRequest(accessToken: String, chatId: String, accept: Boolean): Result<conectate.com.data.model.DirectMessageRequestState> {
+        return try {
+            val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/messages/chats/${urlEncode(chatId)}/request") {
+                header("Authorization", "Bearer $accessToken")
+                contentType(ContentType.Application.Json)
+                setBody(mapOf("action" to if (accept) "accept" else "reject"))
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(json.decodeFromString(body))
+            else Result.failure(toException(response, decodeError(body)))
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
     suspend fun loadChat(accessToken: String, chatId: String): Result<LocalFallbackChatResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return runReadWithDeadline(InteractiveReadDeadlines.ConversationHistoryMillis) {
@@ -2920,9 +2950,14 @@ class LocalFallbackApiClient @Inject constructor(
         val moment: JsonObject? = null
     )
 
-    suspend fun loadMomentsFeed(accessToken: String): Result<LocalFallbackMomentsFeedResponse> {
+    suspend fun loadMomentsFeed(
+        accessToken: String,
+        ownerIds: List<String> = emptyList()
+    ): Result<LocalFallbackMomentsFeedResponse> {
         if (!isConfigured) return Result.failure(IllegalStateException("FALLBACK_API_URL no configurada"))
-        return requestJson("$baseUrl/v1/data/moments/feed", accessToken)
+        val owners = conectate.com.data.model.momentAvatarOwnerIds(ownerIds)
+        val query = if (owners.isEmpty()) "" else "?owner_ids=" + owners.joinToString(",").encodeURLParameter()
+        return requestJson("$baseUrl/v1/data/moments/feed$query", accessToken)
     }
 
     suspend fun createMoment(
@@ -5749,6 +5784,53 @@ class LocalFallbackApiClient @Inject constructor(
         role: String? = null
     ): Result<Unit> = mutateCollectionMembership(accessToken, collection, roomId, "join", userId, role)
 
+    suspend fun loadCollectionMembershipPolicy(
+        accessToken: String, collection: String, roomId: String
+    ): Result<CollectionMembershipPolicy> = requestJson(
+        "$baseUrl/v1/data/messages/${urlEncode(collection)}/${urlEncode(roomId)}/membership-policy", accessToken
+    )
+
+    suspend fun setCollectionMembersCanAdd(
+        accessToken: String, collection: String, roomId: String, enabled: Boolean
+    ): Result<CollectionMembershipPolicy> = try {
+        val response = supabaseConfig.httpClient.patch(
+            "$baseUrl/v1/data/messages/${urlEncode(collection)}/${urlEncode(roomId)}/membership-policy"
+        ) {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("membersCanAdd", enabled) })
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) Result.success(json.decodeFromString<CollectionMembershipPolicy>(body))
+        else Result.failure(toException(response, decodeError(body)))
+    } catch (error: Exception) {
+        if (error is kotlinx.coroutines.CancellationException) throw error
+        Result.failure(error)
+    }
+
+    suspend fun addCollectionMember(
+        accessToken: String, collection: String, roomId: String, userId: String,
+        historyFrom: String? = null, historyUntil: String? = null
+    ): Result<Unit> = try {
+        val response = supabaseConfig.httpClient.post(
+            "$baseUrl/v1/data/messages/${urlEncode(collection)}/${urlEncode(roomId)}/join"
+        ) {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject {
+                put("userId", userId)
+                historyFrom?.let { put("historyFrom", it) }
+                historyUntil?.let { put("historyUntil", it) }
+            })
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) Result.success(Unit)
+        else Result.failure(toException(response, decodeError(body)))
+    } catch (error: Exception) {
+        if (error is kotlinx.coroutines.CancellationException) throw error
+        Result.failure(error)
+    }
+
     suspend fun previewCollection(
         accessToken: String,
         kind: String,
@@ -5897,6 +5979,23 @@ class LocalFallbackApiClient @Inject constructor(
             Result.failure(error)
         }
     }
+
+    suspend fun leaveCollectionWithHistory(accessToken: String, collection: String, roomId: String): Result<CollectionMembershipExit> = try {
+        val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/messages/${urlEncode(collection)}/${urlEncode(roomId)}/leave") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject {})
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) Result.success(json.decodeFromString<CollectionMembershipExit>(body))
+        else Result.failure(toException(response, decodeError(body)))
+    } catch (error: Exception) {
+        if (error is kotlinx.coroutines.CancellationException) throw error
+        Result.failure(error)
+    }
+
+    suspend fun hideCollectionHistory(accessToken: String, collection: String, roomId: String): Result<Unit> =
+        mutateCollectionMembership(accessToken, collection, roomId, "hide", null, null)
 
     suspend fun leaveCollection(accessToken: String, collection: String, roomId: String, userId: String? = null): Result<Unit> =
         mutateCollectionMembership(accessToken, collection, roomId, "leave", userId)
@@ -6145,33 +6244,12 @@ class LocalFallbackApiClient @Inject constructor(
     ): Result<LocalFallbackStorageObject> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
-            val rawUpload = uploadFileRaw(
-                accessToken = accessToken,
-                bucketName = bucketName,
-                objectPath = objectPath,
-                bytes = bytes,
-                contentType = contentType
+            StorageUploadPolicy.upload(
+                raw = { uploadFileRaw(accessToken, bucketName, objectPath, bytes, contentType) },
+                multipart = { uploadFileMultipart(accessToken, bucketName, objectPath, bytes, contentType, fileName) }
             )
-            if (rawUpload.isSuccess) {
-                return rawUpload
-            }
-
-            rawUpload.exceptionOrNull()?.let { rawError ->
-                android.util.Log.w(
-                    "LocalFallbackApi",
-                    "Raw Ubuntu upload failed for $bucketName/$objectPath; trying multipart fallback",
-                    rawError
-                )
-            }
-
-            uploadFileMultipart(
-                accessToken = accessToken,
-                bucketName = bucketName,
-                objectPath = objectPath,
-                bytes = bytes,
-                contentType = contentType,
-                fileName = fileName
-            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -6196,6 +6274,11 @@ class LocalFallbackApiClient @Inject constructor(
                 "$baseUrl/storage/v1/object/${urlEncode(bucketName)}/$encodedPath"
             ) {
                 localHeaders(accessToken)
+                timeout {
+                    connectTimeoutMillis = StorageUploadPolicy.CONNECT_TIMEOUT_MILLIS
+                    socketTimeoutMillis = StorageUploadPolicy.RESPONSE_IDLE_TIMEOUT_MILLIS
+                    requestTimeoutMillis = StorageUploadPolicy.REQUEST_TIMEOUT_MILLIS
+                }
                 contentType(parsedContentType)
                 setBody(bytes)
             }
@@ -6216,8 +6299,18 @@ class LocalFallbackApiClient @Inject constructor(
                     ).normalized()
                 )
             } else {
-                Result.failure(toException(response, decodeError(body)))
+                val error = decodeError(body)
+                val reportedPath = runCatching {
+                    json.parseToJsonElement(body).jsonObject["path"]?.jsonPrimitive?.contentOrNull
+                }.getOrNull()
+                val requestedPath = "/storage/v1/object/${urlEncode(bucketName)}/$encodedPath"
+                if (StorageUploadPolicy.isUnsupportedRawRoute(
+                        response.status.value, error.error, reportedPath, requestedPath
+                    )) Result.failure(StorageRawRouteUnavailableException())
+                else Result.failure(toException(response, error))
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -6234,6 +6327,11 @@ class LocalFallbackApiClient @Inject constructor(
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/storage/upload") {
                 localHeaders(accessToken)
+                timeout {
+                    connectTimeoutMillis = StorageUploadPolicy.CONNECT_TIMEOUT_MILLIS
+                    socketTimeoutMillis = StorageUploadPolicy.RESPONSE_IDLE_TIMEOUT_MILLIS
+                    requestTimeoutMillis = StorageUploadPolicy.REQUEST_TIMEOUT_MILLIS
+                }
                 setBody(
                     MultiPartFormDataContent(
                         formData {
@@ -6260,6 +6358,8 @@ class LocalFallbackApiClient @Inject constructor(
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -7350,31 +7450,22 @@ class LocalFallbackApiClient @Inject constructor(
 
     suspend fun refreshAnonymousBottleAvailability(
         accessToken: String,
-        gender: String,
-        lookingFor: String,
     ): Result<AnonymousBottleResult> = anonymousBottleRequest(
         accessToken = accessToken,
         path = "/v1/data/proximity/random/availability",
         method = "POST",
-        body = buildJsonObject {
-            put("gender", gender)
-            put("lookingFor", lookingFor)
-        },
+        body = buildJsonObject {},
     )
 
     suspend fun sendAnonymousBottle(
         accessToken: String,
         content: String,
-        gender: String,
-        lookingFor: String,
     ): Result<AnonymousBottleResult> = anonymousBottleRequest(
         accessToken = accessToken,
         path = "/v1/data/proximity/random/bottles",
         method = "POST",
         body = buildJsonObject {
             put("content", content)
-            put("gender", gender)
-            put("lookingFor", lookingFor)
         },
     )
 
@@ -7886,12 +7977,14 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
-    suspend fun adminGetRecoveryCases(accessToken: String): Result<List<AdminRecoveryCase>> = runCatching {
+    suspend fun adminGetRecoveryCases(accessToken: String, query: String = "", status: String = "pending", offset: Int = 0): Result<AdminRecoveryPage> = runCatching {
         val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/admin/account-recovery/cases") {
             localHeaders(accessToken)
+            parameter("q", query); parameter("status", status); parameter("offset", offset); parameter("limit", 20)
         }
         if (!response.status.isSuccess()) throw toException(response, decodeError(response.bodyAsText()))
-        json.parseToJsonElement(response.bodyAsText()).jsonObject["cases"]?.jsonArray?.map { element ->
+        val payload = json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val cases = payload["cases"]?.jsonArray?.map { element ->
             val row = element.jsonObject
             AdminRecoveryCase(
                 id = textOf(row, "id"), identifier = textOf(row, "identifier"),
@@ -7904,6 +7997,7 @@ class LocalFallbackApiClient @Inject constructor(
                 candidateEmail = textOf(row, "candidate_email"),
                 contactVerified = textOf(row, "contact_verified_at").isNotBlank(),
                 createdAt = textOf(row, "created_at"),
+                reviewedAt = textOf(row, "reviewed_at"), reviewedBy = textOf(row, "reviewed_by"),
                 evidence = (row["evidence"] as? JsonArray)?.map { item ->
                     val file = item.jsonObject
                     AdminRecoveryEvidence(textOf(file, "id"), textOf(file, "name"), textOf(file, "mime"),
@@ -7911,6 +8005,9 @@ class LocalFallbackApiClient @Inject constructor(
                 }.orEmpty(),
             )
         }.orEmpty()
+        AdminRecoveryPage(cases, intOf(payload, "total"), intOf(payload, "offset"),
+            intOf(payload, "limit").takeIf { it > 0 } ?: 20,
+            (payload["statusCounts"] as? JsonObject)?.mapValues { it.value.jsonPrimitive.intOrNull ?: 0 }.orEmpty())
     }
 
     suspend fun adminDownloadRecoveryEvidence(accessToken: String, caseId: String, evidenceId: String): Result<ByteArray> = runCatching {

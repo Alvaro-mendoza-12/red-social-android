@@ -1,4 +1,7 @@
 POSTGRES_PASSWORD=change-this-local-postgres-password
+# Runtime API: configurar URL privada de novvin_api después del bootstrap de db/operations.
+# No usar POSTGRES_PASSWORD ni el superusuario de bootstrap como credencial de API.
+FALLBACK_API_DATABASE_URL=
 FALLBACK_API_PORT=3001
 FALLBACK_EDGE_PORT=3080
 FALLBACK_REALTIME_PORT=3002

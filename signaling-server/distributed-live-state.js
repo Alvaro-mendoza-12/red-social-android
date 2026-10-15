@@ -28,7 +28,8 @@ function publicParticipant(value) {
     return {
         userId,
         name: cleanString(value?.name, 100) || 'Usuario',
-        avatarUrl: cleanString(value?.avatarUrl, 2_048)
+        avatarUrl: cleanString(value?.avatarUrl, 2_048),
+        ...(typeof value?.videoEnabled === 'boolean' ? { videoEnabled: value.videoEnabled } : {})
     };
 }
 

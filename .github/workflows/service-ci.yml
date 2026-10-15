@@ -58,14 +58,14 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: Conectate-web
+        working-directory: NoWing-web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: Conectate-web/package-lock.json
+          cache-dependency-path: NoWing-web/package-lock.json
       - name: Install from lockfile
         run: npm ci --legacy-peer-deps
       - name: Test

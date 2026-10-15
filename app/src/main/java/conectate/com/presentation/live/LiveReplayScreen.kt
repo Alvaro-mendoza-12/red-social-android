@@ -87,6 +87,7 @@ fun LiveReplayScreen(
     DisposableEffect(exoPlayer) {
         onDispose { exoPlayer.release() }
     }
+    conectate.com.presentation.social.PauseMomentPlayerOnBackground(exoPlayer)
 
     Scaffold(
         topBar = {

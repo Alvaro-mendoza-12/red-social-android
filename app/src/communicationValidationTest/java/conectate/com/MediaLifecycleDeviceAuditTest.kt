@@ -27,16 +27,12 @@ class MediaLifecycleDeviceAuditTest {
             override fun onSendAnswer(targetSocketId: String, answer: JSONObject) = Unit
             override fun onSendIceCandidate(targetSocketId: String, candidate: JSONObject) = Unit
         })
-        val polling = AtomicBoolean(true)
-        val reader = Thread {
-            while (polling.get()) {
-                manager.getLocalAudioLevel()
-                manager.isHealthy()
-                Thread.sleep(2)
-            }
-        }.apply { start() }
         val executorField = manager.javaClass.getDeclaredField("executor").apply { isAccessible = true }
-        val executor = executorField.get(manager) as java.util.concurrent.ExecutorService
+        // The production field is now a rejection-safe MediaTaskExecutor wrapper.
+        // A barrier on its backing queue observes completion of the same native tasks.
+        val wrappedExecutor = executorField.get(manager)
+        val delegateField = wrappedExecutor.javaClass.getDeclaredField("delegate").apply { isAccessible = true }
+        val executor = delegateField.get(wrappedExecutor) as java.util.concurrent.ExecutorService
         val pendingField = manager.javaClass.getDeclaredField("deferredPeerDisposals").apply { isAccessible = true }
         val queue = pendingField.get(manager)
         val pendingEntries = queue.javaClass.getDeclaredField("entries").apply { isAccessible = true }
@@ -45,6 +41,28 @@ class MediaLifecycleDeviceAuditTest {
             executor.execute { ready.countDown() }
             assertTrue("Native media queue stalled", ready.await(10, TimeUnit.SECONDS))
         }
+        val disposalMs = org.json.JSONArray()
+        fun awaitRendererDetachDisposals() {
+            // hardResetAwait clears logical state; native sinks retain the existing
+            // 96 ms renderer-detach grace. Observe its actual bounded completion.
+            val began = System.nanoTime()
+            val deadline = began + TimeUnit.SECONDS.toNanos(2)
+            while (true) {
+                barrier()
+                if (synchronized(queue) { (pendingEntries.get(queue) as Set<*>).isEmpty() }) break
+                assertTrue("Native peers exceeded the two-second cleanup bound", System.nanoTime() < deadline)
+                Thread.sleep(10)
+            }
+            disposalMs.put(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - began))
+        }
+        val polling = AtomicBoolean(true)
+        val reader = Thread {
+            while (polling.get()) {
+                manager.getLocalAudioLevel()
+                manager.isHealthy()
+                Thread.sleep(2)
+            }
+        }.apply { start() }
         try {
             repeat(16) {
                 val peer = UUID.randomUUID().toString()
@@ -57,6 +75,7 @@ class MediaLifecycleDeviceAuditTest {
                 runBlocking { manager.hardResetAwait() }
                 barrier()
                 assertTrue("Queued recovery restored a departed peer", manager.peerConnectionStates.value.isEmpty())
+                awaitRendererDetachDisposals()
                 assertTrue("Teardown left native peers pending", synchronized(queue) { (pendingEntries.get(queue) as Set<*>).isEmpty() })
                 WebRTCManager.releaseIdleResources()
                 barrier()
@@ -67,13 +86,17 @@ class MediaLifecycleDeviceAuditTest {
             }
             File(context.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }, "media-lifecycle.json")
                 .writeText(JSONObject().put("iterations", 16).put("trimAndReentry", true)
-                    .put("noPendingPeers", true).put("recoveryDuringDeparture", true).toString(2))
+                    .put("noPendingPeers", true).put("recoveryDuringDeparture", true)
+                    .put("rendererDetachDisposalMs", disposalMs).put("cleanupBoundMs", 2000).toString(2))
         } finally {
             val closed = CountDownLatch(1)
-            manager.destroy { closed.countDown() }
-            assertTrue("Media engine did not close", closed.await(15, TimeUnit.SECONDS))
-            polling.set(false)
-            reader.join(5_000)
+            try {
+                manager.destroy { closed.countDown() }
+                assertTrue("Media engine did not close", closed.await(15, TimeUnit.SECONDS))
+            } finally {
+                polling.set(false)
+                reader.join(5_000)
+            }
         }
     }
 }

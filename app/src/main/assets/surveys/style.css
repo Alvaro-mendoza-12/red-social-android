@@ -36,3 +36,32 @@ dialog>.actions button{white-space:normal;min-width:0}
 #notice{pointer-events:none;bottom:max(12px,env(safe-area-inset-bottom));font-size:14px}
 @media(max-width:500px){main{padding:18px 12px 24px}dialog{padding:18px}.card{padding:16px}header strong{font-size:14px}header button{font-size:14px}}
 @media(prefers-color-scheme:dark){.field-error{color:#ffb3c4}[aria-invalid=true]{border-color:#ffb3c4}}
+
+/* Responses open directly in three focused views. Management stays collapsed. */
+.response-heading{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 16px}
+.response-heading p{margin:0;font-size:14px}
+.result-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:18px 0}
+.result-tabs button{min-width:0;padding:12px 6px;font-size:15px;white-space:normal}
+.result-tabs .active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.response-count{display:flex;align-items:baseline;flex-wrap:wrap;gap:12px;margin:22px 0 14px}
+.response-count strong{font-size:32px}.response-count span{font-size:16px}
+.response-question>p:first-child{margin-top:0}.response-question h2{margin-bottom:8px}
+.response-navigation{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin:16px 0}
+.response-navigation>span{text-align:center;flex:1;min-width:70px;font-size:14px}
+.individual-question{border-top:1px solid var(--border);padding:12px 0}
+.answer-value{line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.result-analysis{margin-top:16px;border-top:1px solid var(--border)}
+#result-filter-error:not(:empty){color:#ab183c;margin-top:12px}
+.bar>span{overflow-wrap:anywhere;min-width:0}.bar .track{min-width:0}
+@media(max-width:500px){.response-question .bar{grid-template-columns:minmax(0,1fr) auto;gap:6px}.response-question .bar>span:first-child{grid-column:1/-1}.response-question .bar .track{grid-column:1}.response-question .bar>span:last-child{grid-column:2}.response-navigation button{padding:10px 12px}}
+@media(prefers-color-scheme:dark){.result-tabs .active{color:#191027}#result-filter-error:not(:empty){color:#ffb3c4}}
+
+/* Authorized survey images stay in the app and support bounded pinch/pan. */
+[data-zoom-ready]{cursor:zoom-in}
+#survey-image-viewer{inset:0;transform:none;width:100vw;height:100vh;min-height:0;max-width:none;max-height:none;margin:0;padding:0;border:0;border-radius:0;background:#09090c;color:#fff;overflow:hidden}
+#survey-image-viewer[open]{display:flex;flex-direction:column}
+.image-viewer-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;padding:max(8px,env(safe-area-inset-top)) 8px 8px}
+.image-viewer-controls button{color:#fff;background:#28282f;border-color:#73737c;min-width:44px}
+.image-viewer-controls output{min-width:4em;text-align:center}
+.image-viewer-stage{position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;min-height:0;flex:1}
+.image-viewer-stage img{max-width:none;max-height:none;object-fit:contain;pointer-events:none;user-select:none;transform-origin:center}

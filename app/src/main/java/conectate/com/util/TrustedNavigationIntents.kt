@@ -69,9 +69,35 @@ object TrustedNavigationIntents {
         return intent
     }
 
+    /** Persistent, account-bound route for Android's long-lived conversation shortcut. */
+    fun markTrustedConversationShortcut(context: Context, intent: Intent): Intent {
+        require(intent.getStringExtra("type") == "new_message")
+        intent.putExtra("conversation_shortcut_signature", shortcutSignature(context, intent))
+        return intent
+    }
+
+    private fun shortcutSignature(context: Context, intent: Intent): String {
+        val storage = prefs(context.applicationContext)
+        val encoded = synchronized(this) {
+            storage.getString("conversation_shortcut_key", null) ?: ByteArray(32).also(secureRandom::nextBytes)
+                .let { Base64.encodeToString(it, Base64.NO_WRAP) }.also {
+                    check(storage.edit().putString("conversation_shortcut_key", it).commit())
+                }
+        }
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(Base64.decode(encoded, Base64.NO_WRAP), "HmacSHA256"))
+        return Base64.encodeToString(mac.doFinal(buildSubject("new_message", intent).toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+    }
+
     fun isTrusted(context: Context, intent: Intent): Boolean {
         val type = intent.getStringExtra("type")?.trim()?.lowercase().orEmpty()
         if (!requiresTrust(type)) return true
+        val suppliedShortcutSignature = intent.getStringExtra("conversation_shortcut_signature")
+        if (type == "new_message" && suppliedShortcutSignature != null) {
+            return runCatching {
+                MessageDigest.isEqual(suppliedShortcutSignature.toByteArray(Charsets.UTF_8), shortcutSignature(context, intent).toByteArray(Charsets.UTF_8))
+            }.getOrDefault(false)
+        }
 
         val token = intent.getStringExtra(EXTRA_TOKEN)?.trim().orEmpty()
         if (token.isBlank()) return false
@@ -117,6 +143,7 @@ object TrustedNavigationIntents {
                 extra("message_id"),
                 extra("group_id"),
                 extra("community_id"),
+                extra("channel_id"),
                 extra("target_type"),
                 bool("is_group"),
                 bool("is_community")

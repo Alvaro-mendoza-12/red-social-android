@@ -16,8 +16,8 @@ internal class VideoFeedPageStore {
         get() = state.value.videos
         set(videos) { state.value = state.value.copy(videos = videos) }
 
-    fun publishInitial(videos: List<Video>, sessionId: String) {
-        if (videos.isNotEmpty()) state.value = VideoFeedSnapshot(videos, sessionId)
+    fun publishInitial(videos: List<Video>, sessionId: String, allowEmpty: Boolean = false) {
+        if (allowEmpty || videos.isNotEmpty()) state.value = VideoFeedSnapshot(videos, sessionId)
     }
 
     fun clear() { state.value = VideoFeedSnapshot() }

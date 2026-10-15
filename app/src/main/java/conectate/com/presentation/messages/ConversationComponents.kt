@@ -69,7 +69,7 @@ fun ConversationItem(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CircularProfileImage(
+        CircularProfileImage(ownerId = if (conversation.chat.is_group) null else conversation.otherUserId, 
             imageUrl = otherUserProfileImage,
             size = 48.dp,
             showBorder = false,

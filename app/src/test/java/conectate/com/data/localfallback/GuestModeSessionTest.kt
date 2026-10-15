@@ -28,11 +28,17 @@ class GuestModeSessionTest {
 
     @Before fun setup() {
         clearPreferences()
+        conectate.com.core.media.StorageReadSession.install { null }
         config = SupabaseConfig(context)
         api = GuestModeApi(config, context)
     }
 
-    @After fun teardown() { config.httpClient.close(); clearPreferences() }
+    @After fun teardown() {
+        api.clear()
+        conectate.com.core.media.StorageReadSession.install { null }
+        conectate.com.core.media.StorageReadSession.installGuest(credentials = { null })
+        config.httpClient.close(); clearPreferences()
+    }
 
     private fun clearPreferences() {
         listOf("guest_session", "guest_conversion", "guest_preview").forEach {
@@ -130,5 +136,59 @@ class GuestModeSessionTest {
         assertNull(api.savedIdentity())
         api.persistIdentity(lateIdentity, api.currentSessionRevision())
         assertEquals(lateIdentity.id, api.savedIdentity()!!.id)
+    }
+
+    @Test fun guestIdentityAlsoAuthorizesFencedMediaReads() {
+        seedIdentity()
+        assertNull(conectate.com.core.media.StorageReadSession.snapshot())
+        api.beginMediaPreview()
+        val credential = conectate.com.core.media.StorageReadSession.readySnapshot()!!
+        assertEquals(api.savedIdentity()!!.id, credential.identity.accountId)
+        assertEquals("synthetic-guest-token", credential.accessToken)
+        assertFalse(credential.toString().contains(credential.accessToken))
+    }
+    @Test fun memberAndGuestPreviewMediaIdentitiesRemainSeparate() {
+        seedIdentity()
+        val member = conectate.com.core.media.StorageReadCredential(
+            conectate.com.core.media.StorageReadIdentity("member", 2), "member.jwt",
+        )
+        conectate.com.core.media.StorageReadSession.install { member }
+        assertEquals(member, conectate.com.core.media.StorageReadSession.readySnapshot())
+        val lease = api.beginMediaPreview()
+        assertEquals(api.savedIdentity()!!.id, conectate.com.core.media.StorageReadSession.readySnapshot()!!.identity.accountId)
+        api.endMediaPreview(lease)
+        assertEquals(member, conectate.com.core.media.StorageReadSession.readySnapshot())
+    }
+    @Test fun leavingGuestModeInvalidatesPreviouslyCapturedMediaIdentity() {
+        seedIdentity()
+        api.beginMediaPreview()
+        val expected = conectate.com.core.media.StorageReadSession.snapshot()!!.identity
+        api.clear()
+        assertNull(conectate.com.core.media.StorageReadSession.snapshot())
+        org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+            conectate.com.core.media.StorageReadSession.requireCurrent(expected)
+        }
+    }
+    @Test fun expiredGuestTokensCannotAuthorizeMedia() {
+        seedIdentity(System.currentTimeMillis() - 1)
+        val member = conectate.com.core.media.StorageReadCredential(
+            conectate.com.core.media.StorageReadIdentity("member", 2), "member.jwt",
+        )
+        conectate.com.core.media.StorageReadSession.install { member }
+        api.beginMediaPreview()
+        assertNull(conectate.com.core.media.StorageReadSession.readySnapshot())
+    }
+
+    @Test fun anOlderPreviewDisposalCannotCloseAnotherActiveGuestPreview() {
+        seedIdentity()
+        val first = api.beginMediaPreview()
+        val second = api.beginMediaPreview()
+        val identity = conectate.com.core.media.StorageReadSession.readySnapshot()!!.identity
+        api.endMediaPreview(first)
+        assertEquals(identity, conectate.com.core.media.StorageReadSession.readySnapshot()!!.identity)
+        api.endMediaPreview(first)
+        assertEquals(identity, conectate.com.core.media.StorageReadSession.readySnapshot()!!.identity)
+        api.endMediaPreview(second)
+        assertNull(conectate.com.core.media.StorageReadSession.snapshot())
     }
 }

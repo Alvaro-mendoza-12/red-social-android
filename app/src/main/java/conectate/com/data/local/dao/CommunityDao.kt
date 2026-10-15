@@ -77,8 +77,11 @@ interface CommunityDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMembers(members: List<CommunityMemberEntity>)
 
-    @Query("SELECT * FROM community_members WHERE community_id = :communityId")
+    @Query("SELECT * FROM community_members WHERE community_id = :communityId AND role != 'former_member'")
     fun getMembersFlow(communityId: String): Flow<List<CommunityMemberEntity>>
+
+    @Query("SELECT joined_at FROM community_members WHERE community_id = :roomId AND user_id = :userId")
+    suspend fun getMemberJoinedAt(roomId: String, userId: String): String?
 
     @Query("DELETE FROM community_members WHERE community_id = :communityId AND user_id = :userId")
     suspend fun removeMember(communityId: String, userId: String)
@@ -90,7 +93,7 @@ interface CommunityDao {
             "WHERE community_members.community_id = :communityId " +
             "AND community_members.user_id = :userId " +
             "AND communities.is_deleted = 0 " +
-            "AND communities.is_member = 1" +
+            "AND community_members.role != 'former_member'" +
         ")"
     )
     fun isUserMemberFlow(communityId: String, userId: String): Flow<Boolean>
@@ -102,7 +105,7 @@ interface CommunityDao {
             "WHERE community_members.community_id = :communityId " +
             "AND community_members.user_id = :userId " +
             "AND communities.is_deleted = 0 " +
-            "AND communities.is_member = 1" +
+            "AND community_members.role != 'former_member'" +
         ")"
     )
     suspend fun isUserMemberSync(communityId: String, userId: String): Boolean
@@ -113,10 +116,10 @@ interface CommunityDao {
     @Query("DELETE FROM community_members WHERE user_id = :userId AND community_id NOT IN (:validIds)")
     suspend fun deleteUserMembershipsNotIn(userId: String, validIds: List<String>)
 
-    @Query("SELECT role FROM community_members WHERE community_id = :communityId AND user_id = :userId")
+    @Query("SELECT role FROM community_members WHERE community_id = :communityId AND user_id = :userId AND role != 'former_member'")
     fun getUserRoleFlow(communityId: String, userId: String): Flow<String?>
 
-    @Query("SELECT role FROM community_members WHERE community_id = :communityId AND user_id = :userId")
+    @Query("SELECT role FROM community_members WHERE community_id = :communityId AND user_id = :userId AND role != 'former_member'")
     suspend fun getUserRoleSync(communityId: String, userId: String): String?
 
     // MESSAGES
@@ -125,6 +128,10 @@ interface CommunityDao {
 
     @Query("SELECT * FROM community_messages WHERE community_id = :communityId ORDER BY created_at ASC")
     suspend fun getMessagesSync(communityId: String): List<CommunityMessageEntity>
+
+    @Query("DELETE FROM community_messages WHERE community_id = :roomId AND id IN (:ids) AND is_synced = 1 AND pending_action IS NULL")
+    suspend fun deleteInaccessibleHistory(roomId: String, ids: List<String>)
+
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<CommunityMessageEntity>)
@@ -199,4 +206,10 @@ interface CommunityDao {
         now: String,
         currentUserId: String
     )
+
+    @Query("UPDATE community_messages SET deleted_for_all = 1, content = '', content_type = 'text', media_url = NULL, poll_id = NULL, reply_to_id = NULL, reply_to_json = NULL, reactions_json = '{}' WHERE id = :messageId AND community_id = :conversationId")
+    suspend fun redactDeletedMessage(conversationId: String, messageId: String)
+
+    @Query("UPDATE communities SET last_message = 'Mensaje eliminado' WHERE id = :conversationId AND (SELECT id FROM community_messages WHERE community_id = :conversationId ORDER BY created_at DESC, id DESC LIMIT 1) = :messageId AND COALESCE(julianday(last_message_at), -1) = COALESCE(julianday(COALESCE((SELECT created_at FROM community_messages WHERE id = :messageId AND community_id = :conversationId), :createdAt)), -2)")
+    suspend fun redactDeletedPreview(conversationId: String, messageId: String, createdAt: String?)
 }

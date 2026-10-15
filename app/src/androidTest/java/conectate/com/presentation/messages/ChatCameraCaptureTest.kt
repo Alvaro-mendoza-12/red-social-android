@@ -130,7 +130,10 @@ class ChatCameraCaptureTest {
         }
         waitReady("Tomar foto")
         compose.onNodeWithContentDescription("Tomar foto").performClick()
-        compose.waitUntil(20_000) { compose.onAllNodesWithContentDescription("Enviar").fetchSemanticsNodes().isNotEmpty() }
+        // The editor appears before its full photo snapshot is ready. A disabled
+        // Send button intentionally ignores clicks; wait for the actual ready state.
+        compose.waitUntil(20_000) { compose.onAllNodesWithContentDescription("Enviar").fetchSemanticsNodes()
+            .any { !it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) } }
         assertNull(sent.get())
         compose.onNodeWithContentDescription("Enviar").performClick()
         compose.waitUntil(20_000) { sent.get() != null }

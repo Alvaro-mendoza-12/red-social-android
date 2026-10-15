@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-07",
+  "branch": "feature/live-gifts",
+  "scope": "Visible bottle reception; no gender selection or filtering in this flow.",
+  "backend": {
+    "testsRun": 12,
+    "passed": 12,
+    "failed": 0,
+    "skipped": 0,
+    "realPostgres": false,
+    "logSha256": "d1c917a9dfe741dbd2cd6630d66124fb448b71c4fe3c48069522bb8f89818b83"
+  },
+  "androidCompilation": {
+    "qaMainApkGenerated": true,
+    "qaTestApkGenerated": true,
+    "initialTestBuildError": "Invalid assertDoesNotExist import, corrected.",
+    "productionReleaseValidated": false
+  },
+  "androidUi": {
+    "passed": true,
+    "testsExpected": 7,
+    "physicalDevice": false,
+    "emulatorAvd": "NovvinCierre11Google35",
+    "mainApkSha256": "4ab62d6e435863d43c1b2f2a1293335a5bb21786254f97fccd6c2bf0776d4ae5",
+    "testApkSha256": "5a6275d0fb8bbc81a946dbb994e130a8e49cad9804b26bf15363e528c10b3874",
+    "logSha256": "91c842525703009ca78b464a1c39e7ea91fd704f08d7ead7c218495238c957dc",
+    "testsRun": 7,
+    "failures": 0,
+    "skipped": 0,
+    "seconds": 37.569,
+    "fixtureCallbacksOnly": true,
+    "visualReviewCompleted": true
+  },
+  "firstUiAttempt": {
+    "outcome": "Instrumentation process crashed before test execution.",
+    "causeKnown": false,
+    "countsAsPassingEvidence": false,
+    "logSha256": "f3ca40e0a3bf20eaf9ab861db129a85ecafc52160588fc2089c7bb0239bc1d94"
+  },
+  "sourceSha256": {
+    "app/src/main/java/conectate/com/presentation/proximity/ProximityScreen.kt": "1a4a4fbe3abc2f86a5a4db407f23a657dc0429388ece8bbf4117f544b649c756",
+    "app/src/main/java/conectate/com/presentation/proximity/ProximityViewModel.kt": "585cf2141ca378551c7abb4e087adadd2449244049a1e2374aca3c258def43fb",
+    "app/src/main/java/conectate/com/presentation/proximity/BottleInboxStatus.kt": "bdf655ce1ba57905964a1f93b325251b0d2a3d6e2255868c733c66e374272c03",
+    "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt": "769d584c24884f3eb07c04a618aecef30e54c9549e603770539b8a007e9fbdb5",
+    "app/src/androidTest/java/conectate/com/presentation/proximity/BottleInboxUiTest.kt": "32cb122e198af7a4626dd1bf2a5d949cecf618045a27733c894aa152ac4f52b0",
+    "infrastructure/local-fallback/api/src/proximity-routes.js": "7f6d65c12a060a6e8b93cef7274e78c8e4859f55dd6d75ca42e8c124b5ab0212",
+    "infrastructure/local-fallback/api/tests/bottle-reception.test.js": "b484ca49fce57aa51151160c6e09f988a5b03de6d4b63a01e5aba5e4d0e73e3d"
+  },
+  "screenshots": {
+    "empty": "31c1ecf9c3294c65a82ca65d88ca62c72f7fdb98cfd05b411f501a1f1bff46d1",
+    "received": "fc1839332cdfd37bd1979a4a4d3a583c7278196368a49a6d9e7a897af0ad367d"
+  },
+  "liveHttpBetweenUsersVerified": false,
+  "backendDeployed": false,
+  "physicalDeviceVersionInstalled": false,
+  "productionCertification": false
+}

@@ -36,10 +36,9 @@ internal object VideoAlgorithmFeedbackPolicy {
     fun formatKey(durationSeconds: Long): String =
         if (durationSeconds in 1..60) "short-video" else "long-video"
 
-    /**
-     * Never let a stale or over-broad personalized rule turn the first screen
-     * into an empty feed. In that case the caller must use the public legacy
-     * feed as a safe recovery path.
+    /** A valid server response remains authoritative even when preferences
+     * exclude a complete window. Its cursor, not the item count, decides
+     * whether older candidates remain. Never restore excluded legacy items.
      */
-    fun shouldUseAuthoritativeInitialPage(itemCount: Int): Boolean = itemCount > 0
+    fun shouldUseAuthoritativeInitialPage(itemCount: Int): Boolean = itemCount >= 0
 }

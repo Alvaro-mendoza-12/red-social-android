@@ -68,7 +68,7 @@ fun ActiveLiveSessionBubble(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CircularProfileImage(
+            CircularProfileImage(ownerId = session.stream.hostUserId, 
                 imageUrl = session.stream.hostAvatarUrl,
                 size = 34.dp,
                 showBorder = false

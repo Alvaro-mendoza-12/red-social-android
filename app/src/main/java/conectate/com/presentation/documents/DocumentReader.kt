@@ -1,5 +1,7 @@
 package conectate.com.presentation.documents
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -40,6 +42,8 @@ internal data class OpenedDocument(val name: String, val mimeType: String, val f
 internal class DocumentReadSession(private val context: Context) : AutoCloseable {
     private val directory = File(context.cacheDir, "document-preview/${UUID.randomUUID()}")
     @Volatile private var closed = false
+    private var guardedRemoteRead = false
+    private var remoteIdentity: conectate.com.core.media.StorageReadIdentity? = null
 
     private fun snapshotFile(): File = synchronized(this) {
         check(!closed)
@@ -48,6 +52,8 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
     }
 
     suspend fun open(uri: Uri, suggestedName: String? = null): OpenedDocument = withContext(Dispatchers.IO) {
+        guardedRemoteRead = conectate.com.core.media.StorageReadSession.isStorageRequest(uri.toString())
+        remoteIdentity = if (guardedRemoteRead) conectate.com.core.media.StorageReadSession.snapshot()?.identity else null
         var name = uri.lastPathSegment?.substringAfterLast('/') ?: "Documento"
         var mime = "application/octet-stream"
         var declaredSize = -1L
@@ -108,7 +114,7 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
                 }
                 extension in textExtensions || mime.startsWith("text/") || mime in setOf("application/json", "application/xml") -> {
                     require(file.length() <= DocumentLimits.TEXT_BYTES) { "El texto supera 512 KB para la edición interna." }
-                    DocumentBody.Text(DocumentContentParser.decodeText(file.readBytes()))
+                    DocumentBody.Text(DocumentContentParser.decodeText(file.inputStream().use { it.readMediaBytesWithLimit(DocumentLimits.TEXT_BYTES.toLong()) }))
                 }
                 extension in setOf("doc", "xls", "ppt") -> DocumentBody.Office(ParsedOfficeDocument(
                     when (extension) { "doc" -> "Word"; "xls" -> "Excel"; else -> "PowerPoint" } + " · lectura",
@@ -116,6 +122,7 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
                 ))
                 else -> DocumentBody.Unsupported("Este formato se conserva como archivo. La edición interna admite texto; Office moderno se abre en lectura. Los formatos DOC, XLS y PPT antiguos requieren conversión previa.")
             }
+            if (guardedRemoteRead) conectate.com.core.media.StorageReadSession.requireCurrent(remoteIdentity)
             OpenedDocument(name, mime, file, file.length(), body)
         } catch (error: Throwable) {
             file.delete()
@@ -124,6 +131,7 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
     }
 
     suspend fun renderOffice(opened: OpenedDocument, tokenOverride: String? = null): OfficePdfPreview = withContext(Dispatchers.IO) {
+        if (guardedRemoteRead) conectate.com.core.media.StorageReadSession.requireCurrent(remoteIdentity)
         val original = checkNotNull(opened.file)
         val preview = synchronized(this@DocumentReadSession) {
             check(!closed)
@@ -156,6 +164,7 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
                 var count = 0L
                 while (continuation.isActive) {
                     check(!closed) { "La vista del documento ya se cerró." }
+                    if (guardedRemoteRead) conectate.com.core.media.StorageReadSession.requireCurrent(remoteIdentity)
                     val read = input.read(buffer)
                     if (read < 0) break
                     count += read
@@ -179,6 +188,8 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
         val textExtensions = setOf("txt", "csv", "tsv", "json", "md", "xml", "log", "yaml", "yml")
         private val knownExtensions = textExtensions + setOf("pdf", "docx", "xlsx", "pptx", "doc", "xls", "ppt")
         private val remoteClient = OkHttpClient.Builder().dns(conectate.com.core.network.PublicBackendDns)
+    .addInterceptor(conectate.com.core.media.StorageReadRequestInterceptor())
+    .addNetworkInterceptor(conectate.com.core.media.StorageReadNetworkInterceptor())
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS).callTimeout(40, TimeUnit.SECONDS).followSslRedirects(false).build()
     }

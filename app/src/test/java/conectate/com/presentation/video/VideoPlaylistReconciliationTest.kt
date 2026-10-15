@@ -32,6 +32,24 @@ class VideoPlaylistReconciliationTest {
         assertEquals(VideoPlaylistUpdate.Replace(targetIndex = 0, startPositionMs = 8_500L), result)
     }
 
+    @Test fun `late ranking replaces upcoming items without resetting buffered video`() {
+        assertEquals(VideoPlaylistUpdate.ReplaceTail(1), reconcileVideoPlaylist(
+            listOf(entry("a"), entry("b"), entry("c")), listOf(entry("a"), entry("c"), entry("d")),
+            "a", "a", 0L))
+    }
+
+    @Test fun `shorter page removes only the suffix after the active item`() {
+        assertEquals(VideoPlaylistUpdate.ReplaceTail(2), reconcileVideoPlaylist(
+            listOf(entry("a"), entry("b"), entry("c")), listOf(entry("a"), entry("b")),
+            "b", "b", 4000L))
+    }
+
+    @Test fun `changed upcoming uri leaves current decoder untouched`() {
+        assertEquals(VideoPlaylistUpdate.ReplaceTail(1), reconcileVideoPlaylist(
+            listOf(entry("a"), entry("b")), listOf(entry("a"), entry("b", "renewed")),
+            "a", "a", 7000L))
+    }
+
     @Test
     fun `new feed starts its first item from zero`() {
         val result = reconcileVideoPlaylist(

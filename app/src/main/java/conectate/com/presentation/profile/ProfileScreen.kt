@@ -132,7 +132,7 @@ private fun MomentHighlightsRow(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(top = 14.dp, bottom = 2.dp),
+            .padding(top = 6.dp, bottom = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         if (isOwnProfile) {
@@ -471,8 +471,32 @@ fun ProfileScreen(
     val sharedVideos by viewModel.sharedVideos.collectAsState()
     val favoriteVideos by viewModel.favoriteVideos.collectAsState()
     val momentHighlights by viewModel.momentHighlights.collectAsState()
+    val visibleMoments by viewModel.visibleMoments.collectAsState()
+    val avatarClock by conectate.com.presentation.components.rememberMomentAvatarClock()
+    val avatarMoments = remember(visibleMoments, avatarClock) {
+        conectate.com.data.model.activeAvatarMoments(visibleMoments, avatarClock)
+    }
     val profileVisitorsState by viewModel.profileVisitorsState.collectAsState()
     val profileViewers = profileVisitorsState.items
+    val reactionUsersState by viewModel.reactionUsersState.collectAsState()
+    var reactionPost by remember(userId, viewModel.currentUserId) { mutableStateOf<Post?>(null) }
+    var reactionFilter by remember(reactionPost?.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(reactionPost?.id, reactionFilter) {
+        val selectedPost = reactionPost
+        if (selectedPost == null) viewModel.clearPostReactions()
+        else viewModel.loadPostReactions(selectedPost.id, reactionFilter)
+    }
+    DisposableEffect(viewModel) { onDispose { viewModel.clearPostReactions() } }
+    reactionPost?.let { selectedPost ->
+        val visibleReactionState = reactionUsersState.takeIf { it.postId == selectedPost.id }
+            ?: conectate.com.presentation.posts.PostReactionUsersState(selectedPost.id, loading = true)
+        conectate.com.presentation.posts.PostReactionsSheet(selectedPost, visibleReactionState,
+            reactionFilter, { reactionFilter = it },
+            { viewModel.loadPostReactions(selectedPost.id, reactionFilter) },
+            { personId -> reactionPost = null; viewModel.clearPostReactions()
+                (mainNavController ?: navController).navigate(Screen.UserProfile.createRoute(personId)) },
+            { reactionPost = null; viewModel.clearPostReactions() })
+    }
     val isConnected by connectivityViewModel.isConnected.collectAsState()
     
     var showCreatePostDialog by remember { mutableStateOf(false) }
@@ -554,7 +578,8 @@ fun ProfileScreen(
                         .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
                         .setPrompt("Escanea un perfil de Novvin")
                         .setBeepEnabled(false)
-                        .setOrientationLocked(false)
+                        .setOrientationLocked(true)
+                        .setCaptureActivity(conectate.com.presentation.auth.PortraitQrCaptureActivity::class.java)
                 )
             },
             onDismiss = { profileQrLink = null },
@@ -562,6 +587,10 @@ fun ProfileScreen(
     }
 
     if (showProfileViewers) {
+        LaunchedEffect(viewModel) {
+            val owner = (profileState as? ProfileUiState.Success)?.user
+            viewModel.loadProfileViewers(owner?.profile_view_history_enabled == true)
+        }
         ModalBottomSheet(onDismissRequest = { showProfileViewers = false }) {
             ProfileVisitorsContent(profileVisitorsState,
                 onRetry = { viewModel.loadProfileViewers(profileVisitorsState.enabled) },
@@ -771,7 +800,7 @@ fun ProfileScreen(
                                         )
                                     } else {
                                         profileViewers.take(3).forEachIndexed { index, visitor ->
-                                            CircularProfileImage(
+                                            CircularProfileImage(ownerId = visitor.user.id, 
                                                 imageUrl = visitor.user.avatar_url,
                                                 fallbackName = visitor.user.displayName,
                                                 size = 22.dp,
@@ -906,348 +935,304 @@ fun ProfileScreen(
                     androidx.compose.foundation.lazy.LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(padding)
                     ) {
-                        // 1. Cover item
+                        // Cover and identity share bounds so the avatar overlap remains touchable.
                         item {
-                            ProfileAmbientBackground(
-                                themeId = user.profile_theme,
-                                effectId = user.profile_effect,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(200.dp)
-                                    .clickable {
-                                        rewrittenCoverUrl?.let {
-                                            (mainNavController ?: navController).navigate(Screen.FullScreenImage.createRoute(it))
-                                        }
-                                    }
-                            ) {
-                                if (!user.cover_url.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = coverRequest,
-                                        contentDescription = "Portada",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                }
-                            }
-                        }
-
-                        // 2. Personal Info item
-                        item {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
-                                    .offset(y = (-50).dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    val nameToDisplay = user.display_name?.takeIf(String::isNotBlank)
-                                        ?: user.full_name?.takeIf(String::isNotBlank) ?: "Usuario"
-                                    Box(
-                                        modifier = Modifier.clickable {
-                                            rewrittenAvatarUrl?.let {
-                                                val route = if (user.isProfileAvatarVideo) {
-                                                    Screen.FullScreenVideo.createRoute(it)
-                                                } else {
-                                                    Screen.FullScreenImage.createRoute(it)
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                val nameToDisplay = user.display_name?.takeIf(String::isNotBlank)
+                                    ?: user.full_name?.takeIf(String::isNotBlank) ?: "Usuario"
+                                val avatarMoment = avatarMoments[user.id.trim().lowercase()]
+                                ProfileIdentityHeader(
+                                    cover = {
+                                        ProfileAmbientBackground(
+                                            themeId = user.profile_theme,
+                                            effectId = user.profile_effect,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(200.dp)
+                                                .clickable {
+                                                    rewrittenCoverUrl?.let {
+                                                        (mainNavController ?: navController).navigate(Screen.FullScreenImage.createRoute(it))
+                                                    }
                                                 }
-                                                (mainNavController ?: navController).navigate(route)
-                                            }
-                                        }
-                                    ) {
-                                        val profileFrameColor = when (user.profile_frame.lowercase()) {
-                                            "gold" -> Color(0xFFFFC107)
-                                            "neon" -> Color(0xFF00E5FF)
-                                            "ruby" -> Color(0xFFE53935)
-                                            "ocean" -> Color(0xFF1976D2)
-                                            else -> profileColors.accent
-                                        }
-                                        CircularProfileImage(
-                                            imageUrl = rewrittenAvatarUrl,
-                                            size = 110.dp,
-                                            showBorder = user.profile_frame.isNotBlank(),
-                                            borderWidth = 5.dp,
-                                            borderColor = profileFrameColor,
-                                            isVerified = user.is_verified,
-                                            mediaType = user.avatar_media_type,
-                                            muted = user.avatar_video_muted,
-                                            allowSound = true,
-                                            fallbackName = nameToDisplay
-                                        )
-                                    }
-                                    
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    
-                                    Column(modifier = Modifier.weight(1f).padding(top = 64.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = nameToDisplay,
-                                                style = MaterialTheme.typography.titleLarge,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f, fill = false)
-                                            )
-                                            if (
-                                                user.is_admin ||
-                                                conectate.com.presentation.components.isUserAdmin(user.username, user.email) ||
-                                                (isOwnProfile && viewModel.isAdmin)
-                                            ) {
-                                                Spacer(Modifier.width(4.dp))
-                                                conectate.com.presentation.components.AdminBadge(showVerifiedLine = false)
-                                            }
-                                            if (user.is_verified) {
-                                                Spacer(Modifier.width(4.dp))
-                                                Icon(Icons.Default.CheckCircle, "Verificado", tint = Color(0xFF1DA1F2), modifier = Modifier.size(20.dp))
-                                            }
-                                        }
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(7.dp),
                                         ) {
-                                            Text(
-                                                text = "@${profilePublicHandle(user)}",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = profileColors.accent,
-                                                maxLines = 1,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f, fill = false),
-                                            )
-                                            Text(
-                                                text = "#${profileShortId(user)}",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                            TextButton(
-                                                onClick = { identityDialogUser = user },
-                                                contentPadding = PaddingValues(horizontal = 4.dp),
-                                            ) {
-                                                Text("Ver ID", style = MaterialTheme.typography.labelSmall)
+                                            if (!user.cover_url.isNullOrBlank()) {
+                                                AsyncImage(
+                                                    model = coverRequest,
+                                                    contentDescription = "Portada",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Crop
+                                                )
                                             }
                                         }
-                                        
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        
-                                        // Badges Row
+                                    },
+                                    avatar = {
+                                        Box(
+                                            modifier = Modifier.clickable {
+                                                if (avatarMoment != null) {
+                                                    (mainNavController ?: navController).navigate(Screen.MomentViewer.createRoute(avatarMoment.id))
+                                                } else rewrittenAvatarUrl?.let {
+                                                    val route = if (user.isProfileAvatarVideo) {
+                                                        Screen.FullScreenVideo.createRoute(it)
+                                                    } else {
+                                                        Screen.FullScreenImage.createRoute(it)
+                                                    }
+                                                    (mainNavController ?: navController).navigate(route)
+                                                }
+                                            }
+                                        ) {
+                                            val profileFrameColor = when (user.profile_frame.lowercase()) {
+                                                "gold" -> Color(0xFFFFC107)
+                                                "neon" -> Color(0xFF00E5FF)
+                                                "ruby" -> Color(0xFFE53935)
+                                                "ocean" -> Color(0xFF1976D2)
+                                                else -> profileColors.accent
+                                            }
+                                            CircularProfileImage(ownerId = user.id,
+                                                imageUrl = rewrittenAvatarUrl,
+                                                size = 84.dp,
+                                                showBorder = user.profile_frame.isNotBlank(),
+                                                borderWidth = 5.dp,
+                                                borderColor = profileFrameColor,
+                                                isVerified = user.is_verified,
+                                                mediaType = user.avatar_media_type,
+                                                muted = user.avatar_video_muted,
+                                                allowSound = true,
+                                                fallbackName = nameToDisplay,
+                                                momentViewed = avatarMoment?.isViewed,
+                                            )
+                                        }
+
+                                    },
+                                    identity = {
+                                        ProfileNameAndCounts(
+                                            name = nameToDisplay,
+                                            followers = user.followers_count ?: 0,
+                                            following = user.following_count ?: 0,
+                                            onFollowers = { navController.navigate(Screen.FollowList.createRoute(user.id, "followers")) },
+                                            onFollowing = { navController.navigate(Screen.FollowList.createRoute(user.id, "following")) },
+                                            isVerified = user.is_verified,
+                                        )
+                                        ProfilePublicIdentity(
+                                            handle = profilePublicHandle(user),
+                                            shortId = profileShortId(user),
+                                            accent = profileColors.accent,
+                                            onOpenId = { identityDialogUser = user },
+                                            isAdmin = user.is_admin ||
+                                                conectate.com.presentation.components.isUserAdmin(user.username, user.email) ||
+                                                (isOwnProfile && viewModel.isAdmin),
+                                        )
                                         conectate.com.presentation.components.BadgeRow(
                                             userName = user.username,
                                             userEmail = user.email,
                                             badges = user.badges ?: emptyList(),
-                                            includeAdmin = false
+                                            includeAdmin = false,
                                         )
-                                    }
-                                }
+                                    },
+                                )
                                 
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                // Action Buttons Row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    if (isOwnProfile) {
-                                        OutlinedButton(
-                                            onClick = { navController.navigate(Screen.EditProfile.route) },
-                                            modifier = Modifier.weight(1f).heightIn(min = 40.dp),
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                                        ) {
-                                            Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            Text("Editar", maxLines = 1, fontSize = 12.sp)
-                                        }
-                                        OutlinedButton(
-                                            onClick = {
-                                                val link = publicProfileShareLink(user)
-                                                context.startActivity(
-                                                    Intent.createChooser(
-                                                        Intent(Intent.ACTION_SEND).apply {
-                                                            type = "text/plain"
-                                                            // Put the public profile first so destinations can preview its card.
-                                                            // across messengers; download and guest viewing live there.
-                                                            putExtra(Intent.EXTRA_TEXT,
-                                                                buildProfileInvitation(user.displayName, profilePublicHandle(user), link))
-                                                            val title = "${user.displayName} (@${profilePublicHandle(user)}) · Novvin"
-                                                            putExtra(Intent.EXTRA_TITLE, title)
-                                                            putExtra(Intent.EXTRA_SUBJECT, title)
-                                                        },
-                                                        "Compartir perfil",
+                                Column(Modifier.padding(horizontal = 16.dp)) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Action Buttons Row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (isOwnProfile) {
+                                            OutlinedButton(
+                                                onClick = { navController.navigate(Screen.EditProfile.route) },
+                                                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Editar", maxLines = 1, fontSize = 12.sp)
+                                            }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    val link = publicProfileShareLink(user)
+                                                    context.startActivity(
+                                                        Intent.createChooser(
+                                                            Intent(Intent.ACTION_SEND).apply {
+                                                                type = "text/plain"
+                                                                // Put the public profile first so destinations can preview its card.
+                                                                // across messengers; download and guest viewing live there.
+                                                                putExtra(Intent.EXTRA_TEXT,
+                                                                    buildProfileInvitation(user.displayName, profilePublicHandle(user), link))
+                                                                val title = "${user.displayName} (@${profilePublicHandle(user)}) · Novvin"
+                                                                putExtra(Intent.EXTRA_TITLE, title)
+                                                                putExtra(Intent.EXTRA_SUBJECT, title)
+                                                            },
+                                                            "Compartir perfil",
+                                                        )
                                                     )
+                                                },
+                                                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Compartir", maxLines = 1, fontSize = 12.sp)
+                                            }
+                                            OutlinedButton(
+                                                onClick = { profileQrLink = profileShareLink(user.id) },
+                                                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.QrCode2, null, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Mi QR", maxLines = 1, fontSize = 12.sp)
+                                            }
+                                        } else {
+                                            val isFollowing by viewModel.isFollowing.collectAsState()
+                                            Button(
+                                                onClick = { viewModel.toggleFollow() },
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = if (isFollowing) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) else ButtonDefaults.buttonColors()
+                                            ) {
+                                                Text(if (isFollowing) "Siguiendo" else "Seguir")
+                                            }
+
+                                            val friendStatus by viewModel.friendStatus.collectAsState()
+
+                                            var showUnfriendDialog by remember { mutableStateOf(false) }
+
+                                            if (showUnfriendDialog) {
+                                                AlertDialog(
+                                                    onDismissRequest = { showUnfriendDialog = false },
+                                                    title = { Text("¿Dejar de ser amigos?") },
+                                                    text = { Text("¿Seguro que quieres eliminar a ${user.display_name ?: "este usuario"} de tus amigos?") },
+                                                    confirmButton = {
+                                                        Button(onClick = {
+                                                            viewModel.unfriendUser()
+                                                            showUnfriendDialog = false
+                                                        }) {
+                                                            Text("Confirmar")
+                                                        }
+                                                    },
+                                                    dismissButton = {
+                                                        OutlinedButton(onClick = { showUnfriendDialog = false }) {
+                                                            Text("Cancelar")
+                                                        }
+                                                    }
                                                 )
-                                            },
-                                            modifier = Modifier.weight(1f).heightIn(min = 40.dp),
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                                        ) {
-                                            Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            Text("Compartir", maxLines = 1, fontSize = 12.sp)
-                                        }
-                                        OutlinedButton(
-                                            onClick = { profileQrLink = profileShareLink(user.id) },
-                                            modifier = Modifier.weight(1f).heightIn(min = 40.dp),
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                                        ) {
-                                            Icon(Icons.Default.QrCode2, null, modifier = Modifier.size(16.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            Text("Mi QR", maxLines = 1, fontSize = 12.sp)
-                                        }
-                                    } else {
-                                        val isFollowing by viewModel.isFollowing.collectAsState()
-                                        Button(
-                                            onClick = { viewModel.toggleFollow() },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(12.dp),
-                                            colors = if (isFollowing) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) else ButtonDefaults.buttonColors()
-                                        ) {
-                                            Text(if (isFollowing) "Siguiendo" else "Seguir")
-                                        }
+                                            }
 
-                                        val friendStatus by viewModel.friendStatus.collectAsState()
-                                        
-                                        var showUnfriendDialog by remember { mutableStateOf(false) }
-
-                                        if (showUnfriendDialog) {
-                                            AlertDialog(
-                                                onDismissRequest = { showUnfriendDialog = false },
-                                                title = { Text("¿Dejar de ser amigos?") },
-                                                text = { Text("¿Seguro que quieres eliminar a ${user.display_name ?: "este usuario"} de tus amigos?") },
-                                                confirmButton = {
-                                                    Button(onClick = {
-                                                        viewModel.unfriendUser()
-                                                        showUnfriendDialog = false
-                                                    }) {
-                                                        Text("Confirmar")
+                                            Button(
+                                                onClick = {
+                                                    when(friendStatus) {
+                                                        FriendStatus.NONE -> viewModel.sendFriendRequest()
+                                                        FriendStatus.PENDING_SENT -> viewModel.cancelFriendRequest()
+                                                        FriendStatus.PENDING_RECEIVED -> navController.navigate(Screen.FriendRequests.route)
+                                                        FriendStatus.FRIENDS -> showUnfriendDialog = true
                                                     }
                                                 },
-                                                dismissButton = {
-                                                    OutlinedButton(onClick = { showUnfriendDialog = false }) {
-                                                        Text("Cancelar")
-                                                    }
-                                                }
-                                            )
-                                        }
-
-                                        Button(
-                                            onClick = { 
-                                                when(friendStatus) {
-                                                    FriendStatus.NONE -> viewModel.sendFriendRequest()
-                                                    FriendStatus.PENDING_SENT -> viewModel.cancelFriendRequest()
-                                                    FriendStatus.PENDING_RECEIVED -> navController.navigate(Screen.FriendRequests.route)
-                                                    FriendStatus.FRIENDS -> showUnfriendDialog = true
-                                                }
-                                            },
-                                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                            shape = RoundedCornerShape(12.dp),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (friendStatus == FriendStatus.NONE || friendStatus == FriendStatus.PENDING_RECEIVED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
-                                                contentColor = if (friendStatus == FriendStatus.NONE || friendStatus == FriendStatus.PENDING_RECEIVED) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
-                                            )
-                                        ) {
-                                            Text(
-                                                when(friendStatus) {
-                                                    FriendStatus.NONE -> "Añadir amigo"
-                                                    FriendStatus.PENDING_SENT -> "Cancelar solicitud"
-                                                    FriendStatus.PENDING_RECEIVED -> "Responder"
-                                                    FriendStatus.FRIENDS -> "Amigos"
-                                                },
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                textAlign = TextAlign.Center
-                                            )
-                                        }
-                                    }
-                                }
-
-                                if (!isOwnProfile) {
-                                    Spacer(Modifier.height(8.dp))
-                                    ProfileMessageButton(onClick = {
-                                        if (user.id.isNotBlank() && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                                            openProfileConversation(mainNavController ?: navController, user.id) {
-                                                conectate.com.presentation.common.AppFeedbackBus.showError(
-                                                    "No se pudo abrir la conversación. Vuelve al perfil e inténtalo nuevamente."
+                                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (friendStatus == FriendStatus.NONE || friendStatus == FriendStatus.PENDING_RECEIVED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
+                                                    contentColor = if (friendStatus == FriendStatus.NONE || friendStatus == FriendStatus.PENDING_RECEIVED) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+                                            ) {
+                                                Text(
+                                                    when(friendStatus) {
+                                                        FriendStatus.NONE -> "Añadir amigo"
+                                                        FriendStatus.PENDING_SENT -> "Cancelar solicitud"
+                                                        FriendStatus.PENDING_RECEIVED -> "Responder"
+                                                        FriendStatus.FRIENDS -> "Amigos"
+                                                    },
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    textAlign = TextAlign.Center
                                                 )
                                             }
                                         }
-                                    })
-                                }
-
-                                if (isOwnProfile) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    FilledTonalButton(
-                                        onClick = { navController.navigate(Screen.CustomizeApp.route) },
-                                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
-                                    ) {
-                                        Icon(Icons.Default.Palette, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Personalizar perfil")
                                     }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        TextButton(onClick = { (mainNavController ?: navController).navigate(Screen.MyReports.route) }) {
-                                            Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(15.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            Text("Reportes", fontSize = 11.sp)
-                                        }
-                                        TextButton(
-                                            onClick = {
-                                                (mainNavController ?: navController).navigate(Screen.WebLoginScanner.createRoute()) {
-                                                    launchSingleTop = true
+
+                                    if (!isOwnProfile) {
+                                        Spacer(Modifier.height(8.dp))
+                                        ProfileMessageButton(onClick = {
+                                            if (user.id.isNotBlank() && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                                                openProfileConversation(mainNavController ?: navController, user.id) {
+                                                    conectate.com.presentation.common.AppFeedbackBus.showError(
+                                                        "No se pudo abrir la conversación. Vuelve al perfil e inténtalo nuevamente."
+                                                    )
                                                 }
-                                            },
-                                        ) {
-                                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(15.dp))
-                                            Spacer(Modifier.width(4.dp))
-                                            Text("Vincular web", fontSize = 11.sp)
-                                        }
+                                            }
+                                        })
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(12.dp))
-                                ProfileInfoSwitcher(
-                                    selected = profileInfoTab,
-                                    onSelected = { profileInfoTab = it },
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                if (profileInfoTab == 0) {
-                                    user.profile_welcome
-                                        ?.takeIf { it.isNotBlank() }
-                                        ?.let { welcome ->
-                                            ProfileWelcomeBanner(
-                                                message = welcome,
-                                                themeId = user.profile_theme
-                                            )
-                                            Spacer(modifier = Modifier.height(12.dp))
+                                    if (isOwnProfile) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        FilledTonalButton(
+                                            onClick = { navController.navigate(Screen.CustomizeApp.route) },
+                                            modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
+                                        ) {
+                                            Icon(Icons.Default.Palette, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Personalizar perfil")
                                         }
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                    StatItem(number = userVideos.size, label = "Publicaciones") { }
-                                    StatItem(number = user.followers_count ?: 0, label = "Seguidores") {
-                                        navController.navigate(Screen.FollowList.createRoute(user.id, "followers"))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.Center,
+                                        ) {
+                                            TextButton(onClick = { (mainNavController ?: navController).navigate(Screen.MyReports.route) }) {
+                                                Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Reportes", fontSize = 11.sp)
+                                            }
+                                            TextButton(
+                                                onClick = {
+                                                    (mainNavController ?: navController).navigate(Screen.WebLoginScanner.createRoute()) {
+                                                        launchSingleTop = true
+                                                    }
+                                                },
+                                            ) {
+                                                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Vincular web", fontSize = 11.sp)
+                                            }
+                                        }
                                     }
-                                    StatItem(number = user.following_count ?: 0, label = "Siguiendo") {
-                                        navController.navigate(Screen.FollowList.createRoute(user.id, "following"))
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    ProfileInfoSwitcher(
+                                        selected = profileInfoTab,
+                                        onSelected = { profileInfoTab = it },
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    if (profileInfoTab == 0) {
+                                        user.profile_welcome
+                                            ?.takeIf { it.isNotBlank() }
+                                            ?.let { welcome ->
+                                                ProfileWelcomeBanner(
+                                                    message = welcome,
+                                                    themeId = user.profile_theme
+                                                )
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                            }
+                                    MomentHighlightsRow(
+                                        highlights = momentHighlights,
+                                        isOwnProfile = isOwnProfile,
+                                        onCreateMoment = {
+                                            (mainNavController ?: navController).navigate(Screen.CreateMoment.route)
+                                        },
+                                        onOpenHighlight = { highlight ->
+                                            (mainNavController ?: navController).navigate(
+                                                Screen.MomentHighlightViewer.createRoute(highlight.id, highlight.title)
+                                            )
+                                        }
+                                    )
+                                    } else {
+                                        ProfileIntroduction(user)
+                                        ProfileDetailsSections(user)
                                     }
-                                }
-                                MomentHighlightsRow(
-                                    highlights = momentHighlights,
-                                    isOwnProfile = isOwnProfile,
-                                    onCreateMoment = {
-                                        (mainNavController ?: navController).navigate(Screen.CreateMoment.route)
-                                    },
-                                    onOpenHighlight = { highlight ->
-                                        (mainNavController ?: navController).navigate(
-                                            Screen.MomentHighlightViewer.createRoute(highlight.id, highlight.title)
-                                        )
-                                    }
-                                )
-                                } else {
-                                    ProfileIntroduction(user)
-                                    ProfileDetailsSections(user)
                                 }
                             }
                         }
@@ -1356,6 +1341,8 @@ fun ProfileScreen(
                                         conectate.com.presentation.components.PostCard(
                                             post = post,
                                             onLikeClick = { viewModel.togglePostLike(post) },
+                                            onReactionSelect = { viewModel.setPostReaction(post, it) },
+                                            onReactionSummaryClick = { reactionPost = post },
                                             onCommentClick = { 
                                                 postToComment = post
                                                 showCommentsSheet = true
@@ -1451,6 +1438,8 @@ fun ProfileScreen(
                                             conectate.com.presentation.components.PostCard(
                                                 post = post,
                                                 onLikeClick = { viewModel.togglePostLike(post) },
+                                            onReactionSelect = { viewModel.setPostReaction(post, it) },
+                                            onReactionSummaryClick = { reactionPost = post },
                                                 onCommentClick = { 
                                                     postToComment = post
                                                     showCommentsSheet = true
@@ -1553,6 +1542,9 @@ fun ProfileScreen(
             }
             
             if (showCreatePostDialog) {
+                val mentionModel: conectate.com.presentation.social.CreatePostViewModel =
+                    androidx.hilt.navigation.compose.hiltViewModel(key = "post-mentions-${viewModel.currentUserId}")
+                val mentionCandidates by mentionModel.mentionSuggestions.collectAsState()
                 conectate.com.presentation.components.CreatePostDialog(
                     onDismiss = { showCreatePostDialog = false },
                     onPostCreated = { content, uris, visibility, isSensitive, fromDraft, draftOwnerId ->
@@ -1587,6 +1579,8 @@ fun ProfileScreen(
                         }
                     },
                     ownerId = viewModel.currentUserId,
+                    mentionCandidates = mentionCandidates,
+                    onMentionQueryChanged = mentionModel::updateMentionQuery,
                 )
             }
 

@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -51,7 +52,15 @@ class LiveKitRoomBridge @Inject constructor(
         val trackId: String,
         val participantName: String,
         val track: VideoTrack,
-        val participantId: String = ""
+        val participantId: String = "",
+        val participantIdentity: String = "",
+        val bindingVersion: Long = 0L
+    )
+
+    data class RemoteParticipant(
+        val userId: String,
+        val name: String,
+        val avatarUrl: String? = null
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -62,7 +71,10 @@ class LiveKitRoomBridge @Inject constructor(
     private val _state = MutableStateFlow(State.DISCONNECTED)
     val state: StateFlow<State> = _state.asStateFlow()
     private val _remoteVideos = MutableStateFlow<List<RemoteVideo>>(emptyList())
+    private val remoteVideoBindings = LiveRemoteVideoBindings()
     val remoteVideos: StateFlow<List<RemoteVideo>> = _remoteVideos.asStateFlow()
+    private val _remoteParticipants = MutableStateFlow<List<RemoteParticipant>>(emptyList())
+    val remoteParticipants: StateFlow<List<RemoteParticipant>> = _remoteParticipants.asStateFlow()
     private val _errors = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
     val errors = _errors.asSharedFlow()
 
@@ -83,7 +95,14 @@ class LiveKitRoomBridge @Inject constructor(
     private var connectionIdentity: Triple<String, String, String>? = null
     private var sharedVideoSource: StateFlow<org.webrtc.VideoTrack?>? = null
     private val desiredMedia = java.util.concurrent.atomic.AtomicReference(false to false)
-    private val rendererBindings = java.util.concurrent.ConcurrentHashMap<TextureViewRenderer, VideoTrack>()
+    private data class RendererBinding(
+        val track: VideoTrack,
+        val layoutListener: android.view.View.OnLayoutChangeListener,
+        val sink: livekit.org.webrtc.VideoSink,
+        val recovery: LiveRendererRecoveryPolicy,
+        var recoveryJob: Job? = null
+    )
+    private val rendererBindings = java.util.concurrent.ConcurrentHashMap<TextureViewRenderer, RendererBinding>()
 
     suspend fun connect(
         session: LiveSfuSession,
@@ -120,11 +139,18 @@ class LiveKitRoomBridge @Inject constructor(
         _state.value = State.CONNECTING
         lastStartupTimings = null
         val startupStarted = android.os.SystemClock.elapsedRealtime()
-        val quality = liveCollaborationQualityProfile(AppPerformanceProfiles.detect(context).tier)
+        val network = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val quality = liveCollaborationNetworkProfile(
+            AppPerformanceProfiles.detect(context).tier,
+            metered = network.isActiveNetworkMetered
+        )
         val candidate = LiveKit.create(
             context,
             RoomOptions(
-                adaptiveStream = true,
+                // Compose owns the visible cells and their lifetimes. Manage
+                // subscription dimensions explicitly: SDK visibility observers
+                // can retain a disabled stream after renderer replacement.
+                adaptiveStream = false,
                 dynacast = true,
                 videoTrackCaptureDefaults = LocalVideoTrackOptions(
                     captureParams = VideoCaptureParameter(quality.width, quality.height, quality.maxFps)
@@ -148,45 +174,38 @@ class LiveKitRoomBridge @Inject constructor(
         eventsJob = scope.launch {
             candidate.events.collect { event ->
                 if (room !== candidate) return@collect
+                when (event) {
+                    is RoomEvent.TrackSubscribed -> remoteVideoBindings.subscribed(event.publication.sid)
+                    is RoomEvent.Reconnected -> remoteVideoBindings.reconnected(
+                        candidate.remoteParticipants.values.flatMap { it.trackPublications.keys })
+                    else -> Unit
+                }
+                refreshRemoteParticipants(candidate)
                 _state.value = when (candidate.state) {
                     Room.State.CONNECTED -> State.CONNECTED
                     Room.State.RECONNECTING -> State.RECONNECTING
                     Room.State.CONNECTING -> State.CONNECTING
                     Room.State.DISCONNECTED -> State.DISCONNECTED
                 }
-                when (event) {
-                    is RoomEvent.TrackSubscribed -> {
-                        val videoTrack = event.track as? VideoTrack ?: return@collect
-                        val item = RemoteVideo(
-                            trackId = videoTrack.sid?.takeIf { it.isNotBlank() }
-                                ?: videoTrack.name.orEmpty().ifBlank { "video-${videoTrack.hashCode()}" },
-                            participantName = event.participant.name.orEmpty().ifBlank { "Invitado" },
-                            track = videoTrack,
-                            participantId = event.participant.sid.value
-                        )
-                        _remoteVideos.value = (_remoteVideos.value.filterNot {
-                            it.trackId == item.trackId
-                        } + item).takeLast(8)
+                if (event is RoomEvent.Reconnected || event is RoomEvent.ParticipantConnected ||
+                    event is RoomEvent.TrackPublished) {
+                    // Reconcile desired subscriptions after the SFU recreates its
+                    // transports/publications. Never keep an old native track as live.
+                    candidate.remoteParticipants.values.forEach { participant ->
+                        participant.trackPublications.values.filterIsInstance<io.livekit.android.room.track.RemoteTrackPublication>().filter {
+                            it.kind == io.livekit.android.room.track.Track.Kind.VIDEO
+                        }.forEach { it.setSubscribed(true) }
                     }
-                    is RoomEvent.TrackUnsubscribed -> {
-                        val trackId = event.track.sid?.takeIf { it.isNotBlank() }
-                            ?: event.track.name.orEmpty()
-                        _remoteVideos.value = _remoteVideos.value.filterNot { it.trackId == trackId }
-                    }
-                    is RoomEvent.ParticipantDisconnected -> {
-                        val participantId = event.participant.sid.value
-                        _remoteVideos.value = _remoteVideos.value.filterNot {
-                            it.participantId == participantId
-                        }
-                    }
-                    else -> Unit
                 }
+                refreshRemoteVideos(candidate)
             }
         }
 
         try {
             val signalingStarted = android.os.SystemClock.elapsedRealtime()
             candidate.connect(wsUrl, token)
+            refreshRemoteParticipants(candidate)
+            refreshRemoteVideos(candidate)
             val signalingMs = android.os.SystemClock.elapsedRealtime() - signalingStarted
             var audioMs = 0L
             var videoMs = 0L
@@ -308,16 +327,80 @@ class LiveKitRoomBridge @Inject constructor(
         connectedRoom.initVideoRenderer(renderer)
         renderer.setMirror(false)
         renderer.setScalingType(livekit.org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL)
-        video.track.addRenderer(renderer)
-        rendererBindings.put(renderer, video.track)?.takeIf { it !== video.track }?.let { previous ->
-            runCatching { previous.removeRenderer(renderer) }
+        val recovery = LiveRendererRecoveryPolicy(android.os.SystemClock.elapsedRealtime())
+        val sink = livekit.org.webrtc.VideoSink { frame ->
+            recovery.recordFrame(android.os.SystemClock.elapsedRealtime())
+            renderer.onFrame(frame)
+        }
+        video.track.addRenderer(sink)
+        // Compose may replace the AndroidView after mute/reconnection. The
+        // SDK's global-layout observer waits two seconds; update visibility
+        // immediately once this new renderer has its real dimensions.
+        val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateRendererSubscription(video, renderer, enabled = true)
+        }
+        renderer.addOnLayoutChangeListener(layoutListener)
+        val binding = RendererBinding(video.track, layoutListener, sink, recovery)
+        rendererBindings.put(renderer, binding)?.let { previous ->
+            previous.recoveryJob?.cancel()
+            renderer.removeOnLayoutChangeListener(previous.layoutListener)
+            runCatching { previous.track.removeRenderer(previous.sink) }
+        }
+        updateRendererSubscription(video, renderer, enabled = true)
+        // During subscription replacement the SDK may clear a sink after it
+        // was attached, while RTP continues to decode. Repair only a visible,
+        // current publication that has stopped delivering frames. Each binding
+        // has two attempts within ten seconds; no second camera or reconnect.
+        binding.recoveryJob = scope.launch {
+            repeat(20) {
+                delay(500)
+                if (room !== connectedRoom || rendererBindings[renderer] !== binding) return@launch
+                val publication = findRemotePublication(video)
+                val active = connectedRoom.state == Room.State.CONNECTED && renderer.isAttachedToWindow &&
+                    renderer.width > 0 && renderer.height > 0 && publication?.subscribed == true &&
+                    !publication.muted && binding.track.enabled
+                if (recovery.claimRepair(android.os.SystemClock.elapsedRealtime(), active)) {
+                    rebindRenderer(video, renderer)
+                }
+            }
         }
         return true
     }
 
+    private fun findRemotePublication(video: RemoteVideo): io.livekit.android.room.track.RemoteTrackPublication? =
+        room?.remoteParticipants?.values?.asSequence()
+            ?.flatMap { it.trackPublications.values.asSequence() }
+            ?.filterIsInstance<io.livekit.android.room.track.RemoteTrackPublication>()
+            ?.firstOrNull { it.sid == video.trackId && it.track === video.track }
+
+    private fun updateRendererSubscription(video: RemoteVideo, renderer: TextureViewRenderer, enabled: Boolean) {
+        val publication = findRemotePublication(video) ?: return
+        publication.setEnabled(enabled)
+        if (enabled && renderer.width > 0 && renderer.height > 0) {
+            publication.setVideoDimensions(io.livekit.android.room.track.Track.Dimensions(renderer.width, renderer.height))
+        }
+    }
+
+    /** Reattach the same sink after SDK transport cleanup; keep media and identity. */
+    fun rebindRenderer(video: RemoteVideo, renderer: TextureViewRenderer): Boolean {
+        val binding = rendererBindings[renderer] ?: return false
+        if (binding.track !== video.track || findRemotePublication(video) == null) return false
+        return runCatching {
+            binding.track.removeRenderer(binding.sink)
+            binding.track.addRenderer(binding.sink)
+            updateRendererSubscription(video, renderer, enabled = true)
+            true
+        }.getOrDefault(false)
+    }
+
     fun detachRenderer(video: RemoteVideo, renderer: TextureViewRenderer) {
-        val boundTrack = rendererBindings.remove(renderer) ?: return
-        runCatching { boundTrack.removeRenderer(renderer) }
+        val binding = rendererBindings.remove(renderer) ?: return
+        binding.recoveryJob?.cancel()
+        renderer.removeOnLayoutChangeListener(binding.layoutListener)
+        if (rendererBindings.values.none { it.track === binding.track }) {
+            updateRendererSubscription(video, renderer, enabled = false)
+        }
+        runCatching { binding.track.removeRenderer(binding.sink) }
         runCatching { renderer.release() }
     }
 
@@ -331,13 +414,44 @@ class LiveKitRoomBridge @Inject constructor(
         sharedVideoSource = null
         // Renderers must relinquish the old room's EGL context before it is released.
         rendererBindings.keys.toList().forEach { renderer ->
-            rendererBindings.remove(renderer)?.let { track -> runCatching { track.removeRenderer(renderer) } }
+            rendererBindings.remove(renderer)?.let { binding ->
+                binding.recoveryJob?.cancel()
+                renderer.removeOnLayoutChangeListener(binding.layoutListener)
+                runCatching { binding.track.removeRenderer(binding.sink) }
+            }
             runCatching { renderer.release() }
         }
         runCatching { departedRoom?.release() }.onFailure { error ->
             android.util.Log.e("LiveKitRoomBridge", "Could not release the ended room", error)
         }
         _remoteVideos.value = emptyList()
+        remoteVideoBindings.clear()
+        _remoteParticipants.value = emptyList()
         _state.value = State.DISCONNECTED
+    }
+
+    private fun refreshRemoteVideos(candidate: Room) {
+        remoteVideoBindings.retain(candidate.remoteParticipants.values.flatMap {it.trackPublications.keys}.toSet())
+        _remoteVideos.value = if (candidate.state != Room.State.CONNECTED) emptyList() else {
+            candidate.remoteParticipants.values.flatMap { participant ->
+                participant.trackPublications.values.mapNotNull { publication ->
+                    val track = publication.track as? VideoTrack ?: return@mapNotNull null
+                    if (publication.muted || !publication.subscribed) return@mapNotNull null
+                    RemoteVideo(publication.sid, participant.name.orEmpty().ifBlank { "Invitado" },
+                        track, participant.sid.value, participant.identity?.value.orEmpty(),
+                        remoteVideoBindings.version(publication.sid))
+                }
+            }.take(9)
+        }
+    }
+
+    private fun refreshRemoteParticipants(candidate: Room) {
+        _remoteParticipants.value = candidate.remoteParticipants.values.mapNotNull { participant ->
+            val userId = participant.identity?.value?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val avatar = participant.metadata?.takeIf { it.length <= 2_048 }?.let { metadata ->
+                runCatching { org.json.JSONObject(metadata).optString("avatarUrl").takeIf(String::isNotBlank) }.getOrNull()
+            }
+            RemoteParticipant(userId, participant.name.orEmpty().ifBlank { "Invitado" }, avatar)
+        }.take(9)
     }
 }

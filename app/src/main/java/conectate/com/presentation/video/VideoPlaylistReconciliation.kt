@@ -11,6 +11,7 @@ internal data class VideoPlaylistEntry(
 internal sealed interface VideoPlaylistUpdate {
     data object None : VideoPlaylistUpdate
     data class Append(val fromIndex: Int) : VideoPlaylistUpdate
+    data class ReplaceTail(val fromIndex: Int) : VideoPlaylistUpdate
     data class Replace(
         val targetIndex: Int,
         val startPositionMs: Long,
@@ -35,6 +36,12 @@ internal fun reconcileVideoPlaylist(
         desired.subList(0, existing.size) == existing
     ) {
         return VideoPlaylistUpdate.Append(existing.size)
+    }
+
+    val commonPrefix = existing.zip(desired).takeWhile { (old, new) -> old == new }.size
+    val currentIndex = existing.indexOfFirst { it.mediaId == currentMediaId }
+    if (currentIndex in 0 until commonPrefix && (settledVideoId == null || settledVideoId == currentMediaId)) {
+        return VideoPlaylistUpdate.ReplaceTail(commonPrefix)
     }
 
     val targetId = settledVideoId

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.datasource.DataSourceInputStream
 import androidx.media3.datasource.DataSpec
 import conectate.com.core.media.copyMediaWithLimit
+import conectate.com.core.media.savePublicMedia
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Moment
 import conectate.com.data.supabase.AuthService
@@ -44,6 +45,48 @@ class MomentDownloadViewModel @Inject constructor(
         pendingMoment = moment
         pendingAccount = auth.getCurrentUserId()
         return true
+    }
+
+    fun currentAccountId(): String? = auth.getCurrentUserId()
+
+    fun savePreparedDirect() {
+        val moment = pendingMoment
+        val account = pendingAccount
+        pendingMoment = null
+        pendingAccount = null
+        if (moment == null || account == null || account != auth.getCurrentUserId() || _saving.value) {
+            _message.value = "La sesión cambió. Abre el momento e inténtalo de nuevo."
+            return
+        }
+        _saving.value = true
+        download = viewModelScope.launch {
+            try {
+                val coroutine = currentCoroutineContext()
+                val guard = {
+                    coroutine.ensureActive()
+                    check(auth.getCurrentUserId() == account) { "La sesión cambió durante la descarga." }
+                }
+                val target = momentExportTarget(moment.id, moment.mediaUrl, moment.mediaType)
+                val url = UbuntuStorageUrl.rewrite(moment.mediaUrl) ?: error("Video no disponible")
+                val uri = Uri.parse(url)
+                require(uri.scheme in setOf("https", "http"))
+                savePublicMedia(context, target.fileName, target.mimeType, guard) { output ->
+                    val source = MediaPlaybackDataSources.httpFactory().createDataSource()
+                    DataSourceInputStream(source, DataSpec(uri)).use { input ->
+                        input.open()
+                        val expectedBytes = validateMomentExportResponse(target, source.responseHeaders, MAX_EXPORT_BYTES)
+                        val copied = copyMediaWithLimit(input, output, MAX_EXPORT_BYTES, guard)
+                        validateMomentExportSize(copied, expectedBytes)
+                    }
+                }
+                _message.value = "Video guardado."
+            } catch (cancelled: CancellationException) {
+                _message.value = "Descarga cancelada."
+                throw cancelled
+            } catch (_: Exception) {
+                _message.value = "No se pudo guardar el video. Comprueba la conexión y el espacio disponible."
+            } finally { _saving.value = false }
+        }
     }
 
     fun saveTo(destination: Uri?) {

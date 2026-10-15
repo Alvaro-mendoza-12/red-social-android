@@ -1,4 +1,10 @@
+const { loadCollectionMembershipState, collectionHistoryAllows } = require('./collection-membership-policy')
+const { normalizeCompatProfileJson } = require('./compat-profile-json')
+const { scanEnforcementEnabled, readyStorageSql, trustedStorageUrl } = require('./storage-media-reference')
+const scanReadySql = readyStorageSql()
 const crypto = require('crypto')
+const { redactDeletedMessage, mergeMessageRows, messageTables, isDeletedForAll, refreshChatSummary, notificationMessageScope, deleteMessageForAll, processMessageDeletionOutbox, filterDeletedMessageNotifications, hiddenForIdentity, isRecallPatch, isHidePatch, hideDeletedMessageForActor } = require('./message-deletion-policy')
+const { deleteImportedRow, deleteImportedPollVotes, purgeImportedRows } = require('./imported-mutation-capabilities')
 const { isRetiredNotification } = require('./retired-notifications')
 const { isServerManagedNotification } = require('./notification-event-policy')
 const fs = require('fs')
@@ -608,13 +614,16 @@ async function readSpecificRows(pool, tableName, auth) {
     case 'profiles':
     case 'users': {
       const { rows } = await pool.query(`
-        SELECT id, email, display_name, avatar_url, supabase_user_id, created_at,
-               password_changed_by_user_at, local_password_set_at
-        FROM fallback_users
+        SELECT u.id, u.email, u.display_name, u.avatar_url, u.supabase_user_id, u.created_at,
+               u.password_changed_by_user_at, u.local_password_set_at, o.profile AS profile_override
+        FROM fallback_users u
+        LEFT JOIN fallback_profile_overrides o ON o.user_id=u.id
         ORDER BY created_at DESC
         LIMIT $1
       `, [MAX_READ_ROWS])
-      return rows.map(mapUserRow)
+      return rows.map(row=>({...mapUserRow(row),
+        ...(row.profile_override&&typeof row.profile_override==='object'?row.profile_override:{}),
+        id:row.supabase_user_id||row.id,local_id:row.id,__profile_override:row.profile_override}))
     }
     case 'live_streams': {
       const { rows } = await pool.query(`
@@ -709,7 +718,7 @@ async function readSpecificRows(pool, tableName, auth) {
       const { rows } = await pool.query(`
         SELECT m.id::text, m.chat_id, m.sender_id, m.content, m.content_type AS message_type,
                m.content_type, m.media_url, m.media_size, m.status, m.reply_to_id, m.poll_id,
-               m.delivered_at, m.read_at, m.reactions,
+               m.delivered_at, m.read_at, m.reactions, m.deleted_for_all, m.deleted_by,
                '{}'::jsonb AS metadata, m.created_at, m.updated_at
         FROM fallback_messages m
         LEFT JOIN fallback_chat_participants cp 
@@ -1018,6 +1027,10 @@ async function accessiblePollIds(pool, identity) {
         : ['chat', 'direct', 'message'].includes(scopeType)
           ? chatIds.has(scopeId)
           : owned
+    if (['group','community'].includes(scopeType)) {
+      const state = await loadCollectionMembershipState(pool, scopeType, scopeId, identity.values)
+      if (!collectionHistoryAllows(state.history, poll)) continue
+    }
     if (pollId && (owned || accessible)) result.add(pollId)
   }
   return result
@@ -1085,13 +1098,18 @@ function rowScopeId(row, fields) {
 }
 
 function sanitizeProfileRow(row, identity) {
-  const result = { ...row }
+  const result = normalizeCompatProfileJson({...row,
+    ...(row.__profile_override&&typeof row.__profile_override==='object'?row.__profile_override:{}),
+    id:row.id,local_id:row.local_id})
+  delete result.__profile_override
   if (result.profile_view_history_enabled == null && result.profileViewHistoryEnabled == null) {
     result.profile_view_history_enabled = true
   }
   const isSelf = identityOwnsRow(identity, row, ['id', 'local_id', 'supabase_user_id', 'user_id'])
   if (!isSelf) {
     delete result.email
+    delete result.secondary_email
+    delete result.phone
     delete result.local_id
     delete result.local_password_set_at
     delete result.password_changed_by_user_at
@@ -1106,6 +1124,50 @@ async function filterRowsForRead(pool, tableName, rows, auth) {
 
   if (tableName === 'profiles') {
     return rows.map((row) => sanitizeProfileRow(row, identity))
+  }
+  if (tableName === 'profile_views') {
+    const ownRows=rows.filter(row=>identityOwnsValue(identity,row.profile_id)&&row.is_deleted!==true&&row.is_deleted!=='true');
+    if(!ownRows.length)return [];
+    const profiles=await readTableRows(pool,'profiles',{},auth);
+    const enabled=p=>p?.profile_view_history_enabled===true;
+    const owner=profiles.find(p=>identityOwnsRow(identity,p,['id','user_id','supabase_user_id','local_id']));
+    if(!enabled(owner))return [];
+    const aliases=p=>['id','user_id','supabase_user_id','local_id'].map(k=>normalizeIdentityValue(p[k])).filter(Boolean);
+    const byId=new Map(profiles.flatMap(p=>aliases(p).map(id=>[id,p])));
+    // Foreign profile responses intentionally omit local_id. Resolve legacy
+    // visitor aliases internally, retaining the public ID in the response.
+    const visitorIds=[...new Set(ownRows.map(row=>normalizeIdentityValue(row.viewer_id)).filter(Boolean))];
+    const visitorAccounts=(await pool.query(`SELECT lower(id::text) AS local_id,
+      lower(COALESCE(supabase_user_id::text,id::text)) AS public_id
+      FROM fallback_users WHERE lower(id::text)=ANY($1::text[])
+        OR lower(supabase_user_id::text)=ANY($1::text[])`,[visitorIds])).rows;
+    for(const account of visitorAccounts){
+      const profile=byId.get(account.public_id)||byId.get(account.local_id);
+      if(profile){byId.set(account.local_id,profile);byId.set(account.public_id,profile);}
+    }
+    // Current blocks in either direction also hide an existing visit.
+    const blockRows=(await pool.query(`SELECT lower(b.blocker_id) AS blocker_id,lower(b.blocked_id) AS blocked_id,
+      lower(COALESCE(a.supabase_user_id::text,a.id::text)) AS blocker_public_id,
+      lower(COALESCE(z.supabase_user_id::text,z.id::text)) AS blocked_public_id
+      FROM fallback_user_blocks b
+      LEFT JOIN fallback_users a ON lower(a.id::text)=lower(b.blocker_id)
+      LEFT JOIN fallback_users z ON lower(z.id::text)=lower(b.blocked_id)
+      WHERE lower(b.blocker_id)=ANY($1::text[]) OR lower(b.blocked_id)=ANY($1::text[])`,[identity.values])).rows;
+    const blocked=new Set(blockRows.flatMap(b=>
+      [b.blocker_id,b.blocked_id,b.blocker_public_id,b.blocked_public_id]
+        .map(normalizeIdentityValue).filter(id=>id&&!identityOwnsValue(identity,id))));
+    const latest=new Map();
+    for(const row of ownRows){
+      const viewer=byId.get(normalizeIdentityValue(row.viewer_id));
+      const time=Date.parse(row.viewed_at);
+      if(!enabled(viewer)||!Number.isFinite(time)||aliases(viewer).some(id=>blocked.has(id)))continue;
+      const id=normalizeIdentityValue(viewer.id);
+      if(!id||identityOwnsValue(identity,id))continue;
+      const previous=latest.get(id);
+      if(!previous||Date.parse(previous.viewed_at)<time)latest.set(id,{...row,
+        profile_id:identity.preferredUserId,viewer_id:id,viewed_at:new Date(time).toISOString()});
+    }
+    return [...latest.values()];
   }
   if (tableName === 'virtual_gifts') {
     return rows.filter((row) => DEFAULT_VIRTUAL_GIFT_IDS.has(String(row.id || '').trim()) && row.is_active !== false)
@@ -1191,7 +1253,13 @@ async function filterRowsForRead(pool, tableName, rows, auth) {
     const scopeFields = collectionKind === 'group'
       ? ['group_id', 'room_id', 'id']
       : ['community_id', 'room_id', 'id']
-    return rows.filter((row) => roomIds.has(rowScopeId(row, scopeFields)))
+    const scoped = rows.filter(row => roomIds.has(rowScopeId(row, scopeFields)))
+    if (tableName === `${collectionKind}_messages`) {
+      const states = new Map(await Promise.all([...new Set(scoped.map(row => rowScopeId(row, scopeFields)))].map(async roomId =>
+        [roomId, await loadCollectionMembershipState(pool, collectionKind, roomId, identity.values)])))
+      return scoped.filter(row => collectionHistoryAllows(states.get(rowScopeId(row, scopeFields))?.history, row))
+    }
+    return scoped
   }
 
   const privateFields = PRIVATE_OWNER_FIELDS.get(tableName)
@@ -1341,11 +1409,21 @@ async function readTableRows(pool, tableName, query, auth) {
     readSpecificRows(pool, tableName, auth),
     readCompatRows(pool, tableName),
   ])
-  const merged = mergeRows([importedRows, specificRows, compatRows], tableName)
+  const merged = messageTables.has(tableName) ? mergeMessageRows([...importedRows, ...specificRows, ...compatRows]) : mergeRows([importedRows, specificRows, compatRows], tableName)
   const readable = await filterRowsForRead(pool, tableName, merged, auth)
+  const identityForRead = messageTables.has(tableName) ? await getAuthIdentity(pool, auth) : null
   const visible = tableName === 'notifications'
-    ? readable.filter(row => !isRetiredNotification(row)) : readable
-  const filtered = applyFilters(visible, query)
+    ? await filterDeletedMessageNotifications(pool, readable.filter(row => !isRetiredNotification(row)))
+    : messageTables.has(tableName) ? readable.filter(row => !hiddenForIdentity(row, identityForRead)) : readable
+  let filters=query
+  if(tableName==='profile_views'){
+    const identity=await getAuthIdentity(pool,auth)
+    const ownerFilter=parseFilterValue(query?.profile_id)
+    if(ownerFilter.op==='eq'&&identityOwnsValue(identity,ownerFilter.value)){
+      filters={...query,profile_id:'eq.'+identity.preferredUserId}
+    }
+  }
+  const filtered = applyFilters(visible, filters)
   return applyOrder(filtered, query?.order)
 }
 
@@ -1378,45 +1456,13 @@ async function canAccessChat(pool, identity, chatId) {
 async function canAccessCollection(pool, kind, identity, roomId) {
   const cleanRoomId = normalizeIdentityValue(roomId)
   if (!cleanRoomId) return false
-  return (await accessibleCollectionIds(pool, kind, identity)).has(cleanRoomId)
+  return (await loadCollectionMembershipState(pool, kind, cleanRoomId, identity.values)).member
 }
 
 async function canManageCollection(pool, kind, identity, roomId) {
   const cleanRoomId = normalizeIdentityValue(roomId)
   if (!cleanRoomId || !identity?.values?.length) return false
-  if (await appAdminHasCapability(pool, identity, ADMIN_CAPABILITY.CONTENT_MANAGE)) return true
-  const { rows } = await pool.query(
-    `SELECT (
-       EXISTS (
-         SELECT 1 FROM fallback_collection_rooms
-         WHERE room_kind = $1 AND lower(id::text) = $2
-           AND lower(creator_id) = ANY($3::text[])
-       ) OR EXISTS (
-         SELECT 1 FROM fallback_collection_members
-         WHERE room_kind = $1 AND lower(room_id) = $2
-           AND lower(user_id) = ANY($3::text[])
-           AND lower(role) IN ('owner', 'admin', 'moderator')
-       )
-     ) AS allowed`,
-    [kind, cleanRoomId, identity.values],
-  )
-  if (rows[0]?.allowed === true) return true
-
-  const roomTable = kind === 'group' ? 'groups' : 'communities'
-  const memberTable = kind === 'group' ? 'group_members' : 'community_members'
-  const [compatRooms, compatMembers] = await Promise.all([
-    readCompatRows(pool, roomTable),
-    readCompatRows(pool, memberTable),
-  ])
-  const room = compatRooms.find((row) => normalizeIdentityValue(row.id) === cleanRoomId)
-  if (room && identityOwnsRow(identity, room, ['creator_id', 'owner_id', 'user_id'])) return true
-  return compatMembers.some((member) => {
-    const memberRoomId = normalizeIdentityValue(member[`${kind}_id`] || member.room_id)
-    const role = normalizeIdentityValue(member.role)
-    return memberRoomId === cleanRoomId &&
-      identityOwnsRow(identity, member, ['user_id', 'profile_id']) &&
-      ['owner', 'admin', 'moderator'].includes(role)
-  })
+  return (await loadCollectionMembershipState(pool, kind, cleanRoomId, identity.values)).canManage
 }
 
 async function requireAdminWrite(pool, identity, tableName) {
@@ -1424,6 +1470,15 @@ async function requireAdminWrite(pool, identity, tableName) {
   if (!(await appAdminHasCapability(pool, identity, ADMIN_CAPABILITY.CONTENT_MANAGE))) {
     throw httpError('ADMIN_REQUIRED')
   }
+}
+
+async function canonicalDirectChatParticipants(pool, participants) {
+  if (participants.length !== 2) throw httpError('DIRECT_CHAT_REQUIRES_TWO_PARTICIPANTS', 400)
+  const { rows } = await pool.query(`SELECT DISTINCT fallback_request_identity(participant) AS id
+    FROM unnest($1::text[]) participant ORDER BY id`, [participants])
+  const canonical = [...new Set(rows.map(row => normalizeIdentityValue(row.id)).filter(Boolean))].sort()
+  if (canonical.length !== 2) throw httpError('DIRECT_CHAT_REQUIRES_TWO_PARTICIPANTS', 400)
+  return canonical
 }
 
 async function prepareInsertRow(pool, tableName, identity, source) {
@@ -1472,22 +1527,7 @@ async function prepareInsertRow(pool, tableName, identity, source) {
   }
 
   if (tableName === 'group_members' || tableName === 'community_members') {
-    const kind = tableName === 'group_members' ? 'group' : 'community'
-    const roomId = row[`${kind}_id`] || row.room_id
-    const targetUserId = row.user_id || row.profile_id
-    if (!roomId || !targetUserId) throw httpError('COLLECTION_MEMBER_FIELDS_REQUIRED', 400)
-    const targetIsSelf = identityOwnsValue(identity, targetUserId)
-    const canManage = await canManageCollection(pool, kind, identity, roomId)
-    if (!targetIsSelf && !canManage) throw httpError('COLLECTION_ADMIN_REQUIRED')
-    const requestedRole = normalizeIdentityValue(row.role || 'member')
-    if (!canManage && !['member', 'participant'].includes(requestedRole)) {
-      throw httpError('COLLECTION_ROLE_ESCALATION_DENIED')
-    }
-    return {
-      ...row,
-      user_id: targetIsSelf ? identity.preferredUserId : targetUserId,
-      role: requestedRole || 'member',
-    }
+    throw httpError('COLLECTION_MEMBERSHIP_ENDPOINT_REQUIRED', 400)
   }
 
   if (tableName === 'messages') {
@@ -1502,6 +1542,7 @@ async function prepareInsertRow(pool, tableName, identity, source) {
     if (!(await canAccessCollection(pool, kind, identity, roomId))) {
       throw httpError('COLLECTION_ACCESS_DENIED')
     }
+    if (String(row.content_type || 'text').toLowerCase().startsWith('system_')) throw httpError('RESERVED_MESSAGE_TYPE',400)
     return forceActorField(row, 'sender_id', identity)
   }
 
@@ -1685,7 +1726,17 @@ async function prepareInsertRow(pool, tableName, identity, source) {
     if (!enabled(target) || !enabled(viewer)) {
       throw httpError('PROFILE_VIEW_HISTORY_DISABLED', 403)
     }
-    return secured
+    const blocked=(await pool.query(`WITH target_ids AS (
+      SELECT lower(id::text) AS id FROM fallback_users
+      WHERE lower(id::text)=$2 OR lower(supabase_user_id::text)=$2
+      UNION SELECT $2::text
+    ) SELECT 1 FROM fallback_user_blocks
+      WHERE (lower(blocker_id)=ANY($1::text[]) AND lower(blocked_id) IN (SELECT id FROM target_ids))
+         OR (lower(blocked_id)=ANY($1::text[]) AND lower(blocker_id) IN (SELECT id FROM target_ids)) LIMIT 1`,
+      [identity.values,targetId])).rows.length>0
+    if(blocked)throw httpError('PROFILE_VIEW_TARGET_UNAVAILABLE',403)
+    // Ignore supplied IDs and clocks. A visit is one server-dated pair.
+    return {profile_id:targetId,viewer_id:identity.preferredUserId,viewed_at:nowIso(),is_deleted:false}
   }
 
   const actorField = AUTHORED_TABLE_FIELDS.get(tableName)
@@ -1746,13 +1797,7 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
     const kind = tableName === 'groups' ? 'group' : 'community'
     return canManageCollection(pool, kind, identity, row.id)
   }
-  if (tableName === 'group_members' || tableName === 'community_members') {
-    const kind = tableName === 'group_members' ? 'group' : 'community'
-    const roomId = row[`${kind}_id`] || row.room_id
-    if (await canManageCollection(pool, kind, identity, roomId)) return true
-    if (!identityOwnsRow(identity, row, ['user_id', 'profile_id'])) return false
-    return action === 'delete' || !Object.prototype.hasOwnProperty.call(patch || {}, 'role')
-  }
+  if (tableName === 'group_members' || tableName === 'community_members') return false
   if (tableName === 'notifications') {
     return identityOwnsRow(identity, row, ['recipient_id', 'user_id']) &&
       (action === 'delete' || patchOnlyContains(patch, new Set([
@@ -1764,6 +1809,8 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
   }
   if (tableName === 'messages') {
     if (!(await canAccessChat(pool, identity, row.chat_id))) return false
+    if (isDeletedForAll(row)) return action === 'delete' ||
+      (identityOwnsRow(identity, row, ['sender_id']) && isRecallPatch(patch)) || isHidePatch(row, patch, identity)
     if (identityOwnsRow(identity, row, ['sender_id'])) return true
     if (action === 'delete') return false
     return patchOnlyContains(patch, new Set([
@@ -1774,6 +1821,10 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
     const kind = tableName === 'group_messages' ? 'group' : 'community'
     const roomId = row[`${kind}_id`] || row.room_id
     if (!(await canAccessCollection(pool, kind, identity, roomId))) return false
+    const state = await loadCollectionMembershipState(pool, kind, roomId, identity.values)
+    if (!collectionHistoryAllows(state.history,row) || row.content_type === 'system_membership' || String(patch?.content_type || '').toLowerCase().startsWith('system_')) return false
+    if (isDeletedForAll(row)) return action === 'delete' ||
+      (identityOwnsRow(identity, row, ['sender_id']) && isRecallPatch(patch)) || isHidePatch(row, patch, identity)
     if (identityOwnsRow(identity, row, ['sender_id'])) return true
     if (action === 'delete') return false
     return patchOnlyContains(patch, new Set([
@@ -1838,10 +1889,8 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
     return isSafePayoutProviderReference(patch.external_account_id)
   }
   if (tableName === 'profile_views') {
-    if (action === 'delete') {
-      return identityOwnsRow(identity, row, ['profile_id', 'viewer_id'])
-    }
-    return identityOwnsRow(identity, row, ['viewer_id'])
+    // New views use the validated POST path. PATCH cannot forge a person or date.
+    return action === 'delete' && identityOwnsRow(identity, row, ['profile_id', 'viewer_id'])
   }
   const actorField = AUTHORED_TABLE_FIELDS.get(tableName)
   if (actorField) return identityOwnsRow(identity, row, [actorField])
@@ -1856,6 +1905,15 @@ async function upsertProfile(pool, auth, row) {
   // Provenance comes from registration, never from a client profile update.
   row = { ...row }
   delete row.username_origin
+  const visibleNameFields=['display_name','displayName','full_name','fullName','name']
+  if (visibleNameFields.some(key=>Object.hasOwn(row,key)&&row[key]!=null)) {
+    const currentProfiles=await readTableRows(pool,'profiles',{},auth)
+    const existing=currentProfiles.find(profile=>identityOwnsRow(identity,profile,['id','local_id','user_id']))||{}
+    const currentName=existing.display_name||existing.full_name||existing.name||''
+    for(const key of visibleNameFields) if(Object.hasOwn(row,key)&&row[key]!=null) {
+      row[key]=require('./display-name-policy').validateDisplayNameChange(row[key],existing[key]||currentName)
+    }
+  }
   if (Object.prototype.hasOwnProperty.call(row, 'username')) {
     const username = cleanUsername(row.username)
     const { rows: currentNames } = await pool.query(
@@ -1998,10 +2056,12 @@ async function handleInsert(pool, tableName, auth, body) {
     if (tableName === 'profiles' || tableName === 'users') {
       rows.push(await upsertProfile(pool, auth, base))
     } else if (tableName === 'chats' && base.is_group !== true) {
-      const participants = Array.from(new Set(
+      const requestedParticipants = Array.from(new Set(
         (Array.isArray(base.participants) ? base.participants : [])
           .map(normalizeIdentityValue).filter(Boolean),
       )).sort()
+      // Both identity aliases must resolve to the same unique direct conversation.
+      const participants = await canonicalDirectChatParticipants(pool, requestedParticipants)
       if (participants.length !== 2) throw httpError('DIRECT_CHAT_REQUIRES_TWO_PARTICIPANTS', 400)
       const participantKey = participants.join(':')
       const chatId = validUuidOrNull(base.id) || crypto.randomUUID()
@@ -2073,6 +2133,37 @@ function profilePatchRow(current, patch) {
   return next
 }
 
+async function hideCompatDeletedMessage(pool, tableName, identity, current) {
+  const kind=tableName==='messages'?'chat':tableName==='group_messages'?'group':'community'
+  const scopeId=normalizeIdentityValue(current[kind+'_id']||current.room_id)
+  const message=await hideDeletedMessageForActor(pool,{kind,scopeId,messageId:current.id,
+    actorId:identity.preferredUserId,seedMessage:current})
+  void publishRealtimeEvent('user:'+identity.preferredUserId,{event:'message',action:'deleted',
+    chatId:kind==='chat'?scopeId:'room:'+kind+':'+scopeId,message,scope:'inbox'})
+  return serializeCompatMessage(message)
+}
+
+async function recallCompatMessage(pool, tableName, identity, auth, current) {
+  const kind = tableName === 'messages' ? 'chat' : tableName === 'group_messages' ? 'group' : 'community'
+  const scopeId = normalizeIdentityValue(current[kind + '_id'] || current.room_id)
+  let recipients = []
+  if (kind === 'chat') {
+    const chats = await readTableRows(pool, 'chats', { id: 'eq.' + scopeId }, auth)
+    const members = await readTableRows(pool, 'chat_participants', { chat_id: 'eq.' + scopeId }, auth)
+    recipients = [...(chats[0]?.participants || []), ...members.map(row => row.user_id || row.profile_id)]
+  } else {
+    const members = await readTableRows(pool, kind + '_members', { [kind + '_id']: 'eq.' + scopeId }, auth)
+    recipients = members.map(row => row.user_id || row.profile_id)
+  }
+  recipients = [...new Set([...recipients, ...identity.values].filter(Boolean))]
+  const message = await deleteMessageForAll(pool, { kind, scopeId, messageId: current.id,
+    actorIds: identity.values, recipientIds: recipients, seedMessage: current })
+  await publishChatMessageEvent({ pool, chatId: kind === 'chat' ? scopeId : 'room:' + kind + ':' + scopeId,
+    message, recipientIds: recipients, action: 'deleted' })
+  void processMessageDeletionOutbox(pool).catch(() => {})
+  return serializeCompatMessage(message)
+}
+
 async function handlePatch(pool, tableName, auth, query, body) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
@@ -2084,6 +2175,14 @@ async function handlePatch(pool, tableName, auth, query, body) {
   for (const current of targets) {
     if (!(await authorizeMutation(pool, tableName, identity, current, patch, 'patch'))) {
       throw httpError('ROW_MUTATION_FORBIDDEN')
+    }
+    if (messageTables.has(tableName) && isDeletedForAll(current) && isHidePatch(current, patch, identity)) {
+      rows.push(await hideCompatDeletedMessage(pool, tableName, identity, current))
+      continue
+    }
+    if (messageTables.has(tableName) && isDeletedForAll(patch)) {
+      rows.push(await recallCompatMessage(pool, tableName, identity, auth, current))
+      continue
     }
     const next = { ...current, ...patch, updated_at: nowIso() }
     if (tableName === 'profiles' || tableName === 'users') {
@@ -2131,18 +2230,47 @@ async function handlePatch(pool, tableName, auth, query, body) {
 async function handleDelete(pool, tableName, auth, query) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
-  const rows = await readTableRows(pool, tableName, query, auth)
+  // Deleting history must still work after opting out, including outgoing views.
+  const rows = tableName === 'profile_views'
+    ? applyFilters(mergeRows(await Promise.all([
+        readImportedRows(pool,tableName),readCompatRows(pool,tableName),
+      ]),tableName).filter(row=>identityOwnsRow(identity,row,['profile_id','viewer_id'])).map(row=>{
+        const comparison={...row}
+        for(const key of ['profile_id','viewer_id']){
+          const filter=parseFilterValue(query?.[key])
+          if(filter.op==='eq'&&identityOwnsValue(identity,filter.value)&&identityOwnsValue(identity,row[key]))comparison[key]=filter.value
+        }
+        return {original:row,comparison}
+      }).filter(entry=>applyFilters([entry.comparison],query).length).map(entry=>entry.original),{})
+    : await readTableRows(pool, tableName, query, auth)
   for (const row of rows) {
     if (!(await authorizeMutation(pool, tableName, identity, row, {}, 'delete'))) {
       throw httpError('ROW_MUTATION_FORBIDDEN')
     }
     const id = rowId(row, tableName)
     if (!id) continue
+    if (messageTables.has(tableName)) {
+      if (isDeletedForAll(row) && !identityOwnsRow(identity, row, ['sender_id'])) {
+        await hideCompatDeletedMessage(pool, tableName, identity, row)
+      } else await recallCompatMessage(pool, tableName, identity, auth, row)
+      continue
+    }
+    if (tableName === 'profile_views') {
+      // A local tombstone also hides a read-only imported visit after deletion.
+      await storeCompatRow(pool,tableName,{...row,is_deleted:true,deleted_at:nowIso()})
+      continue
+    }
+    if (tableName === 'sticker_packs' || tableName === 'sticker_pack_items') {
+      // Preserve a local tombstone so deleting an imported catalog row cannot
+      // resurrect it on the next imported/local merge or storage read.
+      await storeCompatRow(pool, tableName, { ...row, is_deleted: true, deleted_at: new Date().toISOString() })
+    } else {
     await pool.query(
       `DELETE FROM fallback_compat_rows
        WHERE table_name = $1 AND row_id = $2`,
       [tableName, id],
     )
+    }
     if (tableName === 'posts' || tableName === 'videos') {
       await deleteTrustedContentClassification(pool, tableName === 'posts' ? 'post' : 'video', id)
     }
@@ -2259,6 +2387,7 @@ function messageBodyValue(body, name, fallback = null) {
 
 function serializeCompatMessage(row) {
   if (!row) return null
+  row = redactDeletedMessage(row)
   return {
     ...row,
     message_type: row.content_type || row.message_type || 'text',
@@ -2280,6 +2409,7 @@ async function publishDirectCompatMessage(pool, identity, chatId, message) {
       [chatId, identity.values],
     )
     await publishChatMessageEvent({
+      pool,
       chatId,
       message: serializeCompatMessage(message),
       recipientIds: recipients.rows.map((row) => row.user_id).filter(Boolean),
@@ -2304,6 +2434,7 @@ async function publishCollectionCompatMessage(pool, identity, kind, roomId, mess
       [kind, roomId, identity.values],
     )
     await publishChatMessageEvent({
+      pool,
       chatId: `room:${kind}:${roomId}`,
       message: serializeCompatMessage(message),
       recipientIds: recipients.rows.map((row) => row.user_id).filter(Boolean),
@@ -2405,16 +2536,7 @@ async function insertDirectRpcMessage(pool, auth, body, { publishEvent = true } 
     }
   }
 
-  await pool.query(
-    `UPDATE fallback_chats
-     SET last_message = $2,
-         last_message_at = $3::timestamptz,
-         last_message_sender_id = $4,
-         last_message_id = $5,
-         updated_at = NOW()
-     WHERE lower(id::text) = $1`,
-    [chatId, contentType === 'poll' ? `[Encuesta] ${content}` : content || contentType, message.created_at, identity.preferredUserId, message.id],
-  )
+  await refreshChatSummary(pool, chatId)
   if (publishEvent) await publishDirectCompatMessage(pool, identity, chatId, message)
   return serializeCompatMessage(message)
 }
@@ -2841,7 +2963,7 @@ async function toggleMessageReaction(pool, auth, body, collectionKind = null) {
   if (!messageId || !emoji) throw httpError('MESSAGE_ID_AND_REACTION_REQUIRED', 400)
 
   const roomResult = await pool.query(
-    `SELECT room_kind, room_id, reactions FROM fallback_room_messages WHERE id = $1::uuid LIMIT 1`,
+    `SELECT room_kind, room_id, reactions, created_at, content_type FROM fallback_room_messages WHERE id = $1::uuid LIMIT 1`,
     [messageId],
   )
   if (roomResult.rows[0]) {
@@ -2849,6 +2971,8 @@ async function toggleMessageReaction(pool, auth, body, collectionKind = null) {
     if (!(await canAccessCollection(pool, message.room_kind, identity, message.room_id))) {
       throw httpError('COLLECTION_ACCESS_DENIED')
     }
+    const state = await loadCollectionMembershipState(pool, message.room_kind, message.room_id, identity.values)
+    if (!collectionHistoryAllows(state.history,message) || message.content_type === 'system_membership') throw httpError('MESSAGE_NOT_FOUND',404)
     const reactions = toggleReactionForIdentity(message.reactions, emoji, identity)
     await pool.query(
       `UPDATE fallback_room_messages SET reactions = $2::jsonb, updated_at = NOW() WHERE id = $1::uuid`,
@@ -2868,6 +2992,8 @@ async function toggleMessageReaction(pool, auth, body, collectionKind = null) {
       if (!(await canAccessCollection(pool, collectionKind, identity, roomId))) {
         throw httpError('COLLECTION_ACCESS_DENIED')
       }
+      const state = await loadCollectionMembershipState(pool, collectionKind, roomId, identity.values)
+      if (!collectionHistoryAllows(state.history,importedMessage) || importedMessage.content_type === 'system_membership') throw httpError('MESSAGE_NOT_FOUND',404)
       const reactions = toggleReactionForIdentity(importedMessage.reactions, emoji, identity)
       await storeCompatRow(pool, tableName, {
         ...importedMessage,
@@ -2971,13 +3097,7 @@ async function votePollOption(pool, auth, body) {
       parameters,
     )
     if (await tableExists(client, 'supabase_import', 'message_poll_votes')) {
-      await client.query(
-        `DELETE FROM supabase_import.message_poll_votes AS vote
-         WHERE lower(to_jsonb(vote)->>'poll_id') = $1
-           AND lower(to_jsonb(vote)->>'user_id') = ANY($2::text[])
-           AND ($3::boolean OR lower(to_jsonb(vote)->>'option_id') = $4)`,
-        parameters,
-      )
+      await deleteImportedPollVotes(client, parameters)
     }
     if (selected) {
       await storeCompatRow(client, 'message_poll_votes', {
@@ -3064,52 +3184,16 @@ async function markNotificationsReadRpc(pool, auth, body) {
 }
 
 async function consumeViewOnceRpc(pool, auth, body) {
-  const identity = await getAuthIdentity(pool, auth)
-  if (!identity) throw httpError('AUTH_REQUIRED', 401)
-  const rawScope = normalizeIdentityValue(messageBodyValue(body, 'scope_type', ''))
-  const scopeType = ['dm', 'direct', 'message'].includes(rawScope) ? 'chat' : rawScope
-  const messageId = validUuidOrNull(messageBodyValue(body, 'message_id', ''))
-  const deviceId = String(messageBodyValue(body, 'device_id', '') || '').trim().slice(0, 120) || null
-  if (!['chat', 'group', 'community'].includes(scopeType) || !messageId) {
-    throw httpError('INVALID_VIEW_ONCE_SCOPE_OR_MESSAGE', 400)
-  }
-
-  let hasAccess = false
-  let message = null
-  if (scopeType === 'chat') {
-    const result = await pool.query(
-      `SELECT chat_id, sender_id, content_type, media_url
-       FROM fallback_messages WHERE id = $1::uuid LIMIT 1`,
-      [messageId],
-    )
-    message = result.rows[0]
-    if (message) hasAccess = await canAccessChat(pool, identity, message.chat_id)
-  } else {
-    const result = await pool.query(
-      `SELECT room_kind, room_id, sender_id, content_type, media_url
-       FROM fallback_room_messages
-       WHERE id = $1::uuid AND room_kind = $2
-       LIMIT 1`,
-      [messageId, scopeType],
-    )
-    message = result.rows[0]
-    if (message) hasAccess = await canAccessCollection(pool, scopeType, identity, message.room_id)
-  }
-  if (!message) throw httpError('MESSAGE_NOT_FOUND', 404)
-  if (!hasAccess) throw httpError('MESSAGE_ACCESS_DENIED')
-  if (!['view_once_image', 'view_once_video'].includes(normalizeIdentityValue(message.content_type)) || !message.media_url) {
-    throw httpError('MESSAGE_IS_NOT_VIEW_ONCE', 409)
-  }
-
-  const inserted = await pool.query(
-    `INSERT INTO fallback_view_once_consumptions(scope_type, message_id, user_id, device_id)
-     VALUES ($1, $2::uuid, $3, $4)
-     ON CONFLICT (scope_type, message_id, user_id) DO NOTHING
-     RETURNING consumed_at`,
-    [scopeType, messageId, identity.preferredUserId, deviceId],
-  )
-  const allowed = inserted.rows.length > 0
-  return { allowed, already_consumed: !allowed, consumed_at: inserted.rows[0]?.consumed_at || null }
+  const rawScope=normalizeIdentityValue(messageBodyValue(body,'scope_type',''))
+  const scopeType=['dm','direct','message'].includes(rawScope)?'chat':rawScope
+  const messageId=validUuidOrNull(messageBodyValue(body,'message_id',''))
+  const configuration=require('./storage-read-config').storageReadConfiguration()
+  if (!configuration.enforced) throw httpError('VIEW_ONCE_STORAGE_ENFORCEMENT_REQUIRED',503)
+  return require('./storage-view-once').claimViewOnceLease({
+    pool,auth,scopeType,messageId,
+    deviceId:messageBodyValue(body,'device_id',''),origins:configuration.origins,
+    maxFileBytes:Number(messageBodyValue(body,'max_file_bytes',require('./storage-view-once').MAX_FILE_BYTES)),
+  })
 }
 
 async function registerMediaObjectRpc(pool, auth, body) {
@@ -3190,6 +3274,7 @@ async function refreshProfileContentCountRpc(pool, auth) {
 }
 
 function publicStorageLocation(rawUrl) {
+  if (scanEnforcementEnabled() && !trustedStorageUrl(rawUrl)) return null
   try {
     const pathname = new URL(String(rawUrl || '')).pathname
     const marker = '/storage/v1/object/public/'
@@ -3212,7 +3297,8 @@ async function canUseReportEvidence(pool, identity, rawUrl) {
   const { rows } = await pool.query(
     `SELECT 1 FROM fallback_storage_objects
      WHERE bucket_id = $1 AND name = $2 AND owner_id = $3::uuid
-     LIMIT 1`,
+     ${scanReadySql}
+      LIMIT 1`,
     [location.bucket, location.objectPath, identity.localUserId],
   )
   return Boolean(rows[0])
@@ -3229,6 +3315,12 @@ async function canReuseCatalogStickerMedia(pool, identity, mediaUrl, stickerId =
 async function canUseStickerMedia(pool, identity, stickerId, mediaUrl) {
   const cleanUrl = String(mediaUrl || '').trim()
   if (!cleanUrl) return false
+  if (scanEnforcementEnabled()) {
+    const location = publicStorageLocation(cleanUrl)
+    if (!location) return false
+    const scanned = await pool.query(`SELECT 1 FROM fallback_storage_objects WHERE bucket_id=$1 AND name=$2 ${scanReadySql} LIMIT 1`, [location.bucket,location.objectPath])
+    if (!scanned.rows[0]) return false
+  }
   if (await canReuseCatalogStickerMedia(pool, identity, cleanUrl, stickerId)) return true
 
   const location = publicStorageLocation(cleanUrl)
@@ -3236,7 +3328,8 @@ async function canUseStickerMedia(pool, identity, stickerId, mediaUrl) {
   const { rows } = await pool.query(
     `SELECT 1 FROM fallback_storage_objects
      WHERE bucket_id = $1 AND name = $2 AND owner_id = $3::uuid
-     LIMIT 1`,
+     ${scanReadySql}
+      LIMIT 1`,
     [location.bucket, location.objectPath, identity.localUserId],
   )
   return Boolean(rows[0])
@@ -4717,10 +4810,7 @@ async function deleteCommentRpc(pool, auth, body, kind) {
 
   if (imported) {
     if (!(await tableExists(pool, 'supabase_import', tableName))) throw httpError('COMMENT_NOT_FOUND', 404)
-    await pool.query(
-      `DELETE FROM supabase_import.${quoteIdentifier(tableName)} WHERE lower(id::text) = $1`,
-      [commentId],
-    )
+    await deleteImportedRow(pool, tableName, commentId)
   } else {
     await pool.query(
       `UPDATE ${fallbackTable}
@@ -5143,7 +5233,7 @@ async function ownedStorageRowsForMedia(client, mediaUrls, ownerLocalUserId) {
     const location = publicStorageLocation(mediaUrl)
     if (!location) continue
     const { rows } = await client.query(
-      `SELECT id::text, bucket_id, name, local_path
+      `SELECT *, id::text
        FROM fallback_storage_objects
        WHERE bucket_id = $1 AND name = $2 AND owner_id = $3::uuid
        LIMIT 1`,
@@ -5314,51 +5404,7 @@ const IDENTITY_ARRAY_FIELDS = [
 ]
 
 async function purgeImportedIdentityRows(client, identityValues) {
-  const inspectedFields = [...IDENTITY_REFERENCE_FIELDS, ...IDENTITY_ARRAY_FIELDS, 'id']
-  const { rows } = await client.query(
-    `SELECT table_name, column_name
-     FROM information_schema.columns
-     WHERE table_schema = 'supabase_import'
-       AND column_name = ANY($1::text[])
-     ORDER BY table_name, ordinal_position`,
-    [inspectedFields],
-  )
-  const columnsByTable = new Map()
-  for (const row of rows) {
-    if (!columnsByTable.has(row.table_name)) columnsByTable.set(row.table_name, [])
-    columnsByTable.get(row.table_name).push(row.column_name)
-  }
-  const identityPatterns = identityValues.map((value) => `%${value}%`)
-  let deletedRows = 0
-  for (const [tableName, columns] of columnsByTable) {
-    const safeTable = safeIdentifier(tableName)
-    if (!safeTable) continue
-    const exactColumns = columns.filter((column) =>
-      IDENTITY_REFERENCE_FIELDS.includes(column) ||
-      (column === 'id' && ['profiles', 'profile', 'users', 'user'].includes(tableName)),
-    )
-    const arrayColumns = columns.filter((column) => IDENTITY_ARRAY_FIELDS.includes(column))
-    const predicates = exactColumns.map((column) =>
-      `lower(COALESCE(${quoteIdentifier(column)}::text, '')) = ANY($1::text[])`,
-    )
-    const arrayParameter = exactColumns.length > 0 ? '$2' : '$1'
-    predicates.push(...arrayColumns.map((column) =>
-      `lower(COALESCE(${quoteIdentifier(column)}::text, '')) LIKE ANY(${arrayParameter}::text[])`,
-    ))
-    if (predicates.length === 0) continue
-    const queryParams = exactColumns.length > 0 && arrayColumns.length > 0
-      ? [identityValues, identityPatterns]
-      : exactColumns.length > 0
-        ? [identityValues]
-        : [identityPatterns]
-    const result = await client.query(
-      `DELETE FROM ${quoteIdentifier('supabase_import')}.${quoteIdentifier(safeTable)}
-       WHERE ${predicates.join(' OR ')}`,
-      queryParams,
-    )
-    deletedRows += Number(result.rowCount) || 0
-  }
-  return deletedRows
+  return purgeImportedRows(client, identityValues, 'identity')
 }
 
 async function purgeCompatIdentityRows(client, identityValues) {
@@ -5399,7 +5445,7 @@ async function deleteOwnAccountRpc(pool, auth) {
     if (!lockedUser.rows[0]) throw httpError('USER_NOT_FOUND', 404)
 
     const storage = await client.query(
-      `SELECT id::text, bucket_id, name, local_path
+      `SELECT *, id::text
        FROM fallback_storage_objects
        WHERE owner_id = $1::uuid
        FOR UPDATE`,
@@ -5744,14 +5790,9 @@ async function handleRpc(pool, req, rpcName) {
     case 'is_current_user_admin':
       return Boolean(await requireAdmin(pool, auth))
     case 'resolve_login_email': {
-      const identifier = String(body.identifier || body.email || body.username || '').trim().toLowerCase()
-      const { rows } = await pool.query(
-        `SELECT email FROM fallback_users
-         WHERE lower(email) = $1 OR lower(display_name) = $1
-         LIMIT 1`,
-        [identifier],
-      )
-      return rows[0]?.email || identifier
+      // Compatibility response contains only caller-supplied data. Local login
+      // already resolves fallback_profile_login_emails inside password verification.
+      return require('./login-identifier-privacy').publicLoginIdentifier(body)
     }
     case 'secure_get_my_suspension_state':
       {
@@ -6121,6 +6162,7 @@ module.exports = {
     liveGiftLimitsConfiguration,
     parsePollOptions,
     prepareInsertRow,
+    canonicalDirectChatParticipants,
     purgeImportedIdentityRows,
     purgeCompatIdentityRows,
     readSpecificRows,

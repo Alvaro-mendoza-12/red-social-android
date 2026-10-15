@@ -25,3 +25,16 @@ internal fun copyMediaWithLimit(
     output.flush()
     return total
 }
+
+/** Read a small payload with a hard limit while reading, independent of provider metadata.
+ * Caller owns/uses the input stream. Large media should remain on uploadFileFromUri.
+ */
+internal fun InputStream.readMediaBytesWithLimit(
+    maxBytes: Long,
+    checkActive: () -> Unit = {},
+): ByteArray {
+    require(maxBytes in 1L..Int.MAX_VALUE.toLong())
+    val output = java.io.ByteArrayOutputStream(minOf(maxBytes, 32L * 1024).toInt())
+    copyMediaWithLimit(this, output, maxBytes, checkActive)
+    return output.toByteArray()
+}

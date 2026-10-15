@@ -108,6 +108,7 @@ import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -199,6 +200,10 @@ fun SocialScreen(
     val unreadCount by notificationViewModel.unreadCount.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val moments by momentViewModel.moments.collectAsState()
+    val avatarClock by conectate.com.presentation.components.rememberMomentAvatarClock()
+    val avatarMoments = remember(moments, avatarClock) { conectate.com.data.model.activeAvatarMoments(moments, avatarClock) }
+    val authorFollows by viewModel.authorFollows.collectAsState()
+    val followBusy by viewModel.followBusy.collectAsState()
     val activeChallenge by challengeViewModel.activeChallenge.collectAsState()
     val isSubmittingChallenge by challengeViewModel.isSubmittingChallenge.collectAsState()
     val hasParticipated by challengeViewModel.hasParticipated.collectAsState()
@@ -240,12 +245,12 @@ fun SocialScreen(
     val socialListState = rememberLazyListState()
     var automaticFeedRecoveryAttempts by remember { mutableIntStateOf(0) }
 
-    SocialFeedPagingEffect(socialListState, pagerState.currentPage == 0,
+    SocialFeedPagingEffect(socialListState, pagerState.currentPage == 0 && posts.isNotEmpty(),
         authoritativeHasMore, isRefreshing, isLoadingMorePosts, loadMorePostsError != null,
         feedScrollReset, viewModel::loadMorePosts)
 
     LaunchedEffect(Unit) {
-        viewModel.selectFeedMode(SocialFeedMode.DISCOVER)
+        viewModel.enterDiscovery()
         notificationViewModel.updateUnreadCount()
         viewModel.refreshLives()
         // Moments auto-load in ViewModel init - no manual call needed
@@ -365,10 +370,14 @@ fun SocialScreen(
                 .toSet()
         }
             .distinctUntilChanged()
-            .collect { visibleIds ->
+            .collectLatest { visibleIds ->
                 visibleIds.forEach { id ->
                     posts.firstOrNull { it.id == id }?.let(viewModel::recordPostImpression)
                 }
+                delay(250)
+                val authors = posts.filter { it.id in visibleIds }.ifEmpty { posts.take(20) }
+                    .map { it.userId }.distinct()
+                momentViewModel.refreshAuthorMoments(authors)
             }
     }
 
@@ -385,7 +394,9 @@ fun SocialScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) viewModel.onFeedBackgrounded()
             if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.onFeedResumed()
                 friendViewModel.loadRequests()
                 // Forzar refresco si estamos en la pestaña de Retos al volver a la app
                 if (pagerState.currentPage == 2) {
@@ -407,6 +418,9 @@ fun SocialScreen(
     }
 
     if (showCreatePostDialog) {
+        val mentionModel: conectate.com.presentation.social.CreatePostViewModel =
+            androidx.hilt.navigation.compose.hiltViewModel(key = "post-mentions-${viewModel.currentUserId}")
+        val mentionCandidates by mentionModel.mentionSuggestions.collectAsState()
         conectate.com.presentation.components.CreatePostDialog(
             onDismiss = { showCreatePostDialog = false },
             onPostCreated = { content, uris, visibility, isSensitive, fromDraft, draftOwnerId ->
@@ -417,6 +431,8 @@ fun SocialScreen(
             initialText = sharedText,
             initialUri = if (sharedUri != null) android.net.Uri.parse(sharedUri) else null,
             ownerId = viewModel.currentUserId,
+            mentionCandidates = mentionCandidates,
+            onMentionQueryChanged = mentionModel::updateMentionQuery,
         )
     }
 
@@ -524,7 +540,7 @@ fun SocialScreen(
                                     .padding(horizontal = 20.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                conectate.com.presentation.components.CircularProfileImage(
+                                conectate.com.presentation.components.CircularProfileImage(ownerId = reaction.userId, 
                                     imageUrl = reaction.userAvatarUrl.orEmpty(),
                                     size = 42.dp,
                                     isVerified = reaction.isVerified,
@@ -1933,7 +1949,8 @@ fun SocialScreen(
                                                     }
                                                 } else {
                                                     Text(
-                                                        "No hay publicaciones recientes para descubrir.",
+                                                        if (authoritativeHasMore) "Buscando publicaciones que aún no has visto…"
+                                                        else "No quedan publicaciones nuevas disponibles. Vuelve más tarde para ver novedades.",
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                         textAlign = TextAlign.Center,
                                                     )
@@ -1961,6 +1978,17 @@ fun SocialScreen(
                                         item(key = "post:${post.id}") {
                                         PostCard(
                                             post = post,
+                                            authorFollowState = authorFollows[post.userId.trim().lowercase()],
+                                            followBusy = post.userId.trim().lowercase() in followBusy,
+                                            onFollowClick = { viewModel.followAuthor(post.userId) },
+                                            authorMoment = avatarMoments[post.userId.trim().lowercase()],
+                                            onMomentClick = { id -> navController.navigate(Screen.MomentViewer.createRoute(id)) },
+                                            onMentionClick = { handle -> coroutineScope.launch {
+                                                val account = viewModel.currentUserId
+                                                viewModel.userRepository.resolvePublicMention(handle)?.let { mentioned ->
+                                                    if (account == viewModel.currentUserId) navController.navigate(Screen.UserProfile.createRoute(mentioned.id))
+                                                }
+                                            } },
                                             onLikeClick = { viewModel.toggleLike(post) },
                                             onReactionSelect = { reaction -> viewModel.setReaction(post, reaction) },
                                             onReactionSummaryClick = { reactionPost = post },
@@ -2002,11 +2030,11 @@ fun SocialScreen(
                                         if (
                                             feedMode == SocialFeedMode.DISCOVER &&
                                             recommendedPeople.isNotEmpty() &&
-                                            index == minOf(2, posts.lastIndex)
+                                            index == 2
                                         ) {
                                             item(key = "recommended-people") {
                                                 RecommendedPeopleRail(
-                                                    users = recommendedPeople,
+                                                    users = recommendedPeople.take(6),
                                                     onOpenProfile = { userId ->
                                                         if (userId != viewModel.currentUserId) {
                                                             navController.navigate(Screen.UserProfile.createRoute(userId))
@@ -2019,7 +2047,7 @@ fun SocialScreen(
                                         if (
                                             feedMode == SocialFeedMode.DISCOVER &&
                                             socializationCards.isNotEmpty() &&
-                                            index == minOf(8, posts.lastIndex)
+                                            index == 8
                                         ) {
                                             item(key = "socialization-cards") {
                                                 SocializationCardsRail(
@@ -2038,11 +2066,11 @@ fun SocialScreen(
                                         if (
                                             feedMode == SocialFeedMode.DISCOVER &&
                                             recommendedVideos.isNotEmpty() &&
-                                            index == minOf(5, posts.lastIndex)
+                                            index == 5
                                         ) {
                                             item(key = "recommended-videos") {
                                                 RecommendedVideosRail(
-                                                    videos = recommendedVideos,
+                                                    videos = recommendedVideos.take(6),
                                                     onOpenVideo = { videoId ->
                                                         navController.openRecommendedVideo(videoId)
                                                     }
@@ -2052,11 +2080,11 @@ fun SocialScreen(
                                         if (
                                             feedMode == SocialFeedMode.DISCOVER &&
                                             recommendedPeople.size > 6 &&
-                                            index == minOf(11, posts.lastIndex)
+                                            index == 11
                                         ) {
                                             item(key = "recommended-people-more") {
                                                 RecommendedPeopleRail(
-                                                    users = recommendedPeople.drop(6),
+                                                    users = recommendedPeople.drop(6).take(6),
                                                     onOpenProfile = { userId ->
                                                         if (userId != viewModel.currentUserId) {
                                                             navController.navigate(Screen.UserProfile.createRoute(userId))
@@ -2069,11 +2097,11 @@ fun SocialScreen(
                                         if (
                                             feedMode == SocialFeedMode.DISCOVER &&
                                             recommendedVideos.size > 6 &&
-                                            index == minOf(16, posts.lastIndex)
+                                            index == 16
                                         ) {
                                             item(key = "recommended-videos-more") {
                                                 RecommendedVideosRail(
-                                                    videos = recommendedVideos.drop(6),
+                                                    videos = recommendedVideos.drop(6).take(6),
                                                     onOpenVideo = { videoId ->
                                                         navController.openRecommendedVideo(videoId)
                                                     }
@@ -2094,7 +2122,8 @@ fun SocialScreen(
                                                         Text(loadMorePostsError.orEmpty())
                                                         TextButton(onClick = viewModel::loadMorePosts) { Text("Reintentar") }
                                                     }
-                                                } else CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                                } else if (isLoadingMorePosts) CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                                else TextButton(onClick = viewModel::loadMorePosts) { Text("Continuar descubriendo") }
                                             }
                                         }
                                     }
@@ -2322,7 +2351,7 @@ private fun RecommendedPeopleRail(
                                 // initial after a slow endpoint or process
                                 // recreation, even when the avatar had been
                                 // cached successfully elsewhere.
-                                CircularProfileImage(
+                                CircularProfileImage(ownerId = user.id, 
                                     imageUrl = user.avatar_url,
                                     size = 58.dp,
                                     mediaType = user.avatar_media_type,
@@ -2536,7 +2565,7 @@ private fun FacebookDiscoverComposer(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircularProfileImage(
+            CircularProfileImage(ownerId = currentUser?.id, 
                 imageUrl = currentUser?.avatar_url,
                 size = 42.dp,
                 showBorder = false,
@@ -2693,11 +2722,13 @@ private fun FacebookMomentRail(
                             )
                         )
                     )
-                    CircularProfileImage(
+                    CircularProfileImage(ownerId = moment.userId, 
                         imageUrl = moment.userAvatarUrl,
                         modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
                         size = 34.dp,
-                        showBorder = !moment.isViewed,
+                        showMomentRing = false,
+                        openMomentOnClick = false,
+                        showBorder = false,
                         borderColor = MaterialTheme.colorScheme.primary,
                         fallbackName = moment.userDisplayName ?: moment.username,
                     )
@@ -3040,14 +3071,21 @@ fun ChallengeAudioPlayer(url: String) {
     var playOnPrepared by remember(context, url) { mutableStateOf(false) }
     var mediaPlayer by remember(context, url) { mutableStateOf<android.media.MediaPlayer?>(null) }
     var progress by remember(context, url) { mutableStateOf(0f) }
+    val audioScope = rememberCoroutineScope()
+    var audioPrepareJob by remember(context, url) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var audioDelivery by remember(context, url) { mutableStateOf<conectate.com.util.NativeAudioDelivery?>(null) }
 
     fun releaseAudio() {
+        audioPrepareJob?.cancel()
+        audioPrepareJob = null
         val player = mediaPlayer
         mediaPlayer = null
         player?.setOnPreparedListener(null)
         player?.setOnCompletionListener(null)
         player?.setOnErrorListener(null)
         player?.release()
+        audioDelivery?.close()
+        audioDelivery = null
         isPlaying = false
         isLoading = false
         playOnPrepared = false
@@ -3060,9 +3098,7 @@ fun ChallengeAudioPlayer(url: String) {
     DisposableEffect(context, url, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
-                playOnPrepared = false
-                if (isPlaying) mediaPlayer?.pause()
-                isPlaying = false
+                releaseAudio()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -3074,6 +3110,8 @@ fun ChallengeAudioPlayer(url: String) {
     LaunchedEffect(context, url, isPlaying) {
         if (isPlaying) {
             while (isPlaying) {
+                try { audioDelivery?.requireCurrent() }
+                catch (_: Exception) { releaseAudio(); break }
                 mediaPlayer?.let { mp ->
                     if (mp.duration > 0) {
                         progress = mp.currentPosition.toFloat() / mp.duration.toFloat()
@@ -3111,13 +3149,16 @@ fun ChallengeAudioPlayer(url: String) {
                                 if (mediaPlayer === preparedPlayer) {
                                     isLoading = false
                                     if (playOnPrepared && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                                        preparedPlayer.start()
-                                        isPlaying = true
+                                        try {
+                                            audioDelivery?.requireCurrent()
+                                            preparedPlayer.start()
+                                            isPlaying = true
+                                        } catch (_: Exception) { releaseAudio() }
                                     }
                                 }
                             }
                             setOnCompletionListener {
-                                isPlaying = false
+                                releaseAudio()
                                 progress = 0f
                             }
                             setOnErrorListener { failedPlayer, what, extra ->
@@ -3127,14 +3168,33 @@ fun ChallengeAudioPlayer(url: String) {
                                 true
                             }
                             // Register callbacks before prepareAsync so fast local sources cannot race them.
-                            UbuntuMedia.setDataSource(context, this, url)
-                            prepareAsync()
+                            audioPrepareJob = audioScope.launch {
+                                var delivery: conectate.com.util.NativeAudioDelivery? = null
+                                try {
+                                    val prepared = conectate.com.util.NativeAudioDelivery.prepare(context, url)
+                                    delivery = prepared
+                                    if (mediaPlayer !== newPlayer || !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                                        prepared.close(); return@launch
+                                    }
+                                    prepared.requireCurrent()
+                                    audioDelivery = prepared
+                                    UbuntuMedia.setDataSource(context, newPlayer, prepared.source)
+                                    newPlayer.prepareAsync()
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    delivery?.close(); throw cancelled
+                                } catch (_: Exception) {
+                                    delivery?.close()
+                                    if (mediaPlayer === newPlayer) releaseAudio()
+                                    android.widget.Toast.makeText(context, "No se pudo abrir el audio. Inténtalo otra vez.", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         }
                     } else {
                         if (currentPlayer.isPlaying) {
                             currentPlayer.pause()
                             isPlaying = false
                         } else {
+                            audioDelivery?.requireCurrent()
                             currentPlayer.start()
                             isPlaying = true
                         }

@@ -222,7 +222,7 @@ class MomentMusicPickerUiTest {
             overlayX = .6f, overlayY = .4f, overlayScale = .8f, overlayRotation = 18f), onSelect = { confirmed = it })
         compose.onNodeWithTag("music_presentation_option_lyrics").performScrollTo().performClick()
         compose.onNodeWithTag("moment_music_active_lyric").assertTextEquals("Una voz para compartir")
-        compose.onNodeWithTag("music_presentation_option_audio").assertDoesNotExist()
+        compose.onNodeWithTag("music_presentation_option_audio").performScrollTo().assertIsDisplayed()
         screenshot("qa-music-lyrics-selection.png")
         compose.onNodeWithText("Usar audio").performClick()
         assertEquals(MomentMusicPresentation.LYRICS, confirmed!!.presentation)

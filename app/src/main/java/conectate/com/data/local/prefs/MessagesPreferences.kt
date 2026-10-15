@@ -20,6 +20,7 @@ class MessagesPreferences @Inject constructor(
         private const val KEY_CONNECTIVITY_HINTS = "connectivity_hints_enabled"
         private const val KEY_ENTER_TO_SEND = "enter_to_send_enabled"
         private const val KEY_MEDIA_AUTO_DOWNLOAD = "media_auto_download_enabled"
+        private const val KEY_RECEIVED_IMAGES_GALLERY = "received_images_gallery_enabled"
         private const val KEY_READ_RECEIPTS = "read_receipts_enabled"
         private const val KEY_CHAT_ACCENT = "chat_accent"
         private const val KEY_CHAT_BACKGROUND = "chat_background"
@@ -40,6 +41,10 @@ class MessagesPreferences @Inject constructor(
         fun isMediaAutoDownloadEnabled(context: Context): Boolean = context
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_MEDIA_AUTO_DOWNLOAD, true)
+
+        fun areReceivedImagesSavedToGallery(context: Context): Boolean = context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_RECEIVED_IMAGES_GALLERY, true)
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -74,6 +79,14 @@ class MessagesPreferences @Inject constructor(
         prefs.getBoolean(KEY_MEDIA_AUTO_DOWNLOAD, true)
     )
     val mediaAutoDownloadEnabled: StateFlow<Boolean> = _mediaAutoDownloadEnabled
+
+    private val _receivedImagesGallery = MutableStateFlow(prefs.getBoolean(KEY_RECEIVED_IMAGES_GALLERY, true))
+    val receivedImagesGallery: StateFlow<Boolean> = _receivedImagesGallery
+
+    fun setReceivedImagesGallery(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_RECEIVED_IMAGES_GALLERY, enabled).apply()
+        _receivedImagesGallery.value = enabled
+    }
 
     private val _readReceiptsEnabled = MutableStateFlow(
         prefs.getBoolean(KEY_READ_RECEIPTS, true)

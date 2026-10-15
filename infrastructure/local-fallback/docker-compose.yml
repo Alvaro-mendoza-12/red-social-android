@@ -110,7 +110,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      DATABASE_URL: postgres://conectate:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/conectate_fallback
+      DATABASE_URL: ${FALLBACK_API_DATABASE_URL:?Set FALLBACK_API_DATABASE_URL for the restricted runtime role}
       STORAGE_ROOT: /data/storage
       STORAGE_ACCEL_PREFIX: /_novvin_storage
       STORAGE_SIGNING_SECRET: ${STORAGE_SIGNING_SECRET:?STORAGE_SIGNING_SECRET is required}
@@ -191,7 +191,8 @@ services:
       API_DOWNLOAD_FROM_DENY_LIST: ".*"
       API_DISABLE_DOWNLOAD_FROM: "true"
       API_TIMEOUT: "30s"
-      API_BODY_LIMIT: "33MB"
+      # 32 MiB file (33,554,432 bytes) plus multipart framing; API still caps files at 32 MiB.
+      API_BODY_LIMIT: "35MB"
     networks: [office-preview]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -318,7 +319,9 @@ services:
       retries: 5
 
   edge:
-    image: nginx:1.27.5-alpine
+    build:
+      context: ./nginx
+    image: novvin-edge-media:local
     container_name: conectate-local-fallback-edge-main
     restart: unless-stopped
     volumes:

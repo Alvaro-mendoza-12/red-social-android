@@ -12,6 +12,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import javax.inject.Inject
@@ -39,6 +41,11 @@ class PostDetailViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(PostDetailUiState())
     val uiState: StateFlow<PostDetailUiState> = _uiState.asStateFlow()
+    private val reactionLoader = PostReactionUsersLoader(viewModelScope,
+        { authService.getCurrentUserId() }, postRepository::getPostReactions)
+    internal val reactionUsersState = reactionLoader.state
+    fun loadPostReactions(postId: String, type: String? = null) = reactionLoader.load(postId, type)
+    fun clearPostReactions() = reactionLoader.clear()
 
     // Voice Manager State Expose
     val voiceState = voiceMessageManager.state
@@ -118,26 +125,34 @@ class PostDetailViewModel @Inject constructor(
     }
 
     fun toggleLike(postId: String) {
-        val state = _uiState.value
-        val post = state.post ?: return
+        val post = _uiState.value.post?.takeIf { it.id == postId } ?: return
+        setReaction(postId, if (post.myReaction != null || post.likedByMe) null else "LIKE")
+    }
+
+    fun setReaction(postId: String, requested: String?) {
+        val previous = _uiState.value.post?.takeIf { it.id == postId } ?: return
+        val account = authService.getCurrentUserId() ?: return
+        val normalized = requested?.uppercase()?.takeIf { it in setOf("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY", "CARE", "FIRE") }
+        if (requested != null && normalized == null) return
+        val old = previous.myReaction ?: if (previous.likedByMe) "LIKE" else null
+        val selected = normalized?.takeUnless { it == old }
         if (!likeRequestsInFlight.add(postId)) return
-        
+        _uiState.update { state -> state.copy(post = state.post?.takeIf { it.id == postId }?.withReaction(selected) ?: state.post) }
         viewModelScope.launch {
             try {
-                val wasLiked = post.likedByMe
-                val newLikeCount = if (wasLiked) maxOf(0, post.likeCount - 1) else post.likeCount + 1
-
-                _uiState.value = state.copy(post = post.copy(likedByMe = !wasLiked, likeCount = newLikeCount))
-
-                val result = postRepository.toggleLike(postId, wasLiked)
-                if (result.isFailure) {
-                    _uiState.value = state.copy(post = post)
+                postRepository.setPostReaction(postId, selected, old != null).getOrThrow()
+                // Server totals include reactions from other people and survive app refreshes.
+                val fresh = postRepository.getPostById(postId).getOrNull()
+                if (account == authService.getCurrentUserId() && _uiState.value.post?.id == postId && fresh != null)
+                    _uiState.update { it.copy(post = fresh) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (account == authService.getCurrentUserId() && _uiState.value.post?.id == postId) {
+                    _uiState.update { state -> state.copy(post = state.post?.copy(likedByMe = previous.likedByMe,
+                        myReaction = previous.myReaction, likeCount = previous.likeCount, reactionCounts = previous.reactionCounts)) }
+                    conectate.com.presentation.common.AppFeedbackBus.show("No se pudo guardar la reacción. Reintenta.")
                 }
-            } catch (e: Exception) {
-                _uiState.value = state.copy(post = post)
-            } finally {
-                likeRequestsInFlight.remove(postId)
-            }
+            } finally { likeRequestsInFlight.remove(postId) }
         }
     }
 

@@ -40,6 +40,7 @@ class AdminPanelViewModel @Inject constructor(
         return when {
             normalized.contains("recovery_contact_not_verified") || normalized.contains("aún no confirmó el contacto") ->
                 "El contacto nuevo aún no confirmó su código. Pide al solicitante que lo escriba en la app."
+            normalized.contains("recovery_status_conflict") -> "Otro administrador ya cambió la solicitud. Actualiza la lista."
             normalized.contains("recovery_case_account_mismatch") || normalized.contains("asociado a otra cuenta") ->
                 "El caso ya está asociado a otra cuenta. Vuelve a revisar la identidad."
             normalized.contains("open_recovery_case_not_found") || normalized.contains("pending_recovery_case_not_found") ->
@@ -60,10 +61,13 @@ class AdminPanelViewModel @Inject constructor(
             normalized.contains("hard_delete_confirmation_invalid") ||
                 normalized.contains("acknowledgements_required") ->
                 "La confirmación de eliminación dejó de ser válida. Actualiza el usuario e inténtalo otra vez."
-            normalized.contains("hard_delete_orphans_remain") ||
-                normalized.contains("internal_error") ||
-                normalized.contains("http 500") ->
-                "El servidor no pudo completar la eliminación y revirtió los cambios. Ningún dato quedó eliminado a medias."
+            normalized.contains("hard_delete_orphans_remain") ->
+                "No se pudo completar la eliminación. Actualiza el usuario antes de reintentar."
+            normalized.contains("suspension_reason_required") -> "Escribe el motivo de la suspensión."
+            normalized.contains("suspension_days_invalid") -> "Selecciona una duración válida."
+            normalized.contains("moderation_rule_invalid") -> "Selecciona una regla del catálogo actualizado."
+            normalized.contains("admin_cannot_be_suspended") -> "No se puede suspender una cuenta administrativa."
+            normalized.contains("user_not_found") -> "La cuenta ya no existe. Actualiza el panel."
             normalized.contains("401") || normalized.contains("invalid_token") ->
                 "Tu sesión venció. Inicia sesión otra vez."
             normalized.contains("403") || normalized.contains("admin_required") ->
@@ -92,6 +96,20 @@ class AdminPanelViewModel @Inject constructor(
     val moderationAppeals: StateFlow<List<AdminModerationAppeal>> = _moderationAppeals.asStateFlow()
     private val _recoveryCases = MutableStateFlow<List<AdminRecoveryCase>>(emptyList())
     val recoveryCases: StateFlow<List<AdminRecoveryCase>> = _recoveryCases.asStateFlow()
+    private val _recoverySearch = MutableStateFlow("")
+    val recoverySearch = _recoverySearch.asStateFlow()
+    private val _recoveryFilter = MutableStateFlow("pending")
+    val recoveryFilter = _recoveryFilter.asStateFlow()
+    private val _recoveryOffset = MutableStateFlow(0)
+    val recoveryOffset = _recoveryOffset.asStateFlow()
+    private val _recoveryTotal = MutableStateFlow(0)
+    val recoveryTotal = _recoveryTotal.asStateFlow()
+    private val _recoveryCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val recoveryCounts = _recoveryCounts.asStateFlow()
+    private val _recoveryPageLoading = MutableStateFlow(false)
+    val recoveryPageLoading = _recoveryPageLoading.asStateFlow()
+    private var recoveryListJob: Job? = null
+    private var recoveryListRevision = 0L
     private val _recoveryAccounts = MutableStateFlow<List<AdminRecoveryAccount>>(emptyList())
     val recoveryAccounts: StateFlow<List<AdminRecoveryAccount>> = _recoveryAccounts.asStateFlow()
     private val _recoverySecret = MutableStateFlow<String?>(null)
@@ -317,6 +335,34 @@ class AdminPanelViewModel @Inject constructor(
         }
     }
 
+    private var userDetailsJob: Job? = null
+    private var userDetailsRevision = 0L
+
+    fun toggleUserDetails(userId: String) {
+        userDetailsRevision++
+        userDetailsJob?.cancel()
+        if (_selectedUser.value?.id == userId) {
+            _selectedUser.value = null
+            return
+        }
+        val revision = userDetailsRevision
+        _selectedUser.value = _users.value.firstOrNull { it.id == userId }
+        userDetailsJob = viewModelScope.launch {
+            _errorMessage.value = null
+            try {
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                val details = localFallbackApiClient.adminGetUser(token, userId).getOrThrow()
+                if (revision == userDetailsRevision) _selectedUser.value = details
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                if (revision == userDetailsRevision) {
+                    _errorMessage.value = adminError(e, "No se pudo cargar el detalle del usuario.")
+                }
+            }
+        }
+    }
+
     fun loadUserDetails(userId: String) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -388,16 +434,63 @@ class AdminPanelViewModel @Inject constructor(
         localFallbackApiClient.adminDownloadRecoveryEvidence(token, caseId, evidenceId).getOrThrow()
     }
 
-    fun refreshRecoveryCases() {
-        viewModelScope.launch {
-            authService.ensureValidAccessToken().onSuccess { loadRecoveryCases(it) }
+    fun setRecoverySearch(value: String) {
+        _recoverySearch.value = value.take(120)
+        _recoveryOffset.value = 0
+        clearRecoverySecret()
+        refreshRecoveryCases(debounce = true)
+    }
+
+    fun setRecoveryFilter(value: String) {
+        if (value !in setOf("all", "pending", "in_review", "issued", "completed", "rejected")) return
+        _recoveryFilter.value = value
+        _recoveryOffset.value = 0
+        clearRecoverySecret()
+        refreshRecoveryCases()
+    }
+
+    fun setRecoveryPage(offset: Int) {
+        _recoveryOffset.value = offset.coerceAtLeast(0)
+        clearRecoverySecret()
+        refreshRecoveryCases()
+    }
+
+    fun refreshRecoveryCases(debounce: Boolean = false) {
+        val requestedRevision = ++recoveryListRevision
+        _recoveryPageLoading.value = true
+        recoveryListJob?.cancel()
+        recoveryListJob = viewModelScope.launch {
+            if (debounce) delay(300)
+            try {
+                loadRecoveryCases(authService.ensureValidAccessToken().getOrThrow())
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (requestedRevision == recoveryListRevision) {
+                    _recoveryPageLoading.value = false
+                    _errorMessage.value = adminError(error, "No se pudieron cargar las solicitudes.")
+                }
+            }
         }
     }
 
     private suspend fun loadRecoveryCases(token: String) {
-        localFallbackApiClient.adminGetRecoveryCases(token)
-            .onSuccess { _recoveryCases.value = it }
-            .onFailure { _errorMessage.value = adminError(it, "No se pudieron cargar las recuperaciones.") }
+        val revision = ++recoveryListRevision
+        val query = _recoverySearch.value
+        val filter = _recoveryFilter.value
+        val offset = _recoveryOffset.value
+        _recoveryPageLoading.value = true
+        try {
+            val page = localFallbackApiClient.adminGetRecoveryCases(token, query, filter, offset).getOrThrow()
+            if (revision == recoveryListRevision) {
+                _recoveryCases.value = page.items
+                _recoveryTotal.value = page.total
+                _recoveryOffset.value = page.offset
+                _recoveryCounts.value = page.statusCounts
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            if (revision == recoveryListRevision) _errorMessage.value = adminError(error, "No se pudieron cargar las recuperaciones.")
+        } finally { if (revision == recoveryListRevision) _recoveryPageLoading.value = false }
     }
 
     fun findRecoveryAccounts(query: String) {
@@ -423,6 +516,8 @@ class AdminPanelViewModel @Inject constructor(
         viewModelScope.launch {
             _recoveryBusy.value = true
             clearRecoverySecret()
+            _statusMessage.value = null
+            _errorMessage.value = null
             try {
                 val token = authService.ensureValidAccessToken().getOrThrow()
                 val body = buildJsonObject {
@@ -430,6 +525,7 @@ class AdminPanelViewModel @Inject constructor(
                     put("reviewedBy", authService.getCurrentUserId().orEmpty())
                     put("verificationRef", evidence)
                     put("resetTwoFactor", resetTwoFactor)
+                    if (action == "review") put("status", userId)
                 }
                 localFallbackApiClient.adminRecoveryAction(token, caseId, action, body)
                     .onSuccess { response ->
@@ -438,6 +534,7 @@ class AdminPanelViewModel @Inject constructor(
                         _recoverySecretCaseId.value = if (_recoverySecret.value != null) caseId else null
                         _recoverySecretAction.value = if (_recoverySecret.value != null) action else null
                         _statusMessage.value = when (action) {
+                            "review" -> "Estado de solicitud actualizado."
                             "contact-code" -> "Código de contacto generado. Envíalo manualmente al contacto indicado."
                             "issue-code" -> "Código temporal emitido. Compártelo solo con el titular verificado."
                             else -> "Solicitud rechazada."
@@ -625,6 +722,8 @@ class AdminPanelViewModel @Inject constructor(
             try {
                 _isLoading.value = true
                 val token = authService.ensureValidAccessToken().getOrThrow()
+                _errorMessage.value = null
+                _statusMessage.value = null
                 val result = localFallbackApiClient.adminSuspendUser(
                     token,
                     userId,

@@ -38,6 +38,7 @@ internal class ChatMediaOfflineCache(
     private val maxEntryBytes: Long = MAX_ENTRY_BYTES,
     private val maxRetainedEntryBytes: Long = MAX_RETAINED_ENTRY_BYTES,
     private val minFreeSpaceBytes: Long = MIN_FREE_SPACE_BYTES,
+    private val onCachedMedia: (String, String, File) -> Unit = { _, _, _ -> },
     private val connectionFactory: (URL) -> HttpURLConnection = { url ->
         url.openConnection() as HttpURLConnection
     }
@@ -59,7 +60,9 @@ internal class ChatMediaOfflineCache(
     suspend fun resolveCachedUri(source: String?, retain: Boolean = false): String? = withContext(Dispatchers.IO) {
         val accountId = normalizedAccountId() ?: return@withContext null
         val sourceKey = canonicalSourceKey(source) ?: return@withContext null
-        synchronized(fileLock) { resolveEntry(accountId, sourceKey, retain) }
+        val uri = synchronized(fileLock) { resolveEntry(accountId, sourceKey, retain) }
+        if (uri != null) onCachedMedia(accountId, sourceKey, entryFile(accountId, sourceKey))
+        uri
     }
 
     private fun resolveEntry(accountId: String, sourceKey: String, retain: Boolean): String? {
@@ -171,11 +174,19 @@ internal class ChatMediaOfflineCache(
                 if (!isCurrent(work) || resolveEntry(work.accountId, work.sourceKey, work.retain) != null) return
             }
             runCatching {
+                val storageRead = conectate.com.core.media.StorageReadSession.isStorageRequest(remoteUrl)
+                val storageCredential = if (storageRead) conectate.com.core.media.StorageReadSession.readySnapshot() else null
+                val storageIdentity = storageCredential?.identity
                 val connection = connectionFactory(URL(remoteUrl)).apply {
                     connectTimeout = CONNECT_TIMEOUT_MS
                     readTimeout = READ_TIMEOUT_MS
-                    instanceFollowRedirects = true
+                    instanceFollowRedirects = !storageRead
                     requestMethod = "GET"
+                    if (storageRead) {
+                        conectate.com.core.media.StorageReadSession.requireCurrent(storageIdentity)
+                        storageCredential?.accessToken?.let { setRequestProperty("Authorization", "Bearer $it") }
+                        setRequestProperty("Cache-Control", "no-store")
+                    }
                     setRequestProperty("Accept", "image/*,audio/*,video/*;q=0.9,*/*;q=0.1")
                     UbuntuStorageUrl.publicRequestHeaders.forEach { (name, value) ->
                         setRequestProperty(name, value)
@@ -183,18 +194,20 @@ internal class ChatMediaOfflineCache(
                 }
                 try {
                     val status = connection.responseCode
+                    if (storageRead) conectate.com.core.media.StorageReadSession.requireCurrent(storageIdentity)
                     // A partial (206) response must not become a supposedly complete offline file.
                     if (status != HttpURLConnection.HTTP_OK) return@runCatching
                     val contentType = connection.contentType
                     val declaredBytes = connection.contentLengthLong
                     if (!isCacheableContentType(contentType, remoteUrl)) return@runCatching
-                    connection.inputStream.buffered().use { input ->
-                        storeInput(
+                    conectate.com.core.media.StorageReadSession.guardInputStream(remoteUrl, connection.inputStream, storageIdentity).buffered().use { input ->
+                        val file = storeInput(
                             work = work,
                             contentType = contentType,
                             declaredBytes = declaredBytes,
                             input = input
                         ).getOrThrow()
+                        if (synchronized(fileLock) { isCurrent(work) }) onCachedMedia(work.accountId, work.sourceKey, file)
                     }
                 } finally {
                     connection.disconnect()
@@ -301,11 +314,7 @@ internal class ChatMediaOfflineCache(
         ?.takeIf { it.isNotBlank() }
 
     private fun canonicalSourceKey(value: String?): String? {
-        val raw = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
-        val rewritten = UbuntuStorageUrl.rewrite(raw) ?: raw
-        return UbuntuStorageUrl.stableCacheKey(rewritten)
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
+        return canonicalChatMediaSourceKey(value)
     }
 
     private fun accountDirectoryName(accountId: String): String = digest("account:$accountId")
@@ -342,11 +351,13 @@ internal class ChatMediaOfflineCache(
         fun from(
             context: Context,
             accountIdProvider: () -> String?,
-            automaticMediaEnabled: () -> Boolean
+            automaticMediaEnabled: () -> Boolean,
+            onCachedMedia: (String, String, File) -> Unit = { _, _, _ -> }
         ): ChatMediaOfflineCache = ChatMediaOfflineCache(
             rootDirectory = File(context.filesDir, ROOT_DIRECTORY),
             accountIdProvider = accountIdProvider,
-            automaticMediaEnabled = automaticMediaEnabled
+            automaticMediaEnabled = automaticMediaEnabled,
+            onCachedMedia = onCachedMedia
         )
     }
 }

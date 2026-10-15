@@ -174,6 +174,8 @@ fun DeviceAudioPickerDialog(
     defaultClipDurationMs: Long = DEFAULT_PROFILE_AUDIO_CLIP_MS,
     allowFullTrack: Boolean = false,
     defaultToFullTrack: Boolean = false,
+    /** Pass the complete source to an excerpt editor; do not export a provisional crop. */
+    selectSourceForExcerpt: Boolean = false,
     catalogTracks: List<DeviceAudioTrack> = novvinRoyaltyFreeAudioCatalog(),
     enableOpenCatalog: Boolean = true,
     /** When false the picker is intentionally limited to MediaStore.
@@ -305,6 +307,11 @@ fun DeviceAudioPickerDialog(
     }
 
     fun choose(track: DeviceAudioTrack) {
+        if (selectSourceForExcerpt) {
+            pause()
+            emitWholeTrack(track)
+            return
+        }
         pause()
         selectedTrack = track
         trimRangeMs = defaultAudioTrimRange(
@@ -339,6 +346,7 @@ fun DeviceAudioPickerDialog(
             player.release()
         }
     }
+    conectate.com.presentation.social.PauseMomentPlayerOnBackground(player)
 
     LaunchedEffect(player, previewEndMs) {
         while (true) {
@@ -1351,7 +1359,7 @@ private fun formatAudioTime(milliseconds: Long): String {
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
-private suspend fun exportAudioClip(
+internal suspend fun exportAudioClip(
     context: Context,
     sourceUri: Uri,
     startMs: Long,

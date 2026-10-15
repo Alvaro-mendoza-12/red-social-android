@@ -26,6 +26,13 @@ async function run() {
     async getParticipant() {
       return { tracks: [{ sid: 'audio-1', type: 0 }, { sid: 'video-1', type: 1 }] }
     },
+    async updateParticipant(room, identity, options) {
+      assert.deepStrictEqual(options.permission, {
+        canSubscribe: true, canPublish: true, canPublishData: true,
+        canPublishSources: [1, 3], canUpdateMetadata: true,
+      })
+      calls.push(['permission', room, identity, options.permission.canPublishSources])
+    },
     async mutePublishedTrack(room, identity, sid, muted) {
       calls.push(['mute', room, identity, sid, muted])
     },
@@ -45,6 +52,7 @@ async function run() {
   assert.strictEqual(result.mutedTracks, 1)
   assert.deepStrictEqual(calls, [
     ['remove', 'room-1', 'guest-1'],
+    ['permission', 'room-1', 'guest-1', [1, 3]],
     ['mute', 'room-1', 'guest-1', 'audio-1', true],
   ])
   console.log('livekit admin tests passed')

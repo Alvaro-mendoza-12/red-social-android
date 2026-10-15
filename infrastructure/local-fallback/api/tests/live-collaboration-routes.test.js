@@ -165,6 +165,21 @@ async function testSfuConfigurationDefaultsDisabled() {
   assert.strictEqual(configuration.url, '')
 }
 
+async function testGuestCapacitySupportsSixAndRespectsAnExplicitBudget() {
+  const previous = process.env.LIVE_MAX_GUESTS
+  try {
+    delete process.env.LIVE_MAX_GUESTS
+    assert.strictEqual(liveSfuConfiguration().maxGuests, 6)
+    process.env.LIVE_MAX_GUESTS = '2'
+    assert.strictEqual(liveSfuConfiguration().maxGuests, 2)
+    process.env.LIVE_MAX_GUESTS = '99'
+    assert.strictEqual(liveSfuConfiguration().maxGuests, 8)
+  } finally {
+    if (previous === undefined) delete process.env.LIVE_MAX_GUESTS
+    else process.env.LIVE_MAX_GUESTS = previous
+  }
+}
+
 async function testIdentityMembershipUsesSetApi() {
   const source = fs.readFileSync(require.resolve('../src/live-routes'), 'utf8')
   assert.doesNotMatch(source, /identity\.ids\.includes\(/)
@@ -172,6 +187,7 @@ async function testIdentityMembershipUsesSetApi() {
 }
 
 Promise.resolve()
+  .then(testGuestCapacitySupportsSixAndRespectsAnExplicitBudget)
   .then(testCollaborationSchema)
   .then(testSfuTokenIsScopedAndShortLived)
   .then(testCrossLiveTokenUsesTheAuthoritativeBattleRoom)

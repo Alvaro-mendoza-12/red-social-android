@@ -34,7 +34,14 @@ fun CreatePostScreen(
     navController: NavController,
     viewModel: CreatePostViewModel = hiltViewModel()
 ) {
-    var caption by remember { mutableStateOf("") }
+    var captionDraft by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = androidx.compose.ui.text.input.TextFieldValue.Saver) {
+        mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(""))
+    }
+    val caption = captionDraft.text
+    val mentionSuggestions by viewModel.mentionSuggestions.collectAsState()
+    LaunchedEffect(captionDraft) {
+        viewModel.updateMentionQuery(captionDraft.text, captionDraft.selection.end)
+    }
     var remixAllowed by remember { mutableStateOf(false) }
     var remixAudience by remember { mutableStateOf("public") }
     var isSensitive by remember { mutableStateOf(false) }
@@ -56,7 +63,7 @@ fun CreatePostScreen(
                         .take((7 - selectedMediaUris.size).coerceAtLeast(0))
                 )
                 if (caption.isBlank() && preparedCaption.isNotBlank()) {
-                    caption = preparedCaption
+                    captionDraft = androidx.compose.ui.text.input.TextFieldValue(preparedCaption, androidx.compose.ui.text.TextRange(preparedCaption.length))
                 }
                 showMediaComposer = false
             }
@@ -119,8 +126,10 @@ fun CreatePostScreen(
             }
 
             TextField(
-                value = caption,
-                onValueChange = { caption = it },
+                value = captionDraft,
+                onValueChange = { captionDraft = it },
+                visualTransformation = conectate.com.presentation.components.mentionInputTransformation,
+                enabled = !isCreating,
                 placeholder = { Text("¿Qué estás pensando?") },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -134,6 +143,29 @@ fun CreatePostScreen(
                     unfocusedIndicatorColor = Color.Transparent
                 )
             )
+
+            if (mentionSuggestions.isNotEmpty()) {
+                Surface(tonalElevation = 3.dp, shape = RoundedCornerShape(12.dp)) {
+                    Column {
+                        mentionSuggestions.forEach { user ->
+                            val handle = conectate.com.data.model.profilePublicHandle(user)
+                            ListItem(
+                                headlineContent = { Text(user.display_name ?: user.full_name ?: handle, maxLines = 1) },
+                                supportingContent = { Text("@$handle", maxLines = 1) },
+                                leadingContent = { conectate.com.presentation.components.CircularProfileImage(openMomentOnClick = false, ownerId = user.id, imageUrl = user.avatar_url, fallbackName = user.display_name) },
+                                modifier = Modifier.clickable(enabled = !isCreating) {
+                                    conectate.com.data.model.activeMentionAt(captionDraft.text, captionDraft.selection.end)?.let { active ->
+                                        val (updated, cursor) = conectate.com.data.model.insertMention(captionDraft.text, active, handle)
+                                        captionDraft = androidx.compose.ui.text.input.TextFieldValue(updated, androidx.compose.ui.text.TextRange(cursor))
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            } else if (caption.isBlank()) {
+                Text("Escribe @ y un nombre para mencionar a alguien", style = MaterialTheme.typography.bodySmall)
+            }
 
             if (selectedMediaUris.isNotEmpty()) {
                 LazyRow(

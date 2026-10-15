@@ -1,6 +1,8 @@
 package conectate.com.util
 
 import conectate.com.data.localfallback.UbuntuStorageUrl
+import conectate.com.core.media.StorageReadSession
+import conectate.com.core.media.StorageReadIdentity
 import okhttp3.Call
 import okhttp3.Request
 import java.io.File
@@ -18,8 +20,10 @@ internal class ChatAudioPlaybackCache(
     private val maxCacheBytes: Long = 128L * 1024 * 1024,
 ) {
     fun download(url: String): File {
+        val protectedRead = StorageReadSession.isStorageRequest(url)
+        val identity = if (protectedRead) StorageReadSession.snapshot()?.identity else null
         val target = fileFor(url)
-        if (target.isFile && target.length() in 1..maxFileBytes) {
+        if (!protectedRead && target.isFile && target.length() in 1..maxFileBytes) {
             target.setLastModified(System.currentTimeMillis())
             return target
         }
@@ -37,12 +41,12 @@ internal class ChatAudioPlaybackCache(
             }
             val expectedBytes = body.contentLength()
             if (expectedBytes > maxFileBytes) throw IOException("El audio supera el límite permitido")
-            return body.byteStream().use { store(url, it, expectedBytes) }
+            return body.byteStream().use { store(url, it, expectedBytes, identity) }
         }
     }
 
-    fun store(url: String, input: InputStream, expectedBytes: Long = -1L): File {
-        val target = fileFor(url)
+    fun store(url: String, input: InputStream, expectedBytes: Long = -1L, identity: StorageReadIdentity? = StorageReadSession.snapshot()?.identity): File {
+        val target = fileFor(url, privateDelivery = StorageReadSession.isStorageRequest(url))
         if (!directory.isDirectory && !directory.mkdirs()) throw IOException("No se pudo guardar el audio")
         val temporary = File(directory, "${target.name}.${UUID.randomUUID()}.part")
         try {
@@ -50,7 +54,9 @@ internal class ChatAudioPlaybackCache(
             temporary.outputStream().buffered().use { output ->
                 val buffer = ByteArray(32 * 1024)
                 while (true) {
+                    if (StorageReadSession.isStorageRequest(url)) StorageReadSession.requireCurrent(identity)
                     val read = input.read(buffer)
+                    if (StorageReadSession.isStorageRequest(url)) StorageReadSession.requireCurrent(identity)
                     if (read < 0) break
                     count += read
                     if (count > maxFileBytes) throw IOException("El audio supera el límite permitido")
@@ -60,6 +66,7 @@ internal class ChatAudioPlaybackCache(
             if (count == 0L || expectedBytes >= 0 && count != expectedBytes) {
                 throw IOException("La descarga del audio quedó incompleta")
             }
+            if (StorageReadSession.isStorageRequest(url)) StorageReadSession.requireCurrent(identity)
             // A concurrent completed download is also valid; never expose a partial file.
             if (!temporary.renameTo(target) && !(target.isFile && target.length() == count)) {
                 throw IOException("No se pudo finalizar la descarga del audio")
@@ -71,11 +78,12 @@ internal class ChatAudioPlaybackCache(
         }
     }
 
-    private fun fileFor(url: String): File {
-        val key = UbuntuStorageUrl.stableCacheKey(url) ?: url
+    private fun fileFor(url: String, privateDelivery: Boolean = false): File {
+        val key = StorageReadSession.scopedCacheKey(url, UbuntuStorageUrl.stableCacheKey(url) ?: url)
         val digest = MessageDigest.getInstance("SHA-256").digest(key.toByteArray())
             .joinToString("") { "%02x".format(it) }
-        return File(directory, "$digest.m4a")
+        val revision = if (privateDelivery) ".${UUID.randomUUID()}" else ""
+        return File(directory, "$digest$revision.m4a")
     }
 
     private fun evictOldFiles(keep: File) {

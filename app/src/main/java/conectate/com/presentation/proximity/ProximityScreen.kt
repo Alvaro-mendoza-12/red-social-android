@@ -40,12 +40,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -98,6 +93,7 @@ import conectate.com.presentation.messages.isDeviceLocationEnabled
 import conectate.com.presentation.messages.StickerPickerDialog
 import conectate.com.presentation.navigation.Screen
 import coil.compose.AsyncImage
+import conectate.com.presentation.components.FullScreenImageDialog
 import kotlinx.coroutines.launch
 import kotlin.math.cos
 import kotlin.math.min
@@ -121,8 +117,7 @@ fun ProximityScreen(
     val outgoingBottle by viewModel.outgoingBottle.collectAsState()
     val incomingBottle by viewModel.incomingBottle.collectAsState()
     val normalChatPeerBySession by viewModel.normalChatPeerBySession.collectAsState()
-    val gender by viewModel.gender.collectAsState()
-    val lookingFor by viewModel.lookingFor.collectAsState()
+    val bottleInboxStatus by viewModel.bottleInboxStatus.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var radiusSlider by remember(radiusKm) { mutableFloatStateOf(radiusKm.toFloat()) }
@@ -186,10 +181,18 @@ fun ProximityScreen(
         }
     }
 
-    DisposableEffect(selectedTab) {
-        if (selectedTab == 1) viewModel.activateBottleInbox()
+    val bottleLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(selectedTab, bottleLifecycleOwner) {
+        fun updateVisibility() {
+            viewModel.setBottleInboxVisible(selectedTab == 1 &&
+                bottleLifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED))
+        }
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, _ -> updateVisibility() }
+        bottleLifecycleOwner.lifecycle.addObserver(observer)
+        updateVisibility()
         onDispose {
-            if (selectedTab == 1) viewModel.deactivateBottleInbox()
+            bottleLifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.setBottleInboxVisible(false)
         }
     }
 
@@ -216,7 +219,7 @@ fun ProximityScreen(
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("Anónimo") },
+                    text = { Text("Botella al mar") },
                     icon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) }
                 )
             }
@@ -243,10 +246,8 @@ fun ProximityScreen(
                     messages = messages,
                     outgoingBottle = outgoingBottle,
                     incomingBottle = incomingBottle,
-                    gender = gender,
-                    lookingFor = lookingFor,
-                    onGenderChange = viewModel::setGender,
-                    onLookingForChange = viewModel::setLookingFor,
+                    inboxStatus = bottleInboxStatus,
+                    busy = isLoading,
                     onLaunchBottle = viewModel::sendAnonymousBottle,
                     onCancelBottle = viewModel::cancelOutgoingBottle,
                     onAcceptBottle = viewModel::acceptIncomingBottle,
@@ -507,7 +508,7 @@ private fun NearbyProfileRow(profile: NearbyProfile, onClick: () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CircularProfileImage(imageUrl = profile.avatarUrl, size = 52.dp, showBorder = true)
+            CircularProfileImage(ownerId = profile.userId, imageUrl = profile.avatarUrl, size = 52.dp, showBorder = true)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(profile.displayName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -528,16 +529,14 @@ private fun NearbyProfileRow(profile: NearbyProfile, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AnonymousTab(
+internal fun AnonymousTab(
     session: AnonymousChatSession?,
     sessions: List<AnonymousChatSession>,
     messages: List<AnonymousChatMessage>,
     outgoingBottle: AnonymousBottle?,
     incomingBottle: AnonymousBottle?,
-    gender: String,
-    lookingFor: String,
-    onGenderChange: (String) -> Unit,
-    onLookingForChange: (String) -> Unit,
+    inboxStatus: BottleInboxStatus,
+    busy: Boolean,
     onLaunchBottle: (String) -> Unit,
     onCancelBottle: () -> Unit,
     onAcceptBottle: () -> Unit,
@@ -593,61 +592,21 @@ private fun AnonymousTab(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "Escribe un mensaje anónimo. Viajará de persona en persona hasta que alguien quiera responderte y abrir una conversación.",
+                        "Envía un mensaje o recibe una botella de otra persona. Si alguien responde, empieza un chat anónimo.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
         }
 
-        if (incomingBottle != null) {
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.tertiaryContainer,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text(
-                            "Te llegó una botella",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            incomingBottle.content,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Text(
-                            "Si la aceptas, se abrirá un chat anónimo. Si pasas, desaparecerá y continuará buscando a otra persona.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedButton(
-                                onClick = onDeclineBottle,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                            ) {
-                                Icon(Icons.Default.Cancel, contentDescription = null)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Pasar")
-                            }
-                            Button(
-                                onClick = onAcceptBottle,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Responder")
-                            }
-                        }
-                    }
-                }
-            }
+        item(key = "bottle_inbox") {
+            BottleInboxCard(
+                bottle = incomingBottle,
+                status = inboxStatus,
+                busy = busy,
+                onAccept = onAcceptBottle,
+                onDecline = onDeclineBottle,
+            )
         }
 
         if (outgoingBottle != null) {
@@ -676,7 +635,7 @@ private fun AnonymousTab(
                                     if (outgoingBottle.status == "offered") {
                                         "Alguien la está leyendo. Si no la acepta, seguirá automáticamente."
                                     } else {
-                                        "Buscando una persona compatible…"
+                                        "Buscando a alguien que quiera responder…"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -695,6 +654,7 @@ private fun AnonymousTab(
                         }
                         OutlinedButton(
                             onClick = onCancelBottle,
+                            enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                         ) {
@@ -705,7 +665,7 @@ private fun AnonymousTab(
                     }
                 }
             }
-        } else if (incomingBottle == null) {
+        } else {
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -716,7 +676,7 @@ private fun AnonymousTab(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text("Tu mensaje", fontWeight = FontWeight.Bold)
+                        Text("Enviar botella", fontWeight = FontWeight.Bold)
                         OutlinedTextField(
                             value = bottleMessage,
                             onValueChange = { bottleMessage = it.take(500) },
@@ -728,7 +688,7 @@ private fun AnonymousTab(
                         )
                         Button(
                             onClick = { onLaunchBottle(bottleMessage) },
-                            enabled = bottleMessage.isNotBlank(),
+                            enabled = bottleMessage.isNotBlank() && !busy,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                         ) {
@@ -754,26 +714,6 @@ private fun AnonymousTab(
                 )
             }
         }
-        item { PreferenceSelector(
-            label = "Me identifico como",
-            value = gender,
-            options = listOf(
-                "unspecified" to "Prefiero no decir",
-                "woman" to "Mujer",
-                "man" to "Hombre"
-            ),
-            onValueChange = onGenderChange
-        ) }
-        item { PreferenceSelector(
-            label = "Quiero conversar con",
-            value = lookingFor,
-            options = listOf(
-                "any" to "Cualquier persona",
-                "woman" to "Mujeres",
-                "man" to "Hombres"
-            ),
-            onValueChange = onLookingForChange
-        ) }
         if (sessions.isNotEmpty()) {
             item {
                 Text(
@@ -802,6 +742,67 @@ private fun AnonymousTab(
 }
 
 @Composable
+internal fun BottleInboxCard(
+    bottle: AnonymousBottle?,
+    status: BottleInboxStatus,
+    busy: Boolean,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "Recibir botellas",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            if (bottle == null) {
+                Text(
+                    when (status) {
+                        BottleInboxStatus.INACTIVE, BottleInboxStatus.CONNECTING -> "Conectando para recibir…"
+                        BottleInboxStatus.ERROR -> "No pudimos conectar. Volveremos a intentarlo automáticamente."
+                        BottleInboxStatus.WAITING, BottleInboxStatus.RECEIVED -> "Todavía no te ha llegado una botella."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "Puedes recibir sin enviar un mensaje. Mantén este apartado abierto para que te lleguen botellas.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                Text("Te llegó una botella", fontWeight = FontWeight.SemiBold)
+                Text(bottle.content, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Responde para abrir un chat anónimo o pasa para que siga hacia otra persona.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        onClick = onDecline,
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                    ) { Text("Pasar") }
+                    Button(
+                        onClick = onAccept,
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                    ) { Text("Responder") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun AnonymousSessionRow(
     session: AnonymousChatSession,
     onClick: () -> Unit,
@@ -819,7 +820,7 @@ private fun AnonymousSessionRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (session.peer.avatarUrl != null) {
-                CircularProfileImage(imageUrl = session.peer.avatarUrl, size = 46.dp, showBorder = true)
+                CircularProfileImage(ownerId = session.peer.userId, imageUrl = session.peer.avatarUrl, size = 46.dp, showBorder = true)
             } else {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
@@ -867,41 +868,6 @@ private fun AnonymousSessionRow(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PreferenceSelector(
-    label: String,
-    value: String,
-    options: List<Pair<String, String>>,
-    onValueChange: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val selectedLabel = options.firstOrNull { it.first == value }?.second ?: options.first().second
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-        OutlinedTextField(
-            value = selectedLabel,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier
-                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                .fillMaxWidth()
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option.second) },
-                    onClick = {
-                        onValueChange(option.first)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
-}
-
 @Composable
 private fun AnonymousConversation(
     session: AnonymousChatSession,
@@ -917,10 +883,10 @@ private fun AnonymousConversation(
 ) {
     var draft by remember { mutableStateOf("") }
     var showStickerPicker by remember { mutableStateOf(false) }
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val imagePicker = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         uri?.let { onSendMedia(it, "image") }
     }
-    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val audioPicker = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri ->
         uri?.let { onSendMedia(it, "audio") }
     }
     val listState = rememberLazyListState()
@@ -945,7 +911,7 @@ private fun AnonymousConversation(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver a chats anónimos")
             }
             if (session.peer.avatarUrl != null) {
-                CircularProfileImage(imageUrl = session.peer.avatarUrl, size = 44.dp, showBorder = true)
+                CircularProfileImage(ownerId = session.peer.userId, imageUrl = session.peer.avatarUrl, size = 44.dp, showBorder = true)
             } else {
                 Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                     Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.padding(10.dp))
@@ -970,9 +936,9 @@ private fun AnonymousConversation(
             Text(
                 when {
                 session.messageCount >= 12 -> "Chat normal desbloqueado"
-                session.messageCount >= 9 -> "Fotos desbloqueadas · falta compartir el perfil"
-                session.messageCount >= 6 -> "Stickers desbloqueados · faltan fotos"
-                session.messageCount >= 3 -> "Audios desbloqueados · faltan stickers y fotos"
+                anonymousMediaUnlocked(session.messageCount, "image") -> "Fotos desbloqueadas · falta compartir el perfil"
+                anonymousMediaUnlocked(session.messageCount, "sticker") -> "Stickers desbloqueados · faltan fotos"
+                anonymousMediaUnlocked(session.messageCount, "audio") -> "Audios desbloqueados · faltan stickers y fotos"
                 else -> "Sigan conversando y compartiendo identidad para desbloquear opciones"
             },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
@@ -1029,7 +995,7 @@ private fun AnonymousConversation(
                 AnonymousMessageBubble(message)
             }
         }
-        if (session.messageCount >= 3) {
+        if (anonymousMediaUnlocked(session.messageCount, "audio")) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1039,14 +1005,14 @@ private fun AnonymousConversation(
                     leadingIcon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
                     label = { Text("Audio") }
                 )
-                if (session.messageCount >= 6) {
+                if (anonymousMediaUnlocked(session.messageCount, "sticker")) {
                     AssistChip(
                         onClick = { showStickerPicker = true },
                         leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null) },
                         label = { Text("Sticker") }
                     )
                 }
-                if (session.messageCount >= 9) {
+                if (anonymousMediaUnlocked(session.messageCount, "image")) {
                     AssistChip(
                         onClick = { imagePicker.launch("image/*") },
                         leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
@@ -1085,7 +1051,8 @@ private fun AnonymousConversation(
 }
 
 @Composable
-private fun AnonymousMessageBubble(message: AnonymousChatMessage) {
+internal fun AnonymousMessageBubble(message: AnonymousChatMessage) {
+    var imageOpened by remember(message.id, message.mediaUrl) { mutableStateOf(false) }
     val mine = message.sender == "me"
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1106,7 +1073,8 @@ private fun AnonymousMessageBubble(message: AnonymousChatMessage) {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(if (message.contentType == "sticker") 150.dp else 220.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(onClickLabel = "Ampliar imagen") { imageOpened = true },
                                 contentScale = ContentScale.Fit
                             )
                         }
@@ -1124,6 +1092,11 @@ private fun AnonymousMessageBubble(message: AnonymousChatMessage) {
                     else -> Text(message.content)
                 }
             }
+        }
+    }
+    if (imageOpened && message.contentType in setOf("image", "sticker")) {
+        message.mediaUrl?.takeIf(String::isNotBlank)?.let { url ->
+            FullScreenImageDialog(imageUrl = url, onDismiss = { imageOpened = false })
         }
     }
 }

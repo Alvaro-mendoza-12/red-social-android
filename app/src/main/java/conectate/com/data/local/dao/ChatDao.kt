@@ -128,4 +128,7 @@ interface ChatDao {
     @Query("UPDATE chats SET is_favorite = :isFavorite WHERE LOWER(id) = LOWER(:chatId)")
     suspend fun updateFavoriteState(chatId: String, isFavorite: Boolean)
 
+    @Query("UPDATE chats SET last_message_preview = 'Mensaje eliminado' WHERE id = :chatId AND last_message_id = :messageId")
+    suspend fun redactDeletedPreview(chatId: String, messageId: String)
+
 }

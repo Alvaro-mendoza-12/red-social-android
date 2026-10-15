@@ -18,9 +18,10 @@ internal class InteractiveMusicPreview(context: Context) {
         const val PRELOAD_BUFFER_BYTES = 1_048_576
     }
 
+    private var preloadAllowed = false
     private val builder = DefaultPreloadManager.Builder(context,
         TargetPreloadStatusControl<Int, DefaultPreloadManager.PreloadStatus> {
-            DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(PRELOAD_DURATION_MS)
+            if (preloadAllowed) DefaultPreloadManager.PreloadStatus.specifiedRangeLoaded(PRELOAD_DURATION_MS) else DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_NOT_PRELOADED
         })
         .setMediaSourceFactory(DefaultMediaSourceFactory(MediaPlaybackDataSources.interactiveAudioFactory(context)))
         .setLoadControl(DefaultLoadControl.Builder()
@@ -35,7 +36,8 @@ internal class InteractiveMusicPreview(context: Context) {
 
     fun preload(items: List<MediaItem>) {
         val bounded = items.distinct().take(MAX_PRELOADED_TRACKS)
-        if (bounded == preparedItems) return
+        preloadAllowed = true
+        if (bounded == preparedItems) { preloadManager.invalidate(); return }
         preparedItems.filterNot { it in bounded }.forEach(preloadManager::remove)
         bounded.forEachIndexed { index, item ->
             if (item !in preparedItems) preloadManager.add(item, index)
@@ -48,7 +50,13 @@ internal class InteractiveMusicPreview(context: Context) {
     fun mediaSource(item: MediaItem): MediaSource? =
         if (item in preparedItems) preloadManager.getMediaSource(item) else null
 
+    fun prioritizePlayback() {
+        preloadAllowed = false
+        preloadManager.invalidate()
+    }
+
     fun clearPreload() {
+        preloadAllowed = false
         preparedItems = emptyList()
         preloadManager.reset()
     }

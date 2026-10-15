@@ -30,6 +30,8 @@ object MediaPlaybackDataSources {
     private val mediaHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .dns(PublicBackendDns)
+            .addInterceptor(conectate.com.core.media.StorageReadRequestInterceptor())
+            .addNetworkInterceptor(conectate.com.core.media.StorageReadNetworkInterceptor())
             .connectTimeout(CONNECT_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
             .readTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
             .writeTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
@@ -57,7 +59,7 @@ object MediaPlaybackDataSources {
         if (includeStorageHeaders) {
             factory.setDefaultRequestProperties(UbuntuStorageUrl.publicRequestHeaders)
         }
-        return factory
+        return StorageReadHttpDataSource.Factory(factory)
     }
 
     fun streamingFactory(
@@ -69,8 +71,12 @@ object MediaPlaybackDataSources {
     )
 
     /** Reuse the initial HTTP response for a short, immediate audio trim seek. */
-    internal fun interactiveAudioFactory(context: Context): DataSource.Factory =
-        DefaultDataSource.Factory(context.applicationContext, DataSource.Factory {
-            ShortAudioSeekDataSource(httpFactory().createDataSource())
-        })
+    internal fun interactiveAudioFactory(context: Context): DataSource.Factory {
+        val http = httpFactory()
+        val shortSeek = DataSource.Factory { ShortAudioSeekDataSource(http.createDataSource()) }
+        // A retained response/seek header must not be reused by another account,
+        // or substitute for admission on a new own-storage open/Range request.
+        val reads = DataSource.Factory { StorageReadDataSource(http, shortSeek) { spec -> PlaybackCacheAdmission.key(spec, allowAudio = true) } }
+        return DefaultDataSource.Factory(context.applicationContext, reads)
+    }
 }

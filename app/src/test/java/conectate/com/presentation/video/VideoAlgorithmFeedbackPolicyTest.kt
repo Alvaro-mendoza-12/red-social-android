@@ -35,8 +35,9 @@ class VideoAlgorithmFeedbackPolicyTest {
     }
 
     @Test
-    fun `empty authoritative first page falls back instead of blanking feed`() {
-        assertFalse(VideoAlgorithmFeedbackPolicy.shouldUseAuthoritativeInitialPage(0))
+    fun `empty authoritative page preserves server preferences and continuation`() {
+        assertTrue(VideoAlgorithmFeedbackPolicy.shouldUseAuthoritativeInitialPage(0))
+        assertFalse(VideoAlgorithmFeedbackPolicy.shouldUseAuthoritativeInitialPage(-1))
         assertTrue(VideoAlgorithmFeedbackPolicy.shouldUseAuthoritativeInitialPage(1))
         assertTrue(VideoAlgorithmFeedbackPolicy.shouldUseAuthoritativeInitialPage(24))
     }

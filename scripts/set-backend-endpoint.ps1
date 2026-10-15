@@ -35,7 +35,7 @@ if ($DiscoveryPrivateKeyPath) {
     throw 'PublishDiscovery exige -DiscoveryPrivateKeyPath o NOVVIN_BACKEND_DISCOVERY_PRIVATE_KEY_FILE.'
 }
 
-$configPath = Join-Path $root 'Conectate-web\public\backend-config.json'
+$configPath = Join-Path $root 'NoWing-web\public\backend-config.json'
 $configNeedsUpdate = $true
 if (Test-Path $configPath) {
     try {
@@ -128,7 +128,7 @@ if ($discoveryPublicKey) {
     $webProperties.VITE_BACKEND_DISCOVERY_PUBLIC_KEY = $discoveryPublicKey
 }
 Set-PropertyLines (Join-Path $root 'secrets.properties') $androidProperties
-Set-PropertyLines (Join-Path $root 'Conectate-web\.env') $webProperties
+Set-PropertyLines (Join-Path $root 'NoWing-web\.env') $webProperties
 
 Write-Output "ENDPOINT_UPDATED=$normalized"
 Write-Output "DISCOVERY_FILE=$configPath"

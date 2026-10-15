@@ -529,14 +529,12 @@ private fun PdfPageCanvas(file: File, page: Int, reset: Int, modifier: Modifier,
     var pan by remember(file, page, reset) { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     fun transform(centroid: Offset, zoomChange: Float, panChange: Offset) {
-        val nextZoom = (zoom * zoomChange).coerceIn(1f, 4f)
-        val maxX = (nextZoom - 1f) * viewport.width / 2f
-        val maxY = (nextZoom - 1f) * viewport.height / 2f
-        val centered = centroid - Offset(viewport.width / 2f, viewport.height / 2f)
-        val scaleShift = 1f - nextZoom / zoom
-        pan = Offset((pan.x + panChange.x + centered.x * scaleShift).coerceIn(-maxX, maxX),
-            (pan.y + panChange.y + centered.y * scaleShift).coerceIn(-maxY, maxY))
-        zoom = nextZoom
+        val next = pdfViewportTransform(
+            zoom, pan.x, pan.y, viewport.width, viewport.height,
+            centroid.x, centroid.y, zoomChange, panChange.x, panChange.y
+        ) ?: return
+        zoom = next.zoom
+        pan = Offset(next.panX, next.panY)
     }
     LaunchedEffect(zoom) { onZoom(zoom) }
     LaunchedEffect(file, page) {
@@ -553,7 +551,8 @@ private fun PdfPageCanvas(file: File, page: Int, reset: Int, modifier: Modifier,
                     // Claim a pinch before the outer pager can treat one finger as a page swipe.
                     // At normal size, a single finger continues through to the pager.
                     val event = awaitPointerEvent(PointerEventPass.Initial)
-                    if (event.changes.count { it.pressed } >= 2 || zoom > 1.01f) {
+                    val pressedPointers = event.changes.count { it.pressed }
+                    if (pressedPointers > 0 && (pressedPointers >= 2 || zoom > 1.01f)) {
                         transform(event.calculateCentroid(useCurrent = false), event.calculateZoom(), event.calculatePan())
                         event.changes.forEach { if (it.positionChanged()) it.consume() }
                     }

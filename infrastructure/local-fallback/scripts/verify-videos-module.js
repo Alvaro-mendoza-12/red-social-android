@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const WebSocket = require('../../../Conectate-web/node_modules/ws')
+const WebSocket = require('../../../NoWing-web/node_modules/ws')
 
 const apiUrl = String(process.env.API_URL || 'http://127.0.0.1:3080').replace(/\/+$/, '')
 const runId = Date.now().toString()

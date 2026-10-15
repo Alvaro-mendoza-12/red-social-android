@@ -18,7 +18,7 @@ const { createHash } = require('node:crypto')
  *   raw age used for ranking.
  */
 
-const RANKING_VERSION = 'novvin-authoritative-ranking-v2'
+const RANKING_VERSION = 'novvin-authoritative-ranking-v3'
 
 const PREFERENCE_DIMENSIONS = Object.freeze([
   'content',
@@ -725,15 +725,34 @@ function rankAlgorithmCandidates(input = {}) {
   }
 
   const diversityCounts = createDiversityCounts()
+  // A continued feed spreads creators/topics across bounded windows. Diversity
+  // must not remove otherwise eligible content from all subsequent pages.
+  // Existing isolated callers retain strict exclusion unless they opt in.
+  const spreadDiversity = safeInput.diversityMode === 'spread'
+  const diversityWindowSize = boundedInteger(safeInput.diversityWindowSize, 1, 20, 20)
   const diversityLimits = normalizeDiversityLimits(safeInput.diversityLimits)
   const ranked = []
 
   while (remaining.length > 0 && ranked.length < limit) {
+    if (spreadDiversity && ranked.length > 0 && ranked.length % diversityWindowSize === 0) {
+      diversityCounts.creators.clear()
+      diversityCounts.subtopics.clear()
+      // Exact duplicates remain excluded across the entire cursor snapshot.
+    }
     for (const candidate of remaining) {
       candidate.diversity = previewDiversity(candidate, diversityCounts, diversityLimits)
     }
-    remaining.sort(compareCandidates)
+    remaining.sort(spreadDiversity
+      ? (left, right) => Number(right.diversity.allowed) - Number(left.diversity.allowed) || compareCandidates(left, right)
+      : compareCandidates)
     const selected = remaining.shift()
+    if (spreadDiversity && !selected.diversity.allowed && !selected.diversity.duplicateAtLimit) {
+      // When every remaining creator/topic reached the spread target, continue
+      // with a fresh window rather than report that the catalog is exhausted.
+      diversityCounts.creators.clear()
+      diversityCounts.subtopics.clear()
+      selected.diversity = previewDiversity(selected, diversityCounts, diversityLimits)
+    }
     if (!selected.diversity.allowed) {
       excluded.push(buildExclusion(
         selected.candidateId,

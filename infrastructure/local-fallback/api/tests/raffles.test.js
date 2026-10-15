@@ -173,6 +173,59 @@ test('PostgreSQL persisted raffle workflow, HTTP policy and concurrent selection
       await assert.rejects(pool.query('INSERT INTO fallback_raffle_results(raffle_id,round_id,participant_id,position) VALUES($1,$2,$3,$4)',
         [detail.raffle.id, a.currentRound.id, winner.participant.id, 2]), { code: '23505' })
     })
+    await t.test('four members become five only after current membership review; no automatic first draw and history preserved', async () => {
+      const roomId = await room('group', [owner, adminUser, member, moderator])
+      let detail = await service.create(owner, 'group', roomId, creation([owner.id, adminUser.id, member.id, moderator.id], { start:true }))
+      detail = await spinAll(owner, 'group', roomId, detail)
+      const oldRound = structuredClone(detail.currentRound)
+      await pool.query('INSERT INTO fallback_collection_members(room_kind,room_id,user_id,role) VALUES($1,$2,$3,$4)', ['group',roomId,outsider.id,'member'])
+      const available = (await service.eligible(pool, owner, 'group', roomId)).participants
+      const snapshotHash = require('node:crypto').createHash('sha256').update(available.map(p=>p.userId).sort().join('\n')).digest('hex')
+      const command = { ...cmd(detail,true), memberIds:available.map(p=>p.userId), manualNames:[], memberSnapshotHash:snapshotHash }
+      await assert.rejects(service.command(owner,'group',roomId,detail.raffle.id,'new-round',{...command,memberSnapshotHash:'0'.repeat(64)}),{code:'MEMBERS_CHANGED'})
+      await assert.rejects(service.command(owner,'group',roomId,detail.raffle.id,'new-round',{...command,memberIds:[require('node:crypto').randomUUID()]}),{code:'MEMBERS_CHANGED'})
+      const next = await service.command(owner,'group',roomId,detail.raffle.id,'new-round',command)
+      assert.equal(next.currentRound.participants.length,5);assert.equal(next.raffle.participantCount,5)
+      assert.ok(next.currentRound.participants.some(p=>p.userId===outsider.id))
+      assert.equal(next.currentRound.automatic,false);assert.equal(next.currentRound.results.length,0)
+      assert.equal((await service.command(owner,'group',roomId,next.raffle.id,'new-round',command)).currentRound.id,next.currentRound.id)
+      await assert.rejects(service.command(owner,'group',roomId,next.raffle.id,'new-round',{...command,memberIds:[owner.id]}),{code:'IDEMPOTENCY_CONFLICT'})
+      await ready(next.raffle.id);await service.processDue()
+      detail=await service.detail(pool,owner,'group',roomId,next.raffle.id);assert.equal(detail.currentRound.results.length,0)
+      detail=await spinAll(owner,'group',roomId,detail);assert.equal(detail.currentRound.results.length,5)
+      const history=detail.rounds.find(r=>r.id===oldRound.id)
+      assert.deepEqual(history.participants,oldRound.participants);assert.deepEqual(history.results,oldRound.results)
+    })
+    await t.test('detail and new round stay bounded with fifteen thousand retained participant identities', async () => {
+      const roomId = await room('group', [owner, adminUser, member, moderator])
+      let detail = await service.create(owner, 'group', roomId, creation([owner.id, adminUser.id, member.id, moderator.id], { start:true }))
+      detail = await spinAll(owner, 'group', roomId, detail)
+      const oldRound = structuredClone(detail.currentRound)
+      // Synthetic archive only: no production participant or personal data.
+      await pool.query(`INSERT INTO fallback_raffle_participants(id,raffle_id,kind,user_id,name,avatar_url,ordinal)
+        SELECT gen_random_uuid(),$1,'MANUAL_PARTICIPANT',NULL,'Historic '||n,'',n+3 FROM generate_series(1,15000) n`, [detail.raffle.id])
+      const historic = (await pool.query("SELECT id FROM fallback_raffle_participants WHERE raffle_id=$1 AND name='Historic 14999'", [detail.raffle.id])).rows[0].id
+      detail = await service.detail(pool,owner,'group',roomId,detail.raffle.id)
+      assert.equal(detail.participants.length,4)
+      assert.deepEqual(detail.currentRound,oldRound)
+      const available = (await service.eligible(pool,owner,'group',roomId)).participants
+      const snapshotHash = require('node:crypto').createHash('sha256').update(available.map(p=>p.userId).sort().join('\n')).digest('hex')
+      const next = await service.command(owner,'group',roomId,detail.raffle.id,'new-round',{
+        ...cmd(detail,true),memberIds:[owner.id,member.id],manualNames:['Historic 14999','Actual nuevo'],memberSnapshotHash:snapshotHash
+      })
+      assert.equal(next.participants.length,4)
+      assert.equal(next.currentRound.participants.length,4)
+      assert.equal(next.currentRound.results.length,0)
+      assert.equal(next.currentRound.automatic,false)
+      assert.equal(next.currentRound.participants.find(p=>p.name==='Historic 14999').id,historic)
+      const retained = await pool.query('SELECT count(*)::int AS count,max(ordinal) AS ordinal FROM fallback_raffle_participants WHERE raffle_id=$1',[next.raffle.id])
+      assert.deepEqual(retained.rows[0],{count:15005,ordinal:15004})
+      detail = await spinAll(owner,'group',roomId,next)
+      const history = detail.rounds.find(r=>r.id===oldRound.id)
+      assert.deepEqual(history.participants,oldRound.participants)
+      assert.deepEqual(history.results,oldRound.results)
+      assert.equal(detail.participants.length,4)
+    })
     await t.test('start, all results, simultaneous new rounds and preservation/pagination of old rounds', async () => {
       const roomId = await room()
       let detail = await service.create(owner, 'group', roomId, creation())

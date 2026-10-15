@@ -109,9 +109,7 @@ fun EditProfileScreen(
 
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
     var unifiedPickerTarget by remember { mutableStateOf(ProfileImageTarget.AVATAR) }
-    val profileMusicFileLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent(),
-    ) { uri ->
+    val profileMusicFileLauncher = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri ->
         if (uri != null) {
             profileMusicPickerInitialUri = uri
             showProfileMusicPicker = true
@@ -287,7 +285,7 @@ fun EditProfileScreen(
                         isLoading = isLoading,
                         errorMessage = errorMessage,
                         name = name,
-                        onNameChange = { name = it.take(50) },
+                        onNameChange = { name = conectate.com.data.model.DisplayNamePolicy.input(it) },
                         username = username,
                         onUsernameChange = { username = it.removePrefix("@").take(24) },
                         bio = bio,
@@ -381,8 +379,8 @@ fun EditProfileScreen(
                                         },
                                     )
                                 }
-                                trimmedName.length !in 2..50 ->
-                                    errorMessage = "El nombre debe tener entre 2 y 50 caracteres"
+                                trimmedName != state.user.displayName.trim() && !conectate.com.data.model.DisplayNamePolicy.valid(trimmedName) ->
+                                    errorMessage = "El nombre debe tener entre 2 y 20 caracteres"
                                 usernameChanged && !Regex("[A-Za-z0-9_.-]{3,24}").matches(trimmedUsername) ->
                                     errorMessage = "El usuario debe tener 3–24 letras, números, _, . o -."
                                 !birthDateIsValid ->
@@ -644,6 +642,7 @@ private fun ProfileAvatarVideoPreview(
     DisposableEffect(exoPlayer) {
         onDispose { exoPlayer.release() }
     }
+    conectate.com.presentation.social.PauseMomentPlayerOnBackground(exoPlayer)
 
     AndroidView(
         factory = { viewContext ->

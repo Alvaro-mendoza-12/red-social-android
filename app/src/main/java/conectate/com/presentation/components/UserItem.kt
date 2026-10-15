@@ -39,7 +39,7 @@ fun UserItem(
             .padding(vertical = 8.dp, horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CircularProfileImage(
+        CircularProfileImage(ownerId = user.id, 
             imageUrl = user.avatar_url,
             size = 56.dp,
             isVerified = user.is_verified,

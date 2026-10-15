@@ -15,6 +15,7 @@ import conectate.com.presentation.social.MusicCatalogUiState
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -46,6 +47,7 @@ class MomentMusicPickerServerAuditTest {
         val tracks = (0 until items.length()).map { json.decodeFromString<ApprovedMomentMusic>(items.getJSONObject(it).toString()) }
         val track = tracks.first { it.source == "novvin_community" && it.durationMs >= 10_000 }
         val selection = AtomicReference<MomentMusicSelection?>()
+        val playbackRequestedAt = AtomicLong()
         val shown = mutableStateOf(true)
         compose.setContent {
             MaterialTheme {
@@ -53,7 +55,9 @@ class MomentMusicPickerServerAuditTest {
                     MusicCatalogUiState(items = listOf(track), section = "community"),
                     contentDurationMs = 12_000, hasOriginalAudio = true, initialSelection = null,
                     onSearch = { _, _, _ -> }, onLoadMore = {}, onToggleFavorite = {},
-                    onReport = {}, onNotInterested = {}, onPreviewStarted = {},
+                    onReport = {}, onNotInterested = {}, onPreviewStarted = {
+                        playbackRequestedAt.compareAndSet(0L, System.nanoTime())
+                    },
                     onOpenCommunityUpload = {}, onOpenDeviceMusic = {}, onDismiss = {}, onRemove = {},
                     onSelect = { selection.set(it); shown.value = false },
                 )
@@ -68,6 +72,9 @@ class MomentMusicPickerServerAuditTest {
         compose.onNodeWithContentDescription("Escuchar").performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithContentDescription("Pausar").fetchSemanticsNodes().isNotEmpty() }
         val playbackMs = (System.nanoTime() - tappedAt) / 1_000_000
+        val playingObservedAt = System.nanoTime()
+        val requestedAt = playbackRequestedAt.get()
+        assertTrue("The real selector did not request playback", requestedAt >= tappedAt)
         compose.onNodeWithContentDescription("Pausar").performClick()
         compose.onNodeWithText(track.title).performClick()
         compose.onNodeWithText("Usar audio").performClick()
@@ -80,6 +87,9 @@ class MomentMusicPickerServerAuditTest {
         val reportName = if (reviewDelay == 0L) "community-picker-first-play.json" else "community-picker-prepared-play.json"
         File(context.getExternalFilesDir("communication-qa")!!, reportName).writeText(JSONObject()
             .put("tapToPlayingMs", playbackMs).put("oneTapPlayback", true)
+            .put("driverDispatchMs", (requestedAt - tappedAt) / 1_000_000)
+            .put("playbackRequestToPlayingUiMs", (playingObservedAt - requestedAt) / 1_000_000)
+            .put("playingMetricScope", "Actual selector request to observed onIsPlaying UI; not audio hardware playout")
             .put("catalogReviewDelayMs", reviewDelay).put("noAutoplay", true)
             .put("originalTrackSelected", true).put("trimWithinVideoAndTrack", true).toString(2))
         assertTrue("First community music playback still takes too long: $playbackMs ms", playbackMs < 5_000)

@@ -12,7 +12,7 @@ function createMessageReadReceiptPublisher({ pool, normalizeMessageRow, recipien
     // media/reply fields in Android's realtime update path.
     for (const row of rows) {
       await publishChatMessageEvent({
-        chatId, message: normalizeMessageRow(row), recipientIds, action: 'updated',
+        pool, chatId, message: normalizeMessageRow(row), recipientIds, action: 'updated',
       })
     }
   }

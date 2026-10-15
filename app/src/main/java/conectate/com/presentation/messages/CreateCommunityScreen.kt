@@ -1,5 +1,7 @@
 package conectate.com.presentation.messages
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.layout.*
@@ -67,7 +69,7 @@ fun CreateCommunityScreen(
                         if (media.type == "video") {
                             VideoUtils.generateVideoThumbnail(context, media.uri)
                         } else {
-                            context.contentResolver.openInputStream(media.uri)?.use { it.readBytes() }
+                            runCatching { context.contentResolver.openInputStream(media.uri)?.use { it.readMediaBytesWithLimit(60L * 1024 * 1024) } }.getOrNull()
                         }
                     }
                     viewModel.setImageBytes(bytes)

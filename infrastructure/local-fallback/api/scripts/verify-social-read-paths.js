@@ -148,7 +148,20 @@ async function readJsonCheck({ baseUrl, pathname, token, maxMs, timeoutMs, requi
   }
 }
 
-async function verifyImage({ sourceUrl, timeoutMs, maxMs }) {
+function mediaReadOptions(sourceUrl, baseUrl, token) {
+  const options = { redirect: 'error' }
+  if (!token || !baseUrl) return options
+  const source = new URL(sourceUrl), base = new URL(baseUrl)
+  const localTest = source.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(source.hostname)
+  if (source.origin === base.origin && !source.username && !source.password &&
+      (source.protocol === 'https:' || localTest) &&
+      /^\/storage\/v1\/object\/(?:public\/|sign\/)?[^/]+\/.+/.test(source.pathname)) {
+    options.headers = { authorization: `Bearer ${token}` }
+  }
+  return options
+}
+
+async function verifyImage({ sourceUrl, timeoutMs, maxMs, baseUrl, token }) {
   const optimizedUrl = new URL(sourceUrl)
   optimizedUrl.searchParams.set('width', '384')
   optimizedUrl.searchParams.set('quality', '84')
@@ -156,7 +169,7 @@ async function verifyImage({ sourceUrl, timeoutMs, maxMs }) {
   const ref = mediaRef(sourceUrl)
   const { response, startedAtMs, elapsedMs: ttfbMs } = await timedFetch(
     optimizedUrl,
-    {},
+    mediaReadOptions(optimizedUrl, baseUrl, token),
     timeoutMs,
     `optimized image ${ref}`,
   )
@@ -170,9 +183,10 @@ async function verifyImage({ sourceUrl, timeoutMs, maxMs }) {
   return { ref, status: response.status, contentType, bytes, elapsedMs, ttfbMs }
 }
 
-async function fetchVideoRange({ url, start, end, timeoutMs, maxMs }) {
+async function fetchVideoRange({ url, start, end, timeoutMs, maxMs, baseUrl, token }) {
   const { response, startedAtMs, elapsedMs: ttfbMs } = await timedFetch(url, {
-    headers: { range: `bytes=${start}-${end}` },
+    ...mediaReadOptions(url, baseUrl, token),
+    headers: { ...mediaReadOptions(url, baseUrl, token).headers, range: `bytes=${start}-${end}` },
   }, timeoutMs, `video range ${start}-${end}`)
   const body = Buffer.from(await response.arrayBuffer())
   const elapsedMs = Date.now() - startedAtMs
@@ -338,7 +352,7 @@ async function main() {
   if (requireContent) assert(imageUrls.length > 0, 'profiles/feed returned no image URL to verify')
   const images = []
   for (const sourceUrl of imageUrls) {
-    images.push(await verifyImage({ sourceUrl, timeoutMs, maxMs: maxImageMs }))
+    images.push(await verifyImage({ sourceUrl, timeoutMs, maxMs: maxImageMs, baseUrl, token }))
   }
 
   const videoUrl = selectVideoUrl(videos.body)
@@ -350,7 +364,7 @@ async function main() {
       start: 0,
       end: videoRangeBytes - 1,
       timeoutMs,
-      maxMs: maxVideoRangeMs,
+      maxMs: maxVideoRangeMs, baseUrl, token,
     })
     videoRanges.push(first)
     if (first.total && first.total > videoRangeBytes) {
@@ -359,7 +373,7 @@ async function main() {
         start: videoRangeBytes,
         end: Math.min((2 * videoRangeBytes) - 1, first.total - 1),
         timeoutMs,
-        maxMs: maxVideoRangeMs,
+        maxMs: maxVideoRangeMs, baseUrl, token,
       }))
     }
   }
@@ -395,6 +409,7 @@ module.exports = {
   revokeDiagnosticToken,
   withReadPathToken,
   mediaRef,
+  mediaReadOptions,
   parseContentRange,
   positiveInteger,
   readJsonCheck,

@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
@@ -1980,7 +1982,7 @@ class PostRepository @Inject constructor(
         val bytes = if (sizeBytes > 0L) {
             null
         } else {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            context.contentResolver.openInputStream(uri)?.use { it.readMediaBytesWithLimit(maxPostMediaBytes) }
                 ?.takeIf { it.isNotEmpty() && it.size.toLong() <= maxPostMediaBytes }
                 ?: return null
         }

@@ -68,7 +68,8 @@ class ShareDestinationViewModel @Inject constructor(
                             ?: entry.chat.nickname
                             ?: "Chat",
                         imageUrl = entry.otherUserImage,
-                        subtitle = "Chat"
+                        subtitle = "Chat",
+                        peerUserId = entry.otherUserId
                     )
                 )
             }
@@ -112,7 +113,67 @@ class ShareDestinationViewModel @Inject constructor(
     }
 
     fun resetActionState() {
+        peopleSearch?.cancel()
+        completedVideoDestinations.clear()
+        videoPeople.value = emptyList()
         _actionState.value = ShareActionState.Idle
+    }
+
+    val videoPeople = MutableStateFlow<List<ShareDestination>>(emptyList())
+    private var peopleSearch: kotlinx.coroutines.Job? = null
+    private val completedVideoDestinations = mutableSetOf<String>()
+
+    fun searchVideoPeople(query: String) {
+        peopleSearch?.cancel()
+        videoPeople.value = emptyList()
+        val account = authRepository.getCurrentUserId() ?: return
+        if (query.trim().length < 2) return
+        peopleSearch = viewModelScope.launch {
+            delay(180)
+            val users = userRepository.searchUsers(query.trim()).getOrDefault(emptyList())
+            val knownPeers = destinations.value.mapNotNull { it.peerUserId?.trim()?.lowercase() }.toSet()
+            if (authRepository.getCurrentUserId() == account) videoPeople.value = users.distinctBy { it.id }
+                .filter { !it.id.equals(account, true) && it.id.trim().lowercase() !in knownPeers }.take(12).map { user ->
+                    ShareDestination("person:${user.id}", ShareDestinationType.CHAT, user.displayName,
+                        user.avatar_url, "@${conectate.com.data.model.profilePublicHandle(user)} · Persona")
+                }
+        }
+    }
+
+    fun shareInternalVideo(request: InternalVideoShareRequest, targets: List<ShareDestination>, caption: String) {
+        if (_actionState.value is ShareActionState.Running) return
+        val account = authRepository.getCurrentUserId() ?: return
+        if (targets.isEmpty() || targets.size > MAX_FORWARD_DESTINATIONS) {
+            _actionState.value = ShareActionState.Failed("Selecciona entre 1 y $MAX_FORWARD_DESTINATIONS destinos")
+            return
+        }
+        val content = conectate.com.data.model.videoWebLink(request.video.id) +
+            caption.trim().take(800).takeIf(String::isNotBlank)?.let { "\n$it" }.orEmpty()
+        viewModelScope.launch {
+            var done = 0
+            _actionState.value = ShareActionState.Running(0, targets.size)
+            for (target in targets) {
+                if (account != authRepository.getCurrentUserId()) {
+                    _actionState.value = ShareActionState.Failed("La cuenta cambió. Abre Compartir de nuevo.")
+                    return@launch
+                }
+                if (target.key in completedVideoDestinations) { done++; continue }
+                val destination = if (target.id.startsWith("person:")) {
+                    messageRepository.getOrCreateChat(target.id.removePrefix("person:")).getOrNull()
+                        ?.let { target.copy(id = it.id) }
+                } else target
+                if (account != authRepository.getCurrentUserId()) {
+                    _actionState.value = ShareActionState.Failed("La cuenta cambió. Abre Compartir de nuevo.")
+                    return@launch
+                }
+                if (destination != null && sendText(destination, content).isSuccess) {
+                    completedVideoDestinations += target.key; done++
+                }
+                _actionState.value = ShareActionState.Running(done, targets.size)
+            }
+            _actionState.value = if (done == targets.size) ShareActionState.Completed("Video añadido a $done destino(s)", false)
+                else ShareActionState.Failed("Se añadió a $done de ${targets.size} destinos. Puedes reintentar los pendientes.")
+        }
     }
 
     fun sendIncomingShare(

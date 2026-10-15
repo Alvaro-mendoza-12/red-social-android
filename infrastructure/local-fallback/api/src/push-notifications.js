@@ -1,4 +1,6 @@
+const { collectionMessageRecipients } = require('./collection-membership-policy')
 const fs = require('fs')
+const { notificationMessageScope, withCurrentMessage, deletionData } = require('./message-deletion-policy')
 const { cert, getApps, initializeApp } = require('firebase-admin/app')
 const { getMessaging } = require('firebase-admin/messaging')
 const { stableKey } = require('./request-security')
@@ -46,6 +48,12 @@ function stringValue(value) {
 }
 
 function buildData(notification, extraData = {}) {
+  if (notification.type === 'message_deleted') {
+    const scope = notificationMessageScope(notification, extraData)
+    if (!scope || !notification.recipient_id) return {}
+    // Cancellation is an allowlist, independent of old notification content.
+    return deletionData(scope, { channel_id: extraData.channel_id, created_at: extraData.message_created_at, updated_at: extraData.deleted_at }, notification.recipient_id)
+  }
   const type = stringValue(notification.type) || 'activity'
   const targetId = stringValue(notification.target_id) || ''
   const targetType = stringValue(notification.target_type || extraData.target_type) || ''
@@ -115,6 +123,27 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
   if (digestDeferred) {
     return { sent: 0, failed: 0, deferred: true }
   }
+  const scope = notificationMessageScope(notification, extraData)
+  if (scope !== undefined) {
+    if (!scope || !notification?.recipient_id) return { sent: 0, failed: 0, suppressed: true }
+    const cancellation = notification.type === 'message_deleted'
+    return withCurrentMessage(pool, scope, async (current, client) => {
+      if (!cancellation && ['group','community'].includes(scope.kind) &&
+          !(await collectionMessageRecipients(client, scope.kind, scope.scopeId, current, [notification.recipient_id])).length)
+        return { sent: 0, failed: 0, suppressed: true }
+      const persisted = cancellation ? notification : { ...notification, content: current.content || '' }
+      const authoritativeData = cancellation ? deletionData(scope, current, notification.recipient_id) : {
+        ...extraData, content: current.content || '', body: current.content || '', content_type: current.content_type || 'text',
+        media_url: current.media_url || '', thumbnail_url: current.thumbnail_url || '', media_size: String(current.media_size || 0),
+        created_at: current.created_at instanceof Date ? current.created_at.toISOString() : String(current.created_at || ''),
+      }
+      return sendCurrentPush(client, persisted, authoritativeData)
+    }, { allowDeleted: cancellation, actorId: cancellation ? undefined : notification.actor_id })
+  }
+  return sendCurrentPush(pool, notification, extraData)
+}
+
+async function sendCurrentPush(pool, notification, extraData) {
   const app = initializeFirebase()
   if (!app || !notification?.recipient_id) return { sent: 0, failed: 0, disabled: true }
 

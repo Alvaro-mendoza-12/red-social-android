@@ -19,7 +19,8 @@ import javax.inject.Inject
 class CommunityDetailViewModel @Inject constructor(
     private val communityRepository: CommunityRepository,
     private val authService: AuthService,
-    private val userRepository: conectate.com.data.repository.UserRepository
+    private val userRepository: conectate.com.data.repository.UserRepository,
+    private val membershipRepository: conectate.com.data.repository.CollectionMembershipRepository
 ) : ViewModel() {
 
     private val _actionMessage = MutableStateFlow<String?>(null)
@@ -65,6 +66,62 @@ class CommunityDetailViewModel @Inject constructor(
     private val _canManageEvents = MutableStateFlow(false)
     val canManageEvents = _canManageEvents.asStateFlow()
 
+    private val _membershipPolicy = MutableStateFlow<conectate.com.data.localfallback.CollectionMembershipPolicy?>(null)
+    val membershipPolicy = _membershipPolicy.asStateFlow()
+    private val _membershipBusy = MutableStateFlow(false)
+    val membershipBusy = _membershipBusy.asStateFlow()
+    private val _membershipError = MutableStateFlow<String?>(null)
+    val membershipError = _membershipError.asStateFlow()
+
+    private var membershipPolicyRequest = 0L
+
+    fun refreshMembershipPolicy() {
+        val id = communityId ?: return
+        val account = authService.getCurrentUserId()
+        val request = ++membershipPolicyRequest
+        viewModelScope.launch {
+            val result = membershipRepository.policy("communities", id)
+            if (request != membershipPolicyRequest || communityId != id || authService.getCurrentUserId() != account) return@launch
+            _membershipPolicy.value = result.getOrNull()
+        }
+    }
+
+    fun setMembersCanAdd(enabled: Boolean) {
+        val id = communityId ?: return
+        if (_membershipBusy.value || _membershipPolicy.value?.canManagePolicy != true) return
+        ++membershipPolicyRequest
+        _membershipBusy.value = true
+        val account = authService.getCurrentUserId()
+        viewModelScope.launch {
+            try {
+                val result = membershipRepository.setMembersCanAdd("communities", id, enabled)
+                if (communityId != id || authService.getCurrentUserId() != account) return@launch
+                result.onSuccess { ++membershipPolicyRequest; _membershipPolicy.value = it }.onFailure {
+                    _actionMessage.value = "No se pudo guardar el permiso. Inténtalo de nuevo."
+                }
+            } finally { _membershipBusy.value = false }
+        }
+    }
+
+    fun addMember(userId: String, from: String?, until: String?, onSuccess: () -> Unit) {
+        val id = communityId ?: return
+        if (_membershipBusy.value || _membershipPolicy.value?.canAddMembers != true) return
+        _membershipBusy.value = true
+        _membershipError.value = null
+        val account = authService.getCurrentUserId()
+        viewModelScope.launch {
+            try {
+                val result = membershipRepository.add("communities", id, userId, from, until)
+                if (communityId != id || authService.getCurrentUserId() != account) return@launch
+                if (result.isSuccess) { onSuccess(); loadMembers() }
+                else {
+                    _membershipError.value = "No se pudo añadir. Revisa el permiso y el intervalo de historial e inténtalo de nuevo."
+                    refreshMembershipPolicy()
+                }
+            } finally { _membershipBusy.value = false }
+        }
+    }
+
     private var communityId: String? = null
 
     init {
@@ -74,6 +131,8 @@ class CommunityDetailViewModel @Inject constructor(
 
     fun loadCommunityDetails(id: String) {
         communityId = id
+        _membershipPolicy.value = null
+        refreshMembershipPolicy()
         _isLoading.value = true
         _community.value = null
         _members.value = emptyList()
@@ -143,6 +202,16 @@ class CommunityDetailViewModel @Inject constructor(
                     recomputePermissions()
                 }
             }
+        }
+    }
+
+    private val _searchResults = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
+    val searchResults = _searchResults.asStateFlow()
+    fun searchUsers(query: String) {
+        if (query.trim().length < 3) { _searchResults.value = emptyList(); return }
+        viewModelScope.launch {
+            val ids = _members.value.map { it.user_id }.toSet()
+            _searchResults.value = userRepository.searchUsers(query).getOrDefault(emptyList()).filter { it.id !in ids }
         }
     }
 

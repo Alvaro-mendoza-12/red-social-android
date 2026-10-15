@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "timezone": "UTC",
+  "maxFileBytes": 524288000,
+  "streamMaxBytes": 524288000,
+  "maxScanBytes": 1048576000,
+  "alertExceedsMax": true,
+  "alertEncrypted": true,
+  "maxThreads": 2,
+  "maxQueue": 4,
+  "scanArchive": true,
+  "scanPE": true,
+  "scanOLE2": true,
+  "configSha256": "55dcb7abe5e8182f650d6870b3fdd0aee9334752bb4d39a9d7a30c476515f0a9"
+}

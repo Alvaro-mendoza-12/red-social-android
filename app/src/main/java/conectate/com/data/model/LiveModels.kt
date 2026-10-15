@@ -131,7 +131,8 @@ data class LiveGuestParticipant(
     val socketId: String,
     val userId: String,
     val name: String,
-    val avatarUrl: String? = null
+    val avatarUrl: String? = null,
+    val videoEnabled: Boolean = true
 )
 
 data class LiveGuestAccessState(

@@ -6,11 +6,11 @@
     "node": ">=20 <23"
   },
   "scripts": {
-    "dev:web": "npm --prefix Conectate-web run dev",
-    "lint:web": "npm --prefix Conectate-web run lint",
-    "build:web": "npm --prefix Conectate-web run build",
-    "preview:web": "npm --prefix Conectate-web run preview",
-    "vercel:install": "npm --prefix Conectate-web ci --legacy-peer-deps",
-    "vercel:build": "npm --prefix Conectate-web run build"
+    "dev:web": "npm --prefix NoWing-web run dev",
+    "lint:web": "npm --prefix NoWing-web run lint",
+    "build:web": "npm --prefix NoWing-web run build",
+    "preview:web": "npm --prefix NoWing-web run preview",
+    "vercel:install": "npm --prefix NoWing-web ci --legacy-peer-deps",
+    "vercel:build": "npm --prefix NoWing-web run build"
   }
 }

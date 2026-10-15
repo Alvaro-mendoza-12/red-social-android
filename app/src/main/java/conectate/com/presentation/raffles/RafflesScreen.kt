@@ -1,6 +1,7 @@
 package conectate.com.presentation.raffles
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +16,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
@@ -91,7 +94,7 @@ fun RafflesScreen(onBack: () -> Unit, viewModel: RafflesViewModel = hiltViewMode
                     if (state.nextCursor != null) item { TextButton(onClick = viewModel::loadMore) { Text("Cargar más sorteos") } }
                 }
                 else -> key(state.accountId, detail.raffle.id) {
-                    RaffleDetailContent(detail, state.busy || state.retryOperation, viewModel, onCancel = { cancelDialog = true })
+                    RaffleDetailContent(detail, state, state.busy || state.retryOperation, viewModel, onCancel = { cancelDialog = true })
                 }
             }
         }
@@ -103,13 +106,14 @@ fun RafflesScreen(onBack: () -> Unit, viewModel: RafflesViewModel = hiltViewMode
 }
 
 @Composable
-internal fun CreateRaffleForm(state: RafflesUiState, onCreate: (String, String, List<String>, List<String>, Boolean) -> Unit) {
+internal fun CreateRaffleForm(state: RafflesUiState, onCreate: (String, String, List<String>, List<String>, Boolean) -> Unit,
+    roundReview: Boolean = false, previousManuals: List<String> = emptyList()) {
     val keyboard = LocalSoftwareKeyboardController.current
     var name by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
     var search by rememberSaveable { mutableStateOf("") }
     var manualInput by rememberSaveable { mutableStateOf("") }
-    var manuals by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var manuals by rememberSaveable { mutableStateOf(previousManuals) }
     var selected by rememberSaveable { mutableStateOf(listOf<String>()) }
     var initialized by rememberSaveable { mutableStateOf(false) }
     var formError by rememberSaveable { mutableStateOf<String?>(null) }
@@ -122,13 +126,13 @@ internal fun CreateRaffleForm(state: RafflesUiState, onCreate: (String, String, 
         }
     }
     val preview = state.members.filter { it.id in selected } + manuals.mapIndexed { i, n -> RaffleParticipant("manual-$i", "MANUAL_PARTICIPANT", name = n) }
-    val valid = state.canCreate && name.isNotBlank() && preview.size in 1..1000 && state.membersComplete && !state.busy && !state.retryOperation
+    val valid = (if (roundReview) state.detail?.canManage == true else state.canCreate) && (roundReview || name.isNotBlank()) && preview.size in 1..1000 && state.membersComplete && !state.busy && !state.retryOperation
     LazyColumn(Modifier.fillMaxSize().imePadding(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { OutlinedTextField(name, { name = it.take(120) }, label = { Text("Nombre del sorteo") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-        item { OutlinedTextField(description, { description = it.take(500) }, label = { Text("Descripción (opcional)") }, modifier = Modifier.fillMaxWidth()) }
+        if (!roundReview) item { OutlinedTextField(name, { name = it.take(120) }, label = { Text("Nombre del sorteo") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+        if (!roundReview) item { OutlinedTextField(description, { description = it.take(500) }, label = { Text("Descripción (opcional)") }, modifier = Modifier.fillMaxWidth()) }
         item { Text("${preview.size} seleccionados · ${state.totalMembers} miembros disponibles. Máximo 1.000 participantes.") }
         item { RaffleWheel(preview) }
-        item { Text("La lista se congela al crear. Cambios posteriores en miembros o perfiles no alteran esta ronda.", style = MaterialTheme.typography.bodySmall) }
+        item { Text(if (roundReview) "Revisa los integrantes actuales. La ruleta no girará hasta que pulses Girar o actives el modo automático." else "La lista se congela al crear. Cambios posteriores en miembros o perfiles no alteran esta ronda.", style = MaterialTheme.typography.bodySmall) }
         item { OutlinedTextField(search, { search = it }, label = { Text("Buscar participante") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -145,7 +149,7 @@ internal fun CreateRaffleForm(state: RafflesUiState, onCreate: (String, String, 
                 else if (preview.size < 1000) selected = selected + participant.id else formError = "Máximo 1.000 participantes."
             }, enabled = state.membersComplete).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Checkbox(checked, onCheckedChange = null)
-                CircularProfileImage(imageUrl = participant.avatarUrl, size = 36.dp)
+                CircularProfileImage(ownerId = participant.userId, imageUrl = participant.avatarUrl, size = 36.dp)
                 Column(Modifier.weight(1f)) { Text(participant.name); Text("Miembro · ${participant.userId?.takeLast(8)}", style = MaterialTheme.typography.labelSmall) }
             }
         }
@@ -168,13 +172,32 @@ internal fun CreateRaffleForm(state: RafflesUiState, onCreate: (String, String, 
             }
         }
         formError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
-        item { Button(onClick = { onCreate(name.trim(), description, selected, manuals, true) }, enabled = valid, modifier = Modifier.fillMaxWidth()) { Text("Crear y comenzar automáticamente") } }
-        item { OutlinedButton(onClick = { onCreate(name.trim(), description, selected, manuals, false) }, enabled = valid, modifier = Modifier.fillMaxWidth()) { Text("Crear preparado para comenzar luego") } }
+        item { Button(onClick = { onCreate(name.trim(), description, selected, manuals, !roundReview) }, enabled = valid, modifier = Modifier.fillMaxWidth()) { Text(if (roundReview) "Confirmar participantes y preparar ronda" else "Crear y comenzar automáticamente") } }
+        if (!roundReview) item { OutlinedButton(onClick = { onCreate(name.trim(), description, selected, manuals, false) }, enabled = valid, modifier = Modifier.fillMaxWidth()) { Text("Crear preparado para comenzar luego") } }
     }
 }
 
 @Composable
-private fun RaffleDetailContent(detail: RaffleDetail, busy: Boolean, vm: RafflesViewModel, onCancel: () -> Unit) {
+private fun RaffleDetailContent(detail: RaffleDetail, state: RafflesUiState, busy: Boolean, vm: RafflesViewModel, onCancel: () -> Unit) {
+    var reviewingRound by rememberSaveable(detail.raffle.id) { mutableStateOf(false) }
+    LaunchedEffect(detail.raffle.status) { if (detail.raffle.status != "completed") reviewingRound = false }
+    if (reviewingRound && detail.raffle.status == "completed") {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Participantes de la nueva ronda", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = { reviewingRound = false }, enabled = !busy) { Text("Volver") }
+                TextButton(onClick = vm::loadMembers, enabled = !busy && !state.membersLoading) { Text("Actualizar") }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                key(detail.raffle.id, "review") {
+                    CreateRaffleForm(state, { _, _, members, manuals, _ -> vm.confirmNewRound(members, manuals) },
+                        roundReview = true, previousManuals = detail.currentRound?.participants.orEmpty()
+                            .filter { it.kind == "MANUAL_PARTICIPANT" }.map { it.name })
+                }
+            }
+        }
+        return
+    }
     val round = detail.currentRound
     // Keep the presentation queue above LazyColumn so scrolling the wheel out
     // of view cannot discard pending winners or replay an already revealed draw.
@@ -182,12 +205,18 @@ private fun RaffleDetailContent(detail: RaffleDetail, busy: Boolean, vm: Raffles
     val presenting = presentation.state.active != null || presentation.state.roundId != round?.id
     val results = round?.results.orEmpty()
     val remaining = round?.remainingParticipants() ?: detail.participants
+    var displayLimit by rememberSaveable(detail.raffle.id) { mutableStateOf("10") }
+    var listSearch by rememberSaveable(detail.raffle.id) { mutableStateOf("") }
+    val limit = raffleDisplayLimit(displayLimit)
     var expandedRound by rememberSaveable(detail.raffle.id) { mutableStateOf<String?>(null) }
     var showRemaining by rememberSaveable(detail.raffle.id) { mutableStateOf(false) }
     var showOriginal by rememberSaveable(detail.raffle.id) { mutableStateOf(false) }
     val visibleResults = if (presentation.state.roundId == round?.id)
         results.filter { it.position <= presentation.state.revealedPosition } else emptyList()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val resultWindow = raffleListWindow(visibleResults.sortedBy { it.position }, listSearch, limit) { it.participant.name }
+    val remainingWindow = raffleListWindow(remaining, listSearch, limit) { it.name }
+    val originalWindow = raffleListWindow(round?.participants ?: detail.participants, listSearch, limit) { it.name }
+    LazyColumn(Modifier.fillMaxSize().imePadding(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("${raffleStatusLabel(detail.raffle.status)} · ${detail.raffle.participantCount} participantes · ${detail.raffle.roundCount} rondas") }
         item { Text("Creado por ${detail.raffle.creatorName} · ${detail.raffle.createdAt.take(10)}", style = MaterialTheme.typography.bodySmall) }
         if (detail.raffle.description.isNotBlank()) item { Text(detail.raffle.description) }
@@ -203,24 +232,36 @@ private fun RaffleDetailContent(detail: RaffleDetail, busy: Boolean, vm: Raffles
                     Button(onClick = { vm.command("automatic", round?.automatic != true) }, enabled = !busy) { Text(if (round?.automatic == true) "Pausar automático" else "Continuar automático") }
                     if (round?.automatic != true) OutlinedButton(onClick = { vm.command("spin") }, enabled = !busy && !presenting) { Text("Girar siguiente posición") }
                 }
-                "completed" -> Button(onClick = { vm.command("new-round", true) }, enabled = !busy && !presenting) { Text("Nueva ronda") }
+                "completed" -> Button(onClick = { vm.loadMembers(); reviewingRound = true }, enabled = !busy && !presenting) { Text("Nueva ronda") }
             }
             if (detail.raffle.status in setOf("prepared", "running")) TextButton(onClick = onCancel, enabled = !busy) { Text("Cancelar sorteo") }
         }
-        item { Text("Resultados de ronda ${round?.number ?: "—"}", style = MaterialTheme.typography.titleMedium) }
-        items(visibleResults, key = { "result-${round?.id}-${it.position}" }) { result ->
+        item(key = "list-controls") {
+            RaffleListControls(displayLimit, listSearch, onLimitChange = { displayLimit = it }, onSearchChange = { listSearch = it })
+        }
+        item {
+            Text("Resultados de ronda ${round?.number ?: "—"}", style = MaterialTheme.typography.titleMedium)
+            RaffleListCount(resultWindow, listSearch)
+        }
+        items(resultWindow.items, key = { "result-${round?.id}-${it.position}" }) { result ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("${result.position}.º")
-                CircularProfileImage(result.participant.avatarUrl, size = 32.dp)
-                Text(result.participant.name + if (result.participant.kind == "MANUAL_PARTICIPANT") " · Manual" else "")
+                CircularProfileImage(imageUrl = result.participant.avatarUrl, ownerId = result.participant.userId, size = 32.dp)
+                Text(result.participant.name + if (result.participant.kind == "MANUAL_PARTICIPANT") " · Manual" else "", Modifier.weight(1f))
             }
         }
         item { TextButton(onClick = { showRemaining = !showRemaining }) { Text("${if (showRemaining) "Ocultar" else "Ver"} participantes restantes (${remaining.size})") } }
-        if (showRemaining) itemsIndexed(remaining, key = { _, p -> "remaining-${p.id}" }) { index, participant ->
-            ParticipantRow(participant, index + 1)
+        if (showRemaining) {
+            item { RaffleListCount(remainingWindow, listSearch) }
+            items(remainingWindow.items, key = { "remaining-${it.id}" }) { participant ->
+                ParticipantRow(participant, remaining.indexOfFirst { it.id == participant.id } + 1)
+            }
         }
-        item { TextButton(onClick = { showOriginal = !showOriginal }) { Text("${if (showOriginal) "Ocultar" else "Ver"} participantes originales (${detail.participants.size})") } }
-        if (showOriginal) items(detail.participants, key = { "original-${it.id}" }) { participant -> ParticipantRow(participant) }
+        item { TextButton(onClick = { showOriginal = !showOriginal }) { Text("${if (showOriginal) "Ocultar" else "Ver"} participantes originales (${(round?.participants ?: detail.participants).size})") } }
+        if (showOriginal) {
+            item { RaffleListCount(originalWindow, listSearch) }
+            items(originalWindow.items, key = { "original-${it.id}" }) { participant -> ParticipantRow(participant) }
+        }
         item { Text("Historial de rondas", style = MaterialTheme.typography.titleMedium) }
         detail.rounds.forEach { history ->
           item(key = "history-${history.id}") {
@@ -233,7 +274,10 @@ private fun RaffleDetailContent(detail: RaffleDetail, busy: Boolean, vm: Raffles
           }
           if (expandedRound == history.id) {
             item(key = "history-info-${history.id}") { Text("Inicio: ${history.startedAt} · Fin: ${history.finishedAt ?: "en curso"} · Iniciado por: ${history.initiatedBy}", style = MaterialTheme.typography.bodySmall) }
-            items(history.results, key = { "history-result-${history.id}-${it.position}" }) { Text("${it.position}.º ${it.participant.name}") }
+            val revealedHistory = if (history.id == round?.id) visibleResults else history.results
+            val historyWindow = raffleListWindow(revealedHistory.sortedBy { it.position }, listSearch, limit) { it.participant.name }
+            item(key = "history-count-${history.id}") { RaffleListCount(historyWindow, listSearch) }
+            items(historyWindow.items, key = { "history-result-${history.id}-${it.position}" }) { Text("${it.position}.º ${it.participant.name}") }
           }
         }
         if (detail.nextRound != null) item { TextButton(onClick = vm::loadMore) { Text("Cargar rondas anteriores") } }
@@ -244,10 +288,41 @@ private fun RaffleDetailContent(detail: RaffleDetail, busy: Boolean, vm: Raffles
 private fun ParticipantRow(participant: RaffleParticipant, segment: Int? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         segment?.let { Text("$it.") }
-        CircularProfileImage(imageUrl = participant.avatarUrl, size = 32.dp)
+        CircularProfileImage(ownerId = participant.userId, imageUrl = participant.avatarUrl, size = 32.dp)
         Column(Modifier.weight(1f)) {
             Text(participant.name)
             Text(if (participant.kind == "MANUAL_PARTICIPANT") "Manual" else "Miembro · ${participant.userId?.takeLast(8)}", style = MaterialTheme.typography.labelSmall)
         }
     }
+}
+
+@Composable
+internal fun RaffleListControls(limitValue: String, search: String, onLimitChange: (String) -> Unit, onSearchChange: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().testTag("raffle_list_controls"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Mostrar en las listas", style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("4" to "4", "10" to "10", "all" to "Todos").forEach { (value, label) ->
+                FilterChip(selected = limitValue == value, onClick = { onLimitChange(value) },
+                    label = { Text(label) }, modifier = Modifier.testTag("raffle_limit_$value"))
+            }
+        }
+        OutlinedTextField(value = if (limitValue == "all") "" else limitValue,
+            onValueChange = { value -> if (value.length <= 4 && value.all { it.isDigit() }) onLimitChange(value) },
+            label = { Text("Otra cantidad (1–1.000)") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            isError = limitValue != "all" && limitValue.isNotEmpty() && (limitValue.toIntOrNull() ?: 0) !in 1..1000,
+            modifier = Modifier.fillMaxWidth().testTag("raffle_limit_custom"))
+        OutlinedTextField(value = search, onValueChange = { onSearchChange(it.take(120)) },
+            label = { Text("Buscar nombre") }, singleLine = true,
+            trailingIcon = { if (search.isNotEmpty()) TextButton(onClick = { onSearchChange("") }) { Text("Limpiar") } },
+            modifier = Modifier.fillMaxWidth().testTag("raffle_list_search"))
+        Text("El filtro solo cambia lo que ves. Todos los participantes siguen en el sorteo.", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun <T> RaffleListCount(window: RaffleListWindow<T>, search: String) {
+    Text(if (window.total == 0) "Todavía no hay resultados." else if (window.matching == 0) "No hay nombres que coincidan." else
+        "${window.items.size} de ${window.matching}" + if (search.isNotBlank()) " coincidencias · ${window.total} en total" else " en total",
+        style = MaterialTheme.typography.bodySmall)
 }

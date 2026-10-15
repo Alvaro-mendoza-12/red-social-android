@@ -389,6 +389,32 @@ class AuthService @Inject constructor(
     }
 
     init {
+        // Readers request a coherent account/generation/token snapshot at each attempt.
+        // Do not eagerly create AuthService from SocialApp's cold-start image loader.
+        conectate.com.core.media.StorageReadSession.install(credentials = {
+            // Media readers check identity before and after every byte copy.
+            // Reading EncryptedSharedPreferences at this frequency repeatedly
+            // decrypts keys/tokens on the playback worker and causes underruns.
+            // The published StateFlow session is immutable and already hydrated;
+            // logout/account switch invalidate its generation synchronously.
+            val generation = localSessionMutationGuard.snapshot()
+            val session = _currentSession.value
+            val test = TestRuntimeOverrides.currentSession(context)
+            AuthMediaReadSnapshotPolicy.snapshot(
+                accountId = test?.userId ?: session?.user?.id,
+                accessToken = test?.accessToken ?: session?.accessToken,
+                generationBefore = generation,
+                generationAfter = localSessionMutationGuard.snapshot(),
+                registrationInProgress = registrationInProgress,
+            )
+        }, prepare = { expected ->
+            val readyToken = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                withTimeoutOrNull(8_000L) { getAccessTokenAwait() }
+            }
+            conectate.com.core.media.StorageReadSession.snapshot()?.takeIf {
+                it.identity == expected && !readyToken.isNullOrBlank() && it.accessToken == readyToken
+            }
+        })
         // Ubuntu owns authentication, but the legacy PostgREST SDK facade still needs the JWT.
         if (isLocalFallbackModeEnabled()) {
             val startupGeneration = localSessionMutationGuard.snapshot()

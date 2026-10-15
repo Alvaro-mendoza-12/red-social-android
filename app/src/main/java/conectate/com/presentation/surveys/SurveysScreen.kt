@@ -191,22 +191,13 @@ internal fun SurveyWorkbench(
     var webView by remember { mutableStateOf<WebView?>(null) }
     var webReady by remember { mutableStateOf(false) }
     var fileCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
-    var pendingDownload by remember { mutableStateOf<JSONObject?>(null) }
+    var downloadBusy by remember { mutableStateOf(false) }
+    var legacyPermissionResult by remember { mutableStateOf<kotlinx.coroutines.CompletableDeferred<Boolean>?>(null) }
+    val exportPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        legacyPermissionResult?.complete(granted)
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         fileCallback?.onReceiveValue(uris.take(3).toTypedArray().takeIf { it.isNotEmpty() }); fileCallback = null
-    }
-    val saveDocument = rememberLauncherForActivityResult(SurveyDocumentContract()) { uri ->
-        val download = pendingDownload; pendingDownload = null
-        if (uri != null && download != null) scope.launch(Dispatchers.Main) {
-            try {
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use { it.write(Base64.decode(download.getString("data"), Base64.DEFAULT)) }
-                        ?: error("No se pudo guardar el archivo.")
-                }
-                AppFeedbackBus.show("Archivo de encuesta guardado.")
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { AppFeedbackBus.show("No se pudo guardar el archivo.") }
-        }
     }
     val back = {
         if (webReady && webView != null) webView?.evaluateJavascript("window.surveyBack && window.surveyBack()", null)
@@ -237,9 +228,13 @@ internal fun SurveyWorkbench(
                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean = true
                     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                         val uri = request?.url
+                        // Raster data URLs come from the authorized survey bridge.
+                        // Returning an empty response here blocks even in-app images.
+                        if (uri?.scheme == "data" && Regex("^data:image/(png|jpeg|webp|gif);base64,", RegexOption.IGNORE_CASE)
+                                .containsMatchIn(uri.toString())) return null
                         val file = uri?.path?.removePrefix("/")
                         if (uri?.scheme == "https" && uri.host == "surveys.novvin.invalid" &&
-                            file in setOf("index.html", "style.css", "workbench.js")) {
+                            file in setOf("index.html", "style.css", "image-viewer.js", "workbench.js")) {
                             val mime = when (file) { "index.html" -> "text/html"; "style.css" -> "text/css"; else -> "application/javascript" }
                             return WebResourceResponse(mime, "UTF-8", ctx.assets.open("surveys/$file"))
                         }
@@ -258,16 +253,28 @@ internal fun SurveyWorkbench(
                         webView?.post { webView?.evaluateJavascript("window.surveyReceive(${reply})", null) }
                     } } },
                     downloadAction = { payload -> scope.launch(Dispatchers.Main) {
-                        if (pendingDownload != null) {
-                            AppFeedbackBus.show("Ya hay una descarga pendiente.")
-                            return@launch
-                        }
-                        runCatching {
+                        var requestId = ""
+                        val reply = try {
                             val result = JSONObject(payload)
-                            require(result.getString("data").length <= 64 * 1024 * 1024)
-                            pendingDownload = result
-                            saveDocument.launch(result)
-                        }.onFailure { pendingDownload = null; AppFeedbackBus.show("No se pudo preparar la descarga.") }
+                            requestId = result.getString("requestId")
+                            check(!downloadBusy) { "Espera a que termine la descarga actual." }
+                            downloadBusy = true
+                            try {
+                                if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q &&
+                                    androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                    val permission = kotlinx.coroutines.CompletableDeferred<Boolean>()
+                                    legacyPermissionResult = permission
+                                    exportPermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                    check(permission.await()) { "Permite guardar archivos para descargar las respuestas." }
+                                }
+                                val file = saveSurveyExport(context, result)
+                                JSONObject().put("id", requestId).put("value", JSONObject().put("name", file.name).put("location", file.location))
+                            } finally { legacyPermissionResult?.cancel(); legacyPermissionResult = null; downloadBusy = false }
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (error: Exception) {
+                            JSONObject().put("id", requestId).put("error", error.message ?: "No se pudo guardar la descarga.")
+                        }
+                        webView?.post { webView?.evaluateJavascript("window.surveyReceive(${reply})", null) }
                     } },
                     copyAction = { link -> scope.launch(Dispatchers.Main) {
                         if (link.startsWith("conectate://survey/") && link.length <= 2048) {

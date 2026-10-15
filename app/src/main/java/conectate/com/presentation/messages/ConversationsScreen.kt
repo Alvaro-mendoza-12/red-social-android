@@ -40,8 +40,8 @@ import conectate.com.R
 @Composable
 fun ConversationsScreen(
     navController: NavController,
-    viewModel: MessagingViewModel = hiltViewModel(),
-    stickerImportViewModel: StickerPickerViewModel = hiltViewModel(),
+    viewModel: MessagingViewModel = conectate.com.core.observability.startupViewModel("messaging model"),
+    stickerImportViewModel: StickerPickerViewModel? = null,
     sharedStickerUri: String? = null,
     onNavigateToChat: (String) -> Unit,
     onNavigateToSearch: () -> Unit,
@@ -55,7 +55,7 @@ fun ConversationsScreen(
     onNavigateToRoomDetail: (String) -> Unit
 ) {
     val selectedTab by viewModel.selectedTabIndex.collectAsState()
-    val accountsViewModel: MessageAccountsViewModel = hiltViewModel()
+    val accountsViewModel: MessageAccountsViewModel = conectate.com.core.observability.startupViewModel("message accounts model")
     val accounts by accountsViewModel.accounts.collectAsStateWithLifecycle()
     val accountSwitch by accountsViewModel.switching.collectAsStateWithLifecycle()
     val accountError by accountsViewModel.error.collectAsStateWithLifecycle()
@@ -88,21 +88,25 @@ fun ConversationsScreen(
     
     val tabs = listOf("Mensajes", "Grupos", "Comunidades", "Voz")
     val tabBadges = listOf(unreadDmsCount, unreadGroupsCount, unreadCommunitiesCount, 0)
-    val stickerImportMessage by stickerImportViewModel.actionMessage.collectAsState()
+    // Creating stickers is only needed when an image was shared into this screen.
+    val importViewModel = stickerImportViewModel ?: if (!sharedStickerUri.isNullOrBlank()) {
+        conectate.com.core.observability.startupViewModel<StickerPickerViewModel>("sticker import model")
+    } else null
+    val stickerImportMessage = importViewModel?.actionMessage?.collectAsState()?.value
     val snackbarHostState = remember { SnackbarHostState() }
     var stickerImportHandled by rememberSaveable(sharedStickerUri) { mutableStateOf(false) }
 
     LaunchedEffect(sharedStickerUri) {
         if (!stickerImportHandled && !sharedStickerUri.isNullOrBlank()) {
             stickerImportHandled = true
-            stickerImportViewModel.createStickerFromImage(Uri.parse(sharedStickerUri), preferredPackId = null)
+            importViewModel?.createStickerFromImage(Uri.parse(sharedStickerUri), preferredPackId = null)
         }
     }
 
     LaunchedEffect(stickerImportMessage) {
         stickerImportMessage?.let {
             snackbarHostState.showSnackbar(it)
-            stickerImportViewModel.clearActionMessage()
+            importViewModel?.clearActionMessage()
         }
     }
 
@@ -227,28 +231,7 @@ fun ConversationsScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    if (count > 0) {
-                                        Surface(
-                                            modifier = Modifier
-                                                .height(16.dp)
-                                                .widthIn(min = 16.dp),
-                                            shape = CircleShape,
-                                            color = Color(0xFFE53935),
-                                            contentColor = Color.White
-                                        ) {
-                                            Box(
-                                                modifier = Modifier.padding(horizontal = 4.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = if (count > 99) "99+" else count.toString(),
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    maxLines = 1
-                                                )
-                                            }
-                                        }
-                                    }
+                                    InboxUnreadBadge(count)
                                 }
                                 if (selected) {
                                     Box(

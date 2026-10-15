@@ -58,21 +58,25 @@ fun UniversalShareHost(
     onIncomingShareConsumed: () -> Unit
 ) {
     val forwardRequest = forwardCoordinator.request
-    if (incomingShare == null && forwardRequest == null) return
+    val videoRequest = forwardCoordinator.videoRequest
+    if (incomingShare == null && forwardRequest == null && videoRequest == null) return
 
     val viewModel: ShareDestinationViewModel = hiltViewModel()
-    val destinations by viewModel.destinations.collectAsStateWithLifecycle()
+    val knownDestinations by viewModel.destinations.collectAsStateWithLifecycle()
+    val people by viewModel.videoPeople.collectAsStateWithLifecycle()
+    val destinations = if (videoRequest == null) knownDestinations else (knownDestinations + people).distinctBy { it.key }
     val actionState by viewModel.actionState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val maximumDialogHeight = (LocalConfiguration.current.screenHeightDp * 0.9f).dp
-    val activeKey = forwardRequest?.requestId ?: incomingShare?.id.orEmpty()
+    val activeKey = videoRequest?.requestId ?: forwardRequest?.requestId ?: incomingShare?.id.orEmpty()
     var query by remember(activeKey) { mutableStateOf("") }
     var selectedKeys by remember(activeKey) { mutableStateOf<Set<String>>(emptySet()) }
-    var caption by remember(activeKey) { mutableStateOf(incomingShare?.text ?: incomingShare?.subject.orEmpty()) }
+    var selectedPeople by remember(activeKey) { mutableStateOf<Map<String, ShareDestination>>(emptyMap()) }
+    var caption by remember(activeKey) { mutableStateOf(if (videoRequest != null) "" else incomingShare?.text ?: incomingShare?.subject.orEmpty()) }
 
     fun close() {
         viewModel.resetActionState()
-        if (forwardRequest != null) {
+        if (forwardRequest != null || videoRequest != null) {
             forwardCoordinator.dismiss()
         } else {
             onIncomingShareConsumed()
@@ -82,6 +86,10 @@ fun UniversalShareHost(
     LaunchedEffect(activeKey) {
         viewModel.resetActionState()
         viewModel.refreshDestinations()
+    }
+
+    LaunchedEffect(query, videoRequest?.requestId) {
+        if (videoRequest != null) viewModel.searchVideoPeople(query)
     }
 
     LaunchedEffect(actionState) {
@@ -102,8 +110,9 @@ fun UniversalShareHost(
         }
     }
     val isRunning = actionState is ShareActionState.Running
-    val preview = remember(incomingShare, forwardRequest) {
+    val preview = remember(incomingShare, forwardRequest, videoRequest) {
         when {
+            videoRequest != null -> videoRequest.video.title.ifBlank { "Video de Novvin" }
             forwardRequest != null -> {
                 val count = forwardRequest.candidates.size
                 "$count mensaje${if (count == 1) "" else "s"} para reenviar"
@@ -154,7 +163,7 @@ fun UniversalShareHost(
                     }
                 }
 
-                if (incomingShare?.items?.isNotEmpty() == true) {
+                if (incomingShare?.items?.isNotEmpty() == true || videoRequest != null) {
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = caption,
@@ -198,47 +207,9 @@ fun UniversalShareHost(
                             }
                             items(section, key = ShareDestination::key) { destination ->
                                 val checked = destination.key in selectedKeys
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable(enabled = !isRunning) {
-                                            selectedKeys = if (checked) {
-                                                selectedKeys - destination.key
-                                            } else {
-                                                selectedKeys + destination.key
-                                            }
-                                        }
-                                        .padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = destination.type.sectionIcon,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(destination.title, fontWeight = FontWeight.Medium)
-                                        destination.subtitle?.takeIf { it.isNotBlank() }?.let {
-                                            Text(
-                                                it,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                    Checkbox(
-                                        checked = checked,
-                                        enabled = !isRunning,
-                                        onCheckedChange = { shouldSelect ->
-                                            selectedKeys = if (shouldSelect) {
-                                                selectedKeys + destination.key
-                                            } else {
-                                                selectedKeys - destination.key
-                                            }
-                                        }
-                                    )
+                                ShareDestinationRow(destination, checked, !isRunning) { shouldSelect ->
+                                    selectedKeys = if (shouldSelect) selectedKeys + destination.key else selectedKeys - destination.key
+                                    selectedPeople = if (shouldSelect) selectedPeople + (destination.key to destination) else selectedPeople - destination.key
                                 }
                             }
                         }
@@ -268,9 +239,16 @@ fun UniversalShareHost(
                     )
                 }
 
+                if (videoRequest != null && selectedKeys.any { it.startsWith("chat:person:") }) Text(
+                    "Si aún no han conversado, enviarás una solicitud de mensaje. Solo puedes enviar uno hasta que te respondan.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(
                     onClick = {
-                        if (forwardRequest != null) {
+                        if (videoRequest != null) {
+                            viewModel.shareInternalVideo(videoRequest, selectedKeys.mapNotNull { key ->
+                                selectedPeople[key] ?: destinations.firstOrNull { it.key == key }
+                            }, caption)
+                        } else if (forwardRequest != null) {
                             viewModel.forwardMessages(forwardRequest.candidates, selectedKeys)
                         } else if (incomingShare != null) {
                             viewModel.sendIncomingShare(incomingShare, selectedKeys, caption)
@@ -323,4 +301,23 @@ private fun IncomingSharePayload.previewLabel(): String {
     }
     val suffix = if (items.size > 1) " y ${items.size - 1} archivo(s) más" else ""
     return "${first.displayName?.takeIf { it.isNotBlank() } ?: kind}$suffix"
+}
+
+@Composable
+fun ShareDestinationRow(destination: ShareDestination, selected: Boolean, enabled: Boolean = true, onSelected: (Boolean) -> Unit) {
+    Surface(color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.medium) {
+        Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { onSelected(!selected) }.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(destination.type.sectionIcon, null, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(destination.title, fontWeight = FontWeight.Medium, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(destination.subtitle ?: destination.type.sectionTitle, style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            Checkbox(selected, onCheckedChange = onSelected, enabled = enabled)
+        }
+    }
 }

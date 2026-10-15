@@ -4,6 +4,9 @@ import android.content.SharedPreferences
 import android.view.TextureView
 import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -24,6 +27,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -36,6 +41,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.remember
 import androidx.compose.ui.viewinterop.AndroidView
@@ -64,7 +72,11 @@ fun CircularProfileImage(
     mediaType: String? = null,
     muted: Boolean = true,
     allowSound: Boolean = false,
-    fallbackName: String? = null
+    fallbackName: String? = null,
+    momentViewed: Boolean? = null,
+    ownerId: String? = null,
+    openMomentOnClick: Boolean = true,
+    showMomentRing: Boolean = true
 ) {
     val context = LocalContext.current
     val identityAccountId = LocalProfileIdentityAccount.current
@@ -120,7 +132,8 @@ fun CircularProfileImage(
     // ya eliminan los elementos fuera de pantalla y DisposableEffect libera el
     // reproductor al salir, por lo que no necesitamos degradarlo a una miniatura
     // estática en equipos que el detector clasifica como gama baja.
-    val shouldAnimateVideoAvatar = isVideoAvatar && lifecycleStarted.value
+    val visibleOnScreen = remember(resolvedImageUrl) { mutableStateOf(false) }
+    val shouldAnimateVideoAvatar = isVideoAvatar && lifecycleStarted.value && visibleOnScreen.value
     val fallbackInitial = remember(fallbackName) {
         avatarFallbackInitial(fallbackName)
     }
@@ -138,7 +151,28 @@ fun CircularProfileImage(
     LaunchedEffect(resolvedImageUrl, identityAccountId) {
         cachedIdentityImage.value = ProfileIdentityImageStore.find(context, resolvedImageUrl, identityAccountId, identityGeneration)
     }
-    Box(modifier = modifier.size(size)) {
+    val momentAccess = LocalAvatarMoments.current
+    val momentOwner = remember(ownerId, resolvedImageUrl) { avatarMomentOwnerId(ownerId, resolvedImageUrl) }
+    DisposableEffect(momentOwner, momentAccess?.owner, identityAccountId, visibleOnScreen.value, showMomentRing) {
+        val registration = if (showMomentRing && momentOwner != null && visibleOnScreen.value) momentAccess?.owner?.register(momentOwner) else null
+        onDispose { if (registration != null) momentAccess?.owner?.unregister(registration) }
+    }
+    val activeMoment = momentOwner?.let { momentAccess?.moments?.get(it) }
+    val resolvedMomentViewed = if (showMomentRing) momentViewed ?: activeMoment?.isViewed else null
+    val ring = if (resolvedMomentViewed == null) Modifier else Modifier
+        .border(
+            2.dp,
+            if (resolvedMomentViewed) androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline)
+            else androidx.compose.ui.graphics.Brush.sweepGradient(listOf(Color(0xFF08CCC9), Color(0xFF129EE7), Color(0xFF6546D7), Color(0xFF08CCC9))),
+            CircleShape,
+        ).padding(4.dp).semantics { stateDescription = if (resolvedMomentViewed) "Momento visto" else "Momento sin ver" }
+    val openMoment = if (showMomentRing && openMomentOnClick && momentViewed == null && activeMoment != null && momentAccess != null) {
+        Modifier.clickable { momentAccess.open(activeMoment) }
+    } else Modifier
+    Box(modifier = modifier.size(size).then(ring).then(openMoment).onGloballyPositioned { coordinates ->
+        val bounds = coordinates.boundsInWindow()
+        visibleOnScreen.value = bounds.width > 0f && bounds.height > 0f
+    }) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -167,7 +201,7 @@ fun CircularProfileImage(
                     size = size
                 )
             } else if (shouldAnimateVideoAvatar) {
-                val exoPlayerState = remember(resolvedImageUrl) { mutableStateOf<ExoPlayer?>(null) }
+                val exoPlayerState = remember(resolvedImageUrl, identityAccountId) { mutableStateOf<ExoPlayer?>(null) }
                 val playerReleased = remember(resolvedImageUrl) { AtomicBoolean(false) }
                 val firstFrameRendered = remember(resolvedImageUrl) { mutableStateOf(false) }
                 val textureViewRef = remember(resolvedImageUrl) { mutableStateOf<TextureView?>(null) }
@@ -176,10 +210,13 @@ fun CircularProfileImage(
                     fallbackInitial = fallbackInitial,
                     size = size,
                 )
-                DisposableEffect(resolvedImageUrl) {
+                DisposableEffect(resolvedImageUrl, identityAccountId) {
                     playerReleased.set(false)
                     firstFrameRendered.value = false
                     val player = ExoPlayer.Builder(context)
+                        .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                            .setBufferDurationsMs(4_000, 8_000, 150, 1_000)
+                            .setPrioritizeTimeOverSizeThresholds(true).build())
                         .setMediaSourceFactory(
                             androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
                                 conectate.com.util.VideoCache.getCacheDataSourceFactory(context),
@@ -189,15 +226,16 @@ fun CircularProfileImage(
                         repeatMode = Player.REPEAT_MODE_ONE
                         volume = 0f
                         playWhenReady = true
-                        setMediaItem(MediaItem.fromUri(resolvedImageUrl))
-                        prepare()
                     }
                     val listener = object : Player.Listener {
                         override fun onRenderedFirstFrame() {
                             firstFrameRendered.value = true
+                            if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("AvatarPlaybackAudit", "first_frame identity=${cacheKey?.hashCode()}")
                         }
                     }
                     player.addListener(listener)
+                    player.setMediaItem(MediaItem.fromUri(resolvedImageUrl))
+                    player.prepare()
                     exoPlayerState.value = player
                     onDispose {
                         playerReleased.set(true)
@@ -209,6 +247,7 @@ fun CircularProfileImage(
                 }
                 val exoPlayer = exoPlayerState.value
                 if (exoPlayer != null) {
+                    PauseMediaPlayerOnBackground(exoPlayer)
                     LaunchedEffect(effectiveMuted, exoPlayer) {
                         if (!playerReleased.get()) {
                             exoPlayer.volume = if (effectiveMuted) 0f else 1f
@@ -333,10 +372,13 @@ private fun AvatarFallback(initial: String, size: Dp) {
             tint = MaterialTheme.colorScheme.onPrimaryContainer
         )
     } else {
+        val initialFontSize = with(LocalDensity.current) { (size * 0.42f).toSp() }
         Text(
             text = initial,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
-            fontSize = (size.value * 0.42f).sp,
+            fontSize = initialFontSize,
+            lineHeight = initialFontSize,
+            style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             maxLines = 1

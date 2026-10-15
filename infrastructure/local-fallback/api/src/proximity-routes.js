@@ -247,6 +247,49 @@ async function blockedIds(pool, identity) {
   return blocked
 }
 
+
+// Query both participants' canonical and imported identities: stale client state
+// must not bypass a block created after an offer or session was established.
+async function anonymousPairBlocked(db, identity, peerId) {
+  const blocked = await blockedIds(db, identity)
+  const { rows } = await db.query(
+    `SELECT id::text, supabase_user_id::text FROM fallback_users
+       WHERE lower(id::text)=$1 OR lower(COALESCE(supabase_user_id::text,''))=$1 LIMIT 1`,
+    [normalizeId(peerId)],
+  )
+  const peer = rows[0]
+  return [peerId, peer?.id, peer?.supabase_user_id].some(id => id && blocked.has(normalizeId(id)))
+}
+
+async function validateAnonymousMedia(db, user, identity, sessionId, contentType, rawUrl, content = '') {
+  if (contentType === 'text') return rawUrl == null
+  if (!rawUrl) return contentType === 'sticker' && Boolean(content)
+  // Lazy resolution avoids the existing data-routes/proximity module cycle.
+  const { parsePublicStorageObjectUrl, currentUserMayReferenceMessageMedia } = require('./data-routes')
+  if (contentType === 'sticker') {
+    return currentUserMayReferenceMessageMedia(db, user, identity, {
+      mediaUrl: rawUrl, contentType, allowedOwnedBuckets: ['chat-media'],
+    })
+  }
+  const ref = parsePublicStorageObjectUrl(rawUrl, ['chat-media'])
+  if (!ref) return false
+  const userId = normalizeId(user.id)
+  const candidates = [ref.objectPath]
+  if (!ref.objectPath.startsWith(userId + '/')) candidates.push(userId + '/' + ref.objectPath)
+  const { rows } = await db.query(
+    `SELECT name, content_type FROM fallback_storage_objects
+       WHERE bucket_id=$1 AND owner_id=$2::uuid AND name=ANY($3::text[]) LIMIT 1`,
+    [ref.bucket, userId, candidates],
+  )
+  const object = rows[0]
+  if (!object) return false
+  const allowedPrefixes = [...new Set([userId, ...identity.values].map(normalizeId))]
+    .map(id => id + '/anonymous/' + sessionId + '/')
+  if (!allowedPrefixes.some(prefix => String(object.name).startsWith(prefix))) return false
+  const mime = String(object.content_type || '').toLowerCase().split(';')[0]
+  return contentType === 'audio' ? mime.startsWith('audio/') : mime.startsWith('image/')
+}
+
 async function activeSessionForUser(db, userId) {
   const sessions = await activeSessionsForUser(db, userId)
   return sessions[0] || null
@@ -376,10 +419,9 @@ function bottleCandidateAllowed({
   if (!candidateId || candidateId === normalizeId(senderId)) return false
   if (attemptedIds.has(candidateId) || blocked.has(candidateId)) return false
   if (existingPeerIds.has(candidateId) || busyRecipientIds.has(candidateId) || saturatedUserIds.has(candidateId)) return false
-  return mutuallyCompatible(
-    { gender: normalizeGender(candidate?.sender_gender), looking_for: normalizeLookingFor(candidate?.sender_looking_for) },
-    candidate,
-  )
+  // Bottles are open to everyone, including offers created by older clients.
+  // Blocks, prior attempts, existing chats and capacity still apply above.
+  return true
 }
 
 function bottleOfferRespondable(bottle, identityIds, nowMs = Date.now()) {
@@ -449,27 +491,21 @@ async function assignBottleRecipient(db, bottle) {
   )
   const saturatedUserIds = new Set(saturatedRows.map((row) => normalizeId(row.participant_id)).filter(Boolean))
   const { rows: candidates } = await db.query(
-    `SELECT user_id, gender, looking_for, created_at
+    `SELECT user_id, created_at
        FROM fallback_random_bottle_availability
       WHERE updated_at > NOW() - INTERVAL '${BOTTLE_AVAILABILITY_TTL_SECONDS} seconds'
       ORDER BY created_at
       FOR UPDATE SKIP LOCKED`,
   )
-  const candidate = candidates
-    .map((entry) => ({
-      ...entry,
-      sender_gender: bottle.sender_gender,
-      sender_looking_for: bottle.looking_for,
-    }))
-    .find((entry) => bottleCandidateAllowed({
-      senderId,
-      candidate: entry,
-      attemptedIds,
-      blockedIds: blocked,
-      existingPeerIds,
-      busyRecipientIds,
-      saturatedUserIds,
-    }))
+  const candidate = candidates.find((entry) => bottleCandidateAllowed({
+    senderId,
+    candidate: entry,
+    attemptedIds,
+    blockedIds: blocked,
+    existingPeerIds,
+    busyRecipientIds,
+    saturatedUserIds,
+  }))
   if (!candidate) return bottle
 
   const { rows } = await db.query(
@@ -797,8 +833,8 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
       const userId = normalizeId(identity.displayUserId)
-      const gender = normalizeGender(req.body?.gender)
-      const lookingFor = normalizeLookingFor(req.body?.lookingFor ?? req.body?.looking_for)
+      const gender = 'unspecified'
+      const lookingFor = 'any'
       await client.query('BEGIN')
       await client.query('SELECT pg_advisory_xact_lock($1)', [728145])
       await client.query(`DELETE FROM fallback_random_bottle_availability WHERE updated_at < NOW() - INTERVAL '1 minute'`)
@@ -915,7 +951,7 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
          RETURNING id::text, sender_id, content, sender_gender, looking_for, status,
                    current_recipient_id, attempted_recipient_ids, session_id::text,
                    offer_started_at, expires_at, created_at, updated_at`,
-        [userId, content, normalizeGender(req.body?.gender), normalizeLookingFor(req.body?.lookingFor ?? req.body?.looking_for)],
+        [userId, content, 'unspecified', 'any'],
       )
       const bottle = await assignBottleRecipient(client, inserted.rows[0])
       await client.query('COMMIT')
@@ -1022,6 +1058,11 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
 
       const recipientId = normalizeId(identity.displayUserId)
       const senderId = normalizeId(bottle.sender_id)
+      if (await anonymousPairBlocked(client, identity, senderId)) {
+        await releaseBottleRecipient(client, bottle)
+        await client.query('COMMIT')
+        return res.status(403).json({ error: 'RANDOM_PAIR_BLOCKED' })
+      }
       const senderSessions = await activeSessionsForUser(client, senderId)
       const recipientSessions = await activeSessionsForUser(client, recipientId)
       const alreadyConnected = senderSessions.some((session) => (
@@ -1183,6 +1224,10 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       if (!session || !ownsSession(session, identity) || session.status !== 'active') {
         return res.status(404).json({ error: 'SESSION_NOT_FOUND' })
       }
+      const peerId = identity.ids.has(normalizeId(session.user_a)) ? session.user_b : session.user_a
+      if (await anonymousPairBlocked(pool, identity, peerId)) {
+        return res.status(403).json({ error: 'RANDOM_PAIR_BLOCKED' })
+      }
       const content = cleanText(req.body?.content, 1000)
       const contentType = normalizeId(req.body?.contentType ?? req.body?.content_type) || 'text'
       const mediaUrl = cleanText(req.body?.mediaUrl ?? req.body?.media_url, 1200) || null
@@ -1195,15 +1240,18 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
         [sessionId],
       )
       const currentMessageCount = Number(countRows[0]?.total || 0)
-      // The composer unlocks one capability at a time. The current message
-      // is included so the third/sixth/ninth message can use its new control.
+      // Capabilities depend on messages already accepted by the server.
+      // Match the composer and ViewModel: audio after3, stickers after6, images after9.
       const requiredMessages = { text: 0, audio: 3, sticker: 6, image: 9 }[contentType]
-      if (currentMessageCount + 1 < requiredMessages) {
+      if (currentMessageCount < requiredMessages) {
         return res.status(403).json({ error: 'RANDOM_MESSAGE_TYPE_LOCKED' })
       }
       if (contentType === 'text' && !content) return res.status(400).json({ error: 'MESSAGE_REQUIRED' })
       if (contentType !== 'text' && !mediaUrl && !content) {
         return res.status(400).json({ error: 'MESSAGE_MEDIA_REQUIRED' })
+      }
+      if (!(await validateAnonymousMedia(pool, user, identity, sessionId, contentType, mediaUrl, content))) {
+        return res.status(403).json({ error: 'RANDOM_MESSAGE_MEDIA_FORBIDDEN' })
       }
       let { rows } = await pool.query(
         `INSERT INTO fallback_random_chat_messages(
@@ -1278,6 +1326,8 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
 }
 
 module.exports = {
+  anonymousPairBlocked,
+  validateAnonymousMedia,
   approximateDistanceKm,
   bottleCandidateAllowed,
   bottleOfferRespondable,

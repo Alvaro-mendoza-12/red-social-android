@@ -12,8 +12,15 @@ import conectate.com.data.repository.GroupRepository
 import conectate.com.data.repository.CommunityRepository
 import conectate.com.data.repository.message.InboxSyncPolicy
 import conectate.com.data.repository.message.inboxNeedsInitialLoading
+import conectate.com.data.repository.message.InboxSyncState
+import conectate.com.data.repository.LocalInboxRepository
+import conectate.com.data.repository.forAccount
+import conectate.com.core.concurrency.deferredRepositoryFlow
+import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.isActive
@@ -41,21 +48,31 @@ private data class ConversationFilterInput(
     val list: List<ChatWithLastMessage>,
     val query: String,
     val selectedFolderId: String?,
-    val selectedListFilter: ChatListFilter
+    val selectedListFilter: ChatListFilter,
+    val hasLocalSnapshot: Boolean,
 )
 
 @HiltViewModel
 class MessagingViewModel @Inject constructor(
-    private val messageRepository: MessageRepository,
-    private val advancedMessagingRepository: AdvancedMessagingRepository,
-    private val groupRepository: GroupRepository,
-    private val communityRepository: CommunityRepository,
-    private val userRepository: UserRepository,
+    private val messageRepositoryProvider: Lazy<MessageRepository>,
+    private val advancedMessagingRepositoryProvider: Lazy<AdvancedMessagingRepository>,
+    private val groupRepositoryProvider: Lazy<GroupRepository>,
+    private val communityRepositoryProvider: Lazy<CommunityRepository>,
+    private val userRepositoryProvider: Lazy<UserRepository>,
+    private val localInboxRepository: LocalInboxRepository,
     private val authService: AuthService
 ) : ViewModel() {
 
     // RAW SOURCE
-    private val _conversations = messageRepository.getUserChatsFlow()
+    private val messageRepository get() = messageRepositoryProvider.get()
+    private val advancedMessagingRepository get() = advancedMessagingRepositoryProvider.get()
+    private val groupRepository get() = groupRepositoryProvider.get()
+    private val communityRepository get() = communityRepositoryProvider.get()
+    private val userRepository get() = userRepositoryProvider.get()
+    private val _snapshots = combine(localInboxRepository.snapshots, authService.currentSession) { snapshot, session ->
+        snapshot.forAccount(session?.user?.id)
+    }
+    private val _conversations = _snapshots.map { it.conversations }
     
     // UI SEARCH STATE
     private val _searchQuery = MutableStateFlow("")
@@ -74,7 +91,8 @@ class MessagingViewModel @Inject constructor(
     // remota terminan la eliminacion. Evita dejar una franja roja en la lista.
     private val _hiddenChatIds = MutableStateFlow<Set<String>>(emptySet())
 
-    val chatFolders: StateFlow<List<ChatFolder>> = advancedMessagingRepository.folders
+    val chatFolders: StateFlow<List<ChatFolder>> = deferredRepositoryFlow(advancedMessagingRepositoryProvider) { it.folders }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), emptyList())
     private val _uiMessage = MutableStateFlow<String?>(null)
     val uiMessage: StateFlow<String?> = _uiMessage.asStateFlow()
 
@@ -100,16 +118,17 @@ class MessagingViewModel @Inject constructor(
 
     // FILTERED UI STATE
     private val conversationFilterInput = combine(
-        _conversations,
+        _snapshots,
         _searchQuery,
         _selectedFolderId,
         _selectedListFilter
-    ) { list: List<ChatWithLastMessage>, query: String, selectedFolderId: String?, selectedListFilter: ChatListFilter ->
+    ) { snapshot, query, selectedFolderId, selectedListFilter ->
         ConversationFilterInput(
-            list = list,
+            list = snapshot.conversations.takeIf { snapshot.accountId == authService.getCurrentUserId()?.trim()?.lowercase() }.orEmpty(),
             query = query,
             selectedFolderId = selectedFolderId,
-            selectedListFilter = selectedListFilter
+            selectedListFilter = selectedListFilter,
+            hasLocalSnapshot = snapshot.accountId != null && snapshot.accountId == authService.getCurrentUserId()?.trim()?.lowercase(),
         )
     }
 
@@ -117,7 +136,8 @@ class MessagingViewModel @Inject constructor(
         conversationFilterInput,
         chatFolders,
         _hiddenChatIds,
-        messageRepository.inboxSyncState,
+        deferredRepositoryFlow(messageRepositoryProvider) { it.inboxSyncState }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), InboxSyncState()),
     ) { input, folders, hiddenChatIds, syncState ->
         val list = input.list
         val query = input.query
@@ -125,7 +145,7 @@ class MessagingViewModel @Inject constructor(
         val selectedListFilter = input.selectedListFilter
         if (list.isEmpty()) {
             when {
-                inboxNeedsInitialLoading(syncState) ->
+                !input.hasLocalSnapshot && inboxNeedsInitialLoading(syncState) ->
                     ConversationsUiState.Loading
                 !syncState.isRefreshing && !syncState.lastError.isNullOrBlank() ->
                     ConversationsUiState.Error(syncState.lastError)
@@ -168,17 +188,17 @@ class MessagingViewModel @Inject constructor(
 
     // --- UNREAD COUNTS (FOR BADGES) ---
     
-    val unreadDmsCount: StateFlow<Int> = combine(messageRepository.getUserChatsFlow(), _hiddenChatIds) { chats, hiddenChatIds ->
+    val unreadDmsCount: StateFlow<Int> = combine(_conversations, _hiddenChatIds) { chats, hiddenChatIds ->
         normalizedVisibleConversations(chats, hiddenChatIds)
             .count { it.unreadCount > 0 && !it.chat.is_group && !it.chat.is_archived }
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val unreadGroupsCount: StateFlow<Int> = groupRepository.getGroupsFlow()
+    val unreadGroupsCount: StateFlow<Int> = deferredRepositoryFlow(groupRepositoryProvider) { it.getGroupsFlow() }
         .map { groups -> groups.count { it.unreadCount > 0 } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val unreadCommunitiesCount: StateFlow<Int> = communityRepository.getCommunitiesFlow()
+    val unreadCommunitiesCount: StateFlow<Int> = deferredRepositoryFlow(communityRepositoryProvider) { it.getCommunitiesFlow() }
         .map { communities -> communities.count { it.unreadCount > 0 } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -221,20 +241,22 @@ class MessagingViewModel @Inject constructor(
         if (!isScreenActive) return
         if (refreshJob?.isActive == true) return
         refreshJob = viewModelScope.launch {
-            messageRepository.getUserChats(force = forceInbox)
-            advancedMessagingRepository.refreshFolders()
-            if (includeCollections || _selectedTabIndex.value == 1) {
-                groupRepository.syncGroups()
-            }
-            if (includeCollections || _selectedTabIndex.value == 2) {
-                communityRepository.syncCommunities()
+            withContext(Dispatchers.IO) {
+                messageRepository.getUserChats(force = forceInbox)
+                advancedMessagingRepository.refreshFolders()
+                if (includeCollections || _selectedTabIndex.value == 1) {
+                    groupRepository.syncGroups()
+                }
+                if (includeCollections || _selectedTabIndex.value == 2) {
+                    communityRepository.syncCommunities()
+                }
             }
         }
     }
 
     fun muteChat(chatId: String, isMuted: Boolean) {
         viewModelScope.launch {
-            val result = messageRepository.muteChat(chatId, isMuted)
+            val result = withContext(Dispatchers.IO) { messageRepository.muteChat(chatId, isMuted) }
             _uiMessage.value = if (result.isSuccess) {
                 if (isMuted) "Chat silenciado." else "Notificaciones activadas."
             } else {
@@ -245,7 +267,7 @@ class MessagingViewModel @Inject constructor(
 
     fun pinChat(chatId: String, isPinned: Boolean) {
         viewModelScope.launch {
-            val result = messageRepository.pinChat(chatId, isPinned)
+            val result = withContext(Dispatchers.IO) { messageRepository.pinChat(chatId, isPinned) }
             _uiMessage.value = if (result.isSuccess) {
                 if (isPinned) "Chat fijado arriba." else "Chat desfijado."
             } else {
@@ -256,7 +278,7 @@ class MessagingViewModel @Inject constructor(
 
     fun favoriteChat(chatId: String, isFavorite: Boolean) {
         viewModelScope.launch {
-            val result = messageRepository.favoriteChat(chatId, isFavorite)
+            val result = withContext(Dispatchers.IO) { messageRepository.favoriteChat(chatId, isFavorite) }
             _uiMessage.value = if (result.isSuccess) {
                 if (isFavorite) "Chat añadido a favoritos." else "Chat quitado de favoritos."
             } else {
@@ -267,7 +289,7 @@ class MessagingViewModel @Inject constructor(
 
     fun archiveChat(chatId: String, isArchived: Boolean) {
         viewModelScope.launch {
-            val result = messageRepository.archiveChat(chatId, isArchived)
+            val result = withContext(Dispatchers.IO) { messageRepository.archiveChat(chatId, isArchived) }
             _uiMessage.value = if (result.isSuccess) {
                 if (isArchived) "Chat archivado." else "Chat desarchivado."
             } else {
@@ -277,7 +299,7 @@ class MessagingViewModel @Inject constructor(
     }
 
     fun blockUser(userId: String) {
-        viewModelScope.launch { userRepository.blockUser(userId) }
+        viewModelScope.launch { withContext(Dispatchers.IO) { userRepository.blockUser(userId) } }
     }
     
     fun deleteChat(chatId: String) {
@@ -285,7 +307,7 @@ class MessagingViewModel @Inject constructor(
         if (cleanId.isBlank()) return
         _hiddenChatIds.update { it + cleanId }
         viewModelScope.launch {
-            val result = messageRepository.deleteChat(cleanId)
+            val result = withContext(Dispatchers.IO) { messageRepository.deleteChat(cleanId) }
             if (result.isFailure) {
                 _hiddenChatIds.update { it - cleanId }
                 _uiMessage.value = result.exceptionOrNull()?.message ?: "No se pudo eliminar el chat."
@@ -295,7 +317,7 @@ class MessagingViewModel @Inject constructor(
 
     fun createFolder(name: String, colorHex: String? = null) {
         viewModelScope.launch {
-            val result = advancedMessagingRepository.createFolder(name, colorHex)
+            val result = withContext(Dispatchers.IO) { advancedMessagingRepository.createFolder(name, colorHex) }
             if (result.isSuccess) {
                 val folder = result.getOrThrow()
                 _selectedFolderId.value = folder.id
@@ -308,7 +330,7 @@ class MessagingViewModel @Inject constructor(
 
     fun addChatToFolder(folderId: String, chatId: String) {
         viewModelScope.launch {
-            val result = advancedMessagingRepository.addChatToFolder(folderId, chatId)
+            val result = withContext(Dispatchers.IO) { advancedMessagingRepository.addChatToFolder(folderId, chatId) }
             if (result.isFailure) {
                 _uiMessage.value = result.exceptionOrNull()?.message ?: "No se pudo guardar en carpeta."
             }
@@ -317,7 +339,7 @@ class MessagingViewModel @Inject constructor(
 
     fun removeChatFromFolder(folderId: String, chatId: String) {
         viewModelScope.launch {
-            val result = advancedMessagingRepository.removeChatFromFolder(folderId, chatId)
+            val result = withContext(Dispatchers.IO) { advancedMessagingRepository.removeChatFromFolder(folderId, chatId) }
             if (result.isFailure) {
                 _uiMessage.value = result.exceptionOrNull()?.message ?: "No se pudo quitar de carpeta."
             }
@@ -327,7 +349,7 @@ class MessagingViewModel @Inject constructor(
     fun deleteFolder(folderId: String) {
         viewModelScope.launch {
             val cleanFolder = folderId.trim()
-            val result = advancedMessagingRepository.deleteFolder(cleanFolder)
+            val result = withContext(Dispatchers.IO) { advancedMessagingRepository.deleteFolder(cleanFolder) }
             if (result.isSuccess) {
                 if (_selectedFolderId.value == cleanFolder) {
                     _selectedFolderId.value = null
@@ -345,7 +367,7 @@ class MessagingViewModel @Inject constructor(
 
     fun submitReport(uid: String, name: String?, reason: String, desc: String?, uri: android.net.Uri?) {
         viewModelScope.launch { 
-            messageRepository.submitReport(uid, name ?: "", reason, desc ?: "", uri)
+            withContext(Dispatchers.IO) { messageRepository.submitReport(uid, name ?: "", reason, desc ?: "", uri) }
         }
     }
 

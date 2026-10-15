@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAtUtc": "2026-10-05T02:10:05.779396+00:00",
+  "updatedAtUtc": "2026-10-05T17:41:17.219179+00:00",
   "scope": "11 puntos, cámara, encuestas y sorteos: evidencia por recorrido, sin certificación global de producción",
   "repository": "feature/live-gifts",
   "testedAndroidBuild": {
@@ -15,7 +15,7 @@
     "primaryDebugApkSha256": "db7c23abbaa4d1fe6fd4cfe3a3b867e77ef5ac7466318528c80d3c6c04528d48",
     "isolatedPhysicalMainApkSha256": "93f2d8ae66cdac96573850fd751d6815c37b0b4b7a5129d9acb612f7bcc51205",
     "perScenarioArtifactIdentityRequired": true,
-    "description": "Current regression; different optimized and test APK identities are recorded per scenario below"
+    "description": "Historical Android candidate; the latest media/Social/LIVE continuation records its own artifact identity below"
   },
   "currentServer": {
     "sourceDigest": "a1299ad2435257c0cef15d30f65df7dc2124f9d35d5850a17c4ce681eb44a96b",
@@ -292,11 +292,11 @@
     "allWithinThreeSeconds": false
   },
   "remainingValidation": [
-    "Measure optimized primary APK on returned Motorola with preserved human account/database; old cold usable-inbox samples failed 3000ms",
-    "Explain/control LIVE join variability including retained 5450/5671ms two-engine tablet outliers; three separate-host samples do not prove P95 or all production UI routes",
-    "Full community music picker on tablet took 3172ms after 1500ms review; isolated prepared-player 82-103ms does not close catalog/picker latency across networks",
-    "Repeat administrative notice reception on physical tablet after server SSH authentication renewal; no notice dispatched in blocked attempt",
-    "Acoustic quality, external network handoff, longer-duration/battery/load coverage and broader application release checklist remain unverified"
+    "Measure optimized startup correction in Motorola with preserved primary account/database; two returned cold TTFD samples 5101/4292ms failed target",
+    "Validate faster call signaling recovery on both physical network transitions, including preserved call duration",
+    "Explain/control LIVE join variability; three separate-host samples do not prove P95 or all navigation routes",
+    "Separate music selector driver dispatch time from actual playback request latency and control variation across networks",
+    "Longer-duration, battery/load coverage and broader signed-release/application checklist remain unverified"
   ],
   "humanAccountDataPreserved": true,
   "postBaselineUnitRegression": {
@@ -1462,13 +1462,32 @@
     "notAP95Estimate": true
   },
   "tabletAdministrativeNoticeRecheck": {
-    "status": "blocked_before_dispatch",
-    "cause": "Tailscale SSH periodic authentication renewal required during SCP",
-    "noticeSent": false,
-    "nativeTestStarted": false,
-    "previousActualGoogleApisEmulatorProofRetained": true,
-    "apiStillAvailableDuringOtherActualTests": true,
-    "logSha256": "55f89b2f06ab7bebbe5940338a79a1ced376471e1ac44ef31c42590f12a068f5"
+    "status": "passed_actual_physical_tablet_fcm",
+    "result": {
+      "actualFcmNotificationReceived": true,
+      "titleAndBodyVerified": true,
+      "ownerSessionPreserved": true,
+      "onlyAuthorizedHandset": true,
+      "serverOutbox": {
+        "passed": true,
+        "audience": 1,
+        "duplicateDidNotBroadcast": true,
+        "actualPublicationAndOutbox": true,
+        "actualFcmAndRealtime": true,
+        "deliveryWorkerMs": 814
+      },
+      "ownedTemporarySchemaRemoved": true,
+      "noServerSourceFilesChanged": true,
+      "ownQaRecipientOnly": true,
+      "workerSourceSha256": "41a18e199e2cb6e66f904d8ab54b6e50fe566fbd91a0a6cfa4b6e996e602388d"
+    },
+    "apkSha256": "93f2d8ae66cdac96573850fd751d6815c37b0b4b7a5129d9acb612f7bcc51205",
+    "testApkSha256": "e10b490825c795fe4779b612d8fd2737d1d734772091317905c05426caaf56ad",
+    "nativeLogSha256": "465e6aa263ba24ece54bf951dcef0e2d44337099fe98f6e86d0efb232b16aec0",
+    "outboxLogSha256": "e6caed2cb4b8591bce0ba3b9a3fa356af1befd722f4dfdc680ee94dedce6fe3d",
+    "firstFailurePreserved": "Worker fixture source was decoded with Windows cp1252; corrected to explicit UTF-8 before successful repeat",
+    "sshAccessRestored": true,
+    "scope": "One owned QA recipient/token, actual isolated publication/outbox/idempotence and FCM; no human broadcast or server source changes"
   },
   "productionCertification": {
     "status": "not_certified",
@@ -1557,6 +1576,946 @@
       "fileCount": 289,
       "sha256": "a300ee914af3ed67586b1a4d606082f1d7b656f3a26c17910a3bb660e9d9c30b",
       "identicalToValidatedMirror": true
+    }
+  },
+  "previousTabletAdministrativeNoticeRecheck": {
+    "status": "blocked_before_dispatch",
+    "cause": "Tailscale SSH periodic authentication renewal required during SCP",
+    "noticeSent": false,
+    "nativeTestStarted": false,
+    "previousActualGoogleApisEmulatorProofRetained": true,
+    "apiStillAvailableDuringOtherActualTests": true,
+    "logSha256": "55f89b2f06ab7bebbe5940338a79a1ced376471e1ac44ef31c42590f12a068f5"
+  },
+  "motorolaOptimizedBeforeReturnedCorrections": {
+    "apkSha256": "a6767773f2557eee23b44ffbed3468b68040c92371e7ed028964d57bc3e5a846",
+    "installedInPlaceSameSigningAndDataPreserved": true,
+    "samples": [
+      {
+        "mode": "cold",
+        "platformLaunchState": "COLD",
+        "ttidMs": 1099,
+        "ttfdMs": 5101
+      },
+      {
+        "mode": "cold",
+        "platformLaunchState": "COLD",
+        "ttidMs": 409,
+        "ttfdMs": 4292
+      }
+    ],
+    "withinThreeSeconds": false,
+    "thirdSampleProtocolStopped": "Platform reported WARM despite verified process absence; strict original harness stopped, failure retained",
+    "logSha256": "77acfb13ebd889179da39ef952bc5e86d3002ddc8b92eb00e9402d4465aa4c85",
+    "diagnosticNotBenchmark": {
+      "debugMainThreadCallRepositoryConstructionMs": 3124,
+      "authRecoveryRoutingMs": 123,
+      "backgroundConstructionAfterCorrectionMs": 3245,
+      "correctionScope": "Preparation moved off Compose main thread; target TTFD remains to be measured in optimized artifact"
+    }
+  },
+  "returnedPhysicalAcousticFeedback": {
+    "source": "Explicit human feedback in this chat",
+    "initialAudibleEngineFixture": {
+      "sameWifiAudioClear": true,
+      "wifiToMobileDidNotRecoverAsReported": true,
+      "limitation": "The original endpoint fixture disabled signaling reconnection; not the production CallRepository"
+    },
+    "productionReceiverSecondTest": {
+      "wifiToMobileAudioReturnedOnBothDevices": true,
+      "mobileToWifiAudioReturnedOnBothDevices": true,
+      "scope": "Motorola actual CallRepository receiver plus tablet native sender with real server signaling"
+    }
+  },
+  "productionCallHandoffBeforeFasterSignaling": {
+    "results": [
+      {
+        "role": "caller",
+        "actualCallRepository": false,
+        "phases": [
+          {
+            "phase": "cellular",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 1338,
+            "freshPacketsReceived": 67,
+            "consecutiveFreshSamples": 8
+          },
+          {
+            "phase": "wifi",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 1411,
+            "freshPacketsReceived": 70,
+            "consecutiveFreshSamples": 8
+          }
+        ],
+        "ownerSessionPreserved": true,
+        "passed": true,
+        "callerSignalingConnections": 1
+      },
+      {
+        "role": "receiver",
+        "actualCallRepository": true,
+        "phases": [
+          {
+            "phase": "cellular",
+            "transport": "cellular",
+            "incomingAudioResumedMs": 20117,
+            "freshPacketsReceived": 57,
+            "consecutiveFreshSamples": 8
+          },
+          {
+            "phase": "wifi",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 1385,
+            "freshPacketsReceived": 69,
+            "consecutiveFreshSamples": 8
+          }
+        ],
+        "ownerSessionPreserved": true,
+        "passed": true,
+        "callerSignalingConnections": 0
+      }
+    ],
+    "mainApkSha256": "112564be9cfb8cfeb794cfa135c1a7144d6e5e0f12a1da5d645e44ed39b5a350",
+    "testApkSha256": "efeb366e4655ba0718fe4e1241a6385a3efea6cdd345066cb96b6ce1275bf80f",
+    "resultSha256": "c97455229f8ad0ffdad3ea5ba201f32fb02bd81521f12c0d8fc41dc50d4f4b29",
+    "bothNativeEndpointsPassed": true,
+    "mobileReceiverRecoveryMs": 20117,
+    "latencyClosure": "Pending faster signaling correction; this initial measure includes default-network switch delay",
+    "scope": "Fresh incoming RTP packets verified on each endpoint after both transitions; not a P95 or store release certification"
+  },
+  "developmentCandidate": {
+    "baseCommit": "f772bef",
+    "changes": [
+      "Authenticated repository preparation outside main composition",
+      "Reopen call signaling on default network handoff",
+      "Reconnecting state and preservation of original call duration",
+      "Owned physical network-transition audit and detailed numeric startup diagnostics",
+      "Required normal Android network permission verified in APK and resolved SDK",
+      "Shared local Room inbox reader independent of messaging upload and other-tab dependency graphs",
+      "Deferred Home and Messaging dependencies plus IO preparation of saved-account inbox",
+      "Sticker-import model constructed only for actual shared images",
+      "Direct media gallery export and external file sharing",
+      "Pause and foreground lifecycle in Moment editor and audio selectors",
+      "Four music presentation options with real lyrics eligibility",
+      "Internal gallery/camera/document selectors across application",
+      "Discover continues with public pages after personalized shortlist; spaced non-overlapping recommendations"
+    ],
+    "validationInProgress": true,
+    "previousCompleteRegressionDoesNotCertifyTheseNewChanges": true
+  },
+  "networkHandoffWithSdkPermission": {
+    "normalAndroidPermission": "android.permission.CHANGE_NETWORK_STATE",
+    "resolvedWebRtcSdk": "137.7151.05",
+    "missingInOriginalApkVerified": true,
+    "presentInCorrectedApkVerified": true,
+    "orderedSignalingRejoinBeforeRenegotiation": true,
+    "callDurationAndOwnAccountPreserved": true,
+    "mainApkSha256": "fc1348331abd6d469ce3bceca38ddd08eeaaaac02a6e234b3924beef0c06cbe8",
+    "continuousAuditTestApkSha256": "ef09357a4014e0040647819a996dd32da78ec114a76b28ccfdf865751fb1a9fd",
+    "earlierWithoutContinuousSampling": [
+      {
+        "role": "caller",
+        "actualCallRepository": false,
+        "relayExperiment": false,
+        "phases": [
+          {
+            "phase": "cellular",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 8812,
+            "freshPacketsReceived": 70,
+            "defaultNetworkReadyMs": 5,
+            "networkReadyToFreshAudioMs": 8807,
+            "bothNetworksReadyToFreshAudioMs": 1322,
+            "consecutiveFreshSamples": 8
+          },
+          {
+            "phase": "wifi",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 9570,
+            "freshPacketsReceived": 100,
+            "defaultNetworkReadyMs": 2,
+            "networkReadyToFreshAudioMs": 9568,
+            "bothNetworksReadyToFreshAudioMs": 6214,
+            "consecutiveFreshSamples": 8
+          }
+        ],
+        "ownerSessionPreserved": true,
+        "passed": true,
+        "callerSignalingConnections": 1
+      },
+      {
+        "role": "receiver",
+        "actualCallRepository": true,
+        "relayExperiment": false,
+        "phases": [
+          {
+            "phase": "cellular",
+            "transport": "cellular",
+            "incomingAudioResumedMs": 7837,
+            "freshPacketsReceived": 60,
+            "defaultNetworkReadyMs": 6062,
+            "networkReadyToFreshAudioMs": 1775,
+            "bothNetworksReadyToFreshAudioMs": 1319,
+            "consecutiveFreshSamples": 8
+          },
+          {
+            "phase": "wifi",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 9366,
+            "freshPacketsReceived": 91,
+            "defaultNetworkReadyMs": 2892,
+            "networkReadyToFreshAudioMs": 6474,
+            "bothNetworksReadyToFreshAudioMs": 6015,
+            "consecutiveFreshSamples": 8
+          }
+        ],
+        "ownerSessionPreserved": true,
+        "passed": true,
+        "callerSignalingConnections": 0
+      }
+    ],
+    "continuousRtpSamples": [
+      {
+        "role": "caller",
+        "actualCallRepository": false,
+        "relayExperiment": false,
+        "phases": [
+          {
+            "phase": "cellular",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 11606,
+            "freshPacketsReceived": 80,
+            "defaultNetworkReadyMs": 4,
+            "networkReadyToFreshAudioMs": 11602,
+            "bothNetworksReadyToFreshAudioMs": 2133,
+            "maxFreshRtpSamplingGapMs": 3846,
+            "gapMetricScope": "200ms native RTP sampling throughout the handoff; not acoustic hardware measurement",
+            "consecutiveFreshSamples": 8
+          },
+          {
+            "phase": "wifi",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 11761,
+            "freshPacketsReceived": 60,
+            "defaultNetworkReadyMs": 6,
+            "networkReadyToFreshAudioMs": 11755,
+            "bothNetworksReadyToFreshAudioMs": 8397,
+            "maxFreshRtpSamplingGapMs": 7346,
+            "gapMetricScope": "200ms native RTP sampling throughout the handoff; not acoustic hardware measurement",
+            "consecutiveFreshSamples": 8
+          }
+        ],
+        "ownerSessionPreserved": true,
+        "passed": true,
+        "callerSignalingConnections": 1
+      },
+      {
+        "role": "receiver",
+        "actualCallRepository": true,
+        "relayExperiment": false,
+        "phases": [
+          {
+            "phase": "cellular",
+            "transport": "cellular",
+            "incomingAudioResumedMs": 10216,
+            "freshPacketsReceived": 61,
+            "defaultNetworkReadyMs": 7470,
+            "networkReadyToFreshAudioMs": 2746,
+            "bothNetworksReadyToFreshAudioMs": 1986,
+            "maxFreshRtpSamplingGapMs": 4226,
+            "gapMetricScope": "200ms native RTP sampling throughout the handoff; not acoustic hardware measurement",
+            "consecutiveFreshSamples": 8
+          },
+          {
+            "phase": "wifi",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 11664,
+            "freshPacketsReceived": 64,
+            "defaultNetworkReadyMs": 2587,
+            "networkReadyToFreshAudioMs": 9077,
+            "bothNetworksReadyToFreshAudioMs": 8311,
+            "maxFreshRtpSamplingGapMs": 6964,
+            "gapMetricScope": "200ms native RTP sampling throughout the handoff; not acoustic hardware measurement",
+            "consecutiveFreshSamples": 8
+          }
+        ],
+        "ownerSessionPreserved": true,
+        "passed": true,
+        "callerSignalingConnections": 0
+      }
+    ],
+    "bothNativeEndpointsPassed": true,
+    "notSeamlessOrP95Certified": true,
+    "metricScope": "Fresh RTP counters polled every 200ms throughout handoff, not acoustic hardware playout"
+  },
+  "networkRelayOnlyDiagnostic": {
+    "results": [
+      {
+        "role": "caller",
+        "actualCallRepository": false,
+        "relayExperiment": true,
+        "phases": [
+          {
+            "phase": "cellular",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 12551,
+            "freshPacketsReceived": 64,
+            "defaultNetworkReadyMs": 5,
+            "networkReadyToFreshAudioMs": 12546,
+            "bothNetworksReadyToFreshAudioMs": 9340,
+            "consecutiveFreshSamples": 8
+          },
+          {
+            "phase": "wifi",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 22784,
+            "freshPacketsReceived": 64,
+            "defaultNetworkReadyMs": 4,
+            "networkReadyToFreshAudioMs": 22780,
+            "bothNetworksReadyToFreshAudioMs": 10417,
+            "consecutiveFreshSamples": 8
+          }
+        ],
+        "ownerSessionPreserved": true,
+        "passed": true,
+        "callerSignalingConnections": 1
+      },
+      {
+        "role": "receiver",
+        "actualCallRepository": true,
+        "relayExperiment": true,
+        "phases": [
+          {
+            "phase": "cellular",
+            "transport": "cellular",
+            "incomingAudioResumedMs": 11934,
+            "freshPacketsReceived": 61,
+            "defaultNetworkReadyMs": 2142,
+            "networkReadyToFreshAudioMs": 9792,
+            "bothNetworksReadyToFreshAudioMs": 9027,
+            "consecutiveFreshSamples": 8
+          },
+          {
+            "phase": "wifi",
+            "transport": "wifi",
+            "incomingAudioResumedMs": 22510,
+            "freshPacketsReceived": 78,
+            "defaultNetworkReadyMs": 11725,
+            "networkReadyToFreshAudioMs": 10785,
+            "bothNetworksReadyToFreshAudioMs": 10176,
+            "consecutiveFreshSamples": 8
+          }
+        ],
+        "ownerSessionPreserved": true,
+        "passed": true,
+        "callerSignalingConnections": 0
+      }
+    ],
+    "testOnlyReflectionExplicitlyEnabled": true,
+    "notShippedAsGlobalRelayPolicy": true,
+    "conclusion": "No measured latency benefit; ALL remains the production transport policy"
+  },
+  "motorolaAfterBackgroundRepositoryPreparationBeforeLocalInboxSeparation": {
+    "install": {
+      "beforeApkSha256": "4040f08b27bc4433ec93059f9f3114eeb88e2073af33fee088fb7d39f869ebf1",
+      "afterApkSha256": "2cda13ae022ba5448995ee740aab03fed9b568887ebbe57b46d17ac8949df658",
+      "matchingSigningCertificates": true,
+      "inPlaceUpdateWithoutClearOrUninstall": true,
+      "dataDirAndFirstInstallTimeUnchanged": true,
+      "encryptedSettingsBackedUpPrivately": true,
+      "nonDebuggable": true,
+      "authenticatedInboxCheckPendingFollowingBenchmark": true
+    },
+    "benchmark": {
+      "device": "Motorola g04 Android14",
+      "package": "conectate.com",
+      "apkSha256": "2cda13ae022ba5448995ee740aab03fed9b568887ebbe57b46d17ac8949df658",
+      "optimized": true,
+      "minified": true,
+      "debuggable": false,
+      "existingAccountAndDataPreserved": true,
+      "ttfdScope": "Local account-scoped Room inbox and usable controls; remote refresh may be pending",
+      "coldProtocol": "force-stop, process absence verified repeatedly for one second, then native launch",
+      "warmProtocol": "finish root Activity with BACK, retain process, then native launch",
+      "processColdIsNotDiskCold": true,
+      "noP95Claim": true,
+      "samples": [
+        {
+          "mode": "cold",
+          "attempt": 1,
+          "platformLaunchState": "COLD",
+          "processStateVerified": true,
+          "ttidMs": 973,
+          "ttfdMs": 4687,
+          "authenticatedInboxVisible": true,
+          "sample": 1
+        }
+      ],
+      "protocolExceptions": []
+    },
+    "completedTenSamples": false,
+    "withinThreeSeconds": false,
+    "interruptionReason": "Next force-stop failed the process-absence assertion; retained partial result, not classified as cold",
+    "additionalDebugDiagnosis": {
+      "homeModelMainThreadMs": 2810,
+      "callRepositoryWorkerThreadMs": 3278,
+      "messagingModelMs": 16,
+      "unusedStickerImportModelMs": 533,
+      "logSha256": "4e5b26f7f62e70f87f875e3cd4e40ff89cc10c50b09fb2be4eb6dd884a68c41e",
+      "optimizedLatencyClaim": false
+    }
+  },
+  "returnedCommunityMusicPicker": {
+    "device": "Samsung SM-X520 Android16",
+    "samples": [
+      {
+        "tapToPlayingMs": 310,
+        "oneTapPlayback": true,
+        "driverDispatchMs": 35,
+        "playbackRequestToPlayingUiMs": 274,
+        "playingMetricScope": "Actual selector request to observed onIsPlaying UI; not audio hardware playout",
+        "catalogReviewDelayMs": 1500,
+        "noAutoplay": true,
+        "originalTrackSelected": true,
+        "trimWithinVideoAndTrack": true,
+        "nativeTestPassed": true,
+        "nativeLogSha256": "1f115b3e077c511127c975ad537395aa22074adac669ca41970e8acfdad1ab29"
+      },
+      {
+        "tapToPlayingMs": 1760,
+        "oneTapPlayback": true,
+        "driverDispatchMs": 43,
+        "playbackRequestToPlayingUiMs": 1716,
+        "playingMetricScope": "Actual selector request to observed onIsPlaying UI; not audio hardware playout",
+        "catalogReviewDelayMs": 0,
+        "noAutoplay": true,
+        "originalTrackSelected": true,
+        "trimWithinVideoAndTrack": true,
+        "nativeTestPassed": true,
+        "nativeLogSha256": "d9f928b51b9708549cc8cc1d91f3fbbe54c560eb9d46fd5ed18c79c9dbd88699"
+      }
+    ],
+    "testApkSha256": "ef09357a4014e0040647819a996dd32da78ec114a76b28ccfdf865751fb1a9fd",
+    "actualCatalogAndSelector": true,
+    "noHardwareAudioOrP95Claim": true
+  },
+  "returnedPhysicalLiveBeforeLocalInboxSeparation": {
+    "host": "Samsung SM-X520 Android16",
+    "viewer": "Motorola g04 Android14",
+    "samples": [
+      {
+        "joinRequestMs": 1545,
+        "joinToRenderedFirstFrameMs": 7898,
+        "actualRepositoryAndRenderer": true,
+        "hostOnSeparateDevice": true,
+        "includesCoordinatorPollingOverhead": true,
+        "humanSessionNeverReplaced": true
+      }
+    ],
+    "passedFiveSecondBudget": false,
+    "viewerLogSha256": "3a748f5c608dc445ce4f2d605aa15772c72ab8f86de8b93cb787e816f455815a",
+    "metadataFixtureAndStreamRemoved": true,
+    "joinRequestMetricScope": "Actual repository method return, including metadata and native engine preparation; not HTTP alone"
+  },
+  "optimizedMotorolaLocalInboxStartup": {
+    "device": "Motorola g04 Android14",
+    "package": "conectate.com",
+    "apkSha256": "0f696d882d7160ff4ae7a99fdfdcde8dc7871f4a79d64d0af87b17c7ac2af0d6",
+    "optimized": true,
+    "minified": true,
+    "debuggable": false,
+    "existingAccountAndDataPreserved": true,
+    "ttfdScope": "Local account-scoped Room inbox and usable controls; remote refresh may be pending",
+    "coldProtocol": "force-stop, process absence verified repeatedly for one second, then native launch",
+    "warmProtocol": "finish root Activity with BACK, retain process, then native launch",
+    "processColdIsNotDiskCold": true,
+    "noP95Claim": true,
+    "samples": [
+      {
+        "mode": "cold",
+        "attempt": 1,
+        "platformLaunchState": "COLD",
+        "processStateVerified": true,
+        "ttidMs": 812,
+        "ttfdMs": 2001,
+        "authenticatedInboxVisible": true,
+        "sample": 1
+      },
+      {
+        "mode": "cold",
+        "attempt": 3,
+        "platformLaunchState": "COLD",
+        "processStateVerified": true,
+        "ttidMs": 537,
+        "ttfdMs": 1474,
+        "authenticatedInboxVisible": true,
+        "sample": 2
+      },
+      {
+        "mode": "cold",
+        "attempt": 4,
+        "platformLaunchState": "COLD",
+        "processStateVerified": true,
+        "ttidMs": 454,
+        "ttfdMs": 1318,
+        "authenticatedInboxVisible": true,
+        "sample": 3
+      },
+      {
+        "mode": "cold",
+        "attempt": 6,
+        "platformLaunchState": "COLD",
+        "processStateVerified": true,
+        "ttidMs": 456,
+        "ttfdMs": 1337,
+        "authenticatedInboxVisible": true,
+        "sample": 4
+      },
+      {
+        "mode": "cold",
+        "attempt": 7,
+        "platformLaunchState": "COLD",
+        "processStateVerified": true,
+        "ttidMs": 452,
+        "ttfdMs": 2841,
+        "authenticatedInboxVisible": true,
+        "sample": 5
+      },
+      {
+        "mode": "warm",
+        "attempt": 1,
+        "platformLaunchState": "WARM",
+        "processStateVerified": true,
+        "ttidMs": 215,
+        "ttfdMs": 611,
+        "authenticatedInboxVisible": true,
+        "sample": 1
+      },
+      {
+        "mode": "warm",
+        "attempt": 2,
+        "platformLaunchState": "WARM",
+        "processStateVerified": true,
+        "ttidMs": 138,
+        "ttfdMs": 494,
+        "authenticatedInboxVisible": true,
+        "sample": 2
+      },
+      {
+        "mode": "warm",
+        "attempt": 3,
+        "platformLaunchState": "WARM",
+        "processStateVerified": true,
+        "ttidMs": 161,
+        "ttfdMs": 540,
+        "authenticatedInboxVisible": true,
+        "sample": 3
+      },
+      {
+        "mode": "warm",
+        "attempt": 4,
+        "platformLaunchState": "WARM",
+        "processStateVerified": true,
+        "ttidMs": 122,
+        "ttfdMs": 445,
+        "authenticatedInboxVisible": true,
+        "sample": 4
+      },
+      {
+        "mode": "warm",
+        "attempt": 5,
+        "platformLaunchState": "WARM",
+        "processStateVerified": true,
+        "ttidMs": 126,
+        "ttfdMs": 443,
+        "authenticatedInboxVisible": true,
+        "sample": 5
+      }
+    ],
+    "protocolExceptions": [
+      {
+        "mode": "cold",
+        "attempt": 2,
+        "phase": "beforeLaunch",
+        "processAbsenceVerified": false,
+        "explanation": "Process appeared during force-stop settling; no launch sample collected"
+      },
+      {
+        "mode": "cold",
+        "attempt": 5,
+        "phase": "beforeLaunch",
+        "processAbsenceVerified": false,
+        "explanation": "Process appeared during force-stop settling; no launch sample collected"
+      }
+    ],
+    "tenClassifiedSamplesCompleted": true,
+    "allWithinThreeSeconds": true
+  },
+  "localInboxUnitRegression": {
+    "tests": 1327,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 287,
+    "xmlDigestSha256": "3f1ebff3b6bdb7cdc066fccbbb69f766387248e388628f31c6e95e044ea70619",
+    "mainApkSha256": "0774e9a8ccb80706412f0ee5ac5aa5c9554da211b71ea444a3c47d54d75f060b",
+    "variant": "audit",
+    "localInboxPrivacyAndDeferredConstructionRegressionIncluded": true
+  },
+  "localInboxNativeUiFirstAttempt": {
+    "mainApkSha256": "0774e9a8ccb80706412f0ee5ac5aa5c9554da211b71ea444a3c47d54d75f060b",
+    "testApkSha256": "c408aa0fc2c2d74a415350a33d77a475c6441caea9ca020471aac8f471c55dff",
+    "classSelectors": [
+      "conectate.com.presentation.messages.ChatCameraCaptureTest",
+      "conectate.com.presentation.messages.ChatLinkUiTest",
+      "conectate.com.presentation.messages.MessageMediaPreparationTest",
+      "conectate.com.presentation.messages.MessagePhotoRenderingTest",
+      "conectate.com.presentation.messages.MessagePhotoSourceStoreTest",
+      "conectate.com.presentation.profile.ProfileConversationNavigationTest",
+      "conectate.com.presentation.social.MomentMusicPickerUiTest",
+      "conectate.com.presentation.surveys.SurveyWorkbenchServerTest",
+      "conectate.com.presentation.surveys.SurveyWorkbenchTest"
+    ],
+    "results": [
+      {
+        "device": "ZY22JSH8CF",
+        "tests": null,
+        "passed": false,
+        "normalizedOutputSha256": "61949efdc3d9d156f51c51f2444da1b1e73757e6fb444c08dbe660029076b04f",
+        "rawLogSha256": "dff289928d445363e070bd6f78ea41ecb613e81ac14ed30aaeb6a8c496c10eb2",
+        "testsRun": 56,
+        "failures": 1,
+        "isolatedFollowup": "Survey passed 13.113s on Motorola; camera test required waiting for enabled Send rather than its first appearance"
+      },
+      {
+        "device": "R5GL22C14WZ",
+        "tests": null,
+        "passed": false,
+        "normalizedOutputSha256": "7748b465c24b56e9f17485c13e22ffb3340752953fd75a0280c666a1f7bed5eb",
+        "rawLogSha256": "2e05e266a558b3b2014febba7a9b0cde4dd2432ed5b72fb5ee6e680dfe0698d0",
+        "testsRun": 56,
+        "failures": 1,
+        "isolatedFollowup": "Survey passed 13.113s on Motorola; camera test required waiting for enabled Send rather than its first appearance"
+      }
+    ]
+  },
+  "publicSocialPaginationReadOnly": [
+    {
+      "ownedAccountIndex": 1,
+      "pages": [
+        {
+          "page": 1,
+          "offset": 0,
+          "count": 3,
+          "hasMore": true,
+          "nextOffset": 3,
+          "duplicatesWithEarlierPage": false
+        },
+        {
+          "page": 2,
+          "offset": 3,
+          "count": 3,
+          "hasMore": true,
+          "nextOffset": 6,
+          "duplicatesWithEarlierPage": false
+        },
+        {
+          "page": 3,
+          "offset": 6,
+          "count": 3,
+          "hasMore": true,
+          "nextOffset": 9,
+          "duplicatesWithEarlierPage": false
+        },
+        {
+          "page": 4,
+          "offset": 9,
+          "count": 3,
+          "hasMore": true,
+          "nextOffset": 12,
+          "duplicatesWithEarlierPage": false
+        }
+      ],
+      "uniquePostCount": 12
+    },
+    {
+      "ownedAccountIndex": 2,
+      "pages": [
+        {
+          "page": 1,
+          "offset": 0,
+          "count": 3,
+          "hasMore": true,
+          "nextOffset": 3,
+          "duplicatesWithEarlierPage": false
+        },
+        {
+          "page": 2,
+          "offset": 3,
+          "count": 3,
+          "hasMore": true,
+          "nextOffset": 6,
+          "duplicatesWithEarlierPage": false
+        },
+        {
+          "page": 3,
+          "offset": 6,
+          "count": 3,
+          "hasMore": true,
+          "nextOffset": 9,
+          "duplicatesWithEarlierPage": false
+        },
+        {
+          "page": 4,
+          "offset": 9,
+          "count": 3,
+          "hasMore": true,
+          "nextOffset": 12,
+          "duplicatesWithEarlierPage": false
+        }
+      ],
+      "uniquePostCount": 12
+    }
+  ],
+  "mediaSocialFirstCandidatePhysical": {
+    "mainApkSha256": "d825f60ab3aa549defd170a728ee5acdb48a5a2056a429a55e02a9787d10f560",
+    "testApkSha256": "52c9ddc991fe384ec15c20423c016ae4602f17ba5875fbc5b2cdb22654091ff9",
+    "motorola": {
+      "tests": 13,
+      "seconds": 38.705
+    },
+    "tablet": {
+      "tests": 13,
+      "seconds": 28.612
+    },
+    "scope": "Public gallery export and partial cleanup, CameraX capture/edit/send, editor layout and pause control; before later internal-selector and Discover-continuation changes",
+    "earlierTabletAttempt": "11 selected tests then process interruption while installation coordinator was still running; not a proven product crash"
+  },
+  "mediaSocialLiveContinuationOct5": {
+    "scope": "Media exports, internal selectors, Discover pagination and LIVE collaboration/recovery; no global production certification",
+    "unitV12": {
+      "suites": 292,
+      "tests": 1350,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "aggregateXmlSha256": "557bc4976501baac09a48504e8301b8ef8795eb75a251abc5827cc2ce77f3aef"
+    },
+    "physicalUiV13": {
+      "mainApkSha256": "1dbd5e447bbb5de2bdeaf1af9454d3bebc2aff0084197c563059b85d8ce56af0",
+      "testApkSha256": "3b21d47a02050c3ec1c71c977ccb2a7ee37d6022c0ff814bd30cd4a7146937ea",
+      "testsRun": 77,
+      "failures": 0,
+      "passed": true,
+      "skipped": 0,
+      "logSha256": "01513e4f28cca56c259153abffbddbbbbc79821a160d90f8338dd91c32f8bbf4",
+      "deviceModel": "Motorola g04 Android14"
+    },
+    "emulatorUiV13": {
+      "mainApkSha256": "1dbd5e447bbb5de2bdeaf1af9454d3bebc2aff0084197c563059b85d8ce56af0",
+      "testApkSha256": "3b21d47a02050c3ec1c71c977ccb2a7ee37d6022c0ff814bd30cd4a7146937ea",
+      "testsRun": 77,
+      "passed": false,
+      "skipped": 0,
+      "logSha256": "1616c6151739b701a4f0610e34f8970c1e7fbbbaa41711e6386c4ee355fea571",
+      "deviceModel": "Android35 x86_64 software renderer",
+      "failures": 12,
+      "failureClasses": [
+        "Nine WebView focus failures",
+        "Crop preparation timeout",
+        "Video capture timeout",
+        "Invalid-image timeout"
+      ]
+    },
+    "emulatorDirectedUiV14": {
+      "mainApkSha256": "1dbd5e447bbb5de2bdeaf1af9454d3bebc2aff0084197c563059b85d8ce56af0",
+      "testApkSha256": "bcce6170df1dca7c7d4db8cfc00da86f50d2e06b0f67c3de8137f99b50012ab9",
+      "testsRun": 27,
+      "failures": 2,
+      "passed": false,
+      "skipped": 0,
+      "externalWellbeingAnrClosed": true,
+      "logSha256": "3e4c6aaae6d5ed24a945b7927df34e897406630a16e8e79ec528cf97c01652ac",
+      "deviceModel": "Android35 x86_64 software renderer"
+    },
+    "maintenanceGuard": {
+      "tests": 12,
+      "failed": 0,
+      "skipped": 0,
+      "logSha256": "33b04aafc8d2fe49b0593275fce50f73992d2e268392a39f61dc6c240930031b"
+    },
+    "backendLocal": {
+      "api": {
+        "tests": 467,
+        "passed": 463,
+        "failed": 0,
+        "skipped": 4
+      },
+      "signaling": {
+        "tests": 30,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 1
+      },
+      "scope": "Source suites; does not claim redeployment of all local backend changes"
+    },
+    "capacityHttp": {
+      "acceptedGuests": 6,
+      "seventhGuestStatus": 409,
+      "viewerCanPublish": false,
+      "passed": true,
+      "ownedResourcesCleaned": true,
+      "evidenceSha256": "5c002aad976ef0805bf0494fa1be0476b6b5937ce7c0b2080579ffecfd8f25f0"
+    },
+    "configuration": {
+      "liveMaxGuests": 6,
+      "oldOverrideSha256": "ede8902e1bec4196e89880fe26787084ef99350985fcec23fdf4063db1ff8ea3",
+      "newOverrideSha256": "1a0356e326f89b6829f413cc2e965a29f7864f865e97b58651cb34e318f009d8",
+      "scope": "Persistent API/signaling configuration only; container images unchanged"
+    },
+    "networkRecoveryV15": {
+      "physicalPair": false,
+      "host": "Android35 x86_64 emulator with NVIDIA host renderer",
+      "guest": "Motorola g04 cellular",
+      "mainApkSha256": "1dbd5e447bbb5de2bdeaf1af9454d3bebc2aff0084197c563059b85d8ce56af0",
+      "testApkSha256": "4898f129c612805679db7306e31ccd4445233e2f56b5cce0ec6c937e50e96185",
+      "existingNativeCaptureAndCameraControls": false,
+      "emulatorBaselineMinimumFps": 2,
+      "outageMs": 8000,
+      "passed": false,
+      "results": [
+        {
+          "role": "host",
+          "passed": false,
+          "measurementMs": 25111,
+          "freshVideoSamples": 0,
+          "freshAudioSamples": 59,
+          "rendererAttached": true,
+          "trackEnabled": [
+            true
+          ],
+          "framesAfterEnabledRefresh": 0,
+          "framesAfterSinkRebind": 76,
+          "logSha256": "8b57eac6d227b265c8689b591f234b232632360ca2e98f2b210b15c5a01b9fc1"
+        },
+        {
+          "role": "guest",
+          "passed": false,
+          "measurementMs": 25151,
+          "freshVideoSamples": 0,
+          "freshAudioSamples": 50,
+          "rendererAttached": true,
+          "trackEnabled": [
+            true
+          ],
+          "framesAfterEnabledRefresh": 0,
+          "framesAfterSinkRebind": 73,
+          "logSha256": "cf41aab9a3ac4b294660f9bcb2386c4894315833ef5e8a00dc52e8b5d0998e5f"
+        }
+      ],
+      "testLimitation": "Native waits did not advance Compose test frames; old visor references may persist. Not conclusive evidence of a product freeze."
+    },
+    "candidateRendererRepair": {
+      "status": "Compiled and units passed; current Motorola UI regression recorded. Shared-camera video recovered in both endpoints but exceeded ten seconds.",
+      "staleAfterMs": 1500,
+      "monitoringWindowMs": 10000,
+      "maximumAttemptsPerBinding": 2,
+      "scope": "Reattach the current visible native sink; no new camera or session"
+    },
+    "remaining": [
+      "Repeat video recovery after the repair",
+      "Repeat shared-camera mute/resume/replacement",
+      "Repeat current APK regression and optimized startup",
+      "Current optimized artifact, lint and signed AAB delivery",
+      "Six simultaneous physical cameras and load/duration/battery coverage",
+      "Full received-message to public-gallery integration in all three chat contexts"
+    ],
+    "productionCertification": false,
+    "unitV16": {
+      "suites": 293,
+      "tests": 1358,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "aggregateXmlSha256": "d3541695418ff347db7f78f84a5427953dbdc6b9f3ee04547a5b8e096f83ec49"
+    },
+    "synchronizedNetworkV17": {
+      "physicalPair": false,
+      "sharedNativeCamera": false,
+      "mainApkSha256": "c75b1654bfb5ad40adf61ccc5fb2c80d2fad154933d93de77d8f1980753c4adb",
+      "testApkSha256": "d60c44e1d11088f32ce14a20a3a11a72f58f5c2023a25de9925ae69f30905d89",
+      "maximumRecoveryMs": 10000,
+      "outageMs": 8000,
+      "passed": false,
+      "results": [
+        {
+          "role": "host",
+          "passed": false,
+          "eightFreshSamplesMs": 11249,
+          "freshVideoSamples": 8,
+          "freshDrawnSamples": 8,
+          "freshAudioSamples": 10,
+          "logSha256": "1547abd3c2320b7c34ab5b5bad4e25257273a276ead542855f76b1af8fb0dab9"
+        },
+        {
+          "role": "guest",
+          "passed": true,
+          "eightFreshSamplesMs": 9208,
+          "freshVideoSamples": 8,
+          "freshDrawnSamples": 8,
+          "freshAudioSamples": 7,
+          "logSha256": "8e8e7a7b7970de3298ec7fd2be8bc6ca4ebf22b77eb070aa968cc8099f4142d2"
+        }
+      ]
+    },
+    "latestCandidate": {
+      "mainApkSha256": "c75b1654bfb5ad40adf61ccc5fb2c80d2fad154933d93de77d8f1980753c4adb",
+      "testApkSha256": "457723e1ba3b3661141cc500fdb8f0357e0ca31397efbf8a08b20401e88d6c49",
+      "unitSourceVersion": "v16",
+      "fullUiSourceVersion": "v19",
+      "optimizedArtifactValidated": false,
+      "lintValidated": false
+    },
+    "synchronizedSharedCameraV19": {
+      "physicalPair": false,
+      "sharedNativeCamera": true,
+      "controlsAndCameraReplacementPassedBeforeOutage": true,
+      "mainApkSha256": "c75b1654bfb5ad40adf61ccc5fb2c80d2fad154933d93de77d8f1980753c4adb",
+      "testApkSha256": "457723e1ba3b3661141cc500fdb8f0357e0ca31397efbf8a08b20401e88d6c49",
+      "maximumRecoveryMs": 10000,
+      "outageMs": 8000,
+      "passed": false,
+      "results": [
+        {
+          "role": "host",
+          "passed": false,
+          "eightFreshSamplesMs": 17819,
+          "freshVideoSamples": 8,
+          "freshDrawnSamples": 8,
+          "freshAudioSamples": 7,
+          "logSha256": "84e9fe4aadcca9662f5d6ebd589d098455c428a4614b70c8be4333cc903d7248"
+        },
+        {
+          "role": "guest",
+          "passed": false,
+          "eightFreshSamplesMs": 12107,
+          "freshVideoSamples": 8,
+          "freshDrawnSamples": 8,
+          "freshAudioSamples": 8,
+          "logSha256": "3025663954df818995db1ab4feddc16d22af470651894aee9764fa3e46c26726"
+        }
+      ]
+    },
+    "physicalUiV19": {
+      "mainApkSha256": "c75b1654bfb5ad40adf61ccc5fb2c80d2fad154933d93de77d8f1980753c4adb",
+      "testApkSha256": "457723e1ba3b3661141cc500fdb8f0357e0ca31397efbf8a08b20401e88d6c49",
+      "testsRun": 77,
+      "failures": 0,
+      "passed": true,
+      "skipped": 0,
+      "logSha256": "95db3baaee0063e1a0df3dbc5e8d98abfdc2f406253b5fc99fd5fa9c510ffc14",
+      "deviceModel": "Motorola g04 Android14"
     }
   }
 }

@@ -90,9 +90,7 @@ fun StickerPickerDialog(
     var selectedTab by remember { mutableStateOf(0) }
     var newPackName by remember { mutableStateOf("") }
     var selectedPackId by remember { mutableStateOf<String?>(null) }
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
+    val imagePickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         uri?.let { viewModel.createStickerFromImage(it, selectedPackId ?: packs.firstOrNull()?.id) }
     }
 

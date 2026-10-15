@@ -63,9 +63,7 @@ fun StickerPanel(
     var pendingEditorUri by remember { mutableStateOf<Uri?>(null) }
     var searchExpanded by remember { mutableStateOf(false) }
 
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
+    val imagePickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         if (uri != null) {
             pendingEditorUri = uri
         }

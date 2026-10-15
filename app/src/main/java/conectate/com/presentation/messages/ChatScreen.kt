@@ -137,6 +137,9 @@ fun ChatScreen(
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMessages by viewModel.selectedMessages.collectAsState()
     val isBlocked by viewModel.isBlocked.collectAsState()
+    val messageRequest by viewModel.messageRequest.collectAsState()
+    val requestWarningAcknowledged by viewModel.requestWarningAcknowledged.collectAsState()
+    val requestDecisionBusy by viewModel.requestDecisionBusy.collectAsState()
     val isBlockedByMe by viewModel.isBlockedByMe.collectAsState()
     val isBlockedByOther by viewModel.isBlockedByOther.collectAsState()
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -190,6 +193,7 @@ fun ChatScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val downloadChatMedia = rememberChatMediaDownload(viewModel::getCurrentUserId) { viewModel.getPlayableUrl(it) }
+    val shareChatMedia = rememberChatMediaShare(viewModel::getCurrentUserId) { viewModel.getPlayableUrl(it) }
     val universalForwardCoordinator = LocalUniversalForwardCoordinator.current
 
     fun sendCurrentLocation() {
@@ -252,9 +256,7 @@ fun ChatScreen(
     var pendingDocumentUri by remember { mutableStateOf<Uri?>(null) }
     var pendingContactPayload by remember { mutableStateOf<DeviceContactPayload?>(null) }
 
-    val audioPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
+    val audioPickerLauncher = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri: android.net.Uri? ->
         if (uri != null) {
             pendingAudioPreviewUri = uri
             showAudioPickerDialog = true
@@ -269,9 +271,7 @@ fun ChatScreen(
         )
     }
 
-    val gifPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: android.net.Uri? ->
+    val gifPickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri: android.net.Uri? ->
         uri?.let { viewModel.sendGifMessage(it) }
     }
 
@@ -318,9 +318,7 @@ fun ChatScreen(
         }
     }
 
-    val backgroundImagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
+    val backgroundImagePickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri: Uri? ->
         backgroundImageToCrop = uri
     }
 
@@ -932,7 +930,7 @@ fun ChatScreen(
                                     navController.navigate(conectate.com.presentation.navigation.Screen.FullScreenImage.createRoute(chatImage!!))
                                 }
                             ) {
-                                conectate.com.presentation.components.CircularProfileImage(
+                                conectate.com.presentation.components.CircularProfileImage(ownerId = if (chat?.is_group == true) null else otherUser?.id, 
                                     imageUrl = chatImage,
                                     size = 32.dp,
                                     isVerified = if (chat?.is_group == true) false else otherUser?.is_verified ?: false,
@@ -1468,6 +1466,17 @@ fun ChatScreen(
 
 
 
+                if (!isBlocked) DirectMessageRequestNotice(
+                    state = messageRequest,
+                    senderName = (chatState as? ChatUiState.Success)?.otherUser?.display_name ?: "Este usuario",
+                    warningAcknowledged = requestWarningAcknowledged,
+                    busy = requestDecisionBusy,
+                    onContinue = viewModel::acknowledgeMessageRequestWarning,
+                    onAccept = { viewModel.decideMessageRequest(true) },
+                    onReject = { viewModel.decideMessageRequest(false) },
+                    onRefresh = viewModel::refreshMessageRequest,
+                )
+
                 if (isBlockedByOther) {
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -1498,6 +1507,8 @@ fun ChatScreen(
                             }
                         }
                     }
+                } else if (!messageRequest.permitsLocalQueue || (messageRequest.needsFirstMessageWarning && !requestWarningAcknowledged)) {
+                    // The request notice above owns the available actions.
                 } else if ((chatState as? ChatUiState.Success)?.isMember == false && (chatState as? ChatUiState.Success)?.chat?.is_group == true) {
                     // BANNER DE EXPULSIÓN (WhatsApp Style)
                     Card(
@@ -2213,6 +2224,7 @@ fun ChatScreen(
             },
             secureContent = isViewingOnceMedia,
             onDownload = if (isViewingOnceMedia) null else downloadChatMedia,
+            onShare = if (isViewingOnceMedia) null else shareChatMedia,
             onDismiss = {
                 fullScreenMediaItems = emptyList()
                 isViewingOnceMedia = false
@@ -2274,6 +2286,7 @@ fun ChatScreen(
 
     if (showMediaComposer) {
         MessageMediaComposer(
+            maxItems = if (messageRequest.status == "new") 1 else 7,
             initialStep = composerInitialStep,
             isSending = false,
             onDismiss = { showMediaComposer = false; composerInitialStep = "gallery" },

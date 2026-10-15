@@ -56,6 +56,11 @@ class SystemAnnouncementPushAuditTest {
             val notification = notifications.activeNotifications.first { it.id == ownNotificationId }.notification
             val body = notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
                 ?: notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
+            // Only the notification selected by our fresh nonce is recorded; never other alerts.
+            File(context.cacheDir, "announcement-notification-private.json").writeText(JSONObject()
+                .put("title", title).put("body", body)
+                .put("extraKeys", notification.extras.keySet().joinToString(","))
+                .put("bodyContainsExpected", body.contains("Comprobación temporal autorizada")).toString())
             assertTrue("The notice body must reach the handset", body.contains("Comprobación temporal autorizada"))
             assertEquals(owner, auth.getCurrentUserId())
             File(context.getExternalFilesDir("communication-qa")!!, "announcement-real-push.json").writeText(JSONObject()

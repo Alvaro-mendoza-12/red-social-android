@@ -19,7 +19,9 @@ test('read publication sends complete normalized messages only to authorized rec
   assert.deepEqual(queries[0].params, ['chat', ['message']])
   assert.match(queries[0].sql, /lower\(chat_id\) = \$1 AND id = ANY\(\$2::uuid\[\]\)/)
   assert.match(queries[0].sql, /status = 'read' AND deleted_for_all = FALSE/)
-  assert.deepEqual(events, [{ chatId: 'chat', message: { ...row, normalized: true }, recipientIds: ['sender', 'reader'], action: 'updated' }])
+  assert.equal(typeof events[0].pool.query, 'function')
+  const projectedEvents = events.map(({ pool, ...event }) => event)
+  assert.deepEqual(projectedEvents, [{ chatId: 'chat', message: { ...row, normalized: true }, recipientIds: ['sender', 'reader'], action: 'updated' }])
 })
 
 test('no mutation result means no lookup or publication', async () => {

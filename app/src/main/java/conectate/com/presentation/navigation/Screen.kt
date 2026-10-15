@@ -63,7 +63,7 @@ sealed class Screen(val route: String) {
     object VideoPlayer : Screen("video_player/{videoId}?focusCommentId={focusCommentId}&resumeMs={resumeMs}&endMs={endMs}") {
         fun createRoute(videoId: String, focusCommentId: String? = null, resumeMs: Long = 0L,
                         endMs: Long = 0L): String {
-            val base = "video_player/$videoId"
+            val base = "video_player/${android.net.Uri.encode(videoId)}"
             val params = mutableListOf<String>()
             if (!focusCommentId.isNullOrBlank()) params += "focusCommentId=${android.net.Uri.encode(focusCommentId)}"
             if (resumeMs > 0L) params += "resumeMs=$resumeMs"
@@ -100,7 +100,7 @@ sealed class Screen(val route: String) {
     object ChangePassword : Screen("change_password")
     object PrivacyPolicy : Screen("privacy_policy")
     object UserProfile : Screen("user_profile/{userId}") {
-        fun createRoute(userId: String) = "user_profile/$userId"
+        fun createRoute(userId: String) = "user_profile/${android.net.Uri.encode(userId)}"
     }
     
     object SearchUsers : Screen("search_users")
@@ -113,7 +113,7 @@ sealed class Screen(val route: String) {
     
     object GroupChat : Screen("group_chat/{groupId}?focusMessageId={focusMessageId}") {
         fun createRoute(groupId: String, focusMessageId: String? = null): String {
-            val base = "group_chat/$groupId"
+            val base = "group_chat/${android.net.Uri.encode(groupId)}"
             return if (focusMessageId.isNullOrBlank()) {
                 base
             } else {
@@ -123,7 +123,7 @@ sealed class Screen(val route: String) {
     }
     object CommunityChat : Screen("community_chat/{communityId}?focusMessageId={focusMessageId}") {
         fun createRoute(communityId: String, focusMessageId: String? = null): String {
-            val base = "community_chat/$communityId"
+            val base = "community_chat/${android.net.Uri.encode(communityId)}"
             return if (focusMessageId.isNullOrBlank()) {
                 base
             } else {
@@ -134,21 +134,21 @@ sealed class Screen(val route: String) {
     
     object GroupDetail : Screen("group_detail/{groupId}?invite={invite}") {
         fun createRoute(groupId: String, invite: String? = null): String {
-            val base = "group_detail/$groupId"
+            val base = "group_detail/${android.net.Uri.encode(groupId)}"
             return if (invite.isNullOrBlank()) base else "$base?invite=${android.net.Uri.encode(invite)}"
         }
     }
     object CommunityDetail : Screen("community_detail/{communityId}") {
-        fun createRoute(communityId: String) = "community_detail/$communityId"
+        fun createRoute(communityId: String) = "community_detail/${android.net.Uri.encode(communityId)}"
     }
     
     object VoiceRooms : Screen("voice_rooms")
     object RoomDetail : Screen("room_detail/{roomId}") {
-        fun createRoute(roomId: String) = "room_detail/$roomId"
+        fun createRoute(roomId: String) = "room_detail/${android.net.Uri.encode(roomId)}"
     }
 
     object FollowList : Screen("follow_list/{userId}/{type}") {
-        fun createRoute(userId: String, type: String) = "follow_list/$userId/$type"
+        fun createRoute(userId: String, type: String) = "follow_list/${android.net.Uri.encode(userId)}/${android.net.Uri.encode(type)}"
     }
 
     object AdminPanel : Screen("admin_panel")
@@ -170,7 +170,7 @@ sealed class Screen(val route: String) {
 
     object PostDetail : Screen("post_detail/{postId}?focusCommentId={focusCommentId}") {
         fun createRoute(postId: String, focusCommentId: String? = null): String {
-            val base = "post_detail/$postId"
+            val base = "post_detail/${android.net.Uri.encode(postId)}"
             return if (focusCommentId.isNullOrBlank()) {
                 base
             } else {
@@ -182,14 +182,14 @@ sealed class Screen(val route: String) {
     object Notifications : Screen("notifications")
     object Ranking : Screen("ranking")
     object Call : Screen("call/{callId}") {
-        fun createRoute(callId: String) = "call/$callId"
+        fun createRoute(callId: String) = "call/${android.net.Uri.encode(callId)}"
     }
     object CallHistory : Screen("call_history")
     object FriendRequests : Screen("friend_requests")
     
     object CreateMoment : Screen("create_moment")
     object MomentViewer : Screen("moment_viewer/{momentId}") {
-        fun createRoute(momentId: String) = "moment_viewer/$momentId"
+        fun createRoute(momentId: String) = "moment_viewer/${android.net.Uri.encode(momentId)}"
     }
     object MomentHighlightViewer : Screen("moment_highlight/{highlightId}?title={title}") {
         fun createRoute(highlightId: String, title: String): String =
@@ -197,18 +197,18 @@ sealed class Screen(val route: String) {
     }
     
     object LiveViewer : Screen("live_viewer/{streamId}") {
-        fun createRoute(streamId: String) = "live_viewer/$streamId"
+        fun createRoute(streamId: String) = "live_viewer/${encodeLiveRouteId(streamId)}"
     }
 
     object LiveReplay : Screen("live_replay/{liveId}") {
-        fun createRoute(liveId: String) = "live_replay/$liveId"
+        fun createRoute(liveId: String) = "live_replay/${android.net.Uri.encode(liveId)}"
     }
 
     object LiveSetup : Screen("live_setup")
     object LiveDiscovery : Screen("live_discovery")
     
     object LiveHost : Screen("live_host/{liveId}") {
-        fun createRoute(liveId: String) = "live_host/$liveId"
+        fun createRoute(liveId: String) = "live_host/${encodeLiveRouteId(liveId)}"
     }
     object AddAccountLogin : Screen("add_account_login")
     object AccountRecoveryHelp : Screen("account_recovery_help")
@@ -275,3 +275,8 @@ sealed class Screen(val route: String) {
         }
     }
 }
+
+/** Encode one URI path segment without depending on Android framework stubs. */
+private fun encodeLiveRouteId(value: String): String =
+    java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8.toString())
+        .replace("+", "%20")

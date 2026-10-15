@@ -64,8 +64,8 @@ internal fun novvinBottomNavItems(): List<BottomNavItem> = listOf(
 @Composable
 fun HomeScreen(
     mainNavController: NavController,
-    authViewModel: AuthViewModel = hiltViewModel(),
-    homeViewModel: HomeViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = conectate.com.core.observability.startupViewModel("home auth model"),
+    homeViewModel: HomeViewModel = conectate.com.core.observability.startupViewModel("home model"),
     startTab: String? = null,
     sharedText: String? = null,
     sharedUri: String? = null
@@ -89,6 +89,12 @@ fun HomeScreen(
     val newSocialContent by homeViewModel.newSocialContent.collectAsStateWithLifecycle()
     val newGames by homeViewModel.newGames.collectAsStateWithLifecycle()
     val unreadProfileNotifications by homeViewModel.unreadProfileNotifications.collectAsStateWithLifecycle()
+
+    val socialSectionVisible = currentDestination?.hierarchy?.any { it.route == BottomNavItem.Social.route } == true
+    DisposableEffect(socialSectionVisible, homeViewModel, conectate.com.presentation.components.LocalProfileIdentityAccount.current) {
+        homeViewModel.setSocialSectionVisible(socialSectionVisible)
+        onDispose { if (socialSectionVisible) homeViewModel.setSocialSectionVisible(false) }
+    }
 
     LifecycleStartEffect(homeViewModel) {
         homeViewModel.setForeground(true)
@@ -140,6 +146,9 @@ fun HomeScreen(
                             ) {
                                 if (item is BottomNavItem.Profile) {
                                     CircularProfileImage(
+                                        ownerId = conectate.com.presentation.components.LocalProfileIdentityAccount.current,
+                                        openMomentOnClick = false,
+                                        showMomentRing = false,
                                         imageUrl = currentUserAvatarUrl,
                                         size = 24.dp,
                                         showBorder = true,

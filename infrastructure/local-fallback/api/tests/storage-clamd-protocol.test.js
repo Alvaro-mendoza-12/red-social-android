@@ -1,0 +1,10 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {parseDaemonVersion}=require('../src/storage-clamd');
+const now=Date.parse('2026-10-08T15:00:00Z'),maximum=86400000;
+const canonical='ClamAV 1.4.6/28147/Thu Oct  8 06:24:12 2026| COMMANDS: SCAN QUIT VERSIONCOMMANDS INSTREAM';
+test('real ClamAV VERSIONCOMMANDS separator is accepted',()=>{const value=parseDaemonVersion(canonical,now,maximum);assert.equal(value.engine,'ClamAV/1.4.6');assert.equal(value.signatureVersion,'28147');assert.equal(value.signatureUpdatedAt,'2026-10-08T06:24:12.000Z')});
+test('existing fixture separator remains compatible',()=>assert.equal(parseDaemonVersion(canonical.replace('| COMMANDS:',' COMMANDS:'),now,maximum).signatureVersion,'28147'));
+test('protocol rejects controls malformed separators and unknown replies',()=>{for(const reply of [canonical+'\n',canonical+'\0',canonical.replace('| COMMANDS:','|| COMMANDS:'),'PONG',canonical.replace('06:24:12','06:24:12\n')])assert.throws(()=>parseDaemonVersion(reply,now,maximum),error=>error.code==='STORAGE_SCAN_VERSION_UNVERIFIED')});
+test('real protocol still requires INSTREAM and VERSIONCOMMANDS',()=>{for(const reply of [canonical.replace(' INSTREAM',''),canonical.replace(' VERSIONCOMMANDS','')])assert.throws(()=>parseDaemonVersion(reply,now,maximum),error=>error.code==='STORAGE_SCAN_COMMANDS_UNVERIFIED')});
+test('real protocol still rejects stale and future signatures',()=>{assert.throws(()=>parseDaemonVersion(canonical,now+2*maximum,maximum),error=>error.code==='STORAGE_SCAN_SIGNATURES_STALE');assert.throws(()=>parseDaemonVersion(canonical,Date.parse('2026-10-08T05:00:00Z'),maximum),error=>error.code==='STORAGE_SCAN_SIGNATURES_STALE')});

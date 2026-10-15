@@ -1,5 +1,7 @@
 package conectate.com.presentation.messages
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.layout.*
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -59,8 +62,13 @@ fun CommunityDetailScreen(
     val events by viewModel.events.collectAsState()
     val canManageEvents by viewModel.canManageEvents.collectAsState()
     val actionMessage by viewModel.actionMessage.collectAsState()
+    val membershipPolicy by viewModel.membershipPolicy.collectAsState()
+    val membershipBusy by viewModel.membershipBusy.collectAsState()
+    val membershipError by viewModel.membershipError.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showMenu by remember { mutableStateOf(false) }
+    var showAddMemberDialog by remember { mutableStateOf(false) }
+    val searchResults by viewModel.searchResults.collectAsState()
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showDeletedByOtherAlert by remember { mutableStateOf(false) }
     var showEditCommunityDialog by remember { mutableStateOf(false) }
@@ -113,6 +121,9 @@ fun CommunityDetailScreen(
                     }
                 },
                 actions = {
+                    if (membershipPolicy?.canAddMembers == true) IconButton(onClick = {
+                        viewModel.refreshMembershipPolicy(); showAddMemberDialog = true
+                    }) { Icon(Icons.Default.PersonAdd, "Añadir persona") }
                     IconButton(onClick = { showMenu = true }) {
                         Icon(Icons.Default.MoreVert, "Opciones", tint = MaterialTheme.colorScheme.onPrimary)
                     }
@@ -191,7 +202,8 @@ fun CommunityDetailScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
+                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
         }
@@ -374,6 +386,8 @@ fun CommunityDetailScreen(
                     }
                 }
 
+                item { CollectionMembershipSettings(membershipPolicy, membershipBusy, viewModel::setMembersCanAdd) }
+
                 // Members Section
                 if (isMember || community?.is_public == true) {
                     item {
@@ -454,6 +468,12 @@ fun CommunityDetailScreen(
             }
         )
     }
+
+    if (showAddMemberDialog) CollectionAddMemberDialog(
+        onDismiss = { showAddMemberDialog = false }, onSearch = viewModel::searchUsers,
+        searchResults = searchResults, policy = membershipPolicy, busy = membershipBusy, error = membershipError,
+        onAdd = { userId, from, until -> viewModel.addMember(userId, from, until) { showAddMemberDialog = false } }
+    )
 
     if (showEditCommunityDialog) {
         EditCommunityDialog(
@@ -983,9 +1003,7 @@ fun EditCommunityDialog(
     var imageToCrop by remember { mutableStateOf<android.net.Uri?>(null) }
     
     val context = androidx.compose.ui.platform.LocalContext.current
-    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
-    ) { uri ->
+    val launcher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         imageToCrop = uri
     }
 
@@ -998,7 +1016,7 @@ fun EditCommunityDialog(
             onDismiss = { imageToCrop = null },
             onCropped = { croppedUri ->
                 selectedImageBytes = runCatching {
-                    context.contentResolver.openInputStream(croppedUri)?.use { it.readBytes() }
+                    context.contentResolver.openInputStream(croppedUri)?.use { it.readMediaBytesWithLimit(60L * 1024 * 1024) }
                 }.getOrNull()
                 imageToCrop = null
             }
@@ -1078,7 +1096,7 @@ fun CommunityMemberItem(
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CircularProfileImage(
+        CircularProfileImage(ownerId = userId, 
             imageUrl = userImage,
             size = 48.dp,
             fallbackName = if (isCurrentUser) "Tú" else userName,

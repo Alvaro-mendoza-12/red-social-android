@@ -22,7 +22,7 @@ function fixture({ kind = 'chat', message = {}, member = true, blocked = false,
     }
     if (sql.includes('to_jsonb(m) AS message')) return { rows: missing ? [] : [{
       kind, scope_id: 'scope', message: { id: 'source', sender_id: 'sender',
-        media_url: mediaUrl, content_type: 'image', deleted_by: [], ...message },
+        media_url: mediaUrl, content_type: 'image', created_at: '2026-09-01T00:00:00Z', deleted_by: [], ...message },
     }] }
     if (sql.includes('information_schema')) return { rows: [] }
     if (sql.includes('FROM fallback_user_blocks')) return { rows: blocked
@@ -34,7 +34,8 @@ function fixture({ kind = 'chat', message = {}, member = true, blocked = false,
     if (sql.includes('FROM fallback_collection_rooms')) return { rows: [{ id: 'scope',
       creator_id: 'leader', is_public: publicRoom, is_deleted: deletedRoom }] }
     if (sql.includes('FROM fallback_collection_members')) return { rows: [{ room_id: 'scope',
-      user_id: 'old-viewer', is_deleted: !member }] }
+      user_id: 'old-viewer', joined_at: '2026-08-01T00:00:00Z', is_deleted: !member }] }
+    if (sql.includes('fallback_collection_chat_history') || sql.includes('fallback_collection_policies') || sql.includes('fallback_collection_history_grants')) return { rows: [] }
     if (sql.includes('to_regclass') || sql.includes('fallback_compat_rows')) return { rows: [] }
     if (sql.includes('FROM fallback_storage_objects')) return { rows:
       (sql.includes('owner_id') ? storageOwner : stored) ? [{ owner_id: user.id }] : [] }
@@ -84,9 +85,9 @@ test('deleted and view-once forwards cannot bypass checks through storage owners
   }
 })
 
-test('public community access still works but deletion of the room revokes it', async () => {
+test('public community metadata does not grant forwarding access to nonmembers', async () => {
   const open = fixture({ kind: 'community', member: false, publicRoom: true })
-  assert.equal(await currentUserMayReferenceMessageMedia(open.pool, user, identity, request), true)
+  assert.equal(await currentUserMayReferenceMessageMedia(open.pool, user, identity, request), false)
   const deleted = fixture({ kind: 'community', publicRoom: true, deletedRoom: true })
   assert.equal(await currentUserMayReferenceMessageMedia(deleted.pool, user, identity, request), false)
 })
@@ -119,6 +120,7 @@ test('labelling another user\'s stored photo as a sticker does not authorize reu
     if (sql.includes('FROM fallback_storage_objects')) {
       return { rows: sql.includes('owner_id') ? [] : [{ exists: true }] }
     }
+    if (sql.includes('fallback_collection_chat_history') || sql.includes('fallback_collection_policies') || sql.includes('fallback_collection_history_grants')) return { rows: [] }
     if (sql.includes('to_regclass') || sql.includes('fallback_compat_rows')) return { rows: [] }
     throw new Error('Unexpected sticker authorization query')
   } }

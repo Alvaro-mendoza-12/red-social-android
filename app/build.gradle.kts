@@ -93,8 +93,8 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 36
-        versionCode = 117
-        versionName = "9.0.20"
+        versionCode = 128
+        versionName = "9.0.31"
         buildConfigField("String", "BUILD_COMMIT", buildCommit.asBuildConfigString())
 
         val props = Properties()
@@ -155,6 +155,12 @@ android {
     // Permite ejecutar validaciones físicas muy dirigidas sin esconder ni
     // modificar la suite androidTest heredada, que se mantiene independiente.
     sourceSets {
+        if (providers.gradleProperty("experienceValidationOnly").orNull == "true") {
+            getByName("androidTest").java.setSrcDirs(listOf("src/experienceValidationTest/java", "src/badgeValidationTest/java"))
+        }
+        if (providers.gradleProperty("badgeValidationOnly").orNull == "true") {
+            getByName("androidTest").java.setSrcDirs(listOf("src/badgeValidationTest/java"))
+        }
         if (providers.gradleProperty("communicationValidationOnly").orNull == "true") {
             getByName("androidTest").java.setSrcDirs(listOf("src/communicationValidationTest/java"))
         }
@@ -347,6 +353,12 @@ tasks.matching { it.name.startsWith("uploadCrashlyticsMappingFile") }.configureE
 dependencies {
     coreLibraryDesugaring(libs.android.desugar.jdk.libs)
 
+    constraints {
+        implementation("com.google.protobuf:protobuf-javalite:3.25.9") {
+            because("CVE-2024-7254: bound recursion when parsing unknown Protobuf fields")
+        }
+    }
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -431,6 +443,7 @@ dependencies {
     implementation(libs.google.play.billing)
     implementation(libs.androidx.exifinterface)
 
+    testImplementation("com.google.protobuf:protobuf-javalite:3.25.9")
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.test.core.ktx)

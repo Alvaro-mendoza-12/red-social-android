@@ -4,9 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.repository.AuthRepository
 import conectate.com.data.repository.MultiAccountInboxRepository
+import conectate.com.core.concurrency.deferredRepositoryFlow
+import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -14,9 +19,10 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class MessageAccountsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
-    private val inbox: MultiAccountInboxRepository
+    private val inboxProvider: Lazy<MultiAccountInboxRepository>
 ) : ViewModel() {
-    val accounts = inbox.accountSummaries
+    val accounts = deferredRepositoryFlow(inboxProvider) { it.accountSummaries }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), emptyList())
     val switching = authRepository.accountSwitchUiState
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
@@ -27,11 +33,11 @@ class MessageAccountsViewModel @Inject constructor(
 
     fun switchAccount(id: String) {
         if (switching.value.isSwitching || accounts.value.none { it.account.id == id && !it.isActive }) return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _error.value = null
             try {
                 authRepository.switchAccount(id).getOrThrow()
-                inbox.acknowledgeAccount(id)
+                inboxProvider.get().acknowledgeAccount(id)
                 _completed.value++
             } catch (cancelled: CancellationException) {
                 throw cancelled

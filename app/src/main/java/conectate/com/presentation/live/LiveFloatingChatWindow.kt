@@ -161,6 +161,7 @@ fun LiveFloatingChatWindow(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         CircularProfileImage(
+                            ownerId = c.userId,
                             imageUrl = c.avatarUrl,
                             size = 26.dp,
                             showBorder = false

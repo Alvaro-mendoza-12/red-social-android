@@ -9,6 +9,13 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.Player
+
+/** Stop immediately on departure, including multi-window focus loss. Never starts playback. */
+@Composable
+internal fun PauseMomentPlayerOnBackground(player: Player) {
+    conectate.com.presentation.components.PauseMediaPlayerOnBackground(player)
+}
 
 /** Shared by normal and highlighted Moments, including their image clocks. */
 @Composable

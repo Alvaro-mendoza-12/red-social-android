@@ -27,8 +27,10 @@ internal fun orderVideosForFeedSession(
     sessionId: String,
     previousOrder: List<String> = emptyList(),
     preserveSourceOrder: Boolean = false,
+    seenIds: Set<String> = emptySet(),
+    recentIds: List<String> = emptyList(),
 ): List<Video> {
-    val uniqueVideos = videos.distinctBy { it.id.trim().lowercase() }
+    val uniqueVideos = conectate.com.core.feed.prioritizeFeedCandidates(videos, emptySet()) { it.id }
     if (uniqueVideos.size < 2) return uniqueVideos
 
     val sessionSeed = "${accountId?.trim()?.lowercase().orEmpty().ifBlank { "guest" }}:$sessionId"
@@ -41,15 +43,7 @@ internal fun orderVideosForFeedSession(
         )
     }
 
-    // A new session must not start with the same first video when the backend
-    // returned the same candidates. A one-position rotation is deterministic
-    // and avoids a visible repeat without introducing per-recomposition randomness.
-    val currentOrder = ordered.map { it.id.trim().lowercase() }
-    if (
-        previousOrder.size > 1 &&
-        currentOrder.firstOrNull() == previousOrder.firstOrNull()
-    ) {
-        return ordered.drop(1) + ordered.first()
-    }
-    return ordered
+    return conectate.com.core.feed.prioritizeFeedCandidates(
+        ordered, seenIds, previousOrder.firstOrNull(), recentIds = recentIds,
+    ) { it.id }
 }

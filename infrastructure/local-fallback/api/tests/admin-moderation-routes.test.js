@@ -77,8 +77,8 @@ function hardDeletePool({
       if (sql.startsWith('SELECT id::text FROM fallback_') || sql.startsWith('SELECT DISTINCT c.id::text')) {
         return { rows: [], rowCount: 0 }
       }
-      if (sql.includes("FROM information_schema.columns") && sql.includes("supabase_import")) {
-        return { rows: [], rowCount: 0 }
+      if (sql.startsWith('SELECT novvin_import_mutation.purge_rows(')) {
+        return { rows: [{ affected: 0 }], rowCount: 1 }
       }
       if (sql.includes("SELECT to_regclass('auth.users')")) return { rows: [{ oid: restoredAuth ? 'auth.users' : null }] }
       if (sql.startsWith('SELECT EXISTS(SELECT 1 FROM fallback_users')) {

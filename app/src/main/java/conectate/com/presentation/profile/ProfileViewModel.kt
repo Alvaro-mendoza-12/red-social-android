@@ -37,6 +37,8 @@ import conectate.com.data.repository.FriendStatus
 import conectate.com.data.repository.PostMutationEvent
 import conectate.com.data.repository.MomentHighlightRepository
 import conectate.com.presentation.components.PreparedAudioClip
+import conectate.com.presentation.posts.PostReactionUsersLoader
+import conectate.com.presentation.posts.PostReactionWriter
 
 sealed class ProfileUiState {
     object Loading : ProfileUiState()
@@ -55,11 +57,25 @@ class ProfileViewModel @Inject constructor(
     val shareRepository: conectate.com.data.repository.ShareRepository,
     private val friendRepository: FriendRepository,
     private val momentHighlightRepository: MomentHighlightRepository,
+    private val momentRepository: conectate.com.data.repository.MomentRepository,
     private val appMetrics: AppMetrics
 ) : ViewModel() {
 
+    private val reactionLoader = PostReactionUsersLoader(viewModelScope,
+        authService::getCurrentUserId, postRepository::getPostReactions)
+    internal val reactionUsersState = reactionLoader.state
+    fun loadPostReactions(postId: String, type: String? = null) = reactionLoader.load(postId, type)
+    fun clearPostReactions() = reactionLoader.clear()
+    private val reactionWriter = PostReactionWriter(viewModelScope, authService::getCurrentUserId,
+        { id -> (_userPosts.value + _sharedPosts.value).firstOrNull { it.id == id } },
+        postRepository::setPostReaction, postRepository::getPostById,
+        { post -> updatePostInLists(post.id) { current -> current.copy(likedByMe = post.likedByMe,
+            myReaction = post.myReaction, likeCount = post.likeCount, reactionCounts = post.reactionCounts) } },
+        { conectate.com.presentation.common.AppFeedbackBus.show("No se pudo guardar la reacción. Reintenta.") })
+
     private val _profileState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
     val profileState: StateFlow<ProfileUiState> = _profileState.asStateFlow()
+    val visibleMoments = momentRepository.moments
 
     private val _userVideos = MutableStateFlow<List<Video>>(emptyList())
     val userVideos: StateFlow<List<Video>> = _userVideos.asStateFlow()
@@ -132,6 +148,8 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             authService.currentSession.map { authService.getCurrentUserId() }.distinctUntilChanged().collect {
                 profileVisitorsLoader.accountChanged()
+                reactionLoader.clear()
+                reactionWriter.clear()
             }
         }
         viewModelScope.launch {
@@ -196,6 +214,7 @@ class ProfileViewModel @Inject constructor(
         loadSharedContent(idToLoad)
         loadFavoriteVideos(idToLoad)
         loadMomentHighlights(idToLoad)
+        viewModelScope.launch { momentRepository.refreshMomentsForAuthors(listOf(idToLoad)) }
         val readGeneration = profileMutationClock.snapshot()
 
         profileLoadJob = viewModelScope.launch {
@@ -919,34 +938,9 @@ class ProfileViewModel @Inject constructor(
         _selectedTab.value = index
     }
 
-    fun togglePostLike(post: Post) {
-        viewModelScope.launch {
-            try {
-                // 1. Optimistic Update: Update local lists immediately without reloading
-                val wasLiked = post.likedByMe
-                val newLikeCount = if (wasLiked) maxOf(0, post.likeCount - 1) else post.likeCount + 1
-                
-                fun updateList(list: List<Post>): List<Post> {
-                    return list.map { 
-                        if (it.id == post.id) it.copy(likedByMe = !wasLiked, likeCount = newLikeCount) else it 
-                    }
-                }
+    fun togglePostLike(post: Post) = reactionWriter.set(post.id, if (post.likedByMe) null else "LIKE")
 
-                _userPosts.value = updateList(_userPosts.value)
-
-                // 2. API Call in background
-                val result = postRepository.toggleLike(post.id, wasLiked)
-                
-                if (result.isFailure) {
-                    android.util.Log.e("ProfileViewModel", "Like API failed: ${result.exceptionOrNull()?.message}")
-                    // Optionally revert here if stricter consistency is needed, 
-                    // but for likes, eventual consistency or user retry is usually acceptable.
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ProfileViewModel", "Error toggling post like", e)
-            }
-        }
-    }
+    fun setPostReaction(post: Post, type: String?) = reactionWriter.set(post.id, type)
 
     fun signOut() {
         viewModelScope.launch {

@@ -66,7 +66,7 @@ function Set-Property([string]$Path, [string]$Name, [string]$Value) {
 }
 
 Set-Property (Join-Path $repoRoot 'secrets.properties') 'BACKEND_DISCOVERY_PUBLIC_KEY' $publicKey
-Set-Property (Join-Path $repoRoot 'Conectate-web\.env') 'VITE_BACKEND_DISCOVERY_PUBLIC_KEY' $publicKey
+Set-Property (Join-Path $repoRoot 'NoWing-web\.env') 'VITE_BACKEND_DISCOVERY_PUBLIC_KEY' $publicKey
 
 $envUpdate = @'
 set -Eeuo pipefail
@@ -90,5 +90,5 @@ Write-Output 'BACKEND_DISCOVERY_SIGNING_READY=true'
 Write-Output "SERVER_PRIVATE_KEY=$RemotePrivateKeyPath"
 Write-Output 'PRIVATE_KEY_COPIED_TO_LAPTOP=false'
 Write-Output "PUBLIC_KEY_CONFIGURED_ANDROID=$((Test-Path (Join-Path $repoRoot 'secrets.properties')))"
-Write-Output "PUBLIC_KEY_CONFIGURED_WEB=$((Test-Path (Join-Path $repoRoot 'Conectate-web\.env')))"
+Write-Output "PUBLIC_KEY_CONFIGURED_WEB=$((Test-Path (Join-Path $repoRoot 'NoWing-web\.env')))"
 Write-Output 'Siguiente paso: desplegar el backend y recompilar Android/web para incluir la clave publica.'

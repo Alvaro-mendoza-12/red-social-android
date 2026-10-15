@@ -13,7 +13,7 @@ const b = '66666666-6666-4666-8666-666666666666'
 function fixture({ multiple = false, imported = [], closed = false, failInsert = false } = {}) {
   const db = {
     tables: {
-      message_polls: [{ id: pollId, scope_type: 'group', scope_id: roomId, creator_id: other, allows_multiple: multiple, is_closed: closed }],
+      message_polls: [{ id: pollId, scope_type: 'group', scope_id: roomId, creator_id: other, created_at:'2026-09-01T00:00:00Z', allows_multiple: multiple, is_closed: closed }],
       message_poll_options: [{ id: a, poll_id: pollId, option_text: 'Uno' }, { id: b, poll_id: pollId, option_text: 'Dos' }],
       message_poll_votes: [],
     },
@@ -60,6 +60,9 @@ function fixture({ multiple = false, imported = [], closed = false, failInsert =
       return { rows: (db.tables[params[0]] || []).map(row => ({ row })) }
     }
     if (text.includes('FROM fallback_chats')) return { rows: [] }
+    if (text.includes('FROM fallback_collection_chat_history') || text.includes('FROM fallback_collection_policies') || text.includes('FROM fallback_collection_history_grants')) return {rows:[]}
+    if (text.includes('FROM fallback_collection_rooms')) return {rows:[{id:roomId,room_kind:'group',creator_id:other}]}
+    if (text.includes('SELECT * FROM fallback_collection_members')) return {rows:params[0]==='group'?[{room_id:roomId,user_id:alias,joined_at:'2026-08-01T00:00:00Z'}]:[]}
     if (text.startsWith('SELECT') && text.includes('FROM fallback_collection_members')) {
       return { rows: params[0] === 'group' && params[1].includes(actor) ? [{ id: roomId }] : [] }
     }
@@ -70,8 +73,8 @@ function fixture({ multiple = false, imported = [], closed = false, failInsert =
       db.tables.message_poll_votes = remove(db.tables.message_poll_votes, params)
       return { rows: [] }
     }
-    if (text.startsWith('DELETE FROM supabase_import.message_poll_votes')) {
-      assert.match(text, /lower\(to_jsonb\(vote\)->>'user_id'\) = ANY\(\$2::text\[\]\)/)
+    if (text.startsWith('SELECT novvin_import_mutation.delete_poll_votes(')) {
+      assert.match(text, /\$1::text,\$2::text\[\],\$3::boolean,\$4::text/)
       db.imported = remove(db.imported, params)
       return { rows: [] }
     }

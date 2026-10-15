@@ -1,0 +1,82 @@
+# Reviewable staging override. This file is not merged into production automatically.
+# Supply a tested digest; never publish ClamD 3310 on the host.
+# Storage enforcement remains disabled until backfill, privacy and client gates pass.
+services:
+  storage-antivirus-updater:
+    image: ${STORAGE_CLAMD_IMAGE:?set the validated storage-antivirus image digest}
+    user: "10001:10001"
+    entrypoint: ["freshclam"]
+    command: ["--daemon", "--foreground", "--config-file=/policy/freshclam.conf"]
+    environment:
+      TZ: UTC
+    volumes:
+      - novvin-storage-clamav-db:/var/lib/clamav
+    networks: [storage-scan-update]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=128m,uid=10001,gid=10001,mode=0700
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: "1.0"
+    pids_limit: 64
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "/opt/novvin/healthcheck.js", "--database-only"]
+      interval: 30s
+      timeout: 5s
+      start_period: 300s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  storage-antivirus:
+    image: ${STORAGE_CLAMD_IMAGE:?set the validated storage-antivirus image digest}
+    user: "10001:10001"
+    environment:
+      TZ: UTC
+    depends_on:
+      storage-antivirus-updater:
+        condition: service_healthy
+    volumes:
+      - novvin-storage-clamav-db:/var/lib/clamav:ro
+    networks: [storage-scan-private]
+    # No ports mapping; the private scan network is marked internal.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=3g,uid=10001,gid=10001,mode=0700
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 6g
+    memswap_limit: 6g
+    cpus: "2.0"
+    pids_limit: 64
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  api:
+    environment:
+      STORAGE_SCAN_ENFORCE: "false"
+      MAX_UPLOAD_BYTES: "524288000"
+      STORAGE_CLAMD_HOST: storage-antivirus
+      STORAGE_CLAMD_PORT: "3310"
+      STORAGE_CLAMD_POLICY_FILE: /policy/storage-scan-policy.json
+      STORAGE_CLAMD_CONFIG_FILE: /policy/clamd-storage.conf
+      STORAGE_CLAMD_POLICY_SHA256: 958f7db206acd79d28504a91e026d0f3de1607fd81aae932fd52a5d07d6ce6c8
+    volumes:
+      - ./storage-antivirus/clamd.conf:/policy/clamd-storage.conf:ro
+      - ./storage-antivirus/storage-scan-policy.json:/policy/storage-scan-policy.json:ro
+    # Explicitly merge the API's existing networks before use. Do not replace them.
+    networks: [default, storage-scan-private]
+
+networks:
+  storage-scan-private:
+    internal: true
+  storage-scan-update:
+    # Outbound network is assigned only to freshclam, never to the daemon.
+volumes:
+  novvin-storage-clamav-db:

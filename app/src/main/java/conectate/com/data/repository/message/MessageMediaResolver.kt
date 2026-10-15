@@ -1,6 +1,10 @@
 package conectate.com.data.repository.message
 
+import android.content.Context
 import android.net.Uri
+import conectate.com.core.media.StorageReadSession
+import conectate.com.core.media.ViewOnceLeasePolicy
+import conectate.com.core.media.ViewOnceMediaStore
 import android.os.SystemClock
 import conectate.com.core.media.ChatMediaOfflineCache
 import conectate.com.data.localfallback.UbuntuStorageUrl
@@ -19,14 +23,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.net.URLDecoder
 
@@ -35,17 +32,14 @@ internal class MessageMediaResolver(
     private val authService: AuthService,
     private val supabaseConfig: SupabaseConfig,
     private val sessionStateStore: MessageSessionStateStore,
-    private val offlineMediaCache: ChatMediaOfflineCache? = null
+    private val offlineMediaCache: ChatMediaOfflineCache? = null,
+    private val context: Context
 ) {
-    private val json = Json {
-        ignoreUnknownKeys = true
-        coerceInputValues = true
-        isLenient = true
-    }
     private data class CachedPlayableUrl(val value: String, val expiresAtElapsedMs: Long)
     private val playableUrlCache = mutableMapOf<String, CachedPlayableUrl>()
     private val playableUrlInFlight = mutableMapOf<String, CompletableDeferred<Result<String>>>()
     private val playableUrlCacheMutex = Mutex()
+    private val viewOnceMutex = Mutex()
     private val playableUrlTtlMs = 50L * 60L * 1000L
 
     /**
@@ -202,108 +196,45 @@ internal class MessageMediaResolver(
         mediaPath: String,
         deviceId: String = android.os.Build.MODEL ?: "android"
     ): Result<String> = withContext(Dispatchers.IO) {
-        val cleanScope = scopeType.trim().lowercase()
-        val cleanMessageId = messageId.trim().lowercase()
-        val cleanMediaPath = mediaPath.trim()
-        val userId = authService.getCurrentUserId()?.trim()?.lowercase()
-            ?: return@withContext Result.failure(Exception("No user"))
-
-        if (cleanScope.isBlank() || cleanMessageId.isBlank() || cleanMediaPath.isBlank()) {
-            return@withContext Result.failure(Exception("Datos incompletos para view-once"))
-        }
-
-        val consumptionKey = "$cleanScope:$cleanMessageId:$userId"
-        if (sessionStateStore.isViewOnceConsumed(consumptionKey)) {
-            return@withContext Result.failure(Exception("Este contenido ya fue visto"))
-        }
-
-        val playable = getPlayableUrl(
-            path = cleanMediaPath,
-            allowOfflineMediaCache = false
-        )
-        if (playable.isFailure) {
-            return@withContext Result.failure(playable.exceptionOrNull() ?: Exception("No se pudo abrir contenido"))
-        }
-        val playableUrl = playable.getOrThrow()
-
-        val token = authService.getAccessToken()
-            ?: return@withContext Result.failure(Exception("No token"))
-
-        var allowedByServer = false
-        var rpcChecked = false
-        runCatching {
-            val payload = buildJsonObject {
-                put("p_scope_type", cleanScope)
-                put("p_message_id", cleanMessageId)
-                put("p_device_id", deviceId.take(120))
-            }
-            val rpcResponse = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_consume_view_once_message") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                setBody(payload)
-            }
-            val rpcBody = runCatching { rpcResponse.bodyAsText() }.getOrDefault("")
-            if (rpcResponse.status.isSuccess()) {
-                rpcChecked = true
-                allowedByServer = parseViewOnceAllowed(rpcBody)
-            } else if (!isMissingRpcFunction(rpcResponse.status.value, rpcBody, "secure_consume_view_once_message")) {
-                android.util.Log.w(
-                    "MessageMediaResolver",
-                    "El control remoto de vista única no está disponible (${rpcResponse.status.value}); se usa la protección local."
-                )
-            }
-        }
-
-        val allowed = if (rpcChecked) {
-            allowedByServer
-        } else {
-            !sessionStateStore.isViewOnceConsumed(consumptionKey)
-        }
-
-        if (!allowed) {
-            return@withContext Result.failure(Exception("Este contenido ya fue visto"))
-        }
-
-        sessionStateStore.markViewOnceConsumed(consumptionKey)
-        Result.success(playableUrl)
-    }
-
-    private fun parseViewOnceAllowed(rawBody: String): Boolean {
-        if (rawBody.isBlank()) return false
-        return runCatching {
-            val element = json.parseToJsonElement(rawBody)
-            when (element) {
-                is JsonObject -> {
-                    parseFlexibleBoolean(element["allowed"]) == true &&
-                        parseFlexibleBoolean(element["already_consumed"]) != true
+        viewOnceMutex.withLock {
+            var localFile: String? = null
+            try {
+                val cleanScope = scopeType.trim().lowercase()
+                val cleanMessageId = messageId.trim().lowercase()
+                require(cleanScope in setOf("chat", "dm", "group", "community") && cleanMessageId.isNotBlank() && mediaPath.isNotBlank()) { "No se puede abrir este archivo." }
+                val userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: error("Inicia sesión para abrir el archivo.")
+                val key = "$cleanScope:$cleanMessageId:$userId"
+                check(!sessionStateStore.isViewOnceConsumed(key)) { "Este contenido ya fue visto." }
+                val token = authService.ensureValidAccessToken().getOrThrow()
+                check(authService.getCurrentUserId()?.trim()?.lowercase() == userId) { "La cuenta activa cambió." }
+                val identity = StorageReadSession.snapshot()?.identity ?: error("Inicia sesión para abrir el archivo.")
+                StorageReadSession.requireCurrent(identity)
+                val payload = buildJsonObject {
+                    put("p_scope_type", cleanScope); put("p_message_id", cleanMessageId)
+                    put("p_device_id", deviceId.take(120)); put("p_max_file_bytes", ViewOnceLeasePolicy.MAX_BYTES)
                 }
-                is JsonArray -> {
-                    val first = element.firstOrNull() as? JsonObject
-                    parseFlexibleBoolean(first?.get("allowed")) == true &&
-                        parseFlexibleBoolean(first?.get("already_consumed")) != true
+                val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_consume_view_once_message") {
+                    header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Content-Type", "application/json"); setBody(payload)
                 }
-                else -> false
+                check(response.status.isSuccess()) { "No se pudo autorizar el archivo de una sola visualización (${response.status.value})." }
+                val body = response.bodyAsText()
+                require(body.length <= 16 * 1024) { "El servidor devolvió una respuesta inesperada." }
+                val lease = ViewOnceLeasePolicy.parse(body, UbuntuStorageUrl.baseUrl)
+                StorageReadSession.requireCurrent(identity)
+                check(authService.getCurrentUserId()?.trim()?.lowercase() == userId) { "La cuenta activa cambió." }
+                sessionStateStore.markViewOnceConsumed(key)
+                val delivered = ViewOnceMediaStore.download(context, lease)
+                localFile = delivered
+                StorageReadSession.requireCurrent(identity)
+                check(authService.getCurrentUserId()?.trim()?.lowercase() == userId) { "La cuenta activa cambió." }
+                Result.success(delivered)
+            } catch (cancelled: CancellationException) {
+                localFile?.let(ViewOnceMediaStore::release); throw cancelled
+            } catch (error: Throwable) {
+                localFile?.let(ViewOnceMediaStore::release); Result.failure(error)
             }
-        }.getOrDefault(false)
-    }
-
-    private fun parseFlexibleBoolean(raw: JsonElement?): Boolean? {
-        val primitive = raw?.jsonPrimitive ?: return null
-        primitive.booleanOrNull?.let { return it }
-        val text = primitive.contentOrNull?.trim()?.lowercase() ?: return null
-        return when (text) {
-            "true", "t", "1", "yes", "y" -> true
-            "false", "f", "0", "no", "n" -> false
-            else -> null
         }
-    }
-
-    private fun isMissingRpcFunction(statusCode: Int, body: String, functionName: String): Boolean {
-        if (statusCode != 400 && statusCode != 404) return false
-        val cleanBody = body.lowercase()
-        return cleanBody.contains(functionName.lowercase()) &&
-            (cleanBody.contains("could not find the function") || cleanBody.contains("undefined function"))
     }
 
     private data class StorageLocation(

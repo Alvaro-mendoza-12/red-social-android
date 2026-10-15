@@ -382,7 +382,7 @@ private fun LiveViewerExperience(
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                        CircularProfileImage(
+                        CircularProfileImage(ownerId = stream?.hostUserId, 
                             imageUrl = stream?.hostAvatarUrl,
                             size = 52.dp,
                             showBorder = true,
@@ -679,7 +679,7 @@ private fun LiveViewerChatStream(
     LazyColumn(modifier = modifier, state = listState, verticalArrangement = Arrangement.spacedBy(5.dp)) {
         items(joiners, key = { "join-${it.socketId}-${it.userId}" }) { viewer ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProfileImage(viewer.avatarUrl, size = 24.dp, showBorder = false)
+                CircularProfileImage(imageUrl = viewer.avatarUrl, ownerId = viewer.userId, size = 24.dp, showBorder = false)
                 Spacer(Modifier.width(7.dp))
                 Text("${viewer.name.ifBlank { "Una persona" }} se unió", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
             }
@@ -687,7 +687,7 @@ private fun LiveViewerChatStream(
         items(comments.takeLast(20), key = { it.id }) { comment ->
             Surface(onClick = { onReply(comment) }, color = Color.Black.copy(alpha = 0.16f), shape = RoundedCornerShape(10.dp)) {
                 Row(modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    CircularProfileImage(comment.avatarUrl, size = 27.dp, showBorder = false)
+                    CircularProfileImage(imageUrl = comment.avatarUrl, ownerId = comment.userId, size = 27.dp, showBorder = false)
                     Spacer(Modifier.width(7.dp))
                     Text(
                         "${comment.userName.ifBlank { "Usuario" }}  ${comment.content}",
@@ -763,7 +763,7 @@ private fun LiveVideoBackground(
                         }
                     }
 
-                    CircularProfileImage(
+                    CircularProfileImage(ownerId = stream?.hostUserId, 
                         imageUrl = stream?.hostAvatarUrl,
                         size = 74.dp,
                         showBorder = true,
@@ -848,7 +848,7 @@ private fun LiveTopBar(
                         }
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    CircularProfileImage(
+                    CircularProfileImage(ownerId = stream?.hostUserId, 
                         imageUrl = stream?.hostAvatarUrl,
                         size = 42.dp,
                         showBorder = false
@@ -1018,6 +1018,7 @@ private fun SupporterRankingDialog(
                                     modifier = Modifier.width(36.dp)
                                 )
                                 CircularProfileImage(
+                                    ownerId = supporter.userId,
                                     imageUrl = supporter.avatarUrl,
                                     size = 42.dp,
                                     showBorder = supporter.rank <= 3
@@ -1112,7 +1113,7 @@ private fun LiveChatOverlay(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CircularProfileImage(imageUrl = viewer.avatarUrl, size = 24.dp, showBorder = false)
+                    CircularProfileImage(ownerId = viewer.userId, imageUrl = viewer.avatarUrl, size = 24.dp, showBorder = false)
                     Spacer(Modifier.width(7.dp))
                     Text(
                         text = "${viewer.name.ifBlank { "Una persona" }} se unió",
@@ -1141,6 +1142,7 @@ private fun LiveChatOverlay(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CircularProfileImage(
+                        ownerId = comment.userId,
                         imageUrl = comment.avatarUrl,
                         size = 28.dp,
                         showBorder = false

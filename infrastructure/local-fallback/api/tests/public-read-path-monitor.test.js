@@ -86,8 +86,9 @@ esac
     const third = runMonitor(fixture, 1)
     assert.equal(first.status, 0, first.stderr)
     assert.equal(second.status, 0, second.stderr)
-    assert.equal(third.status, 1)
+    assert.equal(third.status, 1, JSON.stringify({ first: first.stdout, second: second.stdout, third: third.stdout, stderr: third.stderr }))
     assert.match(third.stdout, /consecutive_failures=3/)
+    for (const run of [first, second, third]) assert.doesNotMatch(run.stdout, /SKIPPED=already_running/)
     assert.match(fs.readFileSync(path.join(state, 'public-read-paths.status'), 'utf8'), /status=degraded/)
 
     // Private application reads succeeding cannot hide failed public ingress.

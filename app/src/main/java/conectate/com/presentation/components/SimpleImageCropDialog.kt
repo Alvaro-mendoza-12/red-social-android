@@ -130,13 +130,15 @@ fun SimpleImageCropDialog(
     val scope = rememberCoroutineScope()
     var selectedPreset by remember(sourceUri) { mutableStateOf(initialPreset) }
     var sourceAspect by remember(sourceUri) { mutableStateOf(1f) }
+    var sourceReady by remember(sourceUri) { mutableStateOf(false) }
     var crop by remember(sourceUri) { mutableStateOf(NormalizedImageCrop()) }
     var isSaving by remember(sourceUri) { mutableStateOf(false) }
     var errorMessage by remember(sourceUri) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(sourceUri) {
         sourceAspect = readImageAspect(context, sourceUri)
-        crop = cropForPreset(initialPreset, sourceAspect)
+        crop = cropForPreset(selectedPreset, sourceAspect)
+        sourceReady = true
     }
 
     Dialog(
@@ -180,7 +182,7 @@ fun SimpleImageCropDialog(
                             .padding(horizontal = 6.dp)
                     )
                     Button(
-                        enabled = !isSaving,
+                        enabled = sourceReady && !isSaving,
                         onClick = {
                             scope.launch {
                                 isSaving = true
@@ -284,7 +286,7 @@ fun SimpleImageCropDialog(
                                     modifier = Modifier
                                         .weight(1f)
                                         .heightIn(min = 48.dp)
-                                        .clickable(enabled = !isSaving) {
+                                        .clickable(enabled = sourceReady && !isSaving) {
                                             selectedPreset = preset
                                             crop = cropForPreset(preset, sourceAspect)
                                         },

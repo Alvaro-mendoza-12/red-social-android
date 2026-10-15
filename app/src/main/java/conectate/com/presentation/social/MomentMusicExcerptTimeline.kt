@@ -79,6 +79,14 @@ internal fun MomentMusicExcerptTimeline(sourceDurationMs: Long, startMs: Long, e
             if (playbackPositionMs in startMs..endMs) drawLine(primary,
                 Offset(x(playbackPositionMs.toFloat()), 6.dp.toPx()), Offset(x(playbackPositionMs.toFloat()), size.height - 6.dp.toPx()), 2.dp.toPx())
         }
+        if (maxStart > 0) {
+            Slider(value = startMs.toFloat().coerceIn(0f, maxStart.toFloat()),
+                onValueChange = { onStartChanged(it.toLong().coerceIn(0L, maxStart)) },
+                valueRange = 0f..maxStart.toFloat(),
+                modifier = Modifier.fillMaxWidth().testTag("moment_music_full_track_seek")
+                    .semantics { contentDescription = "Buscar en toda la canción" })
+            Text("Canción: ${excerptTime(sourceDurationMs)}", style = MaterialTheme.typography.labelMedium)
+        }
         Text(if (maxStart > 0) "Desliza la canción bajo el recuadro para elegir tu fragmento." else "Se usará la pista completa.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

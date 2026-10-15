@@ -209,10 +209,10 @@ async function testSocialAndVideoCandidatesArePublicAndNarrow() {
   ])
   assert.match(social.snapshotId, /^lfc1-social-/)
   assert.match(video.snapshotId, /^lfc1-video-/)
-  assert.deepEqual(video.providerState, { asOf: new Date(NOW).toISOString() })
+  assert.deepEqual(video.providerState, { asOf: new Date(NOW).toISOString(), after: null })
   const videoQuery = pool.calls.find((entry) => entry.sql.includes('FROM fallback_videos'))
   assert.equal(videoQuery.params[1], new Date(NOW).toISOString())
-  assert.equal(videoQuery.params[2], 50)
+  assert.equal(videoQuery.params[2], 51) // bounded one-row lookahead
 }
 
 async function testFeedSnapshotIgnoresLiveCountersAndFreezesItsAsOfBoundary() {

@@ -110,6 +110,7 @@ fun LiveHostScreen(
     val liveViewers by viewModel.liveViewers.collectAsStateWithLifecycle()
     val remoteTracks by viewModel.remoteVideoTracks.collectAsStateWithLifecycle()
     val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
+    val liveKitRemoteParticipants by viewModel.liveKitRemoteParticipants.collectAsStateWithLifecycle()
     val guestRequests by viewModel.guestRequests.collectAsStateWithLifecycle()
     val activeGuests by viewModel.activeGuests.collectAsStateWithLifecycle()
     val giftEvents by viewModel.giftEvents.collectAsStateWithLifecycle()
@@ -684,6 +685,7 @@ fun LiveHostScreen(
         localTrack = if (isMediaReady) localVideoTrack else null,
         remoteTracks = remoteTracks,
         liveKitVideos = liveKitRemoteVideos,
+        liveKitParticipants = liveKitRemoteParticipants,
         onAttachLiveKit = viewModel::attachLiveKitRenderer,
         onDetachLiveKit = viewModel::detachLiveKitRenderer,
         activeGuests = activeGuests,

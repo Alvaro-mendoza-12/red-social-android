@@ -57,7 +57,7 @@ fun LiveDiscoveryScreen(
     val streamsLoadError by viewModel.streamsLoadError.collectAsStateWithLifecycle()
     var selectedTab by remember { mutableIntStateOf(0) }
     var pendingReplayLiveId by remember { mutableStateOf<String?>(null) }
-    val replayPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val replayPicker = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         val liveId = pendingReplayLiveId
         pendingReplayLiveId = null
         if (uri != null && liveId != null) viewModel.publishReplay(liveId, uri)

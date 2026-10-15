@@ -1,0 +1,17 @@
+# Novvin Web (`NoWing-web`)
+
+Cliente web adaptable de Novvin, conectado a la misma API Ubuntu y a los mismos canales de tiempo real que Android. La carpeta sustituye a `Conectate-web`; no se conserva esa carpeta eliminada.
+
+## Desarrollo
+
+Node 24, `npm ci --legacy-peer-deps`, `npm run dev`. Para compilar: `npm run build`; pruebas: `npm test -- --ci --runInBand`.
+
+Variables públicas: `VITE_FALLBACK_API_URL` (origen HTTPS del servidor), `VITE_BACKEND_DISCOVERY_PUBLIC_KEY` (clave pública de descubrimiento). La web no debe recibir claves JWT, contraseñas de PostgreSQL ni claves administrativas. La autenticación funciona con contraseña o QR aprobado desde Android. Las cuentas y los permisos se comprueban en el servidor.
+
+## Vercel
+
+Proyecto existente `red-social-android`, directorio raíz `NoWing-web`, instalación `npm ci --legacy-peer-deps`, compilación `npm run build`, salida `dist`. Las variables se definen en Vercel y se aplican al siguiente despliegue.
+
+## Verificación
+
+La compilación y las pruebas de código no prueban por sí solas cada acción de la aplicación. El informe de este trabajo enumera por separado las pruebas de navegador, sincronización, archivos y llamadas. El navegador necesita HTTPS y permiso del usuario para cámara, micrófono y notificaciones. No se garantiza una latencia de cero ni ejecución de tareas con el navegador cerrado.

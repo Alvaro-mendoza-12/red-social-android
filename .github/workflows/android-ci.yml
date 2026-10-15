@@ -233,7 +233,7 @@ jobs:
           node-version: "20"
 
       - name: Validate web production build and tests
-        working-directory: Conectate-web
+        working-directory: NoWing-web
         env:
           VITE_FALLBACK_API_URL: https://ci.novvin.invalid
         run: |

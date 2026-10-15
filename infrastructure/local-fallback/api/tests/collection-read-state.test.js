@@ -38,6 +38,10 @@ test('receipt lookup is bound to viewer aliases room and kind', async () => {
 
 test('visible writes are idempotent per reader and never advance the whole conversation cursor', async () => {
   const pool = { query: async (sql, params) => {
+    if (sql.includes('to_regclass') || sql.includes('fallback_compat_rows') || sql.includes('fallback_collection_chat_history') || sql.includes('fallback_collection_policies') || sql.includes('fallback_collection_history_grants')) return {rows:[]}
+    if (sql.includes('FROM fallback_collection_rooms')) return {rows:[{id:'room',creator_id:'a'}]}
+    if (sql.includes('FROM fallback_collection_members')) return {rows:[]}
+    if (sql.includes('SELECT id::text,created_at FROM fallback_room_messages')) return {rows:[message]}
     assert.match(sql, /ON CONFLICT \(room_kind, message_id, user_id\)/)
     assert.match(sql, /id = ANY\(\$4::uuid\[\]\)/)
     assert.doesNotMatch(sql, /last_read_at|UPDATE fallback_room_messages/)

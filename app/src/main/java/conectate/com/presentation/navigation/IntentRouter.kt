@@ -72,7 +72,9 @@ object IntentRouter {
             }
             return true
         }
-        if (handleUriIntent(incomingIntent, navController, clearIntent)) return true
+        if (consumeExternalNavigation(clearIntent, { AppFeedbackBus.show("No se pudo abrir el enlace. Revisa que sea válido.") }) {
+                handleUriIntent(incomingIntent, navController, clearIntent)
+            }) return true
         if (handleIncomingShareIntent(incomingIntent, navController, clearIntent)) return true
         return false
     }
@@ -294,6 +296,16 @@ object IntentRouter {
                 }
             }
 
+            "call_return" -> {
+                val destination = resolveCallReturnRoute(incomingIntent.getStringExtra("call_id"))
+                if (destination != null) {
+                    navigateNotificationDestination(incomingIntent, navController, authRepository,
+                        destination, launchSingleTop = true)
+                }
+                clearIntent()
+                return true
+            }
+
             "live_return" -> {
                 val destination = resolveLiveReturnRoute(
                     liveId = incomingIntent.getStringExtra("live_id")
@@ -460,7 +472,7 @@ object IntentRouter {
             if (pathSegments.isNotEmpty()) {
                 when (pathSegments[0]) {
                     "post" -> {
-                        val postId = safeExternalRouteValue(pathSegments.getOrNull(1))
+                        val postId = safeExternalRouteId(pathSegments.getOrNull(1))
                         if (postId != null) {
                             navController.navigate(Screen.PostDetail.createRoute(postId))
                             clearIntent()
@@ -468,7 +480,7 @@ object IntentRouter {
                         }
                     }
                     "video" -> {
-                        val videoId = safeExternalRouteValue(pathSegments.getOrNull(1))
+                        val videoId = safeExternalRouteId(pathSegments.getOrNull(1))
                         if (videoId != null) {
                             navController.navigate(Screen.VideoPlayer.createRoute(
                                 videoId, resumeMs = videoResumeMsFromLink(uri),
@@ -478,7 +490,7 @@ object IntentRouter {
                         }
                     }
                     "profile", "u" -> {
-                        val userId = safeExternalRouteValue(pathSegments.getOrNull(1))
+                        val userId = safeExternalRouteId(pathSegments.getOrNull(1))
                         if (userId != null) {
                             navController.navigate(Screen.UserProfile.createRoute(userId))
                             clearIntent()
@@ -486,7 +498,7 @@ object IntentRouter {
                         }
                     }
                     "group" -> {
-                        val groupId = safeExternalRouteValue(pathSegments.getOrNull(1))
+                        val groupId = safeExternalRouteId(pathSegments.getOrNull(1))
                         if (groupId != null) {
                             navController.navigate(
                                 Screen.GroupDetail.createRoute(
@@ -499,7 +511,7 @@ object IntentRouter {
                         }
                     }
                     "community" -> {
-                        val communityId = safeExternalRouteValue(pathSegments.getOrNull(1))
+                        val communityId = safeExternalRouteId(pathSegments.getOrNull(1))
                         if (communityId != null) {
                             navController.navigate(Screen.CommunityDetail.createRoute(communityId))
                             clearIntent()
@@ -531,14 +543,14 @@ object IntentRouter {
                     return true
                 }
                 "post" -> {
-                    safeExternalRouteValue(uri.pathSegments.firstOrNull())?.let { id ->
+                    safeExternalRouteId(uri.pathSegments.firstOrNull())?.let { id ->
                         navController.navigate(Screen.PostDetail.createRoute(id))
                         clearIntent()
                         return true
                     }
                 }
                 "video" -> {
-                    safeExternalRouteValue(uri.pathSegments.firstOrNull())?.let { id ->
+                    safeExternalRouteId(uri.pathSegments.firstOrNull())?.let { id ->
                         navController.navigate(Screen.VideoPlayer.createRoute(
                             id, resumeMs = videoResumeMsFromLink(uri),
                             endMs = videoClipEndMsFromLink(uri)))
@@ -547,14 +559,14 @@ object IntentRouter {
                     }
                 }
                 "profile" -> {
-                    safeExternalRouteValue(uri.pathSegments.firstOrNull())?.let { id ->
+                    safeExternalRouteId(uri.pathSegments.firstOrNull())?.let { id ->
                         navController.navigate(Screen.UserProfile.createRoute(id))
                         clearIntent()
                         return true
                     }
                 }
                 "group" -> {
-                    safeExternalRouteValue(uri.pathSegments.firstOrNull())?.let { id ->
+                    safeExternalRouteId(uri.pathSegments.firstOrNull())?.let { id ->
                         navController.navigate(
                             Screen.GroupDetail.createRoute(
                                 id,
@@ -566,7 +578,7 @@ object IntentRouter {
                     }
                 }
                 "community" -> {
-                    safeExternalRouteValue(uri.pathSegments.firstOrNull())?.let { id ->
+                    safeExternalRouteId(uri.pathSegments.firstOrNull())?.let { id ->
                         navController.navigate(Screen.CommunityDetail.createRoute(id))
                         clearIntent()
                         return true
@@ -576,7 +588,11 @@ object IntentRouter {
         }
 
         val isRecovery = isTrustedRecoveryOrigin(uri.scheme, uri.host)
-        if (!isRecovery) return false
+        if (!isRecovery) {
+            clearIntent()
+            AppFeedbackBus.show("El enlace no contiene un destino válido.")
+            return true
+        }
 
         // Old custom-scheme recovery links can be intercepted by another app.
         // Never import access or refresh tokens delivered through this route.
@@ -662,4 +678,26 @@ internal fun safeExternalRouteValue(value: String?, maxLength: Int = 160): Strin
     return normalized.takeIf {
         it.isNotEmpty() && it.length <= maxLength && it.none(Char::isISOControl)
     }
+}
+
+/** Storage/domain IDs are UUIDs or opaque alphanumeric identifiers, never paths. */
+internal fun safeExternalRouteId(value: String?): String? = value?.trim()?.takeIf {
+    it.length in 1..160 && it.matches(Regex("[A-Za-z0-9_-]+"))
+}
+
+/** Navigation can reject a stale/invalid destination; keep external intent recoverable. */
+internal fun consumeExternalNavigation(
+    clearIntent: () -> Unit,
+    onRejected: () -> Unit,
+    navigate: () -> Boolean,
+): Boolean = try {
+    navigate()
+} catch (error: IllegalArgumentException) {
+    clearIntent()
+    onRejected()
+    true
+} catch (error: IllegalStateException) {
+    clearIntent()
+    onRejected()
+    true
 }

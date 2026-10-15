@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -91,8 +92,8 @@ internal fun LiveKitRemoteVideoSurface(
     label: String = video.participantName,
 ) {
     val context = LocalContext.current
-    val renderer = remember(video.trackId) { TextureViewRenderer(context) }
-    DisposableEffect(video.trackId, renderer) {
+    val renderer = remember(video.trackId, video.track, video.bindingVersion) { TextureViewRenderer(context) }
+    DisposableEffect(video.trackId, video.track, video.bindingVersion, renderer) {
         onAttach(video, renderer)
         onDispose { onDetach(video, renderer) }
     }
@@ -101,7 +102,7 @@ internal fun LiveKitRemoteVideoSurface(
             .clip(RoundedCornerShape(16.dp))
             .background(Color.Black)
     ) {
-        AndroidView(factory = { renderer }, modifier = Modifier.fillMaxSize())
+        key(renderer) { AndroidView(factory = { renderer }, modifier = Modifier.fillMaxSize()) }
         Text(
             text = label,
             color = Color.White,
@@ -161,8 +162,8 @@ private fun LiveKitGuestVideo(
     pictureInPicture: Boolean = false,
 ) {
     val context = LocalContext.current
-    val renderer = remember(video.trackId) { TextureViewRenderer(context) }
-    DisposableEffect(video.trackId, renderer) {
+    val renderer = remember(video.trackId, video.track, video.bindingVersion) { TextureViewRenderer(context) }
+    DisposableEffect(video.trackId, video.track, video.bindingVersion, renderer) {
         onAttach(video, renderer)
         onDispose { onDetach(video, renderer) }
     }
@@ -175,7 +176,7 @@ private fun LiveKitGuestVideo(
                 .background(Color.Black.copy(alpha = 0.68f))
                 .border(1.dp, Color.White.copy(alpha = 0.62f), RoundedCornerShape(18.dp))
         ) {
-            AndroidView(factory = { renderer }, modifier = Modifier.fillMaxSize())
+            key(renderer) { AndroidView(factory = { renderer }, modifier = Modifier.fillMaxSize()) }
             LiveQualityBars(
                 tint = Color(0xFF5EEAD4),
                 modifier = Modifier
@@ -202,10 +203,10 @@ private fun LiveKitGuestVideo(
                 .background(Color.Black.copy(alpha = 0.72f))
                 .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
         ) {
-            AndroidView(
+            key(renderer) { AndroidView(
                 factory = { renderer },
                 modifier = Modifier.fillMaxWidth().height(height)
-            )
+            ) }
             Text(
                 text = video.participantName,
                 color = Color.White,

@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$configPath = Join-Path $root 'Conectate-web\public\backend-config.json'
+$configPath = Join-Path $root 'NoWing-web\public\backend-config.json'
 $mutex = New-Object System.Threading.Mutex($false, 'ConectateCloudflareTunnelWatchdog')
 
 if (-not $mutex.WaitOne(0)) {

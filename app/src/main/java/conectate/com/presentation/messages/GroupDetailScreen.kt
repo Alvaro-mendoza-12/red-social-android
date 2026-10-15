@@ -1,5 +1,7 @@
 package conectate.com.presentation.messages
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.layout.*
@@ -23,8 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.components.CircularProfileImage
@@ -44,6 +44,9 @@ fun GroupDetailScreen(
     val searchResults by viewModel.searchResults.collectAsState()
     val isDeleted by viewModel.isDeleted.collectAsState()
     val actionMessage by viewModel.actionMessage.collectAsState()
+    val membershipPolicy by viewModel.membershipPolicy.collectAsState()
+    val membershipBusy by viewModel.membershipBusy.collectAsState()
+    val membershipError by viewModel.membershipError.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     
     var showMenu by remember { mutableStateOf(false) }
@@ -111,8 +114,8 @@ fun GroupDetailScreen(
                     }
                 },
                 actions = {
-                    if (canManageMembers) {
-                        IconButton(onClick = { showAddMemberDialog = true }) {
+                    if (membershipPolicy?.canAddMembers == true) {
+                        IconButton(onClick = { viewModel.refreshMembershipPolicy(); showAddMemberDialog = true }) {
                             Icon(Icons.Default.PersonAdd, "Agregar miembro", tint = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
@@ -224,56 +227,13 @@ fun GroupDetailScreen(
             ) {
                 // Group Info Card
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            if (!group?.image.isNullOrEmpty()) {
-                                AsyncImage(
-                                    model = group?.image,
-                                    contentDescription = "Imagen del grupo",
-                                    modifier = Modifier
-                                        .size(100.dp)
-                                        .clip(androidx.compose.foundation.shape.CircleShape)
-                                        .clickable {
-                                            navController.navigate(Screen.FullScreenImage.createRoute(group!!.image!!))
-                                        },
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Group,
-                                    contentDescription = "Grupo",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(80.dp)
-                                )
-                            }
-
-                            Text(
-                                text = group?.name ?: "",
-                                style = MaterialTheme.typography.headlineSmall
-                            )
-                            
-                            if (group?.description != null) {
-                                Text(
-                                    text = group!!.description!!,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            
-                            Text(
-                                text = "${members.size} miembros",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
+                    GroupInfoHeader(
+                        name = group?.name.orEmpty(),
+                        description = group?.description,
+                        imageUrl = group?.image,
+                        memberCount = members.size,
+                        onOpenImage = { image -> navController.navigate(Screen.FullScreenImage.createRoute(image)) },
+                    )
                 }
 
                 // Leave Button (only if not creator)
@@ -296,6 +256,8 @@ fun GroupDetailScreen(
                         }
                     }
                 }
+
+                item { CollectionMembershipSettings(membershipPolicy, membershipBusy, viewModel::setMembersCanAdd) }
 
                 item {
                     Text(
@@ -330,18 +292,13 @@ fun GroupDetailScreen(
     }
     
     if (showAddMemberDialog) {
-        AddMemberDialog(
-            onDismiss = { showAddMemberDialog = false },
-            onSearch = { viewModel.searchUsers(it) },
-            searchResults = searchResults,
-            onAddUser = { userId ->
-                viewModel.addMember(userId) {
-                    showAddMemberDialog = false
-                }
-            }
+        CollectionAddMemberDialog(
+            onDismiss = { showAddMemberDialog = false }, onSearch = viewModel::searchUsers,
+            searchResults = searchResults, policy = membershipPolicy, busy = membershipBusy, error = membershipError,
+            onAdd = { userId, from, until -> viewModel.addMember(userId, from, until) { showAddMemberDialog = false } }
         )
     }
-
+    
     shareLink?.let { link ->
         CollectionShareDialog(
             title = "Compartir grupo",
@@ -440,9 +397,7 @@ fun EditGroupDialog(
     var imageToCrop by remember { mutableStateOf<android.net.Uri?>(null) }
     
     val context = androidx.compose.ui.platform.LocalContext.current
-    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
-    ) { uri ->
+    val launcher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         imageToCrop = uri
     }
 
@@ -455,7 +410,7 @@ fun EditGroupDialog(
             onDismiss = { imageToCrop = null },
             onCropped = { croppedUri ->
                 selectedImageBytes = runCatching {
-                    context.contentResolver.openInputStream(croppedUri)?.use { it.readBytes() }
+                    context.contentResolver.openInputStream(croppedUri)?.use { it.readMediaBytesWithLimit(60L * 1024 * 1024) }
                 }.getOrNull()
                 imageToCrop = null
             }
@@ -497,82 +452,6 @@ fun EditGroupDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddMemberDialog(
-    onDismiss: () -> Unit,
-    onSearch: (String) -> Unit,
-    searchResults: List<conectate.com.data.model.User>,
-    onAddUser: (String) -> Unit
-) {
-    var query by remember { mutableStateOf("") }
-    
-    // Auto-search when query changes
-    LaunchedEffect(query) {
-        if (query.length >= 3) {
-            onSearch(query)
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Agregar miembro") },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("Buscar usuario") },
-                    placeholder = { Text("Nombre o usuario...") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, null) }
-                )
-                
-                LazyColumn(
-                    modifier = Modifier.height(200.dp).fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (searchResults.isEmpty() && query.length >= 3) {
-                        item { Text("No se encontraron usuarios", style = MaterialTheme.typography.bodySmall) }
-                    }
-                    
-                    items(searchResults) { user ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onAddUser(user.id) }
-                                .padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProfileImage(
-                                imageUrl = user.avatar_url,
-                                size = 40.dp,
-                                fallbackName = user.displayName
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column {
-                                Text(user.displayName, style = MaterialTheme.typography.bodyMedium)
-                                user.username?.let {
-                                     Text("@$it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                        HorizontalDivider()
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cerrar")
-            }
-        }
-    )
-}
-
-@Composable
 fun GroupMemberItem(
     userId: String,
     userName: String?,
@@ -596,7 +475,7 @@ fun GroupMemberItem(
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CircularProfileImage(
+        CircularProfileImage(ownerId = userId, 
             imageUrl = userImage,
             size = 48.dp,
             fallbackName = if (isCurrentUser) "Tú" else userName,

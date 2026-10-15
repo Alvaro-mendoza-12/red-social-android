@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.Video
 import conectate.com.data.model.VideoChapter
@@ -17,6 +19,7 @@ import io.ktor.http.*
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -821,7 +824,7 @@ class VideoRepository @Inject constructor(
             if (thumbnailUri != null && thumbnailUri != Uri.EMPTY) {
                 try {
                     thumbBytes = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(thumbnailUri)?.use { it.readBytes() }
+                        context.contentResolver.openInputStream(thumbnailUri)?.use { it.readMediaBytesWithLimit(10L * 1024 * 1024) }
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("VideoRepository", "Error reading manual thumbnail", e)
@@ -1010,6 +1013,9 @@ class VideoRepository @Inject constructor(
         }
     }
 
+    internal suspend fun prepareNativeAudio(url: String): conectate.com.util.NativeAudioDelivery =
+        conectate.com.util.NativeAudioDelivery.prepare(context, url)
+
     suspend fun downloadVideoToGallery(video: Video): Result<String> = withContext(Dispatchers.IO) {
         var sourceFile: File? = null
         var watermarkedFile: File? = null
@@ -1018,39 +1024,11 @@ class VideoRepository @Inject constructor(
         var mediaPublished = false
         try {
             val targetUrl = UbuntuStorageUrl.rewrite(video.videoUrl) ?: video.videoUrl
-            val response = supabaseConfig.httpClient.get(targetUrl) {
-                UbuntuStorageUrl.publicRequestHeaders.forEach { (name, value) -> header(name, value) }
-            }
-            if (!response.status.isSuccess()) {
-                return@withContext Result.failure(
-                    Exception("No se pudo descargar el video (${response.status.value}).")
-                )
-            }
-
-            val declaredBytes = response.contentLength() ?: -1L
-            if (declaredBytes > MAX_DOWNLOAD_VIDEO_BYTES) {
-                return@withContext Result.failure(Exception("El video supera el tamaño máximo permitido."))
-            }
-
-            val downloadedSourceFile = File(context.cacheDir, "download_${System.currentTimeMillis()}.mp4")
+            val downloadIdentity = conectate.com.core.media.StorageReadSession.snapshot()?.identity
+            val downloadedSourceFile = File(context.cacheDir, "download_${UUID.randomUUID()}.mp4")
             sourceFile = downloadedSourceFile
-            var copiedBytes = 0L
-            response.bodyAsChannel().toInputStream().buffered().use { input ->
-                downloadedSourceFile.outputStream().buffered().use { output ->
-                    val buffer = ByteArray(DOWNLOAD_COPY_BUFFER_BYTES)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        copiedBytes += read
-                        if (copiedBytes > MAX_DOWNLOAD_VIDEO_BYTES) {
-                            throw IllegalArgumentException("El video supera el tamaño máximo permitido.")
-                        }
-                        output.write(buffer, 0, read)
-                    }
-                    output.flush()
-                }
-            }
-            if (copiedBytes <= 0L) return@withContext Result.failure(Exception("El video descargado está vacío."))
+            conectate.com.core.media.StorageReadDownloads.downloadToFile(targetUrl, downloadedSourceFile, MAX_DOWNLOAD_VIDEO_BYTES)
+            conectate.com.core.media.StorageReadSession.requireCurrent(downloadIdentity)
 
             val brandedFile = VideoWatermarkExporter.exportWithBrandWatermark(
                 context = context,
@@ -1060,6 +1038,8 @@ class VideoRepository @Inject constructor(
                 return@withContext Result.failure(error)
             }
             watermarkedFile = brandedFile
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            conectate.com.core.media.StorageReadSession.requireCurrent(downloadIdentity)
 
             val safeUserName = sanitizeDownloadFilePart(video.userName.ifBlank { "usuario" })
             var filename = "Novvin_@${safeUserName}_${System.currentTimeMillis()}.mp4"
@@ -1087,6 +1067,8 @@ class VideoRepository @Inject constructor(
                     }
                 } ?: return@withContext Result.failure(Exception("No se pudo escribir el video descargado."))
 
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                conectate.com.core.media.StorageReadSession.requireCurrent(downloadIdentity)
                 contentValues.clear()
                 contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
                 resolver.update(uri, contentValues, null, null)
@@ -1101,6 +1083,8 @@ class VideoRepository @Inject constructor(
                 val legacyFile = java.io.File(conectateDir, filename)
                 legacyOutputFile = legacyFile
                 brandedFile.copyTo(legacyFile, overwrite = false)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                conectate.com.core.media.StorageReadSession.requireCurrent(downloadIdentity)
                 mediaPublished = true
             }
 

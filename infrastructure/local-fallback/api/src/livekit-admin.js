@@ -61,6 +61,12 @@ async function muteLiveKitParticipantAudio({
   const participant = await client.getParticipant(room, identity)
   const tracks = Array.isArray(participant?.tracks) ? participant.tracks : []
   const audioTracks = tracks.filter(isAudioTrack)
+  // SDK installed here accepts atomic permission replacement; TrackSource
+  // CAMERA=1 and SCREEN_SHARE=3 exclude microphone and screen-share audio.
+  await client.updateParticipant(room, identity, { permission: {
+    canSubscribe: true, canPublish: true, canPublishData: true,
+    canPublishSources: [1, 3], canUpdateMetadata: true,
+  } })
   for (const track of audioTracks) {
     const sid = String(track?.sid || '').trim()
     if (sid) await client.mutePublishedTrack(room, identity, sid, true)

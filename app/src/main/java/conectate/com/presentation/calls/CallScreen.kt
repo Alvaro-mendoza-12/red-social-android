@@ -228,6 +228,7 @@ fun CallScreen(
     val statusText = when (active.connectionState) {
         CallConnectionState.RINGING_OUTGOING -> "Llamando…"
         CallConnectionState.CONNECTING -> "Conectando…"
+        CallConnectionState.RECONNECTING -> "Reconectando…"
         CallConnectionState.CONNECTED -> durationText
         CallConnectionState.ENDED -> "Finalizada"
         else -> ""

@@ -32,6 +32,16 @@ class AppSettingsPreferences @Inject constructor(
         fun isReduceMotionEnabled(context: Context): Boolean = context
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_REDUCE_MOTION, false)
+
+        fun isAutomaticMediaDownloadAllowed(context: Context): Boolean {
+            val network = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val active = network.activeNetwork ?: return false
+            val capabilities = network.getNetworkCapabilities(active) ?: return false
+            if (!capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)) return false
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return if (network.isActiveNetworkMetered) prefs.getBoolean(KEY_AUTO_DOWNLOAD_MOBILE, false)
+            else prefs.getBoolean(KEY_AUTO_DOWNLOAD_WIFI, true)
+        }
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

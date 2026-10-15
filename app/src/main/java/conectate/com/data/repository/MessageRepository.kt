@@ -1,5 +1,7 @@
 package conectate.com.data.repository
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -137,6 +139,22 @@ class MessageRepository @Inject constructor(
         private const val MIN_PENDING_MEDIA_FREE_BYTES = 32L * 1024L * 1024L
     }
 
+    private val deletedMessageStore by lazy { conectate.com.util.DeletedMessageStore(context) }
+
+    suspend fun handleDeletedMessage(identity: conectate.com.util.DeletedMessageIdentity, createdAt: String? = null, channelId: String? = null) {
+        if (identity.targetType != "chat" || currentSessionUserId()?.trim()?.lowercase() != identity.accountId) return
+        val session = captureSessionSnapshot(identity.accountId)
+        if (!isSessionSnapshotValid(session, "deleted-message-start")) return
+        conectate.com.util.MessageNotificationFactory.redactMessage(context, identity, createdAt, channelContextId = channelId)
+        messageDao.redactDeletedMessage(identity.conversationId, identity.messageId)
+        if (!isSessionSnapshotValid(session, "deleted-message-preview")) return
+        chatDao.redactDeletedPreview(identity.conversationId, identity.messageId)
+        val local = messageDao.getMessageById(identity.messageId)?.toDomain()
+        if (local != null && local.chat_id == identity.conversationId && isSessionSnapshotValid(session, "deleted-message-flow")) {
+            updateMessageInFlow(identity.conversationId, deletedMessageStore.redact(local, identity.accountId))
+        }
+    }
+
     private val scope = newSafeScope("MessageRepository", Dispatchers.IO)
     private var json = Json { 
         ignoreUnknownKeys = true 
@@ -169,7 +187,12 @@ class MessageRepository @Inject constructor(
     private val chatHistoryFetchTimestamps = ConcurrentHashMap<String, Long>()
     private val inboxSyncMutex = Mutex()
     private val messageSendCoordinator = MessageSendCoordinator()
-    private val inboxPreviewReader = conectate.com.data.repository.message.InboxPreviewReader(database, ::currentSessionUserId)
+    private val notificationMutePreferences = conectate.com.util.ConversationNotificationPrefs(context)
+    private val inboxPreviewReader = conectate.com.data.repository.message.InboxPreviewReader(
+        database, ::currentSessionUserId, deletedMessageStore.changes,
+        preferenceChanges = notificationMutePreferences.observeChanges(),
+        isChatMuted = { account, chatId, remote -> remote || notificationMutePreferences.isMuted("chat", chatId, account) },
+    ) { message, account -> deletedMessageStore.redact(message, account) }
     private val deletionTransport = MessageDeletionTransport(localFallbackApiClient, supabaseConfig, ::shouldUseUbuntuBackend)
     private val deletionQueue = MessageDeletionQueue(database, messageSendCoordinator,
         { authService.ensureValidAccessToken() }, deletionTransport::delete)
@@ -179,17 +202,25 @@ class MessageRepository @Inject constructor(
     // 6. Transient ID Mapper (FCM -> UUID) allows replies to work even during race conditions
     private val transientIdMap = ConcurrentHashMap<String, String>()
     private val sessionWriteGuard = SessionWriteGuard { authService.getCurrentUserId() }
+    private fun automaticMediaAllowed(): Boolean = MessagesPreferences.isMediaAutoDownloadEnabled(context) &&
+        conectate.com.data.local.prefs.AppSettingsPreferences.isAutomaticMediaDownloadAllowed(context)
+    private val receivedImageGallery = conectate.com.core.media.ReceivedChatImageGallery(
+        context, { authService.getCurrentUserId() },
+        { MessagesPreferences.areReceivedImagesSavedToGallery(context) }
+    )
     private val offlineMediaCache = ChatMediaOfflineCache.from(
         context = context,
         accountIdProvider = { authService.getCurrentUserId() },
-        automaticMediaEnabled = { MessagesPreferences.isMediaAutoDownloadEnabled(context) }
+        automaticMediaEnabled = ::automaticMediaAllowed,
+        onCachedMedia = receivedImageGallery::onCachedMedia
     )
     private val mediaResolver = MessageMediaResolver(
         storageService = storageService,
         authService = authService,
         supabaseConfig = supabaseConfig,
         sessionStateStore = sessionStateStore,
-        offlineMediaCache = offlineMediaCache
+        offlineMediaCache = offlineMediaCache,
+        context = context
     )
     private val reportStore = MessageReportStore(
         context = context,
@@ -307,7 +338,7 @@ class MessageRepository @Inject constructor(
         msg: Message,
         sessionUserId: String? = currentSessionUserId()
     ) {
-        val normalizedMsg = msg.withNormalizedStatus()
+        val normalizedMsg = deletedMessageStore.redact(msg.withNormalizedStatus(), sessionUserId)
         var cleanId = normalizedMsg.chat_id.trim().lowercase()
         var sessionSnapshot = captureSessionSnapshot(sessionUserId)
         if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-start:$cleanId")) return
@@ -372,7 +403,7 @@ class MessageRepository @Inject constructor(
                             android.util.Log.d("MessageRepository", "💧 Hydrated reply_to for incoming message")
                         }
                     }
-                    val finalizedMsg = hydratedMsg
+                    val finalizedMsg = deletedMessageStore.redact(hydratedMsg, currentUserId)
 
                     if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-before-db:$cleanId")) return@withLock
                     // Save to Room
@@ -392,6 +423,12 @@ class MessageRepository @Inject constructor(
                 }
             }
 
+        if (normalizedMsg.deleted_for_all) {
+            conectate.com.util.DeletedMessageIdentity.create(currentUserId, "chat", cleanId, normalizedMsg.id)?.let {
+                handleDeletedMessage(it, normalizedMsg.created_at)
+            }
+            return
+        }
         mediaMessageToPrefetch?.let { prefetchRecentChatMedia(listOf(it)) }
 
         // Un FCM parcial seguido por el evento completo solo debe enriquecer la
@@ -509,6 +546,9 @@ class MessageRepository @Inject constructor(
         withContext(Dispatchers.IO) {
             if (!isSessionSnapshotValid(sessionSnapshot, "dm-update-start:${msg.id}")) return@withContext
             try {
+                if (msg.deleted_for_all) conectate.com.util.DeletedMessageIdentity.create(sessionSnapshot.accountId, "chat", msg.chat_id, msg.id)?.let {
+                    handleDeletedMessage(it, msg.created_at)
+                }
                 android.util.Log.d("MessageRepository", "🔄 UPDATE received for message ${msg.id}")
                 
                 // 1. Intentar obtener el mensaje existente de Room
@@ -545,7 +585,7 @@ class MessageRepository @Inject constructor(
                 // Para campos booleanos críticos, solo actualizamos si el valor es true
                 // (porque Supabase solo envía los campos que cambiaron, y si is_edited=true o deleted_for_all=true,
                 // esos son los únicos casos que nos importan)
-                val finalMsg = currentDomain.copy(
+                val finalMsg = deletedMessageStore.redact(currentDomain.copy(
                     chat_id = if (msg.chat_id.isNotEmpty()) msg.chat_id else currentDomain.chat_id,
                     sender_id = if (msg.sender_id.isNotEmpty()) msg.sender_id else currentDomain.sender_id,
                     content = if (msg.content.isNotEmpty()) msg.content else currentDomain.content,
@@ -557,7 +597,7 @@ class MessageRepository @Inject constructor(
                     status = mergedReceipt.status,
                     delivered_at = mergedReceipt.deliveredAt,
                     read_at = mergedReceipt.readAt
-                )
+                ), sessionSnapshot.accountId)
 
                 var cleanId = finalMsg.chat_id.trim().lowercase()
                 if (cleanId.isEmpty()) {
@@ -571,6 +611,12 @@ class MessageRepository @Inject constructor(
                 if (!isSessionSnapshotValid(sessionSnapshot, "dm-update-before-db:${msg.id}")) return@withContext
                 messageDao.insertMessage(conectate.com.data.local.entity.MessageEntity.fromDomain(finalMsg, isSynced = true))
                 
+                if (finalMsg.deleted_for_all) {
+                    conectate.com.util.DeletedMessageIdentity.create(sessionSnapshot.accountId, "chat", cleanId, finalMsg.id)?.let {
+                        handleDeletedMessage(it, finalMsg.created_at)
+                    }
+                }
+
                 // 4. Actualizar flujo UI (CRÍTICO para que el otro usuario vea el cambio)
                 if (!isSessionSnapshotValid(sessionSnapshot, "dm-update-before-flow:${msg.id}")) return@withContext
                 updateMessageInFlow(cleanId, finalMsg)
@@ -621,7 +667,7 @@ class MessageRepository @Inject constructor(
         
         // A slow acknowledgement must not replace a newer queued message in the inbox.
         val previewMessage = conectate.com.data.repository.message.newestInboxMessage(msg, existing.lastMessage) ?: msg
-        val preview = buildPreviewForContentType(previewMessage.content_type, previewMessage.content)
+        val preview = if (previewMessage.deleted_for_all) "Mensaje eliminado" else buildPreviewForContentType(previewMessage.content_type, previewMessage.content)
 
         currentChats[index] = existing.copy(
             lastMessage = previewMessage,
@@ -2178,36 +2224,83 @@ class MessageRepository @Inject constructor(
     }
 
     private fun prefetchRecentChatMedia(messages: List<Message>) {
+        val account = currentSessionUserId() ?: return
+        val session = captureSessionSnapshot(account)
+        if (!isSessionSnapshotValid(session, "prefetch-chat-start")) return
+        val visible = messages.map { deletedMessageStore.redact(it, account) }.filter { message ->
+            !message.deleted_for_all && message.deleted_by.none { it.trim().lowercase() == account }
+        }
+        visible.takeLast(12).forEach { message ->
+            if (isSessionSnapshotValid(session, "prefetch-chat-register")) receivedImageGallery.register(
+                message.media_url, message.sender_id, message.content_type, message.deleted_for_all, message.deleted_by)
+        }
         prefetchChatMedia(
-            messages.map { message ->
+            visible.map { message ->
                 ChatMediaPrefetchCandidate(
                     contentType = message.content_type,
                     mediaUrl = message.media_url,
                     mediaSizeBytes = message.media_size.takeIf { it > 0L }
                 )
             }
-        )
+        ) { mediaPath ->
+            // Recheck both generation and tombstone inside the deferred prefetch coroutine.
+            isSessionSnapshotValid(session, "prefetch-chat-deferred") && visible.any { message ->
+                message.media_url == mediaPath && !deletedMessageStore.redact(message, account).deleted_for_all
+            }
+        }
     }
 
     internal fun prefetchRecentGroupMedia(messages: List<GroupMessage>) {
+        val account = currentSessionUserId() ?: return
+        val session = captureSessionSnapshot(account)
+        if (!isSessionSnapshotValid(session, "prefetch-group-start")) return
+        val visible = messages.map { deletedMessageStore.redact(it, account) }.filter { message ->
+            !message.deleted_for_all && message.deleted_by.none { it.trim().lowercase() == account }
+        }
+        visible.takeLast(12).forEach { message ->
+            if (isSessionSnapshotValid(session, "prefetch-group-register")) receivedImageGallery.register(
+                message.media_url, message.sender_id, message.content_type, message.deleted_for_all, message.deleted_by)
+        }
         prefetchChatMedia(
-            messages.map { message ->
+            visible.map { message ->
                 ChatMediaPrefetchCandidate(message.content_type, message.media_url)
             }
-        )
+        ) { mediaPath ->
+            // Recheck both generation and tombstone inside the deferred prefetch coroutine.
+            isSessionSnapshotValid(session, "prefetch-group-deferred") && visible.any { message ->
+                message.media_url == mediaPath && !deletedMessageStore.redact(message, account).deleted_for_all
+            }
+        }
     }
 
     internal fun prefetchRecentCommunityMedia(messages: List<CommunityMessage>) {
+        val account = currentSessionUserId() ?: return
+        val session = captureSessionSnapshot(account)
+        if (!isSessionSnapshotValid(session, "prefetch-community-start")) return
+        val visible = messages.map { deletedMessageStore.redact(it, account) }.filter { message ->
+            !message.deleted_for_all && message.deleted_by.none { it.trim().lowercase() == account }
+        }
+        visible.takeLast(12).forEach { message ->
+            if (isSessionSnapshotValid(session, "prefetch-community-register")) receivedImageGallery.register(
+                message.media_url, message.sender_id, message.content_type, message.deleted_for_all, message.deleted_by)
+        }
         prefetchChatMedia(
-            messages.map { message ->
+            visible.map { message ->
                 ChatMediaPrefetchCandidate(message.content_type, message.media_url)
             }
-        )
+        ) { mediaPath ->
+            // Recheck both generation and tombstone inside the deferred prefetch coroutine.
+            isSessionSnapshotValid(session, "prefetch-community-deferred") && visible.any { message ->
+                message.media_url == mediaPath && !deletedMessageStore.redact(message, account).deleted_for_all
+            }
+        }
     }
 
-    private fun prefetchChatMedia(candidates: Iterable<ChatMediaPrefetchCandidate>) {
+    private fun prefetchChatMedia(candidates: Iterable<ChatMediaPrefetchCandidate>, isAllowed: (String) -> Boolean) {
         selectRecentChatMediaForPrefetch(candidates).forEach { mediaPath ->
+            if (!isAllowed(mediaPath)) return@forEach
             scope.launch {
+                if (!isAllowed(mediaPath)) return@launch
                 mediaResolver.getPlayableUrl(
                     path = mediaPath,
                     allowOfflineMediaCache = true,
@@ -2271,7 +2364,7 @@ class MessageRepository @Inject constructor(
         // 2. Robust Sorting (Ascending for Chat Screen)
         // CRITICAL: We want 'sending' messages at the end.
         // And null dates (broken ones) at the beginning (1970).
-        return byId.sortedWith(compareBy<Message> { 
+        return byId.map { deletedMessageStore.redact(it, currentSessionUserId()) }.sortedWith(compareBy<Message> { 
             when {
                 it.status == "sending" -> "9999-12-31T23:59:59Z"
                 it.created_at.isNullOrBlank() -> "1970-01-01T00:00:00Z"
@@ -2945,10 +3038,23 @@ class MessageRepository @Inject constructor(
         return normalized.contains("chat_blocked_by_recipient")
     }
 
+    suspend fun loadDirectMessageRequest(chatId: String?, targetUserId: String): Result<conectate.com.data.model.DirectMessageRequestState> {
+        if (!shouldUseUbuntuBackend()) return Result.failure(IllegalStateException("Actualiza la conexión al servidor para enviar una solicitud"))
+        val token = authService.ensureValidAccessToken().getOrElse { return Result.failure(it) }
+        return localFallbackApiClient.loadDirectMessageRequest(token, chatId, targetUserId)
+    }
+
+    suspend fun decideDirectMessageRequest(chatId: String, accept: Boolean): Result<conectate.com.data.model.DirectMessageRequestState> {
+        val token = authService.ensureValidAccessToken().getOrElse { return Result.failure(it) }
+        return localFallbackApiClient.decideDirectMessageRequest(token, chatId, accept)
+    }
+
     private fun normalizeBackendSendFailure(errorBody: String): String {
         val clean = errorBody.trim()
         return when {
             isBlockedByRecipientError(clean) -> "CHAT_BLOCKED_BY_RECIPIENT"
+            clean.contains("MESSAGE_REQUEST_PENDING", ignoreCase = true) -> "MESSAGE_REQUEST_PENDING"
+            clean.contains("MESSAGE_REQUEST_REJECTED", ignoreCase = true) -> "MESSAGE_REQUEST_REJECTED"
             clean.contains("FRIEND_REQUEST_PENDING", ignoreCase = true) ->
                 "Ya enviaste un primer mensaje. Podrás escribir de nuevo cuando acepte tu solicitud de amistad."
             clean.contains("FRIEND_REQUEST_REJECTED", ignoreCase = true) ->
@@ -3993,7 +4099,7 @@ class MessageRepository @Inject constructor(
     }
 
     private fun mergeIncomingMessageWithLocal(incoming: Message, local: Message?): Message {
-        local ?: return incoming
+        local ?: return deletedMessageStore.redact(incoming, currentSessionUserId())
         val receipt = mergeReceiptState(
             currentStatus = local.status,
             currentDeliveredAt = local.delivered_at,
@@ -4002,7 +4108,7 @@ class MessageRepository @Inject constructor(
             incomingDeliveredAt = incoming.delivered_at,
             incomingReadAt = incoming.read_at
         )
-        return incoming.copy(
+        return deletedMessageStore.redact(incoming.copy(
             chat_id = incoming.chat_id.ifBlank { local.chat_id },
             sender_id = incoming.sender_id.ifBlank { local.sender_id },
             content = incoming.content.ifBlank { local.content },
@@ -4024,7 +4130,7 @@ class MessageRepository @Inject constructor(
             sender_name = incoming.sender_name ?: local.sender_name,
             created_at = incoming.created_at ?: local.created_at,
             updated_at = incoming.updated_at ?: local.updated_at
-        )
+        ), currentSessionUserId())
     }
 
     private fun deriveMessageStatus(msg: Message): String {
@@ -4102,6 +4208,12 @@ class MessageRepository @Inject constructor(
             isSessionSnapshotValid(session, "queueMessageDeletion")
         }
         if (result.isSuccess) {
+            messageDao.getMessageById(messageId.trim())?.toDomain()?.let { local ->
+                conectate.com.util.DeletedMessageIdentity.create(actor, "chat", local.chat_id, local.id)?.let {
+                    // This user's notification hides immediately; the Room deletion journal owns rollback/status.
+                    conectate.com.util.MessageNotificationFactory.redactMessage(context, it, local.created_at, forEveryone = false)
+                }
+            }
             PendingMessageSyncScheduler.enqueue(context, "direct_message_delete_pending")
             // The screen is driven by the persisted intent immediately, without
             // waiting for a token, connectivity, transport retries or a worker.
@@ -4445,6 +4557,29 @@ class MessageRepository @Inject constructor(
         allowOfflineMediaCache: Boolean = true
     ): Result<String> = mediaResolver.getPlayableUrl(path, allowOfflineMediaCache)
 
+    private val nativeAudioDelivery by lazy {
+        conectate.com.util.ChatAudioPlaybackCache(File(context.cacheDir, "native-conversation-audio"))
+    }
+
+    internal suspend fun prepareNativeAudio(path: String): conectate.com.util.NativeAudioDelivery {
+        val expected = conectate.com.core.media.StorageReadSession.snapshot()?.identity
+        val resolved = getPlayableUrl(path).getOrThrow()
+        conectate.com.core.media.StorageReadSession.requireCurrent(expected)
+        val delivery = conectate.com.util.NativeAudioDelivery.prepare(context, resolved)
+        try { conectate.com.core.media.StorageReadSession.requireCurrent(expected); return delivery }
+        catch (error: Throwable) { delivery.close(); throw error }
+    }
+
+    /** MediaPlayer's native redirect stack cannot safely transport a private JWT. */
+    suspend fun getNativeAudioPlayableUrl(path: String): Result<String> = runCatching {
+        val identity = conectate.com.core.media.StorageReadSession.snapshot()?.identity
+        val resolved = getPlayableUrl(path).getOrThrow()
+        val playable = if (conectate.com.core.media.StorageReadSession.isStorageRequest(resolved))
+            withContext(Dispatchers.IO) { nativeAudioDelivery.download(resolved).absolutePath } else resolved
+        conectate.com.core.media.StorageReadSession.requireCurrent(identity)
+        playable
+    }
+
     suspend fun getOfflineChatMediaUsage(): conectate.com.core.media.ChatOfflineMediaUsage? =
         offlineMediaCache.currentAccountUsage()
 
@@ -4565,7 +4700,12 @@ class MessageRepository @Inject constructor(
         isArchived: Boolean?,
         isFavorite: Boolean?
     ) {
-        isMuted?.let { chatDao.updateMuteState(chatId, it) }
+        isMuted?.let {
+            // Explicit inbox choices replace the device's timed notification mute.
+            if (it) notificationMutePreferences.muteConversation("chat", chatId, currentSessionUserId())
+            else notificationMutePreferences.unmuteConversation("chat", chatId, currentSessionUserId())
+            chatDao.updateMuteState(chatId, it)
+        }
         isPinned?.let { chatDao.updatePinState(chatId, it) }
         isArchived?.let { chatDao.updateArchiveState(chatId, it) }
         isFavorite?.let { chatDao.updateFavoriteState(chatId, it) }
@@ -4600,6 +4740,7 @@ class MessageRepository @Inject constructor(
             var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
             var cleanId = chatId.trim().lowercase()
             var cleanUserId = currentUserId.trim().lowercase()
+            val preferenceSession = captureSessionSnapshot(currentUserId)
 
             syncChatPreferencesRemote(
                 chatId = cleanId,
@@ -4610,6 +4751,9 @@ class MessageRepository @Inject constructor(
                 isArchived = isArchived,
                 isFavorite = isFavorite
             )
+            if (!isSessionSnapshotValid(preferenceSession, "chat-preferences-result")) {
+                return Result.failure(CancellationException("La cuenta cambió. Vuelve a intentarlo."))
+            }
             applyLocalChatPreferences(
                 chatId = cleanId,
                 isMuted = isMuted,
@@ -4648,7 +4792,8 @@ class MessageRepository @Inject constructor(
         var cleanId = chatId.trim().lowercase()
         if (cleanId.isBlank()) return false
         return runCatching {
-            chatDao.getChatByIdSync(cleanId)?.is_muted == true
+            chatDao.getChatByIdSync(cleanId)?.is_muted == true ||
+                notificationMutePreferences.isMuted("chat", cleanId, currentSessionUserId())
         }.getOrDefault(false)
     }
     
@@ -4771,7 +4916,7 @@ class MessageRepository @Inject constructor(
                     onProgress = { conectate.com.core.messaging.MessageUploadProgress.update(accountId, messageId, it) }
                 )
             } else {
-                val bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
+                val bytes = context.contentResolver.openInputStream(mediaUri)?.use { it.readMediaBytesWithLimit(60L * 1024 * 1024) }
                     ?: return@withContext Result.failure(Exception("No se pudo leer archivo"))
                 storageService.uploadFile("chat-media", filename, bytes, mimeType, allowOverwrite = false)
             }
@@ -4969,6 +5114,7 @@ class MessageRepository @Inject constructor(
     }
 
     private fun isRetryableBackendFailure(statusCode: Int, body: String?): Boolean {
+        if (conectate.com.data.localfallback.isPendingMessagePermission(body)) return true
         if (statusCode in 100..599) return isRetryableMessageHttpStatus(statusCode)
         val normalized = body?.trim()?.lowercase().orEmpty()
         val terminalHints = listOf(

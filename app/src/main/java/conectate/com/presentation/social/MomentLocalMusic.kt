@@ -11,12 +11,17 @@ internal fun localMomentMusicId(uri: Uri): String =
     "device:${uri.toString().hashCode().toUInt().toString(16)}"
 
 /**
- * Convierte el recorte ya preparado por el selector del dispositivo en una
- * selección lista para el editor. Publicarlo en el catálogo comunitario es un
- * flujo distinto y explícito.
+ * Mantiene la duración de la canción original para buscar cualquier fragmento.
+ * Solo la selección, no la pista fuente, se limita a la duración del Momento.
  */
-internal fun PreparedAudioClip.toMomentMusicSelection(): MomentMusicSelection {
-    val safeDuration = durationMs.coerceIn(1_000L, MAX_LOCAL_MOMENT_MUSIC_MS)
+internal fun localMomentMusicDurations(sourceDurationMs: Long, initialExcerptDurationMs: Long): Pair<Long, Long> {
+    val source = sourceDurationMs.coerceAtLeast(1_000L)
+    val excerpt = initialExcerptDurationMs.coerceIn(1_000L, minOf(source, MAX_LOCAL_MOMENT_MUSIC_MS))
+    return source to excerpt
+}
+
+internal fun PreparedAudioClip.toMomentMusicSelection(initialExcerptDurationMs: Long = 6_000L): MomentMusicSelection {
+    val (safeDuration, excerptDuration) = localMomentMusicDurations(durationMs, initialExcerptDurationMs)
     val safeTitle = title.trim()
         .ifBlank { displayName.substringBeforeLast('.', displayName) }
         .ifBlank { "Audio del dispositivo" }
@@ -41,7 +46,7 @@ internal fun PreparedAudioClip.toMomentMusicSelection(): MomentMusicSelection {
             allowRemix = false,
         ),
         startMs = 0L,
-        endMs = safeDuration,
+        endMs = excerptDuration,
         musicVolume = 1f,
         originalAudioVolume = 1f,
         localUri = uri,

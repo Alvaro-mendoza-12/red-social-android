@@ -44,6 +44,8 @@ import io.github.jan.supabase.realtime.broadcastFlow
 import io.github.jan.supabase.realtime.channel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -85,9 +87,12 @@ class CallRepository @Inject constructor(
     private val callHistoryRepository: CallHistoryRepository,
     private val callTonePlayer: CallTonePlayer,
     private val appMetrics: AppMetrics,
-    private val ubuntuRealtimeClient: UbuntuRealtimeClient
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient,
+    private val callControlClient: CallControlClient,
 ) {
     private val callCancellationGuard = CallCancellationGuard(context)
+    private val callStartMutex = Mutex()
+    @Volatile private var pendingCallLeaveJob: Job? = null
     @Serializable
     private data class CallInviteBroadcastPayload(
         val callId: String,
@@ -364,6 +369,8 @@ class CallRepository @Inject constructor(
         contextId: String? = null,
         isVideo: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
+        callStartMutex.withLock {
+        pendingCallLeaveJob?.join()
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
@@ -378,6 +385,8 @@ class CallRepository @Inject constructor(
         var callId = UUID.randomUUID().toString()
         pendingInvitees.clear()
         pendingInvitees.addAll(invitedUserIds.map { it.trim() }.filter { it.isNotBlank() }.distinct())
+        callControlClient.prepare(callId, normalizedContextType, normalizedContextId, pendingInvitees.toList())
+            .getOrElse { return@withContext Result.failure(it) }
         callEverHadRemoteParticipant = false
         hasConnectedMediaPath = false
         callSetupTiming = CallSetupTiming(android.os.SystemClock.elapsedRealtime(), CallSetupOrigin.OUTGOING)
@@ -497,6 +506,7 @@ class CallRepository @Inject constructor(
         if (!started) return@withContext Result.failure(Exception("La llamada ya finalizó."))
 
         Result.success(callId)
+        }
     }
 
     suspend fun joinExistingCall(
@@ -506,10 +516,13 @@ class CallRepository @Inject constructor(
         contextType: String,
         contextId: String? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        callStartMutex.withLock {
+        pendingCallLeaveJob?.join()
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
 
+        callControlClient.accept(callId.trim()).getOrElse { return@withContext Result.failure(it) }
         var profile = loadUserProfileQuick(currentUserId)
         var myName = profile?.displayName
             ?: profile?.username
@@ -558,9 +571,12 @@ class CallRepository @Inject constructor(
         connectSocket(callId.trim(), currentUserId, myName, myAvatar)
         callTonePlayer.stopRingback()
         Result.success(Unit)
+        }
     }
 
     suspend fun acceptIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
+        callStartMutex.withLock {
+        pendingCallLeaveJob?.join()
         if (!hasMicrophonePermission() || (invite.isVideo &&
                 ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
             return@withContext Result.failure(IllegalStateException("Activa los permisos de la llamada antes de contestar."))
@@ -572,7 +588,13 @@ class CallRepository @Inject constructor(
         }
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
-        if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
+        _activeCall.value?.let { active ->
+            return@withContext if (active.callId.equals(invite.callId, ignoreCase = true) &&
+                canRefreshCallMedia(active, invite.callId)) Result.success(Unit)
+                else Result.failure(Exception("Ya hay una llamada activa"))
+        }
+
+        callControlClient.accept(invite.callId).getOrElse { return@withContext Result.failure(it) }
 
         // Profile data is decorative for signaling. Waiting for a network
         // lookup here delayed cold-start answers and could make the offer time
@@ -661,6 +683,7 @@ class CallRepository @Inject constructor(
         }
         callTonePlayer.stopAll()
         Result.success(Unit)
+        }
     }
 
     suspend fun declineIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
@@ -1191,6 +1214,8 @@ class CallRepository @Inject constructor(
         fromUserId: String,
         notificationAction: String = action
     ) {
+        if (action == "accept") callControlClient.accept(callId).getOrThrow()
+        else callControlClient.leave(callId, notificationAction).getOrThrow()
         if (supabaseConfig.isLocalFallbackPrimary) {
             val notificationType = if (action == "accept") "call_response" else "call_cancel"
             notificationRepository.sendNotification(
@@ -1364,10 +1389,13 @@ class CallRepository @Inject constructor(
             }
 
             val joinedSocketId = java.util.concurrent.atomic.AtomicReference<String?>(null)
+            val hasJoinedSignaling = java.util.concurrent.atomic.AtomicBoolean(false)
+            val renegotiateAfterSignalingRejoin = java.util.concurrent.atomic.AtomicBoolean(false)
             fun joinConnectedSocket() {
                 if (!isCurrentCallSocket() || !createdSocket.connected()) return
                 var sid = createdSocket.id() ?: ""
                 if (sid.isBlank() || joinedSocketId.getAndSet(sid) == sid) return
+                renegotiateAfterSignalingRejoin.set(hasJoinedSignaling.getAndSet(true))
 
                 // IDENTITY DIAGNOSTIC: Log what userId is being sent vs what authService reports
                 val authCurrentId = authService.getCurrentUserId().orEmpty()
@@ -1412,6 +1440,28 @@ class CallRepository @Inject constructor(
                     (current.filterNot { it.userId.equals(userId, ignoreCase = true) } + self.copy(socketId = sid))
                         .distinctBy { it.socketId }
                 }
+            }
+
+            socket?.on("call-join-error") { args ->
+                if (!isCurrentCallSocket()) return@on
+                val error = (args.getOrNull(0) as? org.json.JSONObject)?.optString("error").orEmpty()
+                if (error == "CALL_ACCESS_UNAVAILABLE") {
+                    scope.launch {
+                        delay(1_000L)
+                        if (isCurrentCallSocket() && createdSocket.connected()) {
+                            joinedSocketId.set(null)
+                            joinConnectedSocket()
+                        }
+                    }
+                } else if (error != "CALL_JOIN_IN_PROGRESS") {
+                    endCallInternal("No se pudo autorizar la llamada.")
+                }
+            }
+            socket?.on("call-access-revoked") {
+                if (isCurrentCallSocket()) endCallInternal("La llamada ya no está disponible.")
+            }
+            socket?.on("call-session-replaced") {
+                if (isCurrentCallSocket()) endCallInternal("La llamada continúa desde otra conexión.", releaseServerSession = false)
             }
 
             socket?.on("user-joined") { args ->
@@ -1459,6 +1509,7 @@ class CallRepository @Inject constructor(
                     .map { it.socketId.trim() }
                     .filter { it.isNotBlank() }
                     .toSet()
+                val rejoinedSignaling = renegotiateAfterSignalingRejoin.getAndSet(false)
 
                 val remoteParticipants = mutableListOf<CallParticipant>()
 
@@ -1481,7 +1532,7 @@ class CallRepository @Inject constructor(
                         )
                     )
 
-                    if (sid !in previousRemoteSockets) {
+                    if (shouldRenegotiateCallParticipant(sid in previousRemoteSockets, rejoinedSignaling)) {
                         webRTCManager?.onUserJoined(sid, uid)
                     }
                 }
@@ -1664,6 +1715,21 @@ class CallRepository @Inject constructor(
             socket?.emit(event, payload)
         }
         var events = object : conectate.com.data.webrtc.SignalingEvents {
+            override fun onNetworkChanged(): Boolean {
+                val changingSocket = socket ?: return false
+                scope.launch {
+                    if (socket !== changingSocket ||
+                        !authService.getCurrentUserId().equals(userId, ignoreCase = true) ||
+                        !canRefreshCallMedia(_activeCall.value, mediaCallId)) return@launch
+                    // An old WebSocket may still report connected after Wi-Fi disappears.
+                    // Rejoin with a fresh socket id immediately on the new default route.
+                    changingSocket.disconnect()
+                    changingSocket.connect()
+                    Log.i(TAG, "Reopening call signaling after a default network change")
+                }
+                return true
+            }
+
             override fun onSendOffer(targetSocketId: String, offer: org.json.JSONObject) {
                 var data = org.json.JSONObject().apply {
                     put("target", targetSocketId)
@@ -1736,6 +1802,11 @@ class CallRepository @Inject constructor(
                     refreshAudioSessionRepeatedly(attempts = 6, delayMs = 350L)
                 } else if (!hasConnectedPeer) {
                     hasConnectedMediaPath = false
+                    _activeCall.update { call ->
+                        if (call?.connectionState == CallConnectionState.CONNECTED) {
+                            call.copy(connectionState = CallConnectionState.RECONNECTING)
+                        } else call
+                    }
                 }
             }
         }
@@ -1766,7 +1837,7 @@ class CallRepository @Inject constructor(
 
         _activeCall.value = call.copy(
             connectionState = CallConnectionState.CONNECTED,
-            startedAtEpochMs = System.currentTimeMillis()
+            startedAtEpochMs = connectedCallStartTime(call, System.currentTimeMillis())
         )
         recordCallSetupSuccess(call)
         clearConnectingTimeout()
@@ -1837,13 +1908,20 @@ class CallRepository @Inject constructor(
     }
 
     @Synchronized
-    private fun endCallInternal(reason: String) {
+    private fun endCallInternal(reason: String, releaseServerSession: Boolean = true) {
         discardPreparedIncomingSocket()
         var callSnapshot = _activeCall.value
         if (callSnapshot?.connectionState == CallConnectionState.ENDED) return
         callSnapshot?.let { callCancellationGuard.mark(it.callId) }
         // Invalidate delayed audio work before disconnecting/resetting native media.
         _activeCall.value = callSnapshot?.copy(connectionState = CallConnectionState.ENDED)
+        if (callSnapshot != null && releaseServerSession) {
+            pendingCallLeaveJob = scope.launch {
+                callControlClient.leave(callSnapshot.callId).onFailure { error ->
+                    logBestEffortFailure("releaseCallSession", error, callSnapshot.callId)
+                }
+            }
+        }
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         callTonePlayer.stopRingback()
         clearOutgoingRingTimeout()
@@ -1924,6 +2002,7 @@ class CallRepository @Inject constructor(
             }
 
             var invitees = pendingInvitees.toList()
+            scope.launch {
             invitees.forEach { target ->
                 runCatching {
                     sendCallResponse(
@@ -1940,6 +2019,7 @@ class CallRepository @Inject constructor(
                         callId = active.callId
                     )
                 }
+            }
             }
             endCallInternal(reason = "Llamada no contestada")
         }
@@ -2330,8 +2410,5 @@ class CallRepository @Inject constructor(
         )
     }
 }
-
-
-
 
 

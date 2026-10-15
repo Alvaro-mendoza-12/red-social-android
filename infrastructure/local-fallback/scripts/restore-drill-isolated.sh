@@ -41,7 +41,6 @@ docker run --detach --rm --name "$DRILL_NAME" --label "$DRILL_LABEL" \
   --security-opt no-new-privileges --memory 1g --cpus 1 --pids-limit 128 \
   --tmpfs "/var/lib/postgresql/data:rw,noexec,nosuid,size=768m,mode=0700,uid=$DB_UID,gid=$DB_GID" \
   --tmpfs "/var/run/postgresql:rw,noexec,nosuid,size=16m,mode=0755,uid=$DB_UID,gid=$DB_GID" \
-  --mount "type=bind,source=$BACKUP_DIR/postgres.dump,target=/backup/postgres.dump,readonly" \
   --env POSTGRES_USER=conectate --env POSTGRES_DB=novvin_restore_drill \
   --env POSTGRES_HOST_AUTH_METHOD=trust \
   "$IMAGE" > "$LOG_DIR/container-id"
@@ -63,9 +62,11 @@ if [ "$READY" != 1 ]; then
   exit 1
 fi
 
-if ! docker exec "$DRILL_NAME" pg_restore -U conectate -d novvin_restore_drill \
-  --exit-on-error --no-owner --no-privileges /backup/postgres.dump \
-  > "$LOG_DIR/restore.log" 2>&1; then
+# The backup remains mode 0600 under the operator UID. Stream it through
+# stdin rather than granting the isolated PostgreSQL UID access to the host file.
+if ! docker exec -i "$DRILL_NAME" pg_restore -U conectate -d novvin_restore_drill \
+  --exit-on-error --no-owner --no-privileges \
+  < "$BACKUP_DIR/postgres.dump" > "$LOG_DIR/restore.log" 2>&1; then
   docker logs "$DRILL_NAME" > "$LOG_DIR/startup.log" 2>&1 || true
   echo "ERROR: isolated restore failed; details remain in the private diagnostic directory" >&2
   exit 1

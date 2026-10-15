@@ -1,5 +1,7 @@
 package conectate.com.presentation.videos
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import android.content.Context
 import android.net.Uri
 import android.util.AtomicFile
@@ -102,7 +104,7 @@ internal class CubeColorLutStore(private val context: Context) {
         require(id.matches(Regex("[a-f0-9]{64}"))) { "El identificador del filtro no es válido." }
         val file = java.io.File(directory, "$id.cube")
         require(file.isFile && file.length() <= MAX_CUBE_BYTES) { "No se encontró el filtro guardado. Vuelve a importarlo." }
-        return parseCubeColorLut(file.readBytes())
+        return parseCubeColorLut(file.inputStream().use { it.readMediaBytesWithLimit(MAX_CUBE_BYTES.toLong()) })
     }
 
     fun discardUnused(preservedIds: Set<String>): Int = directory.listFiles().orEmpty().count { file ->

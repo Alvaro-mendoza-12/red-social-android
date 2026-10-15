@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -64,6 +65,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -82,6 +88,8 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import conectate.com.core.media.MediaImageRequestFactory
+import conectate.com.core.media.ViewOnceMediaStore
+import conectate.com.core.media.StorageReadSession
 import conectate.com.core.media.ProfileIdentityImageStore
 import conectate.com.util.UbuntuMedia
 import conectate.com.util.VideoCache
@@ -99,6 +107,9 @@ data class MediaItem(
 internal const val MIN_MEDIA_ZOOM = 1f
 internal const val MAX_MEDIA_ZOOM = 3f
 internal const val DOUBLE_TAP_MEDIA_ZOOM = 2f
+
+internal fun canZoomLoadedImage(fittedUsable: Boolean, originalReady: Boolean, previewReady: Boolean, durableReady: Boolean): Boolean =
+    fittedUsable && (originalReady || previewReady || durableReady)
 
 internal data class MediaDimensions(
     val width: Float,
@@ -238,6 +249,7 @@ fun FullScreenImageDialog(
     initialIndex: Int = 0,
     onResolveUrl: (suspend (String) -> String?)? = null,
     onDownload: ((MediaItem) -> Unit)? = null,
+    onShare: ((MediaItem) -> Unit)? = null,
     secureContent: Boolean = false,
     bottomOverlay: (@Composable (page: Int) -> Unit)? = null,
     onDismiss: () -> Unit
@@ -257,6 +269,31 @@ fun FullScreenImageDialog(
         mutableStateOf(items.getOrNull(normalizedMediaIndex(initialIndex, items.size)))
     }
     var dismissDragY by remember { mutableStateOf(0f) }
+
+    val closeSecure by rememberUpdatedState(onDismiss)
+    val secureLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val secureIdentity = remember(secureContent, items) { StorageReadSession.snapshot()?.identity }
+    DisposableEffect(secureContent, items, secureLifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (secureContent && event == androidx.lifecycle.Lifecycle.Event.ON_STOP) closeSecure()
+        }
+        if (secureContent) {
+            secureLifecycle.addObserver(observer)
+            if (!secureLifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) closeSecure()
+        }
+        onDispose {
+            secureLifecycle.removeObserver(observer)
+            if (secureContent) items.forEach { ViewOnceMediaStore.release(it.url) }
+        }
+    }
+    LaunchedEffect(secureContent, items, secureIdentity) {
+        if (secureContent) while (true) {
+            if (secureIdentity == null || StorageReadSession.snapshot()?.identity != secureIdentity || items.any { !ViewOnceMediaStore.owns(it.url) }) {
+                closeSecure(); break
+            }
+            kotlinx.coroutines.delay(250)
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -364,7 +401,8 @@ fun FullScreenImageDialog(
                         resolvedUrl?.takeIf(String::isNotBlank)?.let { playableUrl ->
                             MediaViewerItem(
                                 item = item.copy(url = playableUrl),
-                                isActive = pagerState.currentPage == page
+                                isActive = pagerState.currentPage == page,
+                                secureContent = secureContent
                             )
                         }
                     }
@@ -420,7 +458,14 @@ fun FullScreenImageDialog(
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (onDownload != null && currentMediaItem != null) {
+                if (!secureContent && onShare != null && currentMediaItem != null) {
+                    IconButton(onClick = { currentMediaItem?.let(onShare) },
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.58f), CircleShape)) {
+                        Icon(Icons.Default.Share, "Compartir con otra aplicación", tint = Color.White)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+                if (!secureContent && onDownload != null && currentMediaItem != null) {
                     IconButton(
                         onClick = { currentMediaItem?.let(onDownload) },
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.58f), CircleShape)
@@ -453,7 +498,8 @@ fun FullScreenImageDialog(
 @Composable
 private fun MediaViewerItem(
     item: MediaItem,
-    isActive: Boolean
+    isActive: Boolean,
+    secureContent: Boolean = false
 ) {
     Box(
         modifier = Modifier
@@ -463,9 +509,9 @@ private fun MediaViewerItem(
         contentAlignment = Alignment.Center
     ) {
         if (isVideoMediaType(item.type)) {
-            VideoViewerItem(item = item, isActive = isActive)
+            VideoViewerItem(item = item, isActive = isActive, secureContent = secureContent)
         } else {
-            ZoomableImageViewer(item = item)
+            ZoomableImageViewer(item = item, secureContent = secureContent)
         }
     }
 }
@@ -473,16 +519,21 @@ private fun MediaViewerItem(
 @Composable
 internal fun ZoomableImageViewer(
     item: MediaItem,
-    allowDurableProfileFallback: Boolean = false
+    allowDurableProfileFallback: Boolean = false,
+    secureContent: Boolean = false
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var requestRevision by remember(item.id, item.url) { mutableIntStateOf(0) }
-    val imageRequest = remember(context, item.url, requestRevision) {
-        MediaImageRequestFactory.fullScreen(context, item.url)
+    val imageRequest = remember(context, item.url, requestRevision, secureContent) {
+        if (secureContent) coil.request.ImageRequest.Builder(context).data(item.url)
+            .size(MediaImageRequestFactory.MAX_FULLSCREEN_IMAGE_DIMENSION_PX, MediaImageRequestFactory.MAX_FULLSCREEN_IMAGE_DIMENSION_PX)
+            .memoryCachePolicy(coil.request.CachePolicy.DISABLED).diskCachePolicy(coil.request.CachePolicy.DISABLED)
+            .networkCachePolicy(coil.request.CachePolicy.DISABLED).crossfade(false).build()
+        else MediaImageRequestFactory.fullScreen(context, item.url)
     }
-    val previewRequest = remember(context, item.url) {
-        MediaImageRequestFactory.preview(context, item.url)
+    val previewRequest = remember(context, item.url, secureContent) {
+        if (secureContent) null else MediaImageRequestFactory.preview(context, item.url)
     }
     val identityAccountId = LocalProfileIdentityAccount.current
     val identityGeneration = remember(item.url, identityAccountId) { ProfileIdentityImageStore.generation(identityAccountId) }
@@ -506,7 +557,7 @@ internal fun ZoomableImageViewer(
     val density = LocalDensity.current
     val viewportDimensions = MediaDimensions(viewportSize.width.toFloat(), viewportSize.height.toFloat())
     val fittedDimensions = fitMediaInViewport(viewportDimensions, intrinsicSize)
-    val canZoom = fittedDimensions.isUsable && (isPreviewReady || durableProfileImage != null)
+    val canZoom = canZoomLoadedImage(fittedDimensions.isUsable, !isImageLoading && !hasImageError, isPreviewReady, durableProfileImage != null)
 
     LaunchedEffect(viewportSize, fittedDimensions) {
         if (transform.scale <= MIN_MEDIA_ZOOM + 0.01f || !canZoom) {
@@ -526,7 +577,20 @@ internal fun ZoomableImageViewer(
             .fillMaxSize()
             .onSizeChanged { viewportSize = it }
             .clipToBounds()
-            .pointerInput(item.id, item.url, canZoom) {
+            .testTag("media_zoom_viewer")
+            .semantics {
+                stateDescription = "Ampliación ${(transform.scale * 100).toInt()} %"
+                if (canZoom) customActions = listOf(
+                    CustomAccessibilityAction("Ampliar imagen") {
+                        transform = applyMediaTransformGesture(transform, MediaTranslation(viewportDimensions.width / 2, viewportDimensions.height / 2), MediaTranslation(0f, 0f), 1.5f, viewportDimensions, fittedDimensions); true
+                    },
+                    CustomAccessibilityAction("Reducir imagen") {
+                        transform = applyMediaTransformGesture(transform, MediaTranslation(viewportDimensions.width / 2, viewportDimensions.height / 2), MediaTranslation(0f, 0f), 1 / 1.5f, viewportDimensions, fittedDimensions); true
+                    },
+                    CustomAccessibilityAction("Restablecer imagen") { transform = MediaTransform(); true }
+                )
+            }
+            .pointerInput(item.id, item.url, canZoom, viewportSize, fittedDimensions) {
                 if (!canZoom) return@pointerInput
                 detectTapGestures(
                     onDoubleTap = { tapOffset ->
@@ -539,7 +603,7 @@ internal fun ZoomableImageViewer(
                     }
                 )
             }
-            .pointerInput(item.id, item.url, canZoom) {
+            .pointerInput(item.id, item.url, canZoom, viewportSize, fittedDimensions) {
                 if (!canZoom) return@pointerInput
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -625,8 +689,12 @@ internal fun ZoomableImageViewer(
             onLoading = {
                 isPreviewReady = durableProfileImage != null
             },
-            onSuccess = {
+            onSuccess = { state ->
                 isPreviewReady = true
+                val drawable = state.result.drawable
+                if (!intrinsicSize.isUsable && drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0) {
+                    intrinsicSize = MediaDimensions(drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat())
+                }
             },
             onError = {
                 isPreviewReady = durableProfileImage != null
@@ -728,7 +796,8 @@ internal fun ZoomableImageViewer(
 @Composable
 private fun VideoViewerItem(
     item: MediaItem,
-    isActive: Boolean
+    isActive: Boolean,
+    secureContent: Boolean = false
 ) {
     val context = LocalContext.current
     var errorMessage by remember(item.id, item.url) { mutableStateOf<String?>(null) }
@@ -740,7 +809,7 @@ private fun VideoViewerItem(
         mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
     }
 
-    val exoPlayer = remember(item.url, requestRevision) {
+    val exoPlayer = remember(item.url, requestRevision, secureContent) {
         val performanceProfile = VideoPerformanceProfiles.detect(context)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -754,7 +823,7 @@ private fun VideoViewerItem(
         ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(VideoCache.getCacheDataSourceFactory(context))
+                DefaultMediaSourceFactory(if (secureContent) conectate.com.util.MediaPlaybackDataSources.streamingFactory(context) else VideoCache.getCacheDataSourceFactory(context))
             )
             .build()
             .apply {

@@ -84,3 +84,9 @@ Evidencia: [Android y teléfono](../../VALIDACION_EDITOR_MOMENTOS_MOTO_FED1546.j
 Capturas del teléfono con contenido propio de prueba: [barra compacta](capturas/moto-g04-fed1546/qa-music-compact-timeline-fed1546.png), [letras](capturas/moto-g04-fed1546/qa-moment-editor-lyrics-fed1546.png), [etiqueta y texto grande](capturas/moto-g04-fed1546/qa-moment-editor-label-fed1546.png).
 
 Estos resultados cubren un teléfono físico y los escenarios descritos. La publicación del AAB firmado sigue realizándose con la llave original en Android Studio; la entrega completa a producción requiere cerrar los puntos pendientes indicados.
+
+## Continuación posterior en el APK con Sorteos
+
+Se corrigió el color del rótulo de duración fija para usar `onSurface`. El APK posterior compiló correctamente y pasó 1.300 unitarias; la tanda del Motorola pasó 26/26 casos, incluidos doce del selector, dos de letras y seis de invitaciones locales. El caso de expiración pasó sin depurador; la causa de los dos fallos históricos sigue sin demostrarse. Estas cifras corresponden al APK posterior, no sustituyen las de `fed1546`.
+
+Se recuperó el acceso SSH por Tailscale, se completó la comparación de audio en Linux y se verificó que el servidor conservaba `f42a349`. No se desplegó el candidato. Detalles y pendientes: [continuidad móvil](../../CONTINUIDAD_VALIDACION_MOVIL.md), [evidencia adicional](../../VALIDACION_CONTINUIDAD_ADICIONAL.json) y [validación final de Sorteos](../../VALIDACION_SORTEOS.json).

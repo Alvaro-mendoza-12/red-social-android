@@ -45,7 +45,7 @@ internal fun ProfileVisitorsContent(
                 items(state.items, key = { it.user.id }) { visitor ->
                     Row(Modifier.fillMaxWidth().clickable { onOpenProfile(visitor.user.id) }
                         .padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CircularProfileImage(imageUrl = visitor.user.avatar_url, size = 42.dp,
+                        CircularProfileImage(ownerId = visitor.user.id, imageUrl = visitor.user.avatar_url, size = 42.dp,
                             fallbackName = visitor.user.displayName)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {

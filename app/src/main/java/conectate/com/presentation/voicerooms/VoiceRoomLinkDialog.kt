@@ -46,6 +46,34 @@ internal fun VoiceRoomLinkDialog(link: String, onDismiss: () -> Unit) {
     var failed by remember(link) { mutableStateOf(!isVoiceRoomWebLink(link)) }
     var canGoBack by remember(link) { mutableStateOf(false) }
     var currentHost by remember(link) { mutableStateOf(Uri.parse(link).host.orEmpty()) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val dismissLatest by rememberUpdatedState(onDismiss)
+    fun disposePreview() {
+        val page = webView ?: return
+        webView = null
+        page.stopLoading()
+        page.webChromeClient = null
+        (page.parent as? android.view.ViewGroup)?.removeView(page)
+        page.destroy()
+    }
+    DisposableEffect(lifecycle, link) {
+        var dismissed = false
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (!dismissed && (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE ||
+                    event == androidx.lifecycle.Lifecycle.Event.ON_STOP)) {
+                dismissed = true
+                // This is a temporary external-page preview. Destroying it on
+                // dismissal stops HTML media, iframe players and Web Audio too;
+                // WebView.onPause alone does not stop JavaScript playback.
+                // Background recomposition can be suspended. Release on the
+                // lifecycle thread immediately, before asking Compose to close.
+                disposePreview()
+                dismissLatest()
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val failLoad = { failed=true; progress=100 }
     LaunchedEffect(link,loadGeneration,failed) {
         if (!failed) {
@@ -55,8 +83,7 @@ internal fun VoiceRoomLinkDialog(link: String, onDismiss: () -> Unit) {
     }
     DisposableEffect(link) {
         onDispose {
-            webView?.apply { stopLoading(); webChromeClient=null; destroy() }
-            webView=null
+            disposePreview()
         }
     }
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {

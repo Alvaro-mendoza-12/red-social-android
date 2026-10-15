@@ -16,7 +16,8 @@ import javax.inject.Inject
 class GroupDetailViewModel @Inject constructor(
     private val groupRepository: GroupRepository,
     private val authService: AuthService,
-    private val userRepository: conectate.com.data.repository.UserRepository
+    private val userRepository: conectate.com.data.repository.UserRepository,
+    private val membershipRepository: conectate.com.data.repository.CollectionMembershipRepository
 ) : ViewModel() {
 
     private val _actionMessage = MutableStateFlow<String?>(null)
@@ -47,6 +48,62 @@ class GroupDetailViewModel @Inject constructor(
     private val _isDeleted = MutableStateFlow(false)
     val isDeleted = _isDeleted.asStateFlow()
 
+    private val _membershipPolicy = MutableStateFlow<conectate.com.data.localfallback.CollectionMembershipPolicy?>(null)
+    val membershipPolicy = _membershipPolicy.asStateFlow()
+    private val _membershipBusy = MutableStateFlow(false)
+    val membershipBusy = _membershipBusy.asStateFlow()
+    private val _membershipError = MutableStateFlow<String?>(null)
+    val membershipError = _membershipError.asStateFlow()
+
+    private var membershipPolicyRequest = 0L
+
+    fun refreshMembershipPolicy() {
+        val id = groupId ?: return
+        val account = authService.getCurrentUserId()
+        val request = ++membershipPolicyRequest
+        viewModelScope.launch {
+            val result = membershipRepository.policy("groups", id)
+            if (request != membershipPolicyRequest || groupId != id || authService.getCurrentUserId() != account) return@launch
+            _membershipPolicy.value = result.getOrNull()
+        }
+    }
+
+    fun setMembersCanAdd(enabled: Boolean) {
+        val id = groupId ?: return
+        if (_membershipBusy.value || _membershipPolicy.value?.canManagePolicy != true) return
+        ++membershipPolicyRequest
+        _membershipBusy.value = true
+        val account = authService.getCurrentUserId()
+        viewModelScope.launch {
+            try {
+                val result = membershipRepository.setMembersCanAdd("groups", id, enabled)
+                if (groupId != id || authService.getCurrentUserId() != account) return@launch
+                result.onSuccess { ++membershipPolicyRequest; _membershipPolicy.value = it }.onFailure {
+                    _actionMessage.value = "No se pudo guardar el permiso. Inténtalo de nuevo."
+                }
+            } finally { _membershipBusy.value = false }
+        }
+    }
+
+    fun addMember(userId: String, from: String?, until: String?, onSuccess: () -> Unit) {
+        val id = groupId ?: return
+        if (_membershipBusy.value || _membershipPolicy.value?.canAddMembers != true) return
+        _membershipBusy.value = true
+        _membershipError.value = null
+        val account = authService.getCurrentUserId()
+        viewModelScope.launch {
+            try {
+                val result = membershipRepository.add("groups", id, userId, from, until)
+                if (groupId != id || authService.getCurrentUserId() != account) return@launch
+                if (result.isSuccess) { onSuccess(); loadGroupMembers() }
+                else {
+                    _membershipError.value = "No se pudo añadir. Revisa el permiso y el intervalo de historial e inténtalo de nuevo."
+                    refreshMembershipPolicy()
+                }
+            } finally { _membershipBusy.value = false }
+        }
+    }
+
     private var groupId: String? = null
     private var redeemedInviteToken: String? = null
 
@@ -57,6 +114,9 @@ class GroupDetailViewModel @Inject constructor(
 
     fun loadGroupDetails(id: String, inviteToken: String? = null) {
         groupId = id
+        _membershipPolicy.value = null
+        // An invitation must finish before requesting the new member's rights.
+        if (inviteToken.isNullOrBlank()) refreshMembershipPolicy()
         _isLoading.value = true
         _group.value = null
         _members.value = emptyList()
@@ -76,6 +136,7 @@ class GroupDetailViewModel @Inject constructor(
                      _actionMessage.value = joined.exceptionOrNull()?.message ?: "La invitación no es válida"
                  }
              }
+             if (cleanInvite.isNotBlank()) refreshMembershipPolicy()
              try {
                  groupRepository.syncGroups()
              } catch (e: Exception) {
@@ -159,17 +220,6 @@ class GroupDetailViewModel @Inject constructor(
             // Reload members to reflect changes (or rely on realtime if enabled/working)
             // For now, let's force a reload of members to be safe
             loadGroupMembers()
-        }
-    }
-
-    fun addMember(userId: String, onSuccess: () -> Unit) {
-        val id = groupId ?: return
-        viewModelScope.launch {
-            val result = groupRepository.addMember(id, userId)
-            if (result.isSuccess) {
-                onSuccess()
-                loadGroupMembers()
-            }
         }
     }
 

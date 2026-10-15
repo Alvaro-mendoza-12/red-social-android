@@ -1,5 +1,7 @@
 package conectate.com.data.repository.message
 
+import conectate.com.core.media.readMediaBytesWithLimit
+
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -99,7 +101,7 @@ class MessageRemoteStore @Inject constructor(
             )
         } else {
             val bytes = runCatching {
-                context.contentResolver.openInputStream(mediaUri)?.use { it.readBytes() }
+                context.contentResolver.openInputStream(mediaUri)?.use { it.readMediaBytesWithLimit(60L * 1024 * 1024) }
             }.getOrNull() ?: return MessageRemoteResult.Error("No se pudo leer el archivo.")
             if (bytes.isEmpty()) return MessageRemoteResult.Error("El archivo esta vacio.")
             uploadedSize = bytes.size.toLong()

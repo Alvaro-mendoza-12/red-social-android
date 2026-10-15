@@ -190,6 +190,10 @@ class MessageMediaPreparationTest {
         waitForRenderedPhoto()
         compose.onNodeWithContentDescription("Recortar libre").performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithText("Recortar foto").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithText("Usar").fetchSemanticsNodes().singleOrNull()
+                ?.config?.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) == false
+        }
         compose.onNodeWithText("1:1").performClick()
         compose.onNodeWithText("Usar").performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithText("Recortar foto").fetchSemanticsNodes().isEmpty() }

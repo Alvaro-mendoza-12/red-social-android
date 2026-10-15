@@ -70,6 +70,10 @@ class MomentViewModel @Inject constructor(
         }
     }
 
+    fun refreshAuthorMoments(ownerIds: List<String>) {
+        viewModelScope.launch { repository.refreshMomentsForAuthors(ownerIds) }
+    }
+
     // Helper to manually add a moment (optimistic update)
     fun addLocalMoment(moment: Moment) {
         val currentList = _moments.value.toMutableList()

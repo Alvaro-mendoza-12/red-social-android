@@ -53,7 +53,7 @@ internal fun rememberRaffleDrawPresentationSession(round: RaffleRound?): RaffleD
         if (index < 0) return@LaunchedEffect
         session.rotation.snapTo((session.rotation.value % 360f + 360f) % 360f)
         session.rotation.animateTo(wheelTargetRotation(session.rotation.value, index, candidates.size),
-            tween(4_000, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            tween(4_000, easing = raffleSpinEasing))
         if (session.state.roundId != roundId || session.state.active?.position != result.position) return@LaunchedEffect
         session.state = session.state.reveal(result.position)
         session.celebration.snapTo(0f)

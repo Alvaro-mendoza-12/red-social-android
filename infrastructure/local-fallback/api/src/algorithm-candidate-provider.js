@@ -34,6 +34,7 @@
 
 const SUPPORTED_SURFACES = new Set(['video', 'social'])
 const MAX_CANDIDATES = 200
+const MAX_CANDIDATE_ALIASES = MAX_CANDIDATES * 32
 const MAX_ITEM_DEPTH = 8
 const MAX_ITEM_KEYS = 160
 const MAX_ITEM_ARRAY = 100
@@ -360,6 +361,7 @@ function normalizeRawBatch(value) {
   return {
     snapshotId,
     providerState: value.providerState === undefined ? null : value.providerState,
+    nextProviderState: value.nextProviderState === undefined ? null : value.nextProviderState,
     inferredSignals: normalizedInferenceSignals(value.inferredSignals),
     candidates: value.candidates.slice(0, MAX_CANDIDATES),
   }
@@ -483,7 +485,7 @@ function createAlgorithmCandidateProvider({
     const preliminaries = batch.candidates
       .map((raw) => preliminaryCandidate(raw, { surface, viewerAliases, now }))
       .filter(Boolean)
-    const creatorIds = uniqueIdentifiers(preliminaries.flatMap((candidate) => candidate.creatorAliases), MAX_CANDIDATES)
+    const creatorIds = uniqueIdentifiers(preliminaries.flatMap((candidate) => candidate.creatorAliases), MAX_CANDIDATE_ALIASES)
     const blockEdges = creatorIds.length > 0
       ? normalizeBlockEdges(await loadBlockEdges({
         owner: input.owner,
@@ -514,6 +516,7 @@ function createAlgorithmCandidateProvider({
     return {
       snapshotId: batch.snapshotId,
       providerState: batch.providerState,
+      nextProviderState: batch.nextProviderState,
       inferredSignals: batch.inferredSignals,
       candidates,
     }

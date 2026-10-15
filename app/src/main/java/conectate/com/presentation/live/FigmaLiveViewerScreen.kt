@@ -44,6 +44,7 @@ fun LiveViewerScreen(
     val localGuestTrack by viewModel.localVideoTrack.collectAsStateWithLifecycle()
     val remoteTracks by viewModel.remoteVideoTracks.collectAsStateWithLifecycle()
     val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
+    val liveKitRemoteParticipants by viewModel.liveKitRemoteParticipants.collectAsStateWithLifecycle()
     val liveKitState by viewModel.liveKitState.collectAsStateWithLifecycle()
     val eglBaseContext by viewModel.eglBaseContext.collectAsStateWithLifecycle()
     val session by viewModel.activeSession.collectAsStateWithLifecycle()
@@ -69,7 +70,7 @@ fun LiveViewerScreen(
     val currentUserId = remember { viewModel.getCurrentUserId()?.trim().orEmpty() }
     val guestSocketIds = remember(activeGuests) { activeGuests.mapTo(mutableSetOf()) { it.socketId } }
     val hostTrack = remoteTracks.entries.firstOrNull { it.key !in guestSocketIds }?.value
-    val guestTracks = remember(remoteTracks, guestSocketIds, activeGuests, currentUserId, localGuestTrack) {
+    val guestTracks = remember(remoteTracks, guestSocketIds, activeGuests, currentUserId, localGuestTrack, guestVideo, guestBroadcasting) {
         buildMap {
             remoteTracks
                 .filterKeys { it in guestSocketIds }
@@ -77,7 +78,7 @@ fun LiveViewerScreen(
             val ownSocketId = activeGuests
                 .firstOrNull { it.userId.equals(currentUserId, ignoreCase = true) }
                 ?.socketId
-            if (!ownSocketId.isNullOrBlank()) {
+            if (!ownSocketId.isNullOrBlank() && guestVideo && guestBroadcasting) {
                 localGuestTrack?.let { put(ownSocketId, it) }
             }
         }
@@ -236,6 +237,7 @@ fun LiveViewerScreen(
         hostTrack = hostTrack,
         remoteTracks = guestTracks,
         liveKitVideos = liveKitRemoteVideos,
+        liveKitParticipants = liveKitRemoteParticipants,
         onAttachLiveKit = viewModel::attachLiveKitRenderer,
         onDetachLiveKit = viewModel::detachLiveKitRenderer,
         activeGuests = activeGuests,
@@ -272,6 +274,7 @@ fun LiveViewerScreen(
         onStartGuest = ::startGuest,
         onGuestMic = viewModel::setGuestMicEnabled,
         onGuestVideo = { viewModel.setGuestVideoEnabled(it) },
+        onGuestSwitchCamera = { viewModel.switchCamera() },
         onLeaveGuest = viewModel::leaveGuestSeat,
         onBattleResponse = viewModel::respondToBattle,
         onModerate = { showModerationDialog = true }

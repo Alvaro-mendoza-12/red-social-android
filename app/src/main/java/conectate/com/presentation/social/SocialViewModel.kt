@@ -50,6 +50,7 @@ class SocialViewModel @Inject constructor(
     private val liveRepository: conectate.com.data.repository.LiveRepository,
     private val socializationRepository: conectate.com.data.repository.SocializationRepository,
     private val algorithmRepository: AlgorithmRepository,
+    private val feedSeenHistory: conectate.com.core.feed.FeedSeenHistory,
     appSettingsPreferences: conectate.com.data.local.prefs.AppSettingsPreferences,
     // challengeRepository removed (moved to ChallengeViewModel)
     private val friendRepository: conectate.com.data.repository.FriendRepository,
@@ -93,6 +94,12 @@ class SocialViewModel @Inject constructor(
 
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
     val posts: StateFlow<List<Post>> = _posts.asStateFlow()
+    private val _authorFollows = MutableStateFlow<Map<String, conectate.com.data.model.AuthorFollowState>>(emptyMap())
+    val authorFollows = _authorFollows.asStateFlow()
+    private val _followBusy = MutableStateFlow<Set<String>>(emptySet())
+    val followBusy = _followBusy.asStateFlow()
+    private var followsJob: Job? = null
+
     val feedError: StateFlow<String?> = postRepository.globalFeedError
     val feedMode: StateFlow<SocialFeedMode> = feedPreferences.mode
     val mutedCreatorIds: StateFlow<Set<String>> = feedPreferences.mutedCreatorIds
@@ -133,6 +140,12 @@ class SocialViewModel @Inject constructor(
     private var morePostsJob: Job? = null
     private val authorHydrator = SocialAuthorHydrator(viewModelScope) { ids -> userRepository.getUsersByIds(ids) }
     private var postsGeneration: Long = 0L
+    private var discoverySessionSeed = UUID.randomUUID().toString()
+    private var previousDiscoveryFirstId: String? = null
+    private var previousVisitSeenIds: Set<String> = emptySet()
+    private var historySessionSeed: String? = null
+    private var feedWasBackgrounded = false
+    private var automaticEmptyPageReads = 0
     private var supplementalContentJob: Job? = null
     private var activeAccountId: String? = authService.getCurrentUserId()
         ?.trim()
@@ -169,6 +182,7 @@ class SocialViewModel @Inject constructor(
         get() = authService.getCurrentUserId()
 
     init {
+        feedSignalTracker.setAccount(activeAccountId)
         viewModelScope.launch {
             authService.currentSession
                 .map { session ->
@@ -180,13 +194,25 @@ class SocialViewModel @Inject constructor(
                     if (accountId != activeAccountId) handleAccountChanged(accountId)
                 }
         }
+        viewModelScope.launch {
+            _posts.map { posts -> posts.map { it.userId.trim().lowercase() }.distinct().sorted() }
+                .distinctUntilChanged().collect { refreshAuthorFollows() }
+        }
+        viewModelScope.launch { userRepository.followUpdates.collect { refreshAuthorFollows() } }
         loadPosts()
         scheduleSupplementalContent()
     }
 
     private fun handleAccountChanged(accountId: String?) {
         activeAccountId = accountId
+        feedSignalTracker.setAccount(accountId)
+        previousVisitSeenIds = emptySet()
+        historySessionSeed = null
+        automaticEmptyPageReads = 0
         accountGeneration++
+        followsJob?.cancel()
+        _authorFollows.value = emptyMap()
+        _followBusy.value = emptySet()
         postsGeneration++
         postsJob?.cancel()
         morePostsJob?.cancel()
@@ -304,16 +330,48 @@ class SocialViewModel @Inject constructor(
         }
     }
 
-    fun followRecommendedUser(user: conectate.com.data.model.User) {
-        _recommendedPeople.value = _recommendedPeople.value.filterNot { it.id == user.id }
-        viewModelScope.launch {
-            userRepository.followUser(user.id).onFailure {
-                _recommendedPeople.value = (_recommendedPeople.value + user)
-                    .distinctBy { it.id }
-                    .take(12)
+    private fun refreshAuthorFollows() {
+        followsJob?.cancel()
+        val generation = accountGeneration
+        val ids = _posts.value.map { it.userId.trim().lowercase() }
+            .filter { it.isNotBlank() && it != activeAccountId }.distinct()
+        if (ids.isEmpty() || activeAccountId == null) { _authorFollows.value = emptyMap(); return }
+        followsJob = viewModelScope.launch {
+            val result = mutableMapOf<String, conectate.com.data.model.AuthorFollowState>()
+            for (chunk in ids.chunked(100)) {
+                val following = userRepository.getFollowedUserIds(chunk).getOrNull() ?: return@launch
+                val followers = userRepository.getFollowingViewerIds(chunk).getOrNull() ?: return@launch
+                if (generation != accountGeneration) return@launch
+                chunk.forEach { result[it] = conectate.com.data.model.AuthorFollowState.from(it in following, it in followers) }
             }
+            if (generation == accountGeneration) _authorFollows.value = result
         }
     }
+
+    fun followAuthor(userId: String) {
+        val id = userId.trim().lowercase()
+        if (id == activeAccountId || id in _followBusy.value) return
+        val generation = accountGeneration
+        _followBusy.value += id
+        viewModelScope.launch {
+            try {
+                userRepository.followUser(id).fold(
+                    onSuccess = {
+                        if (generation == accountGeneration) {
+                            _recommendedPeople.value = _recommendedPeople.value.filterNot { it.id.equals(id, true) }
+                            refreshAuthorFollows()
+                        }
+                    },
+                    onFailure = {
+                        if (generation == accountGeneration)
+                            conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo seguir. Inténtalo nuevamente.")
+                    },
+                )
+            } finally { if (generation == accountGeneration) _followBusy.value -= id }
+        }
+    }
+
+    fun followRecommendedUser(user: conectate.com.data.model.User) = followAuthor(user.id)
 
     private fun loadCurrentUser() {
         val generation = accountGeneration
@@ -345,18 +403,41 @@ class SocialViewModel @Inject constructor(
         }
     }
 
-    fun loadPosts() = loadPosts(forceLegacy = false, refreshSeed = UUID.randomUUID().toString())
+    fun loadPosts() = loadPosts(forceLegacy = false, refreshSeed = discoverySessionSeed)
+
+    fun onFeedBackgrounded() { feedWasBackgrounded = true }
+
+    fun onFeedResumed() {
+        if (!feedWasBackgrounded) return
+        feedWasBackgrounded = false
+        if (feedMode.value == SocialFeedMode.DISCOVER) beginDiscoverySession(userInitiated = false)
+    }
+
+    fun enterDiscovery() {
+        feedWasBackgrounded = false
+        if (feedMode.value != SocialFeedMode.DISCOVER) {
+            selectFeedMode(SocialFeedMode.DISCOVER)
+        } else beginDiscoverySession(userInitiated = false)
+    }
+
+    private fun beginDiscoverySession(userInitiated: Boolean) {
+        previousDiscoveryFirstId = _posts.value.firstOrNull()?.id
+        discoverySessionSeed = UUID.randomUUID().toString()
+
+        // History is reloaded asynchronously before the next cached or network page.
+        _posts.value = emptyList()
+        _feedScrollReset.value++
+        loadPosts(forceLegacy = false, refreshSeed = discoverySessionSeed, userInitiated = userInitiated)
+    }
 
     fun refreshDiscovery() {
-        _feedScrollReset.value++
-        loadPosts(forceLegacy = false, replaceOrder = true, userInitiated = true)
+        beginDiscoverySession(userInitiated = true)
         scheduleSupplementalContent()
     }
 
     private fun loadPosts(
         forceLegacy: Boolean,
         refreshSeed: String = UUID.randomUUID().toString(),
-        replaceOrder: Boolean = false,
         userInitiated: Boolean = false,
     ) {
         val generation = ++postsGeneration
@@ -381,6 +462,14 @@ class SocialViewModel @Inject constructor(
             }
             try {
                 val selectedMode = feedMode.value
+                if (selectedMode == SocialFeedMode.DISCOVER && historySessionSeed != refreshSeed) {
+                    val account = activeAccountId
+                    val seen = feedSeenHistory.snapshot(account, "social")
+                    if (generation != postsGeneration || account != activeAccountId) return@launch
+                    previousVisitSeenIds = seen
+                    historySessionSeed = refreshSeed
+                    automaticEmptyPageReads = 0
+                }
                 resetAuthoritativeFeedState()
                 // Do not roll an already visible/edited feed back to disk on
                 // each refresh. Cache is only the first-paint fallback.
@@ -388,9 +477,11 @@ class SocialViewModel @Inject constructor(
                     postRepository.getCachedGlobalPosts(selectedMode.apiValue)
                 } else emptyList()
                 if (cachedPosts.isNotEmpty() && generation == postsGeneration) {
-                    val visibleCachedPosts = applyFeedControls(cachedPosts)
+                    val visibleCachedPosts = prioritizePreviousVisit(applyFeedControls(cachedPosts))
                     if (visibleCachedPosts.isNotEmpty()) {
-                        _posts.value = visibleCachedPosts
+                        _posts.value = if (selectedMode == SocialFeedMode.DISCOVER) {
+                            orderSocialDiscoveryForSession(visibleCachedPosts, authService.getCurrentUserId(), refreshSeed, previousDiscoveryFirstId, previousVisitSeenIds)
+                        } else visibleCachedPosts
                         recordFeedLoaded(startedAt, visibleCachedPosts.size, "local-cache", generation)
                     }
                 }
@@ -407,15 +498,18 @@ class SocialViewModel @Inject constructor(
                     }
                     if (generation != postsGeneration) return@launch
                     if (authoritativePage != null) {
-                        val visiblePosts = applyFeedControls(authoritativePage.items)
+                        val visiblePosts = prioritizePreviousVisit(applyFeedControls(authoritativePage.items))
                         if (visiblePosts.isNotEmpty() || (authoritativePage.hasMore && authoritativePage.nextCursor != null)) {
-                            authoritativeFeedActive = true
                             authoritativeCursor = authoritativePage.nextCursor
-                            _authoritativeHasMore.value = authoritativePage.hasMore && authoritativeCursor != null
+                            val continuation = socialDiscoveryContinuation(authoritativePage.hasMore, authoritativeCursor != null)
+                            authoritativeFeedActive = continuation.personalized
+                            publicFeedNextOffset = continuation.publicOffset
+                            _authoritativeHasMore.value = true
                             authoritativeRankingVersion = authoritativePage.rankingVersion
                             authoritativeExplanationsEnabled = authoritativePage.explanationsEnabled
                             authoritativeExplanations.putAll(authoritativePage.explanationsByCandidateId)
-                            _posts.value = reconcileSocialFeed(_posts.value, visiblePosts, !replaceOrder)
+                            val ordered = orderSocialDiscoveryForSession(visiblePosts, authService.getCurrentUserId(), refreshSeed, previousDiscoveryFirstId, previousVisitSeenIds)
+                            _posts.value = reconcileSocialFeed(_posts.value, ordered, preserveVisibleOrder = true)
                             recordFeedLoaded(startedAt, visiblePosts.size, "authoritative", generation)
                             refreshVisibleAuthors(generation)
                             return@launch
@@ -432,7 +526,7 @@ class SocialViewModel @Inject constructor(
                 publicFeedNextOffset = publicPage.nextOffset
                 _authoritativeHasMore.value = publicFeedNextOffset != null
                 run {
-                    val visiblePosts = applyFeedControls(publicPage.items)
+                    val visiblePosts = prioritizePreviousVisit(applyFeedControls(publicPage.items))
                     val ranked = if (selectedMode == SocialFeedMode.DISCOVER) {
                         rankPosts(visiblePosts, refreshSeed)
                     } else {
@@ -441,7 +535,7 @@ class SocialViewModel @Inject constructor(
                     // Keep cached content on a failed request, but honor an
                     // authoritative empty result (e.g. removed/private posts).
                     if (ranked.isEmpty() && postRepository.globalFeedError.value != null) return@run
-                    _posts.value = reconcileSocialFeed(_posts.value, ranked, !replaceOrder)
+                    _posts.value = reconcileSocialFeed(_posts.value, ranked, preserveVisibleOrder = true)
                     recordFeedLoaded(startedAt, ranked.size, selectedMode.apiValue, generation)
                     refreshVisibleAuthors(generation)
                 }
@@ -455,6 +549,7 @@ class SocialViewModel @Inject constructor(
                 if (generation == postsGeneration) {
                     _isRefreshing.value = false
                     _isUserRefreshing.value = false
+                    if (_posts.value.isEmpty() && _authoritativeHasMore.value && postRepository.globalFeedError.value == null && automaticEmptyPageReads++ < 8) loadMorePosts()
                 }
             }
         }
@@ -477,7 +572,10 @@ class SocialViewModel @Inject constructor(
                     if (generation != postsGeneration) return@launch
                     consumedRecommendationCursors.add(requested)
                     authoritativeCursor = page.nextCursor?.takeUnless { it in consumedRecommendationCursors }
-                    _authoritativeHasMore.value = page.hasMore && authoritativeCursor != null
+                    val continuation = socialDiscoveryContinuation(page.hasMore, authoritativeCursor != null)
+                    authoritativeFeedActive = continuation.personalized
+                    publicFeedNextOffset = continuation.publicOffset
+                    _authoritativeHasMore.value = true
                     authoritativeExplanations.putAll(page.explanationsByCandidateId)
                     page.items
                 } else {
@@ -488,7 +586,7 @@ class SocialViewModel @Inject constructor(
                     _authoritativeHasMore.value = publicFeedNextOffset != null
                     page.items
                 }
-                _posts.value = (_posts.value + applyFeedControls(items)).distinctBy { it.id }
+                _posts.value = (_posts.value + prioritizePreviousVisit(applyFeedControls(items))).distinctBy { it.id }
                 refreshVisibleAuthors(generation)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -499,10 +597,15 @@ class SocialViewModel @Inject constructor(
                 if (generation == postsGeneration) {
                     authoritativePageRequestInFlight = false
                     _isLoadingMorePosts.value = false
+                    if (_posts.value.isEmpty() && _authoritativeHasMore.value && _loadMorePostsError.value == null && automaticEmptyPageReads++ < 8) loadMorePosts()
                 }
             }
         }
     }
+
+    private fun prioritizePreviousVisit(items: List<Post>): List<Post> =
+        if (feedMode.value != SocialFeedMode.DISCOVER) items
+        else conectate.com.core.feed.prioritizeFeedCandidates(items, previousVisitSeenIds) { it.id }
 
     private fun resetAuthoritativeFeedState() {
         authoritativeFeedActive = false
@@ -558,7 +661,7 @@ class SocialViewModel @Inject constructor(
             signalSnapshot = feedSignalTracker.snapshot(),
             interestTerms = profileInterestTerms()
         )
-        return diversifySocialRefresh(ranked, refreshSeed)
+        return orderSocialDiscoveryForSession(ranked, authService.getCurrentUserId(), refreshSeed ?: discoverySessionSeed, previousDiscoveryFirstId, previousVisitSeenIds)
     }
 
     private fun profileInterestTerms(): Set<String> {
@@ -576,7 +679,11 @@ class SocialViewModel @Inject constructor(
     }
 
     fun recordPostImpression(post: Post) {
+        if (_posts.value.none { it.id == post.id }) return
         feedSignalTracker.recordInteraction(post, FeedInteractionAction.IMPRESSION)
+        if (feedMode.value == SocialFeedMode.DISCOVER && _posts.value.any { it.id == post.id }) {
+            feedSeenHistory.record(activeAccountId, "social", post.id)
+        }
     }
 
     fun selectFeedMode(mode: SocialFeedMode) {
@@ -584,6 +691,10 @@ class SocialViewModel @Inject constructor(
         _posts.value = emptyList()
         _feedScrollReset.value++
         feedPreferences.setMode(mode)
+        if (mode == SocialFeedMode.DISCOVER) {
+            previousDiscoveryFirstId = null
+            discoverySessionSeed = UUID.randomUUID().toString()
+        }
         loadPosts()
     }
 

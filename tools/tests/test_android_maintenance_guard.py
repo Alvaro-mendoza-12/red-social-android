@@ -17,6 +17,9 @@ class AndroidMaintenanceGuardTest(unittest.TestCase):
         entries = list(ET.fromstring(paths))
         self.assertTrue(entries)
         allowed = {
+            ("cache-path", "file-provider/chat-captures/"),
+            ("cache-path", "file-provider/recovery-evidence/"),
+            ("cache-path", "file-provider/media-exports/"),
             ("cache-path", "file-provider/crops/"),
             ("cache-path", "file-provider/challenges/"),
             ("cache-path", "file-provider/moment-captures/"),

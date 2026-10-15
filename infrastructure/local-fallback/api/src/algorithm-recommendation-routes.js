@@ -38,11 +38,12 @@ const {
   rankAlgorithmCandidates: defaultRankAlgorithmCandidates,
 } = require('./algorithm-ranking')
 
-const CURSOR_VERSION = 1
+const CURSOR_VERSION = 3
 const CURSOR_AAD = Buffer.from('novvin-authoritative-recommendations-v1', 'utf8')
 const CURSOR_TTL_MS = 15 * 60 * 1000
 const MAX_PAGE_SIZE = 60
 const MAX_RANKED_CANDIDATES = 200
+const MAX_BATCHES_PER_REQUEST = 3
 const MAX_CURSOR_STATE_BYTES = 2048
 const SUPPORTED_SURFACES = new Set(['video', 'social'])
 
@@ -132,12 +133,14 @@ function normalizeCursorPayload(payload) {
   if (!ownerId || !profileId || !surface || !snapshotId || snapshotId.length > 180
     || !Number.isInteger(position) || position < 0 || position > MAX_RANKED_CANDIDATES
     || !Number.isInteger(profileRevision) || profileRevision < 1
-    || !Number.isFinite(issuedAt)) {
+    || !Number.isFinite(issuedAt)
+    || (payload.continueBatch === true && (position !== 0 || payload.providerState == null))) {
     return null
   }
   try {
     return {
       v: CURSOR_VERSION,
+      continueBatch: payload.continueBatch === true,
       ownerId,
       profileId,
       surface,
@@ -265,6 +268,7 @@ function validateCandidateBatch(loaded) {
   return {
     snapshotId,
     providerState: normalizeCursorState(loaded.providerState),
+    nextProviderState: normalizeCursorState(loaded.nextProviderState),
     inferredSignals: isPlainObject(loaded.inferredSignals) ? loaded.inferredSignals : {},
     candidates,
   }
@@ -370,43 +374,59 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
         .update(`${owner.userId}:${surface}:${profile.id}:${requestedRefreshId}`, 'utf8')
         .digest('hex')
         .slice(0, 32)
-      const loaded = validateCandidateBatch(await loadCandidates({
-        owner,
-        surface,
-        profile,
-        cursor: decodedCursor && {
-          snapshotId: decodedCursor.snapshotId,
-          position: decodedCursor.position,
-          providerState: decodedCursor.providerState,
-        },
-        limit: pageSize,
-        maxCandidates: MAX_RANKED_CANDIDATES,
-        now: rankingTimestamp,
-      }))
-      if (decodedCursor && decodedCursor.snapshotId !== loaded.snapshotId) {
-        return fail(res, 409, 'RECOMMENDATION_CURSOR_STALE')
+      let providerCursor = decodedCursor && {
+        snapshotId: decodedCursor.snapshotId,
+        position: decodedCursor.position,
+        providerState: decodedCursor.providerState,
       }
+      let expectedSnapshot = decodedCursor && !decodedCursor.continueBatch ? decodedCursor.snapshotId : null
+      let position = decodedCursor?.position || 0
+      let loaded, ranking
+      // Avoid claiming exhaustion when one bounded window is fully filtered.
+      // Search at most three windows in a request; a remaining encrypted cursor
+      // lets the client continue without an unbounded database/ranking loop.
+      for (let scanned = 0; scanned < MAX_BATCHES_PER_REQUEST; scanned += 1) {
+        loaded = validateCandidateBatch(await loadCandidates({
+          owner,
+          surface,
+          profile,
+          cursor: providerCursor,
+          limit: pageSize,
+          maxCandidates: MAX_RANKED_CANDIDATES,
+          now: rankingTimestamp,
+        }))
+        if (expectedSnapshot && expectedSnapshot !== loaded.snapshotId) {
+          return fail(res, 409, 'RECOMMENDATION_CURSOR_STALE')
+        }
 
-      const ranking = rankAlgorithmCandidates({
-        candidates: loaded.candidates,
-        preferences: rankingPreferences(configuration),
-        feedMix: rankingFeedMix(configuration, surface),
-        // Manual and assisted profiles never apply an inferred signal. In
-        // assisted mode a future suggestion must first become an explicit
-        // preference; automatic mode may use only sources the user enabled.
-        inferredSignals: profileMode === 'automatic' ? loaded.inferredSignals : {},
-        dataPermissions: profileMode === 'automatic'
-          ? rankingDataPermissions(configuration?.dataPermissions)
-          : {},
-        surface,
-        limit: MAX_RANKED_CANDIDATES,
-        now: rankingTimestamp,
-        sessionSeed,
-      })
-      const position = decodedCursor?.position || 0
+        ranking = rankAlgorithmCandidates({
+          candidates: loaded.candidates,
+          preferences: rankingPreferences(configuration),
+          feedMix: rankingFeedMix(configuration, surface),
+          // Manual and assisted profiles never apply an inferred signal. In
+          // assisted mode a future suggestion must first become an explicit
+          // preference; automatic mode may use only sources the user enabled.
+          inferredSignals: profileMode === 'automatic' ? loaded.inferredSignals : {},
+          dataPermissions: profileMode === 'automatic'
+            ? rankingDataPermissions(configuration?.dataPermissions)
+            : {},
+          surface,
+          limit: MAX_RANKED_CANDIDATES,
+          diversityMode: 'spread',
+          // Fixed for the snapshot: changing request limit cannot rerank a cursor.
+          diversityWindowSize: 20,
+          now: rankingTimestamp,
+          sessionSeed,
+        })
+        if (position < ranking.ranked.length || !loaded.nextProviderState || scanned === MAX_BATCHES_PER_REQUEST - 1) break
+        providerCursor = { snapshotId: loaded.snapshotId, position: 0, providerState: loaded.nextProviderState }
+        expectedSnapshot = null
+        position = 0
+      }
       const selected = ranking.ranked.slice(position, position + pageSize)
       const nextPosition = position + selected.length
-      const hasMore = nextPosition < ranking.ranked.length
+      const moreInBatch = nextPosition < ranking.ranked.length
+      const hasMore = moreInBatch || loaded.nextProviderState !== null
       const nextCursor = hasMore
         ? encodeOpaqueCursor({
           v: CURSOR_VERSION,
@@ -415,10 +435,11 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
           profileRevision: profileRevision(profile),
           surface,
           snapshotId: loaded.snapshotId,
-          position: nextPosition,
+          position: moreInBatch ? nextPosition : 0,
+          continueBatch: !moreInBatch,
           issuedAt: rankingTimestamp,
           sessionSeed,
-          providerState: loaded.providerState,
+          providerState: moreInBatch ? loaded.providerState : loaded.nextProviderState,
         }, cursorSecret)
         : null
 
@@ -458,6 +479,7 @@ module.exports = {
   CURSOR_VERSION,
   MAX_PAGE_SIZE,
   MAX_RANKED_CANDIDATES,
+  MAX_BATCHES_PER_REQUEST,
   RecommendationRouteError,
   decodeOpaqueCursor,
   encodeOpaqueCursor,

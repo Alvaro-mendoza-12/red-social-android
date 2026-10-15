@@ -56,7 +56,8 @@ data class CommunityMessage(
     val is_forwarded: Boolean = false,
     val forwarded_from_message_id: String? = null,
     val forwarded_from_user_id: String? = null,
-    @kotlinx.serialization.SerialName("reply_to") val reply_to: CommunityMessage? = null
+    @kotlinx.serialization.SerialName("reply_to") val reply_to: CommunityMessage? = null,
+    val mentioned_user_ids: List<String> = emptyList()
 ) {
     val timestampMillis: Long
         get() {

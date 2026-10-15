@@ -35,13 +35,13 @@ fun LoopingVideoPreview(
     val lifecycleOwner = LocalLifecycleOwner.current
     val resolvedUrl = remember(url, UbuntuStorageUrl.baseUrl) { UbuntuStorageUrl.rewrite(url).orEmpty() }
     var lifecycleStarted by remember(lifecycleOwner) {
-        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
     }
     var videoSize by remember(resolvedUrl) { mutableStateOf(VideoSize.UNKNOWN) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, _ ->
-            lifecycleStarted = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            lifecycleStarted = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

@@ -296,7 +296,7 @@ test('all maintained realtime clients send a bounded scope affinity key', () => 
     path.join('features', 'calls', 'WebCallManager.ts'),
     path.join('features', 'live', 'LiveSessionPage.tsx'),
   ].map((relative) => fs.readFileSync(
-    path.join(repoRoot, 'Conectate-web', 'src', relative),
+    path.join(repoRoot, 'NoWing-web', 'src', relative),
     'utf8',
   ))
 

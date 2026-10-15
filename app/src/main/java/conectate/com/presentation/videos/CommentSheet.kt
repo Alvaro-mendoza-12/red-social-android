@@ -316,7 +316,7 @@ fun CommentSheet(
                                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                CircularProfileImage(
+                                                CircularProfileImage(ownerId = user.id, 
                                                     imageUrl = user.avatar_url ?: "",
                                                     size = 26.dp,
                                                     fallbackName = user.displayName
@@ -587,7 +587,7 @@ fun VideoCommentItem(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Avatar
-        CircularProfileImage(
+        CircularProfileImage(ownerId = comment.userId, 
             imageUrl = comment.userProfileImage,
             size = if(isReply) 28.dp else 40.dp,
             fallbackName = comment.userName,

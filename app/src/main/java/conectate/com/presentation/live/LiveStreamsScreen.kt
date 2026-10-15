@@ -149,7 +149,7 @@ private fun LiveStreamCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (!stream.hostAvatarUrl.isNullOrBlank()) {
-                CircularProfileImage(imageUrl = stream.hostAvatarUrl, size = 42.dp)
+                CircularProfileImage(ownerId = stream.hostUserId, imageUrl = stream.hostAvatarUrl, size = 42.dp)
             } else {
                 Icon(
                     imageVector = Icons.Default.LiveTv,

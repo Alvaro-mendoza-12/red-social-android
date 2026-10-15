@@ -23,7 +23,7 @@ function poolFor(preferences = {}) {
       { id: actor, supabase_user_id: publicActor, display_name: 'QA' },
       { id: target, display_name: 'QA target' },
     ] }
-    if (sql.includes('fallback_profile_moderation')) return { rows: [] }
+    if (sql.includes('fallback_profile_moderation') || sql.includes('fallback_user_blocks')) return { rows: [] }
     assert.fail('Unexpected profile visit query')
   } }
 }
@@ -54,3 +54,15 @@ test('profile visits reject an own profile', async () => {
     { profile_id: publicActor, viewer_id: actor }),
   error => error.status === 400 && error.message === 'PROFILE_VIEW_TARGET_INVALID')
 })
+
+test('a visitor cannot supply a row ID, someone else\'s profile clock, or extra content',async()=>{
+ const start=Date.now();const result=await prepareInsertRow(poolFor(),'profile_views',identity,
+   {profile_id:target,viewer_id:actor,id:'forged',viewed_at:'2099-01-01',content:'ignored'});
+ assert.deepEqual(Object.keys(result).sort(),['is_deleted','profile_id','viewed_at','viewer_id']);
+ assert(Date.parse(result.viewed_at)>=start&&Date.parse(result.viewed_at)<=Date.now());
+});
+test('a blocked profile visit is rejected',async()=>{
+ const base=poolFor();const db={query:(sql,params)=>sql.includes('fallback_user_blocks')?{rows:[{}]}:base.query(sql,params)};
+ await assert.rejects(prepareInsertRow(db,'profile_views',identity,{profile_id:target}),
+   error=>error.status===403&&error.message==='PROFILE_VIEW_TARGET_UNAVAILABLE');
+});

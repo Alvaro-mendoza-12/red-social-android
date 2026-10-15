@@ -29,10 +29,10 @@ function selectChatItem(inbox) {
     : null
 }
 
-async function verifyMessagingImages({ payload, timeoutMs, maxMs, verifyImageImpl = verifyImage }) {
+async function verifyMessagingImages({ payload, timeoutMs, maxMs, baseUrl, token, verifyImageImpl = verifyImage }) {
   const imageUrls = selectImageUrls(payload, 2)
   const images = []
-  for (const sourceUrl of imageUrls) images.push(await verifyImageImpl({ sourceUrl, timeoutMs, maxMs }))
+  for (const sourceUrl of imageUrls) images.push(await verifyImageImpl({ sourceUrl, timeoutMs, maxMs, baseUrl, token }))
   // Profiles without photos are valid. State the missing coverage explicitly;
   // an available image that fails to download must still fail the verification.
   return { images, avatarDelivery: images.length ? 'verified' : 'not-exercised-no-avatar-url' }
@@ -153,7 +153,7 @@ async function main() {
   }
 
   const { images, avatarDelivery } = await verifyMessagingImages({
-    payload: [currentProfile.body, inboxes.chats, peerProfile?.body], timeoutMs, maxMs: maxImageMs,
+    payload: [currentProfile.body, inboxes.chats, peerProfile?.body], timeoutMs, maxMs: maxImageMs, baseUrl, token,
   })
 
   console.log(JSON.stringify({

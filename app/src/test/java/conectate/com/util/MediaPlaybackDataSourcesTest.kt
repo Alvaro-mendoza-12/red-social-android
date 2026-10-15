@@ -26,9 +26,10 @@ class MediaPlaybackDataSourcesTest {
     @Test
     fun `media playback uses one modern pooled HTTP stack`() {
         assertEquals("okhttp-http2", MediaPlaybackDataSources.NETWORK_STACK)
-        assertTrue(
-            MediaPlaybackDataSources.httpFactory() is
-                androidx.media3.datasource.okhttp.OkHttpDataSource.Factory,
-        )
+        val guarded = MediaPlaybackDataSources.httpFactory()
+        assertTrue(guarded is StorageReadHttpDataSource.Factory)
+        assertTrue((guarded as StorageReadHttpDataSource.Factory).upstream is
+            androidx.media3.datasource.okhttp.OkHttpDataSource.Factory)
+        assertTrue(guarded.createDataSource() is StorageReadHttpDataSource)
     }
 }
