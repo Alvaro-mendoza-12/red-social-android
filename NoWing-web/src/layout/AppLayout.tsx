@@ -1,6 +1,25 @@
 import { StreamingImage } from '../components/StreamingMedia'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, Plus, Settings, Trophy, Users } from 'lucide-react'
+import {
+  ArrowLeft,
+  BarChart3,
+  Bell,
+  Eye,
+  Gamepad2,
+  Globe,
+  LogOut,
+  MessageSquareText,
+  MoreVertical,
+  Plus,
+  Search,
+  Settings,
+  Users,
+  Video,
+  VideoIcon,
+  Mic,
+} from 'lucide-react'
+import { SafeAvatar } from '../components/SafeAvatar'
+import { NOVVIN_TABS, primarySection, openProfileVisits } from '../ui/novvin/navigation'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   type DeferredMutation,
@@ -44,169 +63,42 @@ type NavIconName =
   | 'settings'
   | 'games'
 
-const primaryNavItems = [
-  { to: '/app/messages', label: 'Mensajes', icon: 'messages' as NavIconName },
-  { to: '/app/videos', label: 'Videos', icon: 'videos' as NavIconName },
-  { to: '/app/social', label: 'Social', icon: 'social' as NavIconName },
-  { to: '/app/games', label: 'Juegos', icon: 'games' as NavIconName },
-  { to: '/app/profile', label: 'Perfil', icon: 'profile' as NavIconName },
-]
+const primaryNavItems = NOVVIN_TABS
 const secondaryNavItems = [
   { to: '/app/search', label: 'Buscar', icon: 'search' as NavIconName },
-  { to: '/app/notifications', label: 'Notificaciones', icon: 'notifications' as NavIconName },
+  {
+    to: '/app/notifications',
+    label: 'Notificaciones',
+    icon: 'notifications' as NavIconName,
+  },
   { to: '/app/calls', label: 'Llamadas', icon: 'calls' as NavIconName },
   { to: '/app/voice', label: 'Salas de voz', icon: 'voice' as NavIconName },
-  { to: '/app/create-space', label: 'Crear espacio', icon: 'voice' as NavIconName },
+  {
+    to: '/app/create-space',
+    label: 'Crear espacio',
+    icon: 'voice' as NavIconName,
+  },
   { to: '/app/live', label: 'En vivo', icon: 'videos' as NavIconName },
-  { to: '/app/proximity', label: 'Personas cerca', icon: 'social' as NavIconName },
+  {
+    to: '/app/proximity',
+    label: 'Personas cerca',
+    icon: 'social' as NavIconName,
+  },
   { to: '/app/settings', label: 'Ajustes', icon: 'settings' as NavIconName },
-  { to: '/app/reports', label: 'Mis reportes', icon: 'notifications' as NavIconName },
+  {
+    to: '/app/reports',
+    label: 'Mis reportes',
+    icon: 'notifications' as NavIconName,
+  },
   { to: '/app/help', label: 'Ayuda', icon: 'settings' as NavIconName },
 ]
 
 const localReadStorageKey = 'conectate-web-chat-last-read'
-const navCollapsedStorageKey = 'conectate-web-nav-collapsed'
 const mobileNavItems = primaryNavItems
 
 type IncomingCallInvite = CallInvitePayload & {
   receivedAt: number
 }
-
-type ShellRouteMeta = {
-  kicker: string
-  title: string
-  subtitle: string
-  layout: 'wide' | 'full'
-}
-
-const shellRouteMetaCatalog: Array<{ match: (pathname: string) => boolean; meta: ShellRouteMeta }> = [
-  {
-    match: (pathname) => pathname.startsWith('/app/messages'),
-    meta: {
-      kicker: 'Mensajería',
-      title: 'Bandeja social',
-      subtitle: 'Chats, grupos y comunidades con acceso rápido a llamadas, voz y perfiles.',
-      layout: 'full',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/social'),
-    meta: {
-      kicker: '',
-      title: 'Novvin',
-      subtitle: '',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/videos') || pathname.startsWith('/app/reels'),
-    meta: {
-      kicker: 'Videos',
-      title: 'Videos cortos',
-      subtitle: 'Explora reels, prepara publicaciones y revisa el contenido antes de compartir.',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/calls'),
-    meta: {
-      kicker: 'Llamadas',
-      title: 'Audio y video',
-      subtitle: 'Inicia conversaciones 1:1 y vuelve a tus chats cuando necesites contexto.',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/voice'),
-    meta: {
-      kicker: 'Voz',
-      title: 'Salas de voz',
-      subtitle: 'Entra a canales activos, escucha a la comunidad y retoma salas recientes.',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/live'),
-    meta: {
-      kicker: 'Directos',
-      title: 'En vivo',
-      subtitle: 'Emite con cámara o pantalla y descubre transmisiones activas.',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/proximity'),
-    meta: {
-      kicker: 'Proximidad',
-      title: 'Personas cerca',
-      subtitle: 'Radar privado y conexiones aleatorias con revelado gradual.',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/games'),
-    meta: {
-      kicker: 'Juegos',
-      title: 'Encuentra con quién jugar',
-      subtitle: 'Configura tu perfil, descubre jugadores y administra tus conexiones.',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/reports'),
-    meta: {
-      kicker: 'Seguridad',
-      title: 'Mis reportes',
-      subtitle: 'Consulta el estado de los reportes que enviaste a moderación.',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/help'),
-    meta: {
-      kicker: 'Soporte',
-      title: 'Centro de ayuda',
-      subtitle: 'Respuestas breves y accesos directos a las funciones de Novvin.',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/create-space'),
-    meta: {
-      kicker: 'Comunidad',
-      title: 'Crear un espacio',
-      subtitle: 'Abre un grupo, una comunidad o una sala de voz.',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/notifications'),
-    meta: {
-      kicker: 'Actividad',
-      title: 'Alertas accionables',
-      subtitle: 'Mensajes, social y avisos importantes agrupados para responder rápido.',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/profile'),
-    meta: {
-      kicker: '',
-      title: 'Perfil',
-      subtitle: '',
-      layout: 'wide',
-    },
-  },
-  {
-    match: (pathname) => pathname.startsWith('/app/settings') || pathname.startsWith('/app/monetization'),
-    meta: {
-      kicker: 'Control',
-      title: 'Cuenta, wallet y ajustes',
-      subtitle: 'Administra seguridad, preferencias, monetización y experiencia de lectura.',
-      layout: 'wide',
-    },
-  },
-]
 
 function isMissingFunctionError(error: unknown): boolean {
   const message =
@@ -242,24 +134,28 @@ function readLocalReadByChat(): Record<string, string> {
   }
 }
 
-function readNavCollapsedPreference(): boolean {
-  if (typeof window === 'undefined') return false
-  try {
-    return window.localStorage.getItem(navCollapsedStorageKey) === '1'
-  } catch {
-    return false
+function screenTitle(path: string) {
+  if (path === '/app/profile') return 'Perfil'
+  if (path.startsWith('/app/profile/')) return 'Perfil'
+  const titles: Record<string, string> = {
+    social: 'Novvin',
+    calls: 'Llamadas',
+    voice: 'Salas de voz',
+    live: 'En vivo',
+    proximity: 'Personas cerca',
+    games: 'Juegos',
+    search: 'Buscar',
+    settings: 'Ajustes',
+    notifications: 'Notificaciones',
+    follows: 'Amigos',
+    'friend-requests': 'Solicitudes',
+    'create-space': 'Crear',
+    reports: 'Mis reportes',
+    help: 'Ayuda',
+    admin: 'Administración',
+    moments: 'Momentos',
   }
-}
-
-function resolveShellRouteMeta(pathname: string): ShellRouteMeta {
-  return (
-    shellRouteMetaCatalog.find((entry) => entry.match(pathname))?.meta ?? {
-      kicker: 'Novvin Web',
-      title: 'Experiencia conectada',
-      subtitle: 'Mensajes, social, videos y voz listos para trabajar como una app diaria.',
-      layout: 'wide',
-    }
-  )
+  return titles[path.split('/')[2]] || 'Novvin'
 }
 
 function metadataBoolean(value: unknown): boolean {
@@ -269,103 +165,31 @@ function metadataBoolean(value: unknown): boolean {
 function passwordChangeErrorMessage(error: unknown): string {
   const code = error instanceof Error ? error.message : String(error ?? '')
   if (code === 'INVALID_CREDENTIALS') return 'La contraseña actual no coincide.'
-  if (code === 'CURRENT_AND_NEW_PASSWORD_REQUIRED') return 'Escribe tu contraseña actual y una nueva contraseña.'
-  if (code === 'NEW_PASSWORD_MUST_BE_DIFFERENT') return 'La contraseña nueva debe ser diferente a la actual.'
-  if (code === 'AUTH_REQUIRED' || code === 'INVALID_TOKEN') return 'Tu sesión expiró. Vuelve a iniciar sesión.'
+  if (code === 'CURRENT_AND_NEW_PASSWORD_REQUIRED')
+    return 'Escribe tu contraseña actual y una nueva contraseña.'
+  if (code === 'NEW_PASSWORD_MUST_BE_DIFFERENT')
+    return 'La contraseña nueva debe ser diferente a la actual.'
+  if (code === 'AUTH_REQUIRED' || code === 'INVALID_TOKEN')
+    return 'Tu sesión expiró. Vuelve a iniciar sesión.'
   return code || 'No se pudo actualizar la contraseña.'
 }
 
-function ChevronIcon({ collapsed }: { collapsed: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      {collapsed ? (
-        <path d="M9 6l6 6-6 6" />
-      ) : (
-        <path d="M15 6l-6 6 6 6" />
-      )}
-    </svg>
-  )
-}
-
 function ShellIcon({ name }: { name: NavIconName }) {
-  if (name === 'games') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M7 9h10a4 4 0 013.9 3.1l1 4.4a2 2 0 01-3.2 2L16 16H8l-2.7 2.5a2 2 0 01-3.2-2l1-4.4A4 4 0 017 9zM7 12v4M5 14h4M16 13h.01M19 15h.01" />
-      </svg>
-    )
+  const icons = {
+    social: Globe,
+    videos: Video,
+    messages: MessageSquareText,
+    calls: VideoIcon,
+    profile: Users,
+    voice: Mic,
+    search: Search,
+    notifications: Bell,
+    monetization: BarChart3,
+    settings: Settings,
+    games: Gamepad2,
   }
-  if (name === 'videos') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 6.5h16v11H4zM9.5 6.5l3 3M14.5 6.5l3 3M5.5 9.5h13M10.5 11.5l4 2.5-4 2.5z" />
-      </svg>
-    )
-  }
-  if (name === 'social') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M7 11a3 3 0 100-6 3 3 0 000 6zM17 10a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM2.5 18.5a4.5 4.5 0 019 0M12.5 18.5a4 4 0 017.5-1.7" />
-      </svg>
-    )
-  }
-  if (name === 'messages') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 6.5h14v9H9l-4 3v-12zM9 10h6M9 13h4" />
-      </svg>
-    )
-  }
-  if (name === 'calls') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M6.8 4.8h3.1l1.2 3.6-1.8 1.8a15.2 15.2 0 006.6 6.6l1.8-1.8 3.6 1.2v3.1a1.7 1.7 0 01-1.9 1.7C10.4 20.3 3.7 13.6 3.1 6.7A1.7 1.7 0 014.8 4.8z" />
-      </svg>
-    )
-  }
-  if (name === 'profile') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM5 20a7 7 0 0114 0" />
-      </svg>
-    )
-  }
-  if (name === 'voice') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 5a3 3 0 013 3v4a3 3 0 11-6 0V8a3 3 0 013-3zM6 11v1a6 6 0 0012 0v-1M12 18v3" />
-      </svg>
-    )
-  }
-  if (name === 'search') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M11 4a7 7 0 105.2 11.7L20 19.5" />
-      </svg>
-    )
-  }
-  if (name === 'notifications') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M6 16h12l-1.2-1.8a4 4 0 01-.8-2.2V10a4 4 0 10-8 0v2a4 4 0 01-.8 2.2L6 16zM10 18a2 2 0 004 0" />
-      </svg>
-    )
-  }
-  if (name === 'settings') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM4.5 12l1.8-.7.4-1.1-1-1.6 1.8-1.8 1.6 1 .1-.1 1.1-.4L12 4.5l1.7.8 1.1.4.1.1 1.6-1 1.8 1.8-1 1.6.4 1.1 1.8.7-.8 2-1.8.7-.4 1.1 1 1.6-1.8 1.8-1.6-1-.1.1-1.1.4L12 19.5l-1.7-.8-1.1-.4-.1-.1-1.6 1-1.8-1.8 1-1.6-.4-1.1-1.8-.7z" />
-      </svg>
-    )
-  }
-  if (name === 'monetization') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 3v18M7 7.5h7a3 3 0 010 6h-4a3 3 0 000 6h7M5 12h14" />
-      </svg>
-    )
-  }
-  return null
+  const Icon = icons[name]
+  return <Icon aria-hidden="true" />
 }
 
 export function AppLayout() {
@@ -379,11 +203,12 @@ export function AppLayout() {
   const [pendingDeferredMutations, setPendingDeferredMutations] = useState(
     getDeferredMutationCount(user?.id ?? 'signed-out'),
   )
-  const [isNavCollapsed, setIsNavCollapsed] = useState(() => readNavCollapsedPreference())
   const [isMobileExploreOpen, setIsMobileExploreOpen] = useState(false)
   const mobileExploreButtonRef = useRef<HTMLButtonElement | null>(null)
   const mobileExploreCloseRef = useRef<HTMLButtonElement | null>(null)
-  const [supabaseRestriction, setSupabaseRestriction] = useState(() => getSupabaseRestrictionSnapshot())
+  const [supabaseRestriction, setSupabaseRestriction] = useState(() =>
+    getSupabaseRestrictionSnapshot(),
+  )
   const [incomingCall, setIncomingCall] = useState<IncomingCallInvite | null>(null)
   const [callActionBusy, setCallActionBusy] = useState(false)
   const [callActionError, setCallActionError] = useState('')
@@ -391,7 +216,10 @@ export function AppLayout() {
   const dismissedCallIdsRef = useRef(new Set<string>())
   const incomingCallRef = useRef<IncomingCallInvite | null>(null)
   incomingCallRef.current = incomingCall
-  const callAccessToken = useCallback(async () => isFallbackSession ? ensureFallbackAccessToken() : session?.access_token ?? '', [isFallbackSession, session?.access_token])
+  const callAccessToken = useCallback(
+    async () => (isFallbackSession ? ensureFallbackAccessToken() : (session?.access_token ?? '')),
+    [isFallbackSession, session?.access_token],
+  )
   const dismissIncomingCall = useCallback((callId: string) => {
     dismissedCallIdsRef.current.add(callId)
     if (dismissedCallIdsRef.current.size > 64) {
@@ -399,24 +227,35 @@ export function AppLayout() {
       if (oldest) dismissedCallIdsRef.current.delete(oldest)
     }
     if (incomingCallRef.current?.callId === callId) incomingCallRef.current = null
-    setIncomingCall((current) => current?.callId === callId ? null : current)
+    setIncomingCall((current) => (current?.callId === callId ? null : current))
   }, [])
-  const presentIncomingCall = useCallback((invite: IncomingCallInvite) => {
-    if (dismissedCallIdsRef.current.has(invite.callId)) return
-    const current = incomingCallRef.current
-    if (current?.callId === invite.callId) return
-    if (current) {
-      dismissedCallIdsRef.current.add(invite.callId)
-      void callAccessToken().then(async (token) => {
-        await new CallControlClient(token).leave(invite.callId, 'busy')
-        if (user) await sendCallResponse(supabase, invite.callerUserId, { callId: invite.callId, action: 'busy', fromUserId: user.id }, token)
-      }).catch(() => undefined)
-      return
-    }
-    incomingCallRef.current = invite
-    setCallActionError('')
-    setIncomingCall(invite)
-  }, [callAccessToken, user])
+  const presentIncomingCall = useCallback(
+    (invite: IncomingCallInvite) => {
+      if (dismissedCallIdsRef.current.has(invite.callId)) return
+      const current = incomingCallRef.current
+      if (current?.callId === invite.callId) return
+      if (current) {
+        dismissedCallIdsRef.current.add(invite.callId)
+        void callAccessToken()
+          .then(async (token) => {
+            await new CallControlClient(token).leave(invite.callId, 'busy')
+            if (user)
+              await sendCallResponse(
+                supabase,
+                invite.callerUserId,
+                { callId: invite.callId, action: 'busy', fromUserId: user.id },
+                token,
+              )
+          })
+          .catch(() => undefined)
+        return
+      }
+      incomingCallRef.current = invite
+      setCallActionError('')
+      setIncomingCall(invite)
+    },
+    [callAccessToken, user],
+  )
   const [migrationPasswordOpen, setMigrationPasswordOpen] = useState(false)
   const [migrationCurrentPassword, setMigrationCurrentPassword] = useState('')
   const [migrationNewPassword, setMigrationNewPassword] = useState('')
@@ -587,15 +426,27 @@ export function AppLayout() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, scheduleRefresh)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'chat_participants', filter: `user_id=eq.${user.id}` },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'chat_participants',
+          filter: `user_id=eq.${user.id}`,
+        },
         scheduleRefresh,
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `recipient_id=eq.${user.id}`,
+        },
         scheduleRefresh,
       )
-    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'shell-counters' })
+    const subscribedChannel = subscribeRealtimeChannel(channel, {
+      reason: 'shell-counters',
+    })
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer)
@@ -635,13 +486,18 @@ export function AppLayout() {
         })
       })
       .on('broadcast', { event: 'call_response' }, (event) => {
-        const payload = (event.payload ?? {}) as { callId?: string; action?: string }
+        const payload = (event.payload ?? {}) as {
+          callId?: string
+          action?: string
+        }
         if (incomingCall?.callId && payload.callId === incomingCall.callId) {
           dismissIncomingCall(payload.callId)
         }
       })
 
-    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'web-call-user' })
+    const subscribedChannel = subscribeRealtimeChannel(channel, {
+      reason: 'web-call-user',
+    })
     return () => {
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
@@ -661,41 +517,78 @@ export function AppLayout() {
         return
       }
       dismissIncomingCall(invite.callId)
-      const params = new URLSearchParams({ callId: invite.callId, join: '1', target: invite.callerUserId,
-        name: invite.callerName, contextId: invite.contextId ?? '', kind: invite.isVideo ? 'video' : 'audio' })
+      const params = new URLSearchParams({
+        callId: invite.callId,
+        join: '1',
+        target: invite.callerUserId,
+        name: invite.callerName,
+        contextId: invite.contextId ?? '',
+        kind: invite.isVideo ? 'video' : 'audio',
+      })
       navigate(`/app/calls?${params.toString()}`)
     } catch (error) {
-      setCallActionError(error instanceof Error ? error.message : 'No se pudo confirmar la llamada.')
-    } finally { callActionBusyRef.current = false; setCallActionBusy(false) }
+      setCallActionError(
+        error instanceof Error ? error.message : 'No se pudo confirmar la llamada.',
+      )
+    } finally {
+      callActionBusyRef.current = false
+      setCallActionBusy(false)
+    }
   }, [callAccessToken, dismissIncomingCall, incomingCall, navigate, user])
 
-  const declineIncomingCall = useCallback(async (action: CallLeaveAction = 'decline') => {
-    const invite = incomingCall
-    if (!invite || !user || callActionBusyRef.current) return
-    callActionBusyRef.current = true
-    setCallActionBusy(true)
-    setCallActionError('')
-    try {
-      const token = await callAccessToken()
-      await new CallControlClient(token).leave(invite.callId, action)
-      dismissIncomingCall(invite.callId)
-      await sendCallResponse(supabase, invite.callerUserId, { callId: invite.callId, action, fromUserId: user.id }, token)
-    } catch (error) {
-      setCallActionError(error instanceof Error ? error.message : 'No se pudo cerrar la llamada.')
-    } finally { callActionBusyRef.current = false; setCallActionBusy(false) }
-  }, [callAccessToken, dismissIncomingCall, incomingCall, user])
+  const declineIncomingCall = useCallback(
+    async (action: CallLeaveAction = 'decline') => {
+      const invite = incomingCall
+      if (!invite || !user || callActionBusyRef.current) return
+      callActionBusyRef.current = true
+      setCallActionBusy(true)
+      setCallActionError('')
+      try {
+        const token = await callAccessToken()
+        await new CallControlClient(token).leave(invite.callId, action)
+        dismissIncomingCall(invite.callId)
+        await sendCallResponse(
+          supabase,
+          invite.callerUserId,
+          { callId: invite.callId, action, fromUserId: user.id },
+          token,
+        )
+      } catch (error) {
+        setCallActionError(error instanceof Error ? error.message : 'No se pudo cerrar la llamada.')
+      } finally {
+        callActionBusyRef.current = false
+        setCallActionBusy(false)
+      }
+    },
+    [callAccessToken, dismissIncomingCall, incomingCall, user],
+  )
 
   useEffect(() => {
     if (!incomingCall) return
     const invite = incomingCall
-    const timer = setTimeout(() => {
-      if (incomingCallRef.current?.callId !== invite.callId) return
-      dismissIncomingCall(invite.callId)
-      void callAccessToken().then(async (token) => {
-        await new CallControlClient(token).leave(invite.callId, 'missed')
-        if (user) await sendCallResponse(supabase, invite.callerUserId, { callId: invite.callId, action: 'missed', fromUserId: user.id }, token)
-      }).catch(() => undefined)
-    }, Math.max(0, 45000 - (Date.now() - invite.receivedAt)))
+    const timer = setTimeout(
+      () => {
+        if (incomingCallRef.current?.callId !== invite.callId) return
+        dismissIncomingCall(invite.callId)
+        void callAccessToken()
+          .then(async (token) => {
+            await new CallControlClient(token).leave(invite.callId, 'missed')
+            if (user)
+              await sendCallResponse(
+                supabase,
+                invite.callerUserId,
+                {
+                  callId: invite.callId,
+                  action: 'missed',
+                  fromUserId: user.id,
+                },
+                token,
+              )
+          })
+          .catch(() => undefined)
+      },
+      Math.max(0, 45000 - (Date.now() - invite.receivedAt)),
+    )
     return () => clearTimeout(timer)
   }, [callAccessToken, dismissIncomingCall, incomingCall, user])
 
@@ -714,7 +607,9 @@ export function AppLayout() {
     async (mutation: DeferredMutation) => {
       if (isFallbackSession && user) {
         if (mutation.type === 'notification_mark_read') {
-          const notificationId = String((mutation.payload as { notificationId?: string }).notificationId ?? '')
+          const notificationId = String(
+            (mutation.payload as { notificationId?: string }).notificationId ?? '',
+          )
           if (notificationId) {
             await markFallbackNotificationRead(notificationId)
           }
@@ -734,7 +629,9 @@ export function AppLayout() {
       const nowIso = new Date().toISOString()
 
       if (mutation.type === 'notification_mark_read') {
-        const notificationId = String((mutation.payload as { notificationId?: string }).notificationId ?? '')
+        const notificationId = String(
+          (mutation.payload as { notificationId?: string }).notificationId ?? '',
+        )
         if (!notificationId) return
 
         const rpcResult = await client.rpc('secure_mark_notifications_read', {
@@ -775,7 +672,9 @@ export function AppLayout() {
       }
 
       if (mutation.type === 'chat_mark_read') {
-        const chatId = String((mutation.payload as { chatId?: string }).chatId ?? '').trim().toLowerCase()
+        const chatId = String((mutation.payload as { chatId?: string }).chatId ?? '')
+          .trim()
+          .toLowerCase()
         if (!chatId) return
         const { error: deliveredError } = await client.rpc('secure_mark_messages_delivered', {
           p_chat_id: chatId,
@@ -854,20 +753,17 @@ export function AppLayout() {
     }
   }, [executeDeferredMutation, isFallbackSession, isOnline, loadShellCounters, user])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      window.localStorage.setItem(navCollapsedStorageKey, isNavCollapsed ? '1' : '0')
-    } catch {
-      // Ignore local storage write failures.
-    }
-  }, [isNavCollapsed])
-
   const isMessagesRoute = location.pathname.startsWith('/app/messages')
   const isSocialRoute = location.pathname.startsWith('/app/social')
   const isProfileRoute = location.pathname === '/app/profile'
-  const shellMeta = useMemo(() => resolveShellRouteMeta(location.pathname), [location.pathname])
-  const contentShellClassName = shellMeta.layout === 'full' ? 'content-shell full' : 'content-shell wide'
+  const activeSection = primarySection(location.pathname)
+  const isVideosRoute = activeSection === '/app/videos'
+  const isConversationRoute = /^\/app\/messages\/.+/.test(location.pathname)
+  const contentShellClassName = isMessagesRoute
+    ? 'content-shell full'
+    : isVideosRoute
+      ? 'content-shell video-content'
+      : 'content-shell wide'
   const requiresMigrationPasswordChange = Boolean(
     isFallbackSession && metadataBoolean(user?.user_metadata?.password_change_required),
   )
@@ -879,7 +775,9 @@ export function AppLayout() {
     const confirmation = migrationConfirmPassword.trim()
 
     if (!currentPassword || nextPassword.length < 8) {
-      setMigrationPasswordError('Escribe tu contraseña actual y una nueva de al menos 8 caracteres.')
+      setMigrationPasswordError(
+        'Escribe tu contraseña actual y una nueva de al menos 8 caracteres.',
+      )
       return
     }
     if (nextPassword !== confirmation) {
@@ -896,7 +794,9 @@ export function AppLayout() {
       setMigrationNewPassword('')
       setMigrationConfirmPassword('')
       setMigrationPasswordOpen(false)
-      setMigrationPasswordInfo('Contraseña actualizada. Este cambio queda guardado para el servidor local.')
+      setMigrationPasswordInfo(
+        'Contraseña actualizada. Este cambio queda guardado para el servidor local.',
+      )
     } catch (caught) {
       setMigrationPasswordError(passwordChangeErrorMessage(caught))
     } finally {
@@ -915,11 +815,29 @@ export function AppLayout() {
     '/app/notifications': notificationUnreadCount,
   }
 
-  useEffect(() => { setIsMobileExploreOpen(false) }, [location.pathname])
+  useEffect(() => {
+    setIsMobileExploreOpen(false)
+  }, [location.pathname])
   useEffect(() => {
     if (!isMobileExploreOpen) return
     mobileExploreCloseRef.current?.focus()
     const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') {
+        const elements = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '#mobile-explore-menu a, #mobile-explore-menu button',
+          ),
+        ).filter((node) => !node.hasAttribute('disabled'))
+        const first = elements[0],
+          last = elements[elements.length - 1]
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault()
+          last?.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first?.focus()
+        }
+      }
       if (event.key === 'Escape') {
         setIsMobileExploreOpen(false)
         mobileExploreButtonRef.current?.focus()
@@ -929,19 +847,40 @@ export function AppLayout() {
     return () => window.removeEventListener('keydown', onEscape)
   }, [isMobileExploreOpen])
 
+  useEffect(() => {
+    const open = () => {
+      if (document.activeElement instanceof HTMLButtonElement)
+        mobileExploreButtonRef.current = document.activeElement
+      setIsMobileExploreOpen(true)
+    }
+    window.addEventListener('novvin:open-menu', open)
+    return () => window.removeEventListener('novvin:open-menu', open)
+  }, [])
+
   return (
     <div
       className={[
         'app-shell',
-        isNavCollapsed ? 'nav-collapsed' : '',
+        'novvin-app',
+        isVideosRoute ? 'route-videos' : '',
+        isConversationRoute ? 'route-conversation' : '',
+        isSocialRoute ? 'route-social' : '',
+        location.pathname.startsWith('/app/profile') ? 'route-profile' : '',
         isMessagesRoute ? 'route-messages' : '',
         `theme-${webPreferences.themeMode}`,
         `accent-${webPreferences.accentTheme}`,
         `text-scale-${webPreferences.textScale}`,
-      ].filter(Boolean).join(' ')}
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
       {incomingCall ? (
-        <div className="incoming-call-overlay" role="dialog" aria-modal="true" aria-label="Llamada entrante">
+        <div
+          className="incoming-call-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Llamada entrante"
+        >
           <div className="incoming-call-panel">
             <div className="incoming-call-avatar">
               {incomingCall.callerAvatarUrl ? (
@@ -957,94 +896,26 @@ export function AppLayout() {
               {callActionError ? <p role="alert">{callActionError}</p> : null}
             </div>
             <div className="incoming-call-actions">
-              <button className="incoming-call-btn decline" type="button" disabled={callActionBusy} onClick={() => void declineIncomingCall()}>
+              <button
+                className="incoming-call-btn decline"
+                type="button"
+                disabled={callActionBusy}
+                onClick={() => void declineIncomingCall()}
+              >
                 Rechazar
               </button>
-              <button className="incoming-call-btn accept" type="button" disabled={callActionBusy} onClick={() => void acceptIncomingCall()}>
+              <button
+                className="incoming-call-btn accept"
+                type="button"
+                disabled={callActionBusy}
+                onClick={() => void acceptIncomingCall()}
+              >
                 Aceptar
               </button>
             </div>
           </div>
         </div>
       ) : null}
-
-      <aside className={isNavCollapsed ? 'left-nav collapsed' : 'left-nav'}>
-        <button
-          className="nav-edge-toggle"
-          type="button"
-          onClick={() => setIsNavCollapsed((current) => !current)}
-          title={isNavCollapsed ? 'Abrir menú' : 'Cerrar menú'}
-          aria-label={isNavCollapsed ? 'Abrir menú' : 'Cerrar menú'}
-        >
-          <ChevronIcon collapsed={isNavCollapsed} />
-        </button>
-
-        <div className={isNavCollapsed ? 'brand-block rail-brand' : 'brand-block row-between'}>
-          <Link to="/app/messages" className={isNavCollapsed ? 'brand-link compact' : 'brand-link'}>
-            <StreamingImage src="/novvin-logo.png" alt="Logo de Novvin" className="brand-logo" />
-            {!isNavCollapsed ? (
-              <span className="brand-copy">
-                <strong>Novvin</strong>
-                <small>Web</small>
-              </span>
-            ) : null}
-          </Link>
-        </div>
-        <nav aria-label="Navegación principal">
-          {primaryNavItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
-              title={isNavCollapsed ? item.label : undefined}
-              aria-label={isNavCollapsed ? item.label : undefined}
-            >
-              <span className="nav-item-inner">
-                <span className="nav-item-label">
-                  <span className="nav-icon">
-                    <ShellIcon name={item.icon} />
-                  </span>
-                  {!isNavCollapsed ? <span>{item.label}</span> : null}
-                </span>
-                {navBadgeByPath[item.to] > 0
-                  ? isNavCollapsed
-                    ? <span className="nav-dot" />
-                    : <span className="nav-counter">{navBadgeByPath[item.to] > 99 ? '99+' : navBadgeByPath[item.to]}</span>
-                  : null}
-              </span>
-            </NavLink>
-          ))}
-        </nav>
-        <nav className="secondary-nav" aria-label="Explorar más funciones">
-          {!isNavCollapsed && <span className="nav-section-label">Explorar</span>}
-          {secondaryNavItems.map((item) => <NavLink key={item.to} to={item.to} className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'} title={isNavCollapsed ? item.label : undefined} aria-label={isNavCollapsed ? item.label : undefined}>
-            <span className="nav-item-inner"><span className="nav-item-label"><span className="nav-icon"><ShellIcon name={item.icon} /></span>{!isNavCollapsed && <span>{item.label}</span>}</span>{!isNavCollapsed && (navBadgeByPath[item.to] || 0) > 0 && <span className="nav-counter">{navBadgeByPath[item.to]}</span>}</span>
-          </NavLink>)}
-        </nav>
-        <div className="left-nav-footer">
-          <button
-            className="rail-logout-btn"
-            type="button"
-            onClick={() => void signOut()}
-            title="Cerrar sesión"
-            aria-label="Cerrar sesión"
-          >
-            <span className="nav-icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M17 16l4-4-4-4M21 12H9M13 16a9 9 0 110-8"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              </svg>
-            </span>
-            {!isNavCollapsed ? <span>Cerrar sesión</span> : null}
-          </button>
-        </div>
-      </aside>
 
       <section className="main-pane">
         {!isOnline ? (
@@ -1053,7 +924,7 @@ export function AppLayout() {
           </div>
         ) : !isFallbackSession && supabaseRestriction.active ? (
           <div className="offline-banner restricted">
-            Supabase está restringido por cuota/servicio. La web sigue abierta, pero Realtime y storage se pausan hasta resolverlo.
+            No se pudo actualizar el contenido. Vuelve a intentarlo en unos minutos.
           </div>
         ) : pendingDeferredMutations > 0 ? (
           <div className="offline-banner syncing">
@@ -1062,14 +933,19 @@ export function AppLayout() {
         ) : null}
 
         {requiresMigrationPasswordChange ? (
-          <section className="migration-password-notice" aria-label="Actualización de contraseña requerida">
+          <section
+            className="migration-password-notice"
+            aria-label="Actualización de contraseña requerida"
+          >
             <div className="migration-password-copy">
               <strong>Actualiza tu contraseña por migración</strong>
               <p>
-                Las cuentas creadas antes del 25/05/2026 deben cambiar su contraseña una sola vez para
-                usar el servidor local de forma segura.
+                Las cuentas creadas antes del 25/05/2026 deben cambiar su contraseña una sola vez
+                para usar el servidor local de forma segura.
               </p>
-              {migrationPasswordError ? <span className="form-error">{migrationPasswordError}</span> : null}
+              {migrationPasswordError ? (
+                <span className="form-error">{migrationPasswordError}</span>
+              ) : null}
             </div>
             {migrationPasswordOpen ? (
               <form
@@ -1120,7 +996,11 @@ export function AppLayout() {
                 </div>
               </form>
             ) : (
-              <button className="primary-btn" type="button" onClick={() => setMigrationPasswordOpen(true)}>
+              <button
+                className="primary-btn"
+                type="button"
+                onClick={() => setMigrationPasswordOpen(true)}
+              >
                 Cambiar ahora
               </button>
             )}
@@ -1129,43 +1009,79 @@ export function AppLayout() {
           <div className="offline-banner syncing">{migrationPasswordInfo}</div>
         ) : null}
 
-        {!isMessagesRoute ? (
-          <header className="shell-topbar">
-            <div className="shell-topbar-copy">
-              {shellMeta.kicker ? <span className="shell-kicker">{shellMeta.kicker}</span> : null}
-              <div className="shell-heading-row">
-                <div>
-                  <h1>{shellMeta.title}</h1>
-                  {shellMeta.subtitle ? <p>{shellMeta.subtitle}</p> : null}
-                </div>
-                <div className="shell-toolbar">
-                  {isSocialRoute ? (
-                    <>
-                      <Link className="shell-tool-link" to="/app/challenges/ranking" title="Ranking" aria-label="Ranking">
-                        <Trophy aria-hidden="true" />
-                      </Link>
-                      <Link className="shell-tool-link" to="/app/friend-requests" title="Solicitudes de amistad" aria-label="Solicitudes de amistad">
-                        <Users aria-hidden="true" />
-                      </Link>
-                      <Link className="shell-tool-link" to="/app/notifications" title="Notificaciones" aria-label="Notificaciones">
-                        <Bell aria-hidden="true" />
-                        {notificationUnreadCount > 0 ? <span className="shell-inline-counter">{notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}</span> : null}
-                      </Link>
-                      <Link className="shell-tool-link" to="/app/social?tab=posts&compose=1" title="Nueva publicación" aria-label="Nueva publicación">
-                        <Plus aria-hidden="true" />
-                      </Link>
-                    </>
-                  ) : isProfileRoute ? (
-                    <>
-                      <Link className="shell-tool-link" to="/app/notifications" title="Notificaciones" aria-label="Notificaciones"><Bell aria-hidden="true" /></Link>
-                      <Link className="shell-tool-link" to="/app/follows" title="Amigos" aria-label="Amigos"><Users aria-hidden="true" /></Link>
-                      <Link className="shell-tool-link" to="/app/settings" title="Ajustes" aria-label="Ajustes"><Settings aria-hidden="true" /></Link>
-                    </>
-                  ) : null}
-                </div>
-              </div>
+        {!isMessagesRoute && !isVideosRoute ? (
+          <header className="novvin-topbar">
+            <div className="novvin-topbar-title">
+              {!isSocialRoute && !isProfileRoute && !location.pathname.startsWith('/app/games') ? (
+                <Link
+                  className="icon-btn"
+                  to={activeSection || '/app/messages'}
+                  aria-label="Volver"
+                >
+                  <ArrowLeft />
+                </Link>
+              ) : null}
+              <h1>{screenTitle(location.pathname)}</h1>
             </div>
-            {/* Status strip removed — no existe en la APK móvil */}
+            <div className="novvin-topbar-actions">
+              {isSocialRoute ? (
+                <>
+                  <Link className="icon-btn" to="/app/challenges/ranking" aria-label="Ranking">
+                    <BarChart3 />
+                  </Link>
+                  <Link
+                    className="icon-btn"
+                    to="/app/friend-requests"
+                    aria-label="Solicitudes de amistad"
+                  >
+                    <Users />
+                  </Link>
+                  <Link className="icon-btn" to="/app/notifications" aria-label="Notificaciones">
+                    <Bell />
+                    {notificationUnreadCount > 0 ? <span className="nav-dot" /> : null}
+                  </Link>
+                  <Link
+                    className="icon-btn"
+                    to="/app/social?tab=posts&compose=1"
+                    aria-label="Nueva publicación"
+                  >
+                    <Plus />
+                  </Link>
+                </>
+              ) : null}
+              {isProfileRoute ? (
+                <>
+                  <button
+                    className="icon-btn"
+                    type="button"
+                    onClick={openProfileVisits}
+                    aria-label="Visitas recientes"
+                  >
+                    <Eye />
+                  </button>
+                  <Link className="icon-btn" to="/app/notifications" aria-label="Notificaciones">
+                    <Bell />
+                  </Link>
+                  <Link className="icon-btn" to="/app/follows" aria-label="Amigos">
+                    <Users />
+                  </Link>
+                  <Link className="icon-btn" to="/app/settings" aria-label="Ajustes">
+                    <Settings />
+                  </Link>
+                </>
+              ) : null}
+              <button
+                ref={mobileExploreButtonRef}
+                className="icon-btn"
+                type="button"
+                aria-label="Más opciones"
+                aria-expanded={isMobileExploreOpen}
+                aria-controls="mobile-explore-menu"
+                onClick={() => setIsMobileExploreOpen(true)}
+              >
+                <MoreVertical />
+              </button>
+            </div>
           </header>
         ) : null}
 
@@ -1175,34 +1091,89 @@ export function AppLayout() {
           </div>
         </main>
 
-        <nav className="mobile-nav">
+        <nav className="novvin-bottom-nav" aria-label="Navegación principal">
           {mobileNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) => (isActive ? 'mobile-item active' : 'mobile-item')}
+              className={activeSection === item.to ? 'novvin-nav-item active' : 'novvin-nav-item'}
+              aria-current={activeSection === item.to ? 'page' : undefined}
             >
-              <span className="mobile-item-inner">
-                <span className="mobile-nav-icon">
+              <span className="novvin-nav-pill">
+                {item.icon === 'profile' ? (
+                  <SafeAvatar
+                    url={String(user?.user_metadata?.avatar_url || '')}
+                    name={String(user?.user_metadata?.display_name || 'Perfil')}
+                    size="sm"
+                    className="novvin-nav-avatar"
+                  />
+                ) : (
                   <ShellIcon name={item.icon} />
-                </span>
-                <span className="mobile-item-label">{item.label}</span>
-                {navBadgeByPath[item.to] > 0 ? (
-                  <span className="mobile-counter">{navBadgeByPath[item.to] > 99 ? '99+' : navBadgeByPath[item.to]}</span>
+                )}
+                {(navBadgeByPath[item.to] || 0) > 0 ? (
+                  item.icon === 'messages' ? (
+                    <span className="nav-badge">
+                      {navBadgeByPath[item.to] > 9 ? '9+' : navBadgeByPath[item.to]}
+                    </span>
+                  ) : (
+                    <span className="nav-dot" />
+                  )
                 ) : null}
               </span>
+              <span>{item.label}</span>
             </NavLink>
           ))}
-          <button ref={mobileExploreButtonRef} type="button" className={isMobileExploreOpen ? 'mobile-item active' : 'mobile-item'} aria-expanded={isMobileExploreOpen} aria-controls="mobile-explore-menu" onClick={() => setIsMobileExploreOpen((current) => !current)}>
-            <span className="mobile-item-inner"><span className="mobile-nav-icon" aria-hidden="true">⋯</span><span className="mobile-item-label">Más</span></span>
-          </button>
         </nav>
-        {isMobileExploreOpen && <div className="mobile-explore-backdrop" onClick={() => { setIsMobileExploreOpen(false); mobileExploreButtonRef.current?.focus() }}>
-          <nav id="mobile-explore-menu" className="mobile-explore-menu" aria-label="Más funciones" onClick={(event) => event.stopPropagation()}>
-            <div className="mobile-explore-heading"><strong>Explorar</strong><button ref={mobileExploreCloseRef} type="button" aria-label="Cerrar menú" onClick={() => { setIsMobileExploreOpen(false); mobileExploreButtonRef.current?.focus() }}>Cerrar</button></div>
-            {secondaryNavItems.map((item) => <NavLink key={item.to} to={item.to} className="mobile-explore-link" onClick={() => setIsMobileExploreOpen(false)}><span className="nav-icon"><ShellIcon name={item.icon} /></span>{item.label}</NavLink>)}
-          </nav>
-        </div>}
+        {isMobileExploreOpen && (
+          <div
+            className="mobile-explore-backdrop"
+            onClick={() => {
+              setIsMobileExploreOpen(false)
+              mobileExploreButtonRef.current?.focus()
+            }}
+          >
+            <nav
+              id="mobile-explore-menu"
+              className="mobile-explore-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Más funciones"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mobile-explore-head">
+                <strong>Más opciones</strong>
+                <button
+                  ref={mobileExploreCloseRef}
+                  type="button"
+                  aria-label="Cerrar menú"
+                  onClick={() => {
+                    setIsMobileExploreOpen(false)
+                    mobileExploreButtonRef.current?.focus()
+                  }}
+                >
+                  Cerrar
+                </button>
+              </div>
+              {secondaryNavItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className="mobile-explore-link"
+                  onClick={() => setIsMobileExploreOpen(false)}
+                >
+                  <span className="nav-icon">
+                    <ShellIcon name={item.icon} />
+                  </span>
+                  {item.label}
+                </NavLink>
+              ))}
+              <button className="mobile-explore-link" type="button" onClick={() => void signOut()}>
+                <LogOut aria-hidden="true" />
+                Cerrar sesión
+              </button>
+            </nav>
+          </div>
+        )}
       </section>
     </div>
   )

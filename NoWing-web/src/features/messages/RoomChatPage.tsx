@@ -11,8 +11,10 @@ import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { MoreHorizontal } from 'lucide-react'
+import { SafeAvatar } from '../../components/SafeAvatar'
+import { conversationAvatarSource } from '../../core/profileMediaFields'
 import { StatusView } from '../../components/StatusView'
-import { supabase } from '../../core/supabase'
+import { supabase, resolveSupabasePublicUrl } from '../../core/supabase'
 import { formatDateTime, friendlyError, isMissingTableError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import {
@@ -263,6 +265,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const config = roomConfigByScope[scope]
   const cleanRoomId = useMemo(() => roomId.trim().toLowerCase(), [roomId])
+  const [roomAvatar, setRoomAvatar] = useState('')
   const [title, setTitle] = useState(scope === 'group' ? 'Grupo' : 'Comunidad')
   const [isMember, setIsMember] = useState(true)
   const [showInfo, setShowInfo] = useState(false)
@@ -659,6 +662,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         setIsMember(response.historyAccess?.isMember !== false)
         setParticipants(response.participants || [])
         setMentionCandidates((response.participants || []).map(person => ({ ...person, username: person.username || "" })))
+        setRoomAvatar(resolveSupabasePublicUrl('avatars',conversationAvatarSource(response.room || response.chat || {})))
         setTitle(response.title || (scope === 'group' ? 'Grupo' : 'Comunidad'))
         const mappedMessages = (response.messages ?? []).map(mapRoomMessage)
         setMessages(mappedMessages)
@@ -687,6 +691,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         return
       }
       if (!isStaleLoad()) {
+        setRoomAvatar(resolveSupabasePublicUrl('avatars',conversationAvatarSource(roomRow)))
         setTitle(textOf(roomRow, ['name', 'title', 'readable_id'], scope === 'group' ? 'Grupo' : 'Comunidad'))
       }
 
@@ -1237,7 +1242,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   const rootClassName = [
-    embedded ? 'section-stack chat-detail-embedded' : 'section-stack',
+    embedded ? 'section-stack chat-detail-embedded room-chat-page' : 'section-stack room-chat-page',
     dragActive ? 'chat-drop-active' : '',
   ]
     .filter(Boolean)
@@ -1264,7 +1269,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
               ←
             </Link>
           ) : null}
-          <h2>{title}</h2>
+          {useUbuntu ? <button type="button" className="chat-room-identity" aria-label={`Información de ${title}`} onClick={()=>setShowInfo(true)}><SafeAvatar url={roomAvatar} name={title} size="md"/><span><strong>{title}</strong><small>{participants.length ? `${participants.length} miembros` : scope==='group'?'Grupo':'Comunidad'}</small></span></button> : <h2>{title}</h2>}
         </div>
         <div className="row-actions chat-head-actions">
           <button
@@ -1520,13 +1525,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                     ))}
                   </div>
                 ) : null}
-                <small>
-                  {formatDateTime(message.createdAt)}
-                  {message.isEdited ? ' · editado' : ''}
-                  {' · '}
-                  {message.status === 'pending' ? '◷ Pendiente' : message.status === 'failed' ? <button className="mini-action-btn" type="button" onClick={() => void retryPendingWebMessage(message.id)}>Reintentar envío</button> : message.status === 'read' ? 'Leído' : message.status === 'delivered' ? 'Entregado' : 'Enviado'}
-                  {message.deliveredAt ? ' · entregado' : ''}
-                  {message.readAt ? ' · leido' : ''}
+                <small className="message-meta">
+                  {Number.isFinite(Date.parse(message.createdAt)) ? new Date(message.createdAt).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'}) : ''}{message.isEdited ? ' · editado' : ''}
+                  {mine ? <span className={`message-status ${message.status}`} aria-label={message.status==='pending'?'Pendiente':message.status==='failed'?'Error al enviar':message.status==='read'?'Leído':message.status==='delivered'?'Entregado':'Enviado'}>{message.status==='pending'?'◷':message.status==='failed'?<button type="button" className="mini-action-btn" onClick={()=>void retryPendingWebMessage(message.id)}>Reintentar</button>:message.status==='sent'?'✓':'✓✓'}</span> : null}
                 </small>
               </article>
             </Fragment>
@@ -1613,7 +1614,6 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         </section>
       ) : null}
 
-      {useUbuntu ? <button type="button" className="ghost-btn collection-info-trigger" onClick={() => setShowInfo(true)}>Información del {scope === 'group' ? 'grupo' : 'comunidad'}</button> : null}
       {showInfo ? <CollectionInfo scope={scope} roomId={cleanRoomId} title={title} participants={participants} isMember={isMember} onClose={() => setShowInfo(false)} onChanged={() => void loadRoom({ silent: true })} /> : null}
       {isMember ? <MentionSuggestions text={draft} candidates={mentionCandidates} actorId={user?.id} onSelect={username => { draftRevisionRef.current += 1; setDraft(insertMention(draft, username)) }} /> : null}
       {!isMember ? <section className="retained-chat-notice" aria-live="polite">
@@ -1627,19 +1627,20 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           } catch { setError('No se pudo borrar el chat. Inténtalo de nuevo.') }
         }}>Borrar de mi lista</button>
       </section> : <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
-        <label className="icon-btn clickable" title="Importar sticker" aria-label="Importar sticker">
-          <span aria-hidden="true">☺</span>
+        <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar">＋</summary><div className="chat-attachment-popover">
+        <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Importar sticker" aria-label="Importar sticker">
+          <span aria-hidden="true">☺</span><span>Sticker</span>
           <input
             type="file"
             hidden
             accept="image/png,image/webp,image/gif,image/jpeg,.png,.webp,.gif,.jpg,.jpeg"
             onChange={(event) => {
               void importRoomSticker(event.target.files?.[0] ?? null)
-              event.currentTarget.value = ''
+              event.currentTarget.value = '';event.currentTarget.closest('details')?.removeAttribute('open')
             }}
           />
         </label>
-        <label className="icon-btn clickable" title="Adjuntar archivo">
+        <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Adjuntar archivo"><span>Fotos, videos y documentos</span>
           <svg viewBox="0 0 24 24" width="24" height="24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" /></svg>
           <input
             type="file"
@@ -1648,11 +1649,35 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             onChange={(event) => {
               const files = event.target.files
               handleAttachFile(files)
-              event.currentTarget.value = ''
+              event.currentTarget.value = '';event.currentTarget.closest('details')?.removeAttribute('open')
             }}
           />
         </label>
 
+
+
+        <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Foto o video de una sola vista"><span>Una sola vista</span>
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path d="M12 4a8 8 0 018 8 8 8 0 01-8 8 8 8 0 01-8-8 8 8 0 018-8z" fill="none" stroke="currentColor" strokeWidth="1.8" />
+            <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+          </svg>
+          <input
+            type="file"
+            hidden
+            accept="image/*,video/*"
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null
+              void handleAttachViewOnceFile(file)
+              event.currentTarget.value = '';event.currentTarget.closest('details')?.removeAttribute('open')
+            }}
+          />
+        </label>
+
+        <button className="chat-attachment-option" type="button" title="Nueva encuesta" onClick={(event) => {event.currentTarget.closest('details')?.removeAttribute('open');setShowPollComposer((current) => !current)}}><span>Encuesta</span>
+          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 5h16v2H4V5zm0 6h10v2H4v-2zm0 6h6v2H4v-2z" fill="currentColor" /></svg>
+        </button>
+
+        </div></details>
         <button
           className={isRecordingAudio ? 'icon-btn recording' : 'icon-btn'}
           type="button"
@@ -1669,28 +1694,6 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             </svg>
           )}
         </button>
-
-        <label className="icon-btn clickable" title="Enviar view-once">
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path d="M12 4a8 8 0 018 8 8 8 0 01-8 8 8 8 0 01-8-8 8 8 0 018-8z" fill="none" stroke="currentColor" strokeWidth="1.8" />
-            <circle cx="12" cy="12" r="2.5" fill="currentColor" />
-          </svg>
-          <input
-            type="file"
-            hidden
-            accept="image/*,video/*"
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null
-              void handleAttachViewOnceFile(file)
-              event.currentTarget.value = ''
-            }}
-          />
-        </label>
-
-        <button className="icon-btn" type="button" title="Nueva encuesta" onClick={() => setShowPollComposer((current) => !current)}>
-          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 5h16v2H4V5zm0 6h10v2H4v-2zm0 6h6v2H4v-2z" fill="currentColor" /></svg>
-        </button>
-
         <input
           className="text-input chat-input-field"
           placeholder={`Escribe en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}

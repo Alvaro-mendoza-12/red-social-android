@@ -66,7 +66,11 @@ export function LoginPage() {
   const [migrationSetupToken, setMigrationSetupToken] = useState('')
   const [legacyResetEmail, setLegacyResetEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [info, setInfo] = useState<string | null>(searchParams.get('passwordChanged') === '1' ? 'Contraseña cambiada. Inicia sesión y verifica tu segundo factor para entrar.' : null)
+  const [info, setInfo] = useState<string | null>(
+    searchParams.get('passwordChanged') === '1'
+      ? 'Contraseña cambiada. Inicia sesión y verifica tu segundo factor para entrar.'
+      : null,
+  )
   const [migratedPasswordReset, setMigratedPasswordReset] = useState<{
     email: string
     migrationToken: string
@@ -136,7 +140,12 @@ export function LoginPage() {
 
   useEffect(() => {
     const activePairing = qrPairing
-    if (mode !== 'qr' || !activePairing?.pairId || !activePairing.nonce || activePairing.status !== 'pending') {
+    if (
+      mode !== 'qr' ||
+      !activePairing?.pairId ||
+      !activePairing.nonce ||
+      activePairing.status !== 'pending'
+    ) {
       return
     }
     const supabaseClient = client
@@ -177,7 +186,13 @@ export function LoginPage() {
 
   useEffect(() => {
     const activePairing = qrPairing
-    if (mode !== 'qr' || !activePairing?.pairId || !activePairing.nonce || activePairing.status !== 'approved' || consumingQr) {
+    if (
+      mode !== 'qr' ||
+      !activePairing?.pairId ||
+      !activePairing.nonce ||
+      activePairing.status !== 'approved' ||
+      consumingQr
+    ) {
       return
     }
     const supabaseClient = client
@@ -283,7 +298,9 @@ export function LoginPage() {
         setMigrationSetupEmail(migratedEmail)
         setMigrationSetupToken('')
         setMigratedPasswordReset(null)
-        setInfo('Por la migración a Ubuntu, esta cuenta necesita crear una nueva contraseña local una sola vez.')
+        setInfo(
+          'Por la migración a Ubuntu, esta cuenta necesita crear una nueva contraseña local una sola vez.',
+        )
         return
       }
       if (isMigratedPasswordResetRequired(caught)) {
@@ -303,7 +320,9 @@ export function LoginPage() {
         if (normalized) {
           setLegacyResetEmail(normalized)
           setError(null)
-          setInfo('Esta cuenta necesita crear una nueva contraseña en Ubuntu por la migración. Pulsa “Cambiar contraseña” para continuar.')
+          setInfo(
+            'Esta cuenta necesita crear una nueva contraseña en Ubuntu por la migración. Pulsa “Cambiar contraseña” para continuar.',
+          )
           return
         }
       }
@@ -377,7 +396,7 @@ export function LoginPage() {
     setMigratedPasswordReset(null)
     setError(null)
     setInfo(
-        'Si tu cuenta fue creada antes de migrar a Ubuntu, necesitas definir una nueva contraseña local una sola vez.',
+      'Si tu cuenta fue creada antes de migrar a Ubuntu, necesitas definir una nueva contraseña local una sola vez.',
     )
     await requestMigrationPasswordResetForEmail(normalized)
   }
@@ -445,29 +464,23 @@ export function LoginPage() {
         `accent-${webPreferences.accentTheme}`,
       ].join(' ')}
     >
-      <div className="auth-bg-scene" aria-hidden="true">
-        <span className="auth-bg-card card-one">Chats</span>
-        <span className="auth-bg-card card-two">Perfil</span>
-        <span className="auth-bg-card card-three">QR</span>
-        <span className="auth-bg-line line-one" />
-        <span className="auth-bg-line line-two" />
-      </div>
-
       <div className="auth-layout-grid auth-layout-single">
         <div className="auth-card auth-card-wide auth-panel-card auth-login-card">
           <div className="section-stack auth-head-copy">
             <div>
               <div className="auth-brand-lockup">
-                <StreamingImage src="/novvin-logo.png" alt="Logo de Novvin" className="auth-logo-img" />
+                <StreamingImage
+                  src="/novvin-logo.png"
+                  alt="Logo de Novvin"
+                  className="auth-logo-img"
+                />
                 <div>
                   <p className="brand-tag auth-panel-tag">Novvin</p>
                   <span>Conecta, comparte y descubre</span>
                 </div>
               </div>
-              <h1>Entrar a Novvin</h1>
-              <p>
-                Entra a tu espacio y continúa tus conversaciones desde cualquier dispositivo.
-              </p>
+              <h1>{mode === 'qr' ? 'Lleva Novvin a tu pantalla' : 'Qué bueno verte'}</h1>
+              <p>Mensajes, videos y momentos con tu gente, también en la web.</p>
             </div>
             <div className="chip-row auth-mode-row auth-mode-grid auth-mode-grid-two">
               <button
@@ -487,19 +500,6 @@ export function LoginPage() {
                 Iniciar sesión con QR
               </button>
             </div>
-          </div>
-
-          <div className="surface-subcard auth-mode-note">
-            <strong>
-              {mode === 'password'
-                ? 'Acceso clásico'
-                : 'Aprobación desde el móvil'}
-            </strong>
-            <p>
-              {mode === 'password'
-                ? 'Ideal si quieres entrar manualmente desde este navegador.'
-                : 'Genera un QR temporal y apruébalo desde la app Android para abrir esta sesión web.'}
-            </p>
           </div>
 
           {mode === 'password' ? (
@@ -550,16 +550,23 @@ export function LoginPage() {
               <button className="primary-btn" disabled={loading} type="submit">
                 {loading ? 'Entrando...' : 'Iniciar sesión'}
               </button>
-              <Link to={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}>Olvidé mi contraseña</Link>
+              <Link
+                to={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}
+              >
+                Olvidé mi contraseña
+              </Link>
             </form>
           ) : null}
 
-          {mode === 'password' && legacyResetEmail && !migrationSetupEmail && !migratedPasswordReset ? (
+          {mode === 'password' &&
+          legacyResetEmail &&
+          !migrationSetupEmail &&
+          !migratedPasswordReset ? (
             <div className="surface-subcard legacy-reset-callout">
               <strong>Actualiza tu contraseña</strong>
               <p>
-                Tu cuenta existe, pero por la migración a Ubuntu necesitamos crear una contraseña nueva.
-                Después entrarás con normalidad en web y móvil.
+                Tu cuenta existe, pero necesitamos que actualices tu contraseña. Después entrarás
+                con normalidad en web y móvil.
               </p>
               <button
                 className="primary-btn"
@@ -573,12 +580,15 @@ export function LoginPage() {
           ) : null}
 
           {mode === 'password' && migrationSetupEmail ? (
-            <form className="surface-subcard section-stack migrated-password-card" onSubmit={confirmMigrationPasswordReset}>
+            <form
+              className="surface-subcard section-stack migrated-password-card"
+              onSubmit={confirmMigrationPasswordReset}
+            >
               <div>
-                <strong>Cambia tu contraseña para Ubuntu</strong>
+                <strong>Actualiza tu contraseña</strong>
                 <p>
-                  Por la migración a Ubuntu, esta cuenta necesita una nueva contraseña local.
-                  Después de cambiarla, entrarás con normalidad en web y móvil.
+                  Tu cuenta necesita una nueva contraseña. Después de cambiarla, entrarás con
+                  normalidad en web y móvil.
                 </p>
                 <small>{migrationSetupEmail}</small>
               </div>
@@ -593,7 +603,7 @@ export function LoginPage() {
               <div className="migration-token-ready">
                 <div>
                   <strong>Cambio directo</strong>
-                  <p>Ubuntu valida la cuenta internamente. Solo escribe tu nueva contraseña y confirma.</p>
+                  <p>Escribe tu nueva contraseña y confirma para continuar.</p>
                 </div>
               </div>
               <label>
@@ -625,13 +635,13 @@ export function LoginPage() {
           ) : null}
 
           {mode === 'password' && migratedPasswordReset ? (
-            <form className="surface-subcard section-stack migrated-password-card" onSubmit={handleMigratedPasswordSubmit}>
+            <form
+              className="surface-subcard section-stack migrated-password-card"
+              onSubmit={handleMigratedPasswordSubmit}
+            >
               <div>
                 <strong>Actualización por migración</strong>
-                <p>
-                  Tu cuenta ya fue migrada a Ubuntu. Ahora crea la contraseña local que usarás
-                  para entrar en web y móvil.
-                </p>
+                <p>Crea la nueva contraseña que usarás para entrar en web y móvil.</p>
                 <small>{migratedPasswordReset.email}</small>
               </div>
               <label>
@@ -682,32 +692,22 @@ export function LoginPage() {
                 )}
               </div>
 
-              <div className="surface-subcard auth-qr-copy">
-                <strong>Cómo funciona</strong>
-                <p>1. La web genera un QR temporal.</p>
-                <p>2. Lo escaneas desde Perfil en Novvin móvil.</p>
-                <p>3. El móvil aprueba o rechaza la sesión.</p>
-                <p>4. Si apruebas, esta ventana entra automáticamente.</p>
-              </div>
-
-              <div className="surface-subcard auth-qr-copy">
-                <strong>Estado actual</strong>
-                <p>
-                  {consumingQr
-                    ? 'Aprobado. Importando la sesión web...'
-                    : qrPairing?.status === 'approved'
-                      ? 'Aprobado desde el móvil.'
-                      : qrPairing?.status === 'rejected'
-                        ? 'Rechazado desde el móvil.'
-                        : qrPairing?.status === 'expired'
-                          ? 'Expirado. Necesitas generar otro QR.'
-                          : qrPairing?.qrUrl
-                            ? 'Esperando aprobación desde el móvil.'
-                            : 'No se pudo iniciar el acceso con QR.'}
-                </p>
-                <p>{qrPairing?.deviceLabel || 'Este navegador'}</p>
-              </div>
-
+              <ol className="auth-qr-instructions">
+                <li>Abre Novvin en tu teléfono.</li>
+                <li>En Perfil, toca Vincular web y escanea este código.</li>
+                <li>Confirma el acceso en tu teléfono.</li>
+              </ol>
+              <p className="auth-qr-status" role="status">
+                {consumingQr
+                  ? 'Abriendo tu sesión…'
+                  : qrPairing?.status === 'rejected'
+                    ? 'Acceso rechazado desde el teléfono.'
+                    : qrPairing?.status === 'expired'
+                      ? 'El código caducó. Genera otro para continuar.'
+                      : qrPairing?.qrUrl
+                        ? 'Esperando tu confirmación.'
+                        : 'No se pudo generar el código.'}
+              </p>
               <div className="auth-inline-actions">
                 <button
                   className="ghost-btn"
@@ -730,7 +730,9 @@ export function LoginPage() {
           <p className="auth-foot">
             ¿No tienes cuenta? <Link to="/register">Regístrate</Link>
           </p>
-          <p className="auth-foot"><Link to="/explore/videos">Continuar como invitado</Link></p>
+          <p className="auth-foot">
+            <Link to="/explore/videos">Continuar como invitado</Link>
+          </p>
         </div>
       </div>
     </section>

@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { ChallengesPage } from '../../pages/challenges/ChallengesPage'
 import { FeedPage } from '../../pages/feed/FeedPage'
 import { MomentsPage } from '../moments/MomentsPage'
-import { LiveStrip } from '../live/LiveStrip'
 
 type SocialTab = 'posts' | 'moments' | 'challenges'
 
@@ -25,8 +24,7 @@ export function SocialPage() {
   }
 
   return (
-    <section className="section-stack">
-      {activeTab === 'posts' ? <LiveStrip /> : null}
+    <section className="social-page">
       <div className="social-tab-bar">
         <button
           type="button"
@@ -50,16 +48,21 @@ export function SocialPage() {
           aria-pressed={activeTab === 'challenges'}
           onClick={() => changeTab('challenges')}
         >
-          Retos
+          Rondas
         </button>
       </div>
 
       <div className="social-shell">
-        {activeTab === 'posts'
-          ? <FeedPage composerOpen={searchParams.get('compose') === '1'} onCloseComposer={closeComposer} />
-          : activeTab === 'moments'
-            ? <MomentsPage />
-            : <ChallengesPage />}
+        {activeTab === 'posts' ? (
+          <FeedPage
+            composerOpen={searchParams.get('compose') === '1'}
+            onCloseComposer={closeComposer}
+          />
+        ) : activeTab === 'moments' ? (
+          <MomentsPage />
+        ) : (
+          <ChallengesPage />
+        )}
       </div>
     </section>
   )

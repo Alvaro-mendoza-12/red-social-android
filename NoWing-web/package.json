@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "node ./scripts/ensure-web-build-env.mjs",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/prerender-public-home.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "jest",
@@ -19,7 +19,8 @@
     "analyze": "vite-bundle-analyzer dist",
     "deploy:preview": "vercel --cwd ..",
     "deploy:production": "vercel --cwd .. --prod",
-    "test:media": "node --test tests/media-worker.test.mjs"
+    "test:media": "node --test tests/media-worker.test.mjs",
+    "test:seo": "node --test tests/public-home.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",

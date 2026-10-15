@@ -1,3 +1,4 @@
+import { MediaViewer } from './MediaViewer'
 import { StreamingVideo, StreamingAudio } from './StreamingMedia'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { rewriteRuntimeStorageUrl, runtimeStoragePreviewUrl } from '../core/runtimeBackend'
@@ -52,6 +53,7 @@ export function ChatAttachmentMedia({
   const backendBase = trustedStorageBackend(source)
   const ownStorage = Boolean(backendBase)
   const maxBytes = kind === 'audio' || kind === 'video' ? STORAGE_SHORT_MEDIA_MAX_BYTES : STORAGE_PREVIEW_MAX_BYTES
+  const [viewerOpen,setViewerOpen]=useState(false)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [failure, setFailure] = useState<{ source: string; identity: StorageReadIdentity; code: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -111,6 +113,7 @@ export function ChatAttachmentMedia({
     return () => { active = false; removeInvalidator(); clearDeliveredMedia() }
   }, [backendBase, identity, kind, maxBytes, ownStorage, size, source, visible, attempt])
 
+  useEffect(()=>onStorageReadInvalidated(()=>setViewerOpen(false)),[])
   const ready = preview?.source === source && preview.identity === identity ? preview : null
   const currentFailure = failure?.source === source && failure.identity === identity ? failure : null
   const playbackUrl = ownStorage ? ready?.url ?? '' : safeExternalUrl(source)
@@ -118,7 +121,7 @@ export function ChatAttachmentMedia({
   const decodingFailed = () => setFailure({ source, identity, code: 'MEDIA_UNAVAILABLE' })
   if (kind === 'video' || kind === 'audio') {
     return <div ref={container}>{kind === 'video'
-      ? <StreamingVideo className="chat-media-video" src={visible ? rewritten : undefined} controls preload="metadata" playsInline />
+      ? <><StreamingVideo className="chat-media-video" src={visible ? rewritten : undefined} controls preload="metadata" playsInline /><button type="button" className="mini-action-btn" onClick={()=>{container.current?.querySelector('video')?.pause();setViewerOpen(true)}}>Ampliar video</button>{viewerOpen?<MediaViewer items={[{url:rewritten,type:'video',title}]} onClose={()=>setViewerOpen(false)}/>:null}</>
       : <StreamingAudio className="chat-audio-player" src={visible ? rewritten : undefined} controls preload="metadata" />}</div>
   }
   let content
@@ -134,11 +137,11 @@ export function ChatAttachmentMedia({
     content = <div className="chat-file-card chat-file-card-loading" role="status"><span><strong>Preparando archivo</strong><small>{title}</small></span></div>
   } else if (kind === 'image') {
     const image = <img className={imageClassName} src={playbackUrl} alt={title} loading="lazy" decoding="async" onError={decodingFailed} />
-    content = imageLink ? <a className="chat-media-card" href={playbackUrl} target="_blank" rel="noopener noreferrer">{image}</a> : image
+    content = imageLink ? <button type="button" className="chat-media-card" aria-label={`Ampliar ${title}`} onClick={()=>setViewerOpen(true)}>{image}</button> : image
   } else if (kind === 'pdf') {
-    content = <div className="chat-pdf-card"><div className="chat-file-card"><strong>{title}</strong><a className="mini-action-btn" href={playbackUrl} target="_blank" rel="noopener noreferrer">Abrir</a></div><iframe className="chat-pdf-preview" src={playbackUrl} title={title} sandbox="allow-scripts allow-downloads" loading="lazy" /></div>
+    content = <div className="chat-pdf-card"><div className="chat-file-card"><strong>{title}</strong><button type="button" className="mini-action-btn" onClick={()=>setViewerOpen(true)}>Abrir documento</button></div><iframe className="chat-pdf-preview" src={playbackUrl} title={title} sandbox="allow-scripts allow-downloads" loading="lazy" /></div>
   } else {
     content = <a className="chat-file-card" href={playbackUrl} download={title} rel="noopener noreferrer"><span className="chat-file-icon">DOC</span><span><strong>{title}</strong>{ready?.size ? <small>{Math.ceil(ready.size / 1024)} KB</small> : null}</span></a>
   }
-  return <div ref={container}>{content}</div>
+  return <div ref={container}>{content}{viewerOpen && playbackUrl && (!ownStorage || identity.accountId) ? <MediaViewer items={[{url:playbackUrl,type:kind==='pdf'?'pdf':'image',title,downloadUrl:playbackUrl}]} onClose={()=>setViewerOpen(false)}/> : null}</div>
 }

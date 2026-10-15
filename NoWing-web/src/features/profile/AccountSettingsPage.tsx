@@ -3,15 +3,27 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
-import { maskSensitiveToken } from '../../core/auth/recoverySession'
 import { supabase } from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { changeFallbackPassword } from '../../core/auth/fallbackAuth'
-import { loadFallbackProfileMe, updateFallbackProfileMe, uploadFallbackFile } from '../../core/fallbackData'
+import {
+  loadFallbackProfileMe,
+  updateFallbackProfileMe,
+  uploadFallbackFile,
+} from '../../core/fallbackData'
 
-type ProfileSectionId = 'welcome' | 'music' | 'interests' | 'hobbies' | 'career' | 'games' | 'sports' | 'books' | 'availability'
+type ProfileSectionId =
+  | 'welcome'
+  | 'music'
+  | 'interests'
+  | 'hobbies'
+  | 'career'
+  | 'games'
+  | 'sports'
+  | 'books'
+  | 'availability'
 type ProfileSectionVisibility = 'everyone' | 'followers' | 'only_me'
 
 const profileSectionLabels: Record<ProfileSectionId, string> = {
@@ -27,15 +39,23 @@ const profileSectionLabels: Record<ProfileSectionId, string> = {
 }
 
 const defaultSectionVisibility = (): Record<ProfileSectionId, ProfileSectionVisibility> =>
-  Object.fromEntries(Object.keys(profileSectionLabels).map((key) => [key, 'everyone'])) as Record<ProfileSectionId, ProfileSectionVisibility>
+  Object.fromEntries(Object.keys(profileSectionLabels).map((key) => [key, 'everyone'])) as Record<
+    ProfileSectionId,
+    ProfileSectionVisibility
+  >
 
-function profileSectionVisibilityFrom(value: unknown): Record<ProfileSectionId, ProfileSectionVisibility> {
+function profileSectionVisibilityFrom(
+  value: unknown,
+): Record<ProfileSectionId, ProfileSectionVisibility> {
   const result = defaultSectionVisibility()
   if (!value || typeof value !== 'object' || Array.isArray(value)) return result
   for (const key of Object.keys(profileSectionLabels) as ProfileSectionId[]) {
-    const raw = String((value as Record<string, unknown>)[key] ?? '').trim().toLowerCase()
+    const raw = String((value as Record<string, unknown>)[key] ?? '')
+      .trim()
+      .toLowerCase()
     const normalized = raw === 'connections' ? 'followers' : raw
-    if (normalized === 'everyone' || normalized === 'followers' || normalized === 'only_me') result[key] = normalized
+    if (normalized === 'everyone' || normalized === 'followers' || normalized === 'only_me')
+      result[key] = normalized
   }
   return result
 }
@@ -43,7 +63,9 @@ function profileSectionVisibilityFrom(value: unknown): Record<ProfileSectionId, 
 function profileSectionOrderFrom(value: unknown): ProfileSectionId[] {
   const defaults = Object.keys(profileSectionLabels) as ProfileSectionId[]
   const requested = Array.isArray(value)
-    ? value.map((entry) => String(entry).trim().toLowerCase()).filter((entry): entry is ProfileSectionId => entry in profileSectionLabels)
+    ? value
+        .map((entry) => String(entry).trim().toLowerCase())
+        .filter((entry): entry is ProfileSectionId => entry in profileSectionLabels)
     : []
   return [...new Set([...requested, ...defaults])]
 }
@@ -81,7 +103,10 @@ function toBoolean(value: unknown): boolean {
 
 function csvFromArray(value: unknown): string {
   if (!Array.isArray(value)) return ''
-  return value.map((entry) => String(entry).trim()).filter(Boolean).join(', ')
+  return value
+    .map((entry) => String(entry).trim())
+    .filter(Boolean)
+    .join(', ')
 }
 
 function csvToArray(value: string): string[] {
@@ -114,12 +139,13 @@ function gameLogoJsonFromText(value: string): Record<string, string> {
 }
 
 function isMissingColumnError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
   return message.includes('column') || message.includes('42703')
 }
 
 export function AccountSettingsPage() {
-  const { user, session, isFallbackSession } = useAuth()
+  const { user, isFallbackSession } = useAuth()
   const [webPreferences, updateWebPreferences] = useWebPreferences()
   const [model, setModel] = useState<SettingsModel>({
     displayName: '',
@@ -164,88 +190,6 @@ export function AccountSettingsPage() {
     () => (user?.id ? `conectate://profile/${user.id}` : ''),
     [user?.id],
   )
-  const sessionFingerprint = useMemo(() => {
-    const token = session?.access_token?.trim() ?? ''
-    if (isFallbackSession) return 'Servidor local'
-    return token ? maskSensitiveToken(token) : 'Sin token activo'
-  }, [isFallbackSession, session?.access_token])
-  const profileCompletion = useMemo(() => {
-    const checks = [
-      model.displayName,
-      model.username,
-      model.bio,
-      model.avatarUrl,
-      model.coverUrl,
-      model.interestsText,
-      model.hobbiesText,
-      model.linkedGamesText,
-      model.favoriteMusicUrl,
-      model.favoriteBook,
-      model.favoriteSport,
-      model.career,
-      model.availabilitySchedule,
-    ]
-    const filled = checks.filter((entry) => entry.trim().length > 0).length
-    return Math.round((filled / checks.length) * 100)
-  }, [
-    model.availabilitySchedule,
-    model.avatarUrl,
-    model.bio,
-    model.career,
-    model.coverUrl,
-    model.displayName,
-    model.favoriteBook,
-    model.favoriteMusicUrl,
-    model.favoriteSport,
-    model.interestsText,
-    model.hobbiesText,
-    model.linkedGamesText,
-    model.username,
-  ])
-  const privacySummary = useMemo(() => {
-    if (hasIsPrivate && model.isPrivate) return 'Cuenta privada'
-    if (hasProfileVisibility) {
-      if (model.profileVisibility === 'followers') return 'Visible a seguidores'
-      if (model.profileVisibility === 'friends') return 'Visible a amigos'
-      if (model.profileVisibility === 'nobody') return 'Oculta'
-    }
-    return 'Visible para todos'
-  }, [hasIsPrivate, hasProfileVisibility, model.isPrivate, model.profileVisibility])
-  const settingsSummaryCards = useMemo(
-    () => [
-      {
-        label: 'Perfil',
-        value: `${profileCompletion}%`,
-        hint: profileCompletion >= 80 ? 'Listo para verse solido en web.' : 'Todavia puedes completar mas campos.',
-      },
-      {
-        label: 'Privacidad',
-        value: privacySummary,
-        hint: `Ultimo acceso: ${model.lastSeenVisibility}`,
-      },
-      {
-        label: 'Acceso',
-        value: currentEmail || 'Sin correo',
-        hint: 'Correo y QR seguros comparten el mismo flujo de sesion.',
-      },
-      {
-        label: 'Web',
-        value: `${webPreferences.themeMode} · ${webPreferences.accentTheme}`,
-        hint: `${webPreferences.language.toUpperCase()} · ${webPreferences.textScale}`,
-      },
-    ],
-    [
-      currentEmail,
-      model.lastSeenVisibility,
-      privacySummary,
-      profileCompletion,
-      webPreferences.language,
-      webPreferences.textScale,
-      webPreferences.accentTheme,
-      webPreferences.themeMode,
-    ],
-  )
-
   const loadSettings = useCallback(async () => {
     if (isFallbackSession) {
       setLoading(true)
@@ -256,10 +200,18 @@ export function AccountSettingsPage() {
         const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>
         setModel((current) => ({
           ...current,
-          displayName: textOf(profile, ['display_name', 'displayName', 'full_name'], textOf(metadata, ['display_name', 'full_name'], user?.email ?? '')),
+          displayName: textOf(
+            profile,
+            ['display_name', 'displayName', 'full_name'],
+            textOf(metadata, ['display_name', 'full_name'], user?.email ?? ''),
+          ),
           username: textOf(profile, ['username'], ''),
           bio: textOf(profile, ['bio'], ''),
-          avatarUrl: textOf(profile, ['avatar_url', 'avatarUrl', 'photo_url', 'profile_image'], textOf(metadata, ['avatar_url'], '')),
+          avatarUrl: textOf(
+            profile,
+            ['avatar_url', 'avatarUrl', 'photo_url', 'profile_image'],
+            textOf(metadata, ['avatar_url'], ''),
+          ),
           coverUrl: textOf(profile, ['cover_url', 'coverUrl', 'banner_url'], ''),
           interestsText: csvFromArray(profile.interests),
           hobbiesText: csvFromArray(profile.hobbies),
@@ -270,12 +222,28 @@ export function AccountSettingsPage() {
           favoriteSport: textOf(profile, ['favorite_sport'], ''),
           career: textOf(profile, ['career'], ''),
           availabilitySchedule: textOf(profile, ['availability_schedule'], ''),
-          profileSectionVisibility: profileSectionVisibilityFrom(profile.profile_section_visibility ?? profile.profileSectionVisibility),
-          profileSectionOrder: profileSectionOrderFrom(profile.profile_section_order ?? profile.profileSectionOrder),
-          lastSeenVisibility: textOf(profile, ['last_seen_visibility', 'lastSeenVisibility'], current.lastSeenVisibility),
-          onlineStatusVisibility: textOf(profile, ['online_status_visibility', 'onlineStatusVisibility'], current.onlineStatusVisibility),
+          profileSectionVisibility: profileSectionVisibilityFrom(
+            profile.profile_section_visibility ?? profile.profileSectionVisibility,
+          ),
+          profileSectionOrder: profileSectionOrderFrom(
+            profile.profile_section_order ?? profile.profileSectionOrder,
+          ),
+          lastSeenVisibility: textOf(
+            profile,
+            ['last_seen_visibility', 'lastSeenVisibility'],
+            current.lastSeenVisibility,
+          ),
+          onlineStatusVisibility: textOf(
+            profile,
+            ['online_status_visibility', 'onlineStatusVisibility'],
+            current.onlineStatusVisibility,
+          ),
           isPrivate: toBoolean(profile.is_private ?? profile.isPrivate),
-          profileVisibility: textOf(profile, ['profile_visibility', 'profileVisibility'], current.profileVisibility),
+          profileVisibility: textOf(
+            profile,
+            ['profile_visibility', 'profileVisibility'],
+            current.profileVisibility,
+          ),
         }))
         setHasIsPrivate(true)
         setHasProfileVisibility(true)
@@ -320,8 +288,12 @@ export function AccountSettingsPage() {
         favoriteSport: textOf(row, ['favorite_sport'], ''),
         career: textOf(row, ['career'], ''),
         availabilitySchedule: textOf(row, ['availability_schedule'], ''),
-        profileSectionVisibility: profileSectionVisibilityFrom(row.profile_section_visibility ?? row.profileSectionVisibility),
-        profileSectionOrder: profileSectionOrderFrom(row.profile_section_order ?? row.profileSectionOrder),
+        profileSectionVisibility: profileSectionVisibilityFrom(
+          row.profile_section_visibility ?? row.profileSectionVisibility,
+        ),
+        profileSectionOrder: profileSectionOrderFrom(
+          row.profile_section_order ?? row.profileSectionOrder,
+        ),
         lastSeenVisibility: textOf(row, ['last_seen_visibility'], 'everyone'),
         onlineStatusVisibility: textOf(row, ['online_status_visibility'], 'everyone'),
         isPrivate: toBoolean(row.is_private),
@@ -371,7 +343,11 @@ export function AccountSettingsPage() {
         const profile = response.profile ?? {}
         setModel((current) => ({
           ...current,
-          displayName: textOf(profile, ['display_name', 'displayName', 'full_name'], current.displayName),
+          displayName: textOf(
+            profile,
+            ['display_name', 'displayName', 'full_name'],
+            current.displayName,
+          ),
           bio: textOf(profile, ['bio'], current.bio),
           avatarUrl: textOf(profile, ['avatar_url', 'avatarUrl'], current.avatarUrl),
           coverUrl: textOf(profile, ['cover_url', 'coverUrl'], current.coverUrl),
@@ -410,7 +386,10 @@ export function AccountSettingsPage() {
         online_status_visibility: model.onlineStatusVisibility,
         updated_at: new Date().toISOString(),
       }
-      const { error: updateError } = await supabase.from('profiles').update(payload).eq('id', user.id)
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(payload)
+        .eq('id', user.id)
       if (updateError && !isMissingColumnError(updateError)) throw updateError
       if (updateError && isMissingColumnError(updateError)) {
         const legacyPayload = {
@@ -419,9 +398,14 @@ export function AccountSettingsPage() {
           bio: payload.bio,
           updated_at: payload.updated_at,
         }
-        const { error: legacyError } = await supabase.from('profiles').update(legacyPayload).eq('id', user.id)
+        const { error: legacyError } = await supabase
+          .from('profiles')
+          .update(legacyPayload)
+          .eq('id', user.id)
         if (legacyError) throw legacyError
-        setInfo('Perfil básico guardado. Ejecuta el SQL final para habilitar banner/intereses/gustos en web.')
+        setInfo(
+          'Perfil básico guardado. Ejecuta el SQL final para habilitar banner/intereses/gustos en web.',
+        )
         return
       }
       setInfo('Perfil actualizado.')
@@ -460,10 +444,15 @@ export function AccountSettingsPage() {
         return
       }
 
-      const { error: updateError } = await supabase.from('profiles').update(payload).eq('id', user.id)
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(payload)
+        .eq('id', user.id)
       if (updateError && !isMissingColumnError(updateError)) throw updateError
       if (updateError && isMissingColumnError(updateError)) {
-        setInfo('Privacidad básica disponible. Ejecuta el SQL final para habilitar visibilidad granular de último acceso/online.')
+        setInfo(
+          'Privacidad básica disponible. Ejecuta el SQL final para habilitar visibilidad granular de último acceso/online.',
+        )
         return
       }
       setInfo('Privacidad actualizada.')
@@ -498,7 +487,9 @@ export function AccountSettingsPage() {
         await changeFallbackPassword(currentPassword.trim(), password)
       } else {
         if (!supabase) return
-        const { error: passwordError } = await supabase.auth.updateUser({ password })
+        const { error: passwordError } = await supabase.auth.updateUser({
+          password,
+        })
         if (passwordError) throw passwordError
       }
       setCurrentPassword('')
@@ -518,7 +509,12 @@ export function AccountSettingsPage() {
     setError(null)
     setInfo(null)
     try {
-      const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+      const extension =
+        file.name
+          .split('.')
+          .pop()
+          ?.toLowerCase()
+          .replace(/[^a-z0-9]/g, '') || 'jpg'
       const userId = user?.id?.trim() || 'me'
       const path = `${userId}/${crypto.randomUUID()}_${kind}.${extension}`
       const uploaded = await uploadFallbackFile('avatars', file, path)
@@ -527,9 +523,18 @@ export function AccountSettingsPage() {
           ? { ...current, avatarUrl: uploaded.publicUrl }
           : { ...current, coverUrl: uploaded.publicUrl },
       )
-      setInfo(kind === 'avatar' ? 'Avatar subido. Guarda el perfil para aplicarlo.' : 'Banner subido. Guarda el perfil para aplicarlo.')
+      setInfo(
+        kind === 'avatar'
+          ? 'Avatar subido. Guarda el perfil para aplicarlo.'
+          : 'Banner subido. Guarda el perfil para aplicarlo.',
+      )
     } catch (caught) {
-      setError(friendlyError(caught, kind === 'avatar' ? 'No se pudo subir avatar' : 'No se pudo subir banner'))
+      setError(
+        friendlyError(
+          caught,
+          kind === 'avatar' ? 'No se pudo subir avatar' : 'No se pudo subir banner',
+        ),
+      )
     } finally {
       setUploadingAsset(null)
     }
@@ -549,7 +554,9 @@ export function AccountSettingsPage() {
         },
       })
       if (otpError) throw otpError
-      setInfo('Enviamos un acceso por correo. Puedes usar el código o abrir el enlace desde el mensaje recibido.')
+      setInfo(
+        'Enviamos un acceso por correo. Puedes usar el código o abrir el enlace desde el mensaje recibido.',
+      )
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo enviar el acceso por correo'))
     } finally {
@@ -558,7 +565,9 @@ export function AccountSettingsPage() {
   }
 
   if (!supabase && !isFallbackSession) {
-    return <StatusView title="Supabase no configurado" description="Configura .env para usar ajustes." />
+    return (
+      <StatusView title="Supabase no configurado" description="Configura .env para usar ajustes." />
+    )
   }
 
   if (loading) {
@@ -567,54 +576,19 @@ export function AccountSettingsPage() {
 
   return (
     <section className="section-stack settings-page-shell">
-      <article className="surface-card settings-hero-card">
-        <div className="row-between settings-hero-head">
-          <div>
-            <Link to="/app/profile" className="inline-link">
-              ← Volver a perfil
-            </Link>
-            <h2>Ajustes de cuenta</h2>
-            <p>
-              Perfil, privacidad, seguridad y preferencias web en un solo panel, más alineado con la
-              experiencia móvil.
-            </p>
-          </div>
-          <div className="settings-hero-meta">
-            <span className="folder-tag">Web profesional</span>
-            <small>Sesión: {sessionFingerprint}</small>
-          </div>
-        </div>
-      </article>
-
-      {error ? <StatusView title="Ajustes no disponibles" description={error} /> : null}
-      {info ? <article className="surface-card"><p>{info}</p></article> : null}
-
-      <article className="surface-card settings-summary-card">
-        <div className="row-between settings-summary-head">
-          <div>
-            <h3>Resumen rapido</h3>
-            <p>Todo lo delicado de la cuenta queda agrupado antes de entrar a formularios largos.</p>
-          </div>
-          <span className="folder-tag">Cuenta viva</span>
-        </div>
-        <div className="settings-summary-grid">
-          {settingsSummaryCards.map((card) => (
-            <div key={card.label} className="settings-summary-item">
-              <strong>{card.value}</strong>
-              <span>{card.label}</span>
-              <p>{card.hint}</p>
-            </div>
-          ))}
-        </div>
-        <div className="row-actions wrap settings-anchor-row">
-          <a className="ghost-btn" href="#perfil-ajustes">Perfil</a>
-          <a className="ghost-btn" href="#privacidad-ajustes">Privacidad</a>
-          <a className="ghost-btn" href="#seguridad-ajustes">Seguridad</a>
-          <a className="ghost-btn" href="#acceso-qr-ajustes">Acceso y QR</a>
-          <a className="ghost-btn" href="#preferencias-web-ajustes">Preferencias web</a>
-        </div>
-      </article>
-
+      <nav className="settings-section-nav" aria-label="Apartados de ajustes">
+        <a href="#perfil-ajustes">Perfil</a>
+        <a href="#privacidad-ajustes">Privacidad</a>
+        <a href="#seguridad-ajustes">Seguridad</a>
+        <a href="#acceso-qr-ajustes">Acceso y QR</a>
+        <a href="#preferencias-web-ajustes">Apariencia</a>
+      </nav>
+      {error ? (
+        <p className="error-text" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {info ? <p role="status">{info}</p> : null}
       <div className="settings-grid">
         <article id="perfil-ajustes" className="surface-card section-stack settings-card-wide">
           <div>
@@ -625,18 +599,31 @@ export function AccountSettingsPage() {
             <div className="settings-profile-preview">
               <div
                 className="settings-profile-cover"
-                style={model.coverUrl.trim() ? { backgroundImage: `url(${model.coverUrl.trim()})` } : undefined}
+                style={
+                  model.coverUrl.trim()
+                    ? { backgroundImage: `url(${model.coverUrl.trim()})` }
+                    : undefined
+                }
               />
               <div className="settings-profile-avatar">
                 {model.avatarUrl.trim() ? (
-                  <StreamingImage src={model.avatarUrl.trim()} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                  <StreamingImage
+                    src={model.avatarUrl.trim()}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
                 ) : (
-                  <span>{(model.displayName.trim() || currentEmail || 'U').charAt(0).toUpperCase()}</span>
+                  <span>
+                    {(model.displayName.trim() || currentEmail || 'U').charAt(0).toUpperCase()}
+                  </span>
                 )}
               </div>
               <div className="settings-profile-meta">
                 <strong>{model.displayName.trim() || 'Tu perfil'}</strong>
-                <span>{model.username.trim() ? `@${model.username.trim()}` : currentEmail || ''}</span>
+                <span>
+                  {model.username.trim() ? `@${model.username.trim()}` : currentEmail || ''}
+                </span>
               </div>
             </div>
 
@@ -646,21 +633,34 @@ export function AccountSettingsPage() {
                 placeholder="Nombre visible"
                 value={model.displayName}
                 onChange={(event) =>
-                  setModel((current) => ({ ...current, displayName: event.target.value }))
+                  setModel((current) => ({
+                    ...current,
+                    displayName: event.target.value,
+                  }))
                 }
               />
               <input
                 className="text-input tiny-input"
                 placeholder="Usuario"
                 value={model.username}
-                onChange={(event) => setModel((current) => ({ ...current, username: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    username: event.target.value,
+                  }))
+                }
               />
               <textarea
                 className="text-input textarea-input settings-form-span-2"
                 rows={4}
                 placeholder="Biografía"
                 value={model.bio}
-                onChange={(event) => setModel((current) => ({ ...current, bio: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    bio: event.target.value,
+                  }))
+                }
               />
             </div>
 
@@ -669,24 +669,42 @@ export function AccountSettingsPage() {
                 className="text-input"
                 placeholder="Avatar URL"
                 value={model.avatarUrl}
-                onChange={(event) => setModel((current) => ({ ...current, avatarUrl: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    avatarUrl: event.target.value,
+                  }))
+                }
               />
               <input
                 className="text-input"
                 placeholder="Banner / cover URL"
                 value={model.coverUrl}
-                onChange={(event) => setModel((current) => ({ ...current, coverUrl: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    coverUrl: event.target.value,
+                  }))
+                }
               />
             </div>
 
             <div className="asset-upload-row">
-              <label className={isFallbackSession ? 'asset-upload-button' : 'asset-upload-button disabled'}>
-                <span>{uploadingAsset === 'avatar' ? 'Subiendo foto...' : 'Subir foto de perfil'}</span>
+              <label
+                className={
+                  isFallbackSession ? 'asset-upload-button' : 'asset-upload-button disabled'
+                }
+              >
+                <span>
+                  {uploadingAsset === 'avatar' ? 'Subiendo foto...' : 'Subir foto de perfil'}
+                </span>
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   disabled={!isFallbackSession || uploadingAsset !== null}
-                  onChange={(event) => void uploadProfileAsset('avatar', event.currentTarget.files?.[0])}
+                  onChange={(event) =>
+                    void uploadProfileAsset('avatar', event.currentTarget.files?.[0])
+                  }
                 />
               </label>
               <small>
@@ -696,13 +714,21 @@ export function AccountSettingsPage() {
               </small>
             </div>
             <div className="asset-upload-row">
-              <label className={isFallbackSession ? 'asset-upload-button secondary' : 'asset-upload-button secondary disabled'}>
+              <label
+                className={
+                  isFallbackSession
+                    ? 'asset-upload-button secondary'
+                    : 'asset-upload-button secondary disabled'
+                }
+              >
                 <span>{uploadingAsset === 'cover' ? 'Subiendo portada...' : 'Subir portada'}</span>
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   disabled={!isFallbackSession || uploadingAsset !== null}
-                  onChange={(event) => void uploadProfileAsset('cover', event.currentTarget.files?.[0])}
+                  onChange={(event) =>
+                    void uploadProfileAsset('cover', event.currentTarget.files?.[0])
+                  }
                 />
               </label>
               <small>
@@ -716,19 +742,34 @@ export function AccountSettingsPage() {
                 className="text-input"
                 placeholder="Intereses separados por coma: anime, juegos, música"
                 value={model.interestsText}
-                onChange={(event) => setModel((current) => ({ ...current, interestsText: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    interestsText: event.target.value,
+                  }))
+                }
               />
               <input
                 className="text-input"
                 placeholder="Pasatiempos separados por coma"
                 value={model.hobbiesText}
-                onChange={(event) => setModel((current) => ({ ...current, hobbiesText: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    hobbiesText: event.target.value,
+                  }))
+                }
               />
               <input
                 className="text-input"
                 placeholder="Juegos separados por coma"
                 value={model.linkedGamesText}
-                onChange={(event) => setModel((current) => ({ ...current, linkedGamesText: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    linkedGamesText: event.target.value,
+                  }))
+                }
               />
             </div>
             <textarea
@@ -736,32 +777,57 @@ export function AccountSettingsPage() {
               rows={3}
               placeholder="Logos oficiales: Juego=https://cdn.cloudflare.steamstatic.com/..."
               value={model.gameLogoUrlsText}
-              onChange={(event) => setModel((current) => ({ ...current, gameLogoUrlsText: event.target.value }))}
+              onChange={(event) =>
+                setModel((current) => ({
+                  ...current,
+                  gameLogoUrlsText: event.target.value,
+                }))
+              }
             />
             <div className="settings-mini-grid">
               <input
                 className="text-input"
                 placeholder="Música favorita URL"
                 value={model.favoriteMusicUrl}
-                onChange={(event) => setModel((current) => ({ ...current, favoriteMusicUrl: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    favoriteMusicUrl: event.target.value,
+                  }))
+                }
               />
               <input
                 className="text-input"
                 placeholder="Libro favorito"
                 value={model.favoriteBook}
-                onChange={(event) => setModel((current) => ({ ...current, favoriteBook: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    favoriteBook: event.target.value,
+                  }))
+                }
               />
               <input
                 className="text-input"
                 placeholder="Deporte favorito"
                 value={model.favoriteSport}
-                onChange={(event) => setModel((current) => ({ ...current, favoriteSport: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    favoriteSport: event.target.value,
+                  }))
+                }
               />
               <input
                 className="text-input"
                 placeholder="Carrera / profesión"
                 value={model.career}
-                onChange={(event) => setModel((current) => ({ ...current, career: event.target.value }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    career: event.target.value,
+                  }))
+                }
               />
             </div>
             <textarea
@@ -769,7 +835,12 @@ export function AccountSettingsPage() {
               rows={2}
               placeholder="Horario disponible"
               value={model.availabilitySchedule}
-              onChange={(event) => setModel((current) => ({ ...current, availabilitySchedule: event.target.value }))}
+              onChange={(event) =>
+                setModel((current) => ({
+                  ...current,
+                  availabilitySchedule: event.target.value,
+                }))
+              }
             />
             <div className="settings-mini-grid">
               {model.profileSectionOrder.map((section, sectionIndex) => (
@@ -780,33 +851,49 @@ export function AccountSettingsPage() {
                       className="mini-action-btn"
                       type="button"
                       disabled={sectionIndex === 0}
-                      onClick={() => setModel((current) => {
-                        const order = [...current.profileSectionOrder]
-                        ;[order[sectionIndex - 1], order[sectionIndex]] = [order[sectionIndex], order[sectionIndex - 1]]
-                        return { ...current, profileSectionOrder: order }
-                      })}
-                    >Subir</button>
+                      onClick={() =>
+                        setModel((current) => {
+                          const order = [...current.profileSectionOrder]
+                          ;[order[sectionIndex - 1], order[sectionIndex]] = [
+                            order[sectionIndex],
+                            order[sectionIndex - 1],
+                          ]
+                          return { ...current, profileSectionOrder: order }
+                        })
+                      }
+                    >
+                      Subir
+                    </button>
                     <button
                       className="mini-action-btn"
                       type="button"
                       disabled={sectionIndex === model.profileSectionOrder.length - 1}
-                      onClick={() => setModel((current) => {
-                        const order = [...current.profileSectionOrder]
-                        ;[order[sectionIndex], order[sectionIndex + 1]] = [order[sectionIndex + 1], order[sectionIndex]]
-                        return { ...current, profileSectionOrder: order }
-                      })}
-                    >Bajar</button>
+                      onClick={() =>
+                        setModel((current) => {
+                          const order = [...current.profileSectionOrder]
+                          ;[order[sectionIndex], order[sectionIndex + 1]] = [
+                            order[sectionIndex + 1],
+                            order[sectionIndex],
+                          ]
+                          return { ...current, profileSectionOrder: order }
+                        })
+                      }
+                    >
+                      Bajar
+                    </button>
                   </span>
                   <select
                     className="text-input tiny-input"
                     value={model.profileSectionVisibility[section]}
-                    onChange={(event) => setModel((current) => ({
-                      ...current,
-                      profileSectionVisibility: {
-                        ...current.profileSectionVisibility,
-                        [section]: event.target.value as ProfileSectionVisibility,
-                      },
-                    }))}
+                    onChange={(event) =>
+                      setModel((current) => ({
+                        ...current,
+                        profileSectionVisibility: {
+                          ...current.profileSectionVisibility,
+                          [section]: event.target.value as ProfileSectionVisibility,
+                        },
+                      }))
+                    }
                   >
                     <option value="everyone">Todos</option>
                     <option value="followers">Seguidores</option>
@@ -815,7 +902,12 @@ export function AccountSettingsPage() {
                 </div>
               ))}
             </div>
-            <button className="ghost-btn" type="button" disabled={savingProfile} onClick={() => void saveProfileBasics()}>
+            <button
+              className="ghost-btn"
+              type="button"
+              disabled={savingProfile}
+              onClick={() => void saveProfileBasics()}
+            >
               {savingProfile ? 'Guardando...' : 'Guardar perfil'}
             </button>
           </div>
@@ -832,7 +924,12 @@ export function AccountSettingsPage() {
                 type="checkbox"
                 checked={model.isPrivate}
                 disabled={!hasIsPrivate}
-                onChange={(event) => setModel((current) => ({ ...current, isPrivate: event.target.checked }))}
+                onChange={(event) =>
+                  setModel((current) => ({
+                    ...current,
+                    isPrivate: event.target.checked,
+                  }))
+                }
               />
               Cuenta privada
             </label>
@@ -841,7 +938,10 @@ export function AccountSettingsPage() {
               value={model.profileVisibility}
               disabled={!hasProfileVisibility}
               onChange={(event) =>
-                setModel((current) => ({ ...current, profileVisibility: event.target.value }))
+                setModel((current) => ({
+                  ...current,
+                  profileVisibility: event.target.value,
+                }))
               }
             >
               <option value="everyone">Todos</option>
@@ -853,7 +953,10 @@ export function AccountSettingsPage() {
               className="text-input tiny-input"
               value={model.lastSeenVisibility}
               onChange={(event) =>
-                setModel((current) => ({ ...current, lastSeenVisibility: event.target.value }))
+                setModel((current) => ({
+                  ...current,
+                  lastSeenVisibility: event.target.value,
+                }))
               }
             >
               <option value="everyone">Último acceso: todos</option>
@@ -864,7 +967,10 @@ export function AccountSettingsPage() {
               className="text-input tiny-input"
               value={model.onlineStatusVisibility}
               onChange={(event) =>
-                setModel((current) => ({ ...current, onlineStatusVisibility: event.target.value }))
+                setModel((current) => ({
+                  ...current,
+                  onlineStatusVisibility: event.target.value,
+                }))
               }
             >
               <option value="everyone">Online: todos</option>
@@ -877,13 +983,21 @@ export function AccountSettingsPage() {
                   type="checkbox"
                   checked={model.privacyAccepted}
                   onChange={(event) =>
-                    setModel((current) => ({ ...current, privacyAccepted: event.target.checked }))
+                    setModel((current) => ({
+                      ...current,
+                      privacyAccepted: event.target.checked,
+                    }))
                   }
                 />
                 Política de privacidad aceptada
               </label>
             ) : null}
-            <button className="ghost-btn" type="button" disabled={savingPrivacy} onClick={() => void savePrivacySettings()}>
+            <button
+              className="ghost-btn"
+              type="button"
+              disabled={savingPrivacy}
+              onClick={() => void savePrivacySettings()}
+            >
               {savingPrivacy ? 'Guardando...' : 'Guardar privacidad'}
             </button>
           </div>
@@ -927,7 +1041,12 @@ export function AccountSettingsPage() {
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
             />
-            <button className="primary-btn" type="button" disabled={savingPassword} onClick={() => void updatePassword()}>
+            <button
+              className="primary-btn"
+              type="button"
+              disabled={savingPassword}
+              onClick={() => void updatePassword()}
+            >
               {savingPassword ? 'Actualizando...' : 'Cambiar contraseña'}
             </button>
           </div>
@@ -937,8 +1056,8 @@ export function AccountSettingsPage() {
           <div>
             <h3>Acceso y QR</h3>
             <p>
-              Mantén el acceso por correo, pero suma también el QR seguro de Novvin Web y el QR
-              de perfil para compartirte rápido.
+              Mantén el acceso por correo, pero suma también el QR seguro de Novvin Web y el QR de
+              perfil para compartirte rápido.
             </p>
           </div>
           <div className="settings-access-card">
@@ -955,10 +1074,18 @@ export function AccountSettingsPage() {
               <p>Genera un código temporal y apruébalo desde tu móvil como en WhatsApp Web.</p>
             </div>
             <div className="row-actions wrap">
-              <button className="ghost-btn" type="button" disabled={isFallbackSession || sendingAccessLink || !currentEmail} onClick={() => void sendAccessLinkToEmail()}>
+              <button
+                className="ghost-btn"
+                type="button"
+                disabled={isFallbackSession || sendingAccessLink || !currentEmail}
+                onClick={() => void sendAccessLinkToEmail()}
+              >
                 {sendingAccessLink ? 'Enviando...' : 'Enviar acceso al correo'}
               </button>
-              <Link className="ghost-btn" to={`/login?mode=code${currentEmail ? `&email=${encodeURIComponent(currentEmail)}` : ''}`}>
+              <Link
+                className="ghost-btn"
+                to={`/login?mode=code${currentEmail ? `&email=${encodeURIComponent(currentEmail)}` : ''}`}
+              >
                 Abrir login por código
               </Link>
               <Link className="ghost-btn" to="/login?mode=recovery">
@@ -1017,7 +1144,9 @@ export function AccountSettingsPage() {
               className="text-input tiny-input"
               value={webPreferences.themeMode}
               onChange={(event) =>
-                updateWebPreferences({ themeMode: event.target.value as typeof webPreferences.themeMode })
+                updateWebPreferences({
+                  themeMode: event.target.value as typeof webPreferences.themeMode,
+                })
               }
             >
               <option value="system">Sistema</option>
@@ -1034,7 +1163,9 @@ export function AccountSettingsPage() {
               className="text-input tiny-input"
               value={webPreferences.accentTheme}
               onChange={(event) =>
-                updateWebPreferences({ accentTheme: event.target.value as typeof webPreferences.accentTheme })
+                updateWebPreferences({
+                  accentTheme: event.target.value as typeof webPreferences.accentTheme,
+                })
               }
             >
               <option value="conectate">Novvin</option>
@@ -1057,7 +1188,9 @@ export function AccountSettingsPage() {
               className="text-input tiny-input"
               value={webPreferences.textScale}
               onChange={(event) =>
-                updateWebPreferences({ textScale: event.target.value as typeof webPreferences.textScale })
+                updateWebPreferences({
+                  textScale: event.target.value as typeof webPreferences.textScale,
+                })
               }
             >
               <option value="compact">Compacta</option>

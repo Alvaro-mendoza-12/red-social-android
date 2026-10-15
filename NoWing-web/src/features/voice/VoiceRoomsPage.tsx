@@ -1,4 +1,5 @@
-import { StreamingImage } from '../../components/StreamingMedia'
+import './voice.css'
+import { SafeAvatar } from '../../components/SafeAvatar'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Headphones, Radio, RefreshCw, Users } from 'lucide-react'
@@ -11,7 +12,7 @@ import {
   subscribeRealtimeChannel,
   supabase,
 } from '../../core/supabase'
-import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
+import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { loadFallbackVoiceRooms } from '../../core/fallbackData'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
@@ -285,7 +286,7 @@ export function VoiceRoomsPage() {
           <div className="voice-room-card-head">
             <span className="voice-room-avatar avatar-fallback">{initialsOf(joinedRoom.title)}</span>
             <div>
-              <small>Sala activa</small>
+              <small>Volver a esta sala</small>
               <h3>{joinedRoom.title}</h3>
               <p>{joinedRoom.topic}</p>
             </div>
@@ -298,7 +299,7 @@ export function VoiceRoomsPage() {
               setJoinedRoomId(null)
               writeJoinedRoomToStorage(user?.id, null)
             }}>
-              Limpiar
+              Quitar acceso rápido
             </button>
           </div>
         </article>
@@ -323,14 +324,14 @@ export function VoiceRoomsPage() {
               <article key={room.id} className={joined ? 'voice-room-card active' : 'voice-room-card'}>
                 <div className="voice-room-card-head">
                   {room.creatorAvatarUrl ? (
-                    <StreamingImage src={room.creatorAvatarUrl} alt={room.creatorName || 'Creador'} className="voice-room-avatar" />
+                    <SafeAvatar url={room.creatorAvatarUrl} name={room.creatorName || 'Creador'} className="voice-room-avatar" />
                   ) : (
                     <span className="voice-room-avatar avatar-fallback">{initialsOf(room.creatorName || room.title)}</span>
                   )}
                   <div>
                     <div className="row-between voice-room-title-row">
                       <h3>{room.title}</h3>
-                      <small>{formatDateTime(room.updatedAt)}</small>
+
                     </div>
                     <p>{room.topic}</p>
                   </div>

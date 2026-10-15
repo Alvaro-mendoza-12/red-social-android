@@ -68,7 +68,7 @@ export function ExplorePage() {
   }, [kind, params.id, retry])
 
   const heading = kind === 'videos' ? 'Videos' : kind === 'moments' ? 'Momentos' : kind === 'profiles' ? 'Perfil público' : 'Social'
-  return <main className="explore-page">
+  return <main className="explore-page explore-shell">
     <header className="explore-header">
       <Link className="explore-brand" to="/"><img src="/novvin-logo.png" alt="" />Novvin</Link>
       <nav aria-label="Cuenta"><Link to="/login">Iniciar sesión</Link><Link className="primary-btn" to="/register">Crear cuenta</Link></nav>

@@ -38,3 +38,32 @@ La selección de archivos ya no publica automáticamente. El editor conserva la 
 El visor respeta seis segundos para fotos y la duración real del video hasta veinticinco segundos. Pausa los elementos multimedia al pausar, responder o cambiar de pestaña, y no solicita otra vez el catálogo al cambiar de momento. Reproduce el fragmento de audio compatible del servidor y evita duplicar los sonidos ya mezclados en Android. Ofrece reintento ante archivos no disponibles y conserva el momento visible si falla solo la música.
 
 La prueba de navegador con red simulada seleccionó un fragmento 2:00–2:06 de una canción de tres minutos, reprodujo la vista previa, comprobó recuperación del borrador, publicación privada y pausa real del audio. Editor y visor no desbordaron entre 320 y 2560 píxeles. Estas pruebas no certifican todas las herramientas creativas de Android ni las publicaciones sin conexión.
+
+
+## Revisión visual y publicación web del 15 de octubre de 2026
+
+Se sustituyó la base de estilos heredada por componentes y colores de la APK. Mensajes usa lista y conversación simultáneas en escritorio, y pantallas separadas en móvil. Se eliminaron las tarjetas de resumen, métricas y atajos que no correspondían a la aplicación. Los grupos usan el mismo editor compacto y muestran su avatar en el encabezado; buscar una persona permite crear el chat mediante la API existente.
+
+Videos mantiene un escenario vertical, reproducción del elemento visible, pausa al salir de la vista, sonido explícito, navegación con flechas y carga anticipada de los elementos cercanos. Social incorpora las pestañas de la APK, composición explícita, momentos y acciones de publicación. Los archivos seleccionados se previsualizan antes de publicar. Perfil concentra nombre, verificación, seguidores, usuario, ID e insignia administrativa, con truncamiento de nombres largos.
+
+El visor multimedia abre imágenes de chat y galerías de Social sin abandonar la web; permite ampliar, cambiar de archivo y cerrar con Escape. Los PDF conservan lectura autorizada, vista ampliada y descarga. El visor se cierra y retira las fuentes al invalidarse la identidad. Se conservan los límites de tamaño, el aislamiento de documentos desconocidos y la transmisión autenticada. La política del navegador permite únicamente marcos del propio origen y Blob para el lector PDF.
+
+Salas de voz y Juegos recibieron estilos para espaciado, contraste, participantes, controles y formularios adaptables. Los avatares de video en voz usan el componente de reproducción en bucle. La revisión visual no certifica una conversación de voz entre dos dispositivos reales.
+
+### Evidencias de esta revisión
+
+- Compilación TypeScript, Vite y portada HTML estática aprobadas.
+- 289 pruebas de lógica y componentes en 43 suites; ocho del intermediario de multimedia; cuatro de portada, sitemap y metadatos.
+- Navegador con datos ficticios: ocho pantallas en 320, 360, 768, 1440 y 2560 píxeles, además de conversaciones individuales, grupos, perfil de jugador, nombres largos, QR, visitas, menús y visor de imágenes. Sin desbordamiento horizontal en la muestra. Se revisaron también las cinco pantallas principales seleccionadas en tema claro.
+- Invitado contra el servidor público: video 1080×1920 en reproducción, imágenes públicas decodificadas, perfil y momentos disponibles, inbox privado rechazado, sin credenciales persistidas ni escrituras de prueba.
+- Auditoría de dependencias de ejecución: cero vulnerabilidades informadas. El conjunto de herramientas de desarrollo conserva avisos de dependencias que requieren una revisión independiente.
+
+### Acceso público y buscadores
+
+La dirección estable es https://red-social-android.vercel.app/ . La portada se entrega como HTML legible antes de ejecutar JavaScript. Incluye acceso por contraseña y QR, registro, exploración pública, nombre oficial Novvin y una aclaración visible para las variantes Novvyn y NoWin. El sitemap publica únicamente la portada. Las pantallas privadas y de acceso llevan `noindex`; los datos de conversaciones no se prerenderizan.
+
+Se añadieron título, descripción, URL canónica, metadatos para compartir, datos estructurados WebSite, robots.txt y archivo de verificación IndexNow. La solicitud a IndexNow, cuando sea aceptada, confirma recepción de la URL, no su inclusión en los resultados. No se agregó una lista masiva de palabras repetidas a las páginas. Google decide el rastreo, la indexación y la posición; no se dispone en esta sesión de una propiedad verificada de Search Console para solicitar indexación manual.
+
+Referencias de producto: [WhatsApp Web](https://www.whatsapp.com/download/windows), [experiencia web de TikTok](https://newsroom.tiktok.com/new-features-bring-tiktok-magic-to-desktop?lang=en). Referencias de buscadores: [sitemaps de Google](https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap), [palabras repetidas y spam](https://developers.google.com/search/docs/essentials/spam-policies#keyword-stuffing), [protocolo IndexNow](https://www.indexnow.org/documentation).
+
+La certificación integral de producción sigue pendiente de las pruebas físicas y funcionales registradas en el informe general. Esta revisión entrega el rediseño web y las comprobaciones descritas, sin declarar equivalencia total entre todas las herramientas creativas de Android y del navegador.

@@ -1,10 +1,10 @@
 import { StreamingImage, StreamingVideo, StreamingAudio } from '../../components/StreamingMedia'
 import { useEffect, useMemo, useState } from 'react'
-import { Edit3, Grid3X3, MoreHorizontal, Share2, Star, Video } from 'lucide-react'
+import { Edit3, Palette, QrCode, Share2, Star } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
-import { SafeAvatar } from '../../components/SafeAvatar'
+import { ProfileHeader, profileIdentity, type ProfileIdentity } from '../../ui/novvin/ProfileHeader'
 import { ProfileTools } from '../../components/ProfileTools'
 import { loadFallbackProfileMe, loadFallbackVideos } from '../../core/fallbackData'
 import {
@@ -50,6 +50,8 @@ type ProfileData = {
   favoriteMusicUrl: string
   badges: Array<{ id: string; name: string; icon: string }>
   profileFrame: string
+  identity: ProfileIdentity
+  identityAliases: string[]
 }
 
 type ProfilePost = {
@@ -91,6 +93,8 @@ function mapProfile(
 ): ProfileData {
   const avatarSource = profileAvatarSource(row, fallbackAvatar)
   return {
+    identity: profileIdentity(row),
+    identityAliases: profileIdentityAliases(row),
     name: textOf(row, ['displayName', 'display_name', 'full_name'], fallbackName),
     username: textOf(row, ['username'], ''),
     bio: textOf(row, ['bio'], ''),
@@ -123,14 +127,8 @@ function mapVideo(row: GenericRow): ProfileVideo {
     id: textOf(row, ['id'], crypto.randomUUID()),
     ownerId: textOf(row, ['user_id', 'userId', 'owner_id', 'ownerId', 'author_id', 'authorId'], ''),
     title: textOf(row, ['title', 'description'], 'Video'),
-    videoUrl: resolveSupabasePublicUrl(
-      'videos',
-      profileVideoSource(row),
-    ),
-    coverUrl: resolveSupabasePublicUrl(
-      'thumbnails',
-      profileVideoCoverSource(row),
-    ),
+    videoUrl: resolveSupabasePublicUrl('videos', profileVideoSource(row)),
+    coverUrl: resolveSupabasePublicUrl('thumbnails', profileVideoCoverSource(row)),
     sharedByMe: Boolean(row.shared_by_me ?? row.sharedByMe),
     favoritedByMe: Boolean(row.favorited_by_me ?? row.favoritedByMe ?? row.is_favorite),
   }
@@ -139,13 +137,11 @@ function mapVideo(row: GenericRow): ProfileVideo {
 function ProfileVideoPreview({ item }: { item: ProfileVideo }) {
   const [coverFailed, setCoverFailed] = useState(false)
   if (item.coverUrl && !coverFailed) {
-    return <StreamingImage src={item.coverUrl} alt={item.title} onError={() => setCoverFailed(true)} />
+    return (
+      <StreamingImage src={item.coverUrl} alt={item.title} onError={() => setCoverFailed(true)} />
+    )
   }
   return <StreamingVideo src={item.videoUrl} muted preload="metadata" playsInline />
-}
-
-function ProfileAvatar({ url, name, mediaType }: { url: string; name: string; mediaType: string }) {
-  return <SafeAvatar url={url} mediaType={mediaType} name={name} size="lg" className="mobile-profile-avatar" />
 }
 
 export function ProfilePage() {
@@ -161,20 +157,28 @@ export function ProfilePage() {
     following: 0,
     reportsSent: 0,
   })
+  const [homeTab, setHomeTab] = useState<'home' | 'about'>('home')
   const [activeTab, setActiveTab] = useState<ProfileTab>('videos')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [shareStatus, setShareStatus] = useState('')
 
-  const metadataName = String(user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? '').trim()
+  const metadataName = String(
+    user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? '',
+  ).trim()
   const metadataRow = (user?.user_metadata ?? {}) as GenericRow
   const metadataAvatar = profileAvatarSource(metadataRow)
   const metadataAvatarMediaType = avatarMediaTypeSource(metadataRow, metadataAvatar)
   const visibleVideos = useMemo(() => {
     if (activeTab === 'shared') return videos.filter((item) => item.sharedByMe)
     if (activeTab === 'favorites') return videos.filter((item) => item.favoritedByMe)
-    return videos.filter((item) => item.ownerId === user?.id || activeTab !== 'videos')
-  }, [activeTab, user?.id, videos])
+    return videos.filter(
+      (item) =>
+        item.ownerId === user?.id ||
+        profile?.identityAliases.includes(item.ownerId.toLowerCase()) ||
+        activeTab !== 'videos',
+    )
+  }, [activeTab, user?.id, videos, profile?.identityAliases])
 
   useEffect(() => {
     async function loadProfile() {
@@ -194,12 +198,14 @@ export function ProfilePage() {
             [...profileResponse.posts, ...videoResponse.items],
             profileIdentityAliases(profileResponse.profile, [user.id, user.email ?? '']),
           )
-          setProfile(mapProfile(
-            profileResponse.profile,
-            metadataName || user.email || 'Usuario',
-            contentAvatar?.url || metadataAvatar,
-            contentAvatar?.mediaType || metadataAvatarMediaType,
-          ))
+          setProfile(
+            mapProfile(
+              profileResponse.profile,
+              metadataName || user.email || 'Usuario',
+              contentAvatar?.url || metadataAvatar,
+              contentAvatar?.mediaType || metadataAvatarMediaType,
+            ),
+          )
           setPosts(profileResponse.posts.map(mapPost))
           setVideos(videoResponse.items.map(mapVideo))
           setStats(profileResponse.stats)
@@ -207,13 +213,29 @@ export function ProfilePage() {
         }
 
         if (!supabase) throw new Error('Backend no configurado')
-        const [profileResult, postsResult, videosResult, followersResult, followingResult] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', user.id).limit(1),
-          supabase.from('posts').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(60),
-          supabase.from('videos').select('*').order('created_at', { ascending: false }).limit(200),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
-        ])
+        const [profileResult, postsResult, videosResult, followersResult, followingResult] =
+          await Promise.all([
+            supabase.from('profiles').select('*').eq('id', user.id).limit(1),
+            supabase
+              .from('posts')
+              .select('*')
+              .eq('user_id', user.id)
+              .order('created_at', { ascending: false })
+              .limit(60),
+            supabase
+              .from('videos')
+              .select('*')
+              .order('created_at', { ascending: false })
+              .limit(200),
+            supabase
+              .from('follows')
+              .select('*', { count: 'exact', head: true })
+              .eq('following_id', user.id),
+            supabase
+              .from('follows')
+              .select('*', { count: 'exact', head: true })
+              .eq('follower_id', user.id),
+          ])
         if (profileResult.error) throw profileResult.error
         if (postsResult.error) throw postsResult.error
         if (videosResult.error) throw videosResult.error
@@ -227,12 +249,14 @@ export function ProfilePage() {
           ],
           profileIdentityAliases(profileRow, [user.id, user.email ?? '']),
         )
-        setProfile(mapProfile(
-          profileRow,
-          metadataName || user.email || 'Usuario',
-          contentAvatar?.url || metadataAvatar,
-          contentAvatar?.mediaType || metadataAvatarMediaType,
-        ))
+        setProfile(
+          mapProfile(
+            profileRow,
+            metadataName || user.email || 'Usuario',
+            contentAvatar?.url || metadataAvatar,
+            contentAvatar?.mediaType || metadataAvatarMediaType,
+          ),
+        )
         setPosts(mappedPosts)
         setVideos(mappedVideos)
         setStats((current) => ({
@@ -275,78 +299,139 @@ export function ProfilePage() {
 
   return (
     <section className="mobile-profile-page">
-      <div className="mobile-profile-cover">
-        {profile?.coverUrl ? <StreamingImage src={profile.coverUrl} alt="Portada del perfil" /> : null}
-      </div>
-
+      <ProfileHeader
+        name={displayName}
+        username={username}
+        avatarUrl={profile?.avatarUrl || ''}
+        avatarMediaType={profile?.avatarMediaType}
+        coverUrl={profile?.coverUrl || ''}
+        frame={profile?.profileFrame}
+        identity={profile?.identity || profileIdentity(metadataRow)}
+        followers={stats.followers}
+        following={stats.following}
+        own
+      />
       <div className="mobile-profile-main">
-        <div className="mobile-profile-avatar-row">
-          <div className={`profile-avatar-frame profile-avatar-frame--${profile?.profileFrame || 'none'}`}>
-            <ProfileAvatar
-              url={profile?.avatarUrl || ''}
-              mediaType={profile?.avatarMediaType || ''}
-              name={displayName}
-            />
+        {profile?.badges.length ? (
+          <div className="profile-badges">
+            {profile.badges.map((badge) => (
+              <span className="profile-badge" key={badge.id}>
+                {badge.icon} {badge.name}
+              </span>
+            ))}
           </div>
-          <div className="mobile-profile-actions">
-            <Link className="primary-btn" to="/app/settings"><Edit3 aria-hidden="true" />Editar perfil</Link>
-            <button className="icon-btn" type="button" onClick={() => void shareProfile()} title="Compartir perfil" aria-label="Compartir perfil"><Share2 aria-hidden="true" /></button>
-            <details className="profile-more-menu">
-              <summary className="icon-btn" title="Más opciones" aria-label="Más opciones"><MoreHorizontal aria-hidden="true" /></summary>
-              <div className="profile-more-popover">
-                <Link to="/app/settings">Ajustes</Link>
-                <Link to="/app/notifications">Notificaciones</Link>
-              </div>
-            </details>
-          </div>
-        </div>
-
-        <div className="mobile-profile-identity">
-          <h1>{displayName}</h1>
-          <span>@{username}</span>
-          <p>{profile?.bio || 'Sin biografía todavía.'}</p>
-          {profile?.badges.length ? (
-            <div className="chip-row">
-              {profile.badges.map((badge) => <span className="folder-tag" key={badge.id}>{badge.icon} {badge.name}</span>)}
-            </div>
-          ) : null}
-          {profile?.profileWelcome ? <p className="muted-line">{profile.profileWelcome}</p> : null}
-          {shareStatus ? <small>{shareStatus}</small> : null}
-        </div>
-        {user?<ProfileTools profileId={user.id} name={displayName}/>:null}
-
-        <nav className="mobile-profile-stats" aria-label="Estadísticas del perfil">
-          <button type="button"><strong>{stats.videos + stats.posts}</strong><span>Publicaciones</span></button>
-          <Link to="/app/follows?tab=followers"><strong>{stats.followers}</strong><span>Seguidores</span></Link>
-          <Link to="/app/follows?tab=following"><strong>{stats.following}</strong><span>Siguiendo</span></Link>
-        </nav>
-
-        {(profile?.interests.length || profile?.hobbies.length || profile?.linkedGames.length || profile?.career || profile?.favoriteBook || profile?.favoriteSport || profile?.favoriteMusicUrl) ? (
-          <details className="mobile-profile-about">
-            <summary>Información</summary>
-            {profile.career ? <p><strong>Carrera o profesión:</strong> {profile.career}</p> : null}
-            <div className="chip-row">
-              {profile.interests.map((interest) => <span key={interest} className="folder-tag">{interest}</span>)}
-              {profile.hobbies.map((hobby) => <span key={`hobby-${hobby}`} className="folder-tag">{hobby}</span>)}
-              {profile.linkedGames.map((game) => <span key={`game-${game}`} className="folder-tag">{game}</span>)}
-              {profile.favoriteBook ? <span className="folder-tag">{profile.favoriteBook}</span> : null}
-              {profile.favoriteSport ? <span className="folder-tag">{profile.favoriteSport}</span> : null}
-            </div>
-            {profile.favoriteMusicUrl ? (
-              <div>
-                <small>Música de entrada · reproducción manual</small>
-                <StreamingAudio controls preload="none" src={profile.favoriteMusicUrl}>Tu navegador no puede reproducir este audio.</StreamingAudio>
-              </div>
-            ) : null}
-          </details>
         ) : null}
+        <div className="mobile-profile-actions">
+          <Link className="ghost-btn" to="/app/settings">
+            <Edit3 />
+            Editar
+          </Link>
+          <button className="ghost-btn" type="button" onClick={() => void shareProfile()}>
+            <Share2 />
+            Compartir
+          </button>
+          <button
+            className="ghost-btn"
+            type="button"
+            onClick={() => window.dispatchEvent(new Event('novvin:profile-qr'))}
+          >
+            <QrCode />
+            Mi QR
+          </button>
+        </div>
+        <Link className="ghost-btn profile-customize" to="/app/settings">
+          <Palette size={20} />
+          Personalizar perfil
+        </Link>
+        {shareStatus ? <small role="status">{shareStatus}</small> : null}
+        {user ? <ProfileTools profileId={user.id} name={displayName} showButtons={false} /> : null}
+        <div className="profile-home-switch" aria-label="Información del perfil">
+          <button
+            type="button"
+            className={homeTab === 'home' ? 'active' : ''}
+            aria-pressed={homeTab === 'home'}
+            onClick={() => setHomeTab('home')}
+          >
+            Inicio
+          </button>
+          <button
+            type="button"
+            className={homeTab === 'about' ? 'active' : ''}
+            aria-pressed={homeTab === 'about'}
+            onClick={() => setHomeTab('about')}
+          >
+            Presentación
+          </button>
+        </div>
+        {homeTab === 'home' ? (
+          profile?.profileWelcome ? (
+            <p className="profile-welcome">✦ {profile.profileWelcome}</p>
+          ) : null
+        ) : (
+          <div className="profile-about-copy">
+            <p>{profile?.bio || 'Sin presentación todavía.'}</p>
+            {profile?.career ? <p>{profile.career}</p> : null}
+            <div className="chip-row">
+              {[
+                ...(profile?.interests || []),
+                ...(profile?.hobbies || []),
+                ...(profile?.linkedGames || []),
+              ].map((value) => (
+                <span className="profile-badge" key={value}>
+                  {value}
+                </span>
+              ))}
+            </div>
+            {profile?.favoriteBook ? <p>Libro favorito: {profile.favoriteBook}</p> : null}
+            {profile?.favoriteSport ? <p>Deporte favorito: {profile.favoriteSport}</p> : null}
+            {profile?.favoriteMusicUrl ? (
+              <StreamingAudio controls preload="none" src={profile.favoriteMusicUrl} />
+            ) : null}
+          </div>
+        )}
       </div>
 
       <div className="mobile-profile-tabs" role="tablist" aria-label="Contenido del perfil">
-        <button className={activeTab === 'videos' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'videos'} onClick={() => setActiveTab('videos')} title="Videos"><Video aria-hidden="true" /></button>
-        <button className={activeTab === 'posts' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'posts'} onClick={() => setActiveTab('posts')} title="Publicaciones"><Grid3X3 aria-hidden="true" /></button>
-        <button className={activeTab === 'shared' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'shared'} onClick={() => setActiveTab('shared')} title="Compartidos"><Share2 aria-hidden="true" /></button>
-        <button className={activeTab === 'favorites' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'favorites'} onClick={() => setActiveTab('favorites')} title="Favoritos"><Star aria-hidden="true" /></button>
+        <button
+          className={activeTab === 'videos' ? 'active' : ''}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'videos'}
+          onClick={() => setActiveTab('videos')}
+          title="Videos"
+        >
+          Videos
+        </button>
+        <button
+          className={activeTab === 'posts' ? 'active' : ''}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'posts'}
+          onClick={() => setActiveTab('posts')}
+          title="Publicaciones"
+        >
+          Publicaciones
+        </button>
+        <button
+          className={activeTab === 'shared' ? 'active' : ''}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'shared'}
+          onClick={() => setActiveTab('shared')}
+          title="Compartidos"
+        >
+          Compartidos
+        </button>
+        <button
+          className={activeTab === 'favorites' ? 'active' : ''}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'favorites'}
+          onClick={() => setActiveTab('favorites')}
+          title="Favoritos"
+        >
+          <Star aria-hidden="true" />
+        </button>
       </div>
 
       {activeTab === 'posts' ? (
@@ -354,18 +439,24 @@ export function ProfilePage() {
           <div className="mobile-profile-posts">
             {posts.map((post) => (
               <article key={post.id} className="mobile-profile-post">
-                {post.media[0]?.mediaType === 'image' ? <StreamingImage src={post.media[0].url} alt="Publicación" /> : null}
-                {post.media[0]?.mediaType === 'video' ? <StreamingVideo src={post.media[0].url} muted preload="metadata" /> : null}
+                {post.media[0]?.mediaType === 'image' ? (
+                  <StreamingImage src={post.media[0].url} alt="Publicación" />
+                ) : null}
+                {post.media[0]?.mediaType === 'video' ? (
+                  <StreamingVideo src={post.media[0].url} muted preload="metadata" />
+                ) : null}
                 <ExpandableText text={post.content} lines={3} />
                 <Link to={`/app/feed/post/${post.id}`}>Abrir publicación</Link>
               </article>
             ))}
           </div>
-        ) : <StatusView title="Sin publicaciones" description="Tus publicaciones aparecerán aquí." />
+        ) : (
+          <StatusView title="Sin publicaciones" description="Tus publicaciones aparecerán aquí." />
+        )
       ) : visibleVideos.length ? (
         <div className="mobile-profile-video-grid">
-            {visibleVideos.map((item) => (
-              <Link key={item.id} to={`/app/reels/${item.id}`} className="mobile-profile-video">
+          {visibleVideos.map((item) => (
+            <Link key={item.id} to={`/app/reels/${item.id}`} className="mobile-profile-video">
               <ProfileVideoPreview item={item} />
               <span>{item.title}</span>
             </Link>

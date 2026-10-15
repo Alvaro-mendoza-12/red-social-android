@@ -2257,33 +2257,51 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                 ) : null}
 
                 <small className="message-meta">
-                  {formatDateTime(message.createdAt)}
-                  {message.isEdited ? ' · editado' : ''}
-                  {mine ? (
-                    <>
-                      {mine && deliveryState === 'failed' ? <button className="mini-action-btn" type="button" onClick={() => void retryPendingWebMessage(message.id)}>Reintentar envío</button> : null}
-                      <span className={`message-status ${deliveryState}`}>
-                      {deliveryState === 'pending' ? '◷ Pendiente' : deliveryState === 'failed' ? 'No se pudo enviar' : deliveryState === 'sent'
-                        ? '✓ Enviado'
-                        : deliveryState === 'delivered'
-                          ? '✓✓ Entregado'
-                          : `✓✓ Leido${readByOther
-                            ? ` por ${otherParticipant?.name ?? 'contacto'}${otherParticipant?.lastReadAt
-                              ? ` ${formatDateTime(otherParticipant.lastReadAt)}`
-                              : ''
-                            }`
-                            : ''
-                          }`}
-                    </span>
-                    </>
-                  ) : (
-                    <>
-                      {' · '}
-                      {message.status}
-                      {message.readAt ? ' · leido' : message.deliveredAt ? ' · entregado' : ''}
-                    </>
-                  )}
-                </small>
+                      {new Date(message.createdAt).toLocaleTimeString("es", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {message.isEdited ? " · editado" : ""}
+                      {mine ? (
+                        <span
+                          className={`message-status ${deliveryState}`}
+                          aria-label={
+                            deliveryState === "pending"
+                              ? "Pendiente"
+                              : deliveryState === "failed"
+                                ? "Error al enviar"
+                                : deliveryState === "read"
+                                  ? "Leído"
+                                  : deliveryState === "delivered"
+                                    ? "Entregado"
+                                    : "Enviado"
+                          }
+                          title={
+                            readByOther
+                              ? `Leído por ${otherParticipant?.name || "contacto"}`
+                              : undefined
+                          }
+                        >
+                          {deliveryState === "pending" ? (
+                            "◷"
+                          ) : deliveryState === "failed" ? (
+                            <button
+                              className="mini-action-btn"
+                              type="button"
+                              onClick={() =>
+                                void retryPendingWebMessage(message.id)
+                              }
+                            >
+                              Reintentar
+                            </button>
+                          ) : deliveryState === "sent" ? (
+                            "✓"
+                          ) : (
+                            "✓✓"
+                          )}
+                        </span>
+                      ) : null}
+                    </small>
               </article>
             </Fragment>
           )

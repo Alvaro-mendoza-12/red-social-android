@@ -1,0 +1,106 @@
+:root {
+  color-scheme: dark;
+  --background: #0b0b0d;
+  --surface: #151519;
+  --surface-raised: #242428;
+  --surface-container: #343439;
+  --foreground: #f2f2f4;
+  --secondary-text: #b9bbc1;
+  --muted: #94969c;
+  --primary: #f2f2f4;
+  --on-primary: #202124;
+  --outline: #414147;
+  --divider: #29292e;
+  --danger: #ffb4ab;
+  --brand-cyan: #26d8d5;
+  --brand-violet: #8862ff;
+  --bottom-nav-height: 76px;
+  --app-font: Roboto, Arial, system-ui, sans-serif;
+  font-family: var(--app-font);
+  font-size: 16px;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+.theme-light {
+  color-scheme: light;
+  --background: #fff;
+  --surface: #f7f7f8;
+  --surface-raised: #eeeef1;
+  --surface-container: #e3e3e8;
+  --foreground: #202124;
+  --secondary-text: #5f6368;
+  --muted: #74777c;
+  --primary: #202124;
+  --on-primary: #fff;
+  --outline: #d4d4da;
+  --divider: #e8e8ed;
+  --danger: #ba1a1a;
+  --brand-cyan: #087d91;
+}
+@media (prefers-color-scheme: light) {
+  .theme-system {
+    color-scheme: light;
+    --background: #fff;
+    --surface: #f7f7f8;
+    --surface-raised: #eeeef1;
+    --surface-container: #e3e3e8;
+    --foreground: #202124;
+    --secondary-text: #5f6368;
+    --muted: #74777c;
+    --primary: #202124;
+    --on-primary: #fff;
+    --outline: #d4d4da;
+    --divider: #e8e8ed;
+    --danger: #ba1a1a;
+    --brand-cyan: #087d91;
+  }
+}
+.accent-ocean {
+  --primary: #8acfff;
+  --on-primary: #00344f;
+}
+.accent-violet {
+  --primary: #cbb5ff;
+  --on-primary: #34185e;
+}
+.accent-emerald {
+  --primary: #91d5ac;
+  --on-primary: #003921;
+}
+.accent-ruby {
+  --primary: #ffb1bf;
+  --on-primary: #5d1128;
+}
+.accent-cyan {
+  --primary: #85d4df;
+  --on-primary: #00363d;
+}
+.accent-amber {
+  --primary: #e7c568;
+  --on-primary: #3e2f00;
+}
+.text-scale-compact {
+  font-size: 14px;
+}
+.text-scale-large {
+  font-size: 18px;
+}
+.app-shell,
+.explore-shell {
+  --app-bg: var(--background);
+  --app-panel: var(--surface);
+  --app-panel-raised: var(--surface-raised);
+  --app-text: var(--foreground);
+  --app-line: var(--outline);
+  --ink-900: var(--foreground);
+  --ink-700: var(--secondary-text);
+  --ink-600: var(--secondary-text);
+  --ink-500: var(--muted);
+  --surface-100: var(--surface);
+  --surface-200: var(--surface-raised);
+  --line: var(--outline);
+  --brand-1: var(--primary);
+  --brand-2: var(--primary);
+  --ok: #81c995;
+}

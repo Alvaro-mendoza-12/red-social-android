@@ -1,6 +1,25 @@
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Heart, MessageCircle, MoreHorizontal, Plus, Radio, Repeat, Search, Send, Share2, SlidersHorizontal, Star, Upload, X } from 'lucide-react'
+import {
+  Heart,
+  MessageCircle,
+  MoreHorizontal,
+  Plus,
+  Radio,
+  Repeat,
+  Search,
+  Send,
+  Share2,
+  SlidersHorizontal,
+  Star,
+  Upload,
+  X,
+  Volume2,
+  VolumeX,
+  ChevronUp,
+  ChevronDown,
+  Play,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { ShareVideoDialog } from '../../components/ShareVideoDialog'
@@ -80,8 +99,14 @@ const MAX_COVER_BYTES = 10 * 1024 * 1024
 const MIN_TRIM_SPAN_SECONDS = 1
 const knownWatermarkBrands = [
   { brand: 'TikTok', tokens: ['tiktok', 'douyin', 'vm.tiktok.com'] },
-  { brand: 'Facebook', tokens: ['facebook', 'fb.watch', 'facebook.com', 'meta'] },
-  { brand: 'YouTube', tokens: ['youtube', 'youtu.be', 'youtube.com', 'shorts'] },
+  {
+    brand: 'Facebook',
+    tokens: ['facebook', 'fb.watch', 'facebook.com', 'meta'],
+  },
+  {
+    brand: 'YouTube',
+    tokens: ['youtube', 'youtu.be', 'youtube.com', 'shorts'],
+  },
   { brand: 'Kwai', tokens: ['kwai', 'kwai-video'] },
   { brand: 'Instagram', tokens: ['instagram', 'insta', 'ig_'] },
 ]
@@ -90,7 +115,11 @@ function mapVideoRow(row: GenericRow): ReelItem {
   const durationSeconds = Number(row.duration_seconds ?? row.duration ?? 0)
   const authorAvatarSource = reelAuthorAvatarSource(row)
   const trimStartSeconds = Number(
-    row.trim_start_seconds ?? row.trimStartSeconds ?? row.clip_start_seconds ?? row.clipStartSeconds ?? 0,
+    row.trim_start_seconds ??
+      row.trimStartSeconds ??
+      row.clip_start_seconds ??
+      row.clipStartSeconds ??
+      0,
   )
   const trimEndRaw = Number(
     row.trim_end_seconds ?? row.trimEndSeconds ?? row.clip_end_seconds ?? row.clipEndSeconds ?? 0,
@@ -100,15 +129,13 @@ function mapVideoRow(row: GenericRow): ReelItem {
     id: textOf(row, ['id'], crypto.randomUUID()),
     title: textOf(row, ['title', 'caption', 'description', 'content'], 'Video'),
     description: textOf(row, ['description'], ''),
-    videoUrl: resolveSupabasePublicUrl(
-      'videos',
-      profileVideoSource(row),
+    videoUrl: resolveSupabasePublicUrl('videos', profileVideoSource(row)),
+    coverUrl: resolveSupabasePublicUrl('thumbnails', profileVideoCoverSource(row)),
+    authorId: textOf(
+      row,
+      ['user_id', 'userId', 'owner_id', 'ownerId', 'author_id', 'authorId'],
+      'usuario',
     ),
-    coverUrl: resolveSupabasePublicUrl(
-      'thumbnails',
-      profileVideoCoverSource(row),
-    ),
-    authorId: textOf(row, ['user_id', 'userId', 'owner_id', 'ownerId', 'author_id', 'authorId'], 'usuario'),
     authorName: textOf(row, ['user_name', 'userName', 'author_name'], ''),
     authorAvatarUrl: resolveSupabasePublicUrl('avatars', authorAvatarSource),
     authorAvatarMediaType: avatarMediaTypeSource(row, authorAvatarSource),
@@ -140,6 +167,7 @@ function ReelAvatar({ url, name, mediaType }: { url: string; name: string; media
 
 function ReelFeedCard({
   item,
+  eager,
   currentUserId,
   onLike,
   onFavorite,
@@ -147,6 +175,7 @@ function ReelFeedCard({
   onToggleProfileShare,
 }: {
   item: ReelItem
+  eager: boolean
   currentUserId?: string
   onLike: (item: ReelItem) => void
   onFavorite: (item: ReelItem) => void
@@ -154,7 +183,37 @@ function ReelFeedCard({
   onToggleProfileShare: (item: ReelItem) => void
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [canLoad, setCanLoad] = useState(eager)
   const visibleRef = useRef(false)
+  useEffect(() => {
+    const node = videoRef.current
+    if (!node || canLoad) return
+    if (typeof IntersectionObserver === 'undefined') {
+      setCanLoad(true)
+      return
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setCanLoad(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '100% 0px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [canLoad])
+  const [paused, setPaused] = useState(false)
+  const [muted, setMuted] = useState(true)
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) videoRef.current?.pause()
+      else if (visibleRef.current && !paused) void videoRef.current?.play().catch(() => undefined)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [paused])
   const [shareMenuOpen, setShareMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -179,30 +238,73 @@ function ReelFeedCard({
     <article className="reel-feed-item">
       <StreamingVideo
         ref={videoRef}
-        onLoadedData={() => { if (visibleRef.current) void videoRef.current?.play().catch(() => undefined) }}
+        onLoadedData={() => {
+          if (visibleRef.current) void videoRef.current?.play().catch(() => undefined)
+        }}
         loop
-        muted
+        muted={muted}
         playsInline
-        controls
+        onPlay={() => setPaused(false)}
+        onPause={() => setPaused(true)}
+        onClick={() => {
+          const video = videoRef.current
+          if (video) {
+            if (video.paused) void video.play().catch(() => undefined)
+            else video.pause()
+          }
+        }}
+        tabIndex={0}
+        role="button"
+        onKeyDown={(event) => {
+          if (event.key === ' ' || event.key === 'Enter') {
+            event.preventDefault()
+            const v = videoRef.current
+            if (v?.paused) void v.play().catch(() => undefined)
+            else v?.pause()
+          }
+        }}
+        aria-label={`Reproducir o pausar ${item.title}`}
         preload="metadata"
-        src={item.videoUrl}
-        poster={item.coverUrl || undefined}
+        src={canLoad ? item.videoUrl : undefined}
+        poster={canLoad ? item.coverUrl || undefined : undefined}
       />
       <div className="reel-feed-shade" />
+      {paused ? (
+        <span className="reel-play-indicator" aria-hidden="true">
+          <Play fill="white" size={30} />
+        </span>
+      ) : null}
+      <button
+        className="reel-sound-button"
+        type="button"
+        aria-label={muted ? 'Activar sonido' : 'Silenciar'}
+        title={muted ? 'Activar sonido' : 'Silenciar'}
+        onClick={() => setMuted((value) => !value)}
+      >
+        {muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
+      </button>
       <div className="reel-feed-author">
         <Link to={profilePathFor(item.authorId, currentUserId)}>
-          <ReelAvatar
-            url={item.authorAvatarUrl}
-            mediaType={item.authorAvatarMediaType}
-            name={item.authorName || item.authorId}
-          />
+          {canLoad ? (
+            <ReelAvatar
+              url={item.authorAvatarUrl}
+              mediaType={item.authorAvatarMediaType}
+              name={item.authorName || item.authorId}
+            />
+          ) : null}
           <strong>@{item.authorName || item.authorId}</strong>
         </Link>
         <h2>{item.title}</h2>
         {item.description ? <p>{item.description}</p> : null}
       </div>
       <div className="reel-feed-actions">
-        <button className={item.likedByMe ? 'active' : ''} type="button" onClick={() => onLike(item)} aria-label="Me gusta" title="Me gusta">
+        <button
+          className={item.likedByMe ? 'active' : ''}
+          type="button"
+          onClick={() => onLike(item)}
+          aria-label="Me gusta"
+          title="Me gusta"
+        >
           <Heart aria-hidden="true" fill={item.likedByMe ? 'currentColor' : 'none'} />
           <span>{item.likeCount}</span>
         </button>
@@ -286,7 +388,11 @@ function ReelFeedCard({
             </div>
           ) : null}
         </div>
-        <Link to={`/app/reels/${item.id}`} aria-label="Ver detalles del video" title="Ver detalles del video">
+        <Link
+          to={`/app/reels/${item.id}`}
+          aria-label="Ver detalles del video"
+          title="Ver detalles del video"
+        >
           <MoreHorizontal aria-hidden="true" />
         </Link>
       </div>
@@ -302,12 +408,14 @@ function profilePathFor(profileId: string, currentUserId?: string): string {
 }
 
 function isMissingSchemaError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
   return message.includes('column') || message.includes('42703')
 }
 
 function isMissingFunctionError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
   return (
     message.includes('could not find') ||
     message.includes('function') ||
@@ -325,13 +433,12 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
-function detectWatermarkBrands(file: File, title: string, description: string): WatermarkDetectionResult {
-  const haystack = [
-    file.name,
-    file.type,
-    title,
-    description,
-  ].join(' ').toLowerCase()
+function detectWatermarkBrands(
+  file: File,
+  title: string,
+  description: string,
+): WatermarkDetectionResult {
+  const haystack = [file.name, file.type, title, description].join(' ').toLowerCase()
   const detectedBrands = knownWatermarkBrands
     .filter((entry) => entry.tokens.some((token) => haystack.includes(token)))
     .map((entry) => entry.brand)
@@ -415,7 +522,10 @@ function captureVideoFrameAsFile(file: File, second: number): Promise<File> {
 
     video.onloadedmetadata = () => {
       const duration = Number.isFinite(video.duration) ? Math.max(0, video.duration) : 0
-      const safeSecond = Math.max(0, Math.min(second, duration > 0 ? Math.max(0, duration - 0.05) : second))
+      const safeSecond = Math.max(
+        0,
+        Math.min(second, duration > 0 ? Math.max(0, duration - 0.05) : second),
+      )
       video.currentTime = safeSecond
     }
 
@@ -440,7 +550,11 @@ function captureVideoFrameAsFile(file: File, second: number): Promise<File> {
             return
           }
           const safeBase = safeName(baseNameFromFile(file))
-          resolve(new File([blob], `${safeBase || 'cover'}_frame.jpg`, { type: 'image/jpeg' }))
+          resolve(
+            new File([blob], `${safeBase || 'cover'}_frame.jpg`, {
+              type: 'image/jpeg',
+            }),
+          )
         },
         'image/jpeg',
         0.92,
@@ -483,7 +597,10 @@ function captureVideoFrameDataUrl(
 
     video.onloadedmetadata = () => {
       const duration = Number.isFinite(video.duration) ? Math.max(0, video.duration) : 0
-      const safeSecond = Math.max(0, Math.min(second, duration > 0 ? Math.max(0, duration - 0.05) : second))
+      const safeSecond = Math.max(
+        0,
+        Math.min(second, duration > 0 ? Math.max(0, duration - 0.05) : second),
+      )
       video.currentTime = safeSecond
     }
 
@@ -622,6 +739,17 @@ async function insertVideoWithFallback(payload: {
 }
 
 export function ReelsPage() {
+  const feedRef = useRef<HTMLDivElement | null>(null)
+  const moveVideo = (direction: number) => {
+    const node = feedRef.current
+    if (node)
+      node.scrollBy({
+        top: node.clientHeight * direction,
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'instant'
+          : 'smooth',
+      })
+  }
   const [sharingVideo, setSharingVideo] = useState<ReelItem | null>(null)
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
@@ -648,7 +776,9 @@ export function ReelsPage() {
   const [videoDurationSeconds, setVideoDurationSeconds] = useState(0)
   const [trimStartSeconds, setTrimStartSeconds] = useState(0)
   const [trimEndSeconds, setTrimEndSeconds] = useState(0)
-  const [watermarkDetection, setWatermarkDetection] = useState<WatermarkDetectionResult | null>(null)
+  const [watermarkDetection, setWatermarkDetection] = useState<WatermarkDetectionResult | null>(
+    null,
+  )
   const [readingDuration, setReadingDuration] = useState(false)
   const [videoPreviewUrl, setVideoPreviewUrl] = useState('')
   const [coverPreviewUrl, setCoverPreviewUrl] = useState('')
@@ -692,115 +822,126 @@ export function ReelsPage() {
     }
     if (query) {
       next = next.filter((item) =>
-        [item.title, item.description, item.authorName, item.authorId].join(' ').toLowerCase().includes(query),
+        [item.title, item.description, item.authorName, item.authorId]
+          .join(' ')
+          .toLowerCase()
+          .includes(query),
       )
     }
 
     if (sortBy === 'recommended') return next
 
     return [...next].sort((a, b) => {
-      if (sortBy === 'likes') return b.likeCount - a.likeCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
-      if (sortBy === 'views') return b.viewCount - a.viewCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
+      if (sortBy === 'likes')
+        return b.likeCount - a.likeCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
+      if (sortBy === 'views')
+        return b.viewCount - a.viewCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
       return Date.parse(b.createdAt) - Date.parse(a.createdAt)
     })
   }, [feedMode, followingIds, items, onlyMine, searchQuery, sortBy, user])
 
-  const loadVideos = useCallback(async (options?: { silent?: boolean }) => {
-    if (useUbuntu) {
+  const loadVideos = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (useUbuntu) {
+        if (options?.silent) {
+          setSyncing(true)
+        } else {
+          setLoading(true)
+          setError(null)
+        }
+        try {
+          const feed = await loadFallbackVideos(80, 0)
+          const mapped = feed.items.map(mapVideoRow).filter((item) => item.videoUrl.length > 0)
+          setItems(mapped)
+          writeCachedValue(reelsCacheKey, mapped)
+        } catch (caught) {
+          if (!options?.silent) {
+            setError(friendlyError(caught, 'No se pudo cargar reels desde Ubuntu'))
+          }
+        } finally {
+          setLoading(false)
+          setSyncing(false)
+        }
+        return
+      }
+
+      if (!supabase) {
+        setLoading(false)
+        setError('Configura VITE_FALLBACK_API_URL para usar reels en Ubuntu.')
+        return
+      }
       if (options?.silent) {
         setSyncing(true)
       } else {
         setLoading(true)
         setError(null)
       }
+
       try {
-        const feed = await loadFallbackVideos(80, 0)
-        const mapped = feed.items.map(mapVideoRow).filter((item) => item.videoUrl.length > 0)
-        setItems(mapped)
-        writeCachedValue(reelsCacheKey, mapped)
+        const attempts = ['videos', 'posts']
+        for (const table of attempts) {
+          const { data, error: queryError } = await supabase
+            .from(table)
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(80)
+
+          if (queryError) continue
+          const rows = (data ?? []) as GenericRow[]
+          let mapped = rows.map(mapVideoRow).filter((item) => item.videoUrl.length > 0)
+          const authorIds = Array.from(new Set(mapped.map((item) => item.authorId).filter(Boolean)))
+          if (authorIds.length > 0) {
+            const { data: profileRows } = await supabase
+              .from('profiles')
+              .select('*')
+              .in('id', authorIds)
+            const profileById = new Map<
+              string,
+              { name: string; avatarUrl: string; avatarMediaType: string }
+            >()
+            ;((profileRows ?? []) as GenericRow[]).forEach((profile) => {
+              const id = textOf(profile, ['id'], '')
+              if (!id) return
+              const avatarSource = reelAuthorAvatarSource(profile)
+              profileById.set(id, {
+                name: textOf(profile, ['display_name', 'username'], '') || id,
+                avatarUrl: resolveSupabasePublicUrl('avatars', avatarSource),
+                avatarMediaType: avatarMediaTypeSource(profile, avatarSource),
+              })
+            })
+            mapped = mapped.map((item) => {
+              const profile = profileById.get(item.authorId)
+              if (!profile) return item
+              return {
+                ...item,
+                authorName: item.authorName.trim() || profile.name,
+                authorAvatarUrl: item.authorAvatarUrl.trim() || profile.avatarUrl,
+                authorAvatarMediaType: item.authorAvatarMediaType.trim() || profile.avatarMediaType,
+              }
+            })
+          }
+          if (mapped.length > 0) {
+            setItems(mapped)
+            writeCachedValue(reelsCacheKey, mapped)
+            setLoading(false)
+            setSyncing(false)
+            return
+          }
+        }
+        setItems([])
+        writeCachedValue(reelsCacheKey, [])
       } catch (caught) {
+        reportSupabaseServiceRestrictionIfPresent('reels-load', caught)
         if (!options?.silent) {
-          setError(friendlyError(caught, 'No se pudo cargar reels desde Ubuntu'))
+          setError(friendlyError(caught, 'No se pudo cargar reels/videos'))
         }
       } finally {
         setLoading(false)
         setSyncing(false)
       }
-      return
-    }
-
-    if (!supabase) {
-      setLoading(false)
-      setError('Configura VITE_FALLBACK_API_URL para usar reels en Ubuntu.')
-      return
-    }
-    if (options?.silent) {
-      setSyncing(true)
-    } else {
-      setLoading(true)
-      setError(null)
-    }
-
-    try {
-      const attempts = ['videos', 'posts']
-      for (const table of attempts) {
-        const { data, error: queryError } = await supabase
-          .from(table)
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(80)
-
-        if (queryError) continue
-        const rows = (data ?? []) as GenericRow[]
-        let mapped = rows.map(mapVideoRow).filter((item) => item.videoUrl.length > 0)
-        const authorIds = Array.from(new Set(mapped.map((item) => item.authorId).filter(Boolean)))
-        if (authorIds.length > 0) {
-          const { data: profileRows } = await supabase
-            .from('profiles')
-            .select('*')
-            .in('id', authorIds)
-          const profileById = new Map<string, { name: string; avatarUrl: string; avatarMediaType: string }>()
-          ;((profileRows ?? []) as GenericRow[]).forEach((profile) => {
-            const id = textOf(profile, ['id'], '')
-            if (!id) return
-            const avatarSource = reelAuthorAvatarSource(profile)
-            profileById.set(id, {
-              name: textOf(profile, ['display_name', 'username'], '') || id,
-              avatarUrl: resolveSupabasePublicUrl('avatars', avatarSource),
-              avatarMediaType: avatarMediaTypeSource(profile, avatarSource),
-            })
-          })
-          mapped = mapped.map((item) => {
-            const profile = profileById.get(item.authorId)
-            if (!profile) return item
-            return {
-              ...item,
-              authorName: item.authorName.trim() || profile.name,
-              authorAvatarUrl: item.authorAvatarUrl.trim() || profile.avatarUrl,
-              authorAvatarMediaType: item.authorAvatarMediaType.trim() || profile.avatarMediaType,
-            }
-          })
-        }
-        if (mapped.length > 0) {
-          setItems(mapped)
-          writeCachedValue(reelsCacheKey, mapped)
-          setLoading(false)
-          setSyncing(false)
-          return
-        }
-      }
-      setItems([])
-      writeCachedValue(reelsCacheKey, [])
-    } catch (caught) {
-      reportSupabaseServiceRestrictionIfPresent('reels-load', caught)
-      if (!options?.silent) {
-        setError(friendlyError(caught, 'No se pudo cargar reels/videos'))
-      }
-    } finally {
-      setLoading(false)
-      setSyncing(false)
-    }
-  }, [reelsCacheKey, useUbuntu])
+    },
+    [reelsCacheKey, useUbuntu],
+  )
 
   useEffect(() => {
     if (!user?.id) return
@@ -890,8 +1031,14 @@ export function ReelsPage() {
     const channel = client
       .channel('conectate-web-reels-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'videos' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'video_likes' }, scheduleRefresh)
-    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'reels-live' })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'video_likes' },
+        scheduleRefresh,
+      )
+    const subscribedChannel = subscribeRealtimeChannel(channel, {
+      reason: 'reels-live',
+    })
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer)
@@ -987,7 +1134,10 @@ export function ReelsPage() {
       setTrimStartSeconds(0)
       return
     }
-    const bounded = Math.max(0, Math.min(nextValue, Math.max(0, videoDurationSeconds - MIN_TRIM_SPAN_SECONDS)))
+    const bounded = Math.max(
+      0,
+      Math.min(nextValue, Math.max(0, videoDurationSeconds - MIN_TRIM_SPAN_SECONDS)),
+    )
     setTrimStartSeconds(bounded)
     setTrimEndSeconds((current) => {
       const safeCurrent = current <= 0 ? videoDurationSeconds : current
@@ -1144,7 +1294,9 @@ export function ReelsPage() {
       const measuredDurationSeconds =
         videoDurationSeconds > 0 ? videoDurationSeconds : await readVideoDurationSeconds(videoFile)
       if (measuredDurationSeconds > MAX_REEL_DURATION_SECONDS) {
-        throw new Error(`El video debe durar máximo ${MAX_REEL_DURATION_SECONDS} segundos antes de subirlo.`)
+        throw new Error(
+          `El video debe durar máximo ${MAX_REEL_DURATION_SECONDS} segundos antes de subirlo.`,
+        )
       }
       const detection = detectWatermarkBrands(videoFile, titleDraft, descriptionDraft)
       setWatermarkDetection(detection)
@@ -1201,7 +1353,9 @@ export function ReelsPage() {
 
         const { error: uploadVideoError } = await supabase.storage
           .from('videos')
-          .upload(videoPath, videoFile, { contentType: videoFile.type || undefined })
+          .upload(videoPath, videoFile, {
+            contentType: videoFile.type || undefined,
+          })
         if (uploadVideoError) throw uploadVideoError
 
         const { data: videoPublicData } = supabase.storage.from('videos').getPublicUrl(videoPath)
@@ -1226,7 +1380,9 @@ export function ReelsPage() {
 
           const { error: uploadCoverError } = await supabase.storage
             .from('videos')
-            .upload(coverPath, selectedCoverFile, { contentType: selectedCoverFile.type || undefined })
+            .upload(coverPath, selectedCoverFile, {
+              contentType: selectedCoverFile.type || undefined,
+            })
           if (uploadCoverError) throw uploadCoverError
 
           const { data: coverPublicData } = supabase.storage.from('videos').getPublicUrl(coverPath)
@@ -1238,7 +1394,9 @@ export function ReelsPage() {
         String(user.user_metadata?.display_name ?? user.user_metadata?.full_name ?? '').trim() ||
         user.email?.split('@')[0] ||
         'Usuario'
-      let avatarUrl = String(user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? '').trim()
+      let avatarUrl = String(
+        user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? '',
+      ).trim()
 
       if (!useUbuntu && supabase) {
         const { data: profileRows } = await supabase
@@ -1260,9 +1418,10 @@ export function ReelsPage() {
         Math.min(trimStartSeconds, Math.max(0, safeDurationSeconds - MIN_TRIM_SPAN_SECONDS)),
       )
       const safeTrimEndRaw = trimEndSeconds > 0 ? trimEndSeconds : safeDurationSeconds
-      const safeTrimEnd = safeDurationSeconds > 0
-        ? Math.max(MIN_TRIM_SPAN_SECONDS, Math.min(safeTrimEndRaw, safeDurationSeconds))
-        : 0
+      const safeTrimEnd =
+        safeDurationSeconds > 0
+          ? Math.max(MIN_TRIM_SPAN_SECONDS, Math.min(safeTrimEndRaw, safeDurationSeconds))
+          : 0
       if (safeDurationSeconds > 0 && safeTrimEnd - safeTrimStart < MIN_TRIM_SPAN_SECONDS) {
         throw new Error('El recorte seleccionado es inválido. Ajusta inicio y fin.')
       }
@@ -1305,15 +1464,25 @@ export function ReelsPage() {
   async function toggleVideoLike(item: ReelItem) {
     if (!user) return
     const nextLiked = !item.likedByMe
-    setItems((current) => current.map((entry) => entry.id === item.id
-      ? { ...entry, likedByMe: nextLiked, likeCount: Math.max(0, entry.likeCount + (nextLiked ? 1 : -1)) }
-      : entry))
+    setItems((current) =>
+      current.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              likedByMe: nextLiked,
+              likeCount: Math.max(0, entry.likeCount + (nextLiked ? 1 : -1)),
+            }
+          : entry,
+      ),
+    )
     try {
       if (useUbuntu) {
         await setFallbackVideoReaction(item.id, nextLiked)
       } else if (supabase) {
         if (nextLiked) {
-          const { error: likeError } = await supabase.from('video_likes').insert({ video_id: item.id, user_id: user.id })
+          const { error: likeError } = await supabase
+            .from('video_likes')
+            .insert({ video_id: item.id, user_id: user.id })
           if (likeError) throw likeError
         } else {
           const { error: unlikeError } = await supabase
@@ -1395,9 +1564,7 @@ export function ReelsPage() {
     if (!user) return
     const nextShared = !item.sharedByMe
     setItems((current) =>
-      current.map((entry) =>
-        entry.id === item.id ? { ...entry, sharedByMe: nextShared } : entry,
-      ),
+      current.map((entry) => (entry.id === item.id ? { ...entry, sharedByMe: nextShared } : entry)),
     )
     try {
       if (useUbuntu) {
@@ -1438,7 +1605,9 @@ export function ReelsPage() {
 
   return (
     <section className="section-stack reels-page">
-      {syncing ? <small>Sincronizando videos...</small> : null}
+      <span className="sr-only" role="status">
+        {syncing ? 'Actualizando videos' : ''}
+      </span>
 
       {error ? <StatusView title="Error de reels" description={error} /> : null}
 
@@ -1470,280 +1639,397 @@ export function ReelsPage() {
         <div className="reels-toolbar-actions">
           <label className="reels-search-control" title="Buscar videos">
             <Search aria-hidden="true" />
-            <input placeholder="Buscar" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+            <input
+              aria-label="Buscar videos"
+              placeholder="Buscar"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
           </label>
           <details className="reels-filter-menu">
-            <summary className="icon-btn" title="Ordenar y filtrar" aria-label="Ordenar y filtrar"><SlidersHorizontal aria-hidden="true" /></summary>
+            <summary className="icon-btn" title="Ordenar y filtrar" aria-label="Ordenar y filtrar">
+              <SlidersHorizontal aria-hidden="true" />
+            </summary>
             <div className="reels-filter-popover">
-              <label>Orden
-                <select value={sortBy} onChange={(event) => setSortBy(event.target.value as FeedSort)}>
+              <label>
+                Orden
+                <select
+                  value={sortBy}
+                  onChange={(event) => setSortBy(event.target.value as FeedSort)}
+                >
                   <option value="recommended">Recomendado</option>
                   <option value="new">Más recientes</option>
                   <option value="likes">Más likes</option>
                   <option value="views">Más vistas</option>
                 </select>
               </label>
-              <label className="checkbox-inline"><input type="checkbox" checked={onlyMine} onChange={(event) => setOnlyMine(event.target.checked)} />Solo mis videos</label>
+              <label className="checkbox-inline">
+                <input
+                  type="checkbox"
+                  checked={onlyMine}
+                  onChange={(event) => setOnlyMine(event.target.checked)}
+                />
+                Solo mis videos
+              </label>
             </div>
           </details>
           <details className="reels-create-menu">
-            <summary className="primary-btn reels-publish-button" title="Crear" aria-label="Abrir opciones para crear"><Plus aria-hidden="true" /><span>Crear</span></summary>
+            <summary
+              className="primary-btn reels-publish-button"
+              title="Crear"
+              aria-label="Abrir opciones para crear"
+            >
+              <Plus aria-hidden="true" />
+              <span>Crear</span>
+            </summary>
             <div className="reels-create-popover" role="menu">
-              <button type="button" role="menuitem" onClick={() => setShowUploadForm(true)}><Upload aria-hidden="true" /><span><strong>Subir video</strong><small>Publicar un reel</small></span></button>
-              <Link role="menuitem" to="/app/live?create=1"><Radio aria-hidden="true" /><span><strong>Crear directo</strong><small>Cámara o pantalla</small></span></Link>
-              <Link role="menuitem" to="/app/live"><Search aria-hidden="true" /><span><strong>Ver directos</strong><small>Emisiones activas</small></span></Link>
+              <button type="button" role="menuitem" onClick={() => setShowUploadForm(true)}>
+                <Upload aria-hidden="true" />
+                <span>
+                  <strong>Subir video</strong>
+                  <small>Publicar un reel</small>
+                </span>
+              </button>
+              <Link role="menuitem" to="/app/live?create=1">
+                <Radio aria-hidden="true" />
+                <span>
+                  <strong>Crear directo</strong>
+                  <small>Cámara o pantalla</small>
+                </span>
+              </Link>
+              <Link role="menuitem" to="/app/live">
+                <Search aria-hidden="true" />
+                <span>
+                  <strong>Ver directos</strong>
+                  <small>Emisiones activas</small>
+                </span>
+              </Link>
             </div>
           </details>
         </div>
       </div>
 
-      <LiveStrip compact />
-      {sharingVideo ? <ShareVideoDialog videoId={sharingVideo.id} title={sharingVideo.title} onClose={() => setSharingVideo(null)} /> : null}
+      {sharingVideo ? (
+        <ShareVideoDialog
+          videoId={sharingVideo.id}
+          title={sharingVideo.title}
+          onClose={() => setSharingVideo(null)}
+        />
+      ) : null}
 
-      {showUploadForm ? <div className="app-dialog-backdrop" role="presentation" onMouseDown={() => setShowUploadForm(false)}>
-        <article className="surface-card section-stack video-upload-dialog" role="dialog" aria-modal="true" aria-label="Publicar video" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="row-between"><h3>Publicar reel</h3><button className="icon-btn" type="button" onClick={() => setShowUploadForm(false)} title="Cerrar" aria-label="Cerrar"><X aria-hidden="true" /></button></div>
-        <form className="section-stack" onSubmit={createReel}>
-          <div className="composer">
-            <input
-              className="text-input"
-              placeholder="Título"
-              value={titleDraft}
-              onChange={(event) => setTitleDraft(event.target.value)}
-            />
-            <input
-              className="text-input"
-              placeholder="Descripción"
-              value={descriptionDraft}
-              onChange={(event) => setDescriptionDraft(event.target.value)}
-            />
-          </div>
-          <div className="composer">
-            <input
-              className="text-input"
-              type="file"
-              accept="video/*"
-              onChange={(event) => {
-                setVideoFile(event.target.files?.[0] ?? null)
-                setCoverFile(null)
-                setCoverFrameSecond(0)
-                setTrimStartSeconds(0)
-                setTrimEndSeconds(0)
-              }}
-            />
-            <button className="primary-btn" type="submit" disabled={!canPublish}>
-              {posting ? 'Publicando...' : 'Publicar reel'}
-            </button>
-          </div>
-          <div className="chip-row">
-            <button
-              className={coverMode === 'upload' ? 'chip-btn active' : 'chip-btn'}
-              type="button"
-              onClick={() => setCoverMode('upload')}
-            >
-              Portada por archivo
-            </button>
-            <button
-              className={coverMode === 'frame' ? 'chip-btn active' : 'chip-btn'}
-              type="button"
-              onClick={() => setCoverMode('frame')}
-            >
-              Portada por fotograma
-            </button>
-            {coverFile ? (
-              <button className="chip-btn" type="button" onClick={() => setCoverFile(null)}>
-                Quitar portada
-              </button>
-            ) : null}
-          </div>
-          {coverMode === 'upload' ? (
-            <div className="composer">
-              <input
-                className="text-input"
-                type="file"
-                accept="image/*"
-                onChange={(event) => setCoverFile(event.target.files?.[0] ?? null)}
-              />
-            </div>
-          ) : (
-            <div className="composer">
-              <input
-                className="text-input"
-                type="range"
-                min={0}
-                max={Math.max(0, videoDurationSeconds)}
-                step={1}
-                value={Math.min(coverFrameSecond, Math.max(0, videoDurationSeconds))}
-                disabled={!videoFile || videoDurationSeconds <= 0 || generatingFrameCover}
-                onChange={(event) => setCoverFrameSecond(Number(event.target.value))}
-              />
-              <span className="folder-tag">
-                Frame {formatSecondsClock(coverFrameSecond)} / {formatSecondsClock(videoDurationSeconds)}
-              </span>
+      {showUploadForm ? (
+        <div
+          className="app-dialog-backdrop"
+          role="presentation"
+          onMouseDown={() => setShowUploadForm(false)}
+        >
+          <article
+            className="surface-card section-stack video-upload-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Publicar video"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="row-between">
+              <h3>Publicar reel</h3>
               <button
-                className="ghost-btn"
+                className="icon-btn"
                 type="button"
-                disabled={!videoFile || videoDurationSeconds <= 0 || generatingFrameCover}
-                onClick={() => void generateCoverFromFrame()}
+                onClick={() => setShowUploadForm(false)}
+                title="Cerrar"
+                aria-label="Cerrar"
               >
-                {generatingFrameCover ? 'Generando...' : 'Generar portada'}
+                <X aria-hidden="true" />
               </button>
             </div>
-          )}
-          {coverMode === 'frame' ? (
-            <div className="section-stack">
-              {loadingSelectedFramePreview ? (
-                <small>Actualizando preview del frame seleccionado...</small>
-              ) : selectedFramePreviewUrl ? (
-                <>
-                  <small>Frame seleccionado para portada: {formatSecondsClock(coverFrameSecond)}</small>
-                  <StreamingImage
-                    src={selectedFramePreviewUrl}
-                    alt={`Frame ${formatSecondsClock(coverFrameSecond)}`}
-                    className="trim-frame-preview"
-                  />
-                </>
-              ) : null}
-            </div>
-          ) : null}
-          {videoFile ? (
-            <div className="section-stack">
-              <small>
-                Video: {videoFile.name} ({formatSize(videoFile.size)}){' '}
-                {readingDuration
-                  ? '• detectando duración...'
-                  : videoDurationSeconds > 0
-                    ? `• ${videoDurationSeconds}s`
-                    : ''}
-              </small>
-              <div className="quality-gate-grid">
-                <span className={videoDurationSeconds > MAX_REEL_DURATION_SECONDS ? 'quality-gate danger' : 'quality-gate ok'}>
-                  Límite web/móvil: máximo {MAX_REEL_DURATION_SECONDS}s
-                </span>
-                {watermarkDetection?.detectedBrands.length ? (
-                  <span className="quality-gate danger">
-                    Marca de agua detectada: {watermarkDetection.detectedBrands.join(', ')}
-                  </span>
-                ) : (
-                  <span className="quality-gate ok">Sin señales de TikTok/Facebook/YouTube/Kwai/Instagram</span>
-                )}
-              </div>
-              {videoPreviewUrl ? (
-                <StreamingVideo
-                  ref={previewVideoRef}
-                  controls
-                  preload="metadata"
-                  src={videoPreviewUrl}
-                  className="video-frame"
-                  onTimeUpdate={handlePreviewTimeUpdate}
+            <form className="section-stack" onSubmit={createReel}>
+              <div className="composer">
+                <input
+                  className="text-input"
+                  placeholder="Título"
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
                 />
-              ) : null}
-              <div className="section-stack">
-                <small>
-                  Recorte: {formatSecondsClock(trimStartSeconds)} → {formatSecondsClock(trimEndSeconds || videoDurationSeconds)}
-                </small>
-                <div className="trim-timeline">
-                  <div className="trim-timeline-full" />
-                  <div
-                    className="trim-timeline-window"
-                    style={{
-                      left: `${trimStartPercent}%`,
-                      width: `${Math.max(0, trimEndPercent - trimStartPercent)}%`,
-                    }}
+                <input
+                  className="text-input"
+                  placeholder="Descripción"
+                  value={descriptionDraft}
+                  onChange={(event) => setDescriptionDraft(event.target.value)}
+                />
+              </div>
+              <div className="composer">
+                <input
+                  className="text-input"
+                  type="file"
+                  accept="video/*"
+                  onChange={(event) => {
+                    setVideoFile(event.target.files?.[0] ?? null)
+                    setCoverFile(null)
+                    setCoverFrameSecond(0)
+                    setTrimStartSeconds(0)
+                    setTrimEndSeconds(0)
+                  }}
+                />
+                <button className="primary-btn" type="submit" disabled={!canPublish}>
+                  {posting ? 'Publicando...' : 'Publicar reel'}
+                </button>
+              </div>
+              <div className="chip-row">
+                <button
+                  className={coverMode === 'upload' ? 'chip-btn active' : 'chip-btn'}
+                  type="button"
+                  onClick={() => setCoverMode('upload')}
+                >
+                  Portada por archivo
+                </button>
+                <button
+                  className={coverMode === 'frame' ? 'chip-btn active' : 'chip-btn'}
+                  type="button"
+                  onClick={() => setCoverMode('frame')}
+                >
+                  Portada por fotograma
+                </button>
+                {coverFile ? (
+                  <button className="chip-btn" type="button" onClick={() => setCoverFile(null)}>
+                    Quitar portada
+                  </button>
+                ) : null}
+              </div>
+              {coverMode === 'upload' ? (
+                <div className="composer">
+                  <input
+                    className="text-input"
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => setCoverFile(event.target.files?.[0] ?? null)}
                   />
                 </div>
-                {loadingTrimPreviewFrames ? (
-                  <small>Generando miniaturas del video...</small>
-                ) : trimPreviewFrames.length > 0 ? (
-                  <div className="trim-strip">
-                    {trimPreviewFrames.map((frame) => {
-                      const inRange =
-                        frame.second >= trimStartSeconds &&
-                        frame.second <= (trimEndSeconds || videoDurationSeconds)
-                      const isCoverFrame = Math.abs(frame.second - coverFrameSecond) <= 1
-                      const classNames = [
-                        'trim-strip-item',
-                        inRange ? 'in-range' : '',
-                        isCoverFrame && coverMode === 'frame' ? 'cover-selected' : '',
-                      ]
-                        .join(' ')
-                        .trim()
-                      return (
-                        <button
-                          key={`${frame.second}-${frame.src.slice(0, 12)}`}
-                          type="button"
-                          className={classNames}
-                          onClick={() => jumpToPreviewFrame(frame.second)}
-                        >
-                          <StreamingImage src={frame.src} alt={`Frame ${formatSecondsClock(frame.second)}`} />
-                          <span>{formatSecondsClock(frame.second)}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : null}
-                <div className="row-actions">
-                  <button className="chip-btn" type="button" disabled={!videoFile} onClick={() => jumpToTrimStart()}>
-                    Ir al inicio recorte
-                  </button>
-                  <button className="chip-btn" type="button" disabled={!videoFile} onClick={() => jumpToTrimEnd()}>
-                    Ir al fin recorte
-                  </button>
-                  <button
-                    className={previewTrimLoop ? 'chip-btn active' : 'chip-btn'}
-                    type="button"
-                    disabled={!videoFile || videoDurationSeconds <= 0}
-                    onClick={() => setPreviewTrimLoop((current) => !current)}
-                  >
-                    {previewTrimLoop ? 'Preview recorte: ON' : 'Preview recorte: OFF'}
-                  </button>
-                </div>
+              ) : (
                 <div className="composer">
-                  <span className="folder-tag">Inicio</span>
                   <input
                     className="text-input"
                     type="range"
                     min={0}
                     max={Math.max(0, videoDurationSeconds)}
                     step={1}
-                    value={Math.min(trimStartSeconds, Math.max(0, videoDurationSeconds))}
-                    disabled={!videoFile || videoDurationSeconds <= 0 || posting}
-                    onChange={(event) => applyTrimStart(Number(event.target.value))}
+                    value={Math.min(coverFrameSecond, Math.max(0, videoDurationSeconds))}
+                    disabled={!videoFile || videoDurationSeconds <= 0 || generatingFrameCover}
+                    onChange={(event) => setCoverFrameSecond(Number(event.target.value))}
                   />
-                  <span className="folder-tag">{formatSecondsClock(trimStartSeconds)}</span>
+                  <span className="folder-tag">
+                    Frame {formatSecondsClock(coverFrameSecond)} /{' '}
+                    {formatSecondsClock(videoDurationSeconds)}
+                  </span>
+                  <button
+                    className="ghost-btn"
+                    type="button"
+                    disabled={!videoFile || videoDurationSeconds <= 0 || generatingFrameCover}
+                    onClick={() => void generateCoverFromFrame()}
+                  >
+                    {generatingFrameCover ? 'Generando...' : 'Generar portada'}
+                  </button>
                 </div>
-                <div className="composer">
-                  <span className="folder-tag">Fin</span>
-                  <input
-                    className="text-input"
-                    type="range"
-                    min={0}
-                    max={Math.max(0, Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS))}
-                    step={1}
-                    value={Math.min(
-                      trimEndSeconds || Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS),
-                      Math.max(0, Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS)),
+              )}
+              {coverMode === 'frame' ? (
+                <div className="section-stack">
+                  {loadingSelectedFramePreview ? (
+                    <small>Actualizando preview del frame seleccionado...</small>
+                  ) : selectedFramePreviewUrl ? (
+                    <>
+                      <small>
+                        Frame seleccionado para portada: {formatSecondsClock(coverFrameSecond)}
+                      </small>
+                      <StreamingImage
+                        src={selectedFramePreviewUrl}
+                        alt={`Frame ${formatSecondsClock(coverFrameSecond)}`}
+                        className="trim-frame-preview"
+                      />
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+              {videoFile ? (
+                <div className="section-stack">
+                  <small>
+                    Video: {videoFile.name} ({formatSize(videoFile.size)}){' '}
+                    {readingDuration
+                      ? '• detectando duración...'
+                      : videoDurationSeconds > 0
+                        ? `• ${videoDurationSeconds}s`
+                        : ''}
+                  </small>
+                  <div className="quality-gate-grid">
+                    <span
+                      className={
+                        videoDurationSeconds > MAX_REEL_DURATION_SECONDS
+                          ? 'quality-gate danger'
+                          : 'quality-gate ok'
+                      }
+                    >
+                      Límite web/móvil: máximo {MAX_REEL_DURATION_SECONDS}s
+                    </span>
+                    {watermarkDetection?.detectedBrands.length ? (
+                      <span className="quality-gate danger">
+                        Marca de agua detectada: {watermarkDetection.detectedBrands.join(', ')}
+                      </span>
+                    ) : (
+                      <span className="quality-gate ok">
+                        Sin señales de TikTok/Facebook/YouTube/Kwai/Instagram
+                      </span>
                     )}
-                    disabled={!videoFile || videoDurationSeconds <= 0 || posting}
-                    onChange={(event) => applyTrimEnd(Number(event.target.value))}
-                  />
-                  <span className="folder-tag">{formatSecondsClock(trimEndSeconds || videoDurationSeconds)}</span>
+                  </div>
+                  {videoPreviewUrl ? (
+                    <StreamingVideo
+                      ref={previewVideoRef}
+                      controls
+                      preload="metadata"
+                      src={videoPreviewUrl}
+                      className="video-frame"
+                      onTimeUpdate={handlePreviewTimeUpdate}
+                    />
+                  ) : null}
+                  <div className="section-stack">
+                    <small>
+                      Recorte: {formatSecondsClock(trimStartSeconds)} →{' '}
+                      {formatSecondsClock(trimEndSeconds || videoDurationSeconds)}
+                    </small>
+                    <div className="trim-timeline">
+                      <div className="trim-timeline-full" />
+                      <div
+                        className="trim-timeline-window"
+                        style={{
+                          left: `${trimStartPercent}%`,
+                          width: `${Math.max(0, trimEndPercent - trimStartPercent)}%`,
+                        }}
+                      />
+                    </div>
+                    {loadingTrimPreviewFrames ? (
+                      <small>Generando miniaturas del video...</small>
+                    ) : trimPreviewFrames.length > 0 ? (
+                      <div className="trim-strip">
+                        {trimPreviewFrames.map((frame) => {
+                          const inRange =
+                            frame.second >= trimStartSeconds &&
+                            frame.second <= (trimEndSeconds || videoDurationSeconds)
+                          const isCoverFrame = Math.abs(frame.second - coverFrameSecond) <= 1
+                          const classNames = [
+                            'trim-strip-item',
+                            inRange ? 'in-range' : '',
+                            isCoverFrame && coverMode === 'frame' ? 'cover-selected' : '',
+                          ]
+                            .join(' ')
+                            .trim()
+                          return (
+                            <button
+                              key={`${frame.second}-${frame.src.slice(0, 12)}`}
+                              type="button"
+                              className={classNames}
+                              onClick={() => jumpToPreviewFrame(frame.second)}
+                            >
+                              <StreamingImage
+                                src={frame.src}
+                                alt={`Frame ${formatSecondsClock(frame.second)}`}
+                              />
+                              <span>{formatSecondsClock(frame.second)}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : null}
+                    <div className="row-actions">
+                      <button
+                        className="chip-btn"
+                        type="button"
+                        disabled={!videoFile}
+                        onClick={() => jumpToTrimStart()}
+                      >
+                        Ir al inicio recorte
+                      </button>
+                      <button
+                        className="chip-btn"
+                        type="button"
+                        disabled={!videoFile}
+                        onClick={() => jumpToTrimEnd()}
+                      >
+                        Ir al fin recorte
+                      </button>
+                      <button
+                        className={previewTrimLoop ? 'chip-btn active' : 'chip-btn'}
+                        type="button"
+                        disabled={!videoFile || videoDurationSeconds <= 0}
+                        onClick={() => setPreviewTrimLoop((current) => !current)}
+                      >
+                        {previewTrimLoop ? 'Preview recorte: ON' : 'Preview recorte: OFF'}
+                      </button>
+                    </div>
+                    <div className="composer">
+                      <span className="folder-tag">Inicio</span>
+                      <input
+                        className="text-input"
+                        type="range"
+                        min={0}
+                        max={Math.max(0, videoDurationSeconds)}
+                        step={1}
+                        value={Math.min(trimStartSeconds, Math.max(0, videoDurationSeconds))}
+                        disabled={!videoFile || videoDurationSeconds <= 0 || posting}
+                        onChange={(event) => applyTrimStart(Number(event.target.value))}
+                      />
+                      <span className="folder-tag">{formatSecondsClock(trimStartSeconds)}</span>
+                    </div>
+                    <div className="composer">
+                      <span className="folder-tag">Fin</span>
+                      <input
+                        className="text-input"
+                        type="range"
+                        min={0}
+                        max={Math.max(0, Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS))}
+                        step={1}
+                        value={Math.min(
+                          trimEndSeconds ||
+                            Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS),
+                          Math.max(0, Math.min(videoDurationSeconds, MAX_REEL_DURATION_SECONDS)),
+                        )}
+                        disabled={!videoFile || videoDurationSeconds <= 0 || posting}
+                        onChange={(event) => applyTrimEnd(Number(event.target.value))}
+                      />
+                      <span className="folder-tag">
+                        {formatSecondsClock(trimEndSeconds || videoDurationSeconds)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ) : (
-            <small>Selecciona un video para publicar.</small>
-          )}
-          {coverFile ? (
-            <div className="section-stack">
-              <small>Portada: {coverFile.name} ({formatSize(coverFile.size)})</small>
-              {coverPreviewUrl ? <StreamingImage src={coverPreviewUrl} alt="Vista previa portada" className="story-media" /> : null}
-            </div>
-          ) : null}
-        </form>
-        </article>
-      </div> : null}
+              ) : (
+                <small>Selecciona un video para publicar.</small>
+              )}
+              {coverFile ? (
+                <div className="section-stack">
+                  <small>
+                    Portada: {coverFile.name} ({formatSize(coverFile.size)})
+                  </small>
+                  {coverPreviewUrl ? (
+                    <StreamingImage
+                      src={coverPreviewUrl}
+                      alt="Vista previa portada"
+                      className="story-media"
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </form>
+          </article>
+        </div>
+      ) : null}
 
+      {visibleItems.length > 0 ? (
+        <div className="reel-stage-navigation" aria-label="Cambiar de video">
+          <button type="button" aria-label="Video anterior" onClick={() => moveVideo(-1)}>
+            <ChevronUp />
+          </button>
+          <button type="button" aria-label="Siguiente video" onClick={() => moveVideo(1)}>
+            <ChevronDown />
+          </button>
+        </div>
+      ) : null}
       {visibleItems.length === 0 ? (
         <StatusView
           title={feedMode === 'friends' ? 'Sin videos de amigos' : 'Sin reels'}
@@ -1754,15 +2040,34 @@ export function ReelsPage() {
           }
         />
       ) : (
-        <div className="reels-vertical-feed">
+        <div
+          className="reels-vertical-feed"
+          ref={feedRef}
+          tabIndex={0}
+          aria-label="Feed de videos"
+          onKeyDown={(event) => {
+            if (
+              event.target !== event.currentTarget &&
+              event.target instanceof HTMLElement &&
+              event.target.closest('input,textarea,button,a,select')
+            )
+              return
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              moveVideo(event.key === 'ArrowDown' ? 1 : -1)
+            }
+          }}
+        >
           {visibleItems.map((item, index) => {
-            const live = liveStreams.length > 0 && (index + 1) % 6 === 0
-              ? liveStreams[Math.floor(index / 6) % liveStreams.length]
-              : null
+            const live =
+              liveStreams.length > 0 && (index + 1) % 6 === 0
+                ? liveStreams[Math.floor(index / 6) % liveStreams.length]
+                : null
             return (
               <Fragment key={item.id}>
                 <ReelFeedCard
                   item={item}
+                  eager={index < 2}
                   currentUserId={user?.id}
                   onLike={(video) => void toggleVideoLike(video)}
                   onFavorite={(video) => void toggleVideoFavorite(video)}

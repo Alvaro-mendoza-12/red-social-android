@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://red-social-android.vercel.app/sitemap.xml

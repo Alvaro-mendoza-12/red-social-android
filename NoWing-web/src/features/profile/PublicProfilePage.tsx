@@ -1,9 +1,10 @@
 import { StreamingImage, StreamingVideo, StreamingAudio } from '../../components/StreamingMedia'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { MessageSquareText, Share2, QrCode, MoreHorizontal } from 'lucide-react'
+import { ProfileHeader, profileIdentity, type ProfileIdentity } from '../../ui/novvin/ProfileHeader'
 import { StatusView } from '../../components/StatusView'
 import { QrCodeTile } from '../../components/QrCodeTile'
-import { SafeAvatar } from '../../components/SafeAvatar'
 import { recordWebProfileVisit } from '../../core/profileVisits'
 import {
   avatarMediaTypeSource,
@@ -11,6 +12,8 @@ import {
   profileAvatarSource,
   profileCoverSource,
   profileIdentityAliases,
+  profileVideoSource,
+  profileVideoCoverSource,
 } from '../../core/profileMediaFields'
 import { resolveSupabasePublicUrl, supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
@@ -22,7 +25,12 @@ import {
   submitFallbackUserReport,
 } from '../../core/fallbackData'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
-import { buildProfileChatQrPayload, buildProfileChatUrl, buildProfileQrPayload, buildProfileShareUrl } from '../../core/socialLinks'
+import {
+  buildProfileChatQrPayload,
+  buildProfileChatUrl,
+  buildProfileQrPayload,
+  buildProfileShareUrl,
+} from '../../core/socialLinks'
 import { extractMediaEntries, type MediaEntry } from '../feed/mediaUtils'
 import { getOrCreateDirectChat } from '../messages/directChat'
 
@@ -44,6 +52,7 @@ type PublicProfileData = {
   favoriteMusicUrl: string
   badges: Array<{ id: string; name: string; icon: string }>
   profileFrame: string
+  identity: ProfileIdentity
 }
 
 function stringArrayFrom(value: unknown): string[] {
@@ -75,7 +84,8 @@ type PublicPost = {
 }
 
 function isMissingFunctionError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
   return (
     message.includes('could not find') ||
     message.includes('function') ||
@@ -93,6 +103,7 @@ function mapPublicProfile(
   const avatarSource = profileAvatarSource(row, fallbackAvatar)
   return {
     id: textOf(row, ['id'], fallbackId),
+    identity: profileIdentity(row),
     name: textOf(row, ['displayName', 'display_name', 'full_name', 'name'], 'Usuario'),
     username: textOf(row, ['username'], ''),
     bio: textOf(row, ['bio', 'description'], ''),
@@ -128,8 +139,19 @@ export function PublicProfilePage() {
   const cleanProfileId = useMemo(() => profileId.trim(), [profileId])
 
   const [profile, setProfile] = useState<PublicProfileData | null>(null)
+  const [activeTab, setActiveTab] = useState<'videos' | 'posts'>('videos')
+  const [homeTab, setHomeTab] = useState<'home' | 'about'>('home')
+  const [showQr, setShowQr] = useState(false)
+  const [showReport, setShowReport] = useState(false)
+  const [videos, setVideos] = useState<
+    Array<{ id: string; url: string; cover: string; title: string }>
+  >([])
   const [posts, setPosts] = useState<PublicPost[]>([])
-  const [stats, setStats] = useState<PublicProfileStats>({ posts: 0, followers: 0, following: 0 })
+  const [stats, setStats] = useState<PublicProfileStats>({
+    posts: 0,
+    followers: 0,
+    following: 0,
+  })
   const [isFollowing, setIsFollowing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -143,10 +165,22 @@ export function PublicProfilePage() {
 
   const isSelf = Boolean(user && cleanProfileId && user.id === cleanProfileId)
   const canSeePosts = Boolean(profile && (!profile.isPrivate || isSelf || isFollowing))
-  const profileShareUrl = useMemo(() => (cleanProfileId ? buildProfileShareUrl(cleanProfileId) : ''), [cleanProfileId])
-  const profileChatUrl = useMemo(() => (cleanProfileId ? buildProfileChatUrl(cleanProfileId) : ''), [cleanProfileId])
-  const profileQrValue = useMemo(() => (cleanProfileId ? buildProfileQrPayload(cleanProfileId) : ''), [cleanProfileId])
-  const chatQrValue = useMemo(() => (cleanProfileId ? buildProfileChatQrPayload(cleanProfileId) : ''), [cleanProfileId])
+  const profileShareUrl = useMemo(
+    () => (cleanProfileId ? buildProfileShareUrl(cleanProfileId) : ''),
+    [cleanProfileId],
+  )
+  const profileChatUrl = useMemo(
+    () => (cleanProfileId ? buildProfileChatUrl(cleanProfileId) : ''),
+    [cleanProfileId],
+  )
+  const profileQrValue = useMemo(
+    () => (cleanProfileId ? buildProfileQrPayload(cleanProfileId) : ''),
+    [cleanProfileId],
+  )
+  const chatQrValue = useMemo(
+    () => (cleanProfileId ? buildProfileChatQrPayload(cleanProfileId) : ''),
+    [cleanProfileId],
+  )
 
   const loadProfile = useCallback(async () => {
     if (useFallback) {
@@ -163,18 +197,37 @@ export function PublicProfilePage() {
         ])
         if (profileResult.status === 'rejected') throw profileResult.reason
         const response = profileResult.value
-        if (!isSelf) void recordWebProfileVisit(textOf(response.profile, ['id'], cleanProfileId), response.profile.profile_view_history_enabled !== false).catch(() => {})
+        if (!isSelf)
+          void recordWebProfileVisit(
+            textOf(response.profile, ['id'], cleanProfileId),
+            response.profile.profile_view_history_enabled !== false,
+          ).catch(() => {})
         const videoItems = videoResult.status === 'fulfilled' ? videoResult.value.items : []
+        const aliases = profileIdentityAliases(response.profile, [cleanProfileId])
+        setVideos(
+          videoItems
+            .filter((row) =>
+              aliases.includes(textOf(row, ['user_id', 'userId', 'owner_id', 'author_id'], '')),
+            )
+            .map((row) => ({
+              id: textOf(row, ['id'], ''),
+              url: resolveSupabasePublicUrl('videos', profileVideoSource(row)),
+              cover: resolveSupabasePublicUrl('thumbnails', profileVideoCoverSource(row)),
+              title: textOf(row, ['title', 'description'], 'Video'),
+            })),
+        )
         const contentAvatar = findContentAvatarCandidate(
           [...(response.posts ?? []), ...videoItems],
           profileIdentityAliases(response.profile, [cleanProfileId]),
         )
-        setProfile(mapPublicProfile(
-          response.profile,
-          cleanProfileId,
-          contentAvatar?.url,
-          contentAvatar?.mediaType,
-        ))
+        setProfile(
+          mapPublicProfile(
+            response.profile,
+            cleanProfileId,
+            contentAvatar?.url,
+            contentAvatar?.mediaType,
+          ),
+        )
         setIsFollowing(Boolean(response.isFollowing))
         setPosts((response.posts ?? []).map(mapPublicPost))
         setStats({
@@ -239,30 +292,42 @@ export function PublicProfilePage() {
               .eq('user_id', profileQueryId)
               .order('created_at', { ascending: false })
               .limit(30)
-          : Promise.resolve({ data: [] as GenericRow[], error: null, count: 0 }),
+          : Promise.resolve({
+              data: [] as GenericRow[],
+              error: null,
+              count: 0,
+            }),
         supabase.from('videos').select('*').eq('user_id', profileQueryId).limit(30),
-        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', profileQueryId),
-        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', profileQueryId),
+        supabase
+          .from('follows')
+          .select('id', { count: 'exact', head: true })
+          .eq('following_id', profileQueryId),
+        supabase
+          .from('follows')
+          .select('id', { count: 'exact', head: true })
+          .eq('follower_id', profileQueryId),
       ])
       const { data: postRows, error: postsError } = postsResult
       if (postsError) throw postsError
       const mappedPosts = ((postRows ?? []) as GenericRow[]).map(mapPublicPost)
       const contentAvatar = findContentAvatarCandidate(
-        [
-          ...((postRows ?? []) as GenericRow[]),
-          ...((videosResult.data ?? []) as GenericRow[]),
-        ],
+        [...((postRows ?? []) as GenericRow[]), ...((videosResult.data ?? []) as GenericRow[])],
         profileIdentityAliases(profileRow, [cleanProfileId, profileQueryId]),
       )
       if (contentAvatar) {
-        setProfile(mapPublicProfile(
-          profileRow,
-          cleanProfileId,
-          contentAvatar.url,
-          contentAvatar.mediaType,
-        ))
+        setProfile(
+          mapPublicProfile(profileRow, cleanProfileId, contentAvatar.url, contentAvatar.mediaType),
+        )
       }
       setPosts(mappedPosts)
+      setVideos(
+        ((videosResult.data ?? []) as GenericRow[]).map((row) => ({
+          id: textOf(row, ['id'], ''),
+          url: resolveSupabasePublicUrl('videos', profileVideoSource(row)),
+          cover: resolveSupabasePublicUrl('thumbnails', profileVideoCoverSource(row)),
+          title: textOf(row, ['title', 'description'], 'Video'),
+        })),
+      )
       setStats({
         posts: postsResult.count ?? mappedPosts.length,
         followers: followersResult.count ?? 0,
@@ -425,191 +490,308 @@ export function PublicProfilePage() {
     }
   }
 
-  if (!supabase && !useFallback) return <StatusView title="Servidor de perfiles no configurado" description="Configura Ubuntu o Supabase para usar perfiles." />
+  if (!supabase && !useFallback)
+    return (
+      <StatusView
+        title="Servidor de perfiles no configurado"
+        description="Configura Ubuntu o Supabase para usar perfiles."
+      />
+    )
   if (loading) return <StatusView title="Cargando perfil" description="Espera un momento..." />
   if (error && !profile) return <StatusView title="Perfil no disponible" description={error} />
-  if (!profile) return <StatusView title="Perfil no encontrado" description="No existe o no está disponible." />
+  if (!profile)
+    return <StatusView title="Perfil no encontrado" description="No existe o no está disponible." />
 
   return (
-    <section className="section-stack">
-      <div className="row-between">
-        <Link to="/app/search" className="inline-link">
-          ← Buscar
-        </Link>
-        <h2>Perfil público</h2>
-      </div>
-
-      {error ? <StatusView title="Acción no completada" description={error} /> : null}
-
-      <article className="surface-card section-stack public-profile-card">
-        <div className="public-profile-cover">
-          {profile.coverUrl ? <StreamingImage src={profile.coverUrl} alt={`Portada de ${profile.name}`} /> : null}
-        </div>
-        <div className="public-profile-identity">
-          <div className={`profile-avatar-frame profile-avatar-frame--${profile.profileFrame || 'none'}`}>
-            <SafeAvatar
-              url={profile.avatarUrl}
-              mediaType={profile.avatarMediaType}
-              name={profile.name || profile.id}
-              size="lg"
-              className="public-profile-avatar"
-            />
-          </div>
-          <div>
-            <h3>{profile.name}</h3>
-            <span>{profile.username ? `@${profile.username}` : '@usuario'}</span>
-          </div>
-        </div>
-        <p>{profile.bio || 'Sin biografía'}</p>
+    <section className="mobile-profile-page">
+      <ProfileHeader
+        name={profile.name}
+        username={profile.username}
+        avatarUrl={profile.avatarUrl}
+        avatarMediaType={profile.avatarMediaType}
+        coverUrl={profile.coverUrl}
+        frame={profile.profileFrame}
+        identity={profile.identity}
+        followers={stats.followers}
+        following={stats.following}
+      />
+      <div className="mobile-profile-main">
+        {error ? (
+          <p className="error-text" role="alert">
+            {error}
+          </p>
+        ) : null}
         {profile.badges.length ? (
-          <div className="chip-row">
-            {profile.badges.map((badge) => <span className="folder-tag" key={badge.id}>{badge.icon} {badge.name}</span>)}
+          <div className="profile-badges">
+            {profile.badges.map((badge) => (
+              <span className="profile-badge" key={badge.id}>
+                {badge.icon} {badge.name}
+              </span>
+            ))}
           </div>
         ) : null}
-        {profile.profileWelcome ? <p className="muted-line">{profile.profileWelcome}</p> : null}
-        {(profile.career || profile.favoriteSport || profile.interests.length || profile.hobbies.length || profile.linkedGames.length) ? (
-          <div className="chip-row">
-            {profile.career ? <span className="folder-tag">{profile.career}</span> : null}
-            {profile.favoriteSport ? <span className="folder-tag">{profile.favoriteSport}</span> : null}
-            {profile.interests.map((interest) => <span key={`interest-${interest}`} className="folder-tag">{interest}</span>)}
-            {profile.hobbies.map((hobby) => <span key={`hobby-${hobby}`} className="folder-tag">{hobby}</span>)}
-            {profile.linkedGames.map((game) => <span key={`game-${game}`} className="folder-tag">{game}</span>)}
-          </div>
-        ) : null}
-        {profile.favoriteMusicUrl ? (
-          <div className="section-stack">
-            <small>Música de entrada · reproducción manual</small>
-            <StreamingAudio controls preload="none" src={profile.favoriteMusicUrl}>Tu navegador no puede reproducir este audio.</StreamingAudio>
-          </div>
-        ) : null}
-        <nav className="public-profile-stats" aria-label="Estadísticas del perfil">
-          <span><strong>{stats.posts}</strong><small>Publicaciones</small></span>
-          <span><strong>{stats.followers}</strong><small>Seguidores</small></span>
-          <span><strong>{stats.following}</strong><small>Siguiendo</small></span>
-        </nav>
-        <div className="row-actions wrap">
-          {profile.isPrivate ? <span className="folder-tag">Cuenta privada</span> : null}
-        </div>
         {!isSelf ? (
-          <div className="composer">
-            <button className="ghost-btn" type="button" disabled={followingAction} onClick={() => void toggleFollow()}>
-              {followingAction ? 'Procesando...' : isFollowing ? 'Dejar de seguir' : 'Seguir'}
+          <div className="mobile-profile-actions profile-public-actions">
+            <button
+              className={isFollowing ? 'ghost-btn' : 'primary-btn'}
+              type="button"
+              disabled={followingAction}
+              onClick={() => void toggleFollow()}
+            >
+              {followingAction ? 'Actualizando…' : isFollowing ? 'Siguiendo' : 'Seguir'}
             </button>
-            <button className="ghost-btn" type="button" disabled={openingChat} onClick={() => void openDirectChat()}>
-              {openingChat ? 'Abriendo...' : 'Enviar mensaje'}
+            <button
+              className="ghost-btn"
+              type="button"
+              onClick={() => void shareLink(profileShareUrl)}
+            >
+              <Share2 />
+              Compartir
             </button>
-            <button className="ghost-btn" type="button" onClick={() => void shareLink(profileShareUrl)}>
-              Compartir perfil
-            </button>
-          </div>
-        ) : null}
-        {shareStatus ? <small className="muted-line">{shareStatus}</small> : null}
-      </article>
-
-      <article className="surface-card profile-public-qr-card">
-        <div className="row-between">
-          <div>
-            <h3>QR social</h3>
-            <p>Escanéalo desde la APK para abrir este perfil o iniciar chat.</p>
-          </div>
-          <div className="row-actions wrap">
-            <button className="mini-action-btn" type="button" onClick={() => void copyLink(profileShareUrl, 'Perfil')}>
-              Copiar perfil
-            </button>
-            <button className="mini-action-btn" type="button" onClick={() => void copyLink(profileChatUrl, 'Chat')}>
-              Copiar chat
+            <button
+              className="ghost-btn profile-message-btn"
+              type="button"
+              disabled={openingChat}
+              onClick={() => void openDirectChat()}
+            >
+              <MessageSquareText />
+              {openingChat ? 'Abriendo…' : 'Mensaje'}
             </button>
           </div>
+        ) : (
+          <Link className="ghost-btn" to="/app/profile">
+            Ir a mi perfil
+          </Link>
+        )}
+        {profile.isPrivate ? <small>Cuenta privada</small> : null}
+        {shareStatus ? <small role="status">{shareStatus}</small> : null}
+        <div className="public-profile-extra">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Ver QR del perfil"
+            onClick={() => setShowQr(true)}
+          >
+            <QrCode size={20} />
+          </button>
+          {!isSelf ? (
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Reportar usuario"
+              onClick={() => setShowReport(true)}
+            >
+              <MoreHorizontal size={20} />
+            </button>
+          ) : null}
         </div>
-        <div className="profile-qr-grid">
-          <QrCodeTile value={profileQrValue} title="Perfil" description={profile.username ? `@${profile.username}` : profile.name} compact />
-          <QrCodeTile value={chatQrValue} title="Chat" description="Conversación directa" compact />
+        <div className="profile-home-switch">
+          <button
+            type="button"
+            className={homeTab === 'home' ? 'active' : ''}
+            aria-pressed={homeTab === 'home'}
+            onClick={() => setHomeTab('home')}
+          >
+            Inicio
+          </button>
+          <button
+            type="button"
+            className={homeTab === 'about' ? 'active' : ''}
+            aria-pressed={homeTab === 'about'}
+            onClick={() => setHomeTab('about')}
+          >
+            Presentación
+          </button>
         </div>
-      </article>
-
-      {!isSelf ? (
-        <article className="surface-card section-stack">
-          <h3>Reportar usuario</h3>
-          <div className="composer">
-            <select className="text-input tiny-input" value={reportReason} onChange={(event) => setReportReason(event.target.value)}>
+        {homeTab === 'home' ? (
+          profile.profileWelcome ? (
+            <p className="profile-welcome">✦ {profile.profileWelcome}</p>
+          ) : null
+        ) : (
+          <div className="profile-about-copy">
+            <p>{profile.bio || 'Sin presentación todavía.'}</p>
+            {profile.career ? <p>{profile.career}</p> : null}
+            <div className="chip-row">
+              {[...profile.interests, ...profile.hobbies, ...profile.linkedGames].map((value) => (
+                <span className="profile-badge" key={value}>
+                  {value}
+                </span>
+              ))}
+            </div>
+            {profile.favoriteSport ? <p>{profile.favoriteSport}</p> : null}
+            {profile.favoriteMusicUrl ? (
+              <StreamingAudio src={profile.favoriteMusicUrl} controls preload="none" />
+            ) : null}
+          </div>
+        )}
+      </div>
+      <div className="mobile-profile-tabs" aria-label="Contenido del perfil">
+        <button
+          type="button"
+          className={activeTab === 'videos' ? 'active' : ''}
+          aria-pressed={activeTab === 'videos'}
+          onClick={() => setActiveTab('videos')}
+        >
+          Videos
+        </button>
+        <button
+          type="button"
+          className={activeTab === 'posts' ? 'active' : ''}
+          aria-pressed={activeTab === 'posts'}
+          onClick={() => setActiveTab('posts')}
+        >
+          Publicaciones
+        </button>
+      </div>
+      {!canSeePosts ? (
+        <StatusView
+          title="Contenido privado"
+          description="Sigue esta cuenta para ver sus publicaciones."
+        />
+      ) : activeTab === 'videos' ? (
+        videos.length ? (
+          <div className="mobile-profile-video-grid">
+            {videos.map((video) => (
+              <Link key={video.id} to={`/app/reels/${video.id}`} className="mobile-profile-video">
+                {video.cover ? (
+                  <StreamingImage src={video.cover} alt={video.title} />
+                ) : (
+                  <StreamingVideo src={video.url} muted playsInline preload="metadata" />
+                )}
+                <span>{video.title}</span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <StatusView
+            title="No hay videos aún"
+            description="Los videos de este perfil aparecerán aquí."
+          />
+        )
+      ) : posts.length ? (
+        <div className="mobile-profile-posts">
+          {posts.map((post) => (
+            <article key={post.id} className="mobile-profile-post">
+              {post.media[0]?.mediaType === 'video' ? (
+                <StreamingVideo src={post.media[0].url} muted preload="metadata" />
+              ) : post.media[0]?.mediaType === 'image' ? (
+                <StreamingImage src={post.media[0].url} alt="Publicación" />
+              ) : (
+                <p>{post.content}</p>
+              )}
+              <Link
+                to={`/app/feed/post/${post.id}`}
+                aria-label={`Abrir publicación del ${formatDateTime(post.createdAt)}`}
+              >
+                Abrir publicación
+              </Link>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <StatusView
+          title="Sin publicaciones"
+          description="Las publicaciones de este perfil aparecerán aquí."
+        />
+      )}
+      {showQr ? (
+        <div className="app-dialog-backdrop" onMouseDown={() => setShowQr(false)}>
+          <section
+            className="app-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="QR del perfil"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="row-between">
+              <h2>QR del perfil</h2>
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label="Cerrar"
+                onClick={() => setShowQr(false)}
+              >
+                ×
+              </button>
+            </header>
+            <QrCodeTile
+              value={profileQrValue}
+              title={profile.name}
+              description={`@${profile.username}`}
+              compact
+            />
+            <div className="row-actions wrap">
+              <button
+                className="ghost-btn"
+                type="button"
+                onClick={() => void copyLink(profileShareUrl, 'Perfil')}
+              >
+                Copiar perfil
+              </button>
+              <button
+                className="ghost-btn"
+                type="button"
+                onClick={() => void copyLink(profileChatUrl, 'Chat')}
+              >
+                Copiar chat
+              </button>
+            </div>
+            <details>
+              <summary>QR para mensaje directo</summary>
+              <QrCodeTile value={chatQrValue} title="Chat" compact />
+            </details>
+          </section>
+        </div>
+      ) : null}
+      {showReport ? (
+        <div className="app-dialog-backdrop" onMouseDown={() => setShowReport(false)}>
+          <section
+            className="app-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Reportar usuario"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="row-between">
+              <h2>Reportar usuario</h2>
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label="Cerrar"
+                onClick={() => setShowReport(false)}
+              >
+                ×
+              </button>
+            </header>
+            <select
+              className="text-input"
+              aria-label="Motivo del reporte"
+              value={reportReason}
+              onChange={(event) => setReportReason(event.target.value)}
+            >
               <option value="spam">Spam</option>
               <option value="acoso">Acoso</option>
               <option value="suplantacion">Suplantación</option>
               <option value="contenido_inapropiado">Contenido inapropiado</option>
               <option value="otro">Otro</option>
             </select>
-            <input
+            <textarea
               className="text-input"
               placeholder="Detalle (opcional)"
               value={reportDetails}
               onChange={(event) => setReportDetails(event.target.value)}
             />
-            <button className="ghost-btn" type="button" disabled={reporting} onClick={() => void submitUserReport()}>
-              {reporting ? 'Reportando...' : 'Reportar'}
+            <button
+              className="primary-btn"
+              type="button"
+              disabled={reporting}
+              onClick={() => void submitUserReport()}
+            >
+              {reporting ? 'Enviando…' : 'Enviar reporte'}
             </button>
-          </div>
-        </article>
+          </section>
+        </div>
       ) : null}
-
-      <section className="section-stack">
-        <h3>Publicaciones</h3>
-        {!canSeePosts ? (
-          <StatusView title="Contenido privado" description="Sigue esta cuenta para ver sus publicaciones." />
-        ) : posts.length === 0 ? (
-          <p>Este perfil no tiene publicaciones todavía.</p>
-        ) : (
-          <div className="list-stack">
-            {posts.map((post) => (
-              <article key={post.id} className="surface-card">
-                <div className="row-between">
-                  <strong>Post</strong>
-                  <small>{formatDateTime(post.createdAt)}</small>
-                </div>
-                <p>{post.content}</p>
-                {post.media.length > 0 ? (
-                  <div className={post.media.length > 1 ? 'feed-media-grid' : ''}>
-                    {post.media.map((media, index) => {
-                      const mediaClass = post.media.length > 1 ? 'feed-media feed-media-grid-item' : 'feed-media'
-                      if (media.mediaType === 'video') {
-                        return (
-                          <StreamingVideo
-                            key={`${post.id}-media-${index}`}
-                            controls
-                            preload="metadata"
-                            src={media.url}
-                            className={mediaClass}
-                          />
-                        )
-                      }
-                      if (media.mediaType === 'image') {
-                        return (
-                          <StreamingImage
-                            key={`${post.id}-media-${index}`}
-                            src={media.url}
-                            alt="Multimedia del post"
-                            className={mediaClass}
-                          />
-                        )
-                      }
-                      return (
-                        <a
-                          key={`${post.id}-media-${index}`}
-                          className="inline-link"
-                          href={media.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Abrir archivo {index + 1}
-                        </a>
-                      )
-                    })}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
     </section>
   )
 }

@@ -126,7 +126,7 @@ export function MomentsPage() {
   return (
     <section className="section-stack">
       <header className="section-header row-between moments-header">
-        <div><h2>Momentos</h2><p>Historias de tu comunidad</p></div>
+        <p>Comparte un momento con tu gente</p>
         <button className="primary-btn moments-create-button" type="button" onClick={() => setShowComposer(true)}><Plus aria-hidden="true" />Crear</button>
       </header>
 

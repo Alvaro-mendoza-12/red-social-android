@@ -1,4 +1,6 @@
-import { StreamingImage, StreamingAudio } from '../../components/StreamingMedia'
+import './voice.css'
+import { SafeAvatar } from '../../components/SafeAvatar'
+import { StreamingAudio } from '../../components/StreamingMedia'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { io, type Socket } from 'socket.io-client'
@@ -1287,7 +1289,7 @@ export function VoiceRoomPage() {
                 title={isDeafened ? 'Escuchar sala' : 'Silenciar audio de sala'}
               >
                 {isDeafened ? <VolumeX aria-hidden="true" size={18} /> : <Volume2 aria-hidden="true" size={18} />}
-                {isDeafened ? 'Sordo' : 'Audio'}
+                {isDeafened ? 'Audio apagado' : 'Audio'}
               </button>
               <button className="voice-control-btn danger" type="button" onClick={() => void leaveRoom()} disabled={isLeaving}>
                 <PhoneOff aria-hidden="true" size={18} />
@@ -1322,7 +1324,7 @@ export function VoiceRoomPage() {
               <article className={isSpeaking ? 'voice-participant-card local speaking' : 'voice-participant-card local'}>
                 <div className="voice-avatar-wrap">
                   {avatarUrl ? (
-                    <StreamingImage className="voice-avatar" src={avatarUrl} alt={displayName} />
+                    <SafeAvatar className="voice-avatar" url={avatarUrl} name={displayName} />
                   ) : (
                     <span className="voice-avatar voice-avatar-fallback">{initialsOf(displayName)}</span>
                   )}
@@ -1334,7 +1336,7 @@ export function VoiceRoomPage() {
                 </div>
                 <span className={isMuted || !micAvailable ? 'voice-muted-badge active' : 'voice-muted-badge'}>
                   {isMuted || !micAvailable ? <MicOff aria-hidden="true" size={14} /> : <Mic aria-hidden="true" size={14} />}
-                  {isMuted || !micAvailable ? 'Mute' : 'Live'}
+                  {isMuted || !micAvailable ? 'Silenciado' : 'Activo'}
                 </span>
               </article>
             ) : null}
@@ -1346,7 +1348,7 @@ export function VoiceRoomPage() {
               >
                 <div className="voice-avatar-wrap">
                   {participant.userAvatarUrl ? (
-                    <StreamingImage className="voice-avatar" src={participant.userAvatarUrl} alt={participant.userName || 'Participante'} />
+                    <SafeAvatar className="voice-avatar" url={participant.userAvatarUrl} name={participant.userName || 'Participante'} />
                   ) : (
                     <span className="voice-avatar voice-avatar-fallback">{initialsOf(participant.userName || 'Usuario')}</span>
                   )}
@@ -1358,7 +1360,7 @@ export function VoiceRoomPage() {
                 </div>
                 <span className={participant.isMuted ? 'voice-muted-badge active' : 'voice-muted-badge'}>
                   {participant.isMuted ? <MicOff aria-hidden="true" size={14} /> : <Mic aria-hidden="true" size={14} />}
-                  {participant.isMuted ? 'Mute' : 'Live'}
+                  {participant.isMuted ? 'Silenciado' : 'Activo'}
                 </span>
               </article>
             ))}
@@ -1390,7 +1392,7 @@ export function VoiceRoomPage() {
               </span>
               <span className="voice-metric">
                 <strong>{connectedPeerCount}</strong>
-                <small>P2P</small>
+                <small>conexiones de audio</small>
               </span>
             </div>
           </section>
@@ -1400,7 +1402,7 @@ export function VoiceRoomPage() {
             {room.creatorId ? (
               <Link className="voice-creator-link" to={profilePathFor(room.creatorId, user?.id)}>
                 {room.creatorAvatarUrl ? (
-                  <StreamingImage src={room.creatorAvatarUrl} alt={room.creatorName || 'Creador'} />
+                  <SafeAvatar url={room.creatorAvatarUrl} name={room.creatorName || 'Creador'} />
                 ) : (
                   <span className="avatar-fallback">{initialsOf(room.creatorName || room.title)}</span>
                 )}

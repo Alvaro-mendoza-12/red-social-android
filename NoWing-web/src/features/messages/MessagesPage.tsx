@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { Search, MessageSquarePlus, MoreVertical, Phone, Plus } from 'lucide-react'
+import { openNovvinMenu } from '../../ui/novvin/navigation'
 import { StatusView } from '../../components/StatusView'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import {
@@ -32,7 +34,6 @@ import {
 } from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
 import {
-  formatDateTime,
   friendlyError,
   isMissingTableError,
   stringArrayOf,
@@ -81,39 +82,13 @@ type DiscoverUserItem = {
 }
 
 const tabOptions: Array<{ key: InboxTab; label: string }> = [
-  { key: 'chats', label: 'Chats' },
+  { key: 'chats', label: 'Mensajes' },
   { key: 'groups', label: 'Grupos' },
-  { key: 'communities', label: 'Comunidad' },
+  { key: 'communities', label: 'Comunidades' },
   { key: 'voice', label: 'Voz' },
 ]
 
-const inboxTabCopy: Record<InboxTab, { title: string; description: string }> = {
-  chats: {
-    title: 'Tus conversaciones',
-    description: 'Favoritos, archivados, búsqueda y no leídos listos para seguir donde quedaste.',
-  },
-  groups: {
-    title: 'Grupos para coordinar y compartir',
-    description: 'Conversaciones activas con espacio suficiente para leer, responder y volver al hilo.',
-  },
-  communities: {
-    title: 'Comunidades con contexto',
-    description: 'Actividad compartida, perfiles y salas cerca de la conversación principal.',
-  },
-  voice: {
-    title: 'Voz y llamadas cerca de tus chats',
-    description: 'Salta a salas, llamadas y conversaciones sin perder el hilo.',
-  },
-}
-
 const localReadStorageKey = 'conectate-web-chat-last-read'
-
-function profilePathFor(profileId: string, currentUserId?: string): string {
-  const clean = profileId.trim()
-  if (!clean) return '/app/profile'
-  if (currentUserId && clean === currentUserId) return '/app/profile'
-  return `/app/profile/${clean}`
-}
 
 function FallbackAvatar({
   url,
@@ -129,6 +104,22 @@ function FallbackAvatar({
   return <SafeAvatar url={url} mediaType={mediaType} name={name} className={className} size="md" />
 }
 
+function inboxTime(value: string): string {
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return ''
+  const now = new Date()
+  if (date.toDateString() === now.toDateString())
+    return date.toLocaleTimeString('es', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  return date.toDateString() === yesterday.toDateString()
+    ? 'Ayer'
+    : date.toLocaleDateString('es', { day: 'numeric', month: 'numeric' })
+}
+
 function toMillis(value: string): number {
   if (!value) return 0
   const parsed = Date.parse(value)
@@ -136,12 +127,14 @@ function toMillis(value: string): number {
 }
 
 function isMissingColumnError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
   return message.includes('column') || message.includes('42703')
 }
 
 function isMissingFunctionError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()
   return (
     message.includes('could not find') ||
     message.includes('function') ||
@@ -232,9 +225,7 @@ async function normalizeFallbackInboxItems(items: ConversationItem[]): Promise<C
         }
       }
 
-      const aliases = profile
-        ? profileIdentityAliases(profile, [item.profileId])
-        : [item.profileId]
+      const aliases = profile ? profileIdentityAliases(profile, [item.profileId]) : [item.profileId]
       const contentAvatar = findContentAvatarCandidate(contentRows, aliases)
       if (!contentAvatar) return item
       return {
@@ -263,10 +254,16 @@ function profileSearchHaystack(row: GenericRow): string {
 }
 
 function sanitizeSearchInput(input: string): string {
-  return input.replace(/[,%()]/g, ' ').replace(/\s+/g, ' ').trim()
+  return input
+    .replace(/[,%()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
-async function searchProfilesInTable(table: 'profiles' | 'profiles_public', rawQuery: string): Promise<GenericRow[]> {
+async function searchProfilesInTable(
+  table: 'profiles' | 'profiles_public',
+  rawQuery: string,
+): Promise<GenericRow[]> {
   if (!supabase) return []
   const safeQuery = sanitizeSearchInput(rawQuery)
   if (!safeQuery) return []
@@ -280,11 +277,7 @@ async function searchProfilesInTable(table: 'profiles' | 'profiles_public', rawQ
     `email.ilike.${ilikePattern}`,
   ].join(',')
 
-  const { data, error } = await supabase
-    .from(table)
-    .select('*')
-    .or(columns)
-    .limit(40)
+  const { data, error } = await supabase.from(table).select('*').or(columns).limit(40)
 
   if (!error) {
     return (data ?? []) as GenericRow[]
@@ -340,7 +333,9 @@ async function searchUsersGlobally(
     .slice(0, 25)
 }
 
-async function fetchProfileMapByIds(ids: string[]): Promise<Map<string, { name: string; avatarUrl: string; avatarMediaType: string }>> {
+async function fetchProfileMapByIds(
+  ids: string[],
+): Promise<Map<string, { name: string; avatarUrl: string; avatarMediaType: string }>> {
   const map = new Map<string, { name: string; avatarUrl: string; avatarMediaType: string }>()
   if (!supabase || ids.length === 0) return map
 
@@ -349,7 +344,7 @@ async function fetchProfileMapByIds(ids: string[]): Promise<Map<string, { name: 
 
   const primary = await supabase.from('profiles').select('*').in('id', uniqueIds)
   if (!primary.error) {
-    ; ((primary.data ?? []) as GenericRow[]).forEach((profile) => {
+    ;((primary.data ?? []) as GenericRow[]).forEach((profile) => {
       const id = normalizeId(textOf(profile, ['id'], ''))
       if (!id) return
       const avatarUrl = avatarFromProfile(profile)
@@ -366,7 +361,7 @@ async function fetchProfileMapByIds(ids: string[]): Promise<Map<string, { name: 
     if (missingIds.length > 0) {
       const fallback = await supabase.from('profiles_public').select('*').in('id', missingIds)
       if (!fallback.error) {
-        ; ((fallback.data ?? []) as GenericRow[]).forEach((profile) => {
+        ;((fallback.data ?? []) as GenericRow[]).forEach((profile) => {
           const id = normalizeId(textOf(profile, ['id'], ''))
           if (!id) return
           const avatarUrl = avatarFromProfile(profile)
@@ -502,13 +497,13 @@ async function loadRoomCollectionByMembership(options: {
 
   const lastMessageByRoom = new Map<string, GenericRow>()
   const senderIds = new Set<string>()
-    ; ((messageRows ?? []) as GenericRow[]).forEach((row) => {
-      const roomId = textOf(row, [options.membershipKey], '')
-      if (!roomId || lastMessageByRoom.has(roomId)) return
-      lastMessageByRoom.set(roomId, row)
-      const senderId = textOf(row, ['sender_id'], '')
-      if (senderId) senderIds.add(senderId)
-    })
+  ;((messageRows ?? []) as GenericRow[]).forEach((row) => {
+    const roomId = textOf(row, [options.membershipKey], '')
+    if (!roomId || lastMessageByRoom.has(roomId)) return
+    lastMessageByRoom.set(roomId, row)
+    const senderId = textOf(row, ['sender_id'], '')
+    if (senderId) senderIds.add(senderId)
+  })
 
   const profileNameById = new Map<string, string>()
   if (senderIds.size > 0) {
@@ -537,7 +532,9 @@ async function loadRoomCollectionByMembership(options: {
         options.titleFallback,
       ),
       subtitle: preview,
-      updatedAt: textOf(lastMessage ?? {}, ['created_at'], '') || textOf(room, ['updated_at', 'created_at'], ''),
+      updatedAt:
+        textOf(lastMessage ?? {}, ['created_at'], '') ||
+        textOf(room, ['updated_at', 'created_at'], ''),
       kind: options.kind,
       avatarUrl: resolveSupabasePublicUrl('avatars', conversationAvatarSource(room)),
       avatarMediaType: avatarMediaTypeSource(room, conversationAvatarSource(room)),
@@ -574,21 +571,20 @@ export function MessagesPage() {
   const [discoverUsers, setDiscoverUsers] = useState<DiscoverUserItem[]>([])
   const [discoverLoading, setDiscoverLoading] = useState(false)
   const [discoverError, setDiscoverError] = useState<string | null>(null)
-  const [localReadByChat, setLocalReadByChat] = useState<LocalReadByChat>(() => readLocalReadByChat())
+  const [localReadByChat, setLocalReadByChat] = useState<LocalReadByChat>(() =>
+    readLocalReadByChat(),
+  )
   const [showUnreadOnly, setShowUnreadOnly] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
   const [openChatMenuId, setOpenChatMenuId] = useState<string | null>(null)
-  const [selectedConversation, setSelectedConversation] = useState<SelectedConversation | null>(null)
+  const [selectedConversation, setSelectedConversation] = useState<SelectedConversation | null>(
+    null,
+  )
 
   const inboxCacheKey = useMemo(
     () => `messages:${user?.id ?? 'anon'}:${activeTab}`,
     [activeTab, user?.id],
-  )
-
-  const title = useMemo(
-    () => tabOptions.find((option) => option.key === activeTab)?.label ?? 'Mensajes',
-    [activeTab],
   )
 
   const normalizedSearch = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery])
@@ -605,9 +601,10 @@ export function MessagesPage() {
   const filteredItems = useMemo(() => {
     const base = normalizedSearch
       ? items.filter((item) => {
-        const haystack = `${item.title} ${item.subtitle} ${item.folders.join(' ')} ${item.id}`.toLowerCase()
-        return haystack.includes(normalizedSearch)
-      })
+          const haystack =
+            `${item.title} ${item.subtitle} ${item.folders.join(' ')} ${item.id}`.toLowerCase()
+          return haystack.includes(normalizedSearch)
+        })
       : items
 
     if (activeTab !== 'chats') return base
@@ -677,69 +674,10 @@ export function MessagesPage() {
     () => items.filter((item) => item.unreadCount > 0).length,
     [items],
   )
-  const totalFavoriteChats = useMemo(
-    () => items.filter((item) => item.kind === 'chat' && item.isFavorite).length,
-    [items],
-  )
-  const totalArchivedChats = useMemo(
-    () => items.filter((item) => item.kind === 'chat' && item.isArchived).length,
-    [items],
-  )
-  const totalPinnedChats = useMemo(
-    () => items.filter((item) => item.kind === 'chat' && item.isPinned).length,
-    [items],
-  )
-  const totalMutedChats = useMemo(
-    () => items.filter((item) => item.kind === 'chat' && item.isMuted).length,
-    [items],
-  )
-  const overviewStats = useMemo(() => {
-    if (activeTab === 'chats') {
-      return [
-        { label: 'visibles', value: filteredItems.length },
-        { label: 'no leidos', value: totalUnreadChats },
-        { label: showArchived ? 'archivados' : 'favoritos', value: showArchived ? totalArchivedChats : totalFavoriteChats },
-      ]
-    }
-
-    return [
-      { label: 'visibles', value: filteredItems.length },
-      { label: 'sincronizados', value: items.length },
-      {
-        label: activeTab === 'voice' ? 'salto a voz' : 'atajos',
-        value: activeTab === 'voice' ? 2 : 3,
-      },
-    ]
-  }, [activeTab, filteredItems.length, items.length, showArchived, totalArchivedChats, totalFavoriteChats, totalUnreadChats])
-  const inboxContextPills = useMemo(() => {
-    const pills = [
-      webPreferences.compactInbox ? 'Vista compacta' : 'Vista amplia',
-      webPreferences.lowDataMode ? 'Ahorro de datos activo' : 'Tiempo real activo',
-    ]
-
-    if (activeTab === 'chats') {
-      pills.push(showUnreadOnly ? 'Filtrando no leidos' : `${totalUnreadChats} chats con pendiente`)
-      pills.push(showFavoritesOnly ? 'Solo favoritos' : showArchived ? 'Vista archivados' : 'Vista activa')
-    } else if (activeTab === 'voice') {
-      pills.push('Salas listas para entrar')
-    } else {
-      pills.push(`Vista ${title.toLowerCase()}`)
-    }
-
-    return pills
-  }, [
-    activeTab,
-    showArchived,
-    showFavoritesOnly,
-    showUnreadOnly,
-    title,
-    totalUnreadChats,
-    webPreferences.compactInbox,
-    webPreferences.lowDataMode,
-  ])
-
+  const title = tabOptions.find((tab) => tab.key === activeTab)?.label || 'Mensajes'
   const supportsSplitLayout =
-    !isCompactViewport && (activeTab === 'chats' || activeTab === 'groups' || activeTab === 'communities')
+    !isCompactViewport &&
+    (activeTab === 'chats' || activeTab === 'groups' || activeTab === 'communities')
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -754,9 +692,11 @@ export function MessagesPage() {
 
   const selectedConversationItem = useMemo(() => {
     if (!selectedConversation) return null
-    return items.find(
-      (item) => item.id === selectedConversation.id && item.kind === selectedConversation.kind,
-    ) ?? null
+    return (
+      items.find(
+        (item) => item.id === selectedConversation.id && item.kind === selectedConversation.kind,
+      ) ?? null
+    )
   }, [items, selectedConversation])
 
   useEffect(() => {
@@ -770,132 +710,133 @@ export function MessagesPage() {
     }
   }, [filteredItems, selectedConversation, selectedConversationItem, supportsSplitLayout])
 
-  const loadCurrentTab = useCallback(async (options?: { silent?: boolean }) => {
-    if (!user) {
-      setLoading(false)
-      return
-    }
-    if (options?.silent) {
-      setSyncing(true)
-    } else {
-      setLoading(true)
-      setError(null)
-    }
-    try {
-      if (isFallbackSession) {
-        const response = await loadFallbackMessagesInbox(activeTab)
-        const normalizedItems = await normalizeFallbackInboxItems(response.items)
-        const dedupedItems = dedupeInboxConversations(normalizedItems)
-        setItems(dedupedItems)
-        writeCachedValue(inboxCacheKey, dedupedItems)
-        return
-      }
-
-      if (!supabase) {
+  const loadCurrentTab = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!user) {
         setLoading(false)
         return
       }
-
-      if (activeTab === 'chats') {
-        const { data: chatData, error: chatError } = await supabase
-          .from('chats')
-          .select('*')
-          .contains('participants', [user.id])
-          .eq('is_group', false)
-          .order('last_message_at', { ascending: false })
-          .limit(50)
-
-        if (chatError) throw chatError
-
-        const chatRows = (chatData ?? []) as GenericRow[]
-        const chatIds = chatRows.map((row) => textOf(row, ['id'], '')).filter(Boolean)
-
-        const participantByChat = new Map<
-          string,
-          {
-            isMuted: boolean
-            isPinned: boolean
-            isArchived: boolean
-            isFavorite: boolean
-            lastReadAt: string
-          }
-        >()
-        if (chatIds.length > 0) {
-          let participantResult: { data: unknown; error: unknown } = await supabase
-            .from('chat_participants')
-            .select('chat_id,is_muted,is_pinned,is_archived,is_favorite,last_read_at')
-            .eq('user_id', user.id)
-            .in('chat_id', chatIds)
-          if (participantResult.error && isMissingColumnError(participantResult.error)) {
-            participantResult = await supabase
-              .from('chat_participants')
-              .select('chat_id,is_muted,is_pinned,is_archived,last_read_at')
-              .eq('user_id', user.id)
-              .in('chat_id', chatIds)
-          }
-          if (participantResult.error && isMissingColumnError(participantResult.error)) {
-            participantResult = await supabase
-              .from('chat_participants')
-              .select('chat_id,is_muted,is_pinned,last_read_at')
-              .eq('user_id', user.id)
-              .in('chat_id', chatIds)
-          }
-          const { data: participantRows, error: participantError } = participantResult
-          if (participantError) {
-            if (!isMissingTableError(participantError)) throw participantError
-          } else {
-            ; ((participantRows ?? []) as GenericRow[]).forEach((row) => {
-              const chatId = textOf(row, ['chat_id'], '')
-              if (!chatId) return
-              participantByChat.set(chatId, {
-                isMuted: Boolean(row.is_muted),
-                isPinned: Boolean(row.is_pinned),
-                isArchived: Boolean(row.is_archived),
-                isFavorite: Boolean(row.is_favorite),
-                lastReadAt: textOf(row, ['last_read_at'], ''),
-              })
-            })
-          }
+      if (options?.silent) {
+        setSyncing(true)
+      } else {
+        setLoading(true)
+        setError(null)
+      }
+      try {
+        if (isFallbackSession) {
+          const response = await loadFallbackMessagesInbox(activeTab)
+          const normalizedItems = await normalizeFallbackInboxItems(response.items)
+          const dedupedItems = dedupeInboxConversations(normalizedItems)
+          setItems(dedupedItems)
+          writeCachedValue(inboxCacheKey, dedupedItems)
+          return
         }
 
-        const folderNamesByChat = new Map<string, string[]>()
-        const cleanCurrentUserId = normalizeId(user.id)
-        const otherByChat = new Map<string, string>()
+        if (!supabase) {
+          setLoading(false)
+          return
+        }
 
-        if (chatIds.length > 0) {
-          const { data: participantRows, error: pError } = await supabase
-            .from('chat_participants')
-            .select('chat_id,user_id')
-            .in('chat_id', chatIds)
-            .neq('user_id', user.id)
-          if (pError && !isMissingTableError(pError)) throw pError
-            ; ((participantRows ?? []) as GenericRow[]).forEach((row) => {
+        if (activeTab === 'chats') {
+          const { data: chatData, error: chatError } = await supabase
+            .from('chats')
+            .select('*')
+            .contains('participants', [user.id])
+            .eq('is_group', false)
+            .order('last_message_at', { ascending: false })
+            .limit(50)
+
+          if (chatError) throw chatError
+
+          const chatRows = (chatData ?? []) as GenericRow[]
+          const chatIds = chatRows.map((row) => textOf(row, ['id'], '')).filter(Boolean)
+
+          const participantByChat = new Map<
+            string,
+            {
+              isMuted: boolean
+              isPinned: boolean
+              isArchived: boolean
+              isFavorite: boolean
+              lastReadAt: string
+            }
+          >()
+          if (chatIds.length > 0) {
+            let participantResult: { data: unknown; error: unknown } = await supabase
+              .from('chat_participants')
+              .select('chat_id,is_muted,is_pinned,is_archived,is_favorite,last_read_at')
+              .eq('user_id', user.id)
+              .in('chat_id', chatIds)
+            if (participantResult.error && isMissingColumnError(participantResult.error)) {
+              participantResult = await supabase
+                .from('chat_participants')
+                .select('chat_id,is_muted,is_pinned,is_archived,last_read_at')
+                .eq('user_id', user.id)
+                .in('chat_id', chatIds)
+            }
+            if (participantResult.error && isMissingColumnError(participantResult.error)) {
+              participantResult = await supabase
+                .from('chat_participants')
+                .select('chat_id,is_muted,is_pinned,last_read_at')
+                .eq('user_id', user.id)
+                .in('chat_id', chatIds)
+            }
+            const { data: participantRows, error: participantError } = participantResult
+            if (participantError) {
+              if (!isMissingTableError(participantError)) throw participantError
+            } else {
+              ;((participantRows ?? []) as GenericRow[]).forEach((row) => {
+                const chatId = textOf(row, ['chat_id'], '')
+                if (!chatId) return
+                participantByChat.set(chatId, {
+                  isMuted: Boolean(row.is_muted),
+                  isPinned: Boolean(row.is_pinned),
+                  isArchived: Boolean(row.is_archived),
+                  isFavorite: Boolean(row.is_favorite),
+                  lastReadAt: textOf(row, ['last_read_at'], ''),
+                })
+              })
+            }
+          }
+
+          const folderNamesByChat = new Map<string, string[]>()
+          const cleanCurrentUserId = normalizeId(user.id)
+          const otherByChat = new Map<string, string>()
+
+          if (chatIds.length > 0) {
+            const { data: participantRows, error: pError } = await supabase
+              .from('chat_participants')
+              .select('chat_id,user_id')
+              .in('chat_id', chatIds)
+              .neq('user_id', user.id)
+            if (pError && !isMissingTableError(pError)) throw pError
+            ;((participantRows ?? []) as GenericRow[]).forEach((row) => {
               const chatId = textOf(row, ['chat_id'], '')
               const otherId = normalizeId(textOf(row, ['user_id'], ''))
               if (!chatId || !otherId || otherByChat.has(chatId)) return
               otherByChat.set(chatId, otherId)
             })
-        }
+          }
 
-        chatRows.forEach((row) => {
-          const chatId = textOf(row, ['id'], '')
-          if (!chatId || otherByChat.has(chatId)) return
-          const participants = stringArrayOf(row, ['participants']).map(normalizeId)
-          const other = participants.find((id) => id !== cleanCurrentUserId)
-          if (other) otherByChat.set(chatId, other)
-        })
+          chatRows.forEach((row) => {
+            const chatId = textOf(row, ['id'], '')
+            if (!chatId || otherByChat.has(chatId)) return
+            const participants = stringArrayOf(row, ['participants']).map(normalizeId)
+            const other = participants.find((id) => id !== cleanCurrentUserId)
+            if (other) otherByChat.set(chatId, other)
+          })
 
-        const profileById = await fetchProfileMapByIds(Array.from(otherByChat.values()))
+          const profileById = await fetchProfileMapByIds(Array.from(otherByChat.values()))
 
-        const unreadByChat = new Map<string, number>()
-        if (chatIds.length > 0) {
-          const { data: unreadRows, error: unreadError } = await supabase
-            .from('messages')
-            .select('chat_id,sender_id,created_at,read_at,status')
-            .in('chat_id', chatIds)
-            .neq('sender_id', user.id)
-          if (unreadError) throw unreadError
-            ; ((unreadRows ?? []) as GenericRow[]).forEach((row) => {
+          const unreadByChat = new Map<string, number>()
+          if (chatIds.length > 0) {
+            const { data: unreadRows, error: unreadError } = await supabase
+              .from('messages')
+              .select('chat_id,sender_id,created_at,read_at,status')
+              .in('chat_id', chatIds)
+              .neq('sender_id', user.id)
+            if (unreadError) throw unreadError
+            ;((unreadRows ?? []) as GenericRow[]).forEach((row) => {
               const chatId = textOf(row, ['chat_id'], '')
               if (!chatId) return
               const participant = participantByChat.get(chatId)
@@ -907,87 +848,109 @@ export function MessagesPage() {
               const readAt = textOf(row, ['read_at'], '')
               const status = textOf(row, ['status'], '').toLowerCase()
               if (readAt || status === 'read' || status === 'seen') return
-              if (lastReadAtMillis > 0 && createdAtMillis > 0 && createdAtMillis <= lastReadAtMillis) return
+              if (
+                lastReadAtMillis > 0 &&
+                createdAtMillis > 0 &&
+                createdAtMillis <= lastReadAtMillis
+              )
+                return
               unreadByChat.set(chatId, (unreadByChat.get(chatId) ?? 0) + 1)
             })
+          }
+
+          const mapped = chatRows.map((row) => {
+            const id = textOf(row, ['id'], crypto.randomUUID())
+            const isGroup = Boolean(row.is_group)
+            const other = otherByChat.get(id) ?? null
+            const profile = other ? profileById.get(normalizeId(other)) : null
+            const participant = participantByChat.get(id)
+            const fallbackName = textOf(
+              row,
+              ['other_user_name', 'display_name', 'user_name', 'name', 'group_name'],
+              'Chat privado',
+            )
+            const fallbackAvatar = resolveSupabasePublicUrl(
+              'avatars',
+              conversationAvatarSource(row),
+            )
+            return {
+              id,
+              title: isGroup
+                ? textOf(row, ['group_name', 'name'], 'Grupo')
+                : profile?.name || fallbackName,
+              subtitle: textOf(row, ['last_message'], 'Sin mensajes'),
+              updatedAt: textOf(row, ['last_message_at', 'updated_at', 'created_at'], ''),
+              kind: 'chat' as const,
+              avatarUrl: profile?.avatarUrl || fallbackAvatar,
+              avatarMediaType:
+                profile?.avatarMediaType || avatarMediaTypeSource(row, fallbackAvatar),
+              profileId: other ?? null,
+              unreadCount: unreadByChat.get(id) ?? 0,
+              isMuted: participant?.isMuted ?? false,
+              isPinned: participant?.isPinned ?? false,
+              isArchived: participant?.isArchived ?? false,
+              isFavorite: participant?.isFavorite ?? false,
+              folders: folderNamesByChat.get(id) ?? [],
+              openPath: `/app/messages/${id}`,
+            } satisfies ConversationItem
+          })
+
+          mapped.sort((a, b) => {
+            if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1
+            if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
+            return toMillis(b.updatedAt) - toMillis(a.updatedAt)
+          })
+          const dedupedItems = dedupeInboxConversations(mapped)
+          setItems(dedupedItems)
+          writeCachedValue(inboxCacheKey, dedupedItems)
+        } else if (activeTab === 'groups') {
+          const nextItems = await loadRoomCollectionByMembership({
+            userId: user.id,
+            membershipTable: 'group_members',
+            membershipKey: 'group_id',
+            roomTable: 'groups',
+            messageTable: 'group_messages',
+            titleFallback: 'Grupo',
+            kind: 'group',
+            openPathPrefix: '/app/messages/group/',
+          })
+          setItems(nextItems)
+          writeCachedValue(inboxCacheKey, nextItems)
+        } else if (activeTab === 'communities') {
+          const nextItems = await loadRoomCollectionByMembership({
+            userId: user.id,
+            membershipTable: 'community_members',
+            membershipKey: 'community_id',
+            roomTable: 'communities',
+            messageTable: 'community_messages',
+            titleFallback: 'Comunidad',
+            kind: 'community',
+            openPathPrefix: '/app/messages/community/',
+          })
+          setItems(nextItems)
+          writeCachedValue(inboxCacheKey, nextItems)
+        } else {
+          const nextItems = await loadCollection(
+            'voice_rooms',
+            ['name', 'title', 'readable_id'],
+            ['topic'],
+            'voice',
+          )
+          setItems(nextItems)
+          writeCachedValue(inboxCacheKey, nextItems)
         }
-
-        const mapped = chatRows.map((row) => {
-          const id = textOf(row, ['id'], crypto.randomUUID())
-          const isGroup = Boolean(row.is_group)
-          const other = otherByChat.get(id) ?? null
-          const profile = other ? profileById.get(normalizeId(other)) : null
-          const participant = participantByChat.get(id)
-          const fallbackName = textOf(row, ['other_user_name', 'display_name', 'user_name', 'name', 'group_name'], 'Chat privado')
-          const fallbackAvatar = resolveSupabasePublicUrl('avatars', conversationAvatarSource(row))
-          return {
-            id,
-            title: isGroup ? textOf(row, ['group_name', 'name'], 'Grupo') : profile?.name || fallbackName,
-            subtitle: textOf(row, ['last_message'], 'Sin mensajes'),
-            updatedAt: textOf(row, ['last_message_at', 'updated_at', 'created_at'], ''),
-            kind: 'chat' as const,
-            avatarUrl: profile?.avatarUrl || fallbackAvatar,
-            avatarMediaType: profile?.avatarMediaType || avatarMediaTypeSource(row, fallbackAvatar),
-            profileId: other ?? null,
-            unreadCount: unreadByChat.get(id) ?? 0,
-            isMuted: participant?.isMuted ?? false,
-            isPinned: participant?.isPinned ?? false,
-            isArchived: participant?.isArchived ?? false,
-            isFavorite: participant?.isFavorite ?? false,
-            folders: folderNamesByChat.get(id) ?? [],
-            openPath: `/app/messages/${id}`,
-          } satisfies ConversationItem
-        })
-
-        mapped.sort((a, b) => {
-          if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1
-          if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1
-          return toMillis(b.updatedAt) - toMillis(a.updatedAt)
-        })
-        const dedupedItems = dedupeInboxConversations(mapped)
-        setItems(dedupedItems)
-        writeCachedValue(inboxCacheKey, dedupedItems)
-      } else if (activeTab === 'groups') {
-        const nextItems = await loadRoomCollectionByMembership({
-          userId: user.id,
-          membershipTable: 'group_members',
-          membershipKey: 'group_id',
-          roomTable: 'groups',
-          messageTable: 'group_messages',
-          titleFallback: 'Grupo',
-          kind: 'group',
-          openPathPrefix: '/app/messages/group/',
-        })
-        setItems(nextItems)
-        writeCachedValue(inboxCacheKey, nextItems)
-      } else if (activeTab === 'communities') {
-        const nextItems = await loadRoomCollectionByMembership({
-          userId: user.id,
-          membershipTable: 'community_members',
-          membershipKey: 'community_id',
-          roomTable: 'communities',
-          messageTable: 'community_messages',
-          titleFallback: 'Comunidad',
-          kind: 'community',
-          openPathPrefix: '/app/messages/community/',
-        })
-        setItems(nextItems)
-        writeCachedValue(inboxCacheKey, nextItems)
-      } else {
-        const nextItems = await loadCollection('voice_rooms', ['name', 'title', 'readable_id'], ['topic'], 'voice')
-        setItems(nextItems)
-        writeCachedValue(inboxCacheKey, nextItems)
+      } catch (caught) {
+        reportSupabaseServiceRestrictionIfPresent(`messages-${activeTab}`, caught)
+        if (!options?.silent) {
+          setError(friendlyError(caught, `No se pudo cargar ${title.toLowerCase()}`))
+        }
+      } finally {
+        setLoading(false)
+        setSyncing(false)
       }
-    } catch (caught) {
-      reportSupabaseServiceRestrictionIfPresent(`messages-${activeTab}`, caught)
-      if (!options?.silent) {
-        setError(friendlyError(caught, `No se pudo cargar ${title.toLowerCase()}`))
-      }
-    } finally {
-      setLoading(false)
-      setSyncing(false)
-    }
-  }, [activeTab, inboxCacheKey, isFallbackSession, localReadByChat, title, user])
+    },
+    [activeTab, inboxCacheKey, isFallbackSession, localReadByChat, title, user],
+  )
 
   useEffect(() => {
     const cached = readCachedValue<ConversationItem[]>(inboxCacheKey, 1000 * 60 * 60 * 8)
@@ -1048,7 +1011,8 @@ export function MessagesPage() {
         const fullFallback = await supabase
           .from('chat_participants')
           .upsert(basePayload, { onConflict: 'chat_id,user_id' })
-        if (fullFallback.error && !isMissingColumnError(fullFallback.error)) throw fullFallback.error
+        if (fullFallback.error && !isMissingColumnError(fullFallback.error))
+          throw fullFallback.error
         if (fullFallback.error && isMissingColumnError(fullFallback.error)) {
           const archiveFallback = await supabase.from('chat_participants').upsert(
             {
@@ -1122,12 +1086,18 @@ export function MessagesPage() {
     try {
       await runWithRetry(
         async () => {
-          await client.rpc('secure_mark_messages_delivered', { p_chat_id: cleanChatId })
-          await client.rpc('secure_mark_messages_read', { p_chat_id: cleanChatId })
-          await client.from('chat_participants').upsert(
-            { chat_id: cleanChatId, user_id: user.id, last_read_at: nowIso },
-            { onConflict: 'chat_id,user_id' },
-          )
+          await client.rpc('secure_mark_messages_delivered', {
+            p_chat_id: cleanChatId,
+          })
+          await client.rpc('secure_mark_messages_read', {
+            p_chat_id: cleanChatId,
+          })
+          await client
+            .from('chat_participants')
+            .upsert(
+              { chat_id: cleanChatId, user_id: user.id, last_read_at: nowIso },
+              { onConflict: 'chat_id,user_id' },
+            )
         },
         { maxRetries: 2, shouldRetry: isLikelyTransientError },
       )
@@ -1165,8 +1135,8 @@ export function MessagesPage() {
     if (item.kind === 'group' || item.kind === 'community') {
       if (supportsSplitLayout) {
         setSelectedConversation({ id: item.id, kind: item.kind })
-      } else if (item.openPath) {
-        navigate(item.openPath)
+      } else {
+        navigate(item.openPath || `/app/messages/${item.kind}/${encodeURIComponent(item.id)}`)
       }
       return
     }
@@ -1177,10 +1147,6 @@ export function MessagesPage() {
 
   async function openDiscoveredUser(item: DiscoverUserItem) {
     if (!user || openingChatId) return
-    if (isFallbackSession) {
-      setError('En modo respaldo, por ahora solo puedes abrir chats ya importados.')
-      return
-    }
     const cleanProfileId = normalizeId(item.profileId)
     if (!cleanProfileId) return
 
@@ -1223,7 +1189,9 @@ export function MessagesPage() {
         if (refreshTimer) clearTimeout(refreshTimer)
         refreshTimer = scheduleRefresh()
       })
-    const subscribedChannel = subscribeRealtimeChannel(channel, { reason: 'messages-live' })
+    const subscribedChannel = subscribeRealtimeChannel(channel, {
+      reason: 'messages-live',
+    })
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer)
       void removeRealtimeChannel(subscribedChannel ?? channel)
@@ -1264,32 +1232,50 @@ export function MessagesPage() {
             ? 'conversation-row selected'
             : 'conversation-row'
       }
+      role="button"
+      tabIndex={0}
+      aria-label={`Abrir conversación con ${item.title}`}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault()
+          void openConversation(item)
+        }
+      }}
       onClick={() => void openConversation(item)}
     >
-      <FallbackAvatar url={item.avatarUrl} mediaType={item.avatarMediaType} name={item.title} className="conversation-avatar" />
+      <FallbackAvatar
+        url={item.avatarUrl}
+        mediaType={item.avatarMediaType}
+        name={item.title}
+        className="conversation-avatar"
+      />
       <div className="conversation-copy">
         <div className="row-between">
-          {item.profileId && item.kind === 'chat' ? (
-            <Link
-              className="inline-link"
-              to={profilePathFor(item.profileId, user?.id)}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {item.title}
-            </Link>
-          ) : (
-            <h3>{item.title}</h3>
-          )}
-          <small className="timestamp">{formatDateTime(item.updatedAt)}</small>
+          <h3>{item.title}</h3>
+          <small className="timestamp">{inboxTime(item.updatedAt)}</small>
         </div>
         <p>{item.subtitle}</p>
       </div>
       <div className="conversation-status-col">
-        {item.unreadCount > 0 && <span className="unread-pill">{item.unreadCount > 99 ? '99+' : item.unreadCount}</span>}
-        {item.isFavorite && <span className="icon-tiny" title="Favorito">★</span>}
+        {item.unreadCount > 0 && (
+          <span className="unread-pill">{item.unreadCount > 99 ? '99+' : item.unreadCount}</span>
+        )}
+        {item.isFavorite && (
+          <span className="icon-tiny" title="Favorito">
+            ★
+          </span>
+        )}
         {item.isPinned && <span className="icon-tiny">📌</span>}
-        {item.isMuted && <span className="icon-tiny" title="Silenciado">🔕</span>}
-        {item.isArchived && <span className="icon-tiny" title="Archivado">🗄</span>}
+        {item.isMuted && (
+          <span className="icon-tiny" title="Silenciado">
+            🔕
+          </span>
+        )}
+        {item.isArchived && (
+          <span className="icon-tiny" title="Archivado">
+            🗄
+          </span>
+        )}
         {item.kind === 'chat' ? (
           <>
             <button
@@ -1312,7 +1298,9 @@ export function MessagesPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    void updateChatPreferences(item.id, { isPinned: !item.isPinned })
+                    void updateChatPreferences(item.id, {
+                      isPinned: !item.isPinned,
+                    })
                     setOpenChatMenuId(null)
                   }}
                 >
@@ -1321,7 +1309,9 @@ export function MessagesPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    void updateChatPreferences(item.id, { isMuted: !item.isMuted })
+                    void updateChatPreferences(item.id, {
+                      isMuted: !item.isMuted,
+                    })
                     setOpenChatMenuId(null)
                   }}
                 >
@@ -1330,7 +1320,9 @@ export function MessagesPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    void updateChatPreferences(item.id, { isFavorite: !item.isFavorite })
+                    void updateChatPreferences(item.id, {
+                      isFavorite: !item.isFavorite,
+                    })
                     setOpenChatMenuId(null)
                   }}
                 >
@@ -1339,7 +1331,9 @@ export function MessagesPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    void updateChatPreferences(item.id, { isArchived: !item.isArchived })
+                    void updateChatPreferences(item.id, {
+                      isArchived: !item.isArchived,
+                    })
                     setOpenChatMenuId(null)
                   }}
                 >
@@ -1384,283 +1378,179 @@ export function MessagesPage() {
     </button>
   )
 
-  const renderInboxOverview = () => {
-    const copy = inboxTabCopy[activeTab]
-
-    return (
-      <article className="messages-overview-card">
-        <div className="messages-overview-copy">
-          <div className="section-stack">
-            <div>
-              <span className="brand-tag">Mensajes</span>
-              <h3>{copy.title}</h3>
-              <p>{copy.description}</p>
-            </div>
-            <div className="messages-overview-pills">
-              {inboxContextPills.map((pill) => (
-                <span key={pill} className="messages-context-pill">
-                  {pill}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="messages-overview-stats">
-            {overviewStats.map((stat) => (
-              <div key={stat.label} className="messages-overview-stat">
-                <strong>{stat.value}</strong>
-                <span>{stat.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="row-actions wrap messages-overview-actions">
-          <Link className="primary-btn" to="/app/messages/novvin">
-            Abrir Novvin
+  const renderInbox = () => (
+    <>
+      <header className="messages-inbox-head">
+        <h1>Novvin</h1>
+        <div className="row-actions messages-head-actions">
+          <Link className="icon-btn" to="/app/calls" aria-label="Llamadas" title="Llamadas">
+            <Phone size={21} />
           </Link>
           <button
-            className="ghost-btn"
+            className="icon-btn"
             type="button"
+            aria-label={activeTab === 'chats' ? 'Nuevo mensaje' : 'Crear espacio'}
+            title="Nuevo mensaje"
             onClick={() => {
-              if (activeTab !== 'chats') setActiveTab('chats')
+              if (activeTab !== 'chats') {
+                navigate(
+                  `/app/create-space?type=${activeTab === 'groups' ? 'group' : activeTab === 'communities' ? 'community' : 'voice'}`,
+                )
+                return
+              }
               setShowArchived(false)
               setShowFavoritesOnly(false)
               setShowUnreadOnly(false)
               setSearchQuery('')
-              window.setTimeout(() => searchInputRef.current?.focus(), 0)
+              searchInputRef.current?.focus()
             }}
           >
-            Nuevo chat
+            {activeTab === 'chats' ? <MessageSquarePlus size={22} /> : <Plus size={22} />}
           </button>
-          <Link className="ghost-btn" to="/app/calls">
-            Centro de llamadas
-          </Link>
-          <Link className="ghost-btn" to="/app/voice">
-            Salas de voz
-          </Link>
-          <Link className="ghost-btn" to="/app/proximity">
-            Personas cerca
-          </Link>
-          <Link className="ghost-btn" to="/app/notifications">
-            Notificaciones
-          </Link>
+          <button className="icon-btn" type="button" aria-label="Menú" onClick={openNovvinMenu}>
+            <MoreVertical size={22} />
+          </button>
         </div>
-      </article>
-    )
-  }
+      </header>
+      <div className="tab-pill-row messages-tab-row" aria-label="Conversaciones">
+        {tabOptions.map((tab) => (
+          <button
+            key={tab.key}
+            className={tab.key === activeTab ? 'tab-pill active' : 'tab-pill'}
+            aria-pressed={tab.key === activeTab}
+            onClick={() => setActiveTab(tab.key)}
+            type="button"
+          >
+            {tab.label}
+            {tab.key === 'chats' && totalUnreadChats > 0 ? <span className="tab-dot" /> : null}
+          </button>
+        ))}
+      </div>
+      {activeTab === 'chats' ? (
+        <div className="inbox-controls">
+          <label className="inbox-search">
+            <Search size={19} />
+            <input
+              ref={searchInputRef}
+              className="text-input inbox-search-input"
+              placeholder="Buscar o iniciar un chat"
+              aria-label="Buscar conversaciones o personas"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+          </label>
+          <div className="inbox-filter-row" aria-label="Filtrar conversaciones">
+            <button
+              type="button"
+              className={
+                !showUnreadOnly && !showFavoritesOnly && !showArchived
+                  ? 'chip-btn active'
+                  : 'chip-btn'
+              }
+              onClick={() => {
+                setShowUnreadOnly(false)
+                setShowFavoritesOnly(false)
+                setShowArchived(false)
+              }}
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              className={showUnreadOnly ? 'chip-btn active' : 'chip-btn'}
+              aria-pressed={showUnreadOnly}
+              onClick={() => setShowUnreadOnly((current) => !current)}
+            >
+              No leídos
+            </button>
+            <button
+              type="button"
+              className={showFavoritesOnly ? 'chip-btn active' : 'chip-btn'}
+              aria-pressed={showFavoritesOnly}
+              onClick={() => setShowFavoritesOnly((current) => !current)}
+            >
+              Favoritos
+            </button>
+            <button
+              type="button"
+              className={showArchived ? 'chip-btn active' : 'chip-btn'}
+              aria-pressed={showArchived}
+              onClick={() => setShowArchived((current) => !current)}
+            >
+              Archivados
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <span className="sr-only" role="status">
+        {syncing ? 'Actualizando conversaciones' : ''}
+      </span>
+      <div className="conversation-scroll">
+        {loading ? (
+          <StatusView title="Cargando conversaciones" description="Un momento…" />
+        ) : error ? (
+          <StatusView title="No se pudieron cargar las conversaciones" description={error} />
+        ) : showNoResultsState ? (
+          <StatusView
+            title="Sin conversaciones"
+            description={
+              searchQuery
+                ? 'No hay coincidencias para esta búsqueda.'
+                : 'Busca a una persona para empezar a conversar.'
+            }
+          />
+        ) : (
+          <div className="conversation-list">
+            {filteredItems.map((item) =>
+              renderConversationRow(
+                item,
+                selectedConversation?.id === item.id && selectedConversation?.kind === item.kind,
+              ),
+            )}
+            {showGlobalSearchResults ? (
+              <div className="discover-section">
+                <small className="discover-title">Personas</small>
+                {discoverLoading ? (
+                  <small>Buscando…</small>
+                ) : discoverError ? (
+                  <small className="error-text">{discoverError}</small>
+                ) : (
+                  discoverUsers.map(renderDiscoveredUserRow)
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </>
+  )
 
   return (
-    <section className="section-stack messages-page">
+    <section className="messages-page">
       {supportsSplitLayout ? (
-        <div className={webPreferences.compactInbox ? 'messages-split-layout compact-inbox-enabled' : 'messages-split-layout'}>
-          <aside className="messages-list-pane">
-            <header className="messages-inbox-head">
-              <div>
-                <h2>Mensajes</h2>
-                <p className="messages-inbox-subtitle">Chats, grupos y comunidad.</p>
-              </div>
-              <div className="row-actions messages-head-actions">
-                <Link
-                  className="icon-btn-sm header-icon-btn"
-                  to="/app/messages/novvin"
-                  title="Abrir Novvin"
-                  aria-label="Abrir Novvin"
-                >
-                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                    <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3zm6 10l.8 2.7L21 17l-2.2 1.3L18 21l-.8-2.7L15 17l2.2-1.3L18 13z" fill="currentColor" />
-                  </svg>
-                </Link>
-                <Link
-                  className="icon-btn-sm header-icon-btn"
-                  to="/app/proximity"
-                  title="Personas cerca"
-                  aria-label="Abrir radar de proximidad"
-                >
-                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                    <circle cx="12" cy="12" r="2" fill="currentColor" />
-                    <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" strokeWidth="1.8" />
-                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.8" />
-                  </svg>
-                </Link>
-                <button
-                  className="icon-btn-sm header-icon-btn"
-                  type="button"
-                  title="Nuevo chat"
-                  onClick={() => {
-                    if (activeTab !== 'chats') setActiveTab('chats')
-                    setSearchQuery('')
-                    searchInputRef.current?.focus()
-                  }}
-                >
-                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                    <path
-                      d="M12 5v14M5 12h14"
-                      stroke="currentColor"
-                      strokeWidth="2.2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      fill="none"
-                    />
-                  </svg>
-                </button>
-                <button
-                  className={
-                    activeTab === 'chats' && showUnreadOnly
-                      ? 'icon-btn-sm header-icon-btn active'
-                      : 'icon-btn-sm header-icon-btn'
-                  }
-                  type="button"
-                  title={activeTab === 'chats' ? 'Alternar no leídos' : activeTab === 'groups' ? 'Crear grupo' : activeTab === 'communities' ? 'Crear comunidad' : 'Crear sala de voz'}
-                  aria-label={activeTab === 'chats' ? 'Alternar no leídos' : activeTab === 'groups' ? 'Crear grupo' : activeTab === 'communities' ? 'Crear comunidad' : 'Crear sala de voz'}
-                  onClick={() => {
-                    if (activeTab === 'chats') {
-                      setShowUnreadOnly((current) => !current)
-                    } else {
-                      const type = activeTab === 'groups' ? 'group' : activeTab === 'communities' ? 'community' : 'voice'
-                      navigate(`/app/create-space?type=${type}`)
-                    }
-                  }}
-                >
-                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                    <circle cx="12" cy="5" r="1.8" fill="currentColor" />
-                    <circle cx="12" cy="12" r="1.8" fill="currentColor" />
-                    <circle cx="12" cy="19" r="1.8" fill="currentColor" />
-                  </svg>
-                </button>
-              </div>
-            </header>
-
-            <div className="tab-pill-row messages-tab-row">
-              {tabOptions.map((tab) => (
-                <button
-                  key={tab.key}
-                  className={tab.key === activeTab ? 'tab-pill active' : 'tab-pill'}
-                  aria-pressed={tab.key === activeTab}
-                  onClick={() => setActiveTab(tab.key)}
-                  type="button"
-                >
-                  {tab.label}
-                  {tab.key === 'chats' && totalUnreadChats > 0 && <span className="tab-dot" />}
-                </button>
-              ))}
-            </div>
-
-            {activeTab === 'chats' ? (
-              <>
-                <input
-                  ref={searchInputRef}
-                  className="text-input inbox-search-input"
-                  placeholder="Buscar un chat o iniciar uno nuevo"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                />
-                <div className="inbox-filter-row">
-                  <button
-                    type="button"
-                    className={showFavoritesOnly ? 'chip-btn active' : 'chip-btn'}
-                    aria-pressed={showFavoritesOnly}
-                    onClick={() => setShowFavoritesOnly((current) => !current)}
-                  >
-                    Favoritos
-                  </button>
-                  <button
-                    type="button"
-                    className={showArchived ? 'chip-btn active' : 'chip-btn'}
-                    aria-pressed={showArchived}
-                    onClick={() => setShowArchived((current) => !current)}
-                  >
-                    {showArchived ? 'Archivados' : 'Activos'}
-                  </button>
-                </div>
-              </>
-            ) : null}
-
-            {syncing ? <small className="sync-note">Sincronizando...</small> : null}
-
-            <div className="conversation-scroll">
-              {loading ? (
-                <StatusView title="Cargando..." description="Un momento..." />
-              ) : error ? (
-                <StatusView title="Error" description={error} />
-              ) : showNoResultsState ? (
-                <StatusView title="Sin resultados" description="No hay conversaciones para mostrar." />
-              ) : (
-                <div className="conversation-list">
-                  {filteredItems.map((item) =>
-                    renderConversationRow(
-                      item,
-                      selectedConversation?.id === item.id && selectedConversation?.kind === item.kind,
-                    ),
-                  )}
-                  {showGlobalSearchResults ? (
-                    <div className="discover-section">
-                      <small className="discover-title">Usuarios fuera de tus chats</small>
-                      {discoverLoading ? (
-                        <small className="sync-note">Buscando usuarios...</small>
-                      ) : discoverError ? (
-                        <small className="error-text">{discoverError}</small>
-                      ) : discoverUsers.length === 0 ? (
-                        <small className="sync-note">No hay más usuarios para este filtro.</small>
-                      ) : (
-                        discoverUsers.map((entry) => renderDiscoveredUserRow(entry))
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              )}
-            </div>
+        <div
+          className={
+            webPreferences.compactInbox
+              ? 'messages-split-layout compact-inbox-enabled'
+              : 'messages-split-layout'
+          }
+        >
+          <aside className="messages-list-pane" aria-label="Lista de conversaciones">
+            {renderInbox()}
           </aside>
-
-          <section className="messages-detail-pane">
+          <section className="messages-detail-pane" aria-label="Conversación">
             {!selectedConversationItem ? (
               <div className="messages-empty-state">
-                <div className="messages-empty-icon">💬</div>
-                <span className="brand-tag">Bandeja lista</span>
-                <h3>Tus mensajes</h3>
-                <p>Selecciona una conversación o entra por un atajo rápido para seguir hablando.</p>
-                <div className="messages-empty-actions">
-                  <Link className="primary-btn" to="/app/messages/novvin">
-                    Hablar con Novvin
-                  </Link>
-                  <button
-                    className="ghost-btn"
-                    type="button"
-                    onClick={() => {
-                      if (activeTab !== 'chats') setActiveTab('chats')
-                      setShowArchived(false)
-                      setShowFavoritesOnly(true)
-                      setShowUnreadOnly(false)
-                      window.setTimeout(() => searchInputRef.current?.focus(), 0)
-                    }}
-                  >
-                    Ver favoritos
-                  </button>
-                  <Link className="ghost-btn" to="/app/calls">
-                    Abrir llamadas
-                  </Link>
-                  <Link className="ghost-btn" to="/app/voice">
-                    Ir a voz
-                  </Link>
-                  <Link className="ghost-btn" to="/app/proximity">
-                    Personas cerca
-                  </Link>
-                </div>
-                <div className="messages-empty-grid">
-                  <div className="surface-subcard">
-                    <strong>{totalPinnedChats}</strong>
-                    <p>Chats pineados para volver rapido.</p>
-                  </div>
-                  <div className="surface-subcard">
-                    <strong>{totalMutedChats}</strong>
-                    <p>Conversaciones en silencio sin perder historial.</p>
-                  </div>
-                  <div className="surface-subcard">
-                    <strong>{totalArchivedChats}</strong>
-                    <p>Archivados listos para reactivar cuando quieras.</p>
-                  </div>
-                </div>
+                <img src="/novvin-logo.png" alt="" />
+                <h2>Novvin para web</h2>
+                <p>Selecciona un chat para seguir la conversación.</p>
               </div>
             ) : selectedConversationItem.kind === 'chat' ? (
-              <ChatDetailPage key={`chat-${selectedConversationItem.id}`} chatIdOverride={selectedConversationItem.id} embedded />
+              <ChatDetailPage
+                key={`chat-${selectedConversationItem.id}`}
+                chatIdOverride={selectedConversationItem.id}
+                embedded
+              />
             ) : (
               <RoomChatPage
                 key={`${selectedConversationItem.kind}-${selectedConversationItem.id}`}
@@ -1672,80 +1562,7 @@ export function MessagesPage() {
           </section>
         </div>
       ) : (
-        <>
-          <header className="section-header">
-            <h2>Mensajes</h2>
-            <p>Chats, grupos y comunidad.</p>
-          </header>
-          {renderInboxOverview()}
-          {syncing ? <small>Sincronizando...</small> : null}
-
-          <div className="tab-pill-row">
-            {tabOptions.map((tab) => (
-              <button
-                key={tab.key}
-                className={tab.key === activeTab ? 'tab-pill active' : 'tab-pill'}
-                aria-pressed={tab.key === activeTab}
-                onClick={() => setActiveTab(tab.key)}
-                type="button"
-              >
-                {tab.label}
-                {tab.key === 'chats' && totalUnreadChats > 0 && <span className="tab-dot" />}
-              </button>
-            ))}
-          </div>
-
-          {activeTab === 'chats' ? (
-            <>
-              <input
-                className="text-input"
-                placeholder="Buscar conversaciones"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
-              <div className="chip-row">
-                <button
-                  type="button"
-                  className={showFavoritesOnly ? 'chip-btn active' : 'chip-btn'}
-                  aria-pressed={showFavoritesOnly}
-                  onClick={() => setShowFavoritesOnly((current) => !current)}
-                >
-                  Favoritos
-                </button>
-                <button
-                  type="button"
-                  className={showArchived ? 'chip-btn active' : 'chip-btn'}
-                  aria-pressed={showArchived}
-                  onClick={() => setShowArchived((current) => !current)}
-                >
-                  {showArchived ? 'Archivados' : 'Activos'}
-                </button>
-              </div>
-            </>
-          ) : null}
-
-          {showNoResultsState ? (
-            <StatusView title="Sin resultados" description="No hay conversaciones para mostrar." />
-          ) : (
-            <div className="conversation-list mobile-conversation-list">
-              {filteredItems.map((item) => renderConversationRow(item))}
-              {showGlobalSearchResults ? (
-                <div className="discover-section">
-                  <small className="discover-title">Usuarios fuera de tus chats</small>
-                  {discoverLoading ? (
-                    <small className="sync-note">Buscando usuarios...</small>
-                  ) : discoverError ? (
-                    <small className="error-text">{discoverError}</small>
-                  ) : discoverUsers.length === 0 ? (
-                    <small className="sync-note">No hay más usuarios para este filtro.</small>
-                  ) : (
-                    discoverUsers.map((entry) => renderDiscoveredUserRow(entry))
-                  )}
-                </div>
-              ) : null}
-            </div>
-          )}
-        </>
+        <div className="messages-list-pane">{renderInbox()}</div>
       )}
     </section>
   )
