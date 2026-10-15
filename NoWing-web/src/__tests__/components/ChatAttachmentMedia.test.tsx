@@ -108,3 +108,15 @@ test.each([
 ])('preserves media classification %s %s', (contentType, url, expected) => {
   expect(attachmentKind(contentType, url)).toBe(expected)
 })
+
+test('document previews obey the actual bounded storage reader limit',async()=>{
+  readBlob.mockImplementation(async options=>{if(options.maxBytes>32*1024*1024)throw new Error('MEDIA_INVALID_LIMIT');return new Blob(['hello'],{type:'text/plain'})})
+  render(<ChatAttachmentMedia url={privateUrl.replace('.png','.txt')} kind="file" title="notes.txt" />)
+  fireEvent.click(screen.getByRole('button',{name:'Abrir documento'}));await screen.findByRole('dialog',{name:'Ver documento'})
+  expect(readBlob).toHaveBeenCalledWith(expect.objectContaining({maxBytes:32*1024*1024}))
+})
+test('large documents retain a download action when inline preview is too large',async()=>{
+  render(<ChatAttachmentMedia url={privateUrl.replace('.png','.pdf')} kind="pdf" title="large.pdf" size={33*1024*1024} />)
+  fireEvent.click(screen.getByRole('button',{name:'Abrir documento'}));await screen.findByText('Archivo demasiado grande para la vista web')
+  expect(screen.getByRole('button',{name:'Descargar original'})).toBeInTheDocument();expect(readBlob).not.toHaveBeenCalled()
+})

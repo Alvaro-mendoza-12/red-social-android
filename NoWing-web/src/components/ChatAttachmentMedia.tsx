@@ -59,7 +59,7 @@ export function ChatAttachmentMedia({
   const source = kind === 'image' && !preserveAnimation && !/\.(gif|webp)(?:[?#]|$)/i.test(rewritten) ? runtimeStoragePreviewUrl(rewritten) : rewritten
   const backendBase = trustedStorageBackend(source)
   const ownStorage = Boolean(backendBase)
-  const maxBytes = kind === 'file' || kind === 'pdf' ? 128 * 1024 * 1024 : kind === 'audio' || kind === 'video' ? STORAGE_SHORT_MEDIA_MAX_BYTES : STORAGE_PREVIEW_MAX_BYTES
+  const maxBytes = kind === 'image' ? STORAGE_PREVIEW_MAX_BYTES : STORAGE_SHORT_MEDIA_MAX_BYTES
   const [viewerOpen,setViewerOpen]=useState(false)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [failure, setFailure] = useState<{ source: string; identity: StorageReadIdentity; code: string } | null>(null)
@@ -155,6 +155,7 @@ export function ChatAttachmentMedia({
     content = <div className="chat-file-card media-load-error" role="status">
       <span><strong>{large ? 'Archivo demasiado grande para la vista web' : 'No se pudo abrir el archivo'}</strong><small>{title}</small></span>
       {!large && allowRetry ? <button className="mini-action-btn" type="button" onClick={retry}>Reintentar</button> : null}
+      {kind === 'file' || kind === 'pdf' ? <button type="button" className="mini-action-btn" disabled={downloadPreparing} onClick={() => void downloadOriginal()}>{downloadPreparing ? 'Preparando…' : 'Descargar original'}</button> : null}
     </div>
   } else if ((kind === 'file' || kind === 'pdf') && !viewerOpen && !downloadRequested) {
     content = <div className="chat-file-card"><span className="chat-file-icon">{kind === 'pdf' ? 'PDF' : 'DOC'}</span><span><strong>{title}</strong>{size > 0 ? <small>{Math.ceil(size / 1024)} KB</small> : null}<span className="chat-document-actions"><button className="mini-action-btn" type="button" onClick={() => { setReadRequested(true); setViewerOpen(true) }}>Abrir documento</button><button className="mini-action-btn" type="button" disabled={downloadPreparing} onClick={() => void downloadOriginal()}>{downloadPreparing ? 'Preparando…' : 'Descargar'}</button></span></span></div>

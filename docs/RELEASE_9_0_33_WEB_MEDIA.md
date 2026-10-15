@@ -4,7 +4,7 @@ Fecha: 15 de octubre de 2026. Android: versión 9.0.33, código 130.
 
 ## Cambios
 
-- Documentos dentro del chat: lector PDF con páginas y zoom; texto seguro, lectura de contenido de DOCX/PPTX/OpenDocument, hojas XLSX y listado de ZIP. Los formatos antiguos o no compatibles conservan la descarga del original. La vista de Office muestra contenido, sin prometer conservar toda su maquetación.
+- Documentos dentro del chat: lector PDF con páginas y zoom; texto seguro, lectura de contenido de DOCX/PPTX/OpenDocument, hojas XLSX y listado de ZIP. Los formatos antiguos o no compatibles conservan la descarga del original. La vista de Office muestra contenido, sin prometer conservar toda su maquetación. El lector autorizado tiene un límite de 32 MB; los archivos mayores conservan la descarga por transferencia.
 - Carpetas arrastradas: ZIP con subcarpetas y directorios vacíos, hasta 500 entradas y 128 MB. Se preparan en el borrador antes de enviar. Los documentos de texto grandes se comprimen cuando reduce su tamaño; los formatos que ya están comprimidos no se vuelven a comprimir automáticamente.
 - Descargas de almacenamiento propio mediante transferencia por partes con nombre de archivo, identidad de sesión y revocación al cambiar de cuenta.
 - Galería del historial cargado del chat, navegación anterior/siguiente y álbumes. Panel lateral de contacto en escritorio y adaptación a pantallas pequeñas.
@@ -24,7 +24,7 @@ Fecha: 15 de octubre de 2026. Android: versión 9.0.33, código 130.
 ## Comprobaciones de esta versión
 
 - Android: compilación release, APK/AAB firmados con la firma existente; 1.661 pruebas en 345 suites sin fallos.
-- Web: 345 pruebas en 54 suites; nueve pruebas de transferencia multimedia; compilación de producción y auditoría de dependencias de producción sin vulnerabilidades informadas.
+- Web: 347 pruebas en 54 suites; nueve pruebas de transferencia multimedia; compilación de producción y auditoría de dependencias de producción sin vulnerabilidades informadas.
 - Navegador aislado: ZIP real, compresión, PDF real de dos páginas, DOCX, texto inerte, galería, panel de perfil, imagen pegada editada, grabación, sonido entre videos, panel de 30 comentarios, asistente y corazones de un directo con WebRTC real. Cincuenta vistas en 320, 360, 768, 1440 y 2560 píxeles sin desbordamiento horizontal.
 - Controles adicionales: cámara/pantalla de voz y liberación de captura al salir; música desde el segundo 12 y sonido conservado entre dos historias.
 - SFU remoto: publicación hacia la web y publicación desde la propia web hacia otra sesión; imágenes en movimiento y propagación del apagado de cámara. Salas sintéticas aisladas, sin emisiones públicas ni avisos a usuarios reales.
