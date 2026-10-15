@@ -103,6 +103,7 @@
 .public-home-visual img {
   width: min(220px, 65%);
   height: auto;
+  background: #fff;
   border-radius: 58px;
   box-shadow: 0 24px 100px #20d6cf10;
 }

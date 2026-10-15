@@ -1303,7 +1303,7 @@
   color: var(--secondary-text);
 }
 .novvin-profile-meta .username {
-  color: #9bc7ad;
+  color: var(--profile-handle);
 }
 .novvin-profile-meta .icon-btn {
   width: 26px;

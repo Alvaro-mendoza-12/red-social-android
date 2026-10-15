@@ -14,6 +14,7 @@
   --danger: #ffb4ab;
   --brand-cyan: #26d8d5;
   --brand-violet: #8862ff;
+  --profile-handle: #9bc7ad;
   --bottom-nav-height: 76px;
   --app-font: Roboto, Arial, system-ui, sans-serif;
   font-family: var(--app-font);
@@ -37,6 +38,7 @@
   --divider: #e8e8ed;
   --danger: #ba1a1a;
   --brand-cyan: #087d91;
+  --profile-handle: #276246;
 }
 @media (prefers-color-scheme: light) {
   .theme-system {
@@ -54,6 +56,7 @@
     --divider: #e8e8ed;
     --danger: #ba1a1a;
     --brand-cyan: #087d91;
+    --profile-handle: #276246;
   }
 }
 .accent-ocean {
