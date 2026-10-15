@@ -7,3 +7,8 @@ coverage
 cypress/screenshots
 cypress/videos
 *.log
+.env
+.env.*
+.playwright-cli
+tests
+src/__tests__

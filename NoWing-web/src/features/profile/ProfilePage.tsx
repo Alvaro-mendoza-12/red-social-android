@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
 import { SafeAvatar } from '../../components/SafeAvatar'
+import { ProfileTools } from '../../components/ProfileTools'
 import { loadFallbackProfileMe, loadFallbackVideos } from '../../core/fallbackData'
 import {
   avatarMediaTypeSource,
@@ -312,6 +313,7 @@ export function ProfilePage() {
           {profile?.profileWelcome ? <p className="muted-line">{profile.profileWelcome}</p> : null}
           {shareStatus ? <small>{shareStatus}</small> : null}
         </div>
+        {user?<ProfileTools profileId={user.id} name={displayName}/>:null}
 
         <nav className="mobile-profile-stats" aria-label="Estadísticas del perfil">
           <button type="button"><strong>{stats.videos + stats.posts}</strong><span>Publicaciones</span></button>

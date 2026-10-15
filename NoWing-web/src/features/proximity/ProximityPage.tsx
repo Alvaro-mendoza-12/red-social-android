@@ -32,7 +32,7 @@ import {
   type FallbackRandomSession,
 } from '../../core/fallbackData'
 import { subscribeUbuntuRealtime, subscribeUbuntuRealtimeMany } from '../../core/ubuntuRealtime'
-import { friendlyError } from '../../core/utils'
+import { apiErrorCode, friendlyError } from '../../core/utils'
 
 type Coordinates = { latitude: number; longitude: number }
 type MatchStatus = 'idle' | 'waiting' | 'matched'
@@ -93,8 +93,9 @@ export function ProximityPage() {
       setEnabled(true)
       setError(null)
     } catch (caught) {
-      const message = friendlyError(caught, 'No se pudieron cargar personas cerca')
-      if (!message.includes('PROXIMITY_NOT_ENABLED')) setError(message)
+      if (apiErrorCode(caught) === 'PROXIMITY_NOT_ENABLED') {
+        setEnabled(false); setNearby([]); setError(null)
+      } else setError(friendlyError(caught, 'No se pudieron cargar personas cerca'))
     } finally {
       setLoadingNearby(false)
     }
@@ -121,13 +122,12 @@ export function ProximityPage() {
       setSession(response.session)
       setMatchStatus('matched')
     } catch (caught) {
-      const message = friendlyError(caught, 'No se pudo actualizar la conversación')
-      if (message.includes('SESSION_NOT_FOUND')) {
+      if (apiErrorCode(caught) === 'SESSION_NOT_FOUND') {
         setSession(null)
         setMatchStatus('idle')
         setMessages([])
       } else {
-        setError(message)
+        setError(friendlyError(caught, 'No se pudo actualizar la conversación'))
       }
     }
   }, [])
@@ -347,7 +347,7 @@ export function ProximityPage() {
             <button className="icon-btn" type="button" onClick={() => void loadNearby()} disabled={!enabled || loadingNearby} title="Actualizar" aria-label="Actualizar personas cerca"><RefreshCw aria-hidden="true" /></button>
           </div>
           {!enabled ? (
-            <div className="proximity-private-note"><ShieldCheck aria-hidden="true" /><p>La ubicación solo se guarda temporalmente y las demás personas reciben una distancia aproximada.</p></div>
+            <div className="proximity-private-note"><ShieldCheck aria-hidden="true" /><p>Activa el radar y permite la ubicación para encontrar personas cerca. La ubicación solo se guarda temporalmente y las demás personas reciben una distancia aproximada.</p></div>
           ) : nearby.length === 0 ? (
             <p className="muted-copy">No hay perfiles visibles dentro del radio elegido.</p>
           ) : (

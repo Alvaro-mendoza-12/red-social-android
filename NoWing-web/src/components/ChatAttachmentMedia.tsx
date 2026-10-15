@@ -118,8 +118,8 @@ export function ChatAttachmentMedia({
   const decodingFailed = () => setFailure({ source, identity, code: 'MEDIA_UNAVAILABLE' })
   if (kind === 'video' || kind === 'audio') {
     return <div ref={container}>{kind === 'video'
-      ? <StreamingVideo className="chat-media-video" src={rewritten} controls preload="metadata" playsInline />
-      : <StreamingAudio className="chat-audio-player" src={rewritten} controls preload="metadata" />}</div>
+      ? <StreamingVideo className="chat-media-video" src={visible ? rewritten : undefined} controls preload="metadata" playsInline />
+      : <StreamingAudio className="chat-audio-player" src={visible ? rewritten : undefined} controls preload="metadata" />}</div>
   }
   let content
   if (ownStorage && !identity.accountId) {

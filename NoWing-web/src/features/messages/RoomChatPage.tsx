@@ -1,4 +1,7 @@
 import { CollectionInfo } from '../../components/CollectionInfo'
+import { conversationWindow } from '../../core/conversationWindow'
+import { sharedVideoReference } from '../../core/sharedVideoReference'
+import { SharedVideoCard } from '../../components/SharedVideoCard'
 import { retryPendingWebMessage } from '../../core/webOutbox'
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { MentionSuggestions } from '../../components/MentionSuggestions'
@@ -300,6 +303,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       return haystack.includes(normalizedMessageSearch)
     })
   }, [messages, normalizedMessageSearch])
+  const [historyWindowSize, setHistoryWindowSize] = useState(80)
+  useEffect(() => setHistoryWindowSize(80), [cleanRoomId])
+  const renderedMessages = conversationWindow(filteredMessages, historyWindowSize, Boolean(normalizedMessageSearch))
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
   const threadRef = useRef<HTMLElement | null>(null)
@@ -1365,6 +1371,12 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
 
       <div className="chat-thread-shell">
         <section className="chat-thread" ref={threadRef} onScroll={handleThreadScroll}>
+          {renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
+            const thread = threadRef.current, height = thread?.scrollHeight || 0, top = thread?.scrollTop || 0
+            shouldStickToBottomRef.current = false
+            setHistoryWindowSize(size => size + 80)
+            window.requestAnimationFrame(() => { if (thread) thread.scrollTop = top + thread.scrollHeight - height })
+          }}>Ver mensajes anteriores</button> : null}
           {filteredMessages.length === 0 && normalizedMessageSearch ? (
             <div className="chat-search-empty">
               <small className="muted-line">No hay mensajes para ese filtro.</small>
@@ -1373,8 +1385,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             <div className="chat-search-empty">
               <small className="muted-line">Todavía no hay mensajes en esta sala.</small>
             </div>
-          ) : filteredMessages.map((message, index) => {
-          const previousMessage = index > 0 ? filteredMessages[index - 1] : null
+          ) : renderedMessages.map((message, index) => {
+          const previousMessage = index > 0 ? renderedMessages[index - 1] : null
           const showDaySeparator =
             !previousMessage || dayKeyOf(previousMessage.createdAt) !== dayKeyOf(message.createdAt)
           const deletedForMe = user ? message.deletedBy.includes(user.id) : false
@@ -1404,6 +1416,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                 {replied ? <div className="reply-preview">Respuesta a: {replied.content || 'Archivo'}</div> : null}
                 {message.deletedForAll ? (
                   <p className="muted-line">Mensaje eliminado para todos</p>
+                ) : sharedVideoReference(message.content) ? (
+                  <SharedVideoCard reference={sharedVideoReference(message.content)!} />
                 ) : message.contentType === 'poll' && pollRows.length > 0 ? (
                   <div className="poll-stack">
                     <strong>{pollMeta?.question || message.content}</strong>

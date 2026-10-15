@@ -3,6 +3,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormE
 import { Heart, MessageCircle, MoreHorizontal, Plus, Radio, Repeat, Search, Send, Share2, SlidersHorizontal, Star, Upload, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { SafeAvatar } from '../../components/SafeAvatar'
+import { ShareVideoDialog } from '../../components/ShareVideoDialog'
 import { StatusView } from '../../components/StatusView'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
@@ -21,6 +22,7 @@ import {
   loadFallbackVideos,
   setFallbackVideoFavorite,
   setFallbackVideoReaction,
+  setFallbackVideoShare,
   uploadFallbackFile,
   type FallbackLiveStream,
 } from '../../core/fallbackData'
@@ -620,6 +622,7 @@ async function insertVideoWithFallback(payload: {
 }
 
 export function ReelsPage() {
+  const [sharingVideo, setSharingVideo] = useState<ReelItem | null>(null)
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const reelsCacheKey = `reels:${user?.id ?? 'anon'}`
@@ -1385,15 +1388,7 @@ export function ReelsPage() {
   }
 
   function shareVideo(item: ReelItem) {
-    if (typeof window === 'undefined') return
-    const shareUrl = `${window.location.origin}/app/reels/${item.id}`
-    if (navigator.share) {
-      void navigator
-        .share({ title: item.title || 'Video de Novvin', text: item.description || '', url: shareUrl })
-        .catch(() => undefined)
-    } else {
-      void navigator.clipboard.writeText(shareUrl).catch(() => undefined)
-    }
+    setSharingVideo(item)
   }
 
   async function toggleProfileShare(item: ReelItem) {
@@ -1406,7 +1401,7 @@ export function ReelsPage() {
     )
     try {
       if (useUbuntu) {
-        // The Ubuntu backend doesn't expose a dedicated share endpoint; keep optimistic update.
+        await setFallbackVideoShare(item.id, nextShared)
         await loadVideos({ silent: true })
       } else if (supabase) {
         const { error: shareError } = await supabase
@@ -1503,6 +1498,7 @@ export function ReelsPage() {
       </div>
 
       <LiveStrip compact />
+      {sharingVideo ? <ShareVideoDialog videoId={sharingVideo.id} title={sharingVideo.title} onClose={() => setSharingVideo(null)} /> : null}
 
       {showUploadForm ? <div className="app-dialog-backdrop" role="presentation" onMouseDown={() => setShowUploadForm(false)}>
         <article className="surface-card section-stack video-upload-dialog" role="dialog" aria-modal="true" aria-label="Publicar video" onMouseDown={(event) => event.stopPropagation()}>

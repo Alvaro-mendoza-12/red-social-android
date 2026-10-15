@@ -12,6 +12,8 @@ Variables públicas: `VITE_FALLBACK_API_URL` (origen HTTPS del servidor), `VITE_
 
 Proyecto existente `red-social-android`, directorio raíz `NoWing-web`, instalación `npm ci --legacy-peer-deps`, compilación `npm run build`, salida `dist`. Las variables se definen en Vercel y se aplican al siguiente despliegue.
 
+Ejecutar `vercel --prod` desde la raíz del repositorio, o `npm run deploy:production` desde `NoWing-web`. La exclusión de subida impide incluir archivos de entorno y datos locales.
+
 ## Verificación
 
 La compilación y las pruebas de código no prueban por sí solas cada acción de la aplicación. El informe de este trabajo enumera por separado las pruebas de navegador, sincronización, archivos y llamadas. El navegador necesita HTTPS y permiso del usuario para cámara, micrófono y notificaciones. No se garantiza una latencia de cero ni ejecución de tareas con el navegador cerrado.

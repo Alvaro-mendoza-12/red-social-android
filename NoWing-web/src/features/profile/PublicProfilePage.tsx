@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { SafeAvatar } from '../../components/SafeAvatar'
+import { recordWebProfileVisit } from '../../core/profileVisits'
 import {
   avatarMediaTypeSource,
   findContentAvatarCandidate,
@@ -162,6 +163,7 @@ export function PublicProfilePage() {
         ])
         if (profileResult.status === 'rejected') throw profileResult.reason
         const response = profileResult.value
+        if (!isSelf) void recordWebProfileVisit(textOf(response.profile, ['id'], cleanProfileId), response.profile.profile_view_history_enabled !== false).catch(() => {})
         const videoItems = videoResult.status === 'fulfilled' ? videoResult.value.items : []
         const contentAvatar = findContentAvatarCandidate(
           [...(response.posts ?? []), ...videoItems],

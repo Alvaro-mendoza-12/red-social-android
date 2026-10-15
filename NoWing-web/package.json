@@ -17,8 +17,8 @@
     "cy:open": "cypress open",
     "cy:run": "cypress run",
     "analyze": "vite-bundle-analyzer dist",
-    "deploy:preview": "vercel",
-    "deploy:production": "vercel --prod",
+    "deploy:preview": "vercel --cwd ..",
+    "deploy:production": "vercel --cwd .. --prod",
     "test:media": "node --test tests/media-worker.test.mjs"
   },
   "dependencies": {

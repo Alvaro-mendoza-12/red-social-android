@@ -51,6 +51,14 @@ export function friendlyError(error: unknown, fallback = 'Ocurrió un error ines
   return raw
 }
 
+/** Inspect a machine code before translating it into user-facing wording. */
+export function apiErrorCode(error: unknown): string {
+  if (!error || typeof error !== 'object') return ''
+  const value = error as { code?: unknown; message?: unknown }
+  const code = typeof value.code === 'string' ? value.code : typeof value.message === 'string' ? value.message : ''
+  return /^[A-Z][A-Z_0-9]{2,79}$/.test(code) ? code : ''
+}
+
 export function isMissingTableError(error: unknown): boolean {
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase()

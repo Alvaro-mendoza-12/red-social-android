@@ -1,5 +1,8 @@
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { SafeAvatar } from '../../components/SafeAvatar'
+import { conversationWindow } from '../../core/conversationWindow'
+import { sharedVideoReference } from '../../core/sharedVideoReference'
+import { SharedVideoCard } from '../../components/SharedVideoCard'
 import { retryPendingWebMessage } from '../../core/webOutbox'
 import {
   Fragment,
@@ -504,6 +507,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       return haystack.includes(normalizedMessageSearch)
     })
   }, [messages, normalizedMessageSearch])
+  const [historyWindowSize, setHistoryWindowSize] = useState(80)
+  useEffect(() => setHistoryWindowSize(80), [cleanChatId])
+  const renderedMessages = conversationWindow(filteredMessages, historyWindowSize, Boolean(normalizedMessageSearch))
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
   const composerText = editingMessageId ? editingDraft : draft
   const deviceId = useMemo(() => {
@@ -1886,7 +1892,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
               <FallbackAvatar url={otherParticipant.avatarUrl} name={otherParticipant.name} className="avatar-sm" />
               <div className="col-stack-tight">
                 <strong>{otherParticipant.name}</strong>
-                <small className="online-status">En línea</small>
+                <small>Chat privado</small>
               </div>
             </Link>
           ) : (
@@ -2081,6 +2087,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
       <div className="chat-thread-shell">
         <section className="chat-thread" ref={threadRef} onScroll={handleThreadScroll} onLoadCapture={keepLatestMessageVisible} onLoadedMetadataCapture={keepLatestMessageVisible}>
+          {renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
+            const thread = threadRef.current, height = thread?.scrollHeight || 0, top = thread?.scrollTop || 0
+            shouldStickToBottomRef.current = false
+            setHistoryWindowSize(size => size + 80)
+            window.requestAnimationFrame(() => { if (thread) thread.scrollTop = top + thread.scrollHeight - height })
+          }}>Ver mensajes anteriores</button> : null}
           {filteredMessages.length === 0 && normalizedMessageSearch ? (
             <div className="chat-search-empty">
               <small className="muted-line">No hay mensajes para ese filtro.</small>
@@ -2089,8 +2101,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             <div className="chat-search-empty">
               <small className="muted-line">Todavía no hay mensajes en este chat.</small>
             </div>
-          ) : filteredMessages.map((message, index) => {
-          const previousMessage = index > 0 ? filteredMessages[index - 1] : null
+          ) : renderedMessages.map((message, index) => {
+          const previousMessage = index > 0 ? renderedMessages[index - 1] : null
           const showDaySeparator =
             !previousMessage || dayKeyOf(previousMessage.createdAt) !== dayKeyOf(message.createdAt)
           const deletedForMe = user ? message.deletedBy.includes(user.id) : false
@@ -2127,6 +2139,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
                 {message.deletedForAll ? (
                   <p className="muted-line">Mensaje eliminado para todos</p>
+                ) : sharedVideoReference(message.content) ? (
+                  <SharedVideoCard reference={sharedVideoReference(message.content)!} />
                 ) : message.contentType === 'poll' && pollRows.length > 0 ? (
                   <div className="poll-stack">
                     <strong>{pollMeta?.question || message.content}</strong>

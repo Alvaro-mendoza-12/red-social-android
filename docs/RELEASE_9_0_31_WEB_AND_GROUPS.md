@@ -14,12 +14,15 @@
 
 - Android: compilación release firmada y 66 pruebas seleccionadas sin fallos. Incluyen tres pruebas con Room sobre conservación de chats por cuenta.
 - API Linux: 798 pruebas aprobadas y seis omitidas; 76 comprobaciones adicionales de PostgreSQL y 100 de membresía, permisos, avisos e historial con HTTP y bases desechables.
-- Web: compilación TypeScript/Vite; 200 pruebas de componentes y lógica; ocho pruebas del intermediario de multimedia.
+- Web: compilación TypeScript/Vite; 221 pruebas de componentes y lógica; ocho pruebas del intermediario de multimedia; tres pruebas del contrato CORS de entrega y 13 comprobaciones con Nginx y archivos ficticios.
 - Navegador real, datos ficticios y red simulada: cola de texto, imagen, video, audio y documento; separación de cuentas; cancelación; persistencia al recargar; entrega posterior sin duplicar identificadores.
 - Sitio público: acceso QR con aprobación de una de las cuentas autorizadas; mensajes persistidos en ambos sentidos entre API y web (287 ms observados para recibir uno de ellos); vistas de mensajes sin desbordamiento horizontal entre 320 y 2560 píxeles. Es una medición puntual, no una garantía de latencia.
+- Entrega pública: Nginx conserva la decisión CORS de la API después de autorizar un archivo. Se comprobó reproducción del avatar en bucle y del feed de videos, con 43 respuestas de archivos, incluidas 31 parciales, sin errores. Los chats largos muestran primero los últimos 80 mensajes y permiten cargar los anteriores; los adjuntos fuera de la vista esperan a ser visibles.
 
 Estas comprobaciones tienen alcances diferentes. No constituyen una certificación integral de todos los módulos para producción ni sustituyen las pruebas físicas del escáner y de cada función móvil/web. El navegador requiere HTTPS y autorización para cámara, micrófono, notificaciones y ubicación. No se garantiza una latencia de cero ni actividad permanente con el navegador cerrado.
 
 ## Despliegue web
+
+La web incluye tarjetas de videos compartidos y selección de chats, grupos y comunidades, además de QR del perfil e historial de visitas con las preferencias de privacidad del servidor. La acción de compartir un video en el perfil se guarda en la API. El estado inicial de Personas cerca indica que se debe activar el radar; no presenta un error por una función todavía desactivada.
 
 Vercel: proyecto `red-social-android`, raíz `NoWing-web`, salida `dist`. Las variables `VITE_FALLBACK_API_URL` y `VITE_BACKEND_DISCOVERY_PUBLIC_KEY` son públicas. No configurar secretos del servidor dentro del cliente web.

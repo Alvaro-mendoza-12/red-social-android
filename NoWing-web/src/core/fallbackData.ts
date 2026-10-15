@@ -33,6 +33,7 @@ export type FallbackInboxItem = {
   kind: 'chat' | 'group' | 'community' | 'voice'
   avatarUrl: string
   avatarMediaType?: string
+  isMember?: boolean
   profileId: string | null
   unreadCount: number
   isPinned: boolean
@@ -755,6 +756,12 @@ export async function setFallbackVideoReaction(videoId: string, liked: boolean):
       body: liked ? JSON.stringify({}) : undefined,
     },
   )
+}
+
+export async function setFallbackVideoShare(videoId: string, shared: boolean): Promise<{ ok: boolean }> {
+  return fallbackApiJson(`/v1/data/videos/${encodeURIComponent(videoId)}/share`, {
+    method: shared ? 'POST' : 'DELETE', body: shared ? JSON.stringify({}) : undefined,
+  })
 }
 
 export async function setFallbackVideoFavorite(videoId: string, favorite: boolean): Promise<{
