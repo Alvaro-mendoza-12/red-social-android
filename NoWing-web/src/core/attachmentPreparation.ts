@@ -24,6 +24,7 @@ export async function compressFiles(files: Array<{ path: string; file: File | nu
 }
 export async function prepareAttachmentFiles(files: File[]) {
   return Promise.all(files.map(async file => {
+    if (/\.zip$/i.test(file.name) && file.type !== 'application/zip') return new File([file], file.name, {type:'application/zip',lastModified:file.lastModified})
     if (file.size < 8 * 1024 * 1024 || !/\.(txt|csv|json|xml|log|md|html|doc|xls|ppt)$/i.test(file.name)) return file
     const packed = await compressFiles([{ path: file.name, file }], file.name)
     return packed.size < file.size ? packed : file
