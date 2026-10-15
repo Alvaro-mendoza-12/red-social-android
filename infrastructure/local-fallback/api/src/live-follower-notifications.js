@@ -117,6 +117,11 @@ async function enqueueLiveStartedFollowerNotifications(client, event = {}) {
        SELECT lower(follower_id) AS recipient_id
          FROM fallback_follows
         WHERE lower(following_id) = ANY($2::text[])
+          AND EXISTS (
+            SELECT 1 FROM fallback_live_streams live
+             WHERE live.id = $1::uuid AND live.is_active
+               AND COALESCE(live.visibility, 'public') IN ('public', 'followers')
+          )
      ), eligible_followers AS (
        SELECT DISTINCT follower_candidates.recipient_id
          FROM follower_candidates
@@ -225,12 +230,22 @@ async function recipientMayReceiveLiveNotification(pool, outbox) {
             lower(blocks.blocked_id) = lower($1)
             AND lower(blocks.blocker_id) = lower($2)
           )
-       ) AS blocked`,
-    [outbox.recipient_id, outbox.host_user_id],
+       ) AS blocked,
+       EXISTS (
+         SELECT 1 FROM fallback_live_streams live
+          WHERE live.id = $3::uuid AND live.is_active
+            AND COALESCE(live.visibility, 'public') IN ('public', 'followers')
+       ) AS live_visible,
+       EXISTS (
+         SELECT 1 FROM fallback_follows follows
+          WHERE lower(follows.follower_id) = lower($1)
+            AND lower(follows.following_id) = lower($2)
+       ) AS still_following`,
+    [outbox.recipient_id, outbox.host_user_id, outbox.live_id],
   )
   const row = rows[0] || {}
   const breakMode = normalizeId(row.break_mode || 'off')
-  return !row.blocked && breakMode !== 'mute' && breakMode !== 'hidden'
+  return row.live_visible === true && row.still_following === true && !row.blocked && breakMode !== 'mute' && breakMode !== 'hidden'
 }
 
 async function claimPendingLiveFollowerNotifications(pool, limit = 25) {

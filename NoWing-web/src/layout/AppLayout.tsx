@@ -65,6 +65,7 @@ type NavIconName =
 
 const primaryNavItems = NOVVIN_TABS
 const secondaryNavItems = [
+  { to: '/app/assistant', label: 'Asistente de Novvin', icon: 'messages' as NavIconName },
   { to: '/app/search', label: 'Buscar', icon: 'search' as NavIconName },
   {
     to: '/app/notifications',
@@ -146,6 +147,7 @@ function screenTitle(path: string) {
     games: 'Juegos',
     search: 'Buscar',
     settings: 'Ajustes',
+    assistant: 'Asistente de Novvin',
     notifications: 'Notificaciones',
     follows: 'Amigos',
     'friend-requests': 'Solicitudes',
@@ -1019,13 +1021,13 @@ export function AppLayout() {
           <header className="novvin-topbar">
             <div className="novvin-topbar-title">
               {!isSocialRoute && !isProfileRoute && !location.pathname.startsWith('/app/games') ? (
-                <Link
-                  className="icon-btn"
-                  to={activeSection || '/app/messages'}
+                <button
+                  className="icon-btn" type="button"
+                  onClick={() => { if (Number(window.history.state?.idx) > 0) navigate(-1); else navigate(location.pathname.startsWith('/app/settings') ? '/app/profile' : activeSection || '/app/messages') }}
                   aria-label="Volver"
                 >
                   <ArrowLeft />
-                </Link>
+                </button>
               ) : null}
               <h1>{screenTitle(location.pathname)}</h1>
             </div>

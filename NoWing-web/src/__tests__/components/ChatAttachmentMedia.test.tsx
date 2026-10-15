@@ -1,9 +1,10 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ChatAttachmentMedia, attachmentKind } from '../../components/ChatAttachmentMedia'
 import { readBoundedStorageBlob } from '../../core/media/boundedStorageRead'
 import { invalidateStorageReadIdentity, updateStorageReadIdentity } from '../../core/media/storageReadSession'
 
 jest.mock('../../core/runtimeBackend', () => ({ rewriteRuntimeStorageUrl: (url: string) => url, runtimeStoragePreviewUrl: (url: string) => url }))
+jest.mock('../../components/DocumentPreview', () => ({ DocumentPreview: () => <section aria-label="Vista previa del documento" /> }))
 jest.mock('../../core/media/browserStreaming', () => ({ browserStreamingSource: jest.fn(async () => '/__novvin_media/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') }))
 jest.mock('../../core/media/storageReadClient', () => ({
   prepareStorageReadAccessToken: jest.fn(async () => 'synthetic.test.signature'),
@@ -93,7 +94,9 @@ test('external HTTPS media receives no app read credential', () => {
 test('unknown documents use a download Blob with inert MIME', async () => {
   readBlob.mockResolvedValue(new Blob(['<h1>test</h1>'], { type: 'text/html' }))
   const { container } = render(<ChatAttachmentMedia url={privateUrl} kind="file" title="document.html" />)
-  await waitFor(() => expect(container.querySelector('a')).not.toBeNull())
+  expect(readBlob).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button',{name:'Abrir documento'}))
+  await screen.findByRole('dialog',{name:'Ver documento'})
   expect(container.querySelector('a')?.getAttribute('download')).toBe('document.html')
   expect(createObjectURL.mock.calls[0][0].type).toBe('application/octet-stream')
 })

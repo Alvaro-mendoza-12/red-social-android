@@ -396,6 +396,11 @@ export async function createFallbackLiveStream(input: {
   title: string
   source: 'camera' | 'screen'
   hashtags?: string[]
+  visibility?: 'public' | 'followers' | 'private'
+  category?: string
+  gameName?: string
+  giftsEnabled?: boolean
+  battlesEnabled?: boolean
 }): Promise<{ stream: FallbackLiveStream }> {
   return fallbackApiJson<{ stream: FallbackLiveStream }>('/v1/data/live', {
     method: 'POST',
@@ -407,6 +412,7 @@ export async function updateFallbackLiveState(
   liveId: string,
   input: {
     source?: 'camera' | 'screen'
+    allowGuestRequests?: boolean
     isActive?: boolean
     viewerCount?: number
     peakViewerCount?: number

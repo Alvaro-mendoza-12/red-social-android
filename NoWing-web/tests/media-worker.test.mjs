@@ -30,6 +30,15 @@ test('authorized native media streaming preserves Range without URL tokens', asy
   assert.equal(f.requests[0][1].headers.get('Range'), 'bytes=0-1')
   assert.equal(f.requests[0][1].redirect, 'error')
 })
+
+test('document downloads stream as inert attachments in the same authenticated client', async () => {
+  const f=fixture(async()=>new Response('<html>document</html>',{headers:{'Content-Type':'text/html'}}));f.register('a',{downloadName:'Carpeta.zip'})
+  const response=await f.read('a')
+  assert.equal(response.headers.get('content-type'),'application/octet-stream')
+  assert.equal(response.headers.get('content-disposition'),"attachment; filename*=UTF-8''Carpeta.zip")
+  assert.equal(response.headers.get('x-content-type-options'),'nosniff')
+  assert.equal(await response.text(),'<html>document</html>')
+})
 test('a second browser client cannot reuse another client media handle', async () => {
   const f = fixture(); f.register('a')
   assert.equal((await f.read('b')).status, 404)

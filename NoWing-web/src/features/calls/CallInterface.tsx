@@ -1,3 +1,5 @@
+import { SafeAvatar } from '../../components/SafeAvatar'
+import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Maximize } from 'lucide-react'
 import './calls.css'
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -39,6 +41,8 @@ export function CallInterface({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [remoteVideoReady, setRemoteVideoReady] = useState(false)
+  useEffect(() => { setRemoteVideoReady(false); if (!remoteStream) return; const tracks = remoteStream.getVideoTracks(); const update = () => setRemoteVideoReady(tracks.some(track => track.readyState === 'live' && !track.muted)); tracks.forEach(track => { track.addEventListener('mute', update); track.addEventListener('unmute', update); track.addEventListener('ended', update) }); update(); return () => tracks.forEach(track => { track.removeEventListener('mute',update); track.removeEventListener('unmute',update); track.removeEventListener('ended',update) }) }, [remoteStream])
   const [fallbackAccessToken, setFallbackAccessToken] = useState('')
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -382,10 +386,10 @@ export function CallInterface({
       <header className="call-header">
         <div className="call-info">
           <h2>
-            {callState.isIncomingCall ? 'Llamada Entrante' : 'Llamada en Curso'}
+            {participantInfo?.name || initialRemoteName || (callState.isIncomingCall ? 'Llamada entrante' : 'Llamada')}
           </h2>
           <p>
-            {participantInfo?.name || 'Usuario Desconocido'} • 
+            {callState.isIncomingCall ? 'Llamada entrante' : remoteStream ? 'En llamada' : 'Conectando'} •{' '}
             {Math.floor(callState.duration / 60)}:{(callState.duration % 60).toString().padStart(2, '0')}
             {callState.connectionLabel ? ` • ${callState.connectionLabel}` : ''}
           </p>
@@ -401,7 +405,7 @@ export function CallInterface({
       </header>
 
       <main className="call-main">
-        <div className="videos-container">
+        <div className={`videos-container ${remoteVideoReady ? 'has-remote-video' : 'audio-only'}`}>
           {/* Remote video */}
           <div className="video-wrapper remote-video">
             <StreamingVideo
@@ -409,25 +413,22 @@ export function CallInterface({
               autoPlay
               playsInline
               className="remote-video-element"
+              onPlaying={() => setRemoteVideoReady(Boolean(remoteStream?.getVideoTracks().length))}
             />
+            {!remoteVideoReady ? <div className="call-participant-placeholder"><SafeAvatar size="lg" url={participantInfo?.avatarUrl} name={participantInfo?.name || initialRemoteName || 'Usuario'} /><strong>{participantInfo?.name || initialRemoteName || 'Usuario'}</strong><small>{remoteStream ? 'Llamada de voz' : callState.isIncomingCall ? 'Te está llamando' : 'Esperando respuesta…'}</small></div> : null}
             <div className="participant-overlay">
               <div className="participant-info">
-                <StreamingImage 
-                  src={participantInfo?.avatarUrl} 
-                  alt={participantInfo?.name}
-                  className="participant-avatar"
-                />
+                <SafeAvatar url={participantInfo?.avatarUrl} name={participantInfo?.name || 'Usuario'} className="participant-avatar" />
                 <span className="participant-name">{participantInfo?.name || 'Usuario'}</span>
               </div>
               <div className="participant-status">
-                {callState.isMuted && <span className="muted-indicator">🔇</span>}
-                {!callState.isVideoEnabled && <span className="video-off-indicator">📵</span>}
+                {!remoteVideoReady && <span className="video-off-indicator" aria-label="Cámara apagada"><VideoOff/></span>}
               </div>
             </div>
           </div>
 
           {/* Local video */}
-          <div className="video-wrapper local-video">
+          <div className="video-wrapper local-video" hidden={!callState.isVideoEnabled && !callState.isScreenSharing}>
             <StreamingVideo
               ref={localVideoRef}
               autoPlay
@@ -450,24 +451,24 @@ export function CallInterface({
                 onClick={rejectCall}
                 disabled={isInitializing}
               >
-                🗑️ Rechazar
+                <PhoneOff size={20}/> Rechazar
               </button>
               <button
                 className="control-btn answer-btn"
                 onClick={answerCall}
                 disabled={isInitializing}
               >
-                {isInitializing ? 'Conectando...' : '📞 Contestar'}
+                <Phone size={20}/>{isInitializing ? 'Conectando…' : 'Contestar'}
               </button>
             </div>
           ) : (
-            <div className="active-controls">
+            <div className="active-controls"><button type="button" className="control-btn" aria-label="Ampliar llamada" onClick={() => { const element=document.querySelector<HTMLElement>('.call-interface-container'); void (document.fullscreenElement ? document.exitFullscreen() : element?.requestFullscreen())?.catch(() => {}) }}><Maximize/></button>
               <button
                 className={`control-btn ${callState.isMuted ? 'muted' : ''}`}
                 onClick={toggleMute}
                 title={callState.isMuted ? 'Activar micrófono' : 'Desactivar micrófono'}
               >
-                {callState.isMuted ? '🔇' : '🎤'}
+                {callState.isMuted ? <MicOff/> : <Mic/>}
               </button>
               
               <button
@@ -475,7 +476,7 @@ export function CallInterface({
                 onClick={toggleVideo}
                 title={callState.isVideoEnabled ? 'Desactivar vídeo' : 'Activar vídeo'}
               >
-                {callState.isVideoEnabled ? '📹' : '📵'}
+                {callState.isVideoEnabled ? <Video/> : <VideoOff/>}
               </button>
               
               <button
@@ -483,14 +484,14 @@ export function CallInterface({
                 onClick={toggleScreenShare}
                 title={callState.isScreenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla'}
               >
-                {callState.isScreenSharing ? '🖥️' : '🖥️'}
+                <MonitorUp/>
               </button>
               
               <button
                 className="control-btn end-call-btn"
                 onClick={endCall}
               >
-                🗑️ Colgar
+                <PhoneOff/>
               </button>
             </div>
           )}

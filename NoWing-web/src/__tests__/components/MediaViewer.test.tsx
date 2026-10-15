@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MediaViewer } from '../../components/MediaViewer'
 import { invalidateStorageReadIdentity } from '../../core/media/storageReadSession'
+jest.mock('../../components/DocumentPreview', () => ({ DocumentPreview: ({ title, pdf }: { title:string; pdf:boolean }) => <section aria-label="Documento PDF" data-pdf={String(pdf)}>{title}</section> }))
 
 jest.mock('../../components/StreamingMedia', () => ({
   StreamingImage: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props}/>,
@@ -26,9 +27,10 @@ test('revokes displayed sources immediately when the account is invalidated', ()
   expect(close).toHaveBeenCalledTimes(1)
 })
 
-test('PDF preview stays sandboxed and exposes its authorized download', () => {
+test('PDF uses the in-app renderer and exposes its authorized download', () => {
   render(<MediaViewer items={[{url:'blob:authorized-pdf',type:'pdf',title:'Documento',downloadUrl:'blob:authorized-pdf'}]} onClose={()=>{}}/>)
-  expect(screen.getByTitle('Documento')).toHaveAttribute('sandbox','allow-scripts allow-downloads')
+  expect(screen.getByRole('region',{name:'Documento PDF'})).toHaveAttribute('data-pdf','true')
+  expect(document.querySelector('iframe')).toBeNull()
   expect(screen.getByRole('link',{name:'Descargar archivo'})).toHaveAttribute('href','blob:authorized-pdf')
   expect(screen.queryByRole('button',{name:'Ampliar',exact:true})).toBeNull()
 })

@@ -1,3 +1,4 @@
+import { VideoCommentsPanel } from '../../components/VideoCommentsPanel'
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
@@ -173,6 +174,7 @@ function ReelFeedCard({
   onFavorite,
   onShare,
   onToggleProfileShare,
+  muted, onMutedChange, onComments,
 }: {
   item: ReelItem
   eager: boolean
@@ -181,6 +183,9 @@ function ReelFeedCard({
   onFavorite: (item: ReelItem) => void
   onShare: (item: ReelItem) => void
   onToggleProfileShare: (item: ReelItem) => void
+  muted: boolean
+  onMutedChange: (muted: boolean) => void
+  onComments: (item: ReelItem) => void
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [canLoad, setCanLoad] = useState(eager)
@@ -205,7 +210,6 @@ function ReelFeedCard({
     return () => observer.disconnect()
   }, [canLoad])
   const [paused, setPaused] = useState(false)
-  const [muted, setMuted] = useState(true)
   useEffect(() => {
     const onVisibility = () => {
       if (document.hidden) videoRef.current?.pause()
@@ -279,7 +283,7 @@ function ReelFeedCard({
         type="button"
         aria-label={muted ? 'Activar sonido' : 'Silenciar'}
         title={muted ? 'Activar sonido' : 'Silenciar'}
-        onClick={() => setMuted((value) => !value)}
+        onClick={() => onMutedChange(!muted)}
       >
         {muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
       </button>
@@ -308,10 +312,10 @@ function ReelFeedCard({
           <Heart aria-hidden="true" fill={item.likedByMe ? 'currentColor' : 'none'} />
           <span>{item.likeCount}</span>
         </button>
-        <Link to={`/app/reels/${item.id}#comments`} aria-label="Comentarios" title="Comentarios">
+        <button type="button" onClick={() => onComments(item)} aria-label="Comentarios" title="Comentarios">
           <MessageCircle aria-hidden="true" />
           <span>{item.commentCount}</span>
-        </Link>
+        </button>
         <button
           className={item.favoritedByMe ? 'active' : ''}
           type="button"
@@ -751,6 +755,8 @@ export function ReelsPage() {
       })
   }
   const [sharingVideo, setSharingVideo] = useState<ReelItem | null>(null)
+  const [commentsVideo, setCommentsVideo] = useState<ReelItem | null>(null)
+  const [feedMuted, setFeedMuted] = useState(true)
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const reelsCacheKey = `reels:${user?.id ?? 'anon'}`
@@ -1709,6 +1715,7 @@ export function ReelsPage() {
         </div>
       </div>
 
+      {commentsVideo ? <VideoCommentsPanel key={commentsVideo.id} videoId={commentsVideo.id} onClose={() => setCommentsVideo(null)} onCountChange={count => setItems(current => current.map(item => item.id === commentsVideo.id ? { ...item, commentCount: count } : item))} /> : null}
       {sharingVideo ? (
         <ShareVideoDialog
           videoId={sharingVideo.id}
@@ -2070,6 +2077,9 @@ export function ReelsPage() {
               <Fragment key={item.id}>
                 <ReelFeedCard
                   item={item}
+                  muted={feedMuted}
+                  onMutedChange={setFeedMuted}
+                  onComments={setCommentsVideo}
                   eager={index < 2}
                   currentUserId={user?.id}
                   onLike={(video) => void toggleVideoLike(video)}

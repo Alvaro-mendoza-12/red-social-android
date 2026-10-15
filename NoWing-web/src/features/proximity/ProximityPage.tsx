@@ -1,3 +1,4 @@
+import { RadarMessages } from './RadarMessages'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   Eye,
@@ -318,6 +319,7 @@ export function ProximityPage() {
       {error ? <StatusView title="No se pudo completar la operación" description={error} /> : null}
       {info ? <div className="offline-banner syncing">{info}</div> : null}
 
+      <RadarMessages onAccepted={() => void refreshMatchStatus()} />
       <div className="proximity-layout">
         <section className="proximity-radar-panel">
           <div className={enabled ? 'proximity-radar active' : 'proximity-radar'} aria-label={`${nearby.length} personas dentro de ${radiusKm} kilómetros`}>

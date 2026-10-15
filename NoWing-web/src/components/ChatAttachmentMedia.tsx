@@ -1,4 +1,5 @@
 import { MediaViewer } from './MediaViewer'
+import { browserStreamingSource } from '../core/media/browserStreaming'
 import { StreamingVideo, StreamingAudio } from './StreamingMedia'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { rewriteRuntimeStorageUrl, runtimeStoragePreviewUrl } from '../core/runtimeBackend'
@@ -19,6 +20,11 @@ function safeExternalUrl(value: string): string {
     const parsed = new URL(value)
     return parsed.protocol === 'https:' && !parsed.username && !parsed.password ? parsed.href : ''
   } catch { return '' }
+}
+
+function attachmentName(url: string, fallback: string) {
+  const name = url.split('/').at(-1)?.split(/[?#]/)[0] || fallback
+  try { return decodeURIComponent(name) } catch { return name }
 }
 
 function acceptsInline(kind: ChatAttachmentKind, mime: string): boolean {
@@ -43,21 +49,24 @@ export function attachmentKind(contentType: string, url: string): ChatAttachment
 }
 
 export function ChatAttachmentMedia({
-  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen,
+  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen, preserveAnimation = false, allowRetry = true,
 }: {
-  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void
+  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void; preserveAnimation?: boolean; allowRetry?: boolean
 }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const rewritten = rewriteRuntimeStorageUrl(url)
-  const source = kind === 'image' ? runtimeStoragePreviewUrl(rewritten) : rewritten
+  const source = kind === 'image' && !preserveAnimation && !/\.(gif|webp)(?:[?#]|$)/i.test(rewritten) ? runtimeStoragePreviewUrl(rewritten) : rewritten
   const backendBase = trustedStorageBackend(source)
   const ownStorage = Boolean(backendBase)
-  const maxBytes = kind === 'audio' || kind === 'video' ? STORAGE_SHORT_MEDIA_MAX_BYTES : STORAGE_PREVIEW_MAX_BYTES
+  const maxBytes = kind === 'file' || kind === 'pdf' ? 128 * 1024 * 1024 : kind === 'audio' || kind === 'video' ? STORAGE_SHORT_MEDIA_MAX_BYTES : STORAGE_PREVIEW_MAX_BYTES
   const [viewerOpen,setViewerOpen]=useState(false)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [failure, setFailure] = useState<{ source: string; identity: StorageReadIdentity; code: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [visible, setVisible] = useState(false)
+  const [readRequested, setReadRequested] = useState(false)
+  const [downloadRequested, setDownloadRequested] = useState(false)
+  const [downloadPreparing, setDownloadPreparing] = useState(false)
   const container = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -71,7 +80,7 @@ export function ChatAttachmentMedia({
   }, [])
 
   useEffect(() => {
-    if (!ownStorage || !visible || !identity.accountId || kind === 'video' || kind === 'audio') return
+    if (!ownStorage || !visible || !identity.accountId || kind === 'video' || kind === 'audio' || ((kind === 'file' || kind === 'pdf') && !readRequested)) return
     let active = true
     let objectUrl = ''
     const controller = new AbortController()
@@ -111,14 +120,27 @@ export function ChatAttachmentMedia({
       })
     }
     return () => { active = false; removeInvalidator(); clearDeliveredMedia() }
-  }, [backendBase, identity, kind, maxBytes, ownStorage, size, source, visible, attempt])
+  }, [backendBase, identity, kind, maxBytes, ownStorage, size, source, visible, attempt, readRequested])
 
-  useEffect(()=>onStorageReadInvalidated(()=>setViewerOpen(false)),[])
+  useEffect(()=>onStorageReadInvalidated(()=>{setViewerOpen(false);setReadRequested(false);setDownloadRequested(false)}),[])
   const ready = preview?.source === source && preview.identity === identity ? preview : null
   const currentFailure = failure?.source === source && failure.identity === identity ? failure : null
   const playbackUrl = ownStorage ? ready?.url ?? '' : safeExternalUrl(source)
   const retry = () => { setFailure(null); setPreview(null); setAttempt((value) => value + 1) }
   const decodingFailed = () => setFailure({ source, identity, code: 'MEDIA_UNAVAILABLE' })
+  async function downloadOriginal() {
+    if (downloadPreparing) return
+    if (!ownStorage || !('serviceWorker' in navigator)) { setReadRequested(true); setDownloadRequested(true); return }
+    setDownloadPreparing(true)
+    try {
+      const handle = await browserStreamingSource(rewritten, identity, { downloadName: kind === 'file' || kind === 'pdf' ? attachmentName(rewritten,title) : title }); requireStorageReadIdentity(identity)
+      const link = document.createElement('a'); link.href = handle; link.download = kind === 'file' || kind === 'pdf' ? attachmentName(rewritten,title) : title; link.rel = 'noopener noreferrer'; link.click()
+    } catch { setFailure({ source, identity, code: 'MEDIA_UNAVAILABLE' }) } finally { setDownloadPreparing(false) }
+  }
+  useEffect(() => {
+    if (!downloadRequested || !playbackUrl) return
+    const link = document.createElement('a'); link.href = playbackUrl; link.download = kind === 'file' || kind === 'pdf' ? attachmentName(rewritten,title) : title; link.rel = 'noopener noreferrer'; link.click(); setDownloadRequested(false)
+  }, [downloadRequested, playbackUrl, title])
   if (kind === 'video' || kind === 'audio') {
     return <div ref={container}>{kind === 'video'
       ? <><StreamingVideo className="chat-media-video" src={visible ? rewritten : undefined} controls preload="metadata" playsInline /><button type="button" className="mini-action-btn" onClick={()=>{container.current?.querySelector('video')?.pause();setViewerOpen(true)}}>Ampliar video</button>{viewerOpen?<MediaViewer items={[{url:rewritten,type:'video',title}]} onClose={()=>setViewerOpen(false)}/>:null}</>
@@ -131,17 +153,19 @@ export function ChatAttachmentMedia({
     const large = currentFailure?.code === 'MEDIA_TOO_LARGE'
     content = <div className="chat-file-card media-load-error" role="status">
       <span><strong>{large ? 'Archivo demasiado grande para la vista web' : 'No se pudo abrir el archivo'}</strong><small>{title}</small></span>
-      {!large ? <button className="mini-action-btn" type="button" onClick={retry}>Reintentar</button> : null}
+      {!large && allowRetry ? <button className="mini-action-btn" type="button" onClick={retry}>Reintentar</button> : null}
     </div>
+  } else if ((kind === 'file' || kind === 'pdf') && !viewerOpen && !downloadRequested) {
+    content = <div className="chat-file-card"><span className="chat-file-icon">{kind === 'pdf' ? 'PDF' : 'DOC'}</span><span><strong>{title}</strong>{size > 0 ? <small>{Math.ceil(size / 1024)} KB</small> : null}<span className="chat-document-actions"><button className="mini-action-btn" type="button" onClick={() => { setReadRequested(true); setViewerOpen(true) }}>Abrir documento</button><button className="mini-action-btn" type="button" disabled={downloadPreparing} onClick={() => void downloadOriginal()}>{downloadPreparing ? 'Preparando…' : 'Descargar'}</button></span></span></div>
   } else if (!playbackUrl) {
     content = <div className="chat-file-card chat-file-card-loading" role="status"><span><strong>Preparando archivo</strong><small>{title}</small></span></div>
   } else if (kind === 'image') {
     const image = <img className={imageClassName} src={playbackUrl} alt={title} loading="lazy" decoding="async" onError={decodingFailed} />
     content = imageLink ? <button type="button" className="chat-media-card" aria-label={`Ampliar ${title}`} onClick={()=>onImageOpen ? onImageOpen() : setViewerOpen(true)}>{image}</button> : image
   } else if (kind === 'pdf') {
-    content = <div className="chat-pdf-card"><div className="chat-file-card"><strong>{title}</strong><button type="button" className="mini-action-btn" onClick={()=>setViewerOpen(true)}>Abrir documento</button></div><iframe className="chat-pdf-preview" src={playbackUrl} title={title} sandbox="allow-scripts allow-downloads" loading="lazy" /></div>
+    content = <div className="chat-file-card"><strong>{title}</strong></div>
   } else {
     content = <a className="chat-file-card" href={playbackUrl} download={title} rel="noopener noreferrer"><span className="chat-file-icon">DOC</span><span><strong>{title}</strong>{ready?.size ? <small>{Math.ceil(ready.size / 1024)} KB</small> : null}</span></a>
   }
-  return <div ref={container}>{content}{viewerOpen && playbackUrl && (!ownStorage || identity.accountId) ? <MediaViewer items={[{url:playbackUrl,type:kind==='pdf'?'pdf':'image',title,downloadUrl:playbackUrl}]} onClose={()=>setViewerOpen(false)}/> : null}</div>
+  return <div ref={container}>{content}{viewerOpen && playbackUrl && (!ownStorage || identity.accountId) ? <MediaViewer items={[{url:playbackUrl,type:kind==='pdf'?'pdf':kind==='file'?'document':'image',title,documentName:attachmentName(rewritten, title),downloadUrl:playbackUrl}]} onClose={()=>setViewerOpen(false)}/> : null}</div>
 }

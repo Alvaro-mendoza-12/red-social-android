@@ -59,13 +59,23 @@ export class WebRTCManager {
 
     const replacements: Promise<void>[] = [];
     this.peerConnections.forEach((connection) => {
-      const sender = connection.getSenders().find((candidate) => candidate.track?.kind === kind);
+      const sender = connection.getTransceivers().find((candidate) => candidate.sender.track?.kind === kind || candidate.receiver.track.kind === kind)?.sender;
       if (sender) {
         replacements.push(sender.replaceTrack(track));
       } else {
         connection.addTrack(track, this.localStream!);
       }
     });
+    await Promise.all(replacements);
+  }
+
+  async removeOutgoingTrack(kind: 'audio' | 'video'): Promise<void> {
+    const replacements: Promise<void>[] = [];
+    this.peerConnections.forEach(connection => {
+      const sender = connection.getTransceivers().find(candidate => candidate.sender.track?.kind === kind || candidate.receiver.track.kind === kind)?.sender;
+      if (sender) replacements.push(sender.replaceTrack(null));
+    });
+    this.localStream?.getTracks().filter(track => track.kind === kind).forEach(track => { track.stop(); this.localStream?.removeTrack(track); });
     await Promise.all(replacements);
   }
 

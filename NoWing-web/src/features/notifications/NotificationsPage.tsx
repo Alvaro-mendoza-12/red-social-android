@@ -186,6 +186,7 @@ function resolveNotificationAction(item: NotificationItem): NotificationAction |
   const postTargetId = item.postId || (targetType === 'post' ? item.targetId : '')
   const videoTargetId = item.videoId || (targetType === 'video' ? item.targetId : '')
 
+  if (targetType === 'live' && item.targetId) return { label: 'Ver directo', path: `/app/live/${encodeURIComponent(item.targetId)}` }
   if (postTargetId) return { label: 'Ver publicación', path: `/app/feed/post/${postTargetId}` }
   if (videoTargetId) return { label: 'Abrir video', path: `/app/reels/${videoTargetId}` }
 

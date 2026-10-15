@@ -7,7 +7,7 @@ import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { loadFallbackVideo, setFallbackVideoFavorite, setFallbackVideoReaction } from '../../core/fallbackData'
-import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import { fallbackApiJson, isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
 type VideoDetail = {
@@ -113,7 +113,8 @@ export function VideoDetailPage() {
         setLikedByMe(Boolean(row.liked_by_me ?? row.likedByMe ?? false))
         setFavoriteCount(Number(row.favorite_count ?? row.favoriteCount ?? 0))
         setFavoritedByMe(Boolean(row.favorited_by_me ?? row.favoritedByMe ?? row.is_favorite ?? false))
-        setComments([])
+        const result = await fallbackApiJson<{items: GenericRow[]}>(`/v1/data/videos/${encodeURIComponent(cleanVideoId)}/comments?limit=500`, {expectedAccountId:user?.id})
+        setComments(result.items.map(comment => ({id:textOf(comment,['id']),userId:textOf(comment,['user_id','userId']),userName:textOf(comment,['user_name','userName'],'Usuario'),userAvatarUrl:textOf(comment,['user_profile_image','avatar_url','userAvatarUrl']),content:textOf(comment,['content']),createdAt:textOf(comment,['created_at'])})))
         return
       }
 
@@ -394,9 +395,15 @@ export function VideoDetailPage() {
 
   async function submitComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!supabase || !user || !cleanVideoId) return
+    if ((!useUbuntu && !supabase) || !user || !cleanVideoId) return
     const content = draft.trim()
     if (!content) return
+    if (useUbuntu) {
+      try { await fallbackApiJson(`/v1/data/videos/${encodeURIComponent(cleanVideoId)}/comments`, {method:'POST',expectedAccountId:user.id,body:JSON.stringify({content,contentType:'text'})});setDraft('');await load() }
+      catch(caught){setError(friendlyError(caught,'No se pudo comentar'))}
+      return
+    }
+    if (!supabase) return
     const camelInsert = await supabase.from('video_comments').insert({
       videoId: cleanVideoId,
       userId: user.id,
@@ -418,7 +425,7 @@ export function VideoDetailPage() {
   }
 
   async function deleteComment(commentId: string) {
-    if (!supabase || !video || !user || !commentId || deletingCommentId) return
+    if ((!useUbuntu && !supabase) || !video || !user || !commentId || deletingCommentId) return
     const target = comments.find((entry) => entry.id === commentId)
     if (!target) return
     const canDelete = target.userId === user.id || video.ownerId === user.id
@@ -426,6 +433,10 @@ export function VideoDetailPage() {
     setDeletingCommentId(commentId)
     setError(null)
     try {
+      if (useUbuntu) {
+        await fallbackApiJson(`/v1/data/videos/comments/${encodeURIComponent(commentId)}`, {method:'DELETE',expectedAccountId:user.id});await load();return
+      }
+      if (!supabase) return
       const { error: deleteError } = await supabase
         .from('video_comments')
         .delete()

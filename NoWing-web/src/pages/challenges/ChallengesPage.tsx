@@ -535,7 +535,7 @@ export function ChallengesPage() {
     <section className="section-stack challenges-page">
       <header className="section-header">
         <div className="row-between">
-          <h2>Retos</h2>
+          <h2>Rondas</h2>
           <Link to="/app/challenges/ranking" className="inline-link">
             Ver ranking
           </Link>
@@ -558,15 +558,15 @@ export function ChallengesPage() {
             </div>
             <p>{challengeMeta?.description || 'Participa en el reto actual para sumar visibilidad.'}</p>
             <div className="row-actions">
-              <span className="folder-tag">Tipo: {challengeMeta?.challengeType ?? 'text'}</span>
-              <span className="folder-tag">Dificultad: {challengeMeta?.difficulty ?? 'medium'}</span>
-              <span className="folder-tag">Inicio: {formatDateTime(activeChallenge.createdAt)}</span>
-              <span className="folder-tag">Participación hasta: {formatDateTime(activeChallenge.expiresAt)}</span>
+              <span className="folder-tag">Tipo: {({text:'Texto',image:'Imagen',photo:'Fotografía',video:'Video',audio:'Audio'} as Record<string,string>)[challengeMeta?.challengeType || 'text'] || 'Creativa'}</span>
+              <span className="folder-tag">Dificultad: {({easy:'Inicial',medium:'Intermedia',hard:'Avanzada'} as Record<string,string>)[challengeMeta?.difficulty || 'medium'] || 'Para todos'}</span>
               <span className="folder-tag">Tiempo restante: {deadlineLabel}</span>
-              {activeChallenge.votingExpiresAt ? (
-                <span className="folder-tag">Votación hasta: {formatDateTime(activeChallenge.votingExpiresAt)}</span>
-              ) : null}
             </div>
+            <details className="challenge-timing-details"><summary>Fechas de la ronda</summary><div className="row-actions">
+              <span>Inicio: {formatDateTime(activeChallenge.createdAt)}</span>
+              <span>Participación hasta: {formatDateTime(activeChallenge.expiresAt)}</span>
+              {activeChallenge.votingExpiresAt ? <span>Votación hasta: {formatDateTime(activeChallenge.votingExpiresAt)}</span> : null}
+            </div></details>
             {activeChallenge.status === 'completed' && winnerProfiles.length > 0 ? (
               <div className="row-actions">
                 <span className="folder-tag">Ganadores:</span>

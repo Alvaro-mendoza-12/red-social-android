@@ -406,7 +406,7 @@ export function AccountSettingsPage() {
           .eq('id', user.id)
         if (legacyError) throw legacyError
         setInfo(
-          'Perfil básico guardado. Ejecuta el SQL final para habilitar banner/intereses/gustos en web.',
+          'Perfil actualizado.',
         )
         return
       }
@@ -722,9 +722,10 @@ export function AccountSettingsPage() {
               <small>
                 {isFallbackSession
                   ? 'La portada se guarda al actualizar el perfil.'
-                  : 'El storage propio se activa con sesión Ubuntu.'}
+                  : 'Inicia sesión para cambiar esta imagen.'}
               </small>
             </div>
+            <details className="settings-optional-details"><summary>Presentación e intereses</summary>
             <div className="settings-form-grid">
               <input
                 className="text-input"
@@ -830,6 +831,7 @@ export function AccountSettingsPage() {
                 }))
               }
             />
+            </details><details className="settings-optional-details"><summary>Orden y visibilidad del perfil</summary>
             <div className="settings-mini-grid">
               {model.profileSectionOrder.map((section, sectionIndex) => (
                 <div key={section} className="settings-stack">
@@ -890,6 +892,7 @@ export function AccountSettingsPage() {
                 </div>
               ))}
             </div>
+            </details>
             <button
               className="ghost-btn"
               type="button"

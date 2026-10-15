@@ -3,10 +3,11 @@ import { ChatAttachmentMedia } from './ChatAttachmentMedia'
 import { MediaViewer } from './MediaViewer'
 import type { AlbumMessage } from '../core/chatMediaAlbums'
 
-export function ChatMediaAlbum<T extends AlbumMessage>({ items, mine, onReply, onForward, onDelete, onDeleteForAll, onReact, deliveryState }: {
+export function ChatMediaAlbum<T extends AlbumMessage>({ items, mine, onReply, onForward, onDelete, onDeleteForAll, onReact, deliveryState, onPhotoOpen }: {
   items: T[]; mine: boolean; onReply: (message: T) => void; onForward: (message: T) => void
   onDelete: (message: T) => void; onDeleteForAll: (message: T) => void; onReact: (message: T) => void
   deliveryState?: (message: T) => string
+  onPhotoOpen?: (message: T) => void
 }) {
   const [selected, setSelected] = useState<number | null>(null)
   const last = items.at(-1)!
@@ -15,7 +16,7 @@ export function ChatMediaAlbum<T extends AlbumMessage>({ items, mine, onReply, o
   return <article className={`bubble chat-album ${mine ? 'bubble-me' : 'bubble-them'}`} aria-label={`Álbum de ${items.length} fotos`}>
     <div className={`chat-album-grid count-${Math.min(4, items.length)}`}>
       {items.slice(0, 4).map((message, index) => <div key={message.id} className="chat-album-tile">
-        <ChatAttachmentMedia url={message.mediaUrl!} kind="image" title={`foto ${index + 1} de ${items.length}`} onImageOpen={() => setSelected(index)} imageClassName="chat-album-image" />
+        <ChatAttachmentMedia url={message.mediaUrl!} kind="image" title={`foto ${index + 1} de ${items.length}`} onImageOpen={() => onPhotoOpen ? onPhotoOpen(message) : setSelected(index)} imageClassName="chat-album-image" />
         {index === 3 && items.length > 4 ? <span className="chat-album-more">+{items.length - 4}</span> : null}
       </div>)}
     </div>

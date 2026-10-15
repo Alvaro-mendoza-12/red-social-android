@@ -1,3 +1,8 @@
+import { attachmentPreparationError, droppedAttachments, prepareAttachmentFiles } from '../../core/attachmentPreparation'
+import { chatGallery } from '../../core/chatGallery'
+import { MediaViewer } from '../../components/MediaViewer'
+import { ChatImageEditor } from '../../components/ChatImageEditor'
+import { RecordingIndicator } from '../../components/RecordingIndicator'
 import { CollectionInfo } from '../../components/CollectionInfo'
 import { chatMediaAlbums } from '../../core/chatMediaAlbums'
 import { ChatMediaAlbum } from '../../components/ChatMediaAlbum'
@@ -171,7 +176,7 @@ function toMillis(value: string): number {
 }
 
 function previewUrlForFile(file: File): string {
-  if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+  if (file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/')) {
     return URL.createObjectURL(file)
   }
   return ''
@@ -298,6 +303,12 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
+  const [preparingAttachments, setPreparingAttachments] = useState(false)
+  const [imageEditorFile, setImageEditorFile] = useState<File | null>(null)
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
+  const discardRecordingRef = useRef(false)
+  const preparationOwnerRef = useRef('')
+  preparationOwnerRef.current = `${user?.id}/${cleanRoomId}`
   const [showMessageSearch, setShowMessageSearch] = useState(false)
   const [messageSearchQuery, setMessageSearchQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -315,6 +326,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   useEffect(() => setHistoryWindowSize(80), [cleanRoomId])
   const renderedMessages = conversationWindow(filteredMessages, historyWindowSize, Boolean(normalizedMessageSearch))
   const albums = chatMediaAlbums(renderedMessages, user?.id || '')
+  const gallery = chatGallery(messages, user?.id || '')
+  const openGallery = (message: { id: string }) => { const index = gallery.findIndex(item => item.id === message.id); if (index >= 0) setGalleryIndex(index) }
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
   const threadRef = useRef<HTMLElement | null>(null)
@@ -429,6 +442,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       return
     }
     try {
+      discardRecordingRef.current = false
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       audioStreamRef.current = stream
       const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
@@ -455,6 +469,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         audioRecorderRef.current = null
         stopAudioStream()
         setIsRecordingAudio(false)
+        if (discardRecordingRef.current) { discardRecordingRef.current = false; return }
         if (blob.size === 0) return
         const extension = blobType.includes('ogg') ? 'ogg' : 'webm'
         const file = new File([blob], `audio-${Date.now()}.${extension}`, { type: blobType })
@@ -500,6 +515,15 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     })
   }, [])
 
+  useEffect(() => {
+    setPendingAttachments(current => { current.forEach(entry => { if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl) }); return [] })
+    setPreparingAttachments(false); setImageEditorFile(null); setGalleryIndex(null)
+    discardRecordingRef.current = true
+    const recorder = audioRecorderRef.current
+    if (recorder) { recorder.onstop = null; if (recorder.state !== 'inactive') recorder.stop(); audioRecorderRef.current = null }
+    stopAudioStream(); setIsRecordingAudio(false)
+  }, [user?.id, cleanRoomId, stopAudioStream])
+
   const handleDropZoneDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     event.preventDefault()
     event.stopPropagation()
@@ -518,10 +542,24 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       event.preventDefault()
       event.stopPropagation()
       setDragActive(false)
-      queueAttachmentFiles(event.dataTransfer.files)
+      setPreparingAttachments(true)
+      const owner = preparationOwnerRef.current
+      void droppedAttachments(event.dataTransfer).then(files => { if (owner === preparationOwnerRef.current) queueAttachmentFiles(files) }).catch(error => { if (owner === preparationOwnerRef.current) setError(attachmentPreparationError(error)) }).finally(() => { if (owner === preparationOwnerRef.current) setPreparingAttachments(false) })
     },
     [queueAttachmentFiles],
   )
+
+  useEffect(() => {
+    if (editingMessageId) return
+    const paste = (event: ClipboardEvent) => {
+      const files = Array.from(event.clipboardData?.files || []).filter(file => file.size > 0)
+      if (!files.length) return
+      event.preventDefault(); queueAttachmentFiles(files)
+      const image = files.find(file => /^image\/(png|jpeg)$/.test(file.type)); if (image) setImageEditorFile(image)
+    }
+    window.addEventListener('paste', paste)
+    return () => window.removeEventListener('paste', paste)
+  }, [editingMessageId, queueAttachmentFiles])
 
   useEffect(() => {
     pendingAttachmentsRef.current = pendingAttachments
@@ -1008,7 +1046,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   function handleAttachFile(input: FileList | File[] | null) {
-    queueAttachmentFiles(input)
+    setPreparingAttachments(true)
+    const owner = preparationOwnerRef.current
+    void prepareAttachmentFiles(Array.from(input || [])).then(files => { if (owner === preparationOwnerRef.current) queueAttachmentFiles(files) }).catch(error => { if (owner === preparationOwnerRef.current) setError(attachmentPreparationError(error)) }).finally(() => { if (owner === preparationOwnerRef.current) setPreparingAttachments(false) })
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -1206,15 +1246,17 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       const filePath = `${scope}/stickers/${user.id}/${Date.now()}_${safeName}`
       const mediaUrl = useUbuntu
-        ? (await uploadFallbackFile(config.mediaBucket, file, filePath)).publicUrl
+        ? (await uploadFallbackFile('chat-media', file, filePath)).publicUrl
         : await (async () => {
             if (!supabase) throw new Error('Backend no configurado')
             const { error: uploadError } = await supabase.storage
-              .from(config.mediaBucket)
+              .from('chat-media')
               .upload(filePath, file, { contentType: file.type || undefined })
             if (uploadError) throw uploadError
-            return supabase.storage.from(config.mediaBucket).getPublicUrl(filePath).data.publicUrl
+            return supabase.storage.from('chat-media').getPublicUrl(filePath).data.publicUrl
           })()
+      const saved = await backendRpc('secure_toggle_sticker_favorite', { p_sticker_id: crypto.randomUUID(), p_favorite: true, p_media_url: mediaUrl, p_title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', p_is_animated: /\.(gif|webp)$/i.test(file.name) })
+      if (saved.error) throw saved.error
       await sendMessage(file.name.replace(/\.[^.]+$/, '') || 'Sticker', mediaUrl, 'sticker', replyToId)
       setReplyToId(null)
     } catch (caught) {
@@ -1398,7 +1440,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           if (deletedForMe) return null
           const album = albums.get(message.id)
           if (album && album.leader !== message.id) return null
-          if (album) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum items={album.items} mine={message.senderId === user?.id} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteRoomMessage(item, false)} onDeleteForAll={item => void deleteRoomMessage(item, true)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
+          if (album) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteRoomMessage(item, false)} onDeleteForAll={item => void deleteRoomMessage(item, true)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
           if (message.contentType === "system_membership") return <div className="room-system-notice" key={message.id}>{message.content}</div>
           const mine = message.senderId === user?.id
           const replied = message.replyToId ? messageById.get(message.replyToId) : null
@@ -1451,7 +1493,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   <>
                     {message.content && message.contentType !== 'sticker' ? <p>{message.content}</p> : null}
                     {message.mediaUrl && !isViewOnceType(message.contentType) ? (
-                      <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} imageClassName={message.contentType === 'sticker' ? 'sticker-preview' : undefined} imageLink={message.contentType !== 'sticker'} />
+                      <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} imageClassName={message.contentType === 'sticker' ? 'sticker-preview' : undefined} imageLink={message.contentType !== 'sticker'} preserveAnimation={message.contentType === 'sticker'} onImageOpen={() => openGallery(message)} />
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
                       consumed ? (
@@ -1567,10 +1609,14 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         </div>
       ) : null}
 
-      {showStickers ? <StickerPicker onSelect={item => {
+      {showStickers ? <StickerPicker onEmoji={emoji => { draftRevisionRef.current += 1; setDraft(current => current + emoji) }} onSelect={item => {
         void sendMessage(item.title, item.mediaUrl, 'sticker', replyToId).then(() => { setShowStickers(false); setReplyToId(null) }).catch(caught => setError(friendlyError(caught, 'No se pudo enviar el sticker')))
       }} onImport={file => void importRoomSticker(file)} onClose={() => setShowStickers(false)} /> : null}
 
+      {preparingAttachments ? <p className="attachment-preparing" role="status">Preparando archivos y comprimiendo carpetas…</p> : null}
+      {isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
+      {imageEditorFile ? <ChatImageEditor file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
+      {galleryIndex !== null && gallery[galleryIndex] ? <MediaViewer items={gallery} initialIndex={galleryIndex} onClose={() => setGalleryIndex(null)} /> : null}
       {pendingAttachments.length > 0 ? (
         <section className="attachment-draft-tray fade-in">
           <div className="row-between">
@@ -1587,7 +1633,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   attachment.contentType === 'video' ? (
                     <StreamingVideo className="attachment-preview" src={attachment.previewUrl} controls preload="metadata" />
                   ) : (
-                    <StreamingImage className="attachment-preview" src={attachment.previewUrl} alt={attachment.file.name} />
+                    attachment.contentType === 'audio' ? <audio className="attachment-audio-preview" src={attachment.previewUrl} controls /> : <StreamingImage className="attachment-preview" src={attachment.previewUrl} alt={attachment.file.name} />
                   )
                 ) : (
                   <div className="attachment-preview attachment-preview-fallback">
@@ -1596,7 +1642,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                 )}
                 <div className="attachment-draft-body">
                   <div className="attachment-draft-meta">
-                    <strong>{attachment.file.name}</strong>
+                    <strong>{attachment.file.name}</strong>{attachment.contentType === 'image' && !/\.(gif|webp)$/i.test(attachment.file.name) ? <button type="button" className="mini-action-btn" onClick={() => setImageEditorFile(attachment.file)}>Editar imagen</button> : null}
                     <small>{formatFileSize(attachment.file.size)}</small>
                   </div>
                   <input
@@ -1712,7 +1758,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           }}
         />
 
-        <button className="primary-btn circle-btn" type="submit" disabled={sending || uploading}>
+        <button className="primary-btn circle-btn" type="submit" disabled={sending || uploading || preparingAttachments}>
           {sending || uploading ? (
             '...'
           ) : (

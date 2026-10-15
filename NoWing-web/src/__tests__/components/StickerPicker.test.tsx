@@ -30,7 +30,7 @@ test('loads the mobile catalog immediately and sends its actual sticker identifi
   const select = jest.fn()
   render(<StickerPicker onSelect={select} onImport={() => {}} onClose={() => {}} />)
   fireEvent.click(await screen.findByRole('button', { name: 'Enviar sticker Hola' }))
-  expect(rpc).toHaveBeenCalledWith('secure_search_stickers', { p_query: '', p_limit: 60 })
+  expect(rpc).toHaveBeenCalledWith('secure_search_stickers', { p_query: '', p_limit: 250 })
   expect(select).toHaveBeenCalledWith({ stickerId: 'sticker-1', title: 'Hola', mediaUrl: 'https://media.test/sticker.webp', isFavorite: false })
 })
 
@@ -38,7 +38,7 @@ test('searches the same authorized catalog while the person types', async () => 
   render(<StickerPicker onSelect={() => {}} onImport={() => {}} onClose={() => {}} />)
   await screen.findByRole('button', { name: 'Enviar sticker Hola' })
   fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar stickers' }), { target: { value: 'gato' } })
-  await waitFor(() => expect(rpc).toHaveBeenLastCalledWith('secure_search_stickers', { p_query: 'gato', p_limit: 60 }))
+  await waitFor(() => expect(rpc).toHaveBeenLastCalledWith('secure_search_stickers', { p_query: 'gato', p_limit: 250 }))
 })
 
 test('discards a slow result from a previous search', async () => {

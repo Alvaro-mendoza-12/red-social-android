@@ -1,3 +1,5 @@
+import { RoomVideo } from './RoomVideo'
+import { Camera, CameraOff, MonitorUp, Settings } from 'lucide-react'
 import './voice.css'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { StreamingAudio } from '../../components/StreamingMedia'
@@ -293,6 +295,14 @@ export function VoiceRoomPage() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [micAvailable, setMicAvailable] = useState(true)
   const [connectionLabel, setConnectionLabel] = useState('Listo')
+  const [visualSource, setVisualSource] = useState<'none' | 'camera' | 'screen'>('none')
+  const [localVideo, setLocalVideo] = useState<MediaStream | null>(null)
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [showDeviceSettings, setShowDeviceSettings] = useState(false)
+  const [cameraDevice, setCameraDevice] = useState('')
+  const [mediaBusy, setMediaBusy] = useState(false)
+  const visualTrackRef = useRef<MediaStreamTrack | null>(null)
+  const visualOperationRef = useRef(0)
 
   const socketRef = useRef<VoiceSocket | null>(null)
   const webrtcManagerRef = useRef<WebRTCManager | null>(null)
@@ -347,6 +357,8 @@ export function VoiceRoomPage() {
   }, [])
 
   const stopLocalMedia = useCallback(() => {
+    visualOperationRef.current++
+    visualTrackRef.current?.stop(); visualTrackRef.current = null; setLocalVideo(null); setVisualSource('none')
     stopSpeakingDetection()
     stopSignaling()
     if (webrtcManagerRef.current) {
@@ -770,7 +782,7 @@ export function VoiceRoomPage() {
       })
     })
     manager.onTrack((_track, stream, peerId) => {
-      setRemoteStreams((current) => ({ ...current, [peerId]: stream }))
+      setRemoteStreams((current) => ({ ...current, [peerId]: new MediaStream(stream.getTracks()) }))
     })
     manager.onConnectionState((state, peerId) => {
       setPeerStates((current) => ({ ...current, [peerId]: state }))
@@ -1130,6 +1142,18 @@ export function VoiceRoomPage() {
   const toggleMute = useCallback(async () => {
     if (!user || !room || !isJoined) return
     const nextMuted = !isMuted
+    if (!nextMuted && !micAvailable) {
+      const manager = webrtcManagerRef.current
+      if (!manager) return
+      try {
+        const capture = await navigator.mediaDevices.getUserMedia({audio: true})
+        if (!joinedRef.current) { capture.getTracks().forEach(track => track.stop()); return }
+        const track = capture.getAudioTracks()[0]
+        if (!track) { capture.getTracks().forEach(item => item.stop()); return }
+        await manager.replaceOutgoingTrack('audio', track)
+        setMicAvailable(true)
+      } catch { setJoinError('Permite el acceso al micrófono para hablar en la sala.'); return }
+    }
     setIsMuted(nextMuted)
     mutedRef.current = nextMuted
     webrtcManagerRef.current?.getLocalStream()?.getAudioTracks().forEach((track) => {
@@ -1161,7 +1185,47 @@ export function VoiceRoomPage() {
       emitMuteState(!nextMuted)
       setJoinError(friendlyError(caught, 'No se pudo actualizar el micrófono'))
     }
-  }, [avatarUrl, displayName, emitMuteState, isJoined, isMuted, room, useUbuntuVoice, user])
+  }, [avatarUrl, displayName, emitMuteState, isJoined, isMuted, micAvailable, room, useUbuntuVoice, user])
+
+  async function stopVisual() {
+    visualOperationRef.current++
+    visualTrackRef.current?.stop(); visualTrackRef.current = null
+    await webrtcManagerRef.current?.removeOutgoingTrack('video')
+    setVisualSource('none'); setLocalVideo(null)
+  }
+  async function toggleVisual(source: 'camera' | 'screen') {
+    if (!isJoined || mediaBusy) return
+    if (visualSource === source) { await stopVisual(); return }
+    setMediaBusy(true); setJoinError(null)
+    const operation = ++visualOperationRef.current
+    try {
+      const capture = source === 'screen'
+        ? await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+        : await navigator.mediaDevices.getUserMedia({ video: cameraDevice ? { deviceId: { exact: cameraDevice }, width: { ideal: 1280 }, height: { ideal: 720 } } : { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
+      const track = capture.getVideoTracks()[0]
+      if (!track || !joinedRef.current || operation !== visualOperationRef.current) { capture.getTracks().forEach(value => value.stop()); return }
+      try { await webrtcManagerRef.current!.replaceOutgoingTrack('video', track) } catch(error) { capture.getTracks().forEach(value => value.stop()); throw error }
+      visualTrackRef.current = track; setLocalVideo(new MediaStream([track])); setVisualSource(source)
+      track.onended = () => { if (visualTrackRef.current?.id === track.id) void stopVisual() }
+    } catch(error) {
+      if (source === 'camera' || !(error instanceof DOMException && error.name === 'NotAllowedError')) setJoinError('No se pudo activar la cámara o pantalla. Revisa los permisos del navegador.')
+    } finally { setMediaBusy(false) }
+  }
+  async function selectMicrophone(deviceId: string) {
+    if (!isJoined || mediaBusy) return
+    setMediaBusy(true)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } }, video: false })
+      const track = stream.getAudioTracks()[0]; track.enabled = !mutedRef.current
+      if (!joinedRef.current) { track.stop(); return }
+      try { await webrtcManagerRef.current!.replaceOutgoingTrack('audio', track) } catch(error) { track.stop(); throw error }
+      beginSpeakingDetection(stream); setMicAvailable(true)
+    } catch { setJoinError('No se pudo usar este micrófono. Comprueba sus permisos.') } finally { setMediaBusy(false) }
+  }
+  async function openDeviceSettings() {
+    setShowDeviceSettings(value => !value)
+    try { setDevices(await navigator.mediaDevices.enumerateDevices()) } catch { setJoinError('No se pudieron consultar los dispositivos.') }
+  }
 
   const toggleDeafen = useCallback(() => {
     setIsDeafened((current) => !current)
@@ -1284,6 +1348,8 @@ export function VoiceRoomPage() {
             </button>
           </div>
 
+          <div className="voice-video-grid">{localVideo ? <RoomVideo stream={localVideo} label={visualSource === 'screen' ? 'Tu pantalla' : 'Tu cámara'} /> : null}{Object.entries(remoteStreams).map(([peerId,stream]) => <RoomVideo key={peerId} stream={stream} label={remoteParticipants.find(value => value.socketId === peerId)?.userName || 'Participante'} />)}</div>
+          {showDeviceSettings ? <section className="voice-device-settings" aria-label="Ajustes de audio y video"><label>Micrófono<select className="text-input" disabled={!isJoined || mediaBusy} defaultValue="" onChange={event => void selectMicrophone(event.target.value)}><option value="" disabled>Seleccionar micrófono</option>{devices.filter(device => device.kind === 'audioinput').map((device,index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Micrófono ${index+1}`}</option>)}</select></label><label>Cámara<select className="text-input" value={cameraDevice} onChange={event => setCameraDevice(event.target.value)}><option value="">Cámara predeterminada</option>{devices.filter(device => device.kind === 'videoinput').map((device,index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Cámara ${index+1}`}</option>)}</select></label><small>La cámara seleccionada se usa al activarla. Puedes detener la pantalla desde aquí o desde el navegador.</small></section> : null}
           <div className="voice-participant-grid">
             {isJoined ? (
               <article className={isSpeaking ? 'voice-participant-card local speaking' : 'voice-participant-card local'}>
@@ -1392,6 +1458,7 @@ export function VoiceRoomPage() {
         </aside>
       </div>
         <footer className="voice-room-controls" aria-label="Controles de sala">
+          <button className="voice-control-btn" type="button" onClick={() => void openDeviceSettings()} aria-label="Ajustes de audio y video" aria-expanded={showDeviceSettings}><Settings size={18} />Ajustes</button>
           {!isJoined ? (
             <button className="voice-control-btn primary" type="button" onClick={() => void joinRoom()} disabled={isJoining}>
               <Headphones aria-hidden="true" size={18} />
@@ -1419,6 +1486,8 @@ export function VoiceRoomPage() {
                 {isDeafened ? <VolumeX aria-hidden="true" size={18} /> : <Volume2 aria-hidden="true" size={18} />}
                 {isDeafened ? 'Audio apagado' : 'Audio'}
               </button>
+              <button className="voice-control-btn" type="button" onClick={() => void toggleVisual('camera')} disabled={mediaBusy} aria-pressed={visualSource === 'camera'} aria-label={visualSource === 'camera' ? 'Apagar cámara' : 'Activar cámara'}>{visualSource === 'camera' ? <CameraOff size={18}/> : <Camera size={18}/>}Cámara</button>
+              {typeof navigator.mediaDevices?.getDisplayMedia === 'function' ? <button className="voice-control-btn" type="button" onClick={() => void toggleVisual('screen')} disabled={mediaBusy} aria-pressed={visualSource === 'screen'}><MonitorUp size={18}/>{visualSource === 'screen' ? 'Detener pantalla' : 'Compartir pantalla'}</button> : null}
               <button className="voice-control-btn danger" type="button" onClick={() => void leaveRoom()} disabled={isLeaving}>
                 <PhoneOff aria-hidden="true" size={18} />
                 {isLeaving ? 'Saliendo' : 'Salir'}

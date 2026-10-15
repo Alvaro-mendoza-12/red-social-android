@@ -6,9 +6,11 @@ import { StatusView } from '../../components/StatusView'
 import { useAuth } from '../../core/auth/AuthProvider'
 import {
   createFallbackLiveStream,
+  updateFallbackLiveState,
   loadFallbackLiveStreams,
   type FallbackLiveStream,
 } from '../../core/fallbackData'
+import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { friendlyError, numberOf, textOf } from '../../core/utils'
 import './live.css'
 
@@ -27,6 +29,11 @@ export function LiveHubPage() {
   const [hashtags, setHashtags] = useState('')
   const [source, setSource] = useState<LiveSource>('camera')
   const [creating, setCreating] = useState(false)
+  const [visibility, setVisibility] = useState<'public' | 'followers' | 'private'>('public')
+  const [category, setCategory] = useState('chat')
+  const [allowGuests, setAllowGuests] = useState(false)
+  const [guestsAvailable, setGuestsAvailable] = useState(false)
+  useEffect(() => { let active = true; void fallbackApiJson<{sfuAvailable:boolean}>('/v1/data/live/capabilities').then(value => { if (active) setGuestsAvailable(value.sfuAvailable) }).catch(() => {}); return () => { active = false } }, [])
 
   const load = useCallback(async (silent = false) => {
     if (!isFallbackSession) {
@@ -61,9 +68,10 @@ export function LiveHubPage() {
     try {
       const response = await createFallbackLiveStream({
         title: title.trim(),
-        source,
+        source, visibility, category,
         hashtags: hashtags.split(/[#,]/).map((tag) => tag.trim()).filter(Boolean).slice(0, 12),
       })
+      if (allowGuests && guestsAvailable) await updateFallbackLiveState(response.stream.id, { allowGuestRequests: true })
       navigate(`/app/live/${encodeURIComponent(response.stream.id)}?host=1&source=${source}`, { replace: true })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo preparar el directo'))
@@ -134,6 +142,9 @@ export function LiveHubPage() {
               <label>Hashtags
                 <input className="text-input" value={hashtags} onChange={(event) => setHashtags(event.target.value)} placeholder="gaming, música, charla" />
               </label>
+              <label>Quién puede verlo<select className="text-input" value={visibility} onChange={event => setVisibility(event.target.value as typeof visibility)}><option value="public">Todos</option><option value="followers">Mis seguidores</option><option value="private">Solo yo</option></select></label>
+              <label>Categoría<select className="text-input" value={category} onChange={event => setCategory(event.target.value)}><option value="chat">Conversación</option><option value="gaming">Juegos</option><option value="music">Música</option><option value="education">Aprender</option><option value="other">Otro</option></select></label>
+              {guestsAvailable ? <label className="checkbox-inline"><input type="checkbox" checked={allowGuests} onChange={event => setAllowGuests(event.target.checked)} />Permitir solicitudes para participar</label> : null}
               <div className="segmented-control" aria-label="Fuente del directo">
                 <button type="button" className={source === 'camera' ? 'active' : ''} aria-pressed={source === 'camera'} onClick={() => setSource('camera')}><Camera aria-hidden="true" /> Cámara</button>
                 <button type="button" className={source === 'screen' ? 'active' : ''} aria-pressed={source === 'screen'} onClick={() => setSource('screen')}><MonitorUp aria-hidden="true" /> Pantalla</button>

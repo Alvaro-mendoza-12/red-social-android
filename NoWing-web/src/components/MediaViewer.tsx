@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Download, Minus, Plus, RotateCcw, X } from 'lucide-react'
 import { StreamingImage, StreamingVideo } from './StreamingMedia'
 import { onStorageReadInvalidated } from '../core/media/storageReadSession'
+import { DocumentPreview } from './DocumentPreview'
 
 export type ViewerItem = {
   url: string
-  type: 'image' | 'video' | 'pdf'
+  type: 'image' | 'video' | 'pdf' | 'document'
   title?: string
   downloadUrl?: string
+  documentName?: string
 }
 export function MediaViewer({
   items,
@@ -50,12 +52,12 @@ export function MediaViewer({
     }
   }, [])
   if (!item) return null
-  const move = (delta: number) => setIndex((value) => (value + delta + items.length) % items.length)
+  const move = (delta: number) => setIndex((value) => Math.max(0, Math.min(items.length - 1, value + delta)))
   return (
     <dialog
       ref={dialog}
       className="media-viewer"
-      aria-label={item.type === 'pdf' ? 'Ver documento' : 'Visor multimedia'}
+      aria-label={item.type === 'pdf' || item.type === 'document' ? 'Ver documento' : 'Visor multimedia'}
       onCancel={(event) => {
         event.preventDefault()
         onClose()
@@ -112,7 +114,7 @@ export function MediaViewer({
             <a
               className="icon-btn"
               href={item.downloadUrl}
-              download={item.title || 'archivo'}
+              download={item.documentName || item.title || 'archivo'}
               aria-label="Descargar archivo"
               rel="noopener noreferrer"
             >
@@ -135,13 +137,8 @@ export function MediaViewer({
             No se pudo mostrar este archivo.
             {item.downloadUrl ? ' Puedes descargarlo desde el botón de arriba.' : ''}
           </p>
-        ) : item.type === 'pdf' ? (
-          <iframe
-            key={item.url}
-            src={item.url}
-            title={item.title || 'Documento PDF'}
-            sandbox="allow-scripts allow-downloads"
-          />
+        ) : item.type === 'pdf' || item.type === 'document' ? (
+          <DocumentPreview key={item.url} url={item.url} title={item.documentName || item.title || 'Documento'} pdf={item.type === 'pdf'} />
         ) : item.type === 'video' ? (
           <StreamingVideo
             key={item.url}
@@ -173,6 +170,7 @@ export function MediaViewer({
             type="button"
             className="media-viewer-prev"
             aria-label="Archivo anterior"
+            disabled={index === 0}
             onClick={() => move(-1)}
           >
             <ChevronLeft />
@@ -181,6 +179,7 @@ export function MediaViewer({
             type="button"
             className="media-viewer-next"
             aria-label="Siguiente archivo"
+            disabled={index === items.length - 1}
             onClick={() => move(1)}
           >
             <ChevronRight />

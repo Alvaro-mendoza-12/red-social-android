@@ -1,3 +1,9 @@
+import { ChatProfilePanel } from '../../components/ChatProfilePanel'
+import { attachmentPreparationError, droppedAttachments, prepareAttachmentFiles } from '../../core/attachmentPreparation'
+import { chatGallery } from '../../core/chatGallery'
+import { MediaViewer } from '../../components/MediaViewer'
+import { ChatImageEditor } from '../../components/ChatImageEditor'
+import { RecordingIndicator } from '../../components/RecordingIndicator'
 import { backendRpc } from '../../core/backendRpc'
 import { chatMediaAlbums } from '../../core/chatMediaAlbums'
 import { ChatMediaAlbum } from '../../components/ChatMediaAlbum'
@@ -281,7 +287,7 @@ function reactionCount(reactions: Record<string, string[]>, emoji: string): numb
 }
 
 function previewUrlForFile(file: File): string {
-  if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+  if (file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/')) {
     return URL.createObjectURL(file)
   }
   return ''
@@ -336,9 +342,9 @@ function mediaSizeOf(row: GenericRow): number {
   return Number.isFinite(candidate) && candidate > 0 ? candidate : 0
 }
 
-function ChatMessageMedia({ message }: { message: ChatMessage }) {
+function ChatMessageMedia({ message, onImageOpen }: { message: ChatMessage; onImageOpen: () => void }) {
   if (!message.mediaUrl) return null
-  return <ChatAttachmentMedia url={message.mediaUrl} kind={mediaKindFor(message.contentType, message.mediaUrl)} title={message.content.trim() || fileNameFromUrl(message.mediaUrl)} size={message.mediaSize} />
+  return <ChatAttachmentMedia url={message.mediaUrl} kind={mediaKindFor(message.contentType, message.mediaUrl)} title={message.content.trim() || fileNameFromUrl(message.mediaUrl)} size={message.mediaSize} onImageOpen={onImageOpen} />
 }
 
 function dayKeyOf(value: string): string {
@@ -443,6 +449,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
+  const [preparingAttachments, setPreparingAttachments] = useState(false)
+  const [imageEditorFile, setImageEditorFile] = useState<File | null>(null)
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
+  const [profilePanelOpen, setProfilePanelOpen] = useState(false)
+  const discardRecordingRef = useRef(false)
+  const preparationOwnerRef = useRef('')
+
   const [showMessageSearch, setShowMessageSearch] = useState(false)
   const [messageSearchQuery, setMessageSearchQuery] = useState('')
   const [showQuickShare, setShowQuickShare] = useState(false)
@@ -488,6 +501,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const loadSequenceRef = useRef(0)
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
+  preparationOwnerRef.current = `${user?.id}/${cleanChatId}`
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
   const normalizedMessageSearch = useMemo(() => messageSearchQuery.trim().toLowerCase(), [messageSearchQuery])
   const filteredMessages = useMemo(() => {
@@ -501,6 +515,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   useEffect(() => setHistoryWindowSize(80), [cleanChatId])
   const renderedMessages = conversationWindow(filteredMessages, historyWindowSize, Boolean(normalizedMessageSearch))
   const albums = chatMediaAlbums(renderedMessages, user?.id || '')
+  const gallery = chatGallery(messages, user?.id || '')
+  const openGallery = (message: { id: string }) => { const index = gallery.findIndex(item => item.id === message.id); if (index >= 0) setGalleryIndex(index) }
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
   const composerText = editingMessageId ? editingDraft : draft
   const deviceId = useMemo(() => {
@@ -606,6 +622,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       return
     }
     try {
+      discardRecordingRef.current = false
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       audioStreamRef.current = stream
       const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
@@ -632,6 +649,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         audioRecorderRef.current = null
         stopAudioStream()
         setIsRecordingAudio(false)
+        if (discardRecordingRef.current) { discardRecordingRef.current = false; return }
         if (blob.size === 0) return
         const extension = blobType.includes('ogg') ? 'ogg' : 'webm'
         const file = new File([blob], `audio-${Date.now()}.${extension}`, { type: blobType })
@@ -677,6 +695,15 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     })
   }, [])
 
+  useEffect(() => {
+    setPendingAttachments(current => { current.forEach(entry => { if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl) }); return [] })
+    setPreparingAttachments(false); setImageEditorFile(null); setGalleryIndex(null)
+    discardRecordingRef.current = true
+    const recorder = audioRecorderRef.current
+    if (recorder) { recorder.onstop = null; if (recorder.state !== 'inactive') recorder.stop(); audioRecorderRef.current = null }
+    stopAudioStream(); setIsRecordingAudio(false)
+  }, [user?.id, cleanChatId, stopAudioStream])
+
   const handleDropZoneDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     event.preventDefault()
     event.stopPropagation()
@@ -695,7 +722,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       event.preventDefault()
       event.stopPropagation()
       setDragActive(false)
-      queueAttachmentFiles(event.dataTransfer.files)
+      setPreparingAttachments(true)
+      const owner = preparationOwnerRef.current
+      void droppedAttachments(event.dataTransfer).then(files => { if (owner === preparationOwnerRef.current) queueAttachmentFiles(files) }).catch(error => { if (owner === preparationOwnerRef.current) setError(attachmentPreparationError(error)) }).finally(() => { if (owner === preparationOwnerRef.current) setPreparingAttachments(false) })
     },
     [queueAttachmentFiles],
   )
@@ -707,6 +736,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       if (files.length === 0) return
       event.preventDefault()
       queueAttachmentFiles(files)
+      const firstImage = files.find(file => /^image\/(png|jpeg)$/.test(file.type)); if (firstImage) setImageEditorFile(firstImage)
     }
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
@@ -1403,7 +1433,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   function handleAttachFile(input: FileList | File[] | null) {
-    queueAttachmentFiles(input)
+    setPreparingAttachments(true)
+    const owner = preparationOwnerRef.current
+    void prepareAttachmentFiles(Array.from(input || [])).then(files => { if (owner === preparationOwnerRef.current) queueAttachmentFiles(files) }).catch(error => { if (owner === preparationOwnerRef.current) setError(attachmentPreparationError(error)) }).finally(() => { if (owner === preparationOwnerRef.current) setPreparingAttachments(false) })
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -1791,6 +1823,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             if (uploadError) throw uploadError
             return supabase.storage.from('chat-media').getPublicUrl(filePath).data.publicUrl
           })()
+      const saved = await backendRpc('secure_toggle_sticker_favorite', { p_sticker_id: crypto.randomUUID(), p_favorite: true, p_media_url: mediaUrl, p_title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', p_is_animated: /\.(gif|webp)$/i.test(file.name) })
+      if (saved.error) throw saved.error
       await sendMessage({
         content: file.name.replace(/\.[^.]+$/, '') || 'Sticker',
         mediaUrl,
@@ -1849,6 +1883,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const rootClassName = [
     embedded ? 'section-stack chat-detail-embedded' : 'section-stack chat-detail-page',
     dragActive ? 'chat-drop-active' : '',
+    profilePanelOpen ? 'chat-profile-open' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -1860,6 +1895,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       onDragLeave={handleDropZoneDragLeave}
       onDrop={handleDropZoneDrop}
     >
+      {profilePanelOpen && otherParticipant ? <ChatProfilePanel key={otherParticipant.id} profileId={otherParticipant.id} onClose={() => setProfilePanelOpen(false)} /> : null}
       {dragActive ? (
         <div className="chat-drop-overlay">
           <strong>Suelta tus archivos aquí</strong>
@@ -1874,13 +1910,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             </Link>
           ) : null}
           {otherParticipant ? (
-            <Link className="identity-link compact" to={profilePathFor(otherParticipant.id, user?.id)}>
+            <button type="button" className="identity-link compact" onClick={() => setProfilePanelOpen(value => !value)} aria-expanded={profilePanelOpen} aria-label={`Ver perfil de ${otherParticipant.name}`}>
               <FallbackAvatar url={otherParticipant.avatarUrl} name={otherParticipant.name} className="avatar-sm" />
               <div className="col-stack-tight">
                 <strong>{otherParticipant.name}</strong>
                 <small>Chat privado</small>
               </div>
-            </Link>
+            </button>
           ) : (
             <h2>{title}</h2>
           )}
@@ -2095,7 +2131,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           if (deletedForMe) return null
           const album = albums.get(message.id)
           if (album && album.leader !== message.id) return null
-          if (album) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum items={album.items} mine={message.senderId === user?.id} deliveryState={item => mineDeliveryState(item, toMillis(item.createdAt) > 0 && toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(item.createdAt))} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteMessageForMe(item)} onDeleteForAll={item => void deleteMessageForAll(item)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
+          if (album) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} deliveryState={item => mineDeliveryState(item, toMillis(item.createdAt) > 0 && toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(item.createdAt))} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteMessageForMe(item)} onDeleteForAll={item => void deleteMessageForAll(item)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
 
           const mine = message.senderId === user?.id
           const replied = message.replyToId ? messageById.get(message.replyToId) : null
@@ -2167,7 +2203,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                     ) : (
                       <>
                         {message.mediaUrl && message.contentType !== 'sticker' && !isViewOnceType(message.contentType) ? (
-                          <ChatMessageMedia message={message} />
+                          <ChatMessageMedia message={message} onImageOpen={() => openGallery(message)} />
                         ) : null}
                         {showMessageText ? (
                           <p className={message.mediaUrl ? 'message-caption' : undefined}>{message.content}</p>
@@ -2175,7 +2211,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                       </>
                     )}
                     {message.mediaUrl && message.contentType === 'sticker' ? (
-                      <ChatAttachmentMedia url={message.mediaUrl} kind="image" title={message.content || 'Sticker'} imageClassName="sticker-preview" imageLink={false} />
+                      <ChatAttachmentMedia url={message.mediaUrl} kind="image" title={message.content || 'Sticker'} imageClassName="sticker-preview" imageLink={false} preserveAnimation />
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
                       consumed ? (
@@ -2329,8 +2365,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         </div>
       ) : null}
 
-      {showStickers ? <StickerPicker onSelect={item => void sendSticker(item)} onImport={file => void importSticker(file)} onClose={() => setShowStickers(false)} /> : null}
+      {showStickers ? <StickerPicker onEmoji={emoji => { draftRevisionRef.current += 1; setDraft(current => current + emoji) }} onSelect={item => void sendSticker(item)} onImport={file => void importSticker(file)} onClose={() => setShowStickers(false)} /> : null}
 
+      {preparingAttachments ? <p className="attachment-preparing" role="status">Preparando archivos y comprimiendo carpetas…</p> : null}
+      {isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
+      {imageEditorFile ? <ChatImageEditor file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
+      {galleryIndex !== null && gallery[galleryIndex] ? <MediaViewer items={gallery} initialIndex={galleryIndex} onClose={() => setGalleryIndex(null)} /> : null}
       {pendingAttachments.length > 0 ? (
         <section className="attachment-draft-tray fade-in">
           <div className="row-between">
@@ -2347,7 +2387,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                   attachment.contentType === 'video' ? (
                     <StreamingVideo className="attachment-preview" src={attachment.previewUrl} controls preload="metadata" />
                   ) : (
-                    <StreamingImage className="attachment-preview" src={attachment.previewUrl} alt={attachment.file.name} />
+                    attachment.contentType === 'audio' ? <audio className="attachment-audio-preview" src={attachment.previewUrl} controls /> : <StreamingImage className="attachment-preview" src={attachment.previewUrl} alt={attachment.file.name} />
                   )
                 ) : (
                   <div className="attachment-preview attachment-preview-fallback">
@@ -2356,7 +2396,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                 )}
                 <div className="attachment-draft-body">
                   <div className="attachment-draft-meta">
-                    <strong>{attachment.file.name}</strong>
+                    <strong>{attachment.file.name}</strong>{attachment.contentType === 'image' && !/\.(gif|webp)$/i.test(attachment.file.name) ? <button type="button" className="mini-action-btn" onClick={() => setImageEditorFile(attachment.file)}>Editar imagen</button> : null}
                     <small>{formatFileSize(attachment.file.size)}</small>
                   </div>
                   <input
@@ -2436,7 +2476,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           }}
         />
 
-        <button className="primary-btn circle-btn" type="submit" aria-label="Enviar mensaje" disabled={sending || uploading}>
+        <button className="primary-btn circle-btn" type="submit" aria-label="Enviar mensaje" disabled={sending || uploading || preparingAttachments}>
           {sending || uploading ? (
             '...'
           ) : (

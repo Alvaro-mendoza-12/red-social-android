@@ -1,4 +1,5 @@
 import { PageMetadata } from './ui/novvin/PageMetadata'
+import './ui/novvin/webParity.css'
 import { PublicHome } from './ui/novvin/PublicHome'
 import { PublicInfo } from './ui/novvin/PublicInfo'
 import { WebOutboxHost } from './components/WebOutboxHost'
@@ -11,6 +12,8 @@ import { RegisterPage } from './pages/auth/RegisterPage'
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
 import { SystemAnnouncementHost } from './components/SystemAnnouncementHost'
 import { AppLayout } from './layout/AppLayout'
+
+const AssistantPage = lazy(() => import('./features/assistant/AssistantPage').then(module => ({ default: module.AssistantPage })))
 
 const PostDetailPage = lazy(() =>
   import('./pages/feed/PostDetailPage').then((module) => ({
@@ -498,6 +501,10 @@ function AppRouter() {
                 <PublicProfilePage />
               </RouteSuspense>
             }
+          />
+          <Route
+            path="assistant"
+            element={<RouteSuspense><AssistantPage /></RouteSuspense>}
           />
           <Route
             path="settings"

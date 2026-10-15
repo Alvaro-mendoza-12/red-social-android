@@ -1360,7 +1360,7 @@ export function MessagesPage() {
     <>
       <header className="messages-inbox-head">
         <h1>Novvin</h1>
-        <div className="row-actions messages-head-actions">
+        <div className="row-actions messages-head-actions"><Link className="icon-btn" to="/app/assistant" aria-label="Asistente de Novvin" title="Asistente de Novvin">✦</Link>
           <Link className="icon-btn" to="/app/calls" aria-label="Llamadas" title="Llamadas">
             <Phone size={21} />
           </Link>
@@ -1437,7 +1437,7 @@ export function MessagesPage() {
               type="button"
               className={showUnreadOnly ? 'chip-btn active' : 'chip-btn'}
               aria-pressed={showUnreadOnly}
-              onClick={() => setShowUnreadOnly((current) => !current)}
+              onClick={() => { setShowUnreadOnly(current => !current); setShowFavoritesOnly(false); setShowArchived(false) }}
             >
               No leídos
             </button>
@@ -1445,7 +1445,7 @@ export function MessagesPage() {
               type="button"
               className={showFavoritesOnly ? 'chip-btn active' : 'chip-btn'}
               aria-pressed={showFavoritesOnly}
-              onClick={() => setShowFavoritesOnly((current) => !current)}
+              onClick={() => { setShowFavoritesOnly(current => !current); setShowUnreadOnly(false); setShowArchived(false) }}
             >
               Favoritos
             </button>
@@ -1453,7 +1453,7 @@ export function MessagesPage() {
               type="button"
               className={showArchived ? 'chip-btn active' : 'chip-btn'}
               aria-pressed={showArchived}
-              onClick={() => setShowArchived((current) => !current)}
+              onClick={() => { setShowArchived(current => !current); setShowUnreadOnly(false); setShowFavoritesOnly(false) }}
             >
               Archivados
             </button>

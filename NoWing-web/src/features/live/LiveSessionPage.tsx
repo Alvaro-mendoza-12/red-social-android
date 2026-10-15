@@ -1,3 +1,8 @@
+import { useLiveSfu } from './useLiveSfu'
+import { liveReactionEmoji } from '../../core/liveReaction'
+import { publicProfileSummaries } from '../../core/publicProfileSummaries'
+import { Settings, Maximize, UserPlus, X } from 'lucide-react'
+import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { StreamingVideo } from '../../components/StreamingMedia'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
@@ -66,7 +71,7 @@ type ServerEvents = {
   'reaction-count': (payload: { reactionCount?: number }) => void
   'live-state': (payload: Partial<LiveState>) => void
   'live-ended': () => void
-  reaction: (payload: { emoji?: string }) => void
+  reaction: (payload: { emoji?: string; kind?: string }) => void
   offer: (payload: OfferPayload) => void
   answer: (payload: AnswerPayload) => void
   'ice-candidate': (payload: IcePayload) => void
@@ -155,6 +160,15 @@ export function LiveSessionPage() {
   const [viewerCount, setViewerCount] = useState(0)
   const [reactionCount, setReactionCount] = useState(0)
   const [viewerMuted, setViewerMuted] = useState(true)
+  const [sfuAvailable, setSfuAvailable] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [invitations, setInvitations] = useState<GenericRow[]>([])
+  const [invitationProfiles, setInvitationProfiles] = useState<Map<string,GenericRow>>(new Map())
+  const [guestRequested, setGuestRequested] = useState(false)
+  const [guestMedia, setGuestMedia] = useState<MediaStream | null>(null)
+  const [guestCamera, setGuestCamera] = useState(true)
+  const [guestMic, setGuestMic] = useState(true)
+  const [guestBusy, setGuestBusy] = useState(false)
   const [liveState, setLiveState] = useState<LiveState>({
     source: initialSource,
     isPaused: false,
@@ -181,6 +195,69 @@ export function LiveSessionPage() {
   const avatarUrl = avatarOf(user)
   const hostName = stream ? textOf(stream, ['host_name'], 'Creador') : 'Creador'
   const isOwner = Boolean(user && stream && textOf(stream, ['host_user_id'], '') === user.id)
+
+  const sfu = useLiveSfu({ liveId: cleanLiveId, hostId: textOf(stream || {}, ['host_user_id']), role: role === 'host' ? 'host' : guestMedia ? 'guest' : 'viewer', enabled: sfuAvailable && Boolean(stream?.is_active), localMedia: role === 'host' ? localMedia : guestMedia, source: role === 'host' ? liveState.source : 'camera', micEnabled: role === 'host' ? liveState.micEnabled : guestMic, videoEnabled: role === 'host' ? liveState.videoEnabled && !liveState.isPaused : guestCamera })
+  useEffect(() => { let active = true; void fallbackApiJson<{sfuAvailable:boolean}>('/v1/data/live/capabilities', { expectedAccountId: userId }).then(value => { if(active) setSfuAvailable(value.sfuAvailable) }).catch(() => {}); return () => { active = false } }, [userId])
+  const guestMediaRef = useRef(guestMedia), guestCaptureSequence = useRef(0)
+  guestMediaRef.current = guestMedia
+  useEffect(() => () => { guestCaptureSequence.current++; guestMediaRef.current?.getTracks().forEach(track => track.stop()) }, [cleanLiveId, userId])
+  useEffect(() => {
+    if (!sfuAvailable || !cleanLiveId || !(settingsOpen || guestRequested || guestMedia)) return
+    let active = true, pending = false
+    const load = async () => {
+      if (pending || document.hidden) return
+      pending = true
+      try {
+        const value = await fallbackApiJson<{invitations:GenericRow[]}>(`/v1/data/live/${encodeURIComponent(cleanLiveId)}/guests/invitations`, { expectedAccountId: userId })
+        if (!active) return
+        setInvitations(value.invitations)
+        const profiles = await publicProfileSummaries(value.invitations.map(item => textOf(item,['invitee_user_id'])))
+        if (active) setInvitationProfiles(profiles)
+      } catch { /* Keep the previous request state while the connection recovers. */ } finally { pending = false }
+    }
+    void load(); const timer = window.setInterval(() => void load(), 5000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [sfuAvailable, cleanLiveId, settingsOpen, guestRequested, guestMedia, userId])
+  const acceptedInvitation = invitations.some(item => item.status === 'accepted')
+  useEffect(() => {
+    if (!guestMedia || acceptedInvitation) return
+    guestMedia.getTracks().forEach(track => track.stop())
+    setGuestMedia(null)
+    setGuestRequested(false)
+  }, [guestMedia, acceptedInvitation])
+  async function requestGuest() {
+    if (guestBusy) return; setGuestBusy(true)
+    try { const value = await fallbackApiJson<{invitation:GenericRow}>(`/v1/data/live/${encodeURIComponent(cleanLiveId)}/guests/requests`, { method: 'POST', expectedAccountId: userId, body: JSON.stringify({requestNonce:crypto.randomUUID()}) }); setInvitations([value.invitation]); setGuestRequested(true) } catch(caught) { setError(friendlyError(caught,'No se pudo enviar la solicitud.')) } finally { setGuestBusy(false) }
+  }
+  async function joinAsGuest() {
+    if (guestBusy || !acceptedInvitation) return; setGuestBusy(true)
+    const operation = ++guestCaptureSequence.current
+    try { const capture = guestCamera || guestMic ? await navigator.mediaDevices.getUserMedia({video:guestCamera,audio:guestMic}) : new MediaStream(); if (operation !== guestCaptureSequence.current) { capture.getTracks().forEach(track => track.stop()); return }; setGuestMedia(capture); setSettingsOpen(false) } catch { setError('Revisa los permisos de cámara y micrófono para participar.') } finally { setGuestBusy(false) }
+  }
+  async function toggleGuestMedia(kind: 'audio' | 'video') {
+    if (!guestMedia || guestBusy) return
+    const enabled = kind === 'audio' ? guestMic : guestCamera
+    const tracks = guestMedia.getTracks().filter(track => track.kind === kind && track.readyState === 'live')
+    if (!enabled && !tracks.length) {
+      const operation = ++guestCaptureSequence.current; setGuestBusy(true)
+      try {
+        const capture = await navigator.mediaDevices.getUserMedia({audio:kind === 'audio',video:kind === 'video'})
+        if (operation !== guestCaptureSequence.current || !guestMediaRef.current) { capture.getTracks().forEach(track => track.stop()); return }
+        const next = new MediaStream([...guestMediaRef.current.getTracks().filter(track => track.readyState === 'live'), ...capture.getTracks()])
+        setGuestMedia(next)
+      } catch { setError('Permite el acceso a tu cámara o micrófono para activarlo.'); return }
+      finally { if (operation === guestCaptureSequence.current) setGuestBusy(false) }
+    }
+    tracks.forEach(track => { track.enabled = !enabled })
+    if (kind === 'audio') setGuestMic(!enabled); else setGuestCamera(!enabled)
+  }
+  async function respondGuest(id:string,status:'accepted'|'rejected') {
+    if(guestBusy)return;setGuestBusy(true)
+    try{await fallbackApiJson(`/v1/data/live/${encodeURIComponent(cleanLiveId)}/guests/invitations/${encodeURIComponent(id)}`,{method:'PATCH',expectedAccountId:userId,body:JSON.stringify({status})});setInvitations(current=>current.map(item=>item.id===id?{...item,status}:item))}catch(caught){setError(friendlyError(caught,'No se pudo responder la solicitud.'))}finally{setGuestBusy(false)}
+  }
+  async function setGuestRequests(allowed:boolean) {
+    try { const value = await updateFallbackLiveState(cleanLiveId,{allowGuestRequests:allowed});setStream(value.stream) } catch(caught) {setError(friendlyError(caught,'No se pudo cambiar esta opción.'))}
+  }
 
   function beginBroadcast() {
     if (role !== 'host' || !isOwner || hostCaptureRef.current) return
@@ -352,8 +429,7 @@ export function LiveSessionPage() {
         token = await ensureFallbackAccessToken()
         if (!token) throw new Error('No hay una sesión de producción activa.')
         setConnectionLabel('Solicitando permisos')
-        await configureTurn()
-        await prepareHostMedia()
+        await Promise.all([configureTurn(), prepareHostMedia()])
         if (disposed) { manager.stopLocalStream(); return }
 
         manager.onTrack((_track, media) => {
@@ -384,6 +460,7 @@ export function LiveSessionPage() {
 
         socket.on('connect', () => {
           setConnectionLabel(role === 'host' ? 'Emitiendo' : 'Conectando al directo')
+          if (role === 'host') void updateFallbackLiveState(cleanLiveId, { isActive: true }).then(value => { if (!disposed) setStream(value.stream) }).catch(() => { if(!disposed) setError('No se pudo confirmar el inicio del directo. Intenta conectar de nuevo.') })
           socket.emit('join-live', {
             liveId: cleanLiveId,
             userId: currentUser.id,
@@ -432,7 +509,7 @@ export function LiveSessionPage() {
           window.setTimeout(() => navigate('/app/live', { replace: true }), 1200)
         })
         socket.on('reaction', (payload) => {
-          const reaction = { id: crypto.randomUUID(), emoji: String(payload.emoji || 'Me gusta') }
+          const reaction = { id: crypto.randomUUID(), emoji: liveReactionEmoji(payload) }
           setReactions((current) => [...current.slice(-14), reaction])
           window.setTimeout(() => setReactions((current) => current.filter((item) => item.id !== reaction.id)), 2200)
         })
@@ -571,7 +648,7 @@ export function LiveSessionPage() {
     }
   }
 
-  const media = role === 'host' ? localMedia : remoteMedia
+  const media = role === 'host' ? localMedia : sfu.hostStream || remoteMedia
   const reactionButtons = useMemo(() => ['👏', '🔥', '😮'], [])
 
   if (!isFallbackSession) return <StatusView title="Directo no disponible" description="Inicia sesión con el servidor de producción." />
@@ -580,6 +657,9 @@ export function LiveSessionPage() {
 
   return (
     <section className="live-session-page">
+      {sfu.error && (role === 'host' || !media) ? <div className="live-reconnect-notice" role="status">{sfu.error}<button className="ghost-btn" type="button" onClick={sfu.retry}>Volver a conectar</button></div> : null}
+      {settingsOpen ? <div className="app-dialog-backdrop"><section className="surface-card live-settings-dialog" role="dialog" aria-modal="true" aria-label="Ajustes del directo"><header className="row-between"><h2>Ajustes del directo</h2><button type="button" className="icon-btn" onClick={() => setSettingsOpen(false)} aria-label="Cerrar ajustes del directo"><X/></button></header>{role === 'host' && sfuAvailable ? <><label className="checkbox-inline"><input type="checkbox" checked={stream.allow_guest_requests === true} onChange={event => void setGuestRequests(event.target.checked)}/>Permitir solicitudes para participar</label><h3>Solicitudes</h3>{invitations.filter(item => item.status === 'pending').map(item => { const id=textOf(item,['invitee_user_id']),profile=invitationProfiles.get(id)||{};return <article className="live-guest-request" key={textOf(item,['id'])}><SafeAvatar name={textOf(profile,['display_name','username'],'Participante')} url={textOf(profile,['avatar_url'])}/><strong>{textOf(profile,['display_name','username'],'Participante')}</strong><button className="primary-btn" type="button" disabled={guestBusy} onClick={() => void respondGuest(textOf(item,['id']),'accepted')}>Aceptar</button><button className="ghost-btn" type="button" disabled={guestBusy} onClick={() => void respondGuest(textOf(item,['id']),'rejected')}>Rechazar</button></article>})}{!invitations.some(item => item.status==='pending')?<p>No hay solicitudes pendientes.</p>:null}</>:<p>Puedes activar el sonido, ampliar el directo y compartirlo desde sus controles.</p>}</section></div> : null}
+      {role === 'viewer' && acceptedInvitation && !guestMedia ? <div className="live-guest-confirmation"><strong>Tu solicitud fue aceptada</strong><label><input type="checkbox" checked={guestCamera} onChange={event => setGuestCamera(event.target.checked)}/>Cámara</label><label><input type="checkbox" checked={guestMic} onChange={event => setGuestMic(event.target.checked)}/>Micrófono</label><button className="primary-btn" type="button" disabled={guestBusy} onClick={() => void joinAsGuest()}>Activar y unirme</button></div> : null}
       <div className="live-video-stage" data-source={liveState.source} data-video-disabled={!liveState.videoEnabled || liveState.isPaused}>
         <StreamVideo stream={media} muted={role === 'host' || viewerMuted} className="live-main-video" />
         {!media || !liveState.videoEnabled || liveState.isPaused ? (
@@ -601,9 +681,10 @@ export function LiveSessionPage() {
         </div>
 
         <div className="live-reaction-overlay" aria-live="polite">
-          {reactions.map((reaction) => <span key={reaction.id}>{reaction.emoji}</span>)}
+          {reactions.map((reaction, index) => <span key={reaction.id} style={{right: `${8 + (index % 5) * 12}%`, color: ['#ff5797','#c980ff','#ff3978','#ffb1ce'][index % 4]}}>{reaction.emoji === '❤️' ? <Heart fill="currentColor" aria-hidden="true"/> : reaction.emoji}</span>)}
         </div>
 
+        {sfu.guests.length || guestMedia ? <div className="live-guests-strip">{guestMedia ? <figure><StreamVideo stream={guestMedia} muted className="live-guest-video"/><figcaption>Tú</figcaption></figure> : null}{sfu.guests.map(guest => <figure key={guest.id}><StreamVideo stream={guest.stream} muted={role === 'host' ? false : viewerMuted} className="live-guest-video"/><figcaption>{guest.name}</figcaption></figure>)}</div> : null}
         <aside className="live-comments-panel">
           <div className="live-comments-list">
             {comments.slice(-60).map((comment) => (
@@ -621,6 +702,10 @@ export function LiveSessionPage() {
         </aside>
 
         <div className="live-session-controls">
+          <button className="live-control" type="button" onClick={() => setSettingsOpen(value => !value)} aria-label="Ajustes del directo"><Settings/></button>
+          <button className="live-control" type="button" aria-label="Pantalla completa" onClick={() => { const node = document.querySelector<HTMLElement>('.live-session-page'); void (document.fullscreenElement ? document.exitFullscreen() : node?.requestFullscreen())?.catch(() => setError('No se pudo ampliar el directo.')) }}><Maximize/></button>
+          {role === 'viewer' && sfuAvailable && stream.allow_guest_requests && !guestMedia ? <button className="live-control" type="button" aria-label="Solicitar participar" disabled={guestBusy || guestRequested} onClick={() => void requestGuest()}><UserPlus/></button> : null}
+          {guestMedia ? <><button type="button" className="live-control" aria-label="Activar o silenciar tu micrófono" disabled={guestBusy} onClick={() => void toggleGuestMedia('audio')}>{guestMic?<Mic/>:<MicOff/>}</button><button type="button" className="live-control" aria-label="Activar o apagar tu cámara" disabled={guestBusy} onClick={() => void toggleGuestMedia('video')}>{guestCamera?<Camera/>:<CameraOff/>}</button><button type="button" className="live-control danger" aria-label="Dejar de participar" onClick={() => { guestCaptureSequence.current++; guestMedia.getTracks().forEach(track=>track.stop());setGuestMedia(null);setGuestRequested(false) }}><PhoneOff/></button></> : null}
           {role === 'viewer' ? <button className="live-control" type="button" onClick={() => setViewerMuted(current => !current)} aria-label={viewerMuted ? 'Activar sonido' : 'Silenciar directo'} title={viewerMuted ? 'Activar sonido' : 'Silenciar directo'}>{viewerMuted ? <VolumeX /> : <Volume2 />}</button> : null}
           {role === 'host' ? (
             <>

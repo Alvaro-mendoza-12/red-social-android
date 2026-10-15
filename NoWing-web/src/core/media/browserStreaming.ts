@@ -2,7 +2,7 @@ import { prepareStorageReadAccessToken, trustedStorageBackend } from './storageR
 import { getStorageReadIdentity, onStorageReadInvalidated, requireStorageReadIdentity, type StorageReadIdentity } from './storageReadSession'
 import { rewriteRuntimeStorageUrl } from '../runtimeBackend'
 
-type Registered = { id: string; source: string; identity: StorageReadIdentity }
+type Registered = { id: string; source: string; identity: StorageReadIdentity; downloadName?: string }
 const records = new Map<string, Registered>()
 let boot: Promise<ServiceWorker> | undefined
 async function worker() {
@@ -25,19 +25,20 @@ async function register(record: Registered) {
     const channel = new MessageChannel()
     const timer = window.setTimeout(() => { channel.port1.close(); reject(new Error('MEDIA_STREAMING_UNAVAILABLE')) }, 5000)
     channel.port1.onmessage = event => { window.clearTimeout(timer); channel.port1.close(); event.data?.ok ? resolve() : reject(new Error('MEDIA_STREAMING_UNAVAILABLE')) }
-    target.postMessage({ type: 'NOVVIN_MEDIA_REGISTER', id: record.id, source: record.source, base: trustedStorageBackend(record.source), token, generation: record.identity.generation }, [channel.port2])
+    target.postMessage({ type: 'NOVVIN_MEDIA_REGISTER', id: record.id, source: record.source, base: trustedStorageBackend(record.source), token, generation: record.identity.generation, downloadName: record.downloadName }, [channel.port2])
   })
   requireStorageReadIdentity(record.identity)
 }
-export async function browserStreamingSource(raw: string, identity = getStorageReadIdentity()) {
+export async function browserStreamingSource(raw: string, identity = getStorageReadIdentity(), options: { downloadName?: string } = {}) {
   const source = rewriteRuntimeStorageUrl(raw)
   if (!trustedStorageBackend(source)) {
     try { const url = new URL(source, location.origin); return ['https:', 'blob:'].includes(url.protocol) || (import.meta.env.DEV && url.origin === location.origin) ? source : '' } catch { return '' }
   }
   requireStorageReadIdentity(identity)
-  const key = `${identity.generation}/${source}`
+  const downloadName = options.downloadName?.replace(/[\u0000-\u001f\u007f/\\]/g,'_').slice(0,180)
+  const key = `${identity.generation}/${source}/${downloadName || ''}`
   let record = records.get(key)
-  if (!record) { record = { id: crypto.randomUUID(), source, identity }; records.set(key, record) }
+  if (!record) { record = { id: crypto.randomUUID(), source, identity, downloadName }; records.set(key, record) }
   await register(record)
   return `/__novvin_media/${record.id}`
 }

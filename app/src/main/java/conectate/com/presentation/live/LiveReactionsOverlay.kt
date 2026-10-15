@@ -22,9 +22,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import conectate.com.data.model.LiveReaction
-import kotlin.math.abs
 import kotlin.math.sin
 import kotlin.math.PI
+
+private val liveHeartColors = listOf(
+    Color(0xFFFF4F87), Color(0xFFFF6FA5), Color(0xFFAD79FF), Color(0xFFFF86B3)
+)
 
 @Composable
 fun LiveReactionsOverlay(
@@ -63,7 +66,7 @@ private fun BoxWithConstraintsScope.FloatingReaction(
     animationsEnabled: Boolean
 ) {
     val density = LocalDensity.current
-    val seed = abs(reaction.id.hashCode())
+    val seed = reaction.id.hashCode() and Int.MAX_VALUE
 
     // Keep hearts in the dedicated right-side lane from the reference layout;
     // chat, PiP and the composer remain readable on the left/center.
@@ -94,7 +97,7 @@ private fun BoxWithConstraintsScope.FloatingReaction(
         modifier = Modifier
             .offset(x = xDp + motion.lateralDp.dp, y = motion.riseDp.dp)
             .offset(y = (-8).dp)
-            .size(28.dp)
+            .size((24 + seed % 9).dp)
             .graphicsLayer {
                 alpha = motion.alpha
                 scaleX = motion.scale
@@ -102,7 +105,7 @@ private fun BoxWithConstraintsScope.FloatingReaction(
                 rotationZ = motion.rotationDegrees
             }
             .align(Alignment.BottomStart),
-        tint = Color(0xFFFF4F87)
+        tint = liveHeartColors[seed % liveHeartColors.size]
     )
 }
 

@@ -40,7 +40,7 @@ self.addEventListener('message', event => {
   else tokens.set(client, { token: data.token, generation: data.generation, base: data.base })
   const key = `${client}/${data.id}`, existing = records.get(key)
   if (!existing || existing.source !== data.source || existing.generation !== data.generation)
-    records.set(key, { client, source: data.source, generation: data.generation })
+    records.set(key, { client, source: data.source, generation: data.generation, downloadName: typeof data.downloadName === 'string' ? data.downloadName.replace(/[\u0000-\u001f\u007f/\\]/g,'_').slice(0,180) : '' })
   for (const done of [...(pending.get(`${client}/${data.id}`) || [])]) done()
   event.ports[0]?.postMessage({ ok: true })
 })
@@ -73,6 +73,12 @@ async function stream(event, id) {
     if (tokens.get(event.clientId) !== auth || records.get(key) !== record) return new Response('', { status: 403 })
     if (!response.ok) { await response.body?.cancel(); return new Response('', { status: response.status }) }
     const output = new Headers(response.headers)
+    if (output.has('Content-Encoding')) { output.delete('Content-Encoding'); output.delete('Content-Length') }
+    if (record.downloadName) {
+      output.set('Content-Type', 'application/octet-stream')
+      output.set('Content-Disposition', "attachment; filename*=UTF-8''" + encodeURIComponent(record.downloadName))
+      output.set('X-Content-Type-Options', 'nosniff')
+    }
     output.set('Cache-Control', 'private, no-store')
     output.delete('Set-Cookie')
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers: output })

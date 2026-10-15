@@ -33,3 +33,10 @@ Web pública: https://red-social-android.vercel.app . El código revisado se con
 - Rondas: tarjetas y formularios adaptados, búsqueda de clasificación y consulta acotada de ganadores.
 
 La comprobación visual adicional cubre 100 combinaciones: 45 vistas privadas, 25 vistas de formularios/Rondas/ranking y 30 páginas públicas. Usa anchos de 320, 360, 768, 1440 y 2560 píxeles. Las pruebas con datos sintéticos no escriben en producción. Las pruebas reales de envío están restringidas a las dos cuentas autorizadas y sus archivos de prueba se eliminan después.
+
+
+## Continuación 9.0.33
+
+La revisión de multimedia y controles está descrita en [la versión 9.0.33](RELEASE_9_0_33_WEB_MEDIA.md). Se añadieron documentos internos, preparación ZIP de carpetas, editor de imágenes, audio en borrador, galería del chat, panel del contacto, favoritos de stickers, comentarios laterales de video, controles de voz y SFU de directos. El catálogo social de juegos queda visible; la entrada de IA y mensajes del radar usan las rutas existentes del servidor.
+
+Las comprobaciones de navegador y SFU de esta continuación se hicieron con datos sintéticos. La aceptación física y prolongada conserva el estado pendiente. Los formatos Office se muestran como contenido; documentos antiguos o no compatibles se descargan.

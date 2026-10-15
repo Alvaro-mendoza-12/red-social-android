@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Volume2, VolumeX, Pause, Play, X } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { friendlyError } from '../../core/utils'
@@ -89,7 +90,6 @@ export function MomentsViewerPage() {
   useEffect(() => {
     setProgress(0)
     setReplyChatId(null)
-    setMuted(true)
     setManualPause(false)
     setReplyDraft('')
     setReplyError('')
@@ -239,8 +239,8 @@ export function MomentsViewerPage() {
           <div className="row-actions">
             <small className="story-state-pill">{shouldPause ? 'Pausado' : 'Reproduciendo'}</small>
             {activeMoment.mediaType === 'video' || activeMoment.music ? (
-              <button className="ghost-btn" type="button" onClick={() => setMuted((current) => !current)}>
-                {muted ? 'Audio OFF' : 'Audio ON'}
+              <button className="story-audio-button" type="button" aria-label={muted ? 'Activar sonido del momento' : 'Silenciar momento'} onClick={() => setMuted(current => !current)}>
+                {muted ? <VolumeX size={18}/> : <Volume2 size={18}/>} {muted ? 'Activar sonido' : 'Sonido activado'}
               </button>
             ) : null}
             <button className="ghost-btn" type="button" onClick={() => setManualPause((current) => !current)}>

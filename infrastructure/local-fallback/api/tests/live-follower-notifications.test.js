@@ -5,6 +5,7 @@ const {
   ensureLiveFollowerNotificationTables,
   liveFollowerNotificationsEnabled,
   notificationForOutbox,
+  recipientMayReceiveLiveNotification,
   processPendingLiveFollowerNotifications,
 } = require('../src/live-follower-notifications')
 const { registerLiveRoutes } = require('../src/live-routes')
@@ -87,6 +88,7 @@ async function testEnqueueUsesFollowerAndBlockRules() {
       hostName: 'Host',
     })
     assert.deepStrictEqual(result, { enqueued: 2, disabled: false })
+    assert.match(query, /live\.visibility/); assert.match(query, /live\.is_active/)
     assert.match(query, /fallback_follows/)
     assert.match(query, /fallback_user_blocks/)
     assert.match(query, /recipient_id <> ALL/)
@@ -244,7 +246,22 @@ async function testLiveStateTransitionCommitsBeforeFanoutAndDoesNotRepeat() {
   })
 }
 
+async function testVisibilityAndSubscriptionAreRecheckedBeforeDelivery() {
+  for (const [row,expected] of [
+    [{live_visible:true,still_following:true,blocked:false,break_mode:'off'},true],
+    [{live_visible:false,still_following:true,blocked:false},false],
+    [{live_visible:true,still_following:false,blocked:false},false],
+    [{live_visible:true,still_following:true,blocked:true},false],
+    [{live_visible:true,still_following:true,blocked:false,break_mode:'mute'},false],
+    [{},false],
+  ]) {
+    const value=await recipientMayReceiveLiveNotification({query:async(sql,values)=>{assert.match(sql,/live\.visibility/);assert.match(sql,/fallback_follows/);assert.equal(values[2],'live-id');return {rows:[row]}}},{recipient_id:'follower',host_user_id:'host',live_id:'live-id'})
+    assert.equal(value,expected)
+  }
+}
+
 Promise.resolve()
+  .then(testVisibilityAndSubscriptionAreRecheckedBeforeDelivery)
   .then(testFlagDefaultsClosed)
   .then(testOnlyFalseToTrueStartsLive)
   .then(testSchemaHasDurableDeduplication)
