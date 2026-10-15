@@ -1,9 +1,15 @@
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
-import { mapMomentOverlay, mapMomentSound, momentDuration, musicGain, musicPublishFields, musicRange, searchMomentMusic, type MomentMusicSelection } from '../../features/moments/momentMusic'
+import { mapMomentOverlay, mapMomentSound, momentDuration, momentFileError, musicGain, musicPublishFields, musicRange, searchMomentMusic, type MomentMusicSelection } from '../../features/moments/momentMusic'
 jest.mock('../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn() }))
 const api = fallbackApiJson as jest.Mock
 const selection: MomentMusicSelection = { track: { id: 'community:track', title: 'Pista', artist: 'Artista', audioUrl: 'https://media.test/full.mp3', durationMs: 180000, source: 'novvin_community' }, startMs: 120000, volume: .7, originalVolume: .5, fadeInMs: 1000, fadeOutMs: 1000, duckOriginal: true, presentation: 'card' }
 beforeEach(() => api.mockReset())
+test('the file picker matches the existing server format and size policy', () => {
+  expect(momentFileError({ type: 'video/mp4', size: 35 * 1024 * 1024 })).toBe('')
+  expect(momentFileError({ type: 'video/webm', size: 1000 })).toContain('MP4')
+  expect(momentFileError({ type: 'image/gif', size: 1000 })).toContain('WEBP')
+  expect(momentFileError({ type: 'video/mp4', size: 35 * 1024 * 1024 + 1 })).toContain('35 MB')
+})
 test('photos use six seconds and videos use their duration up to twenty-five seconds', () => {
   expect(momentDuration('image', 20000)).toBe(6000)
   expect(momentDuration('video', 12000)).toBe(12000)

@@ -3,7 +3,7 @@ import { StreamingAudio, StreamingImage, StreamingVideo } from '../../components
 import { useAuth } from '../../core/auth/AuthProvider'
 import { friendlyError } from '../../core/utils'
 import { publishMoment } from './momentsData'
-import { momentDuration, musicGain, musicRange, searchMomentMusic, type MomentMusicSelection, type MomentOverlay, type MomentTrack } from './momentMusic'
+import { momentDuration, momentFileError, musicGain, musicRange, searchMomentMusic, type MomentMusicSelection, type MomentOverlay, type MomentTrack } from './momentMusic'
 import './momentComposer.css'
 
 function useFileSource(file: File | null) {
@@ -110,7 +110,7 @@ export function MomentComposer({ onClose, onPublished }: { onClose: () => void; 
     }}>
       <div className="row-between"><h3>Crear momento</h3><button className="ghost-btn" type="button" disabled={saving} onClick={onClose}>Cerrar</button></div>
       <form onSubmit={event => void submit(event)}><fieldset disabled={saving}>
-        <label>Foto o video<input type="file" accept="image/*,video/*" onChange={event => { const next = event.target.files?.[0]; event.target.value = ''; if (!next) return; if (!/^(image|video)\//.test(next.type) || next.size > (next.type.startsWith('video/') ? 120 : 20) * 1024 * 1024) { setError('Elige una imagen de hasta 20 MB o un video de hasta 120 MB.'); return } setFile(next); setVideoDuration(0); setError('') }} /></label>
+        <label>Foto o video<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={event => { const next = event.target.files?.[0]; event.target.value = ''; if (!next) return; const invalid = momentFileError(next); if (invalid) { setError(invalid); return } setFile(next); setVideoDuration(0); setError('') }} /></label>
         {source ? <div className="moment-editor-preview">{video ? <StreamingVideo key={source} src={source} controls muted playsInline onError={() => { setVideoDuration(0); setError('No se pudo abrir el video. Prueba con otro archivo.') }} onLoadedMetadata={event => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) setVideoDuration(Math.round(value * 1000)); else setError('No se pudo leer la duración del video.') }} onTimeUpdate={event => { if (event.currentTarget.currentTime >= 25) event.currentTarget.currentTime = 0 }} /> : <StreamingImage src={source} alt="Vista previa del momento" />}
           {overlay.text ? <span className="moment-text-overlay" style={{ left: `${overlay.x * 100}%`, top: `${overlay.y * 100}%`, color: overlay.color, fontFamily: overlay.font === 'mono' ? 'monospace' : overlay.font === 'serif' ? 'serif' : 'sans-serif' }}>{overlay.text}</span> : null}
         </div> : null}

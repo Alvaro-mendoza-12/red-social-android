@@ -17,6 +17,10 @@ export type MomentSound = {
 export type MomentOverlay = { text: string; color: string; font: 'sans' | 'serif' | 'mono'; x: number; y: number }
 const finite = (value: number, fallback: number) => Number.isFinite(value) ? value : fallback
 export const unit = (value: number) => Math.min(1, Math.max(0, finite(value, 1)))
+export function momentFileError(file: Pick<File, 'type' | 'size'>): string {
+  if (!['image/jpeg', 'image/png', 'image/webp', 'video/mp4'].includes(file.type)) return 'Elige una foto JPG, PNG o WEBP, o un video MP4.'
+  return file.size > 35 * 1024 * 1024 ? 'El archivo puede tener hasta 35 MB.' : ''
+}
 export function momentDuration(mediaType: string, durationMs?: number): number {
   return mediaType === 'video' ? Math.max(1000, Math.min(25000, finite(durationMs || 25000, 25000))) : 6000
 }

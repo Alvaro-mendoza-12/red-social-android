@@ -18,7 +18,7 @@ Ejecutar `vercel --prod` desde la raíz del repositorio, o `npm run deploy:produ
 
 ## Momentos
 
-Seleccionar una foto o un video abre el editor sin publicarlo. El botón «Publicar momento» confirma la descripción, audiencia, duración, texto y música. El catálogo de comunidad muestra pistas aprobadas y autorizadas para reutilización; se puede recorrer la canción completa para elegir el inicio del fragmento. También se puede usar audio del dispositivo. Las fotos duran seis segundos y los videos respetan su duración hasta veinticinco segundos.
+Seleccionar una foto JPG, PNG o WEBP, o un video MP4, abre el editor sin publicarlo (hasta 35 MB, según la política del servidor). El botón «Publicar momento» confirma la descripción, audiencia, duración, texto y música. El catálogo de comunidad muestra pistas aprobadas y autorizadas para reutilización; se puede recorrer la canción completa para elegir el inicio del fragmento. También se puede usar audio del dispositivo. Las fotos duran seis segundos y los videos respetan su duración hasta veinticinco segundos.
 
 El visor usa el fragmento compatible que devuelve el servidor, sincroniza la música y pausa el audio y el video al mantener pulsado, escribir una respuesta, pausar o cambiar de pestaña. Los videos con audio ya mezclado desde Android no reproducen una segunda pista. El navegador puede exigir tocar «Audio ON» o «Reproducir» para permitir sonido.
 

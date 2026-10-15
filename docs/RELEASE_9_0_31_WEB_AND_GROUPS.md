@@ -14,7 +14,7 @@
 
 - Android: compilación release firmada y 66 pruebas seleccionadas sin fallos. Incluyen tres pruebas con Room sobre conservación de chats por cuenta.
 - API Linux: 801 pruebas aprobadas y seis omitidas; 77 comprobaciones adicionales de PostgreSQL y 100 de membresía, permisos, avisos e historial con HTTP y bases desechables.
-- Web: compilación TypeScript/Vite; 270 pruebas de componentes y lógica; ocho pruebas del intermediario de multimedia; tres pruebas del contrato CORS de entrega y 13 comprobaciones con Nginx y archivos ficticios.
+- Web: compilación TypeScript/Vite; 271 pruebas de componentes y lógica; ocho pruebas del intermediario de multimedia; tres pruebas del contrato CORS de entrega y 13 comprobaciones con Nginx y archivos ficticios.
 - Navegador real, datos ficticios y red simulada: cola de texto, imagen, video, audio y documento; separación de cuentas; cancelación; persistencia al recargar; entrega posterior sin duplicar identificadores.
 - Sitio público: acceso QR con aprobación de una de las cuentas autorizadas; mensajes persistidos en ambos sentidos entre API y web (287 ms observados para recibir uno de ellos); vistas de mensajes sin desbordamiento horizontal entre 320 y 2560 píxeles. Es una medición puntual, no una garantía de latencia.
 - Entrega pública: Nginx conserva la decisión CORS de la API después de autorizar un archivo. Se comprobó reproducción del avatar en bucle y del feed de videos, con 43 respuestas de archivos, incluidas 31 parciales, sin errores. Los chats largos muestran primero los últimos 80 mensajes y permiten cargar los anteriores; los adjuntos fuera de la vista esperan a ser visibles.
