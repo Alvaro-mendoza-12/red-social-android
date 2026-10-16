@@ -34,6 +34,7 @@ export const publicInfoPages = {
     description: 'Usa Novvin desde una computadora, tablet o celular. Conoce los mensajes con archivos, los videos, Social y el acceso con tu cuenta móvil.',
     heading: 'Tu cuenta de Novvin, también en la web.',
     sections: [
+      { heading: '¿Buscabas Novvyn con «y»?', body: 'Si escribiste Novvyn, Noving, Nowing o NoWin buscando nuestra red social, el nombre de la aplicación es Novvin: N-O-V-V-I-N. Esta es Novvin Web, donde puedes iniciar sesión con la misma cuenta del móvil. Guarda esta dirección en tus favoritos para volver directamente.' },
       { heading: 'Conversa desde tu computadora', body: 'Abre tus conversaciones, grupos y comunidades con la misma cuenta que usas en el teléfono. En una pantalla grande puedes ver la lista de mensajes junto al chat. En una pantalla pequeña, cada conversación ocupa su propia vista.' },
       { heading: 'Comparte fotos y archivos', body: 'El botón de adjuntar permite elegir imágenes, videos, audios y documentos de tu equipo. Puedes revisar los archivos y añadir un texto antes de enviarlos. Las imágenes se abren en un visor con ampliación y los documentos compatibles permiten vista previa o descarga.' },
       { heading: 'Descubre videos y publicaciones', body: 'Explora videos verticales, sigue a sus creadores y comparte contenido con tus conversaciones. Social reúne publicaciones, comentarios y momentos. Los perfiles conservan el nombre, la foto, las relaciones y las preferencias de la cuenta.' },

@@ -19,7 +19,7 @@ export const publicRoutes = [
 export function structuredData(route, title, description, label) {
   const home = site + '/', url = route === '/' ? home : site + route
   const organization = { '@type': 'Organization', '@id': home + '#organization', name: 'Novvin', alternateName: 'Novvin Web', url: home, logo: { '@type': 'ImageObject', url: site + '/novvin-logo.png', width: 512, height: 512 } }
-  const website = { '@type': 'WebSite', '@id': home + '#website', name: 'Novvin', alternateName: ['Novvin Web'], url: home, inLanguage: 'es', publisher: { '@id': organization['@id'] } }
+  const website = { '@type': 'WebSite', '@id': home + '#website', name: 'Novvin', alternateName: ['Novvin Web', new URL(site).hostname], url: home, inLanguage: 'es', publisher: { '@id': organization['@id'] } }
   const page = { '@type': 'WebPage', '@id': url + '#webpage', url, name: title, description, inLanguage: 'es', isPartOf: { '@id': website['@id'] }, publisher: { '@id': organization['@id'] }, primaryImageOfPage: { '@type': 'ImageObject', url: site + '/novvin-share.png', width: 1200, height: 630 } }
   const graph = [organization, website, page]
   if (route !== '/') {

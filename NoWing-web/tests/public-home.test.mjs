@@ -50,7 +50,7 @@ for(const [route,file,label] of publicRoutes){
   const html=read(file),nodes=graph(html),url=site+(route==='/'?'/':route)
   const web=nodes.find(item=>item['@type']==='WebSite'),org=nodes.find(item=>item['@type']==='Organization'),page=nodes.find(item=>item['@type']==='WebPage')
   assert.equal(web.name,'Novvin');assert.equal(web.url,site+'/')
-  assert.deepEqual(web.alternateName,['Novvin Web']);assert.equal(org.logo.width,512)
+  assert.deepEqual(web.alternateName,['Novvin Web',new URL(site).hostname]);assert.equal(org.logo.width,512)
   assert.equal(page.url,url);assert.equal(page['@id'],url+'#webpage')
   assert.ok(html.includes('<title>'+page.name+'</title>'))
   assert.doesNotMatch(JSON.stringify(nodes),/aggregateRating|SearchAction|sameAs/)
@@ -66,6 +66,29 @@ test('each public title and description is unique',()=>{
  const pages=publicRoutes.map(([,file])=>graph(read(file)).find(item=>item['@type']==='WebPage'))
  assert.equal(new Set(pages.map(page=>page.name)).size,publicRoutes.length)
  assert.equal(new Set(pages.map(page=>page.description)).size,publicRoutes.length)
+})
+
+test('site name signals consistently prefer Novvin and offer the site hostname as last fallback',()=>{
+ const html=read('index.html'),web=graph(html).find(item=>item['@type']==='WebSite')
+ assert.equal(web.name,'Novvin')
+ assert.match(html,/<meta property="og:site_name" content="Novvin"/)
+ assert.deepEqual(web.alternateName,['Novvin Web','red-social-android.vercel.app'])
+ assert.ok(!web.alternateName.includes('Vercel'))
+ assert.ok(!web.alternateName.includes('Novvyn'))
+})
+
+test('the brand spelling explanation is visible without opening a disclosure or executing JavaScript',()=>{
+ const html=read('index.html')
+ assert.match(html,/<details open=""><summary>¿Buscabas Novvyn, Noving, Nowing o NoWin\?<\/summary>/)
+ assert.match(html,/Novvyn con «y»/)
+ assert.match(html,/href="\/novvin-web">conocer Novvin Web/)
+})
+
+test('the web guide explains Novvyn as a spelling query without changing the real brand',()=>{
+ const html=read('novvin-web.html')
+ assert.match(html,/<h2>¿Buscabas Novvyn con «y»\?<\/h2>/)
+ assert.match(html,/el nombre de la aplicación es Novvin: N-O-V-V-I-N/)
+ assert.equal(graph(html).find(item=>item['@type']==='Organization').name,'Novvin')
 })
 test('unknown paths do not rewrite into successful application documents',()=>{
  assert.ok(!config.rewrites.some(item=>item.source==='/(.*)'))

@@ -91,11 +91,12 @@ export function PublicHome() {
               público. Inicia sesión para conversar, seguir y participar.
             </p>
           </details>
-          <details>
-            <summary>¿Buscabas Noving, Nowing, Novvyn o NoWin?</summary>
+          <details open>
+            <summary>¿Buscabas Novvyn, Noving, Nowing o NoWin?</summary>
             <p>
-              El nombre de nuestra red social es <strong>Novvin</strong>: N-O-V-V-I-N. Esta es la
-              página de acceso a Novvin Web.
+              Si buscabas nuestra red social escribiendo Novvyn con «y», Noving, Nowing o NoWin,
+              el nombre es <strong>Novvin</strong>: N-O-V-V-I-N. Desde esta página puedes
+              <a href="/login"> iniciar sesión</a> o <a href="/novvin-web">conocer Novvin Web</a>.
             </p>
           </details>
         </section>

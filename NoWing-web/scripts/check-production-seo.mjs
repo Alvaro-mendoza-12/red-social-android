@@ -4,7 +4,7 @@ import { publicRoutes, site } from './public-seo.mjs'
 
 const checks = []
 async function request(path) {
-  return fetch(site + path, { redirect: 'manual', headers: { 'User-Agent': 'Novvin-owned-production-SEO-audit/9.0.38', 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(20000) })
+  return fetch(site + path, { redirect: 'manual', headers: { 'User-Agent': 'Novvin-owned-production-SEO-audit/9.0.39', 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(20000) })
 }
 async function check(name, run) {
   try { await run(); checks.push({ name, passed: true }) }
@@ -32,7 +32,9 @@ for (const [route, , label] of publicRoutes) {
     assert(raw, 'Missing structured data')
     const graph = JSON.parse(raw)['@graph'], page = graph.find(node => node['@type'] === 'WebPage')
     assert(page?.url === canonical && page?.name === title, 'Page schema mismatch')
-    assert(graph.find(node => node['@type'] === 'WebSite')?.name === 'Novvin', 'Site name mismatch')
+    const website = graph.find(node => node['@type'] === 'WebSite')
+    assert(website?.name === 'Novvin' && metas(html, 'og:site_name') === 'Novvin', 'Site name mismatch')
+    assert(JSON.stringify(website.alternateName) === JSON.stringify(['Novvin Web', new URL(site).hostname]), 'Site name fallback mismatch')
     if (route !== '/') assert(graph.find(node => node['@type'] === 'BreadcrumbList')?.itemListElement.at(-1)?.name === label, 'Missing breadcrumbs')
     const csp = response.headers.get('content-security-policy') || ''
     assert(csp.includes("'sha256-" + createHash('sha256').update(raw).digest('base64') + "'"), 'Structured data blocked by CSP')
