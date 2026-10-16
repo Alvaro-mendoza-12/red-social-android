@@ -214,3 +214,14 @@
 .attachment-draft-meta > small { display:block; color:var(--secondary-text); }
 .attachment-preview { border-radius:10px; }
 @media(max-width:480px) { .attachment-draft-item { width:160px; } }
+
+.image-editor { width:min(1040px,calc(100vw - 24px)); grid-template-columns:minmax(0,1fr) minmax(260px,320px); align-items:start; }
+.image-editor > header { grid-column:1/-1; }
+.image-editor-controls { display:grid; gap:14px; min-width:0; }
+.image-editor-controls .image-crop-options { grid-template-columns:1fr; }
+.image-editor-controls .image-crop-options p { grid-column:auto; }
+@media(max-width:720px) {
+ .image-editor { grid-template-columns:minmax(0,1fr); padding:16px; gap:12px; }
+ .image-editor-controls .image-crop-options { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .image-editor-controls .image-crop-options p { grid-column:1/-1; }
+}

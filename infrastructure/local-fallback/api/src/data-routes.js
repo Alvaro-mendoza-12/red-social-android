@@ -4316,7 +4316,7 @@ async function resolveOwnedStorageUrl(pool, currentUserId, rawUrl, allowedBucket
     `SELECT name FROM fallback_storage_objects
      WHERE bucket_id = $1 AND owner_id = $2::uuid AND name = ANY($3::text[])
      ${scanReadySql}
-      ORDER BY array_position($3::text[], name) ${scanReadySql}
+      ORDER BY array_position($3::text[], name)
       LIMIT 1`,
     [reference.bucket, currentUserId, candidateNames],
   )
@@ -14676,6 +14676,7 @@ module.exports = {
   normalizeProfileVisibility,
   normalizeSocialLinks,
   parsePublicStorageObjectUrl,
+  resolveOwnedStorageUrl,
   profileClearFields,
   profilePatchFromBody,
   rankPublicProfiles,

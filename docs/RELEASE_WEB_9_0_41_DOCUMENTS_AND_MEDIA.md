@@ -9,6 +9,9 @@ Fecha: 16 de octubre de 2026.
 - Videos en mensajes: duración real máxima de 600 segundos, verificada por metadatos en navegador y ffprobe en servidor, con tolerancia de 250 ms por redondeo del contenedor.
 - Los errores de preparación o envío conservan el chat y el borrador, con aviso descartable junto al compositor. Los errores de acceso inicial siguen siendo una pantalla de acceso fallido.
 - Descarga web y exportación multimedia Android: límite alineado a 500 MiB. La vista previa documental permanece limitada a 32 MiB; los originales mayores se descargan.
+- Botones de adjuntos: el nombre se trunca sin ocultar «Editar imagen»; los controles de edición quedan separados de la vista previa en pantallas amplias.
+- Stickers: se sustituyen etiquetas técnicas de relleno como `string` por «Sticker».
+- Perfil: corregida una condición de escaneo duplicada después de `ORDER BY`, que causaba SQL 42804 al validar la propiedad de un avatar nuevo. La condición permanece en `WHERE`; no se relaja la autorización ni el escaneo.
 - Recorte: dibujo libre, ocho bordes ajustables, controles por teclado y texto con color, tamaño y posición.
 - Fotos: ampliación de avatar y portada en perfil y panel del contacto; compatibilidad con campos antiguos `image`, `icon`, objetos anidados y rutas que incluyen `group-media` o `community-media`.
 - SEO: la guía de acceso incluye Novvyn en su título y descripción, explicando que la marca es Novvin. Se mantienen las 14 páginas públicas, sus enlaces canónicos, sitemap, imágenes y datos estructurados. No se declaran variantes como empresas distintas ni se repiten listas artificiales de palabras.
@@ -20,6 +23,13 @@ Las comprobaciones y el despliegue se registran en `audit/2026-10-07-integral/we
 El servidor volvió a responder a `/ready` y a SSH el 16 de octubre a las 21:18 UTC. La indisponibilidad de la mañana es un incidente histórico, no su estado actual.
 
 La aceptación de llamadas, videollamadas, salas de voz y directos en móvil fue comunicada expresamente por el propietario el 16 de octubre. Se registra como aceptación del usuario; no como una prueba física nueva ejecutada por este agente.
+
+## Comprobaciones ejecutadas
+
+- Web: 480 pruebas unitarias, 79 suites; 44 comprobaciones de SEO.
+- Android: compilación Kotlin y 1667 pruebas unitarias en 347 suites, sin fallos. No se instaló esta nueva versión en un teléfono durante esta entrega.
+- API: la primera imagen pasó 810 casos, 6 omitidos que necesitan servicios de prueba; se repite la batería sobre la imagen que incluye la corrección de avatares.
+- Prueba real previa al arreglo de avatares: el recorte libre, sus ocho controles, texto y envío de la imagen editada pasaron en escritorio, teléfono vertical y horizontal. Los errores del adjunto conservaron el chat y el borrador. El avatar nuevo detectó el SQL 42804; queda registrado como fallo descubierto y no como caso aprobado.
 
 ## Pendientes de certificación integral
 
