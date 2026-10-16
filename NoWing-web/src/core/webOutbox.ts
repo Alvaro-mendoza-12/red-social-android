@@ -74,7 +74,7 @@ async function optimistic(item: Pending): Promise<GenericRow> {
 }
 export async function stageOfflineChatAttachment(bucket: string, file: File, path?: string, favoriteSticker?: ImportedSticker) {
   const owner = outboxOwner(); requireOwner(owner)
-  if (file.size > MAX_MESSAGE_UPLOAD_BYTES) throw new Error('El archivo supera los 60 MB permitidos por mensaje.')
+  if (file.size > MAX_MESSAGE_UPLOAD_BYTES) throw new Error('El archivo supera los 500 MB permitidos por mensaje.')
   const id = crypto.randomUUID()
   await put('files', { id, owner, bucket, blob: file, name: file.name, path: path || `${owner}/${id}/${file.name}`, createdAt: Date.now(), ...(favoriteSticker ? { favoriteSticker } : {}) } satisfies Attachment)
   requireOwner(owner)

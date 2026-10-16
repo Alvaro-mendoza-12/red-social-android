@@ -1,12 +1,13 @@
-import { attachmentPreparationError, compressFiles, droppedAttachments, prepareAttachmentFiles } from '../../core/attachmentPreparation'
+import { attachmentPreparationError, compressFiles, droppedAttachments, prepareAttachmentFiles, folderArchiveParts, MAX_MESSAGE_UPLOAD_BYTES } from '../../core/attachmentPreparation'
 import { unzipSync, strFromU8 } from 'fflate'
-jest.mock('fflate',()=>{const actual=jest.requireActual('fflate');return {...actual,zip:(data:unknown,options:unknown,callback:(error:null,value:Uint8Array)=>void)=>callback(null,actual.zipSync(data,options))}})
-const file=(name:string,text:string)=>({name,size:new TextEncoder().encode(text).length,arrayBuffer:async()=>new TextEncoder().encode(text).buffer}) as File
+jest.mock('../../core/messageVideoPolicy',()=>({validateMessageVideo:jest.fn(async()=>{})}))
+const file=(name:string,text:string)=>new File([new TextEncoder().encode(text)],name)
+beforeAll(()=>{Object.defineProperty(Blob.prototype,'arrayBuffer',{configurable:true,value:function(){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsArrayBuffer(this)})}})})
 const bytes=(blob:Blob)=>new Promise<Uint8Array>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(new Uint8Array(reader.result as ArrayBuffer));reader.onerror=reject;reader.readAsArrayBuffer(blob)})
 test('retains folder paths, file contents and empty directories',async()=>{const packed=await compressFiles([{path:'Fotos/',file:null},{path:'Fotos/vacía/',file:null},{path:'Fotos/nota.txt',file:file('nota.txt','Hola Novvin')}],'Fotos');const result=unzipSync(await bytes(packed));expect(packed.name).toBe('Fotos.zip');expect(Object.keys(result)).toEqual(['Fotos/','Fotos/vacía/','Fotos/nota.txt']);expect(strFromU8(result['Fotos/nota.txt'])).toBe('Hola Novvin')})
 test.each(['../private.txt','carpeta/../../private.txt','/private.txt','carpeta/./private.txt','carpeta/evil\\file.txt'])('rejects unsafe archive path %s',async path=>{await expect(compressFiles([{path,file:file('a','a')}],'a')).rejects.toThrow()})
 test('rejects duplicate archive paths',async()=>{await expect(compressFiles([{path:'a',file:file('a','1')},{path:'a',file:file('a','2')}],'a')).rejects.toThrow('mismo nombre')})
-test('enforces the source size and file count before allocating',async()=>{await expect(compressFiles([{path:'a',file:{...file('a','1'),size:129*1024*1024}}],'a')).rejects.toThrow('128 MB');await expect(compressFiles(Array.from({length:501},(_,i)=>({path:String(i),file:null})),'a')).rejects.toThrow('500')})
+test('enforces the source size and file count before allocating',async()=>{await expect(compressFiles([{path:'a',file:{...file('a','1'),size:501*1024*1024}}],'a')).rejects.toThrow('500 MB');await expect(compressFiles(Array.from({length:5001},(_,i)=>({path:String(i),file:null})),'a')).rejects.toThrow('5000')})
 test('preserves small or already compressed attachments',async()=>{const source=file('test.txt','hello');expect(await prepareAttachmentFiles([source])).toEqual([source])})
 test('snapshots directory entries before the drop event becomes unavailable',async()=>{let calls=0;const entry={name:'Grupo',isDirectory:true,isFile:false,createReader:()=>({readEntries:(ok:(entries:unknown[])=>void)=>ok(calls++?[]:[{name:'nota.txt',isFile:true,isDirectory:false,file:(ok:(value:File)=>void)=>ok(file('nota.txt','hola'))}])})};const transfer={items:[{kind:'file',webkitGetAsEntry:()=>entry}],files:[]} as unknown as DataTransfer;const pending=droppedAttachments(transfer);(transfer as unknown as {items:unknown[]}).items=[];const packed=await pending;const result=unzipSync(await bytes(packed[0]));expect(strFromU8(result['Grupo/nota.txt'])).toBe('hola')})
 
@@ -19,18 +20,34 @@ test.each(['documento.doc','datos.json','apuntes.md','dibujo.dwg'])('packages un
 test.each(['imagen.gif','video.mp4','presentación.pptx','hoja.xlsx'])('keeps directly supported %s unchanged',async name=>{const source=file(name,'source');expect(await prepareAttachmentFiles([source])).toEqual([source])})
 
 test.each([['Carpeta.zip','application/zip'],['clip.mp4','video/mp4']])('rejects oversized %s before sending an impossible upload',async(name,type)=>{
- const source=new File(['stub'],name,{type});Object.defineProperty(source,'size',{value:61*1024*1024})
- await expect(prepareAttachmentFiles([source])).rejects.toThrow('60 MB')
+ const source=new File(['stub'],name,{type});Object.defineProperty(source,'size',{value:501*1024*1024})
+ await expect(prepareAttachmentFiles([source])).rejects.toThrow('500 MB')
 })
 
-test('rejects oversized plain files before creating an archive or reading their contents',async()=>{const source={...file('big.bin','a'),size:129*1024*1024};await expect(prepareAttachmentFiles([source])).rejects.toThrow('128 MB')})
+test('rejects oversized plain files before creating an archive or reading their contents',async()=>{const source={...file('big.bin','a'),size:501*1024*1024};await expect(prepareAttachmentFiles([source])).rejects.toThrow('500 MB')})
 
 test.each(['libro.pdf','presentación.pptx','tabla.xlsx','vídeo.mp4'])('rejects oversized %s even when Windows supplies no MIME',async name=>{
- const source={...file(name,'a'),size:61*1024*1024}
- await expect(prepareAttachmentFiles([source])).rejects.toThrow('60 MB')
+ const source={...file(name,'a'),size:501*1024*1024}
+ await expect(prepareAttachmentFiles([source])).rejects.toThrow('500 MB')
 })
 
 test('bounds the aggregate picker selection before reading or compressing',async()=>{
- await expect(prepareAttachmentFiles(Array.from({length:501},()=>file('nota.txt','a')))).rejects.toThrow('500')
- await expect(prepareAttachmentFiles(Array.from({length:3},()=>({...file('libro.pdf','a'),size:50*1024*1024})))).rejects.toThrow('128 MB')
+ await expect(prepareAttachmentFiles(Array.from({length:5001},()=>file('nota.txt','a')))).rejects.toThrow('5000')
+ const files=Array.from({length:3},()=>({name:'libro.pdf',size:50*1024*1024}) as File);expect(await prepareAttachmentFiles(files)).toEqual(files)
+})
+
+test('large folders split into independently readable ZIP parts, retaining paths',()=>{
+ const files=[{path:'Universidad/',file:null},...Array.from({length:4},(_,i)=>({path:`Universidad/${i}.pdf`,file:{name:`${i}.pdf`,size:200*1024*1024} as File}))]
+ const parts=folderArchiveParts(files);expect(parts).toHaveLength(2);expect(parts.flat()).toEqual(files)
+ for(const part of parts) expect(part.reduce((n,v)=>n+(v.file?.size||0),0)).toBeLessThanOrEqual(MAX_MESSAGE_UPLOAD_BYTES)
+})
+test('reads bounded slices rather than whole source files',async()=>{
+ const data=new Uint8Array(3*1024*1024+7).fill(65),source=new File([data],'large.txt'),slice=jest.spyOn(source,'slice')
+ Object.defineProperty(source,'arrayBuffer',{value:()=>{throw Error('whole source allocation')}})
+ const packed=await compressFiles([{path:source.name,file:source}], 'large')
+ expect(slice).toHaveBeenCalledTimes(4);const result=unzipSync(await bytes(packed))['large.txt'];expect(result.length).toBe(data.length);expect(result.every(value=>value===65)).toBe(true)
+})
+test('accepts PDF and ZIP above 128 MB without a fake aggregate limit',async()=>{
+ const files=['book.pdf','folder.zip'].map(name=>({name,type:name.endsWith('zip')?'application/zip':'application/pdf',size:200*1024*1024} as File))
+ expect(await prepareAttachmentFiles(files)).toEqual(files)
 })

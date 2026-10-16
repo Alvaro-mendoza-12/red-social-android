@@ -10,8 +10,8 @@ export const publicInfoPages = {
     ],
   },
   '/ayuda/encontrar-novvin': {
-    title: 'Cómo encontrar Novvin Web en Google, Brave, Bing y DuckDuckGo',
-    description: 'Encuentra el acceso a Novvin Web desde Chrome, Brave, Edge, Opera o DuckDuckGo. Comprueba la dirección, guarda un favorito y entra con tu cuenta.',
+    title: '¿Buscabas Novvyn? Encuentra Novvin Web en tu navegador',
+    description: '¿Escribiste Novvyn con y? Encuentra Novvin Web en Google, Brave Search, Bing o DuckDuckGo. Comprueba la dirección, guarda un favorito y entra con tu cuenta.',
     heading: 'Vuelve a Novvin desde tu navegador.',
     sections: [
       { heading: 'La dirección de Novvin Web', body: 'Escribe https://red-social-android.vercel.app/ en la barra de direcciones para abrir esta web directamente. Después puedes entrar con tu cuenta o explorar videos públicos. Guarda la página en los favoritos de tu navegador para volver sin hacer otra búsqueda.' },

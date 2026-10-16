@@ -1,7 +1,8 @@
-import {render,screen,waitFor} from '@testing-library/react'
+import {render,screen,waitFor,fireEvent} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
 import {ChatProfilePanel} from '../../components/ChatProfilePanel'
 import {loadFallbackPublicProfile} from '../../core/fallbackData'
+jest.mock('../../components/MediaViewer',()=>({MediaViewer:()=> <div role="dialog">Foto ampliada</div>}))
 jest.mock('../../core/auth/AuthProvider',()=>({useAuth:()=>({user:{id:'owner'}})}))
 jest.mock('../../core/profileVisits',()=>({recordWebProfileVisit:jest.fn(async()=>{})}))
 jest.mock('../../core/fallbackData',()=>({loadFallbackPublicProfile:jest.fn()}))
@@ -21,4 +22,11 @@ test('profiles without a cover do not render a broken empty image',async()=>{
  await waitFor(()=>expect(screen.getByRole('heading',{name:'Sin portada'})).toBeInTheDocument())
  expect(container.querySelector('img')).toBeNull()
  expect(container.querySelector('.chat-profile-hero')).toHaveClass('no-cover')
+})
+
+test('contact avatar and cover can be expanded without leaving the conversation',async()=>{
+ load.mockResolvedValue({profile:{display_name:'Contacto',avatar_url:'user/avatar.webp',cover_url:'user/cover.webp'},stats:{}})
+ render(<MemoryRouter><ChatProfilePanel profileId="friend" onClose={()=>{}}/></MemoryRouter>)
+ fireEvent.click(await screen.findByRole('button',{name:'Ampliar foto de Contacto'}));expect(screen.getByText('Foto ampliada')).toBeInTheDocument()
+ expect(screen.getByRole('button',{name:'Ampliar portada de Contacto'})).toBeInTheDocument()
 })

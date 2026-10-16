@@ -73,3 +73,8 @@ describe('profile media field resolution', () => {
     })
   })
 })
+
+it('reads legacy group and community image shapes without losing their storage bucket',()=>{
+ expect(conversationAvatarSource({image:'groups/grupo.webp'})).toBe('groups/grupo.webp')
+ expect(conversationAvatarSource({community:{icon:{publicUrl:'community-media/cover.webp'}}})).toBe('community-media/cover.webp')
+})

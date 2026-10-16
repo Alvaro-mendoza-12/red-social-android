@@ -21,6 +21,6 @@ test('an account change during a download discards the bytes before creating a f
 
 test('oversized files are rejected before buffering and unsafe schemes are never fetched',async()=>{
  const previous=global.fetch,cancel=jest.fn(async()=>{})
- global.fetch=jest.fn(async()=>({ok:true,headers:{get:()=>String(129*1024*1024)},body:{cancel}})) as jest.Mock
+ global.fetch=jest.fn(async()=>({ok:true,headers:{get:()=>String(501*1024*1024)},body:{cancel}})) as jest.Mock
  try{await expect(downloadMedia('https://media.test/file.zip')).rejects.toThrow('DOWNLOAD_TOO_LARGE');expect(cancel).toHaveBeenCalled();await expect(downloadMedia('javascript:alert(1)')).rejects.toThrow('INVALID_DOWNLOAD');expect(global.fetch).toHaveBeenCalledTimes(1)}finally{global.fetch=previous}
 })

@@ -215,6 +215,10 @@ export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): str
     'post-media',
     'moments',
     'groups',
+    'group-media',
+    'community-media',
+    'chat-media',
+    'moment-media',
     'communities',
     'stickers',
   ]

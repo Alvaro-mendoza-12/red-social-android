@@ -437,6 +437,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const chatId = chatIdOverride ?? routeChatId
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [title, setTitle] = useState('Chat')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useConversationDraft(user?.id, 'chat', chatId.trim().toLowerCase())
@@ -1005,7 +1006,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     }
 
     if (!options?.silent) setLoading(true)
-    setError(null)
+    setLoadError(null)
     try {
       if (useUbuntu) {
         const response = await loadFallbackChat(cleanChatId)
@@ -1023,7 +1024,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
       if (!supabase) {
         if (!isStaleLoad()) {
-          setError('Supabase no está configurado.')
+          setLoadError('Supabase no está configurado.')
           setMessages([])
         }
         return
@@ -1040,7 +1041,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       const chatRow = ((chats ?? []) as GenericRow[])[0]
       if (!chatRow) {
         if (!isStaleLoad()) {
-          setError('No tienes acceso a este chat o no existe.')
+          setLoadError('No tienes acceso a este chat o no existe.')
           setMessages([])
           setLoading(false)
         }
@@ -1104,7 +1105,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       ])
     } catch (caught) {
       if (!isStaleLoad()) {
-        setError(friendlyError(caught, 'No se pudo cargar la conversación'))
+        setLoadError(friendlyError(caught, 'No se pudo cargar la conversación'))
       }
     } finally {
       if (!isStaleLoad()) {
@@ -1867,7 +1868,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     return <StatusView title="Cargando conversacion" description="Espera un momento..." />
   }
 
-  if (error) {
+  if (loadError) {
     return (
       <section className="section-stack">
         {!embedded ? (
@@ -1875,7 +1876,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             ← Volver a mensajes
           </Link>
         ) : null}
-        <StatusView title="No se pudo abrir el chat" description={error} />
+        <StatusView title="No se pudo abrir el chat" description={loadError} />
       </section>
     )
   }
@@ -2367,6 +2368,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
       {showStickers ? <StickerPicker onEmoji={emoji => { draftRevisionRef.current += 1; setDraft(current => current + emoji) }} onSelect={item => void sendSticker(item)} onImport={file => void importSticker(file)} onClose={() => setShowStickers(false)} /> : null}
 
+      {error ? <div className="chat-composer-error" role="alert"><span>{error}</span><button className="mini-action-btn" type="button" onClick={() => setError(null)}>Cerrar</button></div> : null}
       {preparingAttachments ? <p className="attachment-preparing" role="status">Preparando archivos y comprimiendo carpetas…</p> : null}
       {isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
       {imageEditorFile ? <ChatImageEditor file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { X } from 'lucide-react'
+import { ProfileMediaButton } from './ProfileMediaButton'
 import { SafeAvatar } from './SafeAvatar'
 import { StreamingImage } from './StreamingMedia'
 import { loadFallbackPublicProfile, type FallbackPublicProfileResponse } from '../core/fallbackData'
@@ -23,6 +24,6 @@ export function ChatProfilePanel({ profileId, onClose }: { profileId: string; on
   const avatar = profileAvatarSource(profile), cover = resolveSupabasePublicUrl('covers', profileCoverSource(profile))
   return <aside ref={panel} tabIndex={-1} className="chat-profile-panel" role="dialog" aria-label="Perfil del contacto" onKeyDown={event => { if (event.key === 'Escape') onClose() }}>
     <header><h2>Información del contacto</h2><button className="icon-btn" type="button" onClick={onClose} aria-label="Cerrar perfil"><X /></button></header>
-    {data ? <><div className={`chat-profile-hero${cover ? '' : ' no-cover'}`}>{cover ? <StreamingImage className="chat-profile-cover" src={cover} alt="" /> : null}<SafeAvatar className="chat-profile-avatar" size="lg" url={resolveSupabasePublicUrl('avatars', avatar)} mediaType={avatarMediaTypeSource(profile, avatar)} name={name}/></div><h3>{name}</h3><p className="muted-line">@{textOf(profile,['username'],name)}</p><p>{textOf(profile,['bio','biography'])}</p><div className="chat-profile-counts"><span><strong>{data.stats?.followers || 0}</strong> Seguidores</span><span><strong>{data.stats?.following || 0}</strong> Siguiendo</span></div><Link className="primary-btn" to={profileId === user?.id ? '/app/profile' : `/app/profile/${profileId}`}>Ver perfil completo</Link></> : <p role="status">{failed ? 'No se pudo cargar el perfil.' : 'Cargando perfil…'}</p>}
+    {data ? <><div className={`chat-profile-hero${cover ? '' : ' no-cover'}`}>{cover ? <ProfileMediaButton url={cover} name={`portada de ${name}`}><StreamingImage className="chat-profile-cover" src={cover} alt="" /></ProfileMediaButton> : null}<ProfileMediaButton className="profile-avatar-open" url={resolveSupabasePublicUrl('avatars', avatar)} mediaType={avatarMediaTypeSource(profile, avatar)} name={`foto de ${name}`}><SafeAvatar className="chat-profile-avatar" size="lg" url={resolveSupabasePublicUrl('avatars', avatar)} mediaType={avatarMediaTypeSource(profile, avatar)} name={name}/></ProfileMediaButton></div><h3>{name}</h3><p className="muted-line">@{textOf(profile,['username'],name)}</p><p>{textOf(profile,['bio','biography'])}</p><div className="chat-profile-counts"><span><strong>{data.stats?.followers || 0}</strong> Seguidores</span><span><strong>{data.stats?.following || 0}</strong> Siguiendo</span></div><Link className="primary-btn" to={profileId === user?.id ? '/app/profile' : `/app/profile/${profileId}`}>Ver perfil completo</Link></> : <p role="status">{failed ? 'No se pudo cargar el perfil.' : 'Cargando perfil…'}</p>}
   </aside>
 }

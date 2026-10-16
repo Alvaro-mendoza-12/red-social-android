@@ -121,4 +121,4 @@ private fun rememberChatMediaExport(
     }
 }
 
-private const val MAX_EXPORT_BYTES = 256L * 1024 * 1024
+private const val MAX_EXPORT_BYTES = 500L * 1024 * 1024

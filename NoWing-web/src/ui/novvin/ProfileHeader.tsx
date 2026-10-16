@@ -1,26 +1,10 @@
 import { BadgeCheck, Check, Info } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { ProfileMediaButton } from '../../components/ProfileMediaButton'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { StreamingImage } from '../../components/StreamingMedia'
-import { textOf, type GenericRow } from '../../core/utils'
+import type { ProfileIdentity } from './profileIdentity'
 
-export type ProfileIdentity = {
-  verified: boolean
-  admin: boolean
-  publicId: string
-}
-export function profileIdentity(row: GenericRow): ProfileIdentity {
-  const yes = (value: unknown) => value === true || value === 1 || value === 'true'
-  return {
-    verified: yes(row.is_verified ?? row.isVerified ?? row.verified),
-    admin:
-      yes(row.is_admin ?? row.isAdmin) ||
-      ['admin', 'super_admin', 'owner'].includes(
-        textOf(row, ['admin_role', 'adminRole', 'role'], '').toLowerCase(),
-      ),
-    publicId: textOf(row, ['public_id', 'publicId', 'user_code', 'userCode', 'numeric_id'], ''),
-  }
-}
 export function VerifiedMark() {
   return (
     <span className="novvin-profile-verified" aria-label="Cuenta verificada">
@@ -59,18 +43,18 @@ export function ProfileHeader({
   return (
     <>
       <div className="mobile-profile-cover">
-        {coverUrl ? <StreamingImage src={coverUrl} alt={`Portada de ${name}`} /> : null}
+        {coverUrl ? <ProfileMediaButton url={coverUrl} name={`portada de ${name}`}><StreamingImage src={coverUrl} alt={`Portada de ${name}`} /></ProfileMediaButton> : null}
       </div>
       <div className="mobile-profile-main novvin-profile-main-header">
         <div className="novvin-profile-header">
           <div className={`profile-avatar-frame profile-avatar-frame--${frame || 'none'}`}>
-            <SafeAvatar
+            <ProfileMediaButton url={avatarUrl} mediaType={avatarMediaType} name={`foto de ${name}`}><SafeAvatar
               url={avatarUrl}
               mediaType={avatarMediaType}
               name={name}
               size="lg"
               className="mobile-profile-avatar"
-            />
+            /></ProfileMediaButton>
             {identity.verified ? (
               <span className="profile-avatar-verification">
                 <VerifiedMark />

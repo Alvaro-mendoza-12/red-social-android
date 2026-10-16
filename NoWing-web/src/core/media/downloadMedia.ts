@@ -22,7 +22,7 @@ export async function downloadMedia(raw:string,label='') {
   const url=protectedSource?await browserStreamingSource(source,identity):source
   const response=await fetch(url,{signal:controller.signal,credentials:'omit',cache:'no-store',redirect:'error'})
   if(!response.ok)throw Error('DOWNLOAD_FAILED')
-  const maximum=128*1024*1024
+  const maximum=500*1024*1024
   if(Number(response.headers.get('Content-Length'))>maximum){await response.body?.cancel();throw Error('DOWNLOAD_TOO_LARGE')}
   const parts:Uint8Array<ArrayBuffer>[]=[],reader=response.body?.getReader();let bytes=0
   if(!reader)throw Error('DOWNLOAD_EMPTY')

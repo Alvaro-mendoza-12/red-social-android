@@ -20,7 +20,8 @@ const { createStorageUploadAdmission, acquireStorageFinalizationClient, ensureSt
 const UPLOAD_RESERVATION = Symbol('server-owned-upload-reservation')
 const FINALIZATION_CONNECTION = Symbol('storage-finalization-connection')
 const FINALIZATION_ALIVE = Symbol('storage-finalization-lock-alive')
-const { safeErrorLogDetails } = require('./request-observability')
+const { safeErrorLogDetails } = require('./request-observability')
+const { validateMessagingUpload } = require('./messaging-upload-policy')
 
 const execFileAsync = promisify(execFile)
 
@@ -120,9 +121,9 @@ const upload = multer({
 
 const bucketUploadLimits = new Map([
   ['avatars', 50 * 1024 * 1024],
-  ['chat-media', 60 * 1024 * 1024],
-  ['group-media', 60 * 1024 * 1024],
-  ['community-media', 60 * 1024 * 1024],
+  ['chat-media', 500 * 1024 * 1024],
+  ['group-media', 500 * 1024 * 1024],
+  ['community-media', 500 * 1024 * 1024],
   ['groups', 60 * 1024 * 1024],
   ['communities', 60 * 1024 * 1024],
   ['group-audio', 20 * 1024 * 1024],
@@ -579,6 +580,7 @@ async function validateUpload(options) {
   if (bucket === 'videos' && inferredType === 'video/mp4' && options.sourcePath) {
     await probeVideoDelivery(options.sourcePath, sizeBytes)
   }
+  if (['chat-media', 'group-media', 'community-media'].includes(bucket)) await validateMessagingUpload({ ...options, contentType: inferredType, sizeBytes })
   return { contentType: inferredType, sizeBytes }
 }
 

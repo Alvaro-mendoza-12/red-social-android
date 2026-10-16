@@ -1,6 +1,6 @@
 export type MediaSourceRow = Record<string, unknown>
 
-const nestedProfileKeys = ['profile', 'user', 'author', 'otherParticipant', 'other_participant', 'user_metadata'] as const
+const nestedProfileKeys = ['profile', 'user', 'author', 'otherParticipant', 'other_participant', 'user_metadata', 'group', 'community', 'room'] as const
 const nestedUrlKeys = ['url', 'publicUrl', 'public_url', 'path', 'src'] as const
 
 const profileAvatarKeys = [
@@ -36,6 +36,8 @@ const conversationAvatarKeys = [
   'group_image',
   'communityImage',
   'community_image',
+  'image',
+  'icon',
   'imageUrl',
   'image_url',
   'coverUrl',
