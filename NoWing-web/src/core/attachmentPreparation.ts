@@ -66,8 +66,18 @@ export function folderArchiveParts(files: Array<{ path: string; file: File | nul
   return result
 }
 
+export async function prepareSelectedFolder(files: File[]) {
+  const entries=files.map(file=>({path:file.webkitRelativePath,file}))
+  const root=entries[0]?.path.split('/')[0] || 'Carpeta'
+  if(entries.some(item=>!item.path||item.path.split('/')[0]!==root||item.path.split('/').length>33)) throw new AttachmentPreparationError('Selecciona una carpeta con hasta 32 niveles de subcarpetas.')
+  const parts=folderArchiveParts(entries),output:File[]=[]
+  for(let i=0;i<parts.length;i++) output.push(await compressFiles(parts[i],root+(parts.length>1?`-parte-${i+1}-de-${parts.length}`:'')))
+  return output
+}
+
 export async function prepareAttachmentFiles(files: File[]) {
   if (files.length > MAX_FILES) throw new AttachmentPreparationError('Selecciona hasta 5000 archivos por envío.')
+  if(files.some(file=>file.webkitRelativePath)) return prepareSelectedFolder(files)
   const prepared: File[] = []
   for (const file of files) {
     if (file.size > MAX_MESSAGE_UPLOAD_BYTES) throw new AttachmentPreparationError('El archivo supera los 500 MB permitidos. Selecciona uno más pequeño.')

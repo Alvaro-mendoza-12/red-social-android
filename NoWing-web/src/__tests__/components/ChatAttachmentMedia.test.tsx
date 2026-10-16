@@ -1,7 +1,9 @@
+import {registerOutboxPreview} from '../../core/media/outboxPreviewRegistry'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { ChatAttachmentMedia, attachmentKind } from '../../components/ChatAttachmentMedia'
+import { ChatAttachmentMedia } from '../../components/ChatAttachmentMedia'
+import {attachmentKind} from '../../core/attachmentKind'
 import { readBoundedStorageBlob } from '../../core/media/boundedStorageRead'
-import { invalidateStorageReadIdentity, updateStorageReadIdentity } from '../../core/media/storageReadSession'
+import { invalidateStorageReadIdentity, updateStorageReadIdentity, getStorageReadIdentity } from '../../core/media/storageReadSession'
 
 jest.mock('../../core/runtimeBackend', () => ({ rewriteRuntimeStorageUrl: (url: string) => url, runtimeStoragePreviewUrl: (url: string) => url }))
 jest.mock('../../components/DocumentPreview', () => ({ DocumentPreview: () => <section aria-label="Vista previa del documento" /> }))
@@ -45,7 +47,7 @@ test('shows retry without public fallback after authorization denial', async () 
   readBlob.mockRejectedValue(new Error('MEDIA_READ_404'))
   const { container } = render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto" />)
   expect(await screen.findByText('No se pudo abrir el archivo')).toBeInTheDocument()
-  expect(container.querySelector('a,img')).toBeNull(); expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
+  expect(container.querySelector('a,img')).toBeNull(); expect(screen.getByRole('button', { name: 'Volver a cargar' })).toBeInTheDocument()
 })
 
 test('clears decoded images and revokes Blob synchronously on logout', async () => {
@@ -119,4 +121,13 @@ test('large documents retain a download action when inline preview is too large'
   render(<ChatAttachmentMedia url={privateUrl.replace('.png','.pdf')} kind="pdf" title="large.pdf" size={33*1024*1024} />)
   fireEvent.click(screen.getByRole('button',{name:'Abrir documento'}));await screen.findByText('Archivo demasiado grande para la vista web')
   expect(screen.getByRole('button',{name:'Descargar original'})).toBeInTheDocument();expect(readBlob).not.toHaveBeenCalled()
+})
+
+test('an owned pending image renders locally and is cleared immediately when the identity changes',async()=>{
+ const local='blob:http://localhost/owned-pending';registerOutboxPreview(local,getStorageReadIdentity())
+ const {container}=render(<ChatAttachmentMedia url={local} kind="image" title="Foto pendiente"/>);expect(await screen.findByAltText('Foto pendiente')).toHaveAttribute('src',local);expect(readBlob).not.toHaveBeenCalled()
+ act(()=>invalidateStorageReadIdentity());expect(container.querySelector('img')).toBeNull()
+})
+test('a pending blob from an unregistered account is never rendered',()=>{
+ const {container}=render(<ChatAttachmentMedia url="blob:http://localhost/another-account" kind="image" title="Privada"/>);expect(container.querySelector('img')).toBeNull()
 })

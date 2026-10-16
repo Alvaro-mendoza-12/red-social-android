@@ -1,3 +1,4 @@
+import { ProfilePostPreview } from '../../components/ProfilePostPreview'
 import { StreamingImage, StreamingVideo, StreamingAudio } from '../../components/StreamingMedia'
 import { useEffect, useMemo, useState } from 'react'
 import { Edit3, Palette, QrCode, Share2, Star } from 'lucide-react'
@@ -439,7 +440,7 @@ export function ProfilePage() {
         posts.length ? (
           <div className="mobile-profile-posts">
             {posts.map((post) => (
-              <article key={post.id} className="mobile-profile-post">
+              <ProfilePostPreview key={post.id} media={post.media[0]} text={post.content}>
                 {post.media[0]?.mediaType === 'image' ? (
                   <StreamingImage src={post.media[0].url} alt="Publicación" />
                 ) : null}
@@ -448,7 +449,7 @@ export function ProfilePage() {
                 ) : null}
                 <ExpandableText text={post.content} lines={3} />
                 <Link to={`/app/feed/post/${post.id}`}>Abrir publicación</Link>
-              </article>
+              </ProfilePostPreview>
             ))}
           </div>
         ) : (

@@ -527,3 +527,12 @@
 .voice-video-tile { margin: 0; }
 .voice-side-section,.voice-connection-card { min-width: 0; overflow-wrap: anywhere; }
 @media(max-width:500px) { .voice-room-side-panel { grid-template-columns: minmax(0,1fr); } }
+
+.voice-room-heading h2,.voice-room-heading p { overflow-wrap:anywhere; margin:0; }
+.voice-room-controls .voice-control-btn { flex-shrink:0; }
+@media(max-width:600px) {
+ .voice-room-controls.joined { display:flex; flex-wrap:nowrap; width:fit-content; gap:6px; padding:8px; }
+ .voice-room-controls.joined .voice-control-btn { min-width:38px; min-height:44px; padding:10px; gap:0; font-size:0; }
+ .voice-room-controls.joined .voice-control-btn svg { width:18px; height:18px; }
+ .voice-room-stage-header { border-radius:16px; padding:16px; }
+}

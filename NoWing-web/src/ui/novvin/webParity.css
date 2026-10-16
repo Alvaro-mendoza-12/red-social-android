@@ -225,3 +225,12 @@
  .image-editor-controls .image-crop-options { grid-template-columns:repeat(2,minmax(0,1fr)); }
  .image-editor-controls .image-crop-options p { grid-column:1/-1; }
 }
+
+.message-delivery-error { font-size:.8rem; line-height:1.4; margin:8px 0 4px; max-width:360px; color:var(--foreground,#fff); overflow-wrap:anywhere; }
+
+.profile-hover-preview { position:fixed; z-index:1200; pointer-events:none; padding:12px; border-radius:16px; background:var(--surface-raised,#202026); color:var(--foreground,#fff); border:1px solid var(--outline,#484850); box-shadow:0 18px 60px #0008; max-height:calc(100dvh - 24px); overflow:hidden; }
+.profile-hover-preview img,.profile-hover-preview video { display:block; width:100%; max-height:min(260px,50dvh); object-fit:contain; border-radius:10px; background:#080809; }
+.profile-hover-preview p { margin:10px 0 6px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+.profile-hover-preview small { color:var(--secondary-text,#b9b9c4); }
+
+.profile-hover-preview { max-width:calc(100vw - 24px); }

@@ -51,3 +51,8 @@ test('accepts PDF and ZIP above 128 MB without a fake aggregate limit',async()=>
  const files=['book.pdf','folder.zip'].map(name=>({name,type:name.endsWith('zip')?'application/zip':'application/pdf',size:200*1024*1024} as File))
  expect(await prepareAttachmentFiles(files)).toEqual(files)
 })
+
+test('folder picker preserves nested paths and creates a ZIP automatically',async()=>{
+ const source=file('nota.txt','Contenido de carpeta');Object.defineProperty(source,'webkitRelativePath',{value:'Universidad/curso/nota.txt'})
+ const [packed]=await prepareAttachmentFiles([source]);expect(packed.name).toBe('Universidad.zip');expect(strFromU8(unzipSync(await bytes(packed))['Universidad/curso/nota.txt'])).toBe('Contenido de carpeta')
+})

@@ -1,3 +1,4 @@
+import { FolderAttachmentPicker } from '../../components/FolderAttachmentPicker'
 import { MessageSticker } from '../../components/MessageSticker'
 import { useConversationDraft } from '../../core/conversationDrafts'
 import { MessageText } from '../../components/MessageText'
@@ -74,6 +75,7 @@ type ChatMessage = {
   createdAt: string
   updatedAt: string
   status: string
+  deliveryError?: string
   reactions: Record<string, string[]>
   replyToId: string | null
   pollId: string | null
@@ -391,6 +393,7 @@ function mapMessage(row: GenericRow): ChatMessage {
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
     updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
     status: textOf(row, ['status'], 'sent'),
+    deliveryError: textOf(row, ['delivery_error'], ''),
     reactions: normalizeReactions(row.reactions),
     replyToId: textOf(row, ['reply_to_id'], '') || null,
     pollId: textOf(row, ['poll_id'], '') || null,
@@ -2282,6 +2285,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                   </details>
                 ) : null}
 
+                {mine && message.status==='failed' && message.deliveryError ? <p className="message-delivery-error" role="status">{message.deliveryError}</p> : null}
                 <small className="message-meta">
                       {new Date(message.createdAt).toLocaleTimeString("es", {
                         hour: "2-digit",
@@ -2433,20 +2437,21 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           <svg viewBox="0 0 24 24" width="24" height="24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" fill="currentColor" /></svg>
         </button>
 
-        <label className="icon-btn clickable" role="button" tabIndex={0} aria-label="Adjuntar archivos" title="Adjuntar archivos"
+        <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar">＋</summary><div className="chat-attachment-popover">
+        <label className="chat-attachment-option" role="button" tabIndex={0} aria-label="Adjuntar archivos" title="Adjuntar archivos"
           onKeyDown={event => { if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.querySelector<HTMLInputElement>('input')?.click() } }}>
             <svg viewBox="0 0 24 24" width="24" height="24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" /></svg>
-          <input
+          <span>Fotos, videos y documentos</span><input
             type="file"
             multiple
             hidden
             onChange={(event) => {
               const files = event.target.files
               handleAttachFile(files)
-              event.currentTarget.value = ''
+              event.currentTarget.value = '';event.currentTarget.closest('details')?.removeAttribute('open')
             }}
           />
-        </label>
+        </label><FolderAttachmentPicker onFiles={handleAttachFile}/></div></details>
 
         <button
           className={isRecordingAudio ? 'icon-btn recording' : 'icon-btn'}

@@ -6,7 +6,8 @@ import { supabase } from '../core/supabase'
 import { subscribeUbuntuRealtime } from '../core/ubuntuRealtime'
 import { textOf, friendlyError, type GenericRow } from '../core/utils'
 import { SafeAvatar } from './SafeAvatar'
-import { ChatAttachmentMedia, attachmentKind } from './ChatAttachmentMedia'
+import { ChatAttachmentMedia } from './ChatAttachmentMedia'
+import {attachmentKind} from '../core/attachmentKind'
 import { shouldUseUbuntuBackend } from '../core/ubuntuBackend'
 export function VideoCommentsPanel({ videoId, onClose, onCountChange }: { videoId: string; onClose: () => void; onCountChange?: (count: number) => void }) {
   const { user, isFallbackSession } = useAuth(), sequence = useRef(0), panel = useRef<HTMLElement>(null), countCallback = useRef(onCountChange)

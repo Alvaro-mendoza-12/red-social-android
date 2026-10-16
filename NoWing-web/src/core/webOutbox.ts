@@ -1,11 +1,14 @@
+import {getStorageReadIdentity} from './media/storageReadSession'
+import {registerOutboxPreview,clearOutboxPreviewRegistry} from './media/outboxPreviewRegistry'
 import { fallbackApiJson, fallbackSessionToUser, readFallbackSession } from './auth/fallbackAuth'
 import { ConversationSendQueue } from './conversationSendQueue'
+import { outboxFailureMessage } from './outboxFailureMessage'
 import { MAX_MESSAGE_UPLOAD_BYTES } from './attachmentPreparation'
 import type { GenericRow } from './utils'
 
 type Scope = 'chat' | 'group' | 'community'
 type Payload = { id?: string; content: string; contentType?: string; mediaUrl?: string | null; [key: string]: unknown }
-type Pending = { id: string; owner: string; scope: Scope; room: string; payload: Payload; createdAt: string; senderId: string; state: 'pending' | 'failed'; attempts: number; retryAt: number }
+type Pending = { id: string; owner: string; scope: Scope; room: string; payload: Payload; createdAt: string; senderId: string; state: 'pending' | 'failed'; attempts: number; retryAt: number; failureMessage?: string }
 export type ImportedSticker = { id: string; title: string; isAnimated: boolean }
 type Attachment = { id: string; owner: string; bucket: string; blob: Blob; name: string; path: string; createdAt: number; uploadedUrl?: string; favoriteSticker?: ImportedSticker; favoriteSaved?: boolean }
 type Cached = { key: string; owner: string; value: Record<string, unknown> }
@@ -63,13 +66,15 @@ async function attachmentUrl(owner: string, id: string) {
   if (!file || file.owner !== owner) throw new Error('No se encontró el archivo pendiente.')
   const key = `${owner}/${id}`
   if (!urls.has(key)) urls.set(key, URL.createObjectURL(file.blob))
+  const identity=getStorageReadIdentity()
+  if(identity.accountId===fallbackSessionToUser(readFallbackSession())?.id)registerOutboxPreview(urls.get(key)!,identity)
   return urls.get(key)!
 }
 async function optimistic(item: Pending): Promise<GenericRow> {
   const media = String(item.payload.mediaUrl || '')
   return { ...item.payload, id: item.id, content_type: item.payload.contentType || 'text',
     media_url: media.startsWith(pendingPrefix) ? await attachmentUrl(item.owner, media.slice(pendingPrefix.length)) : media,
-    sender_id: item.senderId, created_at: item.createdAt, status: item.state,
+    sender_id: item.senderId, created_at: item.createdAt, status: item.state, delivery_error: item.failureMessage || '',
     ...(item.scope === 'chat' ? { chat_id: item.room } : { [`${item.scope}_id`]: item.room }) }
 }
 export async function stageOfflineChatAttachment(bucket: string, file: File, path?: string, favoriteSticker?: ImportedSticker) {
@@ -90,7 +95,7 @@ export async function retryPendingWebMessage(id: string) {
   const item = await operation<Pending | undefined>('messages', false, s => s.get(id))
   requireOwner(owner)
   if (!item || item.owner !== owner) return
-  item.state = 'pending'; item.retryAt = 0
+  item.state = 'pending'; item.retryAt = 0; item.failureMessage = undefined
   await put('messages', item); changed(owner)
   void flushWebOutbox().catch(() => {})
 }
@@ -188,6 +193,7 @@ export async function flushWebOutbox() {
         catch (error) {
           requireOwner(owner)
           item.attempts += 1; item.state = isTransientOutboxError(error) ? 'pending' : 'failed'
+          item.failureMessage = item.state==='failed' ? outboxFailureMessage(error) : undefined
           item.retryAt = Date.now() + Math.min(60000, 1000 * 2 ** Math.min(item.attempts, 6))
           await put('messages', item); changed(owner)
           if (item.state === 'pending') return
@@ -197,4 +203,4 @@ export async function flushWebOutbox() {
     await withConversationLock(owner, room.scope, room.room, true, drain)
   })))
 }
-export function revokeOutboxPreviews() { for (const url of urls.values()) URL.revokeObjectURL(url); urls.clear() }
+export function revokeOutboxPreviews() { clearOutboxPreviewRegistry(); for (const url of urls.values()) URL.revokeObjectURL(url); urls.clear() }

@@ -1,3 +1,4 @@
+import { FolderAttachmentPicker } from '../../components/FolderAttachmentPicker'
 import { MessageSticker } from '../../components/MessageSticker'
 import { useConversationDraft } from '../../core/conversationDrafts'
 import { MessageText } from '../../components/MessageText'
@@ -40,7 +41,8 @@ import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import { ViewOnceMediaDialog } from '../../components/ViewOnceMediaDialog'
 import { requestViewOnceMedia } from '../../core/media/viewOnceClient'
 import type { ViewOnceLease } from '../../core/media/viewOnceLease'
-import { ChatAttachmentMedia, attachmentKind } from '../../components/ChatAttachmentMedia'
+import { ChatAttachmentMedia } from '../../components/ChatAttachmentMedia'
+import {attachmentKind} from '../../core/attachmentKind'
 import { StickerPicker } from '../../components/StickerPicker'
 
 type RoomScope = 'group' | 'community'
@@ -54,6 +56,7 @@ type RoomMessage = {
   createdAt: string
   updatedAt: string
   status: string
+  deliveryError?: string
   reactions: Record<string, string[]>
   replyToId: string | null
   pollId: string | null
@@ -231,6 +234,7 @@ function mapRoomMessage(row: GenericRow): RoomMessage {
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
     updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
     status: textOf(row, ['status'], 'sent'),
+    deliveryError: textOf(row, ['delivery_error'], ''),
     reactions: normalizeReactions(row.reactions),
     replyToId: textOf(row, ['reply_to_id'], '') || null,
     pollId: textOf(row, ['poll_id'], '') || null,
@@ -1579,6 +1583,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                     ))}
                   </div>
                 ) : null}
+                {mine && message.status==='failed' && message.deliveryError ? <p className="message-delivery-error" role="status">{message.deliveryError}</p> : null}
                 <small className="message-meta">
                   {Number.isFinite(Date.parse(message.createdAt)) ? new Date(message.createdAt).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'}) : ''}{message.isEdited ? ' · editado' : ''}
                   {mine ? <span className={`message-status ${message.status}`} aria-label={message.status==='pending'?'Pendiente':message.status==='failed'?'Error al enviar':message.status==='read'?'Leído':message.status==='delivered'?'Entregado':'Enviado'}>{message.status==='pending'?'◷':message.status==='failed'?<button type="button" className="mini-action-btn" onClick={()=>void retryPendingWebMessage(message.id)}>Reintentar</button>:message.status==='sent'?'✓':'✓✓'}</span> : null}
@@ -1689,7 +1694,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           } catch { setError('No se pudo borrar el chat. Inténtalo de nuevo.') }
         }}>Borrar de mi lista</button>
       </section> : <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
-        <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar">＋</summary><div className="chat-attachment-popover">
+        <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar">＋</summary><div className="chat-attachment-popover"><FolderAttachmentPicker onFiles={handleAttachFile}/>
         <button type="button" className="chat-attachment-option" onClick={event => { setShowStickers(true); event.currentTarget.closest('details')?.removeAttribute('open') }}>Buscar stickers</button>
         <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Importar sticker" aria-label="Importar sticker">
           <span aria-hidden="true">☺</span><span>Sticker</span>

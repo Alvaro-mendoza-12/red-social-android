@@ -1472,7 +1472,7 @@ export function VoiceRoomPage() {
           </section>
         </aside>
       </div>
-        <footer className="voice-room-controls" aria-label="Controles de sala">
+        <footer className={`voice-room-controls${isJoined ? ' joined' : ''}`} aria-label="Controles de sala">
           <button className="voice-control-btn" type="button" onClick={() => void openDeviceSettings()} aria-label="Ajustes de audio y video" aria-expanded={showDeviceSettings}><Settings size={18} />Ajustes</button>
           {!isJoined ? (
             <button className="voice-control-btn primary" type="button" onClick={() => void joinRoom()} disabled={isJoining}>

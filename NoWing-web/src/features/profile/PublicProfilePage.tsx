@@ -1,3 +1,4 @@
+import { ProfilePostPreview } from '../../components/ProfilePostPreview'
 import { StreamingImage, StreamingVideo, StreamingAudio } from '../../components/StreamingMedia'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -672,7 +673,7 @@ export function PublicProfilePage() {
       ) : posts.length ? (
         <div className="mobile-profile-posts">
           {posts.map((post) => (
-            <article key={post.id} className="mobile-profile-post">
+            <ProfilePostPreview key={post.id} media={post.media[0]} text={post.content}>
               {post.media[0]?.mediaType === 'video' ? (
                 <StreamingVideo src={post.media[0].url} muted preload="metadata" />
               ) : post.media[0]?.mediaType === 'image' ? (
@@ -686,7 +687,7 @@ export function PublicProfilePage() {
               >
                 Abrir publicación
               </Link>
-            </article>
+            </ProfilePostPreview>
           ))}
         </div>
       ) : (
