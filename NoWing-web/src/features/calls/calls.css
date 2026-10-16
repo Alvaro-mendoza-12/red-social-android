@@ -46,3 +46,36 @@
   .call-interface-container .video-wrapper { aspect-ratio: 16 / 10; }
   .call-interface-container .local-video { width: min(180px, 45%); justify-self: end; }
 }
+
+.active-call .videos-container { position: relative; display: block; height: clamp(300px,58dvh,620px); background: #09090b; border-radius: 14px; overflow: hidden; }
+.active-call .video-wrapper.remote-video { width: 100%; height: 100%; aspect-ratio: auto; }
+.active-call .video-wrapper.local-video { position: absolute; bottom: 62px; right: 14px; width: clamp(120px,22%,230px); height: auto; aspect-ratio: 16/10; border: 1px solid #ffffff55; box-shadow: 0 8px 28px #0008; z-index: 2; }
+.active-call .video-wrapper.local-video[hidden] { display: none; }
+.active-call .local-video-element { object-fit: cover; }
+.active-call .local-video-element.camera-preview { transform: scaleX(-1); }
+.active-call .local-video-element.screen-preview { object-fit: contain; }
+.active-call .local-video-overlay { right: 6px; top: 6px; padding: 4px 8px; font-size: .7rem; }
+.active-call .control-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-width: 66px; padding: 10px 12px; border-radius: 14px; }
+.active-call .control-btn svg { width: 20px; height: 20px; }
+.active-call .control-btn span { font-size: .68rem; }
+.active-call .control-btn[aria-pressed=true] { background: var(--primary); color: var(--on-primary); }
+.active-call .control-btn.muted { background: #68323c; color: #fff; }
+.call-participant-placeholder { position: absolute; inset: 0; background: radial-gradient(ellipse at center,#26223e,#101017); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; color: white; }
+.call-participant-placeholder .safe-avatar { width: 110px; height: 110px; border-radius: 50%; }
+.call-participant-placeholder strong { font-size: 24px; }
+.call-participant-placeholder small { color: #c0bdd0; }
+.call-interface-container .participant-overlay { z-index: 1; }
+.call-interface-container .participant-avatar { width: 30px; height: 30px; border-radius: 50%; flex: 0 0 30px; }
+.call-media-error { padding: 12px; border-radius: 12px; color: var(--danger); background: var(--surface-raised); font-size: .85rem; }
+.active-call:fullscreen { width: 100vw; max-width: none; height: 100dvh; border: 0; border-radius: 0; }
+.active-call:fullscreen .call-main { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.active-call:fullscreen .videos-container { flex: 1; height: auto; min-height: 0; }
+.active-call:fullscreen .call-controls { flex-shrink: 0; }
+@media(max-width:600px) {
+  .active-call .call-header h2 { font-size: 1.05rem; }
+  .active-call .call-main { gap: 12px; padding: 10px; }
+  .active-call .videos-container { height: clamp(260px,48dvh,420px); }
+  .active-call .control-btn { min-width: 58px; padding: 9px; }
+  .active-call .call-controls .active-controls { gap: 6px; }
+  .active-call .video-wrapper.local-video { width: 120px; right: 8px; bottom: 56px; }
+}

@@ -78,4 +78,17 @@ describe('voice WebRTCManager recovery integration', () => {
     expect(answer).toEqual({ type: 'answer', sdp: 'answer' })
     manager.disconnectAll()
   })
+
+  it('releases microphone permission granted after the room has already closed', async () => {
+    const manager = new WebRTCManager('local-user'), stop = jest.fn()
+    let finish!: (stream: MediaStream) => void
+    const originalDevices = navigator.mediaDevices, logged = jest.spyOn(console,'error').mockImplementation(() => {})
+    Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:jest.fn(() => new Promise<MediaStream>(resolve => { finish=resolve }))}})
+    try {
+      const pending = manager.initializeLocalMedia(true,false);manager.stopLocalStream()
+      finish({getTracks:()=>[{stop}]} as unknown as MediaStream)
+      await expect(pending).rejects.toThrow('No se pudo acceder')
+      expect(stop).toHaveBeenCalled();expect(manager.getLocalStream()).toBeNull()
+    } finally { logged.mockRestore();Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:originalDevices}) }
+  })
 })

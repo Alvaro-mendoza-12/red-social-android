@@ -1,0 +1,4 @@
+.live-playback-action { position: relative; z-index: 3; border: 1px solid var(--outline,#444); border-radius: 12px; padding: 10px 14px; color: var(--foreground,#fff); background: var(--surface-raised,#292932); font-size: .85rem; }
+.live-output-error { position: relative; z-index: 3; display: block; padding: 10px; color: var(--danger,#ffb4ab); }
+.video-wrapper>.live-playback-action { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); background: #222e; color: white; }
+.video-wrapper>.live-output-error { position: absolute; top: 12px; left: 12px; right: 12px; background: #222e; }

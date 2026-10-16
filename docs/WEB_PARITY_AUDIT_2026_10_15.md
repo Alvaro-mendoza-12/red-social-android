@@ -40,3 +40,7 @@ La comprobación visual adicional cubre 100 combinaciones: 45 vistas privadas, 2
 La revisión de multimedia y controles está descrita en [la versión 9.0.33](RELEASE_9_0_33_WEB_MEDIA.md). Se añadieron documentos internos, preparación ZIP de carpetas, editor de imágenes, audio en borrador, galería del chat, panel del contacto, favoritos de stickers, comentarios laterales de video, controles de voz y SFU de directos. El catálogo social de juegos queda visible; la entrada de IA y mensajes del radar usan las rutas existentes del servidor.
 
 Las comprobaciones de navegador y SFU de esta continuación se hicieron con datos sintéticos. La aceptación física y prolongada conserva el estado pendiente. Los formatos Office se muestran como contenido; documentos antiguos o no compatibles se descargan.
+
+## Continuación web 9.0.35
+
+[Detalle de voz, llamadas, stickers y archivos](RELEASE_WEB_9_0_35_VOICE_CALLS_STICKERS.md). Se corrige la aparición tardía de cámara, la vista de pantalla compartida y la imagen congelada al detener el video. Se añaden ajustes compactos y salida de audio, filtro de stickers animados, actualización de favoritos y empaquetado ZIP de documentos no admitidos directamente. La prueba de WebRTC usa dos conexiones reales locales con medios generados; no reemplaza la aceptación entre dispositivos y redes distintas.

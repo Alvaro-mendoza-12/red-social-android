@@ -31,7 +31,7 @@ test('loads the mobile catalog immediately and sends its actual sticker identifi
   render(<StickerPicker onSelect={select} onImport={() => {}} onClose={() => {}} />)
   fireEvent.click(await screen.findByRole('button', { name: 'Enviar sticker Hola' }))
   expect(rpc).toHaveBeenCalledWith('secure_search_stickers', { p_query: '', p_limit: 250 })
-  expect(select).toHaveBeenCalledWith({ stickerId: 'sticker-1', title: 'Hola', mediaUrl: 'https://media.test/sticker.webp', isFavorite: false })
+  expect(select).toHaveBeenCalledWith({ stickerId: 'sticker-1', title: 'Hola', mediaUrl: 'https://media.test/sticker.webp', isFavorite: false, isAnimated: false })
 })
 
 test('searches the same authorized catalog while the person types', async () => {
@@ -50,4 +50,24 @@ test('discards a slow result from a previous search', async () => {
   await screen.findByRole('button', { name: 'Enviar sticker Hola' })
   await act(async () => finish({ data: [{ id: 'old', title: 'Antiguo', media_url: 'https://media.test/old.webp' }], error: null }))
   expect(screen.queryByRole('button', { name: 'Enviar sticker Antiguo' })).toBeNull()
+})
+
+test('uses the mobile animation flag even when the URL has no animation extension', async () => {
+  rpc.mockResolvedValue({data:[{id:'animated',title:'En movimiento',media_url:'https://media.test/opaque',is_animated:true},{id:'still',title:'Fijo',media_url:'https://media.test/still.webp',is_animated:false}],error:null})
+  render(<StickerPicker onSelect={() => {}} onImport={() => {}} onClose={() => {}} />)
+  await screen.findByRole('button',{name:'Enviar sticker Fijo'})
+  fireEvent.click(screen.getByRole('button',{name:'Animados',exact:true}))
+  expect(screen.getByRole('button',{name:'Enviar sticker En movimiento'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Enviar sticker Fijo'})).toBeNull()
+  fireEvent.click(screen.getByRole('button',{name:'Guardar sticker En movimiento'}))
+  await waitFor(()=>expect(rpc).toHaveBeenCalledWith('secure_toggle_sticker_favorite',expect.objectContaining({p_is_animated:true})))
+})
+
+test('refreshes favorites saved from another device without reopening the chat', async () => {
+  render(<StickerPicker onSelect={() => {}} onImport={() => {}} onClose={() => {}} />)
+  await screen.findByRole('button',{name:'Enviar sticker Hola'})
+  rpc.mockResolvedValueOnce({data:[{id:'from-mobile',title:'Del móvil',media_url:'https://media.test/mobile.gif',is_animated:true,is_favorite:true}],error:null})
+  fireEvent.click(screen.getByRole('button',{name:'Actualizar stickers'}))
+  await screen.findByRole('button',{name:'Enviar sticker Del móvil'})
+  fireEvent.click(screen.getByRole('button',{name:'Favoritos',exact:true}))
+  expect(screen.getByRole('button',{name:'Quitar de favoritos sticker Del móvil'})).toHaveAttribute('aria-pressed','true')
 })

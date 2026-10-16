@@ -7,7 +7,7 @@ const MAX_BYTES = 128 * 1024 * 1024
 const MAX_FILES = 500
 type Entry = { name: string; isDirectory: boolean; isFile: boolean; file?: (ok: (file: File) => void, fail: (error: Error) => void) => void; createReader?: () => { readEntries: (ok: (entries: Entry[]) => void, fail: (error: Error) => void) => void } }
 function safeName(name: string) {
-  if (!name || name === '.' || name === '..' || /[\\/\u0000-\u001f]/.test(name)) throw new AttachmentPreparationError('La carpeta contiene un nombre de archivo no válido.')
+  if (!name || name === '.' || name === '..' || name.includes('\\') || name.includes('/') || name.split('').some(char => char.charCodeAt(0) < 32)) throw new AttachmentPreparationError('La carpeta contiene un nombre de archivo no válido.')
   return name
 }
 export async function compressFiles(files: Array<{ path: string; file: File | null }>, name: string) {
@@ -24,7 +24,12 @@ export async function compressFiles(files: Array<{ path: string; file: File | nu
 }
 export async function prepareAttachmentFiles(files: File[]) {
   return Promise.all(files.map(async file => {
+    if (file.size > MAX_BYTES) throw new AttachmentPreparationError('El archivo supera los 128 MB. Divídelo antes de enviarlo.')
     if (/\.zip$/i.test(file.name) && file.type !== 'application/zip') return new File([file], file.name, {type:'application/zip',lastModified:file.lastModified})
+    const directExtension = /\.(pdf|zip|docx|xlsx|pptx|txt|csv|jpe?g|png|webp|gif|mp4|webm|mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i.test(file.name)
+    const directMediaType = /^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm)|audio\/(mpeg|mp4|aac|wav|x-wav|ogg|opus|webm|flac|x-flac)|application\/ogg)$/.test(file.type || '')
+    // Keep unsupported documents intact inside a ZIP accepted by the message API.
+    if (!directExtension && !directMediaType) return compressFiles([{path:file.name,file}], file.name)
     if (file.size < 8 * 1024 * 1024 || !/\.(txt|csv|json|xml|log|md|html|doc|xls|ppt)$/i.test(file.name)) return file
     const packed = await compressFiles([{ path: file.name, file }], file.name)
     return packed.size < file.size ? packed : file

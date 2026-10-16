@@ -1,7 +1,9 @@
 import { WebRtcPeerSession } from '../calls/WebRtcPeerSession';
+import { replacePeerTracks } from '../../core/replacePeerTracks';
 
 export class WebRTCManager {
   private localStream: MediaStream | null = null;
+  private mediaRevision = 0;
   private peerConnections: Map<string, RTCPeerConnection> = new Map();
   private peerSessions: Map<string, WebRtcPeerSession> = new Map();
   private dataChannels: Map<string, RTCDataChannel> = new Map();
@@ -21,6 +23,7 @@ export class WebRTCManager {
   }
 
   async initializeLocalMedia(audio: boolean = true, video: boolean = true): Promise<MediaStream> {
+    const revision = ++this.mediaRevision;
     try {
       const constraints = {
         audio,
@@ -30,7 +33,10 @@ export class WebRTCManager {
         } : false
       };
 
-      this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (revision !== this.mediaRevision) { stream.getTracks().forEach(track => track.stop()); throw new Error('Media session ended'); }
+      this.localStream?.getTracks().forEach(track => track.stop());
+      this.localStream = stream;
       return this.localStream;
     } catch (error) {
       console.error('Error accessing media devices:', error);
@@ -39,6 +45,7 @@ export class WebRTCManager {
   }
 
   setLocalStream(stream: MediaStream, stopPrevious: boolean = true): void {
+    this.mediaRevision++;
     if (stopPrevious && this.localStream && this.localStream !== stream) {
       this.localStream.getTracks().forEach((track) => track.stop());
     }
@@ -47,6 +54,9 @@ export class WebRTCManager {
 
   async replaceOutgoingTrack(kind: 'audio' | 'video', track: MediaStreamTrack): Promise<void> {
     if (!this.localStream) this.localStream = new MediaStream();
+    const stream = this.localStream, revision = this.mediaRevision;
+    await replacePeerTracks(this.peerConnections.values(), kind, track, stream);
+    if (revision !== this.mediaRevision || stream !== this.localStream) { track.stop(); throw new Error('Media session ended'); }
     this.localStream.getTracks()
       .filter((current) => current.kind === kind && current.id !== track.id)
       .forEach((current) => {
@@ -57,26 +67,12 @@ export class WebRTCManager {
       this.localStream.addTrack(track);
     }
 
-    const replacements: Promise<void>[] = [];
-    this.peerConnections.forEach((connection) => {
-      const sender = connection.getTransceivers().find((candidate) => candidate.sender.track?.kind === kind || candidate.receiver.track.kind === kind)?.sender;
-      if (sender) {
-        replacements.push(sender.replaceTrack(track));
-      } else {
-        connection.addTrack(track, this.localStream!);
-      }
-    });
-    await Promise.all(replacements);
   }
 
   async removeOutgoingTrack(kind: 'audio' | 'video'): Promise<void> {
-    const replacements: Promise<void>[] = [];
-    this.peerConnections.forEach(connection => {
-      const sender = connection.getTransceivers().find(candidate => candidate.sender.track?.kind === kind || candidate.receiver.track.kind === kind)?.sender;
-      if (sender) replacements.push(sender.replaceTrack(null));
-    });
+    if (!this.localStream) return;
+    await replacePeerTracks(this.peerConnections.values(), kind, null, this.localStream);
     this.localStream?.getTracks().filter(track => track.kind === kind).forEach(track => { track.stop(); this.localStream?.removeTrack(track); });
-    await Promise.all(replacements);
   }
 
   createPeerConnection(peerId: string, isInitiator: boolean): RTCPeerConnection {
@@ -266,6 +262,7 @@ export class WebRTCManager {
   }
 
   stopLocalStream(): void {
+    this.mediaRevision++;
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => {
         track.stop();

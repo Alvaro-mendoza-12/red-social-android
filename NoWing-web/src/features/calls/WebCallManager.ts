@@ -2,6 +2,7 @@ import { io, type Socket } from 'socket.io-client'
 import { buildSignalingAffinity } from '../../core/signalingAffinity'
 import { WebRtcPeerSession } from './WebRtcPeerSession'
 import { CallControlClient, type CallLeaveAction } from './callControl'
+import { replacePeerTracks } from '../../core/replacePeerTracks'
 
 export interface CallParticipant {
   id: string
@@ -50,6 +51,7 @@ type CallSocket = Socket<{
   answer: (payload: AnswerPayload) => void
   'ice-candidate': (payload: IcePayload) => void
   'mute-state': (payload: { userId: string; isMuted: boolean }) => void
+  'video-state': (payload: { userId: string; isVideoEnabled: boolean }) => void
   'auth-error': (payload: { error?: string }) => void
   'call-joined': (payload: { callId: string }) => void
   'call-join-error': (payload: { callId?: string; error?: string }) => void
@@ -61,6 +63,7 @@ type CallSocket = Socket<{
   answer: (payload: { target: string; answer: RTCSessionDescriptionInit; userId: string; name: string }) => void
   'ice-candidate': (payload: { target: string; candidate: RTCIceCandidateInit; userId: string; name: string }) => void
   'mute-state': (payload: { callId: string; userId: string; isMuted: boolean }) => void
+  'video-state': (payload: { callId: string; userId: string; isVideoEnabled: boolean }) => void
 }>
 
 type SignalParticipant = {
@@ -68,6 +71,7 @@ type SignalParticipant = {
   userId: string
   name?: string
   avatarUrl?: string
+  videoEnabled?: boolean
 }
 
 type OfferPayload = {
@@ -129,6 +133,8 @@ export class WebCallManager {
   private ownSocketId = ''
   private localStream: MediaStream | null = null
   private screenTrack: MediaStreamTrack | null = null
+  private mediaBusy = false
+  private mediaRevision = 0
   private peerConnections = new Map<string, RTCPeerConnection>()
   private peerSessions = new Map<string, WebRtcPeerSession>()
   private participants = new Map<string, CallParticipant>()
@@ -314,6 +320,8 @@ export class WebCallManager {
     this.socket?.disconnect()
     this.socket = null
     this.ownSocketId = ''
+    this.mediaRevision++
+    if (this.screenTrack) this.screenTrack.onended = null
     this.screenTrack?.stop()
     this.screenTrack = null
     this.stopLocalStream()
@@ -356,78 +364,88 @@ export class WebCallManager {
   }
 
   async toggleVideo(): Promise<void> {
-    if (!this.localStream) return
-
-    const nextVideo = !this.callState.isVideoEnabled
-    const videoTracks = this.localStream.getVideoTracks()
-    if (nextVideo && videoTracks.length === 0) {
-      const videoStream = await navigator.mediaDevices.getUserMedia({ video: true })
-      const videoTrack = videoStream.getVideoTracks()[0]
-      if (videoTrack) {
-        this.localStream.addTrack(videoTrack)
-        this.peerConnections.forEach((connection) => {
-          connection.addTrack(videoTrack, this.localStream as MediaStream)
-        })
+    const stream = this.localStream, revision = this.mediaRevision
+    if (!stream || !this.callState.currentCallId || this.mediaBusy) return
+    this.mediaBusy = true
+    try {
+      const nextVideo = !this.callState.isVideoEnabled
+      let track = stream.getVideoTracks().find(value => value.readyState === 'live') ?? null
+      if (nextVideo && !track) {
+        const capture = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        track = capture.getVideoTracks()[0] ?? null
+        if (!track || revision !== this.mediaRevision) { capture.getTracks().forEach(value => value.stop()); return }
+        try { if (!this.screenTrack) await replacePeerTracks(this.peerConnections.values(), 'video', track, stream) }
+        catch (error) { track.stop(); throw error }
+        if (revision !== this.mediaRevision) { track.stop(); return }
+        stream.getVideoTracks().forEach(value => { stream.removeTrack(value); value.stop() })
+        stream.addTrack(track)
       }
-    } else {
-      videoTracks.forEach((track) => {
-        track.enabled = nextVideo
-      })
-    }
-
-    this.callState = {
-      ...this.callState,
-      isVideoEnabled: nextVideo,
-    }
-    this.onLocalStreamCallbacks.forEach((callback) => callback(this.localStream))
-    this.notifyCallStateChange()
+      if (track) track.enabled = nextVideo
+      this.callState = { ...this.callState, isVideoEnabled: nextVideo }
+      this.emitVideoState()
+      this.publishLocalPreview()
+      this.notifyCallStateChange()
+    } finally { this.mediaBusy = false }
   }
 
   async toggleScreenShare(): Promise<void> {
-    if (!this.localStream) return
-    if (!this.callState.isScreenSharing) {
+    const stream = this.localStream, revision = this.mediaRevision
+    if (!stream || !this.callState.currentCallId || this.mediaBusy) return
+    this.mediaBusy = true
+    try {
+      if (this.callState.isScreenSharing) { await this.stopScreenShare(); return }
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
       const screenTrack = screenStream.getVideoTracks()[0]
-      if (!screenTrack) return
+      if (!screenTrack || revision !== this.mediaRevision) { screenStream.getTracks().forEach(value => value.stop()); return }
+      try { await replacePeerTracks(this.peerConnections.values(), 'video', screenTrack, stream) }
+      catch (error) { screenTrack.stop(); throw error }
+      if (revision !== this.mediaRevision) { screenTrack.stop(); return }
       this.screenTrack = screenTrack
-
-      await Promise.all(
-        Array.from(this.peerConnections.values()).map(async (connection) => {
-          const sender = connection.getSenders().find((item) => item.track?.kind === 'video')
-          if (sender) {
-            await sender.replaceTrack(screenTrack)
-          } else {
-            connection.addTrack(screenTrack, screenStream)
-          }
-        }),
-      )
-
       screenTrack.onended = () => {
-        void this.stopScreenShare()
+        if (this.screenTrack === screenTrack) void this.stopScreenShare().catch(() => {})
       }
       this.callState = { ...this.callState, isScreenSharing: true }
+      this.emitVideoState()
+      this.publishLocalPreview()
       this.notifyCallStateChange()
-      return
-    }
-
-    await this.stopScreenShare()
+    } finally { this.mediaBusy = false }
   }
 
   private async stopScreenShare(): Promise<void> {
-    if (!this.localStream) return
+    if (!this.localStream || !this.screenTrack) return
     const activeScreenTrack = this.screenTrack
+    activeScreenTrack.onended = null
+    const revision = this.mediaRevision
+    const cameraTrack = this.localStream.getVideoTracks().find(value => value.readyState === 'live') ?? null
+    await replacePeerTracks(this.peerConnections.values(), 'video', cameraTrack, this.localStream)
+    if (revision !== this.mediaRevision || this.screenTrack !== activeScreenTrack) return
     this.screenTrack = null
-    if (activeScreenTrack) activeScreenTrack.onended = null
-    const cameraTrack = this.localStream.getVideoTracks()[0] ?? null
-    await Promise.all(
-      Array.from(this.peerConnections.values()).map(async (connection) => {
-        const sender = connection.getSenders().find((item) => item.track?.kind === 'video')
-        if (sender) await sender.replaceTrack(cameraTrack)
-      }),
-    )
-    activeScreenTrack?.stop()
+    activeScreenTrack.stop()
     this.callState = { ...this.callState, isScreenSharing: false }
-    this.onLocalStreamCallbacks.forEach((callback) => callback(this.localStream))
+    this.emitVideoState()
+    this.publishLocalPreview()
+    this.notifyCallStateChange()
+  }
+
+  private publishLocalPreview(): void {
+    const tracks = this.localStream?.getTracks().filter(track => !this.screenTrack || track.kind !== 'video') ?? []
+    if (this.screenTrack) tracks.push(this.screenTrack)
+    const preview = this.localStream ? new MediaStream(tracks) : null
+    this.onLocalStreamCallbacks.forEach(callback => callback(preview))
+  }
+
+  private emitVideoState(): void {
+    if (!this.callState.currentCallId) return
+    this.socket?.emit('video-state', { callId: this.callState.currentCallId, userId: this.userId, isVideoEnabled: this.callState.isScreenSharing || this.callState.isVideoEnabled })
+  }
+
+  private updateRemoteMedia(userId: string, patch: Partial<CallParticipant>): void {
+    this.participants.forEach((participant, socketId) => {
+      if (participant.id !== userId) return
+      const updated = { ...participant, ...patch }
+      this.participants.set(socketId, updated)
+      if (this.callState.remoteParticipant?.id === userId) this.callState = { ...this.callState, remoteParticipant: updated }
+    })
     this.notifyCallStateChange()
   }
 
@@ -574,19 +592,13 @@ export class WebCallManager {
     })
 
     socket.on('mute-state', (payload) => {
-      this.participants.forEach((participant, socketId) => {
-        if (participant.id !== payload.userId) return
-        this.participants.set(socketId, {
-          ...participant,
-          isAudioEnabled: !payload.isMuted,
-        })
-      })
-      this.notifyCallStateChange()
+      this.updateRemoteMedia(payload.userId, { isAudioEnabled: !payload.isMuted })
     })
+    socket.on('video-state', payload => this.updateRemoteMedia(payload.userId, { isVideoEnabled: payload.isVideoEnabled }))
 
     socket.on('auth-error', () => this.endCall('auth_error'))
     socket.on('call-joined', (payload) => {
-      if (payload.callId === callId) this.clearJoinRetry()
+      if (payload.callId === callId) { this.clearJoinRetry(); this.emitVideoState() }
     })
     socket.on('call-join-error', (payload) => {
       if (payload.callId && payload.callId !== callId) return
@@ -623,7 +635,7 @@ export class WebCallManager {
       name: signalParticipant.name?.trim() || this.callState.remoteParticipant?.name || 'Usuario',
       avatarUrl: signalParticipant.avatarUrl?.trim() || this.callState.remoteParticipant?.avatarUrl || '',
       isAudioEnabled: true,
-      isVideoEnabled: this.callState.isVideoEnabled,
+      isVideoEnabled: signalParticipant.videoEnabled !== false,
       isSpeaking: false,
       socketId,
     }
@@ -661,7 +673,7 @@ export class WebCallManager {
     if (existing) return existing
 
     const connection = new RTCPeerConnection({ iceServers: this.iceServers })
-    this.localStream?.getTracks().forEach((track) => {
+    this.localStream?.getTracks().filter(track => !this.screenTrack || track.kind !== 'video').concat(this.screenTrack ? [this.screenTrack] : []).forEach((track) => {
       connection.addTrack(track, this.localStream as MediaStream)
     })
 

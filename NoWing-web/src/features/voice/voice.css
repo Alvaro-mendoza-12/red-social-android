@@ -446,7 +446,9 @@
   color: var(--secondary-text);
 }
 .voice-remote-audio {
-  display: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 @media (max-width: 760px) {
   .voice-lobby-hero {
@@ -517,3 +519,11 @@
 }
 
 .theme-light .voice-room-pill.online,.theme-light .voice-muted-badge:not(.active){color:#156940}.theme-light .voice-room-alert{color:#9e2030}.theme-light .voice-connection-bars .active{background:#156940}
+
+.voice-video-expand { position: absolute; right: 10px; top: 10px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: #000a; color: white; }
+.voice-video-tile:fullscreen { display: grid; align-items: center; width: 100vw; height: 100dvh; border-radius: 0; margin: 0; }
+.voice-video-tile:fullscreen video { width: 100%; height: 100%; max-height: 100dvh; aspect-ratio: auto; object-fit: contain; }
+
+.voice-video-tile { margin: 0; }
+.voice-side-section,.voice-connection-card { min-width: 0; overflow-wrap: anywhere; }
+@media(max-width:500px) { .voice-room-side-panel { grid-template-columns: minmax(0,1fr); } }

@@ -1,0 +1,10 @@
+.media-device-dialog { width: min(520px,calc(100vw - 24px)); max-height: min(80dvh,640px); margin: auto; padding: 20px; overflow: auto; color: var(--foreground); background: var(--surface); border: 1px solid var(--outline); border-radius: 18px; box-shadow: 0 16px 80px #0008; }
+.media-device-dialog::backdrop { background: #0009; backdrop-filter: blur(3px); }
+.media-device-dialog>header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.media-device-dialog h3 { font-size: 1.05rem; }
+.media-device-dialog label { display: grid; gap: 7px; min-width: 0; font-size: .85rem; }
+.media-device-dialog select { width: 100%; min-width: 0; }
+.media-device-dialog small { display: block; color: var(--secondary-text); line-height: 1.6; font-size: .8rem; }
+.voice-device-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.voice-device-fields>small { grid-column: 1/-1; }
+@media(max-width:500px) { .voice-device-fields { grid-template-columns: minmax(0,1fr); } .media-device-dialog { padding: 16px; } }

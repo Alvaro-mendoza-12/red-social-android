@@ -1,7 +1,10 @@
 import { SafeAvatar } from '../../components/SafeAvatar'
-import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Maximize } from 'lucide-react'
+import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Maximize, Settings, Volume2, VolumeX } from 'lucide-react'
 import './calls.css'
-import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
+import { LiveStreamVideo } from '../../components/LiveStreamMedia'
+import { useLiveVideoAvailable } from '../../core/media/useLiveVideoAvailable'
+import { AudioOutputSelect } from '../../components/AudioOutputSelect'
+import { MediaDeviceDialog } from '../../components/MediaDeviceDialog'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
@@ -41,12 +44,18 @@ export function CallInterface({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [remoteVideoReady, setRemoteVideoReady] = useState(false)
-  useEffect(() => { setRemoteVideoReady(false); if (!remoteStream) return; const tracks = remoteStream.getVideoTracks(); const update = () => setRemoteVideoReady(tracks.some(track => track.readyState === 'live' && !track.muted)); tracks.forEach(track => { track.addEventListener('mute', update); track.addEventListener('unmute', update); track.addEventListener('ended', update) }); update(); return () => tracks.forEach(track => { track.removeEventListener('mute',update); track.removeEventListener('unmute',update); track.removeEventListener('ended',update) }) }, [remoteStream])
+  const remoteHasVideo = useLiveVideoAvailable(remoteStream)
+  const localHasVideo = useLiveVideoAvailable(localStream)
+  const remoteParticipant = callState?.remoteParticipant || participantInfo
+  const remoteVideoReady = remoteHasVideo && remoteParticipant?.isVideoEnabled !== false
+  const [isDeafened, setIsDeafened] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [outputDevice, setOutputDevice] = useState('')
+  const [mediaBusy, setMediaBusy] = useState(false)
+  const container = useRef<HTMLDivElement>(null)
   const [fallbackAccessToken, setFallbackAccessToken] = useState('')
 
-  const localVideoRef = useRef<HTMLVideoElement>(null)
-  const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const autoStartedRef = useRef(false)
 
   const displayName =
@@ -78,7 +87,8 @@ export function CallInterface({
 
   useEffect(() => {
     if (!user || !accessToken) return
-
+    let active = true
+    let navigationTimer: ReturnType<typeof setTimeout> | undefined
     try {
       const manager = new WebCallManager({
         userId: user.id,
@@ -90,15 +100,17 @@ export function CallInterface({
       queueMicrotask(() => setCallManager(manager))
 
       manager.onCallState((state) => {
-        setCallState(state)
-        setError(null)
+        if (!active) return
+        setCallState(state.currentCallId ? state : null)
       })
 
       manager.onLocalStream((stream) => {
+        if (!active) return
         setLocalStream(stream)
       })
 
       manager.onRemoteStream((stream, participant) => {
+        if (!active) return
         setRemoteStream(stream)
         setParticipantInfo(participant)
       })
@@ -109,19 +121,21 @@ export function CallInterface({
             await sendCallResponse(supabase, event.remoteUserId, { callId: event.callId, action: event.action, fromUserId: user.id }, accessToken)
           }
         }).catch(() => undefined)
-        if (reason === 'cleanup') return
+        if (reason === 'cleanup' || !active) return
         setCallState(null)
         setRemoteUserId('')
         setParticipantInfo(null)
         setLocalStream(null)
         setRemoteStream(null)
 
-        setTimeout(() => {
+        navigationTimer = setTimeout(() => {
           navigate('/app/messages')
         }, 2000)
       })
 
       return () => {
+        active = false
+        if (navigationTimer) clearTimeout(navigationTimer)
         manager.cleanup()
       }
     } catch (error) {
@@ -131,16 +145,13 @@ export function CallInterface({
   }, [accessToken, avatarUrl, displayName, navigate, signalingBaseUrl, user])
 
   useEffect(() => {
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = localStream
-    }
-  }, [localStream])
-
-  useEffect(() => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream
-    }
-  }, [remoteStream])
+    if (!showSettings || !navigator.mediaDevices?.enumerateDevices) return
+    let active = true
+    const refresh = () => { void navigator.mediaDevices.enumerateDevices().then(values => { if (active) setDevices(values) }).catch(() => { if (active) setError('No se pudieron consultar los dispositivos de audio.') }) }
+    refresh()
+    navigator.mediaDevices.addEventListener?.('devicechange', refresh)
+    return () => { active = false; navigator.mediaDevices.removeEventListener?.('devicechange', refresh) }
+  }, [showSettings])
 
   const initiateCall = useCallback(async () => {
     if (!callManager || !user || !remoteUserId.trim()) {
@@ -273,32 +284,28 @@ export function CallInterface({
     } catch (error) {
       console.error('Error ending call:', error)
     }
-  }, [callManager, callState, participantInfo, user])
+  }, [callManager])
 
   const toggleMute = useCallback(() => {
     if (!callManager) return
     callManager.toggleMute()
   }, [callManager])
 
-  const toggleVideo = useCallback(async () => {
-    if (!callManager) return
-    
-    try {
-      await callManager.toggleVideo()
-    } catch (error) {
-      console.error('Error toggling video:', error)
-    }
-  }, [callManager])
+  const toggleVideo = async () => {
+    if (!callManager || mediaBusy) return
+    setMediaBusy(true); setError(null)
+    try { await callManager.toggleVideo() }
+    catch { setError('No se pudo activar la cámara. Revisa sus permisos e inténtalo de nuevo.') }
+    finally { setMediaBusy(false) }
+  }
 
-  const toggleScreenShare = useCallback(async () => {
-    if (!callManager) return
-
-    try {
-      await callManager.toggleScreenShare()
-    } catch (error) {
-      console.error('Error toggling screen share:', error)
-    }
-  }, [callManager])
+  const toggleScreenShare = async () => {
+    if (!callManager || mediaBusy) return
+    setMediaBusy(true); setError(null)
+    try { await callManager.toggleScreenShare() }
+    catch (caught) { if (!(caught instanceof DOMException && caught.name === 'NotAllowedError')) setError('No se pudo compartir la pantalla. Inténtalo de nuevo.') }
+    finally { setMediaBusy(false) }
+  }
 
   if (!user) {
     return <StatusView title="Autenticación requerida" description="Debes iniciar sesión para hacer llamadas." />
@@ -359,16 +366,7 @@ export function CallInterface({
             </div>
           </div>
 
-          {videoEnabled ? <div className="local-video-section">
-            <h3>Vista Previa</h3>
-            <StreamingVideo
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="local-video-preview"
-            />
-          </div> : null}
+
         </main>
 
         <div className="call-footer">
@@ -382,16 +380,15 @@ export function CallInterface({
 
   // Show active call interface
   return (
-    <div className="call-interface-container">
+    <div ref={container} className="call-interface-container active-call">
       <header className="call-header">
         <div className="call-info">
           <h2>
-            {participantInfo?.name || initialRemoteName || (callState.isIncomingCall ? 'Llamada entrante' : 'Llamada')}
+            {remoteParticipant?.name || initialRemoteName || (callState.isIncomingCall ? 'Llamada entrante' : 'Llamada')}
           </h2>
           <p>
-            {callState.isIncomingCall ? 'Llamada entrante' : remoteStream ? 'En llamada' : 'Conectando'} •{' '}
+            {callState.isIncomingCall ? 'Llamada entrante' : callState.connectionLabel || (remoteStream ? 'En llamada' : 'Conectando')} •{' '}
             {Math.floor(callState.duration / 60)}:{(callState.duration % 60).toString().padStart(2, '0')}
-            {callState.connectionLabel ? ` • ${callState.connectionLabel}` : ''}
           </p>
         </div>
         <div className="call-status">
@@ -408,18 +405,12 @@ export function CallInterface({
         <div className={`videos-container ${remoteVideoReady ? 'has-remote-video' : 'audio-only'}`}>
           {/* Remote video */}
           <div className="video-wrapper remote-video">
-            <StreamingVideo
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="remote-video-element"
-              onPlaying={() => setRemoteVideoReady(Boolean(remoteStream?.getVideoTracks().length))}
-            />
-            {!remoteVideoReady ? <div className="call-participant-placeholder"><SafeAvatar size="lg" url={participantInfo?.avatarUrl} name={participantInfo?.name || initialRemoteName || 'Usuario'} /><strong>{participantInfo?.name || initialRemoteName || 'Usuario'}</strong><small>{remoteStream ? 'Llamada de voz' : callState.isIncomingCall ? 'Te está llamando' : 'Esperando respuesta…'}</small></div> : null}
+            <LiveStreamVideo stream={remoteStream} label={remoteParticipant?.name || initialRemoteName || 'Participante'} muted={isDeafened} outputDeviceId={outputDevice} className="remote-video-element" />
+            {!remoteVideoReady ? <div className="call-participant-placeholder"><SafeAvatar size="lg" url={remoteParticipant?.avatarUrl} name={remoteParticipant?.name || initialRemoteName || 'Usuario'} /><strong>{remoteParticipant?.name || initialRemoteName || 'Usuario'}</strong><small>{remoteStream ? 'Llamada de voz' : callState.isIncomingCall ? 'Te está llamando' : 'Esperando respuesta…'}</small></div> : null}
             <div className="participant-overlay">
               <div className="participant-info">
-                <SafeAvatar url={participantInfo?.avatarUrl} name={participantInfo?.name || 'Usuario'} className="participant-avatar" />
-                <span className="participant-name">{participantInfo?.name || 'Usuario'}</span>
+                <SafeAvatar url={remoteParticipant?.avatarUrl} name={remoteParticipant?.name || 'Usuario'} className="participant-avatar" />
+                <span className="participant-name">{remoteParticipant?.name || 'Usuario'}</span>
               </div>
               <div className="participant-status">
                 {!remoteVideoReady && <span className="video-off-indicator" aria-label="Cámara apagada"><VideoOff/></span>}
@@ -428,21 +419,17 @@ export function CallInterface({
           </div>
 
           {/* Local video */}
-          <div className="video-wrapper local-video" hidden={!callState.isVideoEnabled && !callState.isScreenSharing}>
-            <StreamingVideo
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className={`local-video-element ${callState.isMuted ? 'muted' : ''}`}
-            />
+          <div className="video-wrapper local-video" hidden={!localHasVideo || (!callState.isVideoEnabled && !callState.isScreenSharing)}>
+            <LiveStreamVideo stream={localStream} label={callState.isScreenSharing ? 'Tu pantalla' : 'Tu cámara'} muted className={`local-video-element ${callState.isScreenSharing ? 'screen-preview' : 'camera-preview'}`} />
             <div className="local-video-overlay">
-              <span className="local-video-label">Tú</span>
+              <span className="local-video-label">{callState.isScreenSharing ? 'Tu pantalla' : 'Tú'}</span>
               {callState.isMuted && <span className="muted-indicator">🔇</span>}
             </div>
           </div>
         </div>
 
+        {error ? <p className="call-media-error" role="status">{error}</p> : null}
+        {showSettings ? <MediaDeviceDialog title="Sonido" label="Ajustes de sonido de la llamada" onClose={() => setShowSettings(false)}><AudioOutputSelect devices={devices} value={outputDevice} onChange={setOutputDevice} /></MediaDeviceDialog> : null}
         <div className="call-controls">
           {callState.isIncomingCall ? (
             <div className="incoming-controls">
@@ -462,36 +449,52 @@ export function CallInterface({
               </button>
             </div>
           ) : (
-            <div className="active-controls"><button type="button" className="control-btn" aria-label="Ampliar llamada" onClick={() => { const element=document.querySelector<HTMLElement>('.call-interface-container'); void (document.fullscreenElement ? document.exitFullscreen() : element?.requestFullscreen())?.catch(() => {}) }}><Maximize/></button>
+            <div className="active-controls">
+              {typeof document.documentElement.requestFullscreen === 'function' ? <button type="button" className="control-btn" aria-label="Ampliar llamada" onClick={() => void (document.fullscreenElement ? document.exitFullscreen() : container.current?.requestFullscreen())?.catch(() => {})}><Maximize/><span>Ampliar</span></button> : null}
               <button
                 className={`control-btn ${callState.isMuted ? 'muted' : ''}`}
+                type="button"
                 onClick={toggleMute}
+                aria-pressed={callState.isMuted}
+                aria-label={callState.isMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
                 title={callState.isMuted ? 'Activar micrófono' : 'Desactivar micrófono'}
               >
-                {callState.isMuted ? <MicOff/> : <Mic/>}
+                {callState.isMuted ? <MicOff/> : <Mic/>}<span>{callState.isMuted ? 'Silenciado' : 'Micrófono'}</span>
               </button>
               
               <button
                 className={`control-btn ${callState.isVideoEnabled ? 'video-on' : 'video-off'}`}
-                onClick={toggleVideo}
+                type="button"
+                onClick={() => void toggleVideo()}
+                disabled={mediaBusy}
+                aria-pressed={callState.isVideoEnabled}
+                aria-label={callState.isVideoEnabled ? 'Apagar cámara' : 'Activar cámara'}
                 title={callState.isVideoEnabled ? 'Desactivar vídeo' : 'Activar vídeo'}
               >
-                {callState.isVideoEnabled ? <Video/> : <VideoOff/>}
+                {callState.isVideoEnabled ? <Video/> : <VideoOff/>}<span>Cámara</span>
               </button>
               
-              <button
+              {typeof navigator.mediaDevices?.getDisplayMedia === 'function' ? <button
                 className={`control-btn ${callState.isScreenSharing ? 'screen-sharing' : ''}`}
-                onClick={toggleScreenShare}
+                type="button"
+                onClick={() => void toggleScreenShare()}
+                disabled={mediaBusy}
+                aria-pressed={callState.isScreenSharing}
+                aria-label={callState.isScreenSharing ? 'Detener pantalla' : 'Compartir pantalla'}
                 title={callState.isScreenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla'}
               >
-                <MonitorUp/>
-              </button>
+                <MonitorUp/><span>{callState.isScreenSharing ? 'Detener' : 'Pantalla'}</span>
+              </button> : null}
+              <button type="button" className={`control-btn ${isDeafened ? 'muted' : ''}`} aria-label={isDeafened ? 'Escuchar llamada' : 'Silenciar audio de llamada'} aria-pressed={isDeafened} onClick={() => setIsDeafened(value => !value)}>{isDeafened ? <VolumeX/> : <Volume2/>}<span>Audio</span></button>
+              <button type="button" className="control-btn" aria-label="Ajustes de sonido" aria-expanded={showSettings} onClick={() => setShowSettings(value => !value)}><Settings/><span>Ajustes</span></button>
               
               <button
                 className="control-btn end-call-btn"
+                type="button"
+                aria-label="Colgar llamada"
                 onClick={endCall}
               >
-                <PhoneOff/>
+                <PhoneOff/><span>Colgar</span>
               </button>
             </div>
           )}

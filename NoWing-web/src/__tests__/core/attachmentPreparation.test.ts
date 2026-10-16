@@ -13,3 +13,9 @@ test('snapshots directory entries before the drop event becomes unavailable',asy
 test('technical worker errors never reach the attachment UI',()=>{expect(attachmentPreparationError(new Error('Worker failed at https://internal.example.invalid'))).toBe('No se pudieron preparar los archivos. Inténtalo de nuevo.')})
 
 test('normalizes Windows ZIP MIME without altering the archive bytes',async()=>{const source=new File([new Uint8Array([0x50,0x4b,3,4,5])],'Folder.zip',{type:'application/x-zip-compressed',lastModified:123});const [prepared]=await prepareAttachmentFiles([source]);expect(prepared.type).toBe('application/zip');expect(prepared.name).toBe(source.name);expect(prepared.lastModified).toBe(123);expect(await bytes(prepared)).toEqual(await bytes(source))})
+
+test.each(['documento.doc','datos.json','apuntes.md','dibujo.dwg'])('packages unsupported document %s without changing its contents',async name=>{const source=file(name,'Contenido original'),[prepared]=await prepareAttachmentFiles([source]);expect(prepared.name).toBe(name+'.zip');expect(prepared.type).toBe('application/zip');expect(strFromU8(unzipSync(await bytes(prepared))[name])).toBe('Contenido original')})
+
+test.each(['imagen.gif','video.mp4','presentación.pptx','hoja.xlsx'])('keeps directly supported %s unchanged',async name=>{const source=file(name,'source');expect(await prepareAttachmentFiles([source])).toEqual([source])})
+
+test('rejects oversized plain files before creating an archive or reading their contents',async()=>{const source={...file('big.bin','a'),size:129*1024*1024};await expect(prepareAttachmentFiles([source])).rejects.toThrow('128 MB')})
