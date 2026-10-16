@@ -12,7 +12,7 @@ export function PublicInfo({ path }: { path: string }) {
       <p className="public-info-intro">{page.description}</p>
       <div className="public-home-actions"><a className="primary-btn" href="/login">Entrar a Novvin</a><a className="ghost-btn" href="/explore/videos">Explorar videos</a></div>
       {page.sections.map(section => <section key={section.heading}><h2>{section.heading}</h2><p>{section.body}</p></section>)}
-      <nav aria-label="Guías de Novvin"><a href="/novvin-web">Novvin Web</a><a href="/mensajes">Mensajes</a><a href="/videos">Videos</a><a href="/salas-de-voz">Salas de voz</a><a href="/ayuda/vincular-web">Ayuda con el QR</a></nav>
+      <nav aria-label="Guías de Novvin"><a href="/novvin-web">Novvin Web</a><a href="/mensajes">Mensajes</a><a href="/videos">Videos</a><a href="/salas-de-voz">Salas de voz</a><a href="/ayuda/vincular-web">Ayuda con el QR</a><a href="/social">Social</a><a href="/momentos">Momentos</a><a href="/comunidades">Grupos y comunidades</a><a href="/juegos">Juegos</a><a href="/asistente">Asistente</a><a href="/ayuda">Ayuda</a></nav>
     </main>
     <footer className="public-home-footer"><a className="public-home-brand" href="/">Novvin</a><span>Conversa. Comparte. Descubre.</span><a href="/login">Entrar a mi cuenta</a></footer>
   </div>

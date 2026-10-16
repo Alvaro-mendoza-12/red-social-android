@@ -2,7 +2,7 @@
 
 ## Cambios
 
-- Portada y cinco guías públicas como HTML completo, con la misma presentación para personas y rastreadores. No descargan la aplicación privada, autenticación, llamadas ni conexiones al backend. Usan una hoja de estilo pública de menos de 15 KB.
+- Portada y once guías públicas como HTML completo, con la misma presentación para personas y rastreadores. No descargan la aplicación privada, autenticación, llamadas ni conexiones al backend. Usan una hoja de estilo pública de menos de 15 KB.
 - Nombre de marca coherente, títulos y descripciones propios, URL canónica, Open Graph, tarjeta social de 1200 × 630, favicon real e iconos del manifiesto. Se conserva el logo oficial.
 - Datos estructurados de WebSite, Organization y WebPage; las guías incluyen BreadcrumbList. La política CSP admite solo las firmas de esos datos, sin habilitar scripts en línea de forma general.
 - El build falla si una firma de datos estructurados queda fuera de la política de seguridad. El comando npm run seo:config actualiza deliberadamente las firmas al editar metadatos; npm run test:seo valida el resultado.
@@ -13,9 +13,9 @@
 
 ## Comprobaciones locales
 
-438 pruebas web en 71 suites; 21 pruebas de SEO/HTML; 9 pruebas de multimedia. Compilación de producción correcta. Sin errores ni avisos de lint en los archivos TypeScript modificados. npm audit de dependencias de producción no comunica vulnerabilidades.
+438 pruebas web en 71 suites; 33 pruebas de SEO/HTML; 9 pruebas de multimedia. Compilación de producción correcta. Sin errores ni avisos de lint en los archivos TypeScript modificados. npm audit de dependencias de producción no comunica vulnerabilidades.
 
-Navegador real: 24 combinaciones de las seis páginas públicas a 320, 390, 768 y 1440 píxeles; imágenes cargadas, sin desbordamiento horizontal ni peticiones de JavaScript o backend de la aplicación. Las peticiones ajenas de una extensión instalada del navegador se excluyen y registran aparte; la medición de rendimiento usa un navegador aislado. Otras 21 comprobaciones de formularios y 11 de regresión de feed/mensajes verifican que el nuevo punto de entrada sigue abriendo la aplicación.
+Navegador real: 48 combinaciones de las doce páginas públicas a 320, 390, 768 y 1440 píxeles; imágenes cargadas, sin desbordamiento horizontal ni peticiones de JavaScript o backend de la aplicación. Las peticiones ajenas de una extensión instalada del navegador se excluyen y registran aparte; la medición de rendimiento usa un navegador aislado. Otras 21 comprobaciones de formularios y 11 de regresión de feed/mensajes verifican que el nuevo punto de entrada sigue abriendo la aplicación.
 
 ## Criterios para cerrar la entrega
 
@@ -25,7 +25,7 @@ El estado consolidado de producción se documenta aparte. La validación técnic
 
 ## Buscadores y límites
 
-No se crean cientos de variaciones de palabras ni opiniones inventadas. Se mantienen los nombres alternativos visibles que ya existían y la marca preferida Novvin. Google genera automáticamente el nombre visible, el icono, el título y los enlaces secundarios; su implementación correcta no garantiza aparición, posición ni tiempo de rastreo.
+Se documentan 60 consultas relacionadas con las doce páginas públicas en WEB_SEO_SEARCH_INTENTS_2026_10_16.md. No se crean cientos de variaciones de palabras ni opiniones inventadas. Se mantienen los nombres alternativos visibles que ya existían y la marca preferida Novvin. Google genera automáticamente el nombre visible, el icono, el título y los enlaces secundarios; su implementación correcta no garantiza aparición, posición ni tiempo de rastreo.
 
 Referencias oficiales:
 

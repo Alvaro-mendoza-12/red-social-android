@@ -209,6 +209,12 @@ function AppRouter() {
       <Route path="/videos" element={<PublicInfo path="/videos" />} />
       <Route path="/salas-de-voz" element={<PublicInfo path="/salas-de-voz" />} />
         <Route path="/ayuda/vincular-web" element={<PublicInfo path="/ayuda/vincular-web" />} />
+        <Route path="/social" element={<PublicInfo path="/social" />} />
+        <Route path="/momentos" element={<PublicInfo path="/momentos" />} />
+        <Route path="/comunidades" element={<PublicInfo path="/comunidades" />} />
+        <Route path="/juegos" element={<PublicInfo path="/juegos" />} />
+        <Route path="/asistente" element={<PublicInfo path="/asistente" />} />
+        <Route path="/ayuda" element={<PublicInfo path="/ayuda" />} />
         <Route
           path="/explore/:kind?/:id?"
           element={

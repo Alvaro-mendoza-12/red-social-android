@@ -12,7 +12,7 @@ const config=JSON.parse(fs.readFileSync(path.join(root,'vercel.json'),'utf8'))
 test('home is readable without JavaScript and provides real access links',()=>{
  const html=read('index.html')
  assert.match(html,/<h1>Novvin/)
- for(const word of ['N-O-V-V-I-N','Novvyn','NoWin'])assert.ok(html.includes(word))
+ for(const word of ['N-O-V-V-I-N','Novvyn','NoWin','Noving','Nowing'])assert.ok(html.includes(word))
  assert.match(html,/href="\/login"/);assert.match(html,/href="\/register"/)
  assert.doesNotMatch(html,/name="keywords"|accessToken|access_token/)
 })
@@ -29,7 +29,7 @@ test('private shell is noindex, contains no public page and retains its applicat
  assert.match(html,/name="robots" content="noindex, follow"/)
  assert.doesNotMatch(html,/<h1>Novvin|application\/ld\+json/)
 })
-test('sitemap advertises only the six canonical public pages',()=>{
+test('sitemap advertises only the canonical public pages',()=>{
  const sitemap=read('sitemap.xml'),urls=[...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(item=>item[1])
  assert.deepEqual(urls,publicRoutes.map(([route])=>site+(route==='/'?'/':route)))
  assert.doesNotMatch(sitemap,/\/app\/|\/login|\/profile/)
@@ -64,8 +64,8 @@ for(const [route,file,label] of publicRoutes){
 }
 test('each public title and description is unique',()=>{
  const pages=publicRoutes.map(([,file])=>graph(read(file)).find(item=>item['@type']==='WebPage'))
- assert.equal(new Set(pages.map(page=>page.name)).size,6)
- assert.equal(new Set(pages.map(page=>page.description)).size,6)
+ assert.equal(new Set(pages.map(page=>page.name)).size,publicRoutes.length)
+ assert.equal(new Set(pages.map(page=>page.description)).size,publicRoutes.length)
 })
 test('unknown paths do not rewrite into successful application documents',()=>{
  assert.ok(!config.rewrites.some(item=>item.source==='/(.*)'))

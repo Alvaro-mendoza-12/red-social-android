@@ -60,4 +60,4 @@ for (const configPath of [path.join(root, 'vercel.json'), path.join(root, '../ve
 }
 fs.writeFileSync(path.join(root, 'dist/seo-build.json'), JSON.stringify({ publicPages: metadata, publicCSS: cssPath, publicJavaScriptBytes: 0 }, null, 2))
 console.log('Novvin public home rendered; private routes keep the empty app shell.')
-console.log('Six public pages are readable without JavaScript; private routes and 404 remain noindex.')
+console.log('Public pages are readable without JavaScript; private routes and 404 remain noindex.')

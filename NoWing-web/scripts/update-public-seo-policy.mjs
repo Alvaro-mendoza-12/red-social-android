@@ -20,4 +20,4 @@ for (const file of [path.join(root, 'vercel.json'), path.join(root, '../vercel.j
   csp.value = csp.value.replace(/script-src [^;]+;/, "script-src 'self' " + hashes.join(' ') + ';')
   fs.writeFileSync(file, JSON.stringify(config,null,2) + '\n')
 }
-console.log('Structured data hashes updated for six public pages. No broad inline script permission added.')
+console.log('Structured data hashes updated for the public pages. No broad inline script permission added.')

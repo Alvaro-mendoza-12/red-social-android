@@ -92,7 +92,7 @@ export function PublicHome() {
             </p>
           </details>
           <details>
-            <summary>¿Buscabas Novvyn o NoWin?</summary>
+            <summary>¿Buscabas Noving, Nowing, Novvyn o NoWin?</summary>
             <p>
               El nombre de nuestra red social es <strong>Novvin</strong>: N-O-V-V-I-N. Esta es la
               página de acceso a Novvin Web.
@@ -104,7 +104,7 @@ export function PublicHome() {
         <a className="public-home-brand" href="/">
           Novvin
         </a>
-        <nav className="public-footer-links" aria-label="Conoce Novvin"><a href="/novvin-web">Novvin Web</a><a href="/mensajes">Mensajes</a><a href="/videos">Videos</a><a href="/salas-de-voz">Salas de voz</a><a href="/ayuda/vincular-web">Ayuda con el QR</a></nav>
+        <nav className="public-footer-links" aria-label="Conoce Novvin"><a href="/novvin-web">Novvin Web</a><a href="/mensajes">Mensajes</a><a href="/videos">Videos</a><a href="/salas-de-voz">Salas de voz</a><a href="/ayuda/vincular-web">Ayuda con el QR</a><a href="/social">Social</a><a href="/momentos">Momentos</a><a href="/comunidades">Grupos y comunidades</a><a href="/juegos">Juegos</a><a href="/asistente">Asistente</a><a href="/ayuda">Ayuda</a></nav>
         <a href="/login">Entrar a mi cuenta</a>
       </footer>
     </div>

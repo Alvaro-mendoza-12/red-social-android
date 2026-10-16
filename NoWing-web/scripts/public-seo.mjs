@@ -6,6 +6,12 @@ export const publicRoutes = [
   ['/videos', 'videos.html', 'Videos'],
   ['/salas-de-voz', 'salas-de-voz.html', 'Salas de voz'],
   ['/ayuda/vincular-web', 'vincular-web.html', 'Vincular web con QR'],
+  ["/social", "social.html", "Social"],
+  ["/momentos", "momentos.html", "Momentos"],
+  ["/comunidades", "comunidades.html", "Grupos y comunidades"],
+  ["/juegos", "juegos.html", "Juegos"],
+  ["/asistente", "asistente.html", "Asistente"],
+  ["/ayuda", "ayuda.html", "Ayuda"],
 ]
 
 // Describe the real brand and visible page; no invented reviews, contact data,
