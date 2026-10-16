@@ -1,3 +1,4 @@
+import { MessageSticker } from '../../components/MessageSticker'
 import { useConversationDraft } from '../../core/conversationDrafts'
 import { MessageText } from '../../components/MessageText'
 import { MessageReplyPreview } from '../../components/MessageReplyPreview'
@@ -419,12 +420,6 @@ function mapPollState(row: GenericRow): PollState {
 
 
 
-function profilePathFor(profileId: string, currentUserId?: string): string {
-  const clean = profileId.trim()
-  if (!clean) return '/app/profile'
-  if (currentUserId && clean === currentUserId) return '/app/profile'
-  return `/app/profile/${clean}`
-}
 
 function FallbackAvatar({ url, name, className }: { url: string; name: string; className: string }) {
   return <SafeAvatar url={url} name={name} className={className} size="sm" />
@@ -2132,11 +2127,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             !previousMessage || dayKeyOf(previousMessage.createdAt) !== dayKeyOf(message.createdAt)
           const deletedForMe = user ? message.deletedBy.includes(user.id) : false
           if (deletedForMe) return null
+          const mine = message.senderId === user?.id
           const album = albums.get(message.id)
           if (album && album.leader !== message.id) return null
           if (album) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} deliveryState={item => mineDeliveryState(item, toMillis(item.createdAt) > 0 && toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(item.createdAt))} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteMessageForMe(item)} onDeleteForAll={item => void deleteMessageForAll(item)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
 
-          const mine = message.senderId === user?.id
           const replied = message.replyToId ? messageById.get(message.replyToId) : null
           const pollRows =
             message.pollId && pollStatesById[message.pollId]
@@ -2149,7 +2144,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             toMillis(message.createdAt) > 0 &&
             toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(message.createdAt)
           const deliveryState = mine ? mineDeliveryState(message, readByOther) : null
-          const showMessageText = shouldRenderMessageText(message)
+          const showMessageText = message.contentType !== 'sticker' && shouldRenderMessageText(message)
           const activeReactions = ['👍', '❤️', '😂'].filter(
             (emoji) => reactionCount(message.reactions, emoji) > 0,
           )
@@ -2214,7 +2209,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                       </>
                     )}
                     {message.mediaUrl && message.contentType === 'sticker' ? (
-                      <ChatAttachmentMedia url={message.mediaUrl} kind="image" title={message.content || 'Sticker'} imageClassName="sticker-preview" imageLink={false} preserveAnimation />
+                      <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => setReplyToId(message.id)} onForward={() => void sendForwardedMessage(message)} />
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
                       consumed ? (

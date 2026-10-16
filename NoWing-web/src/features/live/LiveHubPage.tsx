@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Camera, MonitorUp, Plus, Radio, RefreshCw, Users, X } from 'lucide-react'
+import { Camera, MonitorUp, Plus, Radio, RefreshCw, Users } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { StatusView } from '../../components/StatusView'
+import { PublicationDialog } from '../../components/PublicationDialog'
 import { useAuth } from '../../core/auth/AuthProvider'
 import {
   createFallbackLiveStream,
@@ -29,6 +30,7 @@ export function LiveHubPage() {
   const [hashtags, setHashtags] = useState('')
   const [source, setSource] = useState<LiveSource>('camera')
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
   const [visibility, setVisibility] = useState<'public' | 'followers' | 'private'>('public')
   const [category, setCategory] = useState('chat')
   const [allowGuests, setAllowGuests] = useState(false)
@@ -64,7 +66,7 @@ export function LiveHubPage() {
     event.preventDefault()
     if (!title.trim() || creating) return
     setCreating(true)
-    setError(null)
+    setCreateError('')
     try {
       const response = await createFallbackLiveStream({
         title: title.trim(),
@@ -74,7 +76,7 @@ export function LiveHubPage() {
       if (allowGuests && guestsAvailable) await updateFallbackLiveState(response.stream.id, { allowGuestRequests: true })
       navigate(`/app/live/${encodeURIComponent(response.stream.id)}?host=1&source=${source}`, { replace: true })
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo preparar el directo'))
+      setCreateError(friendlyError(caught, 'No se pudo preparar el directo'))
     } finally {
       setCreating(false)
     }
@@ -129,32 +131,31 @@ export function LiveHubPage() {
       )}
 
       {showCreate ? (
-        <div className="app-dialog-backdrop" role="presentation" onMouseDown={() => setShowCreate(false)}>
-          <article className="surface-card section-stack live-create-dialog" role="dialog" aria-modal="true" aria-label="Crear directo" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="row-between">
-              <h3>Preparar directo</h3>
-              <button className="icon-btn" type="button" onClick={() => setShowCreate(false)} title="Cerrar" aria-label="Cerrar"><X aria-hidden="true" /></button>
-            </div>
+        <PublicationDialog title="Crear directo" className="live-create-dialog" busy={creating} onClose={() => setShowCreate(false)}>
             <form className="section-stack" onSubmit={createLive}>
+              <fieldset disabled={creating}>
+              <p className="publication-hint">Prepara tu emisión. En el siguiente paso podrás revisar la cámara o elegir la pantalla que quieres compartir.</p>
               <label>Título
                 <input className="text-input" maxLength={80} required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="¿Qué vas a transmitir?" />
               </label>
               <label>Hashtags
                 <input className="text-input" value={hashtags} onChange={(event) => setHashtags(event.target.value)} placeholder="gaming, música, charla" />
               </label>
-              <label>Quién puede verlo<select className="text-input" value={visibility} onChange={event => setVisibility(event.target.value as typeof visibility)}><option value="public">Todos</option><option value="followers">Mis seguidores</option><option value="private">Solo yo</option></select></label>
+              <div className="publication-fields"><label>Quién puede verlo<select className="text-input" value={visibility} onChange={event => setVisibility(event.target.value as typeof visibility)}><option value="public">Todos</option><option value="followers">Mis seguidores</option><option value="private">Solo yo</option></select></label>
               <label>Categoría<select className="text-input" value={category} onChange={event => setCategory(event.target.value)}><option value="chat">Conversación</option><option value="gaming">Juegos</option><option value="music">Música</option><option value="education">Aprender</option><option value="other">Otro</option></select></label>
+              </div>
               {guestsAvailable ? <label className="checkbox-inline"><input type="checkbox" checked={allowGuests} onChange={event => setAllowGuests(event.target.checked)} />Permitir solicitudes para participar</label> : null}
               <div className="segmented-control" aria-label="Fuente del directo">
                 <button type="button" className={source === 'camera' ? 'active' : ''} aria-pressed={source === 'camera'} onClick={() => setSource('camera')}><Camera aria-hidden="true" /> Cámara</button>
                 <button type="button" className={source === 'screen' ? 'active' : ''} aria-pressed={source === 'screen'} onClick={() => setSource('screen')}><MonitorUp aria-hidden="true" /> Pantalla</button>
               </div>
-              <button className="primary-btn" type="submit" disabled={!title.trim() || creating}>
+              {createError ? <p className="error-text" role="alert">{createError}</p> : null}
+              <div className="publication-submit"><button className="primary-btn" type="submit" disabled={!title.trim() || creating}>
                 <Radio aria-hidden="true" /> {creating ? 'Preparando...' : 'Continuar'}
-              </button>
+              </button></div>
+              </fieldset>
             </form>
-          </article>
-        </div>
+        </PublicationDialog>
       ) : null}
     </section>
   )

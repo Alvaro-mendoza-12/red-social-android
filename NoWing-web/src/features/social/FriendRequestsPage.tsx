@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { RefreshCw } from 'lucide-react'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { publicProfileSummaries } from '../../core/publicProfileSummaries'
 import { StatusView } from '../../components/StatusView'
@@ -41,6 +42,7 @@ export function FriendRequestsPage() {
   const [tableAvailable, setTableAvailable] = useState(true)
   const [profiles, setProfiles] = useState(new Map<string, GenericRow>())
   const [pendingId, setPendingId] = useState('')
+  const [direction, setDirection] = useState<'incoming' | 'outgoing'>('incoming')
   const sequence = useRef(0)
 
   const loadRequests = useCallback(async () => {
@@ -53,9 +55,9 @@ export function FriendRequestsPage() {
     setError(null)
     try {
       if (useUbuntu) {
-        const response = await loadFallbackFriends('incoming')
+        const response = await loadFallbackFriends(direction)
         const mapped = response.items.map(mapRequest)
-        const people = await publicProfileSummaries(mapped.map(item => item.senderId)).catch(() => new Map())
+        const people = await publicProfileSummaries(mapped.map(item => direction === 'incoming' ? item.senderId : item.receiverId)).catch(() => new Map())
         if (sequence.current !== current) return
         setProfiles(people)
         setItems(mapped)
@@ -72,11 +74,11 @@ export function FriendRequestsPage() {
       const { data, error: queryError } = await supabase
         .from('friends')
         .select('*')
-        .eq('receiver_id', user.id)
+        .eq(direction === 'incoming' ? 'receiver_id' : 'sender_id', user.id)
         .order('created_at', { ascending: false })
       if (queryError) throw queryError
       const mapped = ((data ?? []) as GenericRow[]).map(mapRequest)
-      const people = await publicProfileSummaries(mapped.map(item => item.senderId)).catch(() => new Map())
+      const people = await publicProfileSummaries(mapped.map(item => direction === 'incoming' ? item.senderId : item.receiverId)).catch(() => new Map())
       if (sequence.current !== current) return
       setProfiles(people)
       setItems(mapped)
@@ -92,7 +94,7 @@ export function FriendRequestsPage() {
     } finally {
       if (sequence.current === current) setLoading(false)
     }
-  }, [useUbuntu, user])
+  }, [direction, useUbuntu, user])
 
   useEffect(() => {
     setItems([])
@@ -131,27 +133,30 @@ export function FriendRequestsPage() {
 
   return (
     <section className="section-stack friend-requests-page">
-      <header className="section-header">
-        <h2>Solicitudes de amistad</h2>
-        <p>Elige con quién conectar.</p>
+      <header className="section-header row-between">
+        <div><h2>Solicitudes de amistad</h2>
+        <p>Elige con quién conectar.</p></div>
+        <button className="icon-btn" type="button" aria-label="Actualizar solicitudes" disabled={Boolean(pendingId)} onClick={() => void loadRequests()}><RefreshCw size={19}/></button>
       </header>
+      <nav className="friend-request-tabs" aria-label="Solicitudes de amistad"><button className="chip-btn" type="button" aria-pressed={direction==='incoming'} onClick={() => setDirection('incoming')}>Recibidas</button><button className="chip-btn" type="button" aria-pressed={direction==='outgoing'} onClick={() => setDirection('outgoing')}>Enviadas</button></nav>
       {error ? <p className="error-text">{error}</p> : null}
       {items.length === 0 ? (
-        <StatusView title="Sin solicitudes" description="No tienes invitaciones pendientes." />
+        <StatusView title={direction==='incoming'?'Sin solicitudes recibidas':'Sin solicitudes enviadas'} description={direction==='incoming'?'Las nuevas invitaciones aparecerán aquí.':'Busca personas y envíales una invitación desde su perfil.'} />
       ) : (
         <ul className="list-stack">
           {items.map((item) => {
-            const person = profiles.get(item.senderId) || {}
+            const personId = direction === 'incoming' ? item.senderId : item.receiverId
+            const person = profiles.get(personId) || {}
             const name = textOf(person, ['display_name', 'username'], 'Usuario de Novvin')
             return (
             <li key={item.id} className="list-row">
-              <Link className="friend-request-person" to={`/app/profile/${item.senderId}`}>
+              <Link className="friend-request-person" to={'/app/profile/' + personId}>
                 <SafeAvatar url={textOf(person, ['avatar_url'])} name={name} mediaType={textOf(person, ['avatar_media_type'])} size="lg" />
               <div><strong>{name}</strong>
                 <small>{formatDateTime(item.createdAt)}</small>
               </div>
               </Link>
-              {item.status === 'pending' ? (
+              {item.status === 'pending' && direction === 'incoming' ? (
                 <div className="inline-actions">
                   <button className="primary-btn" type="button" disabled={Boolean(pendingId)} onClick={() => void updateStatus(item.id, 'accepted')}>
                     Aceptar
@@ -161,7 +166,7 @@ export function FriendRequestsPage() {
                   </button>
                 </div>
               ) : (
-                <span>{item.status === 'accepted' ? 'Amigos' : 'Solicitud rechazada'}</span>
+                <span className="friend-request-status">{item.status === 'pending' ? 'Pendiente de respuesta' : item.status === 'accepted' ? 'Amigos' : 'Solicitud rechazada'}</span>
               )}
             </li>
           )})}

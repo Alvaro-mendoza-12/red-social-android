@@ -44,3 +44,8 @@ Las comprobaciones de navegador y SFU de esta continuación se hicieron con dato
 ## Continuación web 9.0.35
 
 [Detalle de voz, llamadas, stickers y archivos](RELEASE_WEB_9_0_35_VOICE_CALLS_STICKERS.md). Se corrige la aparición tardía de cámara, la vista de pantalla compartida y la imagen congelada al detener el video. Se añaden ajustes compactos y salida de audio, filtro de stickers animados, actualización de favoritos y empaquetado ZIP de documentos no admitidos directamente. La prueba de WebRTC usa dos conexiones reales locales con medios generados; no reemplaza la aceptación entre dispositivos y redes distintas.
+
+
+## Continuación web 9.0.36
+
+[Detalle de feed, mensajes y pantallas web](RELEASE_WEB_9_0_36_FEED_AND_WEB_PARITY.md). Se conecta el feed al cursor del servidor y se conserva el feed básico para perfiles de algoritmo desactivados. Los comentarios siguen al video visible sin restaurar el desplazamiento anterior. Se incluyen ranking general, solicitudes enviadas y recibidas, acciones de stickers, rondas, historial y controles del asistente, visor de momentos y formularios de publicación. El chat ocupa el ancho disponible y la cola admite subidas lentas con límites compatibles con el servidor. La comprobación de ZIP entre las dos cuentas autorizadas conservó los bytes; se eliminaron los recursos de prueba. Las comprobaciones visuales y de subida demorada se hicieron en un navegador real con API sintética.

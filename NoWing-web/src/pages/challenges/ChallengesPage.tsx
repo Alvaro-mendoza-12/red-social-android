@@ -1,3 +1,4 @@
+import './challenges.css'
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -437,7 +438,7 @@ export function ChallengesPage() {
   async function submitTextAnswer() {
     if ((!supabase && !isUbuntuPrimary) || !user || !activeChallenge || !challengeMeta || submitting) return
     const text = textAnswer.trim()
-    if (!text) return
+    if (!text || activeChallenge.status !== 'active') return
     setSubmitting(true)
     setError(null)
     try {
@@ -463,7 +464,7 @@ export function ChallengesPage() {
   }
 
   async function submitMediaAnswer(file: File | null) {
-    if ((!supabase && !isUbuntuPrimary) || !user || !activeChallenge || !challengeMeta || !file || uploadingFile) return
+    if ((!supabase && !isUbuntuPrimary) || !user || !activeChallenge || !challengeMeta || !file || uploadingFile || activeChallenge.status !== 'active') return
     setUploadingFile(true)
     setError(null)
     try {
@@ -551,7 +552,7 @@ export function ChallengesPage() {
         <StatusView title="Sin reto activo" description="No hay reto disponible por ahora." />
       ) : (
         <>
-          <article className="surface-card section-stack">
+          <article className="surface-card section-stack challenge-hero">
             <div className="row-between">
               <h3>{challengeMeta?.title ?? 'Reto en curso'}</h3>
               <span className="folder-tag">{phaseLabel}</span>
@@ -595,7 +596,7 @@ export function ChallengesPage() {
             ) : null}
           </article>
 
-          <article className="surface-card section-stack">
+          <article className="surface-card section-stack challenge-podium">
             <h3>Ranking / Podio</h3>
             {myRank > 0 ? <p>Tu posición actual: #{myRank}</p> : null}
             {ranking.length === 0 ? (
@@ -617,7 +618,7 @@ export function ChallengesPage() {
             )}
           </article>
 
-          <article className="surface-card section-stack">
+          <article className="surface-card section-stack challenge-stats">
             <h3>Resumen del reto</h3>
             <div className="row-actions">
               <span className="folder-tag">Participaciones: {challengeStats.totalSubmissions}</span>
@@ -627,17 +628,21 @@ export function ChallengesPage() {
             </div>
           </article>
 
-          <article className="surface-card section-stack">
+          <article className="surface-card section-stack challenge-compose">
             <h3>Enviar participación</h3>
             {challengeMeta?.challengeType === 'text' ? (
               <div className="composer">
-                <input
+                <textarea
                   className="text-input"
+                  aria-label="Tu participación en la ronda"
+                  rows={3}
+                  maxLength={2000}
+                  disabled={submitting || activeChallenge.status !== 'active'}
                   placeholder="Escribe tu respuesta..."
                   value={textAnswer}
                   onChange={(event) => setTextAnswer(event.target.value)}
                 />
-                <button className="primary-btn" type="button" disabled={submitting} onClick={() => void submitTextAnswer()}>
+                <button className="primary-btn" type="button" disabled={submitting || !textAnswer.trim() || activeChallenge.status !== 'active'} onClick={() => void submitTextAnswer()}>
                   {submitting ? 'Enviando...' : 'Enviar'}
                 </button>
               </div>
@@ -647,7 +652,8 @@ export function ChallengesPage() {
                 <input
                   type="file"
                   hidden
-                  accept={challengeMeta?.challengeType === 'audio' ? 'audio/*' : 'image/*,video/*'}
+                  disabled={uploadingFile || activeChallenge.status !== 'active'}
+                  accept={challengeMeta?.challengeType === 'audio' ? 'audio/*' : challengeMeta?.challengeType === 'video' ? 'video/*' : 'image/*'}
                   onChange={(event) => {
                     const file = event.target.files?.[0] ?? null
                     void submitMediaAnswer(file)
@@ -715,7 +721,7 @@ export function ChallengesPage() {
             {visibleSubmissions.length === 0 ? (
               <p>No hay participaciones todavía.</p>
             ) : (
-              <div className="list-stack">
+              <div className="challenge-submissions-grid">
                 {visibleSubmissions.map((submission) => {
                   const mine = submission.userId === user?.id
                   const votingOpen = activeChallenge.status === 'voting'

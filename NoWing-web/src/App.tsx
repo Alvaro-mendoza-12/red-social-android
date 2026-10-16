@@ -14,6 +14,7 @@ import { SystemAnnouncementHost } from './components/SystemAnnouncementHost'
 import { AppLayout } from './layout/AppLayout'
 
 const AssistantPage = lazy(() => import('./features/assistant/AssistantPage').then(module => ({ default: module.AssistantPage })))
+const RankingPage = lazy(() => import('./features/social/RankingPage').then(module => ({ default: module.RankingPage })))
 
 const PostDetailPage = lazy(() =>
   import('./pages/feed/PostDetailPage').then((module) => ({
@@ -301,6 +302,7 @@ function AppRouter() {
             }
           />
           <Route path="challenges" element={<Navigate to="/app/social?tab=challenges" replace />} />
+          <Route path="ranking" element={<RouteSuspense><RankingPage /></RouteSuspense>} />
           <Route
             path="challenges/ranking"
             element={

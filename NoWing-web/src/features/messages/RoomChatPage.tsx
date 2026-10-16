@@ -1,3 +1,4 @@
+import { MessageSticker } from '../../components/MessageSticker'
 import { useConversationDraft } from '../../core/conversationDrafts'
 import { MessageText } from '../../components/MessageText'
 import { MessageReplyPreview } from '../../components/MessageReplyPreview'
@@ -1497,7 +1498,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   <>
                     {message.content && message.contentType !== 'sticker' ? <MessageText text={message.content}/> : null}
                     {message.mediaUrl && !isViewOnceType(message.contentType) ? (
-                      <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} imageClassName={message.contentType === 'sticker' ? 'sticker-preview' : undefined} imageLink={message.contentType !== 'sticker'} preserveAnimation={message.contentType === 'sticker'} onImageOpen={() => openGallery(message)} />
+                      message.contentType === 'sticker' ? <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => setReplyToId(message.id)} onForward={() => void sendForwardedMessage(message)} /> : <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} onImageOpen={() => openGallery(message)} />
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
                       consumed ? (

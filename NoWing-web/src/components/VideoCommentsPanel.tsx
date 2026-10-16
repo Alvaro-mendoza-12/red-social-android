@@ -11,7 +11,7 @@ import { shouldUseUbuntuBackend } from '../core/ubuntuBackend'
 export function VideoCommentsPanel({ videoId, onClose, onCountChange }: { videoId: string; onClose: () => void; onCountChange?: (count: number) => void }) {
   const { user, isFallbackSession } = useAuth(), sequence = useRef(0), panel = useRef<HTMLElement>(null), countCallback = useRef(onCountChange)
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
-  countCallback.current = onCountChange
+  useEffect(()=>{countCallback.current=onCountChange},[onCountChange])
   const [items,setItems] = useState<GenericRow[]>([]), [draft,setDraft] = useState(''), [reply,setReply] = useState<GenericRow|null>(null), [loading,setLoading] = useState(true), [busy,setBusy] = useState(false), [error,setError] = useState(''), [visible,setVisible] = useState(30)
   const load = useCallback(async (silent=false) => {
     const expected = ++sequence.current
@@ -24,7 +24,16 @@ export function VideoCommentsPanel({ videoId, onClose, onCountChange }: { videoI
     }catch(caught){if(expected===sequence.current)setError(friendlyError(caught,'No se pudieron cargar los comentarios.'))}finally{if(expected===sequence.current)setLoading(false)}
   },[videoId,user?.id,useUbuntu])
   useEffect(()=>{setItems([]);setVisible(30);setDraft('');setReply(null);void load();const stop=subscribeUbuntuRealtime({channel:`video-comments:${videoId}`,onEvent:()=>void load(true)});return()=>{sequence.current++;stop()}},[load,videoId])
-  useEffect(()=>{const previous=document.activeElement as HTMLElement|null;panel.current?.focus();return()=>{if(previous?.isConnected)previous.focus()}},[])
+  useEffect(()=>{
+    const previous=document.activeElement as HTMLElement|null, node=panel.current
+    const feed=node?.parentElement?.querySelector<HTMLElement>('.reels-vertical-feed')
+    node?.focus({preventScroll:true})
+    return()=>{
+      // Restoring an offscreen comment button used to snap the feed back to its old video.
+      const target=previous&&feed?.contains(previous)?feed:previous
+      if(target?.isConnected)target.focus({preventScroll:true})
+    }
+  },[])
   async function send(event:FormEvent){
     event.preventDefault();if(!draft.trim()||busy||!user)return;setBusy(true);setError('')
     try{

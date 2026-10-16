@@ -6,7 +6,7 @@ import { LiveStreamAudio } from '../../components/LiveStreamMedia'
 import { AudioOutputSelect } from '../../components/AudioOutputSelect'
 import { MediaDeviceDialog } from '../../components/MediaDeviceDialog'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { io, type Socket } from 'socket.io-client'
 import {
   ArrowLeft,
@@ -260,6 +260,8 @@ function extractIceServers(payload: unknown): RTCIceServer[] {
 }
 
 export function VoiceRoomPage() {
+  const [searchParams] = useSearchParams()
+  const explicitJoin = searchParams.get('join') === '1'
   const { user, isFallbackSession } = useAuth()
   const useUbuntuVoice = shouldUseUbuntuBackend(isFallbackSession)
   const { roomId } = useParams<{ roomId: string }>()
@@ -1251,10 +1253,10 @@ export function VoiceRoomPage() {
   useEffect(() => {
     if (!room || !user || autoJoinAttemptedRef.current || isJoined) return
     const storedRoomId = readJoinedRoomFromStorage(user.id)
-    if (storedRoomId && storedRoomId !== room.id) return
+    if (storedRoomId && storedRoomId !== room.id && !explicitJoin) return
     autoJoinAttemptedRef.current = true
     void joinRoom()
-  }, [isJoined, joinRoom, room, user])
+  }, [explicitJoin, isJoined, joinRoom, room, user])
 
   useEffect(() => {
     const client = supabase

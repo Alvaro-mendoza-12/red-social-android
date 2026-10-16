@@ -1,0 +1,18 @@
+.publication-dialog { width: min(620px,calc(100vw - 24px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; color: var(--foreground); background: var(--surface); border: 1px solid var(--outline); border-radius: 20px; box-shadow: 0 20px 90px #0008; overflow: auto; overscroll-behavior: contain; }
+.publication-dialog::backdrop { background: #08090fbd; backdrop-filter: blur(4px); }
+.publication-dialog-header { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--outline); background: var(--surface); }
+.publication-dialog-header h3 { margin: 0; font-size: 1.1rem; }
+.publication-dialog-header .icon-btn { flex-shrink: 0; }
+.publication-dialog-body { padding: 20px 24px 24px; min-width: 0; }
+.publication-dialog fieldset { min-width: 0; padding: 0; margin: 0; border: 0; display: grid; gap: 18px; }
+.publication-dialog label { display: grid; gap: 8px; min-width: 0; font-size: .87rem; }
+.publication-dialog input,.publication-dialog select,.publication-dialog textarea { min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box; }
+.publication-dialog .checkbox-inline { display: flex; align-items: center; }
+.publication-dialog input[type=checkbox] { width: auto; }
+.publication-dialog .publication-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.publication-dialog .publication-hint { color: var(--secondary-text); line-height: 1.6; font-size: .82rem; margin: 0; }
+.publication-dialog .publication-submit { position: sticky; bottom: 0; z-index: 2; display: flex; justify-content: flex-end; padding: 12px 0; background: var(--surface); border-top: 1px solid var(--outline); }
+.publication-dialog.video-upload-dialog,.publication-dialog.live-create-dialog { padding: 0; max-height: calc(100dvh - 32px); }
+.publication-dialog.video-upload-dialog { width: min(760px,calc(100vw - 24px)); }
+.publication-dialog .error-text { margin: 0; overflow-wrap: anywhere; }
+@media(max-width:520px) { .publication-dialog-header { padding: 14px 16px; } .publication-dialog-body { padding: 16px; } .publication-dialog .publication-fields { grid-template-columns: minmax(0,1fr); } .publication-dialog .publication-submit>.primary-btn { width: 100%; } }

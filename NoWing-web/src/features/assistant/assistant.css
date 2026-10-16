@@ -1,0 +1,14 @@
+.assistant-page { width: min(980px,100%); height: max(380px,calc(100dvh - 168px)); max-height: 980px; gap: 12px; }
+.assistant-page>header { padding-bottom: 14px; border-bottom: 1px solid var(--outline); align-items: center; }
+.assistant-page>header>div>svg { color: #a5a7ff; flex-shrink: 0; }.assistant-page>header h2 { font-size: 1.2rem; margin: 0; }.assistant-page>header small { color: var(--secondary-text); font-size: .78rem; display: block; margin-top: 4px; }
+.assistant-page .assistant-conversation { padding: 16px clamp(4px,2vw,24px); overscroll-behavior: contain; min-height: 0; scrollbar-width: thin; }
+.assistant-page .assistant-message { line-height: 1.6; font-size: .9rem; }.assistant-page .assistant-message.assistant { max-width: min(92%,760px); background: transparent; padding-left: 0; }.assistant-page .assistant-message.user { max-width: 82%; border: 0; background: var(--surface-raised); }
+.assistant-message-copy { display: flex; align-items: center; gap: 6px; color: var(--secondary-text); font-size: .75rem; padding: 8px 0 0; }
+.assistant-page>form { border: 1px solid var(--outline); border-radius: 20px; padding: 8px; background: var(--surface); gap: 8px; align-items: flex-end; }
+.assistant-page>form textarea { border: 0; background: transparent; resize: vertical; min-height: 46px; max-height: 160px; padding: 12px; }.assistant-page>form>.icon-btn { flex-shrink: 0; }
+.assistant-footnote { text-align: center; color: var(--secondary-text); font-size: .72rem; }
+.assistant-notice { margin: 0; font-size: .8rem; padding: 10px 14px; border: 1px solid var(--outline); border-radius: 12px; color: var(--secondary-text); overflow-wrap: anywhere; }
+.assistant-typing { display: flex; align-items: center; gap: 8px; color: var(--secondary-text); font-size: .82rem; }.assistant-typing>span { width: 8px; height: 8px; border-radius: 50%; background: #a5a7ff; animation: assistant-pulse 1s ease-in-out infinite alternate; }
+@keyframes assistant-pulse { to { opacity: .25; } }@media(prefers-reduced-motion:reduce) { .assistant-typing>span { animation: none; } }
+@media(max-width:520px) { .assistant-page>header h2 { font-size: 1rem; }.assistant-page .assistant-welcome { margin: 20px auto; }.assistant-page .assistant-message { max-width: 95%; padding: 12px 14px; }.assistant-footnote { font-size: .65rem; } }
+@media(max-width:1099px) { .assistant-page { height: max(360px,calc(100dvh - 184px)); } }

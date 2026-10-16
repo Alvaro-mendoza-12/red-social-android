@@ -1,5 +1,5 @@
 import { StreamingImage } from '../components/StreamingMedia'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   BarChart3,
@@ -156,6 +156,8 @@ function screenTitle(path: string) {
     help: 'Ayuda',
     admin: 'Administración',
     moments: 'Momentos',
+    ranking: 'Ranking',
+    challenges: 'Rondas',
   }
   return titles[path.split('/')[2]] || 'Novvin'
 }
@@ -1034,7 +1036,7 @@ export function AppLayout() {
             <div className="novvin-topbar-actions">
               {isSocialRoute ? (
                 <>
-                  <Link className="icon-btn" to="/app/challenges/ranking" aria-label="Ranking">
+                  <Link className="icon-btn" to="/app/ranking" aria-label="Ranking">
                     <BarChart3 />
                   </Link>
                   <Link

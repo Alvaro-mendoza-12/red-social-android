@@ -18,4 +18,9 @@ test.each(['documento.doc','datos.json','apuntes.md','dibujo.dwg'])('packages un
 
 test.each(['imagen.gif','video.mp4','presentación.pptx','hoja.xlsx'])('keeps directly supported %s unchanged',async name=>{const source=file(name,'source');expect(await prepareAttachmentFiles([source])).toEqual([source])})
 
+test.each([['Carpeta.zip','application/zip'],['clip.mp4','video/mp4']])('rejects oversized %s before sending an impossible upload',async(name,type)=>{
+ const source=new File(['stub'],name,{type});Object.defineProperty(source,'size',{value:61*1024*1024})
+ await expect(prepareAttachmentFiles([source])).rejects.toThrow('60 MB')
+})
+
 test('rejects oversized plain files before creating an archive or reading their contents',async()=>{const source={...file('big.bin','a'),size:129*1024*1024};await expect(prepareAttachmentFiles([source])).rejects.toThrow('128 MB')})

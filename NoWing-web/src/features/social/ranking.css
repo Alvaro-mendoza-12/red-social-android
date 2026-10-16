@@ -1,0 +1,12 @@
+.ranking-page { max-width: 1000px; margin: auto; min-width: 0; gap: 22px; }
+.ranking-heading,.ranking-heading>div { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.ranking-heading { justify-content: space-between; }.ranking-heading h2 { margin: 0; font-size: 1.4rem; }.ranking-heading p { margin: 5px 0 0; color: var(--secondary-text); font-size: .85rem; }
+.ranking-heading>div>svg { color: #e8bd69; flex-shrink: 0; }.ranking-tabs { display: flex; gap: 8px; flex-wrap: wrap; }.ranking-tabs [aria-pressed=true] { background: var(--primary); color: var(--on-primary); }
+.ranking-order { display: grid; gap: 7px; font-size: .8rem; }.ranking-my-position { padding: 10px 16px; border: 1px solid var(--outline); border-radius: 14px; font-size: .85rem; }.ranking-my-position strong { margin-left: 10px; }
+.ranking-results { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; min-width: 0; }
+.ranking-results li>a { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--outline); background: var(--surface); border-radius: 16px; min-width: 0; }
+.ranking-results li>a:hover { background: var(--surface-raised); }.ranking-results .safe-avatar { flex-shrink: 0; }
+.ranking-position { width: 24px; text-align: center; flex-shrink: 0; font-weight: 700; color: var(--secondary-text); }.ranking-position[data-podium=true] { color: #e8bd69; }
+.ranking-copy { min-width: 0; flex: 1; display: grid; gap: 5px; }.ranking-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.ranking-copy small,.ranking-score small { color: var(--secondary-text); font-size: .75rem; }
+.ranking-score { display: grid; text-align: right; gap: 4px; flex-shrink: 0; }.ranking-cover { width: 64px; height: 76px; object-fit: cover; border-radius: 10px; flex-shrink: 0; }.ranking-cover.placeholder { display: grid; place-items: center; background: var(--surface-raised); }
+@media(max-width:520px) { .ranking-heading h2 { font-size: 1.1rem; }.ranking-results li>a { gap: 9px; padding: 12px 10px; }.ranking-score small { max-width: 72px; }.ranking-cover { width: 44px; height: 58px; }.ranking-results .safe-avatar { width: 38px; height: 38px; }.ranking-position { width: 18px; } }

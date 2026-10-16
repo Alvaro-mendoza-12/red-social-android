@@ -14,7 +14,6 @@ import {
   SlidersHorizontal,
   Star,
   Upload,
-  X,
   Volume2,
   VolumeX,
   ChevronUp,
@@ -25,6 +24,8 @@ import { Link } from 'react-router-dom'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { ShareVideoDialog } from '../../components/ShareVideoDialog'
 import { StatusView } from '../../components/StatusView'
+import { PublicationDialog } from '../../components/PublicationDialog'
+import { loadRecommendedVideoPage } from '../../core/videoRecommendations'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
   removeRealtimeChannel,
@@ -39,14 +40,13 @@ import {
   createFallbackVideo,
   loadFallbackFollows,
   loadFallbackLiveStreams,
-  loadFallbackVideos,
   setFallbackVideoFavorite,
   setFallbackVideoReaction,
   setFallbackVideoShare,
   uploadFallbackFile,
   type FallbackLiveStream,
 } from '../../core/fallbackData'
-import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
+import { fallbackApiJson, isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import {
   avatarMediaTypeSource,
   profileIdentityAliases,
@@ -174,7 +174,7 @@ function ReelFeedCard({
   onFavorite,
   onShare,
   onToggleProfileShare,
-  muted, onMutedChange, onComments,
+  muted, onMutedChange, onComments, onActive, onViewed,
 }: {
   item: ReelItem
   eager: boolean
@@ -186,7 +186,12 @@ function ReelFeedCard({
   muted: boolean
   onMutedChange: (muted: boolean) => void
   onComments: (item: ReelItem) => void
+  onActive: (id: string) => void
+  onViewed: (id: string) => void
 }) {
+  const activeCallback = useRef(onActive), viewedCallback = useRef(onViewed)
+  useEffect(() => { activeCallback.current = onActive; viewedCallback.current = onViewed }, [onActive, onViewed])
+  const watch = useRef({ position: 0, seconds: 0, recorded: false })
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [canLoad, setCanLoad] = useState(() => eager || typeof IntersectionObserver === 'undefined')
   const visibleRef = useRef(false)
@@ -226,6 +231,7 @@ function ReelFeedCard({
       ([entry]) => {
         visibleRef.current = Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.72)
         if (visibleRef.current) {
+          activeCallback.current(item.id)
           void video.play().catch(() => undefined)
         } else {
           video.pause()
@@ -235,7 +241,7 @@ function ReelFeedCard({
     )
     observer.observe(video)
     return () => observer.disconnect()
-  }, [])
+  }, [item.id])
 
   return (
     <article className="reel-feed-item">
@@ -248,6 +254,13 @@ function ReelFeedCard({
         onWaiting={() => setBuffering(true)}
         onPlaying={() => { setBuffering(false); setPlaybackError(false) }}
         onError={() => { setBuffering(false); setPlaybackError(true) }}
+        onTimeUpdate={event => {
+          const video = event.currentTarget, progress = watch.current, delta = video.currentTime - progress.position
+          progress.position = video.currentTime
+          if (!visibleRef.current || video.paused || document.hidden || delta <= 0 || delta > 1) return
+          progress.seconds += delta
+          if (progress.seconds >= 2 && !progress.recorded) { progress.recorded = true; viewedCallback.current(item.id) }
+        }}
         loop
         muted={muted}
         playsInline
@@ -765,6 +778,41 @@ export function ReelsPage() {
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const reelsCacheKey = `reels:${user?.id ?? 'anon'}`
   const [items, setItems] = useState<ReelItem[]>([])
+  const feedPage = useRef({ owner: '', refreshId: '', cursor: null as string | null, offset: 0, hasMore: true, legacy: false })
+  const feedRequest = useRef<AbortController | null>(null), feedBusy = useRef(false)
+  const [loadingMore, setLoadingMore] = useState(false), [feedPageError, setFeedPageError] = useState('')
+  const loadRecommended = useCallback(async (reset = false) => {
+    const owner = user?.id
+    if (!owner || (!reset && (feedBusy.current || !feedPage.current.hasMore))) return
+    if (reset) feedRequest.current?.abort()
+    const previous = feedPage.current
+    const state = reset ? { owner, refreshId: previous.owner === owner ? previous.refreshId : crypto.randomUUID(), cursor: null, offset: 0, hasMore: true, legacy: false } : previous
+    const controller = new AbortController(); feedRequest.current = controller; feedBusy.current = true
+    setLoadingMore(true); setFeedPageError('')
+    try {
+      const page = await loadRecommendedVideoPage({ ...state, signal: controller.signal })
+      if (controller.signal.aborted) return
+      const mapped = page.items.map(mapVideoRow).filter(item => item.videoUrl.length > 0)
+      feedPage.current = { owner, refreshId: state.refreshId, cursor: page.nextCursor, offset: page.offset, hasMore: page.hasMore, legacy: page.legacy }
+      setItems(current => {
+        const merged = reset ? mapped : [...new Map([...current, ...mapped].map(item => [item.id, item])).values()]
+        writeCachedValue(reelsCacheKey, merged)
+        return merged
+      })
+    } catch (caught) {
+      if (!controller.signal.aborted) {
+        if (/^RECOMMENDATION_CURSOR_(STALE|INVALID)$/.test((caught as Error)?.message || '')) {
+          feedPage.current = { owner, refreshId: crypto.randomUUID(), cursor: null, offset: 0, hasMore: true, legacy: false }
+        }
+        const message = friendlyError(caught, 'No se pudieron cargar más videos. Inténtalo de nuevo.')
+        setFeedPageError(message)
+        if (reset) setError(message)
+      }
+    } finally {
+      if (feedRequest.current === controller) { feedBusy.current = false; setLoadingMore(false); setLoading(false); setSyncing(false) }
+    }
+  }, [reelsCacheKey, user?.id])
+  useEffect(() => () => { feedRequest.current?.abort() }, [user?.id])
   const [liveStreams, setLiveStreams] = useState<FallbackLiveStream[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -859,19 +907,7 @@ export function ReelsPage() {
           setLoading(true)
           setError(null)
         }
-        try {
-          const feed = await loadFallbackVideos(80, 0)
-          const mapped = feed.items.map(mapVideoRow).filter((item) => item.videoUrl.length > 0)
-          setItems(mapped)
-          writeCachedValue(reelsCacheKey, mapped)
-        } catch (caught) {
-          if (!options?.silent) {
-            setError(friendlyError(caught, 'No se pudo cargar reels desde Ubuntu'))
-          }
-        } finally {
-          setLoading(false)
-          setSyncing(false)
-        }
+        await loadRecommended(true)
         return
       }
 
@@ -950,7 +986,7 @@ export function ReelsPage() {
         setSyncing(false)
       }
     },
-    [reelsCacheKey, useUbuntu],
+    [loadRecommended, reelsCacheKey, useUbuntu],
   )
 
   useEffect(() => {
@@ -993,14 +1029,14 @@ export function ReelsPage() {
 
   useEffect(() => {
     const cached = readCachedValue<ReelItem[]>(reelsCacheKey, 1000 * 60 * 60 * 8)
-    if (cached && cached.length > 0) {
+    if (!useUbuntu && cached && cached.length > 0) {
       setItems(cached)
       setLoading(false)
       void loadVideos({ silent: true })
       return
     }
     void loadVideos({ silent: false })
-  }, [loadVideos, reelsCacheKey])
+  }, [loadVideos, reelsCacheKey, useUbuntu])
 
   useEffect(() => {
     if (!useUbuntu) {
@@ -1463,6 +1499,7 @@ export function ReelsPage() {
       setTrimStartSeconds(0)
       setTrimEndSeconds(0)
       setPreviewTrimLoop(false)
+      setShowUploadForm(false)
       await loadVideos()
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo publicar el reel'))
@@ -1693,7 +1730,7 @@ export function ReelsPage() {
               <span>Crear</span>
             </summary>
             <div className="reels-create-popover" role="menu">
-              <button type="button" role="menuitem" onClick={() => setShowUploadForm(true)}>
+              <button type="button" role="menuitem" onClick={() => { setError(null); setShowUploadForm(true) }}>
                 <Upload aria-hidden="true" />
                 <span>
                   <strong>Subir video</strong>
@@ -1729,48 +1766,27 @@ export function ReelsPage() {
       ) : null}
 
       {showUploadForm ? (
-        <div
-          className="app-dialog-backdrop"
-          role="presentation"
-          onMouseDown={() => setShowUploadForm(false)}
-        >
-          <article
-            className="surface-card section-stack video-upload-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Publicar video"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="row-between">
-              <h3>Publicar video</h3>
-              <button
-                className="icon-btn"
-                type="button"
-                onClick={() => setShowUploadForm(false)}
-                title="Cerrar"
-                aria-label="Cerrar"
-              >
-                <X aria-hidden="true" />
-              </button>
-            </div>
+        <PublicationDialog title="Publicar video" className="video-upload-dialog" busy={posting} onClose={() => setShowUploadForm(false)}>
             <form className="section-stack" onSubmit={createReel}>
-              <div className="composer">
-                <input
+              <fieldset disabled={posting}>
+              <p className="publication-hint">Elige tu video, revisa la vista previa y ajusta su portada antes de publicarlo.</p>
+              <div className="publication-fields">
+                <label>Título<input
                   className="text-input"
                   placeholder="Título"
                   aria-label="Título del video"
                   value={titleDraft}
                   onChange={(event) => setTitleDraft(event.target.value)}
-                />
-                <input
+                /></label>
+                <label>Descripción<input
                   className="text-input"
                   placeholder="Descripción"
                   aria-label="Descripción del video"
                   value={descriptionDraft}
                   onChange={(event) => setDescriptionDraft(event.target.value)}
-                />
+                /></label>
               </div>
-              <div className="composer">
+              <label>Archivo de video
                 <input
                   className="text-input"
                   type="file"
@@ -1784,10 +1800,7 @@ export function ReelsPage() {
                     setTrimEndSeconds(0)
                   }}
                 />
-                <button className="primary-btn" type="submit" disabled={!canPublish}>
-                  {posting ? 'Publicando...' : 'Publicar video'}
-                </button>
-              </div>
+              </label>
               <div className="chip-row">
                 <button
                   className={coverMode === 'upload' ? 'chip-btn active' : 'chip-btn'}
@@ -1815,6 +1828,7 @@ export function ReelsPage() {
                     className="text-input"
                     type="file"
                     accept="image/*"
+                    aria-label="Elegir imagen de portada"
                     onChange={(event) => setCoverFile(event.target.files?.[0] ?? null)}
                   />
                 </div>
@@ -2029,9 +2043,11 @@ export function ReelsPage() {
                   ) : null}
                 </div>
               ) : null}
+              {error ? <p className="error-text" role="alert">{error}</p> : null}
+              <div className="publication-submit"><button className="primary-btn" type="submit" disabled={!canPublish}>{posting ? 'Publicando...' : 'Publicar video'}</button></div>
+              </fieldset>
             </form>
-          </article>
-        </div>
+        </PublicationDialog>
       ) : null}
 
       {visibleItems.length > 0 ? (
@@ -2046,12 +2062,13 @@ export function ReelsPage() {
       ) : null}
       {visibleItems.length === 0 ? (
         <StatusView
-          title={feedMode === 'friends' ? 'Sin videos de amigos' : 'Sin reels'}
+          title={feedPageError ? 'No pudimos cargar tus videos' : feedMode === 'friends' ? 'Sin videos de amigos' : 'Sin reels'}
           description={
-            feedMode === 'friends'
+            feedPageError || (feedMode === 'friends'
               ? 'Cuando las personas que sigues publiquen videos, aparecerán aquí mezclados.'
-              : 'Aún no hay videos con esos filtros. Publica el primero desde esta pantalla.'
+              : 'Aún no hay videos con esos filtros. Publica el primero desde esta pantalla.')
           }
+          action={feedPageError ? <button className="primary-btn" type="button" onClick={() => void loadVideos()}>Reintentar</button> : undefined}
         />
       ) : (
         <div
@@ -2078,12 +2095,19 @@ export function ReelsPage() {
                 ? liveStreams[Math.floor(index / 6) % liveStreams.length]
                 : null
             return (
-              <Fragment key={item.id}>
+              <Fragment key={(user?.id || 'guest') + ':' + item.id}>
                 <ReelFeedCard
                   item={item}
                   muted={feedMuted}
                   onMutedChange={setFeedMuted}
                   onComments={setCommentsVideo}
+                  onViewed={id => {
+                    if (useUbuntu && user) void fallbackApiJson('/v1/data/videos/' + encodeURIComponent(id) + '/view', { method: 'POST', expectedAccountId: user.id, body: '{}' }).catch(() => {})
+                  }}
+                  onActive={id => {
+                    setCommentsVideo(current => current && current.id !== id ? visibleItems.find(entry => entry.id === id) || current : current)
+                    if (useUbuntu && index >= visibleItems.length - 4) void loadRecommended()
+                  }}
                   eager={index < 2}
                   currentUserId={user?.id}
                   onLike={(video) => void toggleVideoLike(video)}
@@ -2095,6 +2119,9 @@ export function ReelsPage() {
               </Fragment>
             )
           })}
+          {useUbuntu ? <div className="reels-feed-continuation">
+            {loadingMore ? <p role="status">Cargando tu próximo video…</p> : feedPageError ? <><p role="alert">{feedPageError}</p><button type="button" className="ghost-btn" onClick={() => void loadRecommended()}>Reintentar carga</button></> : !feedPage.current.hasMore ? <><p>Estás al día con los videos disponibles.</p><button type="button" className="ghost-btn" onClick={() => { feedPage.current.owner = ''; void loadRecommended(true) }}>Buscar novedades</button></> : null}
+          </div> : null}
         </div>
       )}
     </section>

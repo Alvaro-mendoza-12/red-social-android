@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Volume2, VolumeX, Pause, Play, X } from 'lucide-react'
+import { Volume2, VolumeX, Pause, Play, X, ChevronLeft, ChevronRight, Send } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { friendlyError } from '../../core/utils'
@@ -7,6 +7,7 @@ import { useAuth } from '../../core/auth/AuthProvider'
 import { getOrCreateDirectChat, sendDirectMessage } from '../messages/directChat'
 import { fetchMomentsFeed, recordMomentView, type MomentItem } from './momentsData'
 import { MomentPlayback } from './MomentPlayback'
+import './momentViewer.css'
 
 export function MomentsViewerPage() {
   const { user } = useAuth()
@@ -27,6 +28,7 @@ export function MomentsViewerPage() {
   const [muted, setMuted] = useState(true)
   const [manualPause, setManualPause] = useState(false)
   const request = useRef(0)
+  const replyRequest = useRef(0), replyBusy = useRef(false)
   const pointerStartRef = useRef<{ x: number; y: number; time: number; width: number } | null>(null)
 
   const activeIndex = Math.max(0, moments.findIndex(moment => moment.id === momentId))
@@ -88,6 +90,9 @@ export function MomentsViewerPage() {
   }, [activeMoment, user])
 
   useEffect(() => {
+    replyRequest.current++
+    replyBusy.current = false
+    setSendingReply(false)
     setProgress(0)
     setReplyChatId(null)
     setManualPause(false)
@@ -95,7 +100,8 @@ export function MomentsViewerPage() {
     setReplyError('')
     setIsPressing(false)
     setReplyFocused(false)
-  }, [activeMoment?.id])
+    return () => { replyRequest.current++ }
+  }, [activeMoment?.id, user?.id])
 
   useEffect(() => {
     function syncVisibility() {
@@ -108,9 +114,9 @@ export function MomentsViewerPage() {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null
+      const target = event.target instanceof HTMLElement ? event.target : null
       const tag = target?.tagName.toLowerCase()
-      const isTyping = Boolean(target?.isContentEditable || tag === 'input' || tag === 'textarea')
+      const isTyping = Boolean(target?.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select' || target?.closest('button,a'))
       if (isTyping && event.key !== 'Escape') return
 
       if (event.key === 'ArrowRight') {
@@ -184,20 +190,24 @@ export function MomentsViewerPage() {
   }
 
   async function sendStoryReply() {
-    if (!user || !activeMoment || !replyDraft.trim() || sendingReply) return
+    if (!user || !activeMoment || !activeMoment.allowReplies || !replyDraft.trim() || replyBusy.current) return
     if (activeMoment.userId === user.id) return
+    const sequence = ++replyRequest.current, message = `Respuesta a tu historia: ${replyDraft.trim()}`
+    const submittedDraft = replyDraft
+    replyBusy.current = true
     setSendingReply(true)
     setReplyError('')
     try {
       const chatId = await getOrCreateDirectChat(user.id, activeMoment.userId)
-      const message = `Respuesta a tu historia: ${replyDraft.trim()}`
+      if (sequence !== replyRequest.current) return
       await sendDirectMessage(chatId, user.id, message)
-      setReplyDraft('')
+      if (sequence !== replyRequest.current) return
+      setReplyDraft(current => current === submittedDraft ? '' : current)
       setReplyChatId(chatId)
     } catch (caught) {
-      setReplyError(friendlyError(caught, 'No se pudo enviar respuesta a la historia'))
+      if (sequence === replyRequest.current) setReplyError(friendlyError(caught, 'No se pudo enviar respuesta a la historia'))
     } finally {
-      setSendingReply(false)
+      if (sequence === replyRequest.current) { replyBusy.current = false; setSendingReply(false) }
     }
   }
 
@@ -237,25 +247,24 @@ export function MomentsViewerPage() {
             <p>{activeMoment.caption || 'Historia'}</p>
           </div>
           <div className="row-actions">
-            <small className="story-state-pill">{shouldPause ? 'Pausado' : 'Reproduciendo'}</small>
             {activeMoment.mediaType === 'video' || activeMoment.music ? (
-              <button className="story-audio-button" type="button" aria-label={muted ? 'Activar sonido del momento' : 'Silenciar momento'} onClick={() => setMuted(current => !current)}>
-                {muted ? <VolumeX size={18}/> : <Volume2 size={18}/>} {muted ? 'Activar sonido' : 'Sonido activado'}
+              <button className="story-audio-button" type="button" title={muted ? 'Activar sonido' : 'Silenciar'} aria-label={muted ? 'Activar sonido del momento' : 'Silenciar momento'} aria-pressed={!muted} onClick={() => setMuted(current => !current)}>
+                {muted ? <VolumeX size={20}/> : <Volume2 size={20}/>}
               </button>
             ) : null}
-            <button className="ghost-btn" type="button" onClick={() => setManualPause((current) => !current)}>
-              {manualPause ? 'Reanudar' : 'Pausar'}
+            <button className="ghost-btn" type="button" aria-label={manualPause ? 'Reanudar momento' : 'Pausar momento'} title={manualPause ? 'Reanudar' : 'Pausar'} aria-pressed={manualPause} onClick={() => setManualPause((current) => !current)}>
+              {manualPause ? <Play size={20}/> : <Pause size={20}/>}
             </button>
-            <button className="ghost-btn" type="button" onClick={() => navigate('/app/moments')}>
-              Cerrar
+            <button className="ghost-btn" type="button" aria-label="Cerrar momentos" title="Cerrar" onClick={() => navigate('/app/moments')}>
+              <X size={20}/>
             </button>
           </div>
         </div>
       </header>
 
       <div className="story-viewer-content">
-        <button className="story-nav-btn" type="button" onClick={() => goPrev()}>
-          ‹
+        <button className="story-nav-btn" type="button" aria-label="Historia anterior" onClick={() => goPrev()}>
+          <ChevronLeft aria-hidden="true"/>
         </button>
         <article
           className="story-viewer-card"
@@ -266,8 +275,8 @@ export function MomentsViewerPage() {
         >
           <MomentPlayback key={`${user?.id}:${activeMoment.id}`} moment={activeMoment} paused={shouldPause} muted={muted} onProgress={setProgress} onComplete={goNext} />
         </article>
-        <button className="story-nav-btn" type="button" onClick={() => goNext()}>
-          ›
+        <button className="story-nav-btn" type="button" aria-label="Historia siguiente" onClick={() => goNext()}>
+          <ChevronRight aria-hidden="true"/>
         </button>
       </div>
 
@@ -277,6 +286,7 @@ export function MomentsViewerPage() {
           <input
             className="text-input"
             placeholder="Responder historia..."
+            aria-label="Responder historia"
             value={replyDraft}
             onChange={(event) => setReplyDraft(event.target.value)}
             onFocus={() => setReplyFocused(true)}
@@ -288,8 +298,8 @@ export function MomentsViewerPage() {
               }
             }}
           />
-          <button className="primary-btn" type="button" disabled={sendingReply} onClick={() => void sendStoryReply()}>
-            {sendingReply ? 'Enviando...' : 'Enviar'}
+          <button className="primary-btn" type="button" aria-label={sendingReply ? 'Enviando respuesta' : 'Enviar respuesta'} disabled={sendingReply || !replyDraft.trim()} onClick={() => void sendStoryReply()}>
+            <Send size={19} aria-hidden="true"/>
           </button>
           {replyChatId ? (
             <Link className="ghost-btn" to={`/app/messages/${replyChatId}`}>

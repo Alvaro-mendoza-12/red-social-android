@@ -16,6 +16,8 @@ describe('APK navigation on the web', () => {
     ['/app/feed/post/a', '/app/social'],
     ['/app/moments/view/a', '/app/social'],
     ['/app/challenges/ranking', '/app/social'],
+    ['/app/ranking', '/app/social'],
+    ['/app/friend-requests', '/app/social'],
     ['/app/profile', '/app/profile'],
     ['/app/profile/a', '/app/profile'],
     ['/app/games', '/app/games'],

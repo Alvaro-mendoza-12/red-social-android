@@ -15,7 +15,6 @@ import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
   loadFallbackMessagesInbox,
   markFallbackChatRead,
-  searchFallbackProfiles,
   saveFallbackChatPreferences,
 } from '../../core/fallbackData'
 import {
@@ -1091,7 +1090,7 @@ export function MessagesPage() {
   async function openConversation(item: ConversationItem) {
     setOpenChatMenuId(null)
     if (item.kind === 'voice') {
-      if (item.openPath) navigate(item.openPath)
+      if (item.openPath) navigate(item.openPath + (item.openPath.includes('?') ? '&' : '?') + 'join=1')
       return
     }
     if (item.kind === 'chat') {

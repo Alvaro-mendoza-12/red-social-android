@@ -4,6 +4,7 @@ class AttachmentPreparationError extends Error {}
 export function attachmentPreparationError(error: unknown) { return error instanceof AttachmentPreparationError ? error.message : 'No se pudieron preparar los archivos. Inténtalo de nuevo.' }
 
 const MAX_BYTES = 128 * 1024 * 1024
+const MAX_UPLOAD_BYTES = 60 * 1024 * 1024
 const MAX_FILES = 500
 type Entry = { name: string; isDirectory: boolean; isFile: boolean; file?: (ok: (file: File) => void, fail: (error: Error) => void) => void; createReader?: () => { readEntries: (ok: (entries: Entry[]) => void, fail: (error: Error) => void) => void } }
 function safeName(name: string) {
@@ -19,12 +20,14 @@ export async function compressFiles(files: Array<{ path: string; file: File | nu
     entries[item.path] = [item.file ? new Uint8Array(await item.file.arrayBuffer()) : new Uint8Array(), { level: /\.(zip|gz|7z|rar|docx|xlsx|pptx|jpe?g|png|webp|gif|mp4|mp3|m4a|pdf)$/i.test(item.path) ? 0 : 6 }]
   }
   const packed = await new Promise<Uint8Array>((resolve, reject) => zip(entries, { level: 6 }, (error, data) => error ? reject(error) : resolve(data)))
-  if (packed.length > MAX_BYTES) throw new AttachmentPreparationError('La carpeta comprimida supera los 128 MB. Divídela en carpetas más pequeñas.')
+  if (packed.length > MAX_UPLOAD_BYTES) throw new AttachmentPreparationError('La carpeta comprimida supera los 60 MB permitidos por mensaje. Divídela en carpetas más pequeñas.')
   return new File([packed as Uint8Array<ArrayBuffer>], `${safeName(name).replace(/\.zip$/i, '')}.zip`, { type: 'application/zip' })
 }
 export async function prepareAttachmentFiles(files: File[]) {
   return Promise.all(files.map(async file => {
     if (file.size > MAX_BYTES) throw new AttachmentPreparationError('El archivo supera los 128 MB. Divídelo antes de enviarlo.')
+    if (file.size > MAX_UPLOAD_BYTES && /^(image|audio|video)\//.test(file.type)) throw new AttachmentPreparationError('El archivo supera los 60 MB permitidos por mensaje. Elige uno más pequeño.')
+    if (file.size > MAX_UPLOAD_BYTES && /\.(zip|gz|rar|7z)$/i.test(file.name)) throw new AttachmentPreparationError('El archivo comprimido supera los 60 MB permitidos por mensaje. Divídelo antes de enviarlo.')
     if (/\.zip$/i.test(file.name) && file.type !== 'application/zip') return new File([file], file.name, {type:'application/zip',lastModified:file.lastModified})
     const directExtension = /\.(pdf|zip|docx|xlsx|pptx|txt|csv|jpe?g|png|webp|gif|mp4|webm|mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i.test(file.name)
     const directMediaType = /^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm)|audio\/(mpeg|mp4|aac|wav|x-wav|ogg|opus|webm|flac|x-flac)|application\/ogg)$/.test(file.type || '')
@@ -32,6 +35,7 @@ export async function prepareAttachmentFiles(files: File[]) {
     if (!directExtension && !directMediaType) return compressFiles([{path:file.name,file}], file.name)
     if (file.size < 8 * 1024 * 1024 || !/\.(txt|csv|json|xml|log|md|html|doc|xls|ppt)$/i.test(file.name)) return file
     const packed = await compressFiles([{ path: file.name, file }], file.name)
+    if (file.size > MAX_UPLOAD_BYTES && packed.size >= file.size) throw new AttachmentPreparationError('El archivo supera los 60 MB permitidos por mensaje y no se pudo reducir. Divídelo antes de enviarlo.')
     return packed.size < file.size ? packed : file
   }))
 }

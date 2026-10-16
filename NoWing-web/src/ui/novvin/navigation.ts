@@ -8,7 +8,7 @@ export const NOVVIN_TABS = [
 
 export function primarySection(path: string) {
   if (/^\/app\/(videos|reels)(\/|$)/.test(path)) return '/app/videos'
-  if (/^\/app\/(social|moments|feed|challenges)(\/|$)/.test(path)) return '/app/social'
+  if (/^\/app\/(social|moments|feed|challenges|ranking|friend-requests)(\/|$)/.test(path)) return '/app/social'
   if (/^\/app\/games(\/|$)/.test(path)) return '/app/games'
   if (/^\/app\/profile(\/|$)/.test(path)) return '/app/profile'
   return path.startsWith('/app/messages') ? '/app/messages' : ''

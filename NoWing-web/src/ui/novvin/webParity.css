@@ -60,8 +60,6 @@
 .voice-video-tile { position: relative; min-width: 0; border-radius: 14px; overflow: hidden; background: #08080d; }
 .voice-video-tile video { display: block; width: 100%; aspect-ratio: 16/9; object-fit: contain; }
 .voice-video-tile span { position: absolute; left: 10px; bottom: 10px; padding: 5px 9px; border-radius: 8px; background: #0009; color: white; font-size: 12px; }
-.story-viewer-header .row-actions { gap: 8px; }.story-viewer-header button { min-height: 38px; }
-.story-viewer-header .story-audio-button { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid #ffffff40; border-radius: 20px; }
 .mobile-profile-post { transition: transform .18s ease,box-shadow .18s ease; }
 @media(hover:hover) { .mobile-profile-post:hover { transform: translateY(-3px); box-shadow: 0 10px 26px #0004; } .mobile-profile-post:hover img { filter: brightness(1.08); } }
 @media(prefers-reduced-motion:reduce) { .recording-dot,.recording-waves i { animation: none; }.mobile-profile-post { transition: none; } }
@@ -120,6 +118,18 @@
 @media(max-width:680px) { .settings-page-shell .settings-toggle-grid { grid-template-columns: minmax(0,1fr); } .social-page .feed-card { border-radius: 0; margin-top: 10px; } }
 
 .media-download-action { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+.route-messages .content-shell.full { width: 100%; max-width: none; margin: 0; }
+.route-messages .chat-thread { padding-inline: clamp(12px,2.5vw,48px); }
+.friend-request-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.friend-request-tabs [aria-pressed=true] { background: var(--primary); color: var(--on-primary); }
+.friend-request-status { color: var(--secondary-text); font-size: .8rem; }
+.friend-requests-page .friend-request-person { min-width: 0; flex: 1; }
+.friend-requests-page .friend-request-person>div { min-width: 0; }
+.friend-requests-page .friend-request-person strong { overflow-wrap: anywhere; }
+.friend-requests-page .list-row { gap: 16px; }
+.friend-requests-page .inline-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media(max-width:520px) { .friend-requests-page .list-row { flex-wrap: wrap; }.friend-requests-page .inline-actions { margin-left: 58px; width: calc(100% - 58px); }.friend-requests-page .inline-actions>button { flex: 1; }.friend-requests-page h2 { font-size: 1.2rem; } }
+.reels-feed-continuation { min-height: 90px; scroll-snap-align: start; display: grid; justify-items: center; align-content: center; gap: 10px; padding: 20px; color: #d1d1dc; text-align: center; }
 .media-download-action small { font-size: 11px; color: var(--danger,#ffb4ab); }
 .media-download-action button { display: inline-flex; align-items: center; gap: 6px; }
 .chat-attachment-actions { display: flex; gap: 10px; align-items: center; padding-block: 6px; }

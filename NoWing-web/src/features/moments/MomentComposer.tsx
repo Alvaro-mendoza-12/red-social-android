@@ -4,29 +4,22 @@ import { useAuth } from '../../core/auth/AuthProvider'
 import { friendlyError } from '../../core/utils'
 import { publishMoment } from './momentsData'
 import { momentDuration, momentFileError, musicGain, musicRange, searchMomentMusic, type MomentMusicSelection, type MomentOverlay, type MomentTrack } from './momentMusic'
+import { localAudioDuration } from './localMomentAudio'
 import './momentComposer.css'
 
 function useFileSource(file: File | null) {
   const [ready, setReady] = useState<{ file: File; url: string } | null>(null)
   useEffect(() => {
     if (!file) return
-    const url = URL.createObjectURL(file); setReady({ file, url })
+    const url = URL.createObjectURL(file)
+    // Object URLs are external resources; publish the URL only after allocating it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReady({ file, url })
     return () => URL.revokeObjectURL(url)
   }, [file])
   return ready?.file === file ? ready.url : ''
 }
 function clock(ms: number) { const seconds = Math.floor(Math.max(0, ms) / 1000); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` }
-export function localAudioDuration(file: File): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const element = document.createElement('audio'), source = URL.createObjectURL(file)
-    const finish = (duration?: number) => { clearTimeout(timer); element.onloadedmetadata = element.onerror = null; element.removeAttribute('src'); element.load(); URL.revokeObjectURL(source); duration ? resolve(duration) : reject(new Error('No se pudo leer la duración del audio. Prueba con otro archivo.')) }
-    const timer = window.setTimeout(() => finish(), 10000)
-    element.preload = 'metadata'
-    element.onloadedmetadata = () => finish(Number.isFinite(element.duration) && element.duration >= 6 ? Math.round(element.duration * 1000) : undefined)
-    element.onerror = () => finish()
-    element.src = source
-  })
-}
 function MusicSearch({ onSelect }: { onSelect: (track: MomentTrack) => void }) {
   const [query, setQuery] = useState(''), [tracks, setTracks] = useState<MomentTrack[]>([]), [cursor, setCursor] = useState('')
   const [busy, setBusy] = useState(true), [error, setError] = useState(false), [reload, setReload] = useState(0)
@@ -76,6 +69,7 @@ function ClipPreview({ selection, durationMs }: { selection: MomentMusicSelectio
 
 export function MomentComposer({ onClose, onPublished }: { onClose: () => void; onPublished: () => void }) {
   const { user } = useAuth(), dialog = useRef<HTMLElement>(null)
+  const audioRead = useRef<AbortController | null>(null)
   const [file, setFile] = useState<File | null>(null), source = useFileSource(file)
   const [videoDuration, setVideoDuration] = useState(0), [caption, setCaption] = useState(''), [durationHours, setDurationHours] = useState(24)
   const [visibility, setVisibility] = useState('all'), [replies, setReplies] = useState(true), [searching, setSearching] = useState(false)
@@ -83,17 +77,21 @@ export function MomentComposer({ onClose, onPublished }: { onClose: () => void; 
   const [localBusy, setLocalBusy] = useState(false), [overlay, setOverlay] = useState<MomentOverlay>({ text: '', color: '#ffffff', font: 'sans', x: .5, y: .38 })
   const video = file?.type.startsWith('video/') === true, durationMs = momentDuration(video ? 'video' : 'image', videoDuration)
   useEffect(() => { const previous = document.activeElement as HTMLElement | null; dialog.current?.focus(); return () => previous?.focus() }, [])
+  useEffect(() => () => audioRead.current?.abort(), [])
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === 'Escape' && !saving) onClose() }; window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close) }, [onClose, saving])
-  function chooseTrack(track: MomentTrack) { setMusic({ track, startMs: 0, volume: 1, originalVolume: 1, fadeInMs: 0, fadeOutMs: 0, duckOriginal: false, presentation: 'card' }); setSearching(false) }
+  function chooseTrack(track: MomentTrack) { audioRead.current?.abort(); audioRead.current = null; setLocalBusy(false); setMusic({ track, startMs: 0, volume: 1, originalVolume: 1, fadeInMs: 0, fadeOutMs: 0, duckOriginal: false, presentation: 'card' }); setSearching(false) }
   async function chooseAudio(audio: File | undefined) {
     if (!audio) return
     if (!audio.type.startsWith('audio/') || audio.size > 80 * 1024 * 1024) { setError('Elige un archivo de audio de hasta 80 MB.'); return }
+    audioRead.current?.abort()
+    const controller = new AbortController(); audioRead.current = controller
     setLocalBusy(true); setError('')
-    try { const duration = await localAudioDuration(audio); chooseTrack({ id: `device:${crypto.randomUUID()}`, title: audio.name.replace(/\.[^.]+$/, ''), artist: 'Mi audio', audioUrl: '', source: 'novvin_moment_local', durationMs: duration, localFile: audio }) }
-    catch (caught) { setError(friendlyError(caught, 'No pudimos abrir el audio.')) } finally { setLocalBusy(false) }
+    try { const duration = await localAudioDuration(audio, controller.signal); if (!controller.signal.aborted) chooseTrack({ id: `device:${crypto.randomUUID()}`, title: audio.name.replace(/\.[^.]+$/, ''), artist: 'Mi audio', audioUrl: '', source: 'novvin_moment_local', durationMs: duration, localFile: audio }) }
+    catch (caught) { if (!controller.signal.aborted) setError(friendlyError(caught, 'No pudimos abrir el audio.')) }
+    finally { if (audioRead.current === controller) { audioRead.current = null; setLocalBusy(false) } }
   }
   async function submit(event: FormEvent) {
-    event.preventDefault(); if (!file || !user || saving || (video && !videoDuration)) return
+    event.preventDefault(); if (!file || !user || saving || localBusy || (video && !videoDuration)) return
     setSaving(true); setError('')
     try { await publishMoment({ file, caption: caption.trim(), durationHours, visibility, allowReplies: replies, displayDurationMs: durationMs, music, overlay: overlay.text.trim() ? overlay : undefined, expectedAccountId: user.id }); onPublished() }
     catch (caught) { setError(friendlyError(caught, 'No se pudo publicar. Tu selección sigue aquí para reintentarlo.')) } finally { setSaving(false) }

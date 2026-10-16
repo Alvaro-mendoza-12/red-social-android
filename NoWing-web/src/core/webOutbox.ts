@@ -115,8 +115,11 @@ async function deliver(item: Pending) {
     requireOwner(item.owner)
     if (!file || file.owner !== item.owner) throw new Error('No se encontró el archivo pendiente.')
     if (!file.uploadedUrl) {
-      const body = new FormData(); body.set('bucket', file.bucket); body.set('path', file.path); body.set('file', file.blob, file.name)
-      const result = await fallbackApiJson<{ object: { publicUrl: string } }>('/v1/storage/upload', { method: 'POST', body, expectedAccountId: item.owner, signal: AbortSignal.timeout(25000) })
+      // Existing queued Windows archives can predate the MIME normalization in the picker.
+      const blob = /\.zip$/i.test(file.name) && file.blob.type !== 'application/zip' ? new Blob([file.blob], { type: 'application/zip' }) : file.blob
+      const body = new FormData(); body.set('bucket', file.bucket); body.set('path', file.path); body.set('file', blob, file.name)
+      // Upload time includes the server's antivirus scan, as well as transferring bytes.
+      const result = await fallbackApiJson<{ object: { publicUrl: string } }>('/v1/storage/upload', { method: 'POST', body, expectedAccountId: item.owner, signal: AbortSignal.timeout(300000) })
       requireOwner(item.owner); file.uploadedUrl = result.object.publicUrl; await put('files', file)
     }
     payload.mediaUrl = file.uploadedUrl

@@ -9,4 +9,3 @@
 .moment-editor input[type=file] { width: 100%; padding: 14px; border: 1px dashed var(--outline); border-radius: 12px; }
 .moment-editor .moment-editor-preview { max-height: 360px; }
 @media(max-width:480px) { .moment-editor { padding: 16px; } .moment-editor>.row-between { top: -16px; } }
-.story-viewer-shell{min-width:0;max-width:100%}.story-viewer-header>.row-between{flex-wrap:wrap;align-items:flex-start;min-width:0}.story-viewer-header .row-actions{flex-wrap:wrap}.story-viewer-header .row-between>div{min-width:0;max-width:100%;overflow-wrap:anywhere}.story-viewer-content,.story-viewer-card{min-width:0}.moment-playback{width:100%;max-width:100%}.story-progress-fill{background:linear-gradient(120deg,#26d8d5,#8862ff)}
