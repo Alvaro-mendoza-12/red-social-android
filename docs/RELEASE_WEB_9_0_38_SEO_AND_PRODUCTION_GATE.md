@@ -13,9 +13,11 @@
 
 - Se mantiene la referencia del usuario cuando la renovación de sesión solo cambia el token o la hora de acceso. Así se evitan reinicios de consultas y pantallas dependientes del usuario; correo, perfil, identidad, roles y metadatos de seguridad sí propagan cambios. Dos pruebas reproducían el reinicio antes de corregirlo.
 
+- Los avisos reservan su altura real para que mensajes y videos no se salgan de la pantalla. Descartarlos libera el espacio y se refleja en otras pestañas. Las consultas de avisos se reutilizan durante un minuto al cambiar de foco; los controles de video se reorganizan en horizontal.
+
 ## Comprobaciones locales
 
-443 pruebas web en 72 suites; 33 pruebas de SEO/HTML; 9 pruebas de multimedia. Compilación de producción correcta. Sin errores ni avisos de lint en los archivos TypeScript modificados. npm audit de dependencias de producción no comunica vulnerabilidades.
+446 pruebas web en 73 suites; 33 pruebas de SEO/HTML; 9 pruebas de multimedia. Compilación de producción correcta. Sin errores ni avisos de lint en los archivos TypeScript modificados. npm audit de dependencias de producción no comunica vulnerabilidades.
 
 Navegador real: 48 combinaciones de las doce páginas públicas a 320, 390, 768 y 1440 píxeles; imágenes cargadas, sin desbordamiento horizontal ni peticiones de JavaScript o backend de la aplicación. Las peticiones ajenas de una extensión instalada del navegador se excluyen y registran aparte; la medición de rendimiento usa un navegador aislado. Otras 21 comprobaciones de formularios y 11 de regresión de feed/mensajes verifican que el nuevo punto de entrada sigue abriendo la aplicación.
 

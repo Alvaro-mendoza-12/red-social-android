@@ -1,6 +1,6 @@
 /* The inbox and its conversation share the viewport, like the Android chat flow. */
 .messages-page {
-  height: calc(100dvh - var(--bottom-nav-height));
+  height: calc(100dvh - var(--novvin-system-notice-height, 0px) - var(--bottom-nav-height));
   min-height: 360px;
 }
 .messages-split-layout {
@@ -226,7 +226,7 @@
 }
 .chat-detail-page,
 .room-chat-page:not(.chat-detail-embedded) {
-  height: calc(100dvh - 64px - var(--bottom-nav-height));
+  height: calc(100dvh - var(--novvin-system-notice-height, 0px) - 64px - var(--bottom-nav-height));
 }
 .chat-header-row {
   padding: 10px 18px;
@@ -937,7 +937,7 @@
 /* One video occupies the viewing stage; scrolling moves one stage at a time. */
 .reels-page {
   position: relative;
-  height: calc(100dvh - var(--bottom-nav-height));
+  height: calc(100dvh - var(--novvin-system-notice-height, 0px) - var(--bottom-nav-height));
   gap: 0;
   background: #000;
   color: #fff;
@@ -1529,11 +1529,11 @@
 @media (min-width: 1100px) {
   .messages-page,
   .reels-page {
-    height: 100dvh;
+    height: calc(100dvh - var(--novvin-system-notice-height, 0px));
   }
   .chat-detail-page,
   .room-chat-page:not(.chat-detail-embedded) {
-    height: calc(100dvh - 64px);
+    height: calc(100dvh - var(--novvin-system-notice-height, 0px) - 64px);
   }
   .route-videos .novvin-bottom-nav {
     background: #111114;
@@ -1577,7 +1577,7 @@
   }
   .chat-detail-page,
   .room-chat-page:not(.chat-detail-embedded) {
-    height: 100dvh;
+    height: calc(100dvh - var(--novvin-system-notice-height, 0px));
   }
   .route-conversation .content-shell {
     padding: 0;

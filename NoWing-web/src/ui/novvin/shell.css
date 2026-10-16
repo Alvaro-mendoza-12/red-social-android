@@ -1,5 +1,5 @@
 .novvin-app {
-  min-height: 100dvh;
+  min-height: calc(100dvh - var(--novvin-system-notice-height, 0px));
   padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
   background: var(--background);
   color: var(--foreground);
@@ -216,10 +216,10 @@
     padding-left: 84px;
   }
   .novvin-bottom-nav {
-    top: 0;
+    top: var(--novvin-system-notice-height, 0px);
     right: auto;
     width: 84px;
-    height: 100dvh;
+    height: calc(100dvh - var(--novvin-system-notice-height, 0px));
     display: flex;
     flex-direction: column;
     justify-content: flex-start;

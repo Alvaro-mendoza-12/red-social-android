@@ -63,7 +63,7 @@
 .mobile-profile-post { transition: transform .18s ease,box-shadow .18s ease; }
 @media(hover:hover) { .mobile-profile-post:hover { transform: translateY(-3px); box-shadow: 0 10px 26px #0004; } .mobile-profile-post:hover img { filter: brightness(1.08); } }
 @media(prefers-reduced-motion:reduce) { .recording-dot,.recording-waves i { animation: none; }.mobile-profile-post { transition: none; } }
-.assistant-page { max-width: 900px; margin: auto; display: flex; flex-direction: column; height: min(780px,calc(100dvh - 150px)); gap: 16px; }
+.assistant-page { max-width: 900px; margin: auto; display: flex; flex-direction: column; height: min(780px,calc(100dvh - var(--novvin-system-notice-height, 0px) - 150px)); gap: 16px; }
 .assistant-page>header,.assistant-page>header>div { display: flex; align-items: center; gap: 12px; }.assistant-page>header { justify-content: space-between; }
 .assistant-page h2 { font-size: 20px; }.assistant-conversation { flex: 1; min-height: 0; overflow: auto; padding: 12px; border: 1px solid var(--outline,#333); border-radius: 16px; }
 .assistant-welcome { max-width: 500px; margin: 50px auto; text-align: center; }.assistant-welcome>div { display: grid; gap: 10px; margin-top: 24px; }
@@ -171,3 +171,15 @@
  .reels-page:has(.video-comments-panel) .reel-stage-navigation { right: calc(var(--comments-width) + 18px); }
 }
 @media(max-width:779px) { .reels-page>.video-comments-panel { position: absolute; top: auto; bottom: 0; width: 100%; height: 60%; padding: 16px; border-radius: 18px 18px 0 0; }.media-viewer-filmstrip { padding: 8px 10px; }.media-viewer:has(.media-viewer-filmstrip) .media-viewer-prev,.media-viewer:has(.media-viewer-filmstrip) .media-viewer-next { bottom: 110px; } }
+
+/* Short landscape screens retain every video action without overlapping audio. */
+@media (max-height: 520px) and (min-width: 600px) {
+ .reels-compact-toolbar { height: 54px; padding-block: 5px; }
+ .reel-feed-actions { display: grid; grid-template-columns: repeat(2,44px); gap: 4px 8px; bottom: 10px; right: 12px; }
+ .reel-feed-actions > button, .reel-feed-actions > a, .reel-share-trigger { min-height: 40px; gap: 2px; }
+ .reel-feed-actions svg { width: 23px; height: 23px; }
+ .reel-feed-author { left: 16px; right: 128px; bottom: 16px; gap: 4px; }
+ .reel-feed-author p { max-height: 3em; }
+ .reels-page .reel-sound-button { top: 64px; left: 16px; right: auto; }
+ .reel-stage-navigation { right: 128px; }
+}
