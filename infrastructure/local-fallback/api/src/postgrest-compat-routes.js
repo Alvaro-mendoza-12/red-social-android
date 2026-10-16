@@ -1,5 +1,6 @@
 const { loadCollectionMembershipState, collectionHistoryAllows } = require('./collection-membership-policy')
 const { normalizeCompatProfileJson } = require('./compat-profile-json')
+const { deleteAccountMusic } = require('./music-library-routes')
 const { scanEnforcementEnabled, readyStorageSql, trustedStorageUrl } = require('./storage-media-reference')
 const scanReadySql = readyStorageSql()
 const crypto = require('crypto')
@@ -5658,6 +5659,7 @@ async function deleteOwnAccountRpc(pool, auth) {
       await client.query(statement, [identityValues])
     }
 
+    const musicTracksDeleted = await deleteAccountMusic(client, localUserId)
     const importedRowsDeleted = await purgeImportedIdentityRows(client, identityValues)
     const compatRowsDeleted = await purgeCompatIdentityRows(client, identityValues)
     if (storage.rows.length > 0) {
@@ -5666,7 +5668,7 @@ async function deleteOwnAccountRpc(pool, auth) {
     await client.query(
       `INSERT INTO fallback_audit_events(event_name, user_id, metadata)
        VALUES ('account_deleted', $1::uuid, $2::jsonb)`,
-      [localUserId, JSON.stringify({ importedRowsDeleted, compatRowsDeleted })],
+      [localUserId, JSON.stringify({ importedRowsDeleted, compatRowsDeleted, musicTracksDeleted })],
     )
 
     const restoredAuthId = validUuidOrNull(lockedUser.rows[0].public_user_id)

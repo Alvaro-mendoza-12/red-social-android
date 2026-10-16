@@ -74,6 +74,16 @@ async function removeOwnMusic(pool, userId, trackId) {
   }
 }
 
+async function deleteAccountMusic(client, userId) {
+  if (typeof userId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)) {
+    throw new TypeError('A local account UUID is required')
+  }
+  // Called inside account deletion, which also removes this owner's storage.
+  // Track foreign keys cascade; another author's track and moment snapshots remain separate.
+  const result = await client.query('DELETE FROM fallback_music_tracks WHERE owner_id=$1::uuid', [userId])
+  return result.rowCount
+}
+
 function registerMusicLibraryRoutes(app, { pool, authRequired, identity, rawTrackId, mapTrack }) {
   app.get('/v1/data/music/my', authRequired, async (req, res, next) => {
     try {
@@ -95,4 +105,4 @@ function registerMusicLibraryRoutes(app, { pool, authRequired, identity, rawTrac
   })
 }
 
-module.exports = { libraryCursor, listOwnMusic, removeOwnMusic, registerMusicLibraryRoutes }
+module.exports = { libraryCursor, listOwnMusic, removeOwnMusic, deleteAccountMusic, registerMusicLibraryRoutes }
