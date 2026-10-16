@@ -59,6 +59,7 @@ data class GroupPollOptionVotersUiState(
 
 @HiltViewModel
 class GroupChatViewModel @Inject constructor(
+    private val conversationDraftStore: conectate.com.data.local.ConversationDraftStore,
     private val groupRepository: GroupRepository,
     private val userRepository: UserRepository,
     private val groupDao: GroupDao,
@@ -192,7 +193,13 @@ class GroupChatViewModel @Inject constructor(
     fun init(groupId: String) {
         val cleanId = groupId.trim().lowercase()
         if (cleanId.isBlank()) return
-        if (this.groupId != cleanId) textComposer.reset()
+        if (this.groupId != cleanId) {
+            textComposer.bindDraft(conversationDraftStore.read(ownerAccountId, "group", cleanId)) { text ->
+                if (authService.getCurrentUserId().equals(ownerAccountId, true)) {
+                    conversationDraftStore.write(ownerAccountId, "group", cleanId, text)
+                }
+            }
+        }
         if (this.groupId != cleanId) {
             pollRefresh.stop()
             _pollStates.value = emptyMap()
@@ -974,13 +981,13 @@ class GroupChatViewModel @Inject constructor(
     fun onEditMessage(message: conectate.com.data.model.Message) {
         if (message.content_type != "text" || message.deleted_for_all) return
         _editingMessage.value = message
-        textComposer.updateText(message.content)
+        textComposer.beginEditing(message.content)
         _selectedMessage.value = null
     }
 
     fun cancelEdit() {
         _editingMessage.value = null
-        textComposer.updateText("")
+        textComposer.finishEditing()
     }
 
     fun confirmEditMessage() {

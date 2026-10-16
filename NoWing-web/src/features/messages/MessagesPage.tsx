@@ -1,3 +1,4 @@
+import { readConversationDraft, useDraftRevision } from '../../core/conversationDrafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Search, MessageSquarePlus, MoreVertical, Phone, Plus } from 'lucide-react'
@@ -531,6 +532,7 @@ async function loadRoomCollectionByMembership(options: {
 }
 
 export function MessagesPage() {
+  useDraftRevision()
   const { user, isFallbackSession } = useAuth()
   const [webPreferences] = useWebPreferences()
   const navigate = useNavigate()
@@ -1232,7 +1234,7 @@ export function MessagesPage() {
           <h3>{item.title}</h3>
           <small className="timestamp">{inboxTime(item.updatedAt)}</small>
         </div>
-        <p>{item.subtitle}</p>
+        <p className={item.kind!=='voice'&&readConversationDraft(user?.id,item.kind,item.id)?'conversation-draft':undefined}>{item.kind!=='voice'&&readConversationDraft(user?.id,item.kind,item.id)?`Borrador: ${readConversationDraft(user?.id,item.kind,item.id)}`:item.subtitle}</p>
       </div>
       <div className="conversation-status-col">
         {item.unreadCount > 0 && (

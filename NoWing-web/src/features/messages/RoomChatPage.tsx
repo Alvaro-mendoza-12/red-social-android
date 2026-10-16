@@ -1,3 +1,6 @@
+import { useConversationDraft } from '../../core/conversationDrafts'
+import { MessageText } from '../../components/MessageText'
+import { MessageReplyPreview } from '../../components/MessageReplyPreview'
 import { attachmentPreparationError, droppedAttachments, prepareAttachmentFiles } from '../../core/attachmentPreparation'
 import { chatGallery } from '../../core/chatGallery'
 import { MediaViewer } from '../../components/MediaViewer'
@@ -281,11 +284,12 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [participants, setParticipants] = useState<Array<{ id: string; name: string; avatarUrl: string; role: string; username?: string }>>([])
   const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([])
   const [messages, setMessages] = useState<RoomMessage[]>([])
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useConversationDraft(user?.id, scope, cleanRoomId)
   const draftRevisionRef = useRef(0)
   const sendInFlightRef = useRef(false)
   const [replyToId, setReplyToId] = useState<string | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingDraft, setEditingDraft] = useState('')
   const [pollQuestion, setPollQuestion] = useState('')
   const [pollOptions, setPollOptions] = useState('Si\nNo')
   const [showPollComposer, setShowPollComposer] = useState(false)
@@ -997,13 +1001,12 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       setError('No hay una sesión activa para enviar el mensaje')
       return
     }
-    const text = draft.trim()
+    const text = (editingMessageId ? editingDraft : draft).trim()
     if ((!text && pendingAttachments.length === 0) || sending || uploading || sendInFlightRef.current) return
     const submittedDraft = draft
     const draftRevisionAtSend = draftRevisionRef.current
     const sendingTextOnly = !editingMessageId && pendingAttachments.length === 0
     sendInFlightRef.current = true
-    if (sendingTextOnly) setDraft('')
     setSending(true)
     try {
       if (editingMessageId) {
@@ -1026,12 +1029,13 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             : entry))
         }
         setEditingMessageId(null)
-        setDraft((current) => current === submittedDraft ? '' : current)
+        setEditingDraft('')
       } else if (pendingAttachments.length > 0) {
         await sendPendingAttachments(text)
         setDraft((current) => current === submittedDraft ? '' : current)
       } else {
         await sendMessage(text, '', 'text', replyToId)
+        if (draftRevisionRef.current === draftRevisionAtSend) setDraft(current => current === submittedDraft ? '' : current)
         setReplyToId(null)
       }
     } catch (caught) {
@@ -1461,9 +1465,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
-              <article className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}`}>
+              <article id={`message-${message.id}`} className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}`}>
                 {message.isForwarded ? <small>Reenviado</small> : null}
-                {replied ? <div className="reply-preview">Respuesta a: {replied.content || 'Archivo'}</div> : null}
+                {replied ? <MessageReplyPreview message={replied} name={replied.senderId === user?.id ? 'Tú' : participants.find(person => person.id === replied.senderId)?.name || 'Participante'}/> : null}
                 {message.deletedForAll ? (
                   <p className="muted-line">Mensaje eliminado para todos</p>
                 ) : sharedVideoReference(message.content) ? (
@@ -1491,7 +1495,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   </div>
                 ) : (
                   <>
-                    {message.content && message.contentType !== 'sticker' ? <p>{message.content}</p> : null}
+                    {message.content && message.contentType !== 'sticker' ? <MessageText text={message.content}/> : null}
                     {message.mediaUrl && !isViewOnceType(message.contentType) ? (
                       <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} imageClassName={message.contentType === 'sticker' ? 'sticker-preview' : undefined} imageLink={message.contentType !== 'sticker'} preserveAnimation={message.contentType === 'sticker'} onImageOpen={() => openGallery(message)} />
                     ) : null}
@@ -1545,7 +1549,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                       <button className="mini-action-btn" type="button" onClick={() => {
                         setEditingMessageId(message.id)
                         draftRevisionRef.current += 1
-                        setDraft(message.content)
+                        setEditingDraft(message.content)
                       }}>
                         Editar
                       </button>
@@ -1601,8 +1605,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           <small>Editando mensaje</small>
           <button className="mini-action-btn" type="button" onClick={() => {
             setEditingMessageId(null)
-            draftRevisionRef.current += 1
-            setDraft('')
+            setEditingDraft('')
           }}>
             Cancelar
           </button>
@@ -1751,10 +1754,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         <input
           className="text-input chat-input-field"
           placeholder={`Escribe en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}
-          value={draft}
+          value={editingMessageId ? editingDraft : draft}
           onChange={(event) => {
             draftRevisionRef.current += 1
-            setDraft(event.target.value)
+            if (editingMessageId) setEditingDraft(event.target.value); else setDraft(event.target.value)
           }}
         />
 

@@ -21,6 +21,7 @@ class CommunitiesViewModel @Inject constructor(
     private val communityRepository: CommunityRepository,
     private val authService: AuthService
 ) : ViewModel() {
+    val currentUserId: String? get() = authService.getCurrentUserId()
 
     private val _communitiesState = MutableStateFlow<CommunitiesUiState>(CommunitiesUiState.Loading)
     val communitiesState: StateFlow<CommunitiesUiState> = _communitiesState.asStateFlow()

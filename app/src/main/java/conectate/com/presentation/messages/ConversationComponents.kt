@@ -40,6 +40,12 @@ fun ConversationItem(
     onReport: () -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
+    val draftContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val drafts = remember(draftContext) { conectate.com.data.local.ConversationDraftStore(draftContext) }
+    val draftScope = if (conversation.chat.is_group) "group" else "chat"
+    val draftRoom = if (conversation.chat.is_group) conversation.chat.id else conversation.otherUserId.orEmpty()
+    val draftFlow = remember(currentUserId, draftScope, draftRoom) { drafts.observe(currentUserId, draftScope, draftRoom) }
+    val conversationDraft by draftFlow.collectAsState(initial = drafts.read(currentUserId, draftScope, draftRoom))
     val inboxRed = colors.primary
     val otherUserName = if (conversation.chat.is_group) {
         conversation.chat.group_name ?: "Grupo"
@@ -139,7 +145,7 @@ fun ConversationItem(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                if (isFromMe) {
+                if (isFromMe && conversationDraft.isEmpty()) {
                     val statusIcon = when(lastMessage?.status) {
                         "read" -> Icons.Default.DoneAll
                         "received" -> Icons.Default.DoneAll
@@ -157,7 +163,7 @@ fun ConversationItem(
                     Spacer(modifier = Modifier.width(4.dp))
                 }
                 
-                if (lastMessage?.content_type != "text" && lastMessage != null && !lastMessage.deleted_for_all) {
+                if (conversationDraft.isEmpty() && lastMessage?.content_type != "text" && lastMessage != null && !lastMessage.deleted_for_all) {
                     val typeIcon = when(lastMessage.content_type) {
                         "image" -> Icons.Default.PhotoCamera
                         "video" -> Icons.Default.Videocam
@@ -176,7 +182,9 @@ fun ConversationItem(
                 }
 
                 val displayText = inboxMessagePreview(lastMessage)
-                val previewText = if (isFromMe && lastMessage?.deleted_for_all != true && displayText.isNotBlank() && displayText != "Sin actividad reciente") {
+                val previewText = if (conversationDraft.isNotEmpty()) {
+                    "Borrador: $conversationDraft"
+                } else if (isFromMe && lastMessage?.deleted_for_all != true && displayText.isNotBlank() && displayText != "Sin actividad reciente") {
                     "Tú: $displayText"
                 } else {
                     displayText
@@ -185,7 +193,7 @@ fun ConversationItem(
                 Text(
                     text = previewText,
                     fontSize = 12.5.sp,
-                    color = colors.onSurfaceVariant,
+                    color = if (conversationDraft.isNotEmpty()) colors.primary else colors.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)

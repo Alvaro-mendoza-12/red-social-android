@@ -1,5 +1,6 @@
 import { MediaViewer } from './MediaViewer'
-import { browserStreamingSource } from '../core/media/browserStreaming'
+import { downloadMedia } from '../core/media/downloadMedia'
+import { MediaDownloadButton } from './MediaDownloadButton'
 import { StreamingVideo, StreamingAudio } from './StreamingMedia'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { rewriteRuntimeStorageUrl, runtimeStoragePreviewUrl } from '../core/runtimeBackend'
@@ -129,13 +130,12 @@ export function ChatAttachmentMedia({
   const playbackUrl = ownStorage ? ready?.url ?? '' : safeExternalUrl(source)
   const retry = () => { setFailure(null); setPreview(null); setAttempt((value) => value + 1) }
   const decodingFailed = () => setFailure({ source, identity, code: 'MEDIA_UNAVAILABLE' })
+  const extension = attachmentName(rewritten,title).split('.').at(-1)?.toUpperCase().slice(0,5) || 'DOC'
   async function downloadOriginal() {
     if (downloadPreparing) return
-    if (!ownStorage || !('serviceWorker' in navigator)) { setReadRequested(true); setDownloadRequested(true); return }
     setDownloadPreparing(true)
     try {
-      const handle = await browserStreamingSource(rewritten, identity, { downloadName: kind === 'file' || kind === 'pdf' ? attachmentName(rewritten,title) : title }); requireStorageReadIdentity(identity)
-      const link = document.createElement('a'); link.href = handle; link.download = kind === 'file' || kind === 'pdf' ? attachmentName(rewritten,title) : title; link.rel = 'noopener noreferrer'; link.click()
+      await downloadMedia(rewritten,attachmentName(rewritten,title))
     } catch { setFailure({ source, identity, code: 'MEDIA_UNAVAILABLE' }) } finally { setDownloadPreparing(false) }
   }
   useEffect(() => {
@@ -144,8 +144,8 @@ export function ChatAttachmentMedia({
   }, [downloadRequested, playbackUrl, title])
   if (kind === 'video' || kind === 'audio') {
     return <div ref={container}>{kind === 'video'
-      ? <><StreamingVideo className="chat-media-video" src={visible ? rewritten : undefined} controls preload="metadata" playsInline /><button type="button" className="mini-action-btn" onClick={()=>{container.current?.querySelector('video')?.pause();setViewerOpen(true)}}>Ampliar video</button>{viewerOpen?<MediaViewer items={[{url:rewritten,type:'video',title}]} onClose={()=>setViewerOpen(false)}/>:null}</>
-      : <StreamingAudio className="chat-audio-player" src={visible ? rewritten : undefined} controls preload="metadata" />}</div>
+      ? <><button type="button" className="chat-video-preview" aria-label="Abrir video en pantalla completa" onClick={()=>{container.current?.querySelector('video')?.pause();if(onImageOpen)onImageOpen();else setViewerOpen(true)}}><StreamingVideo className="chat-media-video" src={visible ? rewritten : undefined} preload="metadata" playsInline muted /><span className="chat-video-play" aria-hidden="true">▶</span></button><div className="chat-attachment-actions"><button type="button" className="mini-action-btn" onClick={()=>onImageOpen?onImageOpen():setViewerOpen(true)}>Ampliar video</button><MediaDownloadButton url={rewritten} name={title}/></div>{viewerOpen?<MediaViewer items={[{url:rewritten,type:'video',title}]} onClose={()=>setViewerOpen(false)}/>:null}</>
+      : <><StreamingAudio className="chat-audio-player" src={visible ? rewritten : undefined} controls preload="metadata" /><MediaDownloadButton url={rewritten} name={title}/></>}</div>
   }
   let content
   if (ownStorage && !identity.accountId) {
@@ -158,7 +158,7 @@ export function ChatAttachmentMedia({
       {kind === 'file' || kind === 'pdf' ? <button type="button" className="mini-action-btn" disabled={downloadPreparing} onClick={() => void downloadOriginal()}>{downloadPreparing ? 'Preparando…' : 'Descargar original'}</button> : null}
     </div>
   } else if ((kind === 'file' || kind === 'pdf') && !viewerOpen && !downloadRequested) {
-    content = <div className="chat-file-card"><span className="chat-file-icon">{kind === 'pdf' ? 'PDF' : 'DOC'}</span><span><strong>{title}</strong>{size > 0 ? <small>{Math.ceil(size / 1024)} KB</small> : null}<span className="chat-document-actions"><button className="mini-action-btn" type="button" onClick={() => { setReadRequested(true); setViewerOpen(true) }}>Abrir documento</button><button className="mini-action-btn" type="button" disabled={downloadPreparing} onClick={() => void downloadOriginal()}>{downloadPreparing ? 'Preparando…' : 'Descargar'}</button></span></span></div>
+    content = <div className="chat-file-card"><span className="chat-file-icon">{kind === 'pdf' ? 'PDF' : extension}</span><span><strong>{title}</strong><small>{extension}{size > 0 ? ` · ${Math.ceil(size / 1024)} KB` : ''}</small><span className="chat-document-actions"><button className="mini-action-btn" type="button" onClick={() => { setReadRequested(true); setViewerOpen(true) }}>Abrir documento</button><button className="mini-action-btn" type="button" disabled={downloadPreparing} onClick={() => void downloadOriginal()}>{downloadPreparing ? 'Preparando…' : 'Descargar'}</button></span></span></div>
   } else if (!playbackUrl) {
     content = <div className="chat-file-card chat-file-card-loading" role="status"><span><strong>Preparando archivo</strong><small>{title}</small></span></div>
   } else if (kind === 'image') {
@@ -169,5 +169,5 @@ export function ChatAttachmentMedia({
   } else {
     content = <a className="chat-file-card" href={playbackUrl} download={title} rel="noopener noreferrer"><span className="chat-file-icon">DOC</span><span><strong>{title}</strong>{ready?.size ? <small>{Math.ceil(ready.size / 1024)} KB</small> : null}</span></a>
   }
-  return <div ref={container}>{content}{viewerOpen && playbackUrl && (!ownStorage || identity.accountId) ? <MediaViewer items={[{url:playbackUrl,type:kind==='pdf'?'pdf':kind==='file'?'document':'image',title,documentName:attachmentName(rewritten, title),downloadUrl:playbackUrl}]} onClose={()=>setViewerOpen(false)}/> : null}</div>
+  return <div ref={container}>{content}{kind==='image'&&imageLink?<MediaDownloadButton url={rewritten} name={title}/>:null}{viewerOpen && playbackUrl && (!ownStorage || identity.accountId) ? <MediaViewer items={[{url:playbackUrl,type:kind==='pdf'?'pdf':kind==='file'?'document':'image',title,documentName:attachmentName(rewritten, title),downloadUrl:rewritten}]} onClose={()=>setViewerOpen(false)}/> : null}</div>
 }

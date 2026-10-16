@@ -18,10 +18,12 @@ import conectate.com.presentation.components.CircularProfileImage
 @Composable
 fun CommunityItem(
     communityWithLastMessage: CommunityWithLastMessage,
+    currentUserId: String? = null,
     onClick: () -> Unit
 ) {
     val community = communityWithLastMessage.community
     val unreadCount = communityWithLastMessage.unreadCount
+    val draft = rememberConversationDraft(currentUserId, "community", community.id)
 
     Row(
         modifier = Modifier
@@ -79,9 +81,9 @@ fun CommunityItem(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = community.last_message ?: community.description ?: "Explora esta comunidad",
+                    text = if (draft.isNotEmpty()) "Borrador: $draft" else community.last_message ?: community.description ?: "Explora esta comunidad",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    color = if (draft.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)

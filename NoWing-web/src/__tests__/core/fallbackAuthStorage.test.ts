@@ -1,5 +1,6 @@
 import {
   accessTokenExpiration,
+  fallbackAccountMatches,
   toPersistedFallbackSession,
 } from '../../core/auth/fallbackSessionPersistence'
 
@@ -12,6 +13,14 @@ function unsignedJwt(expiresAtEpochSeconds: number): string {
 }
 
 describe('fallback web session storage', () => {
+  test('a migrated account can use its canonical profile ID while another account is rejected', () => {
+    const user={id:'local-id',supabaseUserId:'profile-id'}
+    expect(fallbackAccountMatches(user,'profile-id')).toBe(true)
+    expect(fallbackAccountMatches(user,'LOCAL-ID')).toBe(true)
+    expect(fallbackAccountMatches(user,'other-account')).toBe(false)
+    expect(fallbackAccountMatches(undefined,'profile-id')).toBe(false)
+    expect(fallbackAccountMatches(user,'')).toBe(false)
+  })
   test('creates persistent metadata without copying the short-lived bearer', () => {
     const accessToken = unsignedJwt(Math.floor(Date.now() / 1000) + 10 * 60)
     const persisted = toPersistedFallbackSession({

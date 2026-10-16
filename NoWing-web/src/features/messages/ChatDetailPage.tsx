@@ -1,3 +1,6 @@
+import { useConversationDraft } from '../../core/conversationDrafts'
+import { MessageText } from '../../components/MessageText'
+import { MessageReplyPreview } from '../../components/MessageReplyPreview'
 import { ChatProfilePanel } from '../../components/ChatProfilePanel'
 import { attachmentPreparationError, droppedAttachments, prepareAttachmentFiles } from '../../core/attachmentPreparation'
 import { chatGallery } from '../../core/chatGallery'
@@ -441,7 +444,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const [error, setError] = useState<string | null>(null)
   const [title, setTitle] = useState('Chat')
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useConversationDraft(user?.id, 'chat', chatId.trim().toLowerCase())
   const draftRevisionRef = useRef(0)
   const sendInFlightRef = useRef(false)
   const [sending, setSending] = useState(false)
@@ -1384,7 +1387,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     const draftRevisionAtSend = draftRevisionRef.current
     const sendingTextOnly = !editingMessageId && pendingAttachments.length === 0
     sendInFlightRef.current = true
-    if (sendingTextOnly) setDraft('')
     setSending(true)
     try {
       if (editingMessageId) {
@@ -1419,6 +1421,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         setDraft((current) => current === submittedDraft ? '' : current)
       } else {
         await sendMessage({ content: text, replyToId })
+        if (draftRevisionRef.current === draftRevisionAtSend) setDraft(current => current === submittedDraft ? '' : current)
         setReplyToId(null)
       }
     } catch (caught) {
@@ -2158,9 +2161,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                   <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
-              <article className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}`}>
+              <article id={`message-${message.id}`} className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}`}>
                 {message.isForwarded ? <small>Reenviado</small> : null}
-                {replied ? <div className="reply-preview">Respuesta a: {replied.content || 'Archivo'}</div> : null}
+                {replied ? <MessageReplyPreview message={replied} name={replied.senderId === user?.id ? 'Tú' : title}/> : null}
 
                 {message.deletedForAll ? (
                   <p className="muted-line">Mensaje eliminado para todos</p>
@@ -2206,7 +2209,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                           <ChatMessageMedia message={message} onImageOpen={() => openGallery(message)} />
                         ) : null}
                         {showMessageText ? (
-                          <p className={message.mediaUrl ? 'message-caption' : undefined}>{message.content}</p>
+                          <MessageText text={message.content} className={message.mediaUrl ? 'message-caption' : undefined}/>
                         ) : null}
                       </>
                     )}

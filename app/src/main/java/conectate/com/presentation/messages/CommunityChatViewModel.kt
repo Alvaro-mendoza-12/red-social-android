@@ -61,6 +61,7 @@ data class CommunityPollOptionVotersUiState(
 
 @HiltViewModel
 class CommunityChatViewModel @Inject constructor(
+    private val conversationDraftStore: conectate.com.data.local.ConversationDraftStore,
     private val communityRepository: CommunityRepository,
     private val userRepository: UserRepository,
     private val authService: AuthService,
@@ -199,7 +200,13 @@ class CommunityChatViewModel @Inject constructor(
     fun init(communityId: String) {
         val cleanId = communityId.trim().lowercase()
         if (cleanId.isBlank()) return
-        if (this.communityId != cleanId) textComposer.reset()
+        if (this.communityId != cleanId) {
+            textComposer.bindDraft(conversationDraftStore.read(ownerAccountId, "community", cleanId)) { text ->
+                if (authService.getCurrentUserId().equals(ownerAccountId, true)) {
+                    conversationDraftStore.write(ownerAccountId, "community", cleanId, text)
+                }
+            }
+        }
         if (this.communityId != cleanId) {
             pollRefresh.stop()
             _pollStates.value = emptyMap()
@@ -1131,13 +1138,13 @@ class CommunityChatViewModel @Inject constructor(
     fun onEditMessage(message: conectate.com.data.model.Message) {
         if (message.content_type != "text" || message.deleted_for_all) return
         _editingMessage.value = message
-        textComposer.updateText(message.content)
+        textComposer.beginEditing(message.content)
         _selectedMessage.value = null
     }
 
     fun cancelEdit() {
         _editingMessage.value = null
-        textComposer.updateText("")
+        textComposer.finishEditing()
     }
 
     fun confirmEditMessage() {

@@ -18,11 +18,13 @@ import conectate.com.presentation.components.CircularProfileImage
 @Composable
 fun GroupItem(
     groupWithLastMessage: GroupWithLastMessage,
+    currentUserId: String? = null,
     onClick: () -> Unit
 ) {
     val group = groupWithLastMessage.group
     val lastMessage = groupWithLastMessage.lastMessage
     val unreadCount = groupWithLastMessage.unreadCount
+    val draft = rememberConversationDraft(currentUserId, "group", group.id)
 
     Row(
         modifier = Modifier
@@ -72,9 +74,9 @@ fun GroupItem(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = group.last_message ?: group.description ?: "Sin mensajes",
+                    text = if (draft.isNotEmpty()) "Borrador: $draft" else group.last_message ?: group.description ?: "Sin mensajes",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    color = if (draft.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)

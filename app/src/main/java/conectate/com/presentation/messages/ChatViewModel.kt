@@ -65,6 +65,7 @@ import conectate.com.util.ChatAudioPlaybackCache
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
+    private val conversationDraftStore: conectate.com.data.local.ConversationDraftStore,
     savedStateHandle: SavedStateHandle,
     private val messageRepository: MessageRepository,
     private val advancedMessagingRepository: AdvancedMessagingRepository,
@@ -438,6 +439,15 @@ class ChatViewModel @Inject constructor(
             
             if (resolvedChat != null) {
                 chatId = resolvedChat.id
+
+                val draftScope = if (resolvedChat.is_group) "group" else "chat"
+                val draftRoom = if (resolvedChat.is_group) resolvedChat.id else targetUserId ?: resolvedChat.id
+                textComposer.bindDraft(conversationDraftStore.read(ownerAccountId, draftScope, draftRoom)) { text ->
+                    if (ownerAccountId == authService.getCurrentUserId()?.trim()?.lowercase()) {
+                        conversationDraftStore.write(ownerAccountId, draftScope, draftRoom, text)
+                    }
+                }
+
                 isDirectConversation = !resolvedChat.is_group
                 _messageRequest.value = if (resolvedChat.is_group) conectate.com.data.model.DirectMessageRequestState("open")
                     else conectate.com.data.model.DirectMessageRequestState()
@@ -2023,13 +2033,13 @@ class ChatViewModel @Inject constructor(
     fun onEditMessage(message: Message) {
         if (message.content_type != "text" || message.deleted_for_all) return
         _editingMessage.value = message
-        textComposer.updateText(message.content)
+        textComposer.beginEditing(message.content)
         _selectedMessage.value = null
     }
 
     fun cancelEdit() {
         _editingMessage.value = null
-        textComposer.updateText("")
+        textComposer.finishEditing()
         stopTypingPresence()
     }
 

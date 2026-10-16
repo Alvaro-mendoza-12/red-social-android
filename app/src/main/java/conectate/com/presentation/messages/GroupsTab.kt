@@ -88,6 +88,7 @@ fun GroupsTab(
                         items(filteredGroups) { groupWithLastMessage ->
                             GroupItem(
                                 groupWithLastMessage = groupWithLastMessage,
+                                currentUserId = viewModel.currentUserId,
                                 onClick = {
                                     onNavigateToGroupChat(groupWithLastMessage.group.id)
                                 }

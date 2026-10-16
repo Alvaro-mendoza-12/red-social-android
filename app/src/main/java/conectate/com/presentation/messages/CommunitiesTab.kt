@@ -129,6 +129,7 @@ fun CommunitiesTab(
                         items(visibleCommunities) { communityWithLastMessage ->
                             CommunityItem(
                                 communityWithLastMessage = communityWithLastMessage,
+                                currentUserId = viewModel.currentUserId,
                                 onClick = {
                                     onNavigateToCommunityChat(communityWithLastMessage.community.id)
                                 }

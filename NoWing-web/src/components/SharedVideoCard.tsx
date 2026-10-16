@@ -6,6 +6,7 @@ import { profileVideoCoverSource } from '../core/profileMediaFields'
 import type { SharedVideoReference } from '../core/sharedVideoReference'
 import { textOf } from '../core/utils'
 import { StreamingImage } from './StreamingMedia'
+import { resolveSupabasePublicUrl } from '../core/supabase'
 export function SharedVideoCard({ reference }: { reference: SharedVideoReference }) {
   const { user }=useAuth()
   const [preview,setPreview]=useState<{owner:string;id:string;cover:string;title:string}|null>(null)
@@ -16,7 +17,7 @@ export function SharedVideoCard({ reference }: { reference: SharedVideoReference
   },[reference.videoId,user?.id])
   const current=preview?.owner===user?.id&&preview?.id===reference.videoId?preview:null
   return <Link className="shared-video-card" to={`/app/reels/${encodeURIComponent(reference.videoId)}`} aria-label="Abrir video compartido">
-    <div>{current?.cover?<StreamingImage src={current.cover} alt="Vista previa del video" loading="lazy"/>:null}<span className="shared-video-play" aria-hidden="true">▶</span></div>
+    <div>{current?.cover?<StreamingImage src={resolveSupabasePublicUrl('thumbnails',current.cover)} alt="Vista previa del video" loading="lazy"/>:null}<span className="shared-video-play" aria-hidden="true">▶</span></div>
     <strong>{current?.title||'Video de Novvin'}</strong>{reference.caption?<p>{reference.caption}</p>:null}
   </Link>
 }

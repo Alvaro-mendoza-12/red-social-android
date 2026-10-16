@@ -6,6 +6,11 @@ export type PersistedFallbackSession<TUser> = {
   savedAt: string
 }
 
+export function fallbackAccountMatches(user: { id: string; supabaseUserId?: string | null } | undefined, expected: string): boolean {
+  const clean = expected.trim().toLowerCase()
+  return Boolean(clean && user && [user.id, user.supabaseUserId].some(id => id?.trim().toLowerCase() === clean))
+}
+
 export function accessTokenExpiration(token: string): number | null {
   try {
     const encodedPayload = token.split('.')[1]

@@ -560,7 +560,7 @@ export function VideoDetailPage() {
   if (loading) return <StatusView title="Cargando video" description="Espera un momento..." />
   if (error && !video) {
     return (
-      <section className="section-stack">
+      <section className="section-stack video-detail-page">
         <Link to="/app/reels" className="inline-link">
           <ArrowLeft aria-hidden="true" size={17} /> Volver a reels
         </Link>
@@ -571,7 +571,7 @@ export function VideoDetailPage() {
   if (!video) return <StatusView title="Video no encontrado" description="No existe o no está disponible." />
 
   return (
-    <section className="section-stack">
+    <section className="section-stack video-detail-page">
       <div className="row-between">
         <Link to="/app/reels" className="inline-link">
           <ArrowLeft aria-hidden="true" size={17} /> Reels
@@ -579,7 +579,7 @@ export function VideoDetailPage() {
         <h2>Detalle del video</h2>
       </div>
       {error ? <div className="voice-room-alert" role="status">{error}</div> : null}
-      <article className="surface-card">
+      <article className="surface-card video-detail-player">
         <h3>{video.title}</h3>
         <small>{formatDateTime(video.createdAt)}</small>
         <div className="row-actions">
@@ -673,7 +673,7 @@ export function VideoDetailPage() {
         ) : null}
       </article>
 
-      <section className="section-stack">
+      <section className="section-stack video-detail-comments">
         <h3>Comentarios</h3>
         <form className="composer" onSubmit={submitComment}>
           <input

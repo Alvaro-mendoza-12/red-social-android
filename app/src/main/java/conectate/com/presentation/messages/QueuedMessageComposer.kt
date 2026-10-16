@@ -18,6 +18,25 @@ internal class QueuedMessageComposer<Reply> {
     private var textRevision = 0L
     private var replyRevision = 0L
     private var enqueuing: Submission<Reply>? = null
+    private var saveDraft: ((String) -> Unit)? = null
+    private var draftBeforeEdit: String? = null
+
+    fun bindDraft(initial: String, save: (String) -> Unit) {
+        reset()
+        updateText(initial)
+        saveDraft = save
+    }
+
+    fun beginEditing(value: String) {
+        if (draftBeforeEdit == null) draftBeforeEdit = text.value
+        updateText(value)
+    }
+
+    fun finishEditing() {
+        val previous = draftBeforeEdit ?: return
+        draftBeforeEdit = null
+        updateText(previous)
+    }
 
     class Submission<Reply> internal constructor(
         val text: String,
@@ -39,6 +58,7 @@ internal class QueuedMessageComposer<Reply> {
     fun updateText(value: String) {
         textRevision++
         mutableText.value = value
+        if (draftBeforeEdit == null) saveDraft?.invoke(value)
     }
 
     fun updateReply(value: Reply?) {
@@ -76,6 +96,8 @@ internal class QueuedMessageComposer<Reply> {
     }
 
     fun reset() {
+        saveDraft = null
+        draftBeforeEdit = null
         invalidatePendingSend()
         updateText("")
         updateReply(null)

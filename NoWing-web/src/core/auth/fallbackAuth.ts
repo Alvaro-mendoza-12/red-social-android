@@ -8,6 +8,7 @@ import {
 import { isHttpRetrySafeMethod } from '../httpRetryPolicy'
 import {
   accessTokenExpiration,
+  fallbackAccountMatches,
   toPersistedFallbackSession,
   type PersistedFallbackSession,
 } from './fallbackSessionPersistence'
@@ -129,7 +130,13 @@ export async function fallbackApiJson<T>(
     throw new Error('El servidor Ubuntu no está configurado para esta web.')
   }
 
-  const guardAccount = () => { if (init?.expectedAccountId && readFallbackSession()?.user.id !== init.expectedAccountId) throw new Error('OUTBOX_ACCOUNT_CHANGED') }
+  const guardAccount = () => {
+    if (!init?.expectedAccountId) return
+    const sessionUser = readFallbackSession()?.user
+    // Migrated accounts retain their local ID and their canonical profile ID.
+    // UI and stored conversations use the canonical ID returned by sessionToUser.
+    if (!fallbackAccountMatches(sessionUser, init.expectedAccountId)) throw new Error('OUTBOX_ACCOUNT_CHANGED')
+  }
   guardAccount()
   const requiresAuth = init?.auth !== false
   const usesWebSession = init?.webSession === true
