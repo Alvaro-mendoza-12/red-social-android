@@ -4,7 +4,7 @@ import { publicRoutes, site } from './public-seo.mjs'
 
 const checks = []
 async function request(path) {
-  return fetch(site + path, { redirect: 'manual', headers: { 'User-Agent': 'Novvin-owned-production-SEO-audit/9.0.39', 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(20000) })
+  return fetch(site + path, { redirect: 'manual', headers: { 'User-Agent': 'Novvin-owned-production-SEO-audit/9.0.40', 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(20000) })
 }
 async function check(name, run) {
   try { await run(); checks.push({ name, passed: true }) }

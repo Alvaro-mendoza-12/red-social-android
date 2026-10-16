@@ -205,6 +205,8 @@ function AppRouter() {
       <Routes>
         <Route path="/" element={<RootRoute />} />
       <Route path="/novvin-web" element={<PublicInfo path="/novvin-web" />} />
+      <Route path="/descargar" element={<PublicInfo path="/descargar" />} />
+      <Route path="/ayuda/encontrar-novvin" element={<PublicInfo path="/ayuda/encontrar-novvin" />} />
       <Route path="/mensajes" element={<PublicInfo path="/mensajes" />} />
       <Route path="/videos" element={<PublicInfo path="/videos" />} />
       <Route path="/salas-de-voz" element={<PublicInfo path="/salas-de-voz" />} />

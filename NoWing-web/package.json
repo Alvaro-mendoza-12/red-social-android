@@ -1,7 +1,7 @@
 {
   "name": "novvin-web",
   "private": true,
-  "version": "9.0.39",
+  "version": "9.0.40",
   "type": "module",
   "scripts": {
     "dev": "vite",

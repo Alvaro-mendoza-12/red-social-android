@@ -12,11 +12,13 @@ const require = createRequire(import.meta.url), root = path.resolve(import.meta.
 function componentModule(file) {
   const code = ts.transpileModule(fs.readFileSync(path.join(root, file), 'utf8'), { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
   const module = { exports: {} }
-  new Function('require', 'module', 'exports', code)(id => id === './publicInfoPages' ? infoData : require(id), module, module.exports)
+  new Function('require', 'module', 'exports', code)(id => id === './publicInfoPages' ? infoData : id === './PublicNavigation' ? navigation : id === './publicNavigationData' ? navigationData : require(id), module, module.exports)
   return module.exports
 }
 const infoData = componentModule('src/ui/novvin/publicInfoPages.ts')
 const { publicInfoPage } = infoData
+const navigationData = componentModule('src/ui/novvin/publicNavigationData.ts')
+const navigation = componentModule('src/ui/novvin/PublicNavigation.tsx')
 const { PublicHome } = componentModule('src/ui/novvin/PublicHome.tsx')
 const { PublicInfo } = componentModule('src/ui/novvin/PublicInfo.tsx')
 const { NotFoundPage } = componentModule('src/ui/novvin/NotFoundPage.tsx')

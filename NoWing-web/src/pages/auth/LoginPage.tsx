@@ -143,17 +143,9 @@ export function LoginPage() {
   }, [client, mode, qrRefreshKey])
 
   useEffect(() => {
-    const activePairing = qrPairing
-    if (
-      mode !== 'qr' ||
-      !activePairing?.pairId ||
-      !activePairing.nonce ||
-      activePairing.status !== 'pending'
-    ) {
-      return
-    }
+    if (mode !== 'qr' || !qrPairId || !qrNonce || qrStatus !== 'pending') return
     const supabaseClient = client
-    const pairing = activePairing
+    const pairing = { pairId: qrPairId, nonce: qrNonce }
 
     let cancelled = false
     let pollId: number | undefined
@@ -192,17 +184,9 @@ export function LoginPage() {
   }, [client, mode, qrPairId, qrNonce, qrStatus])
 
   useEffect(() => {
-    const activePairing = qrPairing
-    if (
-      mode !== 'qr' ||
-      !activePairing?.pairId ||
-      !activePairing.nonce ||
-      activePairing.status !== 'approved'
-    ) {
-      return
-    }
+    if (mode !== 'qr' || !qrPairId || !qrNonce || qrStatus !== 'approved') return
     const supabaseClient = client
-    const pairing = activePairing
+    const pairing = { pairId: qrPairId, nonce: qrNonce }
 
     let cancelled = false
 
@@ -696,7 +680,7 @@ export function LoginPage() {
                 ) : (
                   <StatusView
                     title="QR no disponible"
-                    description="No se pudo generar el código. Revisa tu conexión y vuelve a intentarlo."
+                    description="No pudimos conectar con Novvin. Puedes volver a intentarlo en unos momentos."
                   />
                 )}
               </div>
@@ -727,13 +711,13 @@ export function LoginPage() {
                     setQrRefreshKey((current) => current + 1)
                   }}
                 >
-                  {creatingQr ? 'Generando...' : 'Generar otro QR'}
+                  {creatingQr ? 'Generando...' : qrPairing ? 'Generar otro QR' : 'Reintentar QR'}
                 </button>
               </div>
             </div>
           ) : null}
 
-          {error ? <p className="error-text">{error}</p> : null}
+          {error ? <p className="error-text" role="alert">{error}</p> : null}
           {info ? <p>{info}</p> : null}
 
           <p className="auth-foot">

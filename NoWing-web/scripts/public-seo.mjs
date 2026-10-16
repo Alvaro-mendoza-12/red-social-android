@@ -6,6 +6,8 @@ export const publicRoutes = [
   ['/videos', 'videos.html', 'Videos'],
   ['/salas-de-voz', 'salas-de-voz.html', 'Salas de voz'],
   ['/ayuda/vincular-web', 'vincular-web.html', 'Vincular web con QR'],
+  ['/descargar', 'descargar.html', 'Descargar Novvin'],
+  ['/ayuda/encontrar-novvin', 'encontrar-novvin.html', 'Encontrar Novvin'],
   ["/social", "social.html", "Social"],
   ["/momentos", "momentos.html", "Momentos"],
   ["/comunidades", "comunidades.html", "Grupos y comunidades"],

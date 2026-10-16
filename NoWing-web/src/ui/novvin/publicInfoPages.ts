@@ -1,4 +1,26 @@
 export const publicInfoPages = {
+  '/descargar': {
+    title: 'Descargar Novvin para Android y entrar a Novvin Web',
+    description: 'Encuentra Novvin en Google Play para Android o entra a Novvin Web desde tu navegador. Usa la misma cuenta para mensajes, videos y comunidades.',
+    heading: 'Novvin en tu teléfono y en tu navegador.',
+    sections: [
+      { heading: 'La aplicación para Android', body: 'El enlace de esta página abre la ficha de Novvin en Google Play. Allí puedes comprobar la compatibilidad con tu teléfono, la disponibilidad y la versión publicada antes de instalar. Las actualizaciones móviles se distribuyen desde esa ficha.' },
+      { heading: 'Entra a la web sin descargar un programa', body: 'Desde una computadora, tablet o celular puedes abrir Novvin Web en el navegador. Inicia sesión con tu cuenta o vincúlala con el código QR aprobado desde Novvin móvil. No necesitas instalar un programa de escritorio para usar la web.' },
+      { heading: 'Conserva la misma cuenta', body: 'Utiliza el mismo correo y contraseña del móvil. Tus conversaciones y tu perfil pertenecen a esa cuenta. Si compartes la computadora, cierra la sesión al terminar; guardar la dirección en favoritos no guarda tu contraseña.' },
+    ],
+  },
+  '/ayuda/encontrar-novvin': {
+    title: 'Cómo encontrar Novvin Web en Google, Brave, Bing y DuckDuckGo',
+    description: 'Encuentra el acceso a Novvin Web desde Chrome, Brave, Edge, Opera o DuckDuckGo. Comprueba la dirección, guarda un favorito y entra con tu cuenta.',
+    heading: 'Vuelve a Novvin desde tu navegador.',
+    sections: [
+      { heading: 'La dirección de Novvin Web', body: 'Escribe https://red-social-android.vercel.app/ en la barra de direcciones para abrir esta web directamente. Después puedes entrar con tu cuenta o explorar videos públicos. Guarda la página en los favoritos de tu navegador para volver sin hacer otra búsqueda.' },
+      { heading: 'Busca el nombre Novvin', body: 'El nombre se escribe Novvin: N-O-V-V-I-N. Puedes buscar «Novvin Web» o «Novvin red social» en Google, Bing, Brave Search o DuckDuckGo. Los resultados y su orden pueden variar según el buscador, la región y el momento; comprueba la dirección antes de entrar.' },
+      { heading: 'Chrome, Brave, Edge, Opera y DuckDuckGo', body: 'El navegador abre la web; el buscador encuentra páginas. Chrome, Brave, Edge, Opera y el navegador DuckDuckGo pueden utilizar distintos servicios de búsqueda según su configuración. Para entrar sin depender del orden de los resultados, utiliza la dirección completa o tu favorito.' },
+      { heading: 'Si escribiste Novvyn con «y»', body: 'Si buscabas nuestra aplicación como Novvyn, Noving, Nowing o NoWin, el nombre de esta red social es Novvin. Una escritura parecida también puede corresponder a otra empresa; utiliza el nombre completo Novvin Web y comprueba que el enlace conduce a esta dirección.' },
+      { heading: 'Si llegaste desde X u otra aplicación', body: 'Un enlace compartido puede abrirse dentro de otra aplicación. Si tienes dificultades para vincular la cuenta, descargar un archivo o dar permiso de cámara y micrófono, utiliza la opción de abrir el enlace en tu navegador habitual y vuelve a Novvin desde allí.' },
+    ],
+  },
   '/mensajes': {
     title: 'Mensajes de Novvin: chats, grupos y archivos en la web',
     description: 'Conversa con tu gente en Novvin Web. Abre tus chats y grupos, comparte fotos y documentos desde la computadora y vincula tu cuenta con QR.',

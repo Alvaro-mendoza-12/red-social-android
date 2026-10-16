@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fallbackApiJson, isFallbackAuthConfigured, type FallbackUser } from './fallbackAuth'
+import { friendlyError } from '../utils'
 
 export type WebLoginPairingStatus = 'pending' | 'approved' | 'rejected' | 'consumed' | 'expired'
 
@@ -26,11 +27,6 @@ type PairingResponse = {
   error?: string
   message?: string
 } & WebLoginPairing
-
-function extractErrorMessage(caught: unknown, fallback: string): string {
-  if (caught instanceof Error && caught.message.trim()) return caught.message
-  return fallback
-}
 
 async function invokePairing(
   client: SupabaseClient,
@@ -99,7 +95,7 @@ export async function createWebLoginPairing(
         action: 'create',
         deviceLabel,
       },
-      'No se pudo crear el QR de Novvin Web en el servidor Ubuntu.',
+      'No se pudo crear el QR de Novvin. Vuelve a intentarlo.',
     )
   }
 
@@ -129,7 +125,7 @@ export async function readWebLoginPairingStatus(
         pairId,
         nonce,
       },
-      'No se pudo verificar el estado del QR en el servidor Ubuntu.',
+      'No se pudo comprobar el QR de Novvin. Vuelve a intentarlo.',
     )
   }
 
@@ -160,7 +156,7 @@ export async function consumeApprovedWebLoginPairing(
         pairId,
         nonce,
       },
-      'No se pudo completar el inicio por QR en el servidor Ubuntu.',
+      'No se pudo completar el acceso. Vuelve a intentarlo.',
     )
   }
 
@@ -180,5 +176,5 @@ export async function consumeApprovedWebLoginPairing(
 }
 
 export function toPairingError(caught: unknown, fallback: string): string {
-  return extractErrorMessage(caught, fallback)
+  return friendlyError(caught, fallback)
 }

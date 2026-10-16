@@ -6,6 +6,7 @@ import {
   subscribeRuntimeBackend,
 } from '../runtimeBackend'
 import { isHttpRetrySafeMethod } from '../httpRetryPolicy'
+import { authenticationConnectionMessage, fetchAuthentication } from './authRequest'
 import {
   accessTokenExpiration,
   fallbackAccountMatches,
@@ -111,7 +112,7 @@ function fallbackErrorMessage(error: unknown): string {
 }
 
 function fallbackConnectionErrorMessage(): string {
-  return 'No se pudo conectar con el servidor Ubuntu. Revisa el estado del servidor y tu conexión a Internet.'
+  return authenticationConnectionMessage
 }
 
 async function parseFallbackResponse(response: Response) {
@@ -214,13 +215,16 @@ async function fetchFallback(path: string, init: RequestInit): Promise<Response>
     typeof ReadableStream !== 'undefined' && init.body instanceof ReadableStream
   )
   const requestInit = { ...init, credentials: init.credentials ?? 'include' } satisfies RequestInit
+  const send = (url: string) => normalizedPath.startsWith('/v1/auth/')
+    ? fetchAuthentication(url, requestInit)
+    : fetch(url, requestInit)
   try {
-    const response = await fetch(`${firstBaseUrl}${normalizedPath}`, requestInit)
+    const response = await send(`${firstBaseUrl}${normalizedPath}`)
     if (![502, 503, 504].includes(response.status) || !canRetryBody || !retrySafe) return response
 
     const refreshedUrl = await refreshRuntimeBackend(`${firstBaseUrl}${normalizedPath}`)
     return refreshedUrl
-      ? await fetch(`${refreshedUrl}${normalizedPath}`, requestInit)
+      ? await send(`${refreshedUrl}${normalizedPath}`)
       : response
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
@@ -228,7 +232,7 @@ async function fetchFallback(path: string, init: RequestInit): Promise<Response>
       const refreshedUrl = await refreshRuntimeBackend(`${firstBaseUrl}${normalizedPath}`)
       if (refreshedUrl) {
         try {
-          return await fetch(`${refreshedUrl}${normalizedPath}`, requestInit)
+          return await send(`${refreshedUrl}${normalizedPath}`)
         } catch (retryError) {
           if (retryError instanceof DOMException && retryError.name === 'AbortError') throw retryError
         }
@@ -603,7 +607,7 @@ export async function signInWithFallbackAuth(email: string, password: string, se
     if (code === 'EMAIL_AND_PASSWORD_REQUIRED') {
       throw new Error('Escribe el correo y la contraseña para entrar con Ubuntu.')
     }
-    throw new Error(code || 'No se pudo iniciar sesión con el servidor Ubuntu.')
+    throw new Error(code || 'No se pudo iniciar sesión. Vuelve a intentarlo.')
   }
 
   return persistFallbackSession(payload as {

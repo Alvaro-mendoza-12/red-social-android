@@ -1,16 +1,10 @@
+import { PublicFooter, PublicGuideNavigation, PublicHeader } from './PublicNavigation'
+
 export function PublicHome() {
   return (
     <div className="public-home">
       <a className="public-skip-link" href="#contenido">Ir al contenido</a>
-      <header className="public-home-header">
-        <a href="/" className="public-home-brand">
-          <img src="/novvin-logo.png" alt="" width="44" height="44" />
-          Novvin
-        </a>
-        <a className="ghost-btn" href="/login">
-          Iniciar sesión
-        </a>
-      </header>
+      <PublicHeader />
       <main id="contenido">
         <section className="public-home-hero">
           <div>
@@ -35,6 +29,7 @@ export function PublicHome() {
             <a className="public-home-register" href="/register">
               ¿Eres nuevo? Crea tu cuenta
             </a>
+            <a className="public-home-download" href="/descargar">También disponible para Android →</a>
           </div>
           <div className="public-home-visual" aria-hidden="true">
             <img src="/novvin-logo.png" alt="" width="220" height="220" />
@@ -67,6 +62,7 @@ export function PublicHome() {
             <a href="/explore/moments">Ver momentos →</a>
           </article>
         </section>
+        <PublicGuideNavigation />
         <section className="public-home-faq">
           <h2>Tu cuenta, también en la web.</h2>
           <details>
@@ -101,13 +97,7 @@ export function PublicHome() {
           </details>
         </section>
       </main>
-      <footer className="public-home-footer">
-        <a className="public-home-brand" href="/">
-          Novvin
-        </a>
-        <nav className="public-footer-links" aria-label="Conoce Novvin"><a href="/novvin-web">Novvin Web</a><a href="/mensajes">Mensajes</a><a href="/videos">Videos</a><a href="/salas-de-voz">Salas de voz</a><a href="/ayuda/vincular-web">Ayuda con el QR</a><a href="/social">Social</a><a href="/momentos">Momentos</a><a href="/comunidades">Grupos y comunidades</a><a href="/juegos">Juegos</a><a href="/asistente">Asistente</a><a href="/ayuda">Ayuda</a></nav>
-        <a href="/login">Entrar a mi cuenta</a>
-      </footer>
+      <PublicFooter />
     </div>
   )
 }

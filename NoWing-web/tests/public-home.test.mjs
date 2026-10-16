@@ -90,6 +90,37 @@ test('the web guide explains Novvyn as a spelling query without changing the rea
  assert.match(html,/el nombre de la aplicación es Novvin: N-O-V-V-I-N/)
  assert.equal(graph(html).find(item=>item['@type']==='Organization').name,'Novvin')
 })
+
+test('every public page links to the complete grouped guide directory',()=>{
+ for(const [,file] of publicRoutes){
+  const html=read(file)
+  assert.match(html,/aria-label="Guías de Novvin"/)
+  for(const [route] of publicRoutes.filter(([route])=>route!=='/'))assert.ok(html.includes('href="'+route+'"'),file+' misses '+route)
+  for(const group of ['Conversar','Descubrir','Tu cuenta'])assert.ok(html.includes('<h3>'+group+'</h3>'))
+ }
+})
+
+test('visible breadcrumbs and active guide match the canonical public page',()=>{
+ for(const [route,file,label] of publicRoutes.filter(([route])=>route!=='/')){
+  const html=read(file)
+  assert.ok(html.includes('<li aria-current="page">'+label+'</li>'))
+  assert.ok(html.includes('href="'+route+'" aria-current="page"'))
+ }
+})
+
+test('download page sends visitors to the actual Android app without fake package links or ratings',()=>{
+ const html=read('descargar.html')
+ assert.match(html,/href="https:\/\/play.google.com\/store\/apps\/details\?id=conectate.com"/)
+ assert.match(html,/Ver Novvin en Google Play/)
+ assert.doesNotMatch(html,/\.apk["?]|\.exe["?]|AggregateRating|ratingCount/)
+})
+
+test('find-Novvin guide distinguishes browsers, search engines and shared links',()=>{
+ const html=read('encontrar-novvin.html')
+ for(const term of ['Google','Brave Search','Bing','DuckDuckGo','Chrome','Edge','Opera','X u otra aplicación','Novvyn'])assert.ok(html.includes(term),term)
+ assert.match(html,/no hacer|sin hacer otra búsqueda/)
+ assert.doesNotMatch(html,/primera posición garantizada|todos los navegadores están certificados/)
+})
 test('unknown paths do not rewrite into successful application documents',()=>{
  assert.ok(!config.rewrites.some(item=>item.source==='/(.*)'))
  for(const source of ['/app/:path*','/explore/:path*','/u/:path*','/profile/:path*','/chat/:path*'])assert.ok(config.rewrites.some(item=>item.source===source&&item.destination==='/app-shell.html'))
