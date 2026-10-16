@@ -3,69 +3,93 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
+import { publicRoutes, site } from '../scripts/public-seo.mjs'
+const root=path.resolve(import.meta.dirname,'..')
+const read=file=>fs.readFileSync(path.join(root,'dist',file),'utf8')
+const graph=html=>JSON.parse(/<script type="application\/ld\+json">(.*?)<\/script>/.exec(html)[1])['@graph']
+const config=JSON.parse(fs.readFileSync(path.join(root,'vercel.json'),'utf8'))
 
-const root = path.resolve(import.meta.dirname, '..')
-test('public home is readable without JavaScript and points to real access routes', () => {
-  const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8')
-  assert.match(html, /<h1>Novvin/)
-  assert.match(html, /href="\/login"/)
-  assert.match(html, /href="\/register"/)
-  assert.match(html, /N-O-V-V-I-N/)
-  assert.match(html, /Novvyn/)
-  assert.match(html, /NoWin/)
-  assert.match(html, /rel="canonical" href="https:\/\/red-social-android\.vercel\.app\/"/)
-  assert.doesNotMatch(html, /name="keywords"/)
-  assert.doesNotMatch(html, /accessToken|access_token/)
+test('home is readable without JavaScript and provides real access links',()=>{
+ const html=read('index.html')
+ assert.match(html,/<h1>Novvin/)
+ for(const word of ['N-O-V-V-I-N','Novvyn','NoWin'])assert.ok(html.includes(word))
+ assert.match(html,/href="\/login"/);assert.match(html,/href="\/register"/)
+ assert.doesNotMatch(html,/name="keywords"|accessToken|access_token/)
 })
-test('private SPA shell does not contain public home markup', () => {
-  const html = fs.readFileSync(path.join(root, 'dist/app-shell.html'), 'utf8')
-  assert.match(html, /<div id="root"><\/div>/)
-  assert.doesNotMatch(html, /<h1>Novvin/)
+test('the public home loads no application scripts or preload bundles',()=>{
+ const html=read('index.html')
+ assert.doesNotMatch(html,/<script[^>]*(?:src=|type="module")|rel="modulepreload"/)
+ const stylesheet=/<link rel="stylesheet" href="\/([^"]+)"/.exec(html)[1]
+ assert.ok(fs.statSync(path.join(root,'dist',stylesheet)).size<15000)
+ assert.doesNotMatch(read(stylesheet),/@import|fonts\.googleapis/)
 })
-test('only the public home and public guides are advertised in the sitemap', () => {
-  const sitemap = fs.readFileSync(path.join(root, 'dist/sitemap.xml'), 'utf8')
-  assert.match(sitemap, /<loc>https:\/\/red-social-android\.vercel\.app\/<\/loc>/)
-  assert.equal((sitemap.match(/<loc>/g) || []).length, 6)
-  assert.match(sitemap, /\/novvin-web<\/loc>/)
-  assert.match(sitemap, /\/ayuda\/vincular-web<\/loc>/)
-  assert.doesNotMatch(sitemap, /\/app\/|\/login|\/profile/)
-  const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'))
-  assert.deepEqual(config.rewrites[0], { source: '/', destination: '/index.html' })
-  assert.ok(
-    config.headers.some(
-      (rule) =>
-        rule.source === '/app/:path*' &&
-        rule.headers.some((h) => h.key === 'X-Robots-Tag' && h.value.includes('noindex')),
-    ),
-  )
+test('private shell is noindex, contains no public page and retains its application entry',()=>{
+ const html=read('app-shell.html')
+ assert.match(html,/<div id="root"><\/div>/);assert.match(html,/type="module"/)
+ assert.match(html,/name="robots" content="noindex, follow"/)
+ assert.doesNotMatch(html,/<h1>Novvin|application\/ld\+json/)
 })
-
-for (const [route, file] of [['/novvin-web', 'novvin-web.html'], ['/ayuda/vincular-web', 'vincular-web.html'], ['/mensajes', 'mensajes.html'], ['/videos', 'videos.html'], ['/salas-de-voz', 'salas-de-voz.html']]) {
-  test(`guide ${route} has readable HTML and its own canonical`, () => {
-    const html = fs.readFileSync(path.join(root, 'dist', file), 'utf8')
-    assert.match(html, /<h1>/)
-    assert.match(html, /href="\/login"/)
-    assert.ok(html.includes(`rel="canonical" href="https://red-social-android.vercel.app${route}"`))
-    assert.doesNotMatch(html, /noindex|access_token|accessToken/)
-    const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'))
-    assert.ok(config.rewrites.some(rule => rule.source === route && rule.destination === '/' + file))
-  })
+test('sitemap advertises only the six canonical public pages',()=>{
+ const sitemap=read('sitemap.xml'),urls=[...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(item=>item[1])
+ assert.deepEqual(urls,publicRoutes.map(([route])=>site+(route==='/'?'/':route)))
+ assert.doesNotMatch(sitemap,/\/app\/|\/login|\/profile/)
+ assert.match(read('robots.txt'),/Allow: \//)
+ assert.match(read('robots.txt'),/Sitemap: https:\/\/red-social-android\.vercel\.app\/sitemap.xml/)
+})
+for(const [route,file,label] of publicRoutes){
+ test(route+' has its own canonical, metadata and one heading',()=>{
+  const html=read(file),url=site+(route==='/'?'/':route)
+  assert.equal((html.match(/<h1>/g)||[]).length,1)
+  assert.ok(html.includes('rel="canonical" href="'+url+'"'))
+  assert.ok(html.includes('property="og:url" content="'+url+'"'))
+  assert.match(html,/name="robots" content="index, follow, max-image-preview:large"/)
+  assert.doesNotMatch(html,/type="module"|rel="modulepreload"|accessToken|access_token/)
+  assert.ok(config.rewrites.some(item=>item.source===route&&item.destination==='/'+file))
+ })
+ test(route+' describes the actual page and brand with allowed structured data',()=>{
+  const html=read(file),nodes=graph(html),url=site+(route==='/'?'/':route)
+  const web=nodes.find(item=>item['@type']==='WebSite'),org=nodes.find(item=>item['@type']==='Organization'),page=nodes.find(item=>item['@type']==='WebPage')
+  assert.equal(web.name,'Novvin');assert.equal(web.url,site+'/')
+  assert.deepEqual(web.alternateName,['Novvin Web']);assert.equal(org.logo.width,512)
+  assert.equal(page.url,url);assert.equal(page['@id'],url+'#webpage')
+  assert.ok(html.includes('<title>'+page.name+'</title>'))
+  assert.doesNotMatch(JSON.stringify(nodes),/aggregateRating|SearchAction|sameAs/)
+  if(route!=='/'){const breadcrumb=nodes.find(item=>item['@type']==='BreadcrumbList');assert.equal(breadcrumb.itemListElement.at(-1).name,label);assert.equal(breadcrumb.itemListElement.at(-1).item,url)}
+  const raw=/<script type="application\/ld\+json">(.*?)<\/script>/.exec(html)[1],hash=createHash('sha256').update(raw).digest('base64')
+  for(const file of ['vercel.json','../vercel.json']){
+   const deployment=JSON.parse(fs.readFileSync(path.join(root,file),'utf8')),csp=deployment.headers[0].headers.find(header=>header.key==='Content-Security-Policy').value
+   assert.ok(csp.includes("'sha256-"+hash+"'"));assert.doesNotMatch(csp,/script-src[^;]*'unsafe-inline'/)
+  }
+ })
 }
-
-test('site name schema is valid and permitted by the content security policy', () => {
-  const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8')
-  const data = /<script type="application\/ld\+json">(.*?)<\/script>/.exec(html)?.[1]
-  assert.ok(data)
-  const schema = JSON.parse(data)
-  assert.equal(schema.name, 'Novvin')
-  assert.equal(schema.url, 'https://red-social-android.vercel.app/')
-  assert.equal(schema.publisher.name, 'Novvin')
-  assert.equal(schema.publisher.logo.url, 'https://red-social-android.vercel.app/novvin-logo.png')
-  const sha = createHash('sha256').update(data).digest('base64')
-  const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'))
-  assert.ok(
-    config.headers[0].headers
-      .find((h) => h.key === 'Content-Security-Policy')
-      .value.includes(`'sha256-${sha}'`),
-  )
+test('each public title and description is unique',()=>{
+ const pages=publicRoutes.map(([,file])=>graph(read(file)).find(item=>item['@type']==='WebPage'))
+ assert.equal(new Set(pages.map(page=>page.name)).size,6)
+ assert.equal(new Set(pages.map(page=>page.description)).size,6)
+})
+test('unknown paths do not rewrite into successful application documents',()=>{
+ assert.ok(!config.rewrites.some(item=>item.source==='/(.*)'))
+ for(const source of ['/app/:path*','/explore/:path*','/u/:path*','/profile/:path*','/chat/:path*'])assert.ok(config.rewrites.some(item=>item.source===source&&item.destination==='/app-shell.html'))
+ const html=read('404.html');assert.match(html,/No encontramos esta página/);assert.match(html,/name="robots" content="noindex/)
+ assert.doesNotMatch(html,/rel="canonical"|type="module"/)
+})
+test('HTML duplicates permanently redirect to the canonical public URL',()=>{
+ for(const [route,file] of publicRoutes)assert.ok(config.redirects.some(item=>item.source==='/'+file&&item.destination===route&&item.permanent))
+})
+test('brand verification, share image and favicon are available',()=>{
+ const html=read('index.html');assert.match(html,/name="google-site-verification" content="[A-Za-z0-9_-]+"/)
+ assert.match(html,/twitter:card" content="summary_large_image"/)
+ for(const [file,width,height] of [['novvin-share.png',1200,630],['novvin-logo.png',512,512],...[48,96,180,192,512].map(size=>['icons/novvin-'+size+'.png',size,size])]){
+  const png=fs.readFileSync(path.join(root,'dist',file));assert.equal(png.toString('hex',0,8),'89504e470d0a1a0a')
+  assert.equal(png.readUInt32BE(16),width);assert.equal(png.readUInt32BE(20),height)
+ }
+ const favicon=fs.readFileSync(path.join(root,'dist/favicon.ico'));assert.equal(favicon.readUInt16LE(2),1)
+})
+test('manifest advertises existing icons and implemented routes only',()=>{
+ const manifest=JSON.parse(read('manifest.json'))
+ assert.equal(manifest.name,'Novvin Web');assert.equal(manifest.start_url,'/app/messages')
+ assert.equal(manifest.share_target,undefined);assert.equal(manifest.file_handlers,undefined)
+ assert.equal(manifest.protocol_handlers,undefined);assert.equal(manifest.scope_extensions,undefined)
+ for(const icon of manifest.icons)assert.ok(fs.statSync(path.join(root,'dist',icon.src)).isFile())
+ for(const shortcut of manifest.shortcuts)assert.ok(['/app/messages','/app/videos','/app/voice','/app/social'].includes(shortcut.url))
 })

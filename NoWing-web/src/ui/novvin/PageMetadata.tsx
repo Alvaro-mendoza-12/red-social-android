@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { publicInfoPage } from './PublicInfo'
+import { publicInfoPage } from './publicInfoPages'
 
 const base = 'https://red-social-android.vercel.app'
 export function PageMetadata() {
@@ -9,7 +9,7 @@ export function PageMetadata() {
     const info = publicInfoPage(pathname)
     const title =
       info ? info.title : pathname === '/'
-        ? 'Novvin — mensajes, videos y comunidades'
+        ? 'Novvin Web — mensajes, videos y comunidades'
         : pathname === '/login'
           ? 'Iniciar sesión en Novvin Web'
           : pathname === '/register'

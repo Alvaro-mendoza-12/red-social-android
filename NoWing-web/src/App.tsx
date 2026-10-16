@@ -1,5 +1,6 @@
 import { PageMetadata } from './ui/novvin/PageMetadata'
 import './ui/novvin/webParity.css'
+import { NotFoundPage } from './ui/novvin/NotFoundPage'
 import { PublicHome } from './ui/novvin/PublicHome'
 import { PublicInfo } from './ui/novvin/PublicInfo'
 import { WebOutboxHost } from './components/WebOutboxHost'
@@ -533,7 +534,7 @@ function AppRouter() {
             }
           />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   )

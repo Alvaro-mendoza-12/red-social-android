@@ -243,3 +243,28 @@
     display: none;
   }
 }
+
+/* This stylesheet is also the complete, small stylesheet of public HTML pages. */
+html, body, #root { margin: 0; min-height: 100%; width: 100%; }
+body { background: #0b0b0d; }
+.public-home { box-sizing: border-box; font-family: Arial, system-ui, sans-serif; font-size: 16px; -webkit-font-smoothing: antialiased; }
+.public-home *, .public-home *::before, .public-home *::after { box-sizing: inherit; }
+.public-home h1,.public-home h2,.public-home p { margin: 0; }
+.public-home a { color: inherit; text-decoration: none; touch-action: manipulation; }
+.public-home img { max-width: 100%; }
+.public-home .primary-btn,.public-home .ghost-btn { display: inline-flex; justify-content: center; align-items: center; min-height: 44px; padding: 12px 20px; border: 1px solid var(--outline); border-radius: 26px; font-size: .88rem; font-weight: 600; line-height: 1.35; text-align: center; }
+.public-home .primary-btn { background: #f2f2f4; color: #202124; border-color: #f2f2f4; }
+.public-home a:focus-visible,.public-home summary:focus-visible { outline: 3px solid #75dedb; outline-offset: 5px; }
+.public-home a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.public-home .public-home-features a,.public-home .public-info>nav a { color: #75dedb; }
+.public-home .public-info-back { color: var(--secondary-text); }
+.public-home .public-home-register { margin-top: 22px; text-decoration: underline; }
+.public-home .public-home-features h2 { margin: 14px 0; }
+.public-home .public-home-faq h2 { margin-bottom: 26px; }
+.public-home .public-info h2 { margin-bottom: 14px; }
+.public-home .public-info-intro { margin: 24px 0; }
+.public-home .public-home-eyebrow { margin-bottom: 22px; }
+.public-home .public-home-features a { min-height: 44px; padding-block: 10px; }
+.public-skip-link { position: absolute; top: 8px; left: 8px; padding: 12px 18px; background: #f2f2f4; color: #202124 !important; z-index: 10; transform: translateY(-180%); border-radius: 8px; }
+.public-skip-link:focus { transform: translateY(0); }
+@media(max-width:380px) { .public-home-header { padding: 16px; gap: 10px; }.public-home-brand { font-size: 1.25rem; gap: 8px; }.public-home-header img { width: 36px; height: 36px; }.public-home main { padding-inline: 20px; }.public-home-hero h1 { font-size: 2.15rem; }.public-home-header .ghost-btn { padding: 10px 12px; font-size: .75rem; }.public-home-actions { flex-direction: column; }.public-home-actions a { width: 100%; }.public-info h1 { font-size: 2rem; } }

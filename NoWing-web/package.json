@@ -1,7 +1,7 @@
 {
   "name": "novvin-web",
   "private": true,
-  "version": "9.0.37",
+  "version": "9.0.38",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,7 +20,9 @@
     "deploy:preview": "vercel --cwd ..",
     "deploy:production": "vercel --cwd .. --prod",
     "test:media": "node --test tests/media-worker.test.mjs",
-    "test:seo": "node --test tests/public-home.test.mjs"
+    "test:seo": "node --test tests/public-home.test.mjs",
+    "check:production-seo": "node scripts/check-production-seo.mjs",
+    "seo:config": "node scripts/update-public-seo-policy.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",

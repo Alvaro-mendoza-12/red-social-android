@@ -42,7 +42,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'sha256-XsBBclsGQng6OSg1tliLbIKxxmEBdsXtlyQxuegD/Hg='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; worker-src 'self' blob:; manifest-src 'self'; frame-src 'self' blob:;"
+          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'sha256-JxrbWJdfewfCRzOjXVeL7qzHRchI3uksZXz4GaM54b0=' 'sha256-tC4x8AMQG9cw827Zykt03P1wU2cvekiwTKZ5N9pS7YA=' 'sha256-k5tHoa6GN8H07huQbC+NC3xCoijofe3bhY7iPru9Cmw=' 'sha256-P1RtE/UZPEHYzw3KXK2D0OpfcFS2TDkyYSy2z8Xcu9M=' 'sha256-A9qzh/32oiy1MVtHc4WZqR+O2VXUGg92tBzjjGdauYQ=' 'sha256-MN6nRTc4Z27vmsluImOOwdC4rJDamQ30viEHb5AxRoA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; worker-src 'self' blob:; manifest-src 'self'; frame-src 'self' blob:;"
         }
       ]
     },
@@ -144,6 +144,33 @@
           "value": "noindex, follow"
         }
       ]
+    },
+    {
+      "source": "/404.html",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
+    {
+      "source": "/novvin-media-worker.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/manifest.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ]
     }
   ],
   "rewrites": [
@@ -172,8 +199,68 @@
       "destination": "/salas-de-voz.html"
     },
     {
-      "destination": "/app-shell.html",
-      "source": "/(.*)"
+      "source": "/app/:path*",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/login",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/register",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/forgot-password",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/explore/:path*",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/u/:path*",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/profile/:path*",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/chat/:path*",
+      "destination": "/app-shell.html"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/index.html",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/novvin-web.html",
+      "destination": "/novvin-web",
+      "permanent": true
+    },
+    {
+      "source": "/mensajes.html",
+      "destination": "/mensajes",
+      "permanent": true
+    },
+    {
+      "source": "/videos.html",
+      "destination": "/videos",
+      "permanent": true
+    },
+    {
+      "source": "/salas-de-voz.html",
+      "destination": "/salas-de-voz",
+      "permanent": true
+    },
+    {
+      "source": "/vincular-web.html",
+      "destination": "/ayuda/vincular-web",
+      "permanent": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 export function PublicHome() {
   return (
     <div className="public-home">
+      <a className="public-skip-link" href="#contenido">Ir al contenido</a>
       <header className="public-home-header">
         <a href="/" className="public-home-brand">
           <img src="/novvin-logo.png" alt="" width="44" height="44" />
@@ -10,7 +11,7 @@ export function PublicHome() {
           Iniciar sesión
         </a>
       </header>
-      <main>
+      <main id="contenido">
         <section className="public-home-hero">
           <div>
             <p className="public-home-eyebrow">TU GENTE. TU MUNDO.</p>

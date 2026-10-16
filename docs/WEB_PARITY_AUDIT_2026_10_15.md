@@ -54,3 +54,8 @@ Las comprobaciones de navegador y SFU de esta continuación se hicieron con dato
 ## Continuación web 9.0.37
 
 [Detalle de envíos, sesiones, formularios y asistente](RELEASE_WEB_9_0_37_SENDS_FORMS_ASSISTANT.md). La auditoría detectó bloqueos entre conversaciones por subidas largas, guardado prematuro de stickers, renovaciones entre pestañas y el formato incorrecto del historial de IA. Se corrigen y se comprueban con almacenamiento y bloqueos reales del navegador. También se conectan reacciones, recibos y leído de grupos/comunidades, y se organizan los formularios de perfil y creación de espacios. Se comprueban seis formatos mediante API real entre las dos cuentas autorizadas, con eliminación posterior; el video se valida por sus fotogramas porque el servidor aplica fast-start. El detalle distingue pruebas sintéticas, API real y aceptación física pendiente.
+
+
+## Continuación web 9.0.38
+
+[SEO y compuerta de producción](RELEASE_WEB_9_0_38_SEO_AND_PRODUCTION_GATE.md). Se separa el HTML público del arranque de la aplicación, se corrigen favicon y manifiesto, canonicals, datos estructurados y respuestas de URL inexistentes. Se verifica la propiedad en Search Console y se registra por separado la aceptación del buscador y la validación técnica del despliegue. Las posiciones de búsqueda no se certifican por código.
