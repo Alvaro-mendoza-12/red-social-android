@@ -1,3 +1,4 @@
+import { useLegacyCallBroadcast } from '../features/calls/useLegacyCallBroadcast'
 import { StreamingImage } from '../components/StreamingMedia'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -468,50 +469,8 @@ export function AppLayout() {
     return onSupabaseRestrictionChanged(setSupabaseRestriction)
   }, [])
 
-  useEffect(() => {
-    const client = supabase
-    if (!client || !user) {
-      setIncomingCall(null)
-      return
-    }
-
-    const channel = client
-      .channel(`call-user:${user.id}`)
-      .on('broadcast', { event: 'call_invite' }, (event) => {
-        const payload = (event.payload ?? {}) as Partial<CallInvitePayload>
-        const callId = String(payload.callId ?? '').trim()
-        const callerUserId = String(payload.callerUserId ?? '').trim()
-        if (!callId || !callerUserId || callerUserId === user.id) return
-
-        presentIncomingCall({
-          callId,
-          title: String(payload.title ?? '').trim() || 'Llamada',
-          callerUserId,
-          callerName: String(payload.callerName ?? '').trim() || 'Usuario',
-          callerAvatarUrl: String(payload.callerAvatarUrl ?? '').trim(),
-          contextType: String(payload.contextType ?? '').trim() || 'dm',
-          contextId: String(payload.contextId ?? '').trim(),
-          isVideo: Boolean(payload.isVideo),
-          receivedAt: Date.now(),
-        })
-      })
-      .on('broadcast', { event: 'call_response' }, (event) => {
-        const payload = (event.payload ?? {}) as {
-          callId?: string
-          action?: string
-        }
-        if (incomingCall?.callId && payload.callId === incomingCall.callId) {
-          dismissIncomingCall(payload.callId)
-        }
-      })
-
-    const subscribedChannel = subscribeRealtimeChannel(channel, {
-      reason: 'web-call-user',
-    })
-    return () => {
-      void removeRealtimeChannel(subscribedChannel ?? channel)
-    }
-  }, [dismissIncomingCall, incomingCall?.callId, presentIncomingCall, user])
+  const clearIncomingCallsOnSignOut = useCallback(() => setIncomingCall(null), [])
+  useLegacyCallBroadcast({ client: supabase, userId: user?.id || '', isFallbackSession, incomingCallId: incomingCall?.callId, presentInvite: presentIncomingCall, dismissInvite: dismissIncomingCall, clearOnSignOut: clearIncomingCallsOnSignOut })
 
   const acceptIncomingCall = useCallback(async () => {
     const invite = incomingCall
