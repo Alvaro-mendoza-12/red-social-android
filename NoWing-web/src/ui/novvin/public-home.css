@@ -289,7 +289,7 @@ body { background: #0b0b0d; }
 .public-home .public-breadcrumb a { color: #a3f0ed; }
 .public-breadcrumb [aria-current="page"] { color: var(--foreground); }
 .public-download-card { margin-top: 28px; padding: 24px; display: flex; align-items: flex-start; gap: 20px; background: var(--surface); border: 1px solid var(--outline); border-radius: 18px; }
-.public-download-card img { width: 72px; height: 72px; border-radius: 18px; flex-shrink: 0; }
+.public-download-card img { width: 72px; height: 72px; border-radius: 18px; background: #fff; flex-shrink: 0; }
 .public-download-card > div { min-width: 0; }
 .public-home .public-download-card h2 { margin-bottom: 8px; font-size: 1.25rem; line-height: 1.4; }
 .public-download-card p { color: var(--secondary-text); line-height: 1.65; font-size: .9rem; }
