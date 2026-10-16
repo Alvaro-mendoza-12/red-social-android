@@ -682,9 +682,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   )
 
   const markAsRead = useCallback(async () => {
-    if (useUbuntu) return
-    if (!supabase || !user || !cleanRoomId) return
-    await supabase.rpc(config.markReadRpc, { [config.roomIdParam]: cleanRoomId })
+    if ((!supabase && !useUbuntu) || !user || !cleanRoomId) return
+    await backendRpc(config.markReadRpc, { [config.roomIdParam]: cleanRoomId })
   }, [cleanRoomId, config.markReadRpc, config.roomIdParam, useUbuntu, user])
 
   const loadRoom = useCallback(async (options?: { silent?: boolean }) => {
@@ -710,6 +709,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         const mappedMessages = (response.messages ?? []).map(mapRoomMessage)
         setMessages(mappedMessages)
         await loadPollStates(mappedMessages)
+        if (!isStaleLoad() && response.historyAccess?.isMember !== false && navigator.onLine && document.visibilityState === 'visible') void markAsRead().catch(() => {})
         setConsumedViewOnce({})
         return
       }
@@ -1057,15 +1057,15 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
-    if (useUbuntu) return
-    if (!supabase) return
-    const payload: Record<string, unknown> = { p_message_id: messageId, p_emoji: emoji }
-    const { error: reactionError } = await supabase.rpc(config.reactionRpc, payload)
-    if (reactionError) {
-      setError(friendlyError(reactionError, 'No se pudo reaccionar'))
-      return
-    }
-    await refreshMessageById(messageId)
+    if ((!supabase && !useUbuntu) || !user || !isMember) return
+    const owner = preparationOwnerRef.current
+    const { data, error: reactionError } = await backendRpc(config.reactionRpc, { p_message_id: messageId, p_emoji: emoji })
+    if (owner !== preparationOwnerRef.current) return
+    if (reactionError) { setError(friendlyError(reactionError, 'No se pudo reaccionar')); return }
+    if (useUbuntu) {
+      const reactions = normalizeReactions((data as GenericRow | null)?.reactions)
+      setMessages(current => current.map(message => message.id === messageId ? { ...message, reactions } : message))
+    } else await refreshMessageById(messageId)
   }
 
   async function handleAttachViewOnceFile(file: File | null) {
@@ -1186,17 +1186,18 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   async function loadMessageReceipts(messageId: string) {
-    if (useUbuntu) return
-    if (!supabase || !messageId) return
+    if ((!supabase && !useUbuntu) || !messageId) return
+    const owner = preparationOwnerRef.current
     try {
-      const { data, error: receiptsError } = await supabase.rpc(config.receiptsRpc, { p_message_id: messageId })
+      const { data, error: receiptsError } = await backendRpc(config.receiptsRpc, { p_message_id: messageId })
+      if (owner !== preparationOwnerRef.current) return
       if (receiptsError) throw receiptsError
       setReceiptsByMessage((current) => ({
         ...current,
         [messageId]: ((data ?? []) as GenericRow[]).map(mapReceipt),
       }))
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudieron cargar recibos'))
+      if (owner === preparationOwnerRef.current) setError(friendlyError(caught, 'No se pudieron cargar recibos'))
     }
   }
 
@@ -1251,7 +1252,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       const filePath = `${scope}/stickers/${user.id}/${Date.now()}_${safeName}`
       const mediaUrl = useUbuntu
-        ? (await uploadFallbackFile('chat-media', file, filePath)).publicUrl
+        ? (await uploadFallbackFile('chat-media', file, filePath, undefined, { id: crypto.randomUUID(), title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', isAnimated: /\.(gif|webp)$/i.test(file.name) })).publicUrl
         : await (async () => {
             if (!supabase) throw new Error('Backend no configurado')
             const { error: uploadError } = await supabase.storage
@@ -1260,8 +1261,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             if (uploadError) throw uploadError
             return supabase.storage.from('chat-media').getPublicUrl(filePath).data.publicUrl
           })()
-      const saved = await backendRpc('secure_toggle_sticker_favorite', { p_sticker_id: crypto.randomUUID(), p_favorite: true, p_media_url: mediaUrl, p_title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', p_is_animated: /\.(gif|webp)$/i.test(file.name) })
-      if (saved.error) throw saved.error
+      if (!useUbuntu) {
+        const saved = await backendRpc('secure_toggle_sticker_favorite', { p_sticker_id: crypto.randomUUID(), p_favorite: true, p_media_url: mediaUrl, p_title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', p_is_animated: /\.(gif|webp)$/i.test(file.name) })
+        if (saved.error) throw saved.error
+      }
       await sendMessage(file.name.replace(/\.[^.]+$/, '') || 'Sticker', mediaUrl, 'sticker', replyToId)
       setReplyToId(null)
     } catch (caught) {

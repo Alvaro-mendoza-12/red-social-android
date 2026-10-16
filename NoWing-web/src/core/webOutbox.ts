@@ -1,15 +1,29 @@
 import { fallbackApiJson, fallbackSessionToUser, readFallbackSession } from './auth/fallbackAuth'
+import { ConversationSendQueue } from './conversationSendQueue'
+import { MAX_MESSAGE_UPLOAD_BYTES } from './attachmentPreparation'
 import type { GenericRow } from './utils'
 
 type Scope = 'chat' | 'group' | 'community'
 type Payload = { id?: string; content: string; contentType?: string; mediaUrl?: string | null; [key: string]: unknown }
 type Pending = { id: string; owner: string; scope: Scope; room: string; payload: Payload; createdAt: string; senderId: string; state: 'pending' | 'failed'; attempts: number; retryAt: number }
-type Attachment = { id: string; owner: string; bucket: string; blob: Blob; name: string; path: string; createdAt: number; uploadedUrl?: string }
+export type ImportedSticker = { id: string; title: string; isAnimated: boolean }
+type Attachment = { id: string; owner: string; bucket: string; blob: Blob; name: string; path: string; createdAt: number; uploadedUrl?: string; favoriteSticker?: ImportedSticker; favoriteSaved?: boolean }
 type Cached = { key: string; owner: string; value: Record<string, unknown> }
 const pendingPrefix = 'novvin-pending-file:'
 let opening: Promise<IDBDatabase> | undefined
-let flushing = false
+const sendQueue = new ConversationSendQueue(3)
+const roomKey = (owner: string, scope: Scope, room: string) => [owner, scope, room].join('/')
+const roomLock = (owner: string, scope: Scope, room: string) => 'novvin-outbox-room/' + roomKey(owner, scope, room)
 const urls = new Map<string, string>()
+
+async function withConversationLock<T>(owner: string, scope: Scope, room: string, ifAvailable: boolean, run: () => Promise<T>) {
+  if (!navigator.locks) return run()
+  // Shared owner lock remains compatible with tabs running the previous version,
+  // whose outbox holds this owner lock exclusively for the entire flush.
+  return navigator.locks.request(`novvin-outbox/${owner}`, { mode: 'shared', ifAvailable }, ownerLock => ownerLock
+    ? navigator.locks.request(roomLock(owner, scope, room), { ifAvailable }, lock => lock ? run() : undefined)
+    : undefined)
+}
 
 export function outboxOwner() { return readFallbackSession()?.user.id || '' }
 function requireOwner(owner: string) { if (!owner || owner !== outboxOwner()) throw new Error('OUTBOX_ACCOUNT_CHANGED') }
@@ -58,10 +72,11 @@ async function optimistic(item: Pending): Promise<GenericRow> {
     sender_id: item.senderId, created_at: item.createdAt, status: item.state,
     ...(item.scope === 'chat' ? { chat_id: item.room } : { [`${item.scope}_id`]: item.room }) }
 }
-export async function stageOfflineChatAttachment(bucket: string, file: File, path?: string) {
+export async function stageOfflineChatAttachment(bucket: string, file: File, path?: string, favoriteSticker?: ImportedSticker) {
   const owner = outboxOwner(); requireOwner(owner)
+  if (file.size > MAX_MESSAGE_UPLOAD_BYTES) throw new Error('El archivo supera los 60 MB permitidos por mensaje.')
   const id = crypto.randomUUID()
-  await put('files', { id, owner, bucket, blob: file, name: file.name, path: path || `${owner}/${id}/${file.name}`, createdAt: Date.now() } satisfies Attachment)
+  await put('files', { id, owner, bucket, blob: file, name: file.name, path: path || `${owner}/${id}/${file.name}`, createdAt: Date.now(), ...(favoriteSticker ? { favoriteSticker } : {}) } satisfies Attachment)
   requireOwner(owner)
   return { id, bucket, path: path || '', publicUrl: pendingPrefix + id, url: pendingPrefix + id, contentType: file.type, size: file.size, ownerId: owner, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
 }
@@ -86,7 +101,7 @@ export async function cancelPendingWebMessage(scope: Scope, room: string, id: st
     requireOwner(owner)
     if (!item || item.owner !== owner || item.scope !== scope || item.room !== room) return null
     // Without Web Locks an outstanding send must finish before deciding if it is local.
-    if (!navigator.locks && flushing) throw new Error('Espera a que termine el envío para borrar este mensaje.')
+    if (!navigator.locks && sendQueue.has(roomKey(owner, scope, room))) throw new Error('Espera a que termine el envío para borrar este mensaje.')
     await remove('messages', id)
     const media = String(item.payload.mediaUrl || '')
     if (media.startsWith(pendingPrefix)) await remove('files', media.slice(pendingPrefix.length))
@@ -95,7 +110,7 @@ export async function cancelPendingWebMessage(scope: Scope, room: string, id: st
     if (cached) await cacheConversation(scope, room, { ...cached, messages: ((cached.messages || []) as GenericRow[]).filter(row => row.id !== id) }, owner)
     changed(owner); return message
   }
-  return navigator.locks ? navigator.locks.request(`novvin-outbox/${owner}`, cancel) : cancel()
+  return await withConversationLock(owner, scope, room, false, cancel) ?? null
 }
 export async function cacheConversation(scope: Scope, room: string, value: Record<string, unknown>, owner: string) {
   requireOwner(owner)
@@ -122,6 +137,14 @@ async function deliver(item: Pending) {
       const result = await fallbackApiJson<{ object: { publicUrl: string } }>('/v1/storage/upload', { method: 'POST', body, expectedAccountId: item.owner, signal: AbortSignal.timeout(300000) })
       requireOwner(item.owner); file.uploadedUrl = result.object.publicUrl; await put('files', file)
     }
+    if (file.favoriteSticker && !file.favoriteSaved) {
+      const sticker = file.favoriteSticker
+      await fallbackApiJson('/rest/v1/rpc/secure_toggle_sticker_favorite', {
+        method: 'POST', expectedAccountId: item.owner, signal: AbortSignal.timeout(25000),
+        body: JSON.stringify({ p_sticker_id: sticker.id, p_favorite: true, p_media_url: file.uploadedUrl, p_title: sticker.title, p_is_animated: sticker.isAnimated }),
+      })
+      requireOwner(item.owner); file.favoriteSaved = true; await put('files', file)
+    }
     payload.mediaUrl = file.uploadedUrl
   }
   const collection = item.scope === 'chat' ? 'chats' : item.scope === 'group' ? 'groups' : 'communities'
@@ -147,27 +170,31 @@ export async function sendDurableWebMessage(scope: Scope, room: string, payload:
   return { message }
 }
 export async function flushWebOutbox() {
-  if (flushing || !navigator.onLine || !outboxOwner()) return
+  if (!navigator.onLine || !outboxOwner()) return
   const owner = outboxOwner()
-  const run = async () => {
-    flushing = true
-    try {
-      const items = (await all<Pending>('messages')).filter(item => item.owner === owner && item.state === 'pending').sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      for (const item of items) {
+  const items = (await all<Pending>('messages')).filter(item => item.owner === owner && item.state === 'pending').sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  requireOwner(owner)
+  const rooms = new Map<string, Pending>()
+  for (const item of items) if (!rooms.has(roomKey(owner, item.scope, item.room))) rooms.set(roomKey(owner, item.scope, item.room), item)
+  await Promise.allSettled(Array.from(rooms, ([key, room]) => sendQueue.schedule(key, async () => {
+    const drain = async () => {
+      // Re-read after acquiring the cross-tab lock and after every delivery. A new
+      // message must not overtake an earlier pending message in the same room.
+      while (navigator.onLine) {
         requireOwner(owner)
-        if (item.retryAt > Date.now()) break
+        const item = (await all<Pending>('messages')).filter(entry => entry.owner === owner && entry.scope === room.scope && entry.room === room.room && entry.state === 'pending').sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
+        if (!item || item.retryAt > Date.now()) return
         try { await deliver(item) }
         catch (error) {
           requireOwner(owner)
           item.attempts += 1; item.state = isTransientOutboxError(error) ? 'pending' : 'failed'
           item.retryAt = Date.now() + Math.min(60000, 1000 * 2 ** Math.min(item.attempts, 6))
           await put('messages', item); changed(owner)
-          if (item.state === 'pending') break
+          if (item.state === 'pending') return
         }
       }
-    } finally { flushing = false }
-  }
-  if (navigator.locks) await navigator.locks.request(`novvin-outbox/${owner}`, { ifAvailable: true }, lock => lock ? run() : undefined)
-  else await run()
+    }
+    await withConversationLock(owner, room.scope, room.room, true, drain)
+  })))
 }
 export function revokeOutboxPreviews() { for (const url of urls.values()) URL.revokeObjectURL(url); urls.clear() }

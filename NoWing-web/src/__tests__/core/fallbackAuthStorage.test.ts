@@ -1,6 +1,7 @@
 import {
   accessTokenExpiration,
   fallbackAccountMatches,
+  sameFallbackAccount,
   toPersistedFallbackSession,
 } from '../../core/auth/fallbackSessionPersistence'
 
@@ -13,6 +14,16 @@ function unsignedJwt(expiresAtEpochSeconds: number): string {
 }
 
 describe('fallback web session storage', () => {
+  test('same-account metadata refresh can retain the bearer without mixing canonical identities', () => {
+    const current = {id:'local-owner',supabaseUserId:'canonical-owner'}
+    expect(sameFallbackAccount(current,{...current})).toBe(true)
+    expect(sameFallbackAccount(current,{id:' LOCAL-OWNER ',supabaseUserId:'CANONICAL-OWNER'})).toBe(true)
+    expect(sameFallbackAccount(current,{id:'another-owner',supabaseUserId:'canonical-owner'})).toBe(false)
+    expect(sameFallbackAccount(current,{id:'local-owner',supabaseUserId:'another-profile'})).toBe(false)
+    expect(sameFallbackAccount(current,null)).toBe(false)
+    expect(sameFallbackAccount(null,current)).toBe(false)
+    expect(sameFallbackAccount({id:'owner'},{id:'owner',supabaseUserId:null})).toBe(true)
+  })
   test('a migrated account can use its canonical profile ID while another account is rejected', () => {
     const user={id:'local-id',supabaseUserId:'profile-id'}
     expect(fallbackAccountMatches(user,'profile-id')).toBe(true)

@@ -11,6 +11,11 @@ export function fallbackAccountMatches(user: { id: string; supabaseUserId?: stri
   return Boolean(clean && user && [user.id, user.supabaseUserId].some(id => id?.trim().toLowerCase() === clean))
 }
 
+export function sameFallbackAccount(left: { id?: string; supabaseUserId?: string | null } | null | undefined, right: { id?: string; supabaseUserId?: string | null } | null | undefined): boolean {
+  const id = (value: string | null | undefined) => typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return Boolean(id(left?.id) && id(left?.id) === id(right?.id) && id(left?.supabaseUserId) === id(right?.supabaseUserId))
+}
+
 export function accessTokenExpiration(token: string): number | null {
   try {
     const encodedPayload = token.split('.')[1]

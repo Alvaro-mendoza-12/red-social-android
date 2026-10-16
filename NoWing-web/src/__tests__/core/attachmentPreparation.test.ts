@@ -24,3 +24,13 @@ test.each([['Carpeta.zip','application/zip'],['clip.mp4','video/mp4']])('rejects
 })
 
 test('rejects oversized plain files before creating an archive or reading their contents',async()=>{const source={...file('big.bin','a'),size:129*1024*1024};await expect(prepareAttachmentFiles([source])).rejects.toThrow('128 MB')})
+
+test.each(['libro.pdf','presentación.pptx','tabla.xlsx','vídeo.mp4'])('rejects oversized %s even when Windows supplies no MIME',async name=>{
+ const source={...file(name,'a'),size:61*1024*1024}
+ await expect(prepareAttachmentFiles([source])).rejects.toThrow('60 MB')
+})
+
+test('bounds the aggregate picker selection before reading or compressing',async()=>{
+ await expect(prepareAttachmentFiles(Array.from({length:501},()=>file('nota.txt','a')))).rejects.toThrow('500')
+ await expect(prepareAttachmentFiles(Array.from({length:3},()=>({...file('libro.pdf','a'),size:50*1024*1024})))).rejects.toThrow('128 MB')
+})

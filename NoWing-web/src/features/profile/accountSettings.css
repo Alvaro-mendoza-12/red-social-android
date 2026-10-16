@@ -1,0 +1,32 @@
+.settings-page-shell { width: min(100%, 1000px); margin-inline: auto; min-width: 0; gap: 20px; }
+.settings-page-shell[data-section="perfil"]>.settings-grid:has(#seguridad-ajustes),
+.settings-page-shell[data-section="privacidad"]>.settings-grid:has(#seguridad-ajustes),
+.settings-page-shell[data-section="seguridad"]>.settings-grid:has(#perfil-ajustes),
+.settings-page-shell[data-section="acceso-qr"]>.settings-grid:has(#perfil-ajustes) { display: none; }
+.settings-page-shell .settings-section-nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px; border: 1px solid var(--outline); border-radius: 16px; background: var(--surface); }
+.settings-page-shell .settings-section-nav button { min-height: 42px; padding: 10px 16px; border-radius: 11px; color: var(--secondary-text); font-size: .85rem; }
+.settings-page-shell .settings-section-nav button[aria-pressed="true"] { background: var(--foreground); color: var(--surface); font-weight: 600; }
+.settings-page-shell .surface-card { padding: clamp(16px, 3vw, 28px); gap: 22px; }
+.settings-page-shell .surface-card>div>h3 { margin: 0 0 6px; font-size: 1.12rem; }
+.settings-page-shell .surface-card>div>p { margin: 0; color: var(--secondary-text); line-height: 1.5; font-size: .85rem; }
+.settings-page-shell .settings-stack { gap: 20px; }
+.settings-page-shell .settings-form-grid,.settings-page-shell .settings-mini-grid { gap: 20px; }
+.settings-page-shell label.settings-field { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; text-align: left; }
+.settings-page-shell .settings-field>span { font-size: .84rem; font-weight: 600; }
+.settings-page-shell .settings-field>small { color: var(--secondary-text); font-size: .74rem; line-height: 1.5; overflow-wrap: anywhere; }
+.settings-page-shell .settings-field .text-input { width: 100%; min-height: 44px; padding: 12px 14px; line-height: 1.4; font-size: .88rem; }
+.settings-page-shell .settings-field textarea { resize: vertical; min-height: 96px; }
+.settings-page-shell .settings-advanced-media { grid-column: 1/-1; padding: 14px; border: 1px solid var(--outline); border-radius: 12px; }
+.settings-page-shell .settings-advanced-media summary { cursor: pointer; font-size: .85rem; }
+.settings-page-shell .settings-advanced-media[open]>summary { margin-bottom: 20px; }
+.settings-page-shell .settings-save-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding-top: 20px; border-top: 1px solid var(--outline); }
+.settings-save-actions>small { font-size: .74rem; color: var(--secondary-text); }
+.settings-page-shell .settings-optional-details .settings-mini-grid>.settings-stack { padding: 14px; border: 1px solid var(--outline); border-radius: 12px; gap: 12px; }
+.settings-page-shell .settings-optional-details .row-actions { flex-wrap: wrap; }
+@media(max-width:680px) {
+  .settings-page-shell .settings-section-nav { gap: 4px; }
+  .settings-page-shell .settings-section-nav button { flex: 1 1 auto; padding: 10px; font-size: .77rem; }
+  .settings-page-shell .settings-mini-grid { grid-template-columns: minmax(0,1fr); }
+  .settings-page-shell .settings-save-actions { align-items: stretch; flex-direction: column; }
+  .settings-page-shell .settings-profile-meta { overflow-wrap: anywhere; }
+}

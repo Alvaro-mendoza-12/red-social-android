@@ -1,3 +1,4 @@
+import './accountSettings.css'
 import { StreamingImage } from '../../components/StreamingMedia'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -573,7 +574,7 @@ export function AccountSettingsPage() {
   }
 
   if (loading) {
-    return <StatusView title="Cargando ajustes" description="Espera un momento..." />
+    return <StatusView title="Cargando ajustes" description="Espera un momento…" />
   }
 
   return (
@@ -614,8 +615,9 @@ export function AccountSettingsPage() {
             </div>
 
             <div className="settings-form-grid">
-              <input
+              <label className="settings-field"><span>Nombre visible</span><input
                 className="text-input"
+                aria-label="Nombre visible"
                 placeholder="Nombre visible"
                 value={model.displayName}
                 onChange={(event) =>
@@ -624,9 +626,10 @@ export function AccountSettingsPage() {
                     displayName: event.target.value,
                   }))
                 }
-              />
-              <input
+              /><small>Así te verán tus contactos y seguidores.</small></label>
+              <label className="settings-field"><span>Nombre de usuario</span><input
                 className="text-input tiny-input"
+                aria-label="Nombre de usuario"
                 placeholder="Usuario"
                 value={model.username}
                 onChange={(event) =>
@@ -635,10 +638,11 @@ export function AccountSettingsPage() {
                     username: event.target.value,
                   }))
                 }
-              />
-              <textarea
-                className="text-input textarea-input settings-form-span-2"
+              /><small>Tu identificador para que otras personas te encuentren.</small></label>
+              <label className="settings-field settings-form-span-2"><span>Biografía</span><textarea
+                className="text-input textarea-input"
                 rows={4}
+                aria-label="Biografía"
                 placeholder="Biografía"
                 value={model.bio}
                 onChange={(event) =>
@@ -647,13 +651,14 @@ export function AccountSettingsPage() {
                     bio: event.target.value,
                   }))
                 }
-              />
+              /><small>Cuéntales algo sobre ti.</small></label>
             </div>
 
             <div className="settings-form-grid">
               <details className="settings-advanced-media"><summary>Usar una imagen mediante un enlace</summary><div className="settings-mini-grid">
-              <input
+              <label className="settings-field"><span>Enlace de la foto de perfil</span><input
                 className="text-input"
+                aria-label="Enlace de la foto de perfil"
                 placeholder="Avatar URL"
                 value={model.avatarUrl}
                 onChange={(event) =>
@@ -662,9 +667,10 @@ export function AccountSettingsPage() {
                     avatarUrl: event.target.value,
                   }))
                 }
-              />
-              <input
+              /><small>Pega el enlace HTTPS de tu imagen.</small></label>
+              <label className="settings-field"><span>Enlace de la portada</span><input
                 className="text-input"
+                aria-label="Enlace de la portada"
                 placeholder="Banner / cover URL"
                 value={model.coverUrl}
                 onChange={(event) =>
@@ -673,7 +679,7 @@ export function AccountSettingsPage() {
                     coverUrl: event.target.value,
                   }))
                 }
-              />
+              /><small>Pega el enlace HTTPS de tu portada.</small></label>
               </div></details>
             </div>
 
@@ -698,7 +704,7 @@ export function AccountSettingsPage() {
               <small>
                 {isFallbackSession
                   ? 'JPG, PNG o WEBP. Después de subirla, guarda el perfil.'
-                  : 'Inicia con Ubuntu para subir archivos al storage propio.'}
+                  : 'Inicia sesión para subir una imagen.'}
               </small>
             </div>
             <div className="asset-upload-row">
@@ -727,8 +733,9 @@ export function AccountSettingsPage() {
             </div>
             <details className="settings-optional-details"><summary>Presentación e intereses</summary>
             <div className="settings-form-grid">
-              <input
+              <label className="settings-field"><span>Intereses</span><input
                 className="text-input"
+                aria-label="Intereses"
                 placeholder="Intereses separados por coma: anime, juegos, música"
                 value={model.interestsText}
                 onChange={(event) =>
@@ -737,9 +744,10 @@ export function AccountSettingsPage() {
                     interestsText: event.target.value,
                   }))
                 }
-              />
-              <input
+              /><small>Separa con comas, por ejemplo: anime, juegos, música.</small></label>
+              <label className="settings-field"><span>Pasatiempos</span><input
                 className="text-input"
+                aria-label="Pasatiempos"
                 placeholder="Pasatiempos separados por coma"
                 value={model.hobbiesText}
                 onChange={(event) =>
@@ -748,9 +756,10 @@ export function AccountSettingsPage() {
                     hobbiesText: event.target.value,
                   }))
                 }
-              />
-              <input
+              /><small>Separa tus pasatiempos con comas.</small></label>
+              <label className="settings-field"><span>Videojuegos</span><input
                 className="text-input"
+                aria-label="Videojuegos"
                 placeholder="Juegos separados por coma"
                 value={model.linkedGamesText}
                 onChange={(event) =>
@@ -759,12 +768,13 @@ export function AccountSettingsPage() {
                     linkedGamesText: event.target.value,
                   }))
                 }
-              />
+              /><small>Separa los nombres de tus juegos con comas.</small></label>
             </div>
-            <textarea
-              className="text-input textarea-input settings-form-span-2"
+            <label className="settings-field settings-form-span-2"><span>Logos de videojuegos</span><textarea
+              className="text-input textarea-input"
               rows={3}
-              placeholder="Logos oficiales: Juego=https://cdn.cloudflare.steamstatic.com/..."
+              aria-label="Logos de videojuegos"
+                placeholder="Logos oficiales: Juego=https://cdn.cloudflare.steamstatic.com/..."
               value={model.gameLogoUrlsText}
               onChange={(event) =>
                 setModel((current) => ({
@@ -772,10 +782,11 @@ export function AccountSettingsPage() {
                   gameLogoUrlsText: event.target.value,
                 }))
               }
-            />
+            /><small>Un juego por línea: nombre=enlace de la imagen.</small></label>
             <div className="settings-mini-grid">
-              <input
+              <label className="settings-field"><span>Música favorita</span><input
                 className="text-input"
+                aria-label="Música favorita"
                 placeholder="Música favorita URL"
                 value={model.favoriteMusicUrl}
                 onChange={(event) =>
@@ -784,9 +795,10 @@ export function AccountSettingsPage() {
                     favoriteMusicUrl: event.target.value,
                   }))
                 }
-              />
-              <input
+              /><small>Enlace de la canción que quieres compartir.</small></label>
+              <label className="settings-field"><span>Libro favorito</span><input
                 className="text-input"
+                aria-label="Libro favorito"
                 placeholder="Libro favorito"
                 value={model.favoriteBook}
                 onChange={(event) =>
@@ -795,9 +807,10 @@ export function AccountSettingsPage() {
                     favoriteBook: event.target.value,
                   }))
                 }
-              />
-              <input
+              /></label>
+              <label className="settings-field"><span>Deporte favorito</span><input
                 className="text-input"
+                aria-label="Deporte favorito"
                 placeholder="Deporte favorito"
                 value={model.favoriteSport}
                 onChange={(event) =>
@@ -806,9 +819,10 @@ export function AccountSettingsPage() {
                     favoriteSport: event.target.value,
                   }))
                 }
-              />
-              <input
+              /></label>
+              <label className="settings-field"><span>Carrera o profesión</span><input
                 className="text-input"
+                aria-label="Carrera o profesión"
                 placeholder="Carrera / profesión"
                 value={model.career}
                 onChange={(event) =>
@@ -817,12 +831,13 @@ export function AccountSettingsPage() {
                     career: event.target.value,
                   }))
                 }
-              />
+              /></label>
             </div>
-            <textarea
+            <label className="settings-field"><span>Disponibilidad</span><textarea
               className="text-input textarea-input"
               rows={2}
-              placeholder="Horario disponible"
+              aria-label="Disponibilidad"
+                placeholder="Horario disponible"
               value={model.availabilitySchedule}
               onChange={(event) =>
                 setModel((current) => ({
@@ -830,7 +845,7 @@ export function AccountSettingsPage() {
                   availabilitySchedule: event.target.value,
                 }))
               }
-            />
+            /><small>Indica cuándo puedes conversar o jugar.</small></label>
             </details><details className="settings-optional-details"><summary>Orden y visibilidad del perfil</summary>
             <div className="settings-mini-grid">
               {model.profileSectionOrder.map((section, sectionIndex) => (
@@ -893,14 +908,14 @@ export function AccountSettingsPage() {
               ))}
             </div>
             </details>
-            <button
-              className="ghost-btn"
+            <div className="settings-save-actions"><button
+              className="primary-btn"
               type="button"
-              disabled={savingProfile}
+              disabled={savingProfile || uploadingAsset !== null}
               onClick={() => void saveProfileBasics()}
             >
               {savingProfile ? 'Guardando...' : 'Guardar perfil'}
-            </button>
+            </button><small>Los cambios se aplican en tu cuenta de Novvin.</small></div>
           </div>
         </article>
 
@@ -1010,37 +1025,40 @@ export function AccountSettingsPage() {
             <h3>Seguridad</h3>
             <p>
               {isFallbackSession
-                ? 'Actualiza la contraseña que usarás en el servidor local.'
+                ? 'Actualiza tu contraseña para proteger el acceso a tu cuenta.'
                 : 'Cambia tu contraseña y protege el acceso a la cuenta.'}
             </p>
           </div>
           <div className="composer settings-stack">
             {isFallbackSession ? (
-              <input
+              <label className="settings-field"><span>Contraseña actual</span><input
                 className="text-input"
                 type="password"
                 autoComplete="current-password"
+                aria-label="Contraseña actual"
                 placeholder="Contraseña actual"
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
-              />
+              /></label>
             ) : null}
-            <input
+            <label className="settings-field"><span>Nueva contraseña</span><input
               className="text-input"
               type="password"
               autoComplete="new-password"
-              placeholder="Nueva contraseña"
+              aria-label="Nueva contraseña"
+                placeholder="Nueva contraseña"
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
-            />
-            <input
+            /><small>Usa al menos 8 caracteres.</small></label>
+            <label className="settings-field"><span>Confirmar nueva contraseña</span><input
               className="text-input"
               type="password"
               autoComplete="new-password"
-              placeholder="Confirmar contraseña"
+              aria-label="Confirmar nueva contraseña"
+                placeholder="Confirmar contraseña"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
-            />
+            /><small>Vuelve a escribir la nueva contraseña.</small></label>
             <button
               className="primary-btn"
               type="button"
@@ -1115,7 +1133,7 @@ export function AccountSettingsPage() {
         <div className="settings-toggle-grid">
           <label className="settings-toggle-card">
             <div>
-              <strong>Inbox compacta</strong>
+              <strong>Lista de chats compacta</strong>
               <p>Reduce el ancho visual de la lista de conversaciones en escritorio.</p>
             </div>
             <input
@@ -1157,7 +1175,7 @@ export function AccountSettingsPage() {
           <label className="settings-toggle-card vertical">
             <div>
               <strong>Color del tema</strong>
-              <p>Cambia la paleta (gradientes y acentos) como en una red social más pro.</p>
+              <p>Cambia la paleta (gradientes y acentos) para personalizar tu espacio.</p>
             </div>
             <select
               className="text-input tiny-input"
@@ -1201,7 +1219,7 @@ export function AccountSettingsPage() {
           <label className="settings-toggle-card vertical">
             <div>
               <strong>Idioma</strong>
-              <p>Base para localización web y preferencias de cuenta.</p>
+              <p>Elige el idioma que prefieres usar.</p>
             </div>
             <select
               className="text-input tiny-input"

@@ -1812,7 +1812,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       const filePath = `stickers/${user.id}/${Date.now()}_${safeName}`
       const mediaUrl = useUbuntu
-        ? (await uploadFallbackFile('chat-media', file, filePath)).publicUrl
+        ? (await uploadFallbackFile('chat-media', file, filePath, undefined, { id: crypto.randomUUID(), title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', isAnimated: /\.(gif|webp)$/i.test(file.name) })).publicUrl
         : await (async () => {
             if (!supabase) throw new Error('Backend no configurado')
             const { error: uploadError } = await supabase.storage
@@ -1821,8 +1821,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             if (uploadError) throw uploadError
             return supabase.storage.from('chat-media').getPublicUrl(filePath).data.publicUrl
           })()
-      const saved = await backendRpc('secure_toggle_sticker_favorite', { p_sticker_id: crypto.randomUUID(), p_favorite: true, p_media_url: mediaUrl, p_title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', p_is_animated: /\.(gif|webp)$/i.test(file.name) })
-      if (saved.error) throw saved.error
+      if (!useUbuntu) {
+        const saved = await backendRpc('secure_toggle_sticker_favorite', { p_sticker_id: crypto.randomUUID(), p_favorite: true, p_media_url: mediaUrl, p_title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', p_is_animated: /\.(gif|webp)$/i.test(file.name) })
+        if (saved.error) throw saved.error
+      }
       await sendMessage({
         content: file.name.replace(/\.[^.]+$/, '') || 'Sticker',
         mediaUrl,

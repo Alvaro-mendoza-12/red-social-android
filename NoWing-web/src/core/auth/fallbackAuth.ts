@@ -9,6 +9,7 @@ import { isHttpRetrySafeMethod } from '../httpRetryPolicy'
 import {
   accessTokenExpiration,
   fallbackAccountMatches,
+  sameFallbackAccount,
   toPersistedFallbackSession,
   type PersistedFallbackSession,
 } from './fallbackSessionPersistence'
@@ -80,6 +81,7 @@ let activeFallbackSession: FallbackSession | null = null
 let storageInitialized = false
 let legacySessionNeedsUpgrade = false
 let refreshPromise: Promise<FallbackSession | null> | null = null
+let sessionRevision = 0
 
 export let isFallbackAuthConfigured = fallbackApiUrl.length > 0
 
@@ -282,6 +284,7 @@ export function persistFallbackSession(payload: {
   }
 
   activeFallbackSession = session
+  sessionRevision += 1
   updateStorageReadIdentity(user.supabaseUserId?.trim() || user.id, 'fallback')
   legacySessionNeedsUpgrade = false
   persistFallbackSessionMetadata(session)
@@ -377,6 +380,7 @@ export function fallbackSessionNeedsRefresh(withinSeconds = 90): boolean {
 }
 
 export function clearFallbackSession() {
+  sessionRevision += 1
   invalidateStorageReadIdentity('fallback')
   activeFallbackSession = null
   legacySessionNeedsUpgrade = false
@@ -389,6 +393,14 @@ export function onFallbackAuthChanged(callback: () => void) {
   window.addEventListener(eventName, callback)
   const onStorage = (event: StorageEvent) => {
     if (event.key !== storageKey) return
+    // Each refresh persists metadata. Invalidating another tab's in-memory bearer
+    // for that same account caused both tabs to refresh each other indefinitely.
+    // A removed, malformed or different account still invalidates immediately.
+    try {
+      const incoming = event.newValue ? JSON.parse(event.newValue) as { user?: FallbackUser } : null
+      if (isValidFallbackUser(incoming?.user) && sameFallbackAccount(activeFallbackSession?.user, incoming?.user)) return
+    } catch { /* Invalid metadata follows the normal invalidation path below. */ }
+    sessionRevision += 1
     invalidateStorageReadIdentity('fallback')
     storageInitialized = false
     activeFallbackSession = null
@@ -406,6 +418,7 @@ async function requestFallbackWebSession(
   accessToken = '',
 ): Promise<FallbackSession | null> {
   if (!isFallbackAuthConfigured) return null
+  const revisionAtStart = sessionRevision
   const headers = new Headers({
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -421,6 +434,9 @@ async function requestFallbackWebSession(
     body: JSON.stringify({ client: 'web' }),
   })
   const payload = await parseFallbackResponse(response)
+  // A response for an earlier sign-in must not replace a newer account or undo
+  // a logout while this request was waiting for the server.
+  if (revisionAtStart !== sessionRevision) return readFallbackSession()
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) return null
     throw new Error(String(payload.error || payload.message || 'WEB_SESSION_RESTORE_FAILED'))
@@ -439,8 +455,13 @@ export async function restoreFallbackSession(): Promise<FallbackSession | null> 
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
-      const restored = await requestFallbackWebSession('/v1/auth/web-session/refresh')
-      if (!restored) clearFallbackSession()
+      let revision = sessionRevision
+      let restored = await requestFallbackWebSession('/v1/auth/web-session/refresh')
+      if (!restored && revision !== sessionRevision && hasFallbackSessionHint()) {
+        revision = sessionRevision
+        restored = await requestFallbackWebSession('/v1/auth/web-session/refresh')
+      }
+      if (!restored && revision === sessionRevision) clearFallbackSession()
       return restored
     } finally {
       refreshPromise = null

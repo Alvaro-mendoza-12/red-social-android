@@ -1,3 +1,4 @@
+import type { ImportedSticker } from './webOutbox'
 import { cachedConversation, cacheConversation, cancelPendingWebMessage, isTransientOutboxError, outboxOwner, pendingConversationMessages, sendDurableWebMessage, stageOfflineChatAttachment } from './webOutbox'
 import { fallbackApiJson } from './auth/fallbackAuth'
 import type { GenericRow } from './utils'
@@ -636,7 +637,6 @@ export async function sendFallbackRoomMessage(
     forwardedFromUserId?: string | null
   },
 ): Promise<{ message: GenericRow }> {
-  const collection = scope === 'group' ? 'groups' : 'communities'
   return sendDurableWebMessage(scope, roomId, input)
 }
 
@@ -673,9 +673,10 @@ export async function uploadFallbackFile(
   file: File,
   path?: string,
   expectedAccountId?: string,
+  favoriteSticker?: ImportedSticker,
 ): Promise<FallbackStorageObject> {
   if (['chat-media', 'group-media', 'community-media'].includes(bucket)) {
-    return stageOfflineChatAttachment(bucket, file, path)
+    return stageOfflineChatAttachment(bucket, file, path, favoriteSticker)
   }
   const formData = new FormData()
   formData.set('bucket', bucket)
@@ -685,6 +686,7 @@ export async function uploadFallbackFile(
   const payload = await fallbackApiJson<{ object: FallbackStorageObject }>('/v1/storage/upload', {
     method: 'POST',
     body: formData,
+    signal: AbortSignal.timeout(300000),
     ...(expectedAccountId ? { expectedAccountId } : {}),
   })
   return payload.object

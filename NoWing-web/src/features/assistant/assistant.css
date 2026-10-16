@@ -12,3 +12,15 @@
 @keyframes assistant-pulse { to { opacity: .25; } }@media(prefers-reduced-motion:reduce) { .assistant-typing>span { animation: none; } }
 @media(max-width:520px) { .assistant-page>header h2 { font-size: 1rem; }.assistant-page .assistant-welcome { margin: 20px auto; }.assistant-page .assistant-message { max-width: 95%; padding: 12px 14px; }.assistant-footnote { font-size: .65rem; } }
 @media(max-width:1099px) { .assistant-page { height: max(360px,calc(100dvh - 184px)); } }
+
+.assistant-page .assistant-answer { min-width: 0; overflow-wrap: anywhere; }
+.assistant-page .assistant-answer p { margin: 0 0 12px; white-space: pre-wrap; }
+.assistant-page .assistant-answer p:last-child { margin-bottom: 0; }
+.assistant-followups { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.assistant-followups button { font-size: .78rem; line-height: 1.4; padding: 10px 14px; text-align: left; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.assistant-composer-options { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--secondary-text); font-size: .75rem; }
+.assistant-composer-options label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.assistant-composer-options input { accent-color: var(--primary); width: 16px; height: 16px; }
+.assistant-composer-options small { flex-shrink: 0; }
+.assistant-page>form textarea { resize: none; }
+@media(max-width:520px) { .assistant-followups { max-height: 116px; overflow-y: auto; }.assistant-followups button { padding: 8px 10px; } }

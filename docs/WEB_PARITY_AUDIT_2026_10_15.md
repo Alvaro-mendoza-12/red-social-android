@@ -49,3 +49,8 @@ Las comprobaciones de navegador y SFU de esta continuación se hicieron con dato
 ## Continuación web 9.0.36
 
 [Detalle de feed, mensajes y pantallas web](RELEASE_WEB_9_0_36_FEED_AND_WEB_PARITY.md). Se conecta el feed al cursor del servidor y se conserva el feed básico para perfiles de algoritmo desactivados. Los comentarios siguen al video visible sin restaurar el desplazamiento anterior. Se incluyen ranking general, solicitudes enviadas y recibidas, acciones de stickers, rondas, historial y controles del asistente, visor de momentos y formularios de publicación. El chat ocupa el ancho disponible y la cola admite subidas lentas con límites compatibles con el servidor. La comprobación de ZIP entre las dos cuentas autorizadas conservó los bytes; se eliminaron los recursos de prueba. Las comprobaciones visuales y de subida demorada se hicieron en un navegador real con API sintética.
+
+
+## Continuación web 9.0.37
+
+[Detalle de envíos, sesiones, formularios y asistente](RELEASE_WEB_9_0_37_SENDS_FORMS_ASSISTANT.md). La auditoría detectó bloqueos entre conversaciones por subidas largas, guardado prematuro de stickers, renovaciones entre pestañas y el formato incorrecto del historial de IA. Se corrigen y se comprueban con almacenamiento y bloqueos reales del navegador. También se conectan reacciones, recibos y leído de grupos/comunidades, y se organizan los formularios de perfil y creación de espacios. Se comprueban seis formatos mediante API real entre las dos cuentas autorizadas, con eliminación posterior; el video se valida por sus fotogramas porque el servidor aplica fast-start. El detalle distingue pruebas sintéticas, API real y aceptación física pendiente.
