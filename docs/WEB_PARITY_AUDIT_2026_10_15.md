@@ -59,3 +59,5 @@ Las comprobaciones de navegador y SFU de esta continuación se hicieron con dato
 ## Continuación web 9.0.38
 
 [SEO y compuerta de producción](RELEASE_WEB_9_0_38_SEO_AND_PRODUCTION_GATE.md). Se separa el HTML público del arranque de la aplicación, se corrigen favicon y manifiesto, canonicals, datos estructurados y respuestas de URL inexistentes. Se verifica la propiedad en Search Console y se registra por separado la aceptación del buscador y la validación técnica del despliegue. Las posiciones de búsqueda no se certifican por código.
+
+El [dictamen del 16 de octubre](WEB_PRODUCTION_AUDIT_2026_10_16.md) registra los nuevos recorridos reales: mensajes y pendientes, tres formatos descargados íntegros, cinco pestañas sin recargas, llamadas, salas, directos y vinculación QR en Brave. Distingue la aprobación de esos recorridos de la certificación integral de la plataforma y conserva los pendientes anteriores.

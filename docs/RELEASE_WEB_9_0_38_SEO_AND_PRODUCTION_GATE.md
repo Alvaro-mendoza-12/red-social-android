@@ -1,5 +1,7 @@
 # Novvin Web 9.0.38 — SEO y compuerta de producción
 
+Resultado de la entrega y aceptación por apartado: [auditoría de producción del 16 de octubre](WEB_PRODUCTION_AUDIT_2026_10_16.md). Incluye la búsqueda real de Novvin, acceso por QR en Brave, pruebas con servidor real y requisitos todavía abiertos para certificación integral.
+
 ## Cambios
 
 - Portada y once guías públicas como HTML completo, con la misma presentación para personas y rastreadores. No descargan la aplicación privada, autenticación, llamadas ni conexiones al backend. Usan una hoja de estilo pública de menos de 15 KB.
