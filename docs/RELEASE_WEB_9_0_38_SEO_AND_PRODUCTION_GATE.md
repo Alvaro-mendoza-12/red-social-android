@@ -11,9 +11,11 @@
 - Se prepara la verificación de la propiedad oficial en Google Search Console mediante la etiqueta pública facilitada por la cuenta de Novvin. Esa etiqueta debe conservarse para mantener la verificación.
 - Se añade npm run check:production-seo, una auditoría de solo lectura sobre el despliegue real: HTML, canonicals, datos estructurados, CSP, cabeceras, 404, redirecciones, exclusión de pantallas privadas, iconos, imagen social y manifiesto.
 
+- Se mantiene la referencia del usuario cuando la renovación de sesión solo cambia el token o la hora de acceso. Así se evitan reinicios de consultas y pantallas dependientes del usuario; correo, perfil, identidad, roles y metadatos de seguridad sí propagan cambios. Dos pruebas reproducían el reinicio antes de corregirlo.
+
 ## Comprobaciones locales
 
-438 pruebas web en 71 suites; 33 pruebas de SEO/HTML; 9 pruebas de multimedia. Compilación de producción correcta. Sin errores ni avisos de lint en los archivos TypeScript modificados. npm audit de dependencias de producción no comunica vulnerabilidades.
+443 pruebas web en 72 suites; 33 pruebas de SEO/HTML; 9 pruebas de multimedia. Compilación de producción correcta. Sin errores ni avisos de lint en los archivos TypeScript modificados. npm audit de dependencias de producción no comunica vulnerabilidades.
 
 Navegador real: 48 combinaciones de las doce páginas públicas a 320, 390, 768 y 1440 píxeles; imágenes cargadas, sin desbordamiento horizontal ni peticiones de JavaScript o backend de la aplicación. Las peticiones ajenas de una extensión instalada del navegador se excluyen y registran aparte; la medición de rendimiento usa un navegador aislado. Otras 21 comprobaciones de formularios y 11 de regresión de feed/mensajes verifican que el nuevo punto de entrada sigue abriendo la aplicación.
 

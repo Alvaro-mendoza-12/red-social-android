@@ -20,6 +20,7 @@ import {
 } from './fallbackAuth'
 import { bootstrapSessionProfile } from './sessionBootstrap'
 import { loginReturnPath } from './loginReturnPath'
+import { retainUnchangedAuthUser } from './stableAuthUser'
 import { getStorageReadIdentity, invalidateStorageReadIdentity, updateStorageReadIdentity } from '../media/storageReadSession'
 
 type SuspensionState = {
@@ -96,7 +97,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         updateStorageReadIdentity(fallbackSessionToUser(storedFallbackSession)?.id, 'fallback')
         setSession(null)
         setFallbackSession(storedFallbackSession)
-        setUser(fallbackSessionToUser(storedFallbackSession))
+        setUser(previous => retainUnchangedAuthUser(previous, fallbackSessionToUser(storedFallbackSession)))
         return
       }
 
@@ -108,7 +109,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         return
       }
       setFallbackSession(null)
-      setUser(nextSession.user ?? null)
+      setUser(previous => retainUnchangedAuthUser(previous, nextSession.user ?? null))
       await bootstrapSessionProfile(client, nextSession)
     }
 
@@ -154,7 +155,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setFallbackSession(storedFallbackSession)
       if (storedFallbackSession) {
         setSession(null)
-        setUser(fallbackSessionToUser(storedFallbackSession))
+        setUser(previous => retainUnchangedAuthUser(previous, fallbackSessionToUser(storedFallbackSession)))
         void supabase?.auth.signOut().catch((error) => {
           console.warn('AuthProvider Supabase signOut after fallback session failed', error)
         })

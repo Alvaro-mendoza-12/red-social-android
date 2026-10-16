@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { Session } from '@supabase/supabase-js'
 import { AuthProvider, useAuth } from '../../core/auth/AuthProvider'
@@ -98,4 +99,34 @@ test('finishing A logout does not clear new fallback session B', async () => {
   act(() => mockFallbackEvent())
   await act(async () => complete())
   expect(screen.getByTestId('user')).toHaveTextContent('fallback-b'); expect(getStorageReadIdentity().accountId).toBe('fallback-b')
+})
+
+function UserEffectProbe({ onChange }: { onChange: () => void }) {
+  const { user } = useAuth()
+  useEffect(onChange, [user, onChange])
+  return <span>{user?.email}</span>
+}
+
+test('fallback token renewal preserves unchanged user effects on open screens', async () => {
+  mockFallback = { accessToken: 'synthetic.first.signature', user: { id: 'fallback-a', email: 'synthetic@invalid' } }
+  const changed = jest.fn()
+  render(<AuthProvider><UserEffectProbe onChange={changed} /></AuthProvider>)
+  await waitFor(() => expect(changed).toHaveBeenCalledTimes(1))
+  mockFallback = { accessToken: 'synthetic.renewed.signature', user: { id: 'fallback-a', email: 'synthetic@invalid' } }
+  await act(async () => mockFallbackEvent())
+  expect(changed).toHaveBeenCalledTimes(1)
+  mockFallback = { ...mockFallback, user: { ...mockFallback.user, email: 'changed@invalid' } }
+  await act(async () => mockFallbackEvent())
+  expect(changed).toHaveBeenCalledTimes(2)
+})
+
+test('Supabase token renewal does not restart unchanged user effects', async () => {
+  mockSession = session('account-a')
+  const changed = jest.fn()
+  render(<AuthProvider><UserEffectProbe onChange={changed} /></AuthProvider>)
+  await waitFor(() => expect(changed).toHaveBeenCalledTimes(2))
+  await act(async () => mockAuthEvent('TOKEN_REFRESHED', session('account-a', 'synthetic.renewed.signature')))
+  expect(changed).toHaveBeenCalledTimes(2)
+  await act(async () => mockAuthEvent('SIGNED_IN', session('account-b')))
+  expect(changed).toHaveBeenCalledTimes(3)
 })
