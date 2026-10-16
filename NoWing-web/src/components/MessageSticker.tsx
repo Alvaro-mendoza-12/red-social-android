@@ -1,4 +1,5 @@
 import './messageSticker.css'
+import { stickerTitle } from '../core/stickerTitle'
 import { useEffect, useRef, useState } from 'react'
 import { Star, Reply, Forward } from 'lucide-react'
 import { ChatAttachmentMedia } from './ChatAttachmentMedia'
@@ -11,7 +12,8 @@ import { shouldUseUbuntuBackend } from '../core/ubuntuBackend'
 import { rewriteRuntimeStorageUrl } from '../core/runtimeBackend'
 import { textOf, type GenericRow } from '../core/utils'
 
-export function MessageSticker({ url, title, onReply, onForward }: { url: string; title: string; onReply: () => void; onForward: () => void }) {
+export function MessageSticker({ url, title: rawTitle, onReply, onForward }: { url: string; title: string; onReply: () => void; onForward: () => void }) {
+  const title=stickerTitle(rawTitle)
   const { user, isFallbackSession } = useAuth(), useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const owner = useRef(user?.id); owner.current = user?.id
   const [open, setOpen] = useState(false), [item, setItem] = useState<{ id: string; favorite: boolean; animated: boolean } | null>(null)

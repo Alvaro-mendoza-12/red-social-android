@@ -1,3 +1,4 @@
+import { stickerTitle } from '../core/stickerTitle'
 import { RefreshCw, Sparkles, Star } from 'lucide-react'
 import { EmojiPicker } from './EmojiPicker'
 import { useEffect, useRef, useState } from 'react'
@@ -45,7 +46,7 @@ export function StickerPicker({ onSelect, onImport, onClose, onEmoji }: {
         if (error) throw error
         if (active) setItems(((data ?? []) as GenericRow[]).map(row => ({
           stickerId: textOf(row, ['sticker_id', 'id'], ''),
-          title: textOf(row, ['title', 'label', 'name'], 'Sticker'),
+          title: stickerTitle(textOf(row, ['title', 'label', 'name'], 'Sticker')),
           mediaUrl: textOf(row, ['media_url', 'url', 'thumbnail_url'], ''),
           isFavorite: row.is_favorite === true,
           isAnimated: row.is_animated === true || (typeof row.is_animated !== 'boolean' && /\.(gif|apng)(?:[?#]|$)/i.test(textOf(row, ['media_url', 'url'], ''))),
