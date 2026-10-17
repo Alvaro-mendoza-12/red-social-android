@@ -876,7 +876,9 @@ fun ProfileScreen(
                     }
                     
                     androidx.compose.foundation.lazy.LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(padding)
+                        modifier = Modifier.fillMaxSize().padding(padding),
+                        // Keep the final birthday action above system and app navigation bars.
+                        contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
                         // Cover and identity share bounds so the avatar overlap remains touchable.
                         item {
