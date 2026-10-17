@@ -27,3 +27,11 @@ test('presentation edits keep education, workplace and birthday privacy', () => 
   const patch = profilePatchFromBody({ education: 'Universidad', workplace: 'Empresa', profile_section_visibility: { birthday: 'only_me' } })
   assert.equal(patch.education, 'Universidad'); assert.equal(patch.workplace, 'Empresa'); assert.equal(patch.profile_section_visibility.birthday, 'only_me')
 })
+
+test('public profile projection retains birthday before applying viewer privacy', () => {
+ const {normalizeProfileForPublic}=require('../src/data-routes')
+ const raw=normalizeProfileForPublic({id:'profile-birthday',birth_date:'2000-10-17',profile_section_visibility:{birthday:'only_me'}})
+ assert.equal(raw.birth_date,'2000-10-17')
+ assert.equal(profileForViewer(raw).birth_date,'')
+ assert.equal(profileForViewer(raw,{viewerIsTarget:true}).birth_date,'2000-10-17')
+})

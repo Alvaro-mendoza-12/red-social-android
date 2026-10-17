@@ -78,6 +78,8 @@ function buildData(notification, extraData = {}) {
     if (serialized !== null) data[key] = serialized
   }
 
+  if (data.content_type === 'birthday_card') data.body = '🎂 Te envió una tarjeta de cumpleaños'
+
   const socialActions = {
     friend_request_accepted: 'aceptó tu solicitud de amistad',
     friend_request: 'te envió una solicitud de amistad',

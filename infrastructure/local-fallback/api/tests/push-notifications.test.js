@@ -53,3 +53,7 @@ assert.equal(buildData({ type: 'follow', actor_name: 'Ana', content: 'Mensaje es
 testPayloadDoesNotSerializeObjectsOrSecrets()
 testPublicStatusDoesNotExposeConfigurationPaths()
 console.log('push notification payload tests passed')
+const birthday = JSON.stringify({ version: 1, kind: 'birthday', message: '¡Feliz cumpleaños!', theme: 'garden' })
+const letterPush = buildData({ type: 'message', recipient_id: 'account-2', content: birthday }, { content_type: 'birthday_card', content: birthday, body: birthday })
+assert.equal(letterPush.body, '🎂 Te envió una tarjeta de cumpleaños')
+assert.equal(letterPush.content, birthday, 'Keep the full letter for the local message replica')
