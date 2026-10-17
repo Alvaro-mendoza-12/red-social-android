@@ -116,7 +116,12 @@ export async function prepareAttachmentFiles(files: File[], onProgress?: Prepara
 
 /** Snapshot the granted drop entries synchronously; browsers invalidate DataTransfer after the event. */
 export function droppedAttachments(transfer: DataTransfer, onProgress?: PreparationProgress): Promise<File[]> {
-  const roots = Array.from(transfer.items || []).filter(item => item.kind === 'file').map(item => item.webkitGetAsEntry?.() as Entry | null)
+  const roots = Array.from(transfer.items || []).filter(item => item.kind === 'file').map(item => {
+    const entry = item.webkitGetAsEntry?.() as Entry | null
+    if (entry) return entry
+    const file = item.getAsFile?.()
+    return file ? { name: file.name, isDirectory: false, isFile: true, file: (accept: (value: File) => void) => accept(file) } satisfies Entry : null
+  })
   const plain = Array.from(transfer.files || [])
   if (!roots.some(entry => entry?.isDirectory)) return prepareAttachmentFiles(plain,onProgress)
   return (async () => {

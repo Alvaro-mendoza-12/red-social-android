@@ -100,6 +100,7 @@ type MutePayload = {
 }
 
 type ServerEvents = {
+  'media-status': (payload: { roomId?: string; userId: string; isCameraSharing: boolean; isScreenSharing: boolean }) => void
   connect: () => void
   disconnect: (reason: string) => void
   connect_error: (error: Error) => void
@@ -273,6 +274,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const [room, setRoom] = useState<VoiceRoom | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({})
+  const [remoteVisualSources, setRemoteVisualSources] = useState<Record<string, 'camera' | 'screen' | 'none'>>({})
   const [peerStates, setPeerStates] = useState<Record<string, RTCPeerConnectionState>>({})
   const [loading, setLoading] = useState(true)
   const [syncingParticipants, setSyncingParticipants] = useState(false)
@@ -647,6 +649,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     socketToUserIdRef.current.set(socketId, userId)
     const existing = liveParticipantStateRef.current.get(userId)
     const isMuted = participant.isMuted ?? existing?.isMuted ?? true
+    if (participant.isCameraSharing !== undefined || participant.isScreenSharing !== undefined) setRemoteVisualSources(current => ({ ...current, [userId]: participant.isScreenSharing ? 'screen' : participant.isCameraSharing ? 'camera' : 'none' }))
     liveParticipantStateRef.current.set(userId, { socketId, isMuted })
     setParticipants((current) => {
       const nextParticipant: Participant = {
@@ -943,6 +946,10 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           participant.userId === payload.userId ? { ...participant, isMuted: payload.isMuted } : participant,
         ),
       )
+    })
+    socket.on('media-status', payload => {
+      if (payload.roomId && payload.roomId !== room.id) return
+      setRemoteVisualSources(current => ({ ...current, [payload.userId]: payload.isScreenSharing ? 'screen' : payload.isCameraSharing ? 'camera' : 'none' }))
     })
 
     socket.connect()
@@ -1408,7 +1415,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
             </button>
           </div>
 
-          <div className="voice-video-grid">{localVideo ? <RoomVideo stream={localVideo} label={visualSource === 'screen' ? 'Tu pantalla' : 'Tu cámara'} /> : null}{Object.entries(remoteStreams).map(([peerId,stream]) => <RoomVideo key={peerId} stream={stream} label={remoteParticipants.find(value => value.socketId === peerId)?.userName || 'Participante'} />)}</div>
+          <div className="voice-video-grid">{localVideo ? <RoomVideo stream={localVideo} label={visualSource === 'screen' ? 'Tu pantalla' : 'Tu cámara'} /> : null}{Object.entries(remoteStreams).map(([peerId,stream]) => { const participant = remoteParticipants.find(value => value.socketId === peerId), source = remoteVisualSources[participant?.userId || '']; return source === 'none' ? null : <RoomVideo key={peerId} stream={stream} label={`${participant?.userName || 'Participante'}${source === 'screen' ? ' · Pantalla' : source === 'camera' ? ' · Cámara' : ''}`} /> })}</div>
           {showDeviceSettings ? <MediaDeviceDialog title="Audio y video" label="Ajustes de audio y video" onClose={() => setShowDeviceSettings(false)}><div className="voice-device-fields">
             <label>Micrófono<select aria-label="Micrófono" className="text-input" disabled={!isJoined || mediaBusy} value={microphoneDevice} onChange={event => void selectMicrophone(event.target.value)}><option value="">Micrófono predeterminado</option>{devices.filter(device => device.kind === 'audioinput' && device.deviceId && device.deviceId !== 'default').map((device,index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Micrófono ${index+1}`}</option>)}</select></label>
             <label>Cámara<select aria-label="Cámara" className="text-input" disabled={mediaBusy} value={cameraDevice} onChange={event => { const id = event.target.value; setCameraDevice(id); if (visualSource === 'camera') void startVisual('camera', id) }}><option value="">Cámara predeterminada</option>{devices.filter(device => device.kind === 'videoinput' && device.deviceId).map((device,index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Cámara ${index+1}`}</option>)}</select></label>
