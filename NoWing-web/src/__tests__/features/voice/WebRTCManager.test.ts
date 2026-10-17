@@ -81,6 +81,23 @@ describe('voice WebRTCManager recovery integration', () => {
     manager.disconnectAll()
   })
 
+  it('combines streamless Android tracks into one stream per peer', () => {
+    const originalStream = globalThis.MediaStream
+    class TestStream { tracks: MediaStreamTrack[] = []; getTracks() { return this.tracks }; addTrack(track: MediaStreamTrack) { this.tracks.push(track) } }
+    Object.defineProperty(globalThis, 'MediaStream', { configurable: true, value: TestStream })
+    const manager = new WebRTCManager('self'), onTrack = jest.fn()
+    try {
+      manager.onTrack(onTrack)
+      const connection = manager.createPeerConnection('android', true) as unknown as FakePeerConnection
+      const audio = { id: 'audio', kind: 'audio' }, video = { id: 'screen', kind: 'video' }
+      connection.ontrack?.({ track: audio, streams: [] } as unknown as RTCTrackEvent)
+      connection.ontrack?.({ track: video, streams: [] } as unknown as RTCTrackEvent)
+      expect(onTrack).toHaveBeenCalledTimes(2)
+      expect(onTrack.mock.calls[0][1]).toBe(onTrack.mock.calls[1][1])
+      expect(onTrack.mock.calls[1][1].getTracks()).toEqual([audio, video])
+    } finally { manager.disconnectAll(); Object.defineProperty(globalThis, 'MediaStream', { configurable: true, value: originalStream }) }
+  })
+
   it('releases microphone permission granted after the room has already closed', async () => {
     const manager = new WebRTCManager('local-user'), stop = jest.fn()
     let finish!: (stream: MediaStream) => void
