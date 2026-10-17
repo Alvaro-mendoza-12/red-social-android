@@ -991,7 +991,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         const safeName = attachment.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const filePath = `${scope}/${user.id}/${Date.now()}_${index}_${safeName}`
         const publicUrl = useUbuntu
-          ? (await uploadFallbackFile(config.mediaBucket, attachment.file, filePath, undefined,
+          ? (await uploadFallbackFile(attachment.contentType === 'sticker' ? 'chat-media' : config.mediaBucket, attachment.file, filePath, undefined,
               attachment.contentType === 'sticker' ? { id: crypto.randomUUID(), title: attachment.caption.trim() || 'Sticker', isAnimated: /^image\/(gif|webp)$/.test(attachment.file.type) } : undefined)).publicUrl
           : await (async () => {
               const { error: uploadError } = await supabase!.storage
