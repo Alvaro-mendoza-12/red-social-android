@@ -42,6 +42,20 @@ describe('WebRtcPeerSession', () => {
     jest.useRealTimers()
   })
 
+  it('waits for the agreed initiator, then permits later renegotiation', async () => {
+    const connection = connectionFixture(), sendOffer = jest.fn()
+    const session = new WebRtcPeerSession(connection, { polite: true, initialOfferer: false, sendOffer })
+    session.bindNegotiation()
+    connection.onnegotiationneeded?.(new Event('negotiationneeded'))
+    await Promise.resolve()
+    expect(sendOffer).not.toHaveBeenCalled()
+    await session.receiveOffer({ type: 'offer', sdp: 'initial remote offer' })
+    connection.onnegotiationneeded?.(new Event('negotiationneeded'))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(sendOffer).toHaveBeenCalledTimes(1)
+    session.dispose()
+  })
+
   it('serializes negotiation and emits the local offer', async () => {
     const connection = connectionFixture()
     const sendOffer = jest.fn()

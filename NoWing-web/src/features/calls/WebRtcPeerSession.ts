@@ -2,6 +2,7 @@ export type PeerRecoveryState = 'connected' | 'recovering' | 'exhausted'
 
 export type WebRtcPeerSessionOptions = {
   polite: boolean
+  initialOfferer?: boolean
   sendOffer: (offer: RTCSessionDescriptionInit) => void | Promise<void>
   onRecoveryState?: (state: PeerRecoveryState, attempt: number) => void
   onError?: (error: unknown) => void
@@ -40,6 +41,9 @@ export class WebRtcPeerSession {
 
   bindNegotiation(): void {
     this.connection.onnegotiationneeded = () => {
+      // Android lets the agreed initiator start. Avoid an unsolicited initial
+      // offer from the other peer while its local tracks are being attached.
+      if (this.options.initialOfferer === false && !this.connection.remoteDescription && !this.connection.localDescription) return
       void this.negotiate().catch((error) => this.options.onError?.(error))
     }
   }

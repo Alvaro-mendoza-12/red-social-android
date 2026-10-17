@@ -125,6 +125,7 @@ export class WebRTCManager {
     this.peerConnections.set(peerId, peerConnection);
     const session = new WebRtcPeerSession(peerConnection, {
       polite: !isInitiator,
+      initialOfferer: isInitiator,
       sendOffer: (offer) => this.onOfferNeededCallback?.(peerId, offer),
     });
     this.peerSessions.set(peerId, session);

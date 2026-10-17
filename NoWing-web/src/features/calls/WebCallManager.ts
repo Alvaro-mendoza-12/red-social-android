@@ -687,8 +687,10 @@ export class WebCallManager {
       })
     }
 
+    const receivedStream = new MediaStream()
     connection.ontrack = (event) => {
-      const stream = event.streams[0]
+      if (!receivedStream.getTracks().some(track => track.id === event.track.id)) receivedStream.addTrack(event.track)
+      const stream = receivedStream
       const participant = this.participants.get(socketId)
       if (!stream || !participant) return
 
@@ -718,6 +720,7 @@ export class WebCallManager {
     this.peerConnections.set(socketId, connection)
     const session = new WebRtcPeerSession(connection, {
       polite: this.isPolitePeer(socketId),
+      initialOfferer: !this.isPolitePeer(socketId),
       sendOffer: (offer) => {
         this.socket?.emit('offer', {
           target: socketId,
