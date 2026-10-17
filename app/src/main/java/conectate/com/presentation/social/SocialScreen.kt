@@ -182,6 +182,7 @@ fun SocialScreen(
     sharedText: String? = null,
     sharedUri: String? = null,
     onFollowingFeedVisible: (List<conectate.com.data.model.Post>) -> Unit = {},
+    onNavigateToHomeTab: (String) -> Unit,
 ) {
     val posts by viewModel.posts.collectAsState()
     val recommendedPeople by viewModel.recommendedPeople.collectAsState()
@@ -2038,7 +2039,7 @@ fun SocialScreen(
                                                 "/app/games" -> Screen.Games.route
                                                 else -> Screen.Messages.route
                                             }
-                                            navController.navigate(Screen.Home.createRoute(startTab = tab)) { launchSingleTop = true }
+                                            onNavigateToHomeTab(tab)
                                         }
                                     }
                                         }

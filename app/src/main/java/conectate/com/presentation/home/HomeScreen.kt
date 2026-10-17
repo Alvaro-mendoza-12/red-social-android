@@ -285,6 +285,15 @@ fun HomeScreen(
                     sharedText = sharedText,
                     sharedUri = sharedUri,
                     onFollowingFeedVisible = { posts -> homeViewModel.markFeedSeen("social", posts.map { it.createdAt }) },
+                    onNavigateToHomeTab = { tab ->
+                        navController.navigate(tab) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
                 )
             }
             
