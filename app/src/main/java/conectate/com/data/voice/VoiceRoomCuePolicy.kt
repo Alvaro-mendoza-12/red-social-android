@@ -1,7 +1,7 @@
 package conectate.com.data.voice
 
 enum class VoiceCue { JOIN, LEAVE, MUTE, UNMUTE }
-data class CueParticipant(val userId: String, val socketId: String, val isMuted: Boolean)
+data class CueParticipant(val userId: String, val socketId: String, val isMuted: Boolean?)
 
 /** Authenticated signal transitions; snapshots establish a silent baseline. */
 class VoiceRoomCuePolicy(private val selfId: String) {

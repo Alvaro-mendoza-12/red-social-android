@@ -1647,7 +1647,7 @@ class VoiceRoomRepository @Inject constructor(
                     return@on
                 }
                 val displayName = data.optString("name", "Invitado")
-                roomCues.joined(conectate.com.data.voice.CueParticipant(uid, sid, data.optBoolean("isMuted", true)))
+                roomCues.joined(conectate.com.data.voice.CueParticipant(uid, sid, if (data.has("isMuted")) data.optBoolean("isMuted") else null))
                 android.util.Log.i("VoiceRoomRepository", "👤 Remote User Joined: $displayName ($uid) via $sid")
                 
                 _currentParticipants.update { current ->

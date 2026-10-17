@@ -36,4 +36,11 @@ class VoiceRoomCuePolicyTest {
         val p = VoiceRoomCuePolicy("self"); p.baseline(listOf(peer))
         assertTrue(p.join(peer.copy(userId = "other")).isEmpty()); assertTrue(p.mute("peer", true).isEmpty()); assertTrue(p.leaveSelf().isEmpty())
     }
+    @Test fun olderJoinWithoutMuteStateStillAnnouncesFirstActualChange() {
+        for (muted in listOf(true, false)) {
+            val p = room(); p.join(CueParticipant("older", "old", null))
+            assertEquals(listOf(if (muted) VoiceCue.MUTE else VoiceCue.UNMUTE), p.mute("older", muted))
+            assertTrue(p.mute("older", muted).isEmpty())
+        }
+    }
 }

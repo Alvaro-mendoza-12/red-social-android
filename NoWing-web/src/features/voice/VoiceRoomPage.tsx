@@ -842,7 +842,7 @@ export function VoiceRoomPage() {
     socket.on('user-joined', (rawParticipant) => {
       const participant = normalizeSignalingParticipant(rawParticipant)
       if (!participant) return
-      roomCues.join({userId:participant.userId,socketId:participant.socketId,isMuted:participant.isMuted??true})
+      roomCues.join({userId:participant.userId,socketId:participant.socketId,isMuted:participant.isMuted})
       upsertSignalParticipant(participant)
       if (shouldOfferToPeer(participant.socketId, participant.userId)) {
         void startPeerOffer(participant.socketId)

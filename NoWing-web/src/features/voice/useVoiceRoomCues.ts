@@ -5,9 +5,11 @@ class RoomCues {
   private policy:VoiceRoomCuePolicy
   private player=new VoiceRoomCuePlayer()
   private timer:ReturnType<typeof setTimeout>|undefined
-  settings:VoiceCueSettings
-  deafened=false
-  constructor(selfId:string){this.policy=new VoiceRoomCuePolicy(selfId);this.settings=readVoiceCueSettings(selfId)}
+  private settings:VoiceCueSettings
+  private deafened=false
+  readonly sessionKey:string
+  constructor(selfId:string,roomId:string){this.sessionKey=selfId+':'+roomId;this.policy=new VoiceRoomCuePolicy(selfId);this.settings=readVoiceCueSettings(selfId)}
+  configure(settings:VoiceCueSettings,deafened:boolean){this.settings=settings;this.deafened=deafened}
   prepare(){return this.player.prepare()}
   output(id:string){this.player.setOutput(id)}
   private play(cues:VoiceCue[]){if(cues[0])this.player.play(cues[0],this.settings,this.deafened)}
@@ -22,10 +24,10 @@ class RoomCues {
 }
 
 export function useVoiceRoomCues(accountId:string,roomId:string,deafened:boolean,outputId:string){
-  const session=useMemo(()=>new RoomCues(accountId),[accountId,roomId])
+  const session=useMemo(()=>new RoomCues(accountId,roomId),[accountId,roomId])
   const [settings,setState]=useState<VoiceCueSettings>(()=>readVoiceCueSettings(accountId))
   useEffect(()=>{setState(readVoiceCueSettings(accountId))},[accountId])
-  useEffect(()=>{session.settings=settings;session.deafened=deafened},[session,settings,deafened])
+  useEffect(()=>{session.configure(settings,deafened)},[session,settings,deafened])
   useEffect(()=>{session.output(outputId)},[session,outputId])
   useEffect(()=>()=>session.dispose(),[session])
   const setSettings=(next:VoiceCueSettings)=>{setState(next);try{localStorage.setItem(voiceCueStorageKey(accountId),JSON.stringify(next))}catch{/* Storage may be unavailable in private browsing. */}}

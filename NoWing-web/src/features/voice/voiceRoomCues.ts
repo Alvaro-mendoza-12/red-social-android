@@ -1,5 +1,5 @@
 export type VoiceCue = 'join' | 'leave' | 'mute' | 'unmute'
-export type CueParticipant = {userId:string;socketId:string;isMuted:boolean}
+export type CueParticipant = {userId:string;socketId:string;isMuted?:boolean}
 /** Signal events, not REST/polling changes, drive audible transitions. */
 export class VoiceRoomCuePolicy {
   private connected=false
