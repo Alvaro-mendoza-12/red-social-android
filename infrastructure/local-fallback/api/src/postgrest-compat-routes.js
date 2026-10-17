@@ -5664,6 +5664,7 @@ async function deleteOwnAccountRpc(pool, auth) {
 
     await client.query('DELETE FROM fallback_question_votes WHERE lower(user_id)=ANY($1::text[])',[identityValues])
     await client.query('DELETE FROM fallback_question_answers WHERE lower(user_id)=ANY($1::text[])',[identityValues])
+    await client.query('DELETE FROM fallback_community_questions WHERE lower(creator_id)=ANY($1::text[])',[identityValues])
     await client.query('DELETE FROM fallback_social_promotions WHERE lower(created_by)=ANY($1::text[])',[identityValues])
     const musicTracksDeleted = await deleteAccountMusic(client, localUserId)
     const importedRowsDeleted = await purgeImportedIdentityRows(client, identityValues)
