@@ -40,6 +40,17 @@ test('attaches a stream already available before the video mounts and clears it 
   unmount(); expect(video.srcObject).toBeNull(); expect(pause).toHaveBeenCalled()
 })
 
+test('does not request an output route for muted previews or an untouched default output', async () => {
+  const sink = jest.fn().mockRejectedValue(new DOMException('Policy blocked', 'NotAllowedError'))
+  Object.defineProperty(HTMLMediaElement.prototype, 'setSinkId', { configurable: true, value: sink })
+  const { unmount } = render(<LiveStreamVideo stream={asStream(new Stream())} label="Tu pantalla" muted />)
+  await waitFor(() => expect(play).toHaveBeenCalled())
+  expect(sink).not.toHaveBeenCalled(); expect(screen.queryByRole('status')).toBeNull()
+  unmount()
+  render(<LiveStreamAudio stream={asStream(new Stream())} label="Sala" />)
+  expect(sink).not.toHaveBeenCalled()
+})
+
 test('offers an explicit audio action after autoplay rejection and removes it after a user gesture', async () => {
   play.mockRejectedValueOnce(new DOMException('Autoplay blocked', 'NotAllowedError'))
   render(<LiveStreamAudio stream={asStream(new Stream())} label="Camila" />)

@@ -77,11 +77,6 @@ const VoiceRoomsPage = lazy(() =>
     default: module.VoiceRoomsPage,
   })),
 )
-const VoiceRoomPage = lazy(() =>
-  import('./features/voice/VoiceRoomPage').then((module) => ({
-    default: module.VoiceRoomPage,
-  })),
-)
 const LiveHubPage = lazy(() =>
   import('./features/live/LiveHubPage').then((module) => ({
     default: module.LiveHubPage,
@@ -389,7 +384,7 @@ function AppRouter() {
             path="voice/:roomId"
             element={
               <RouteSuspense>
-                <VoiceRoomPage />
+                <span aria-hidden="true" />
               </RouteSuspense>
             }
           />

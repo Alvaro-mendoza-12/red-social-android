@@ -30,6 +30,8 @@ class FakePeerConnection {
   addIceCandidate = jest.fn(async () => undefined)
   addTrack = jest.fn()
   getSenders = jest.fn(() => [])
+  getTransceivers = jest.fn(() => [])
+  addTransceiver = jest.fn()
   restartIce = jest.fn()
   close = jest.fn(() => { this.connectionState = 'closed' })
 }

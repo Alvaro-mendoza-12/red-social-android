@@ -907,6 +907,9 @@ export function ReelsPage() {
           setLoading(true)
           setError(null)
         }
+        // A deliberate entry/refresh starts a fresh recommendation session.
+        // Background reaction updates retain the existing cursor and ordering.
+        if (!options?.silent) feedPage.current.owner = ''
         await loadRecommended(true)
         return
       }
@@ -2120,6 +2123,7 @@ export function ReelsPage() {
             )
           })}
           {useUbuntu ? <div className="reels-feed-continuation">
+            <button type="button" className="ghost-btn" disabled={loadingMore} onClick={() => { feedPage.current.owner = ''; setCommentsVideo(null); void loadRecommended(true); document.querySelector('.reels-vertical-feed')?.scrollTo({ top: 0, behavior: 'smooth' }) }}>Actualizar Para ti</button>
             {loadingMore ? <p role="status">Cargando tu próximo video…</p> : feedPageError ? <><p role="alert">{feedPageError}</p><button type="button" className="ghost-btn" onClick={() => void loadRecommended()}>Reintentar carga</button></> : !feedPage.current.hasMore ? <><p>Estás al día con los videos disponibles.</p><button type="button" className="ghost-btn" onClick={() => { feedPage.current.owner = ''; void loadRecommended(true) }}>Buscar novedades</button></> : null}
           </div> : null}
         </div>

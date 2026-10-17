@@ -656,16 +656,16 @@ export class WebCallManager {
     const remoteSocketId = participant.socketId?.trim()
     if (!this.ownSocketId || !remoteUserId || !remoteSocketId) return false
     const isPolite =
-      this.userId.localeCompare(remoteUserId) < 0 ||
-      (this.userId === remoteUserId && this.ownSocketId.localeCompare(remoteSocketId) < 0)
+      this.userId < remoteUserId ||
+      (this.userId === remoteUserId && this.ownSocketId < remoteSocketId)
     return !isPolite
   }
 
   private isPolitePeer(socketId: string): boolean {
     const remoteUserId = this.participants.get(socketId)?.id?.trim() || socketId
     if (!this.ownSocketId) return true
-    return this.userId.localeCompare(remoteUserId) < 0 ||
-      (this.userId === remoteUserId && this.ownSocketId.localeCompare(socketId) < 0)
+    return this.userId < remoteUserId ||
+      (this.userId === remoteUserId && this.ownSocketId < socketId)
   }
 
   private getOrCreatePeerConnection(socketId: string): RTCPeerConnection {

@@ -3771,8 +3771,8 @@ class LiveRepository @Inject constructor(
                     }
                     if (!recovered && _activeSession.value != null) {
                         _runtimeErrors.tryEmit(
-                            "El directo sigue activo, pero esta red bloqueó el audio o video incluso después de reconectar. " +
-                                "Prueba otra red o vuelve a entrar."
+                            "El directo sigue activo, pero todavía no se completó la conexión de audio y video. " +
+                                "Vuelve a conectar para intentarlo de nuevo."
                         )
                     }
                 }

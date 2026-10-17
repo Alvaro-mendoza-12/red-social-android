@@ -5174,11 +5174,11 @@ class MessageRepository @Inject constructor(
                     ?.takeIf { it.isNotBlank() }
                     ?: cachedUser?.full_name?.takeIf { it.isNotBlank() }
                     ?: cachedUser?.username
-                conectate.com.data.model.User(
+                (cachedUser?.toDomain() ?: conectate.com.data.model.User()).copy(
                     id = entity.other_user_id ?: cachedUser?.id.orEmpty(),
                     display_name = resolvedName,
                     avatar_url = entity.display_image ?: cachedUser?.avatar_url,
-                    username = resolvedName ?: cachedUser?.username ?: "Usuario"
+                    username = cachedUser?.username ?: "Usuario"
                 )
             } else null
         }.getOrNull()
@@ -5251,11 +5251,16 @@ class MessageRepository @Inject constructor(
     private fun userFromCachedChat(cached: ChatWithLastMessage): conectate.com.data.model.User {
         // Construct a partial User object from display info
         // This ensures that if the list shows a name, the chat header shows it too.
-        return conectate.com.data.model.User(
+        val stored = cached.otherUserId?.let { id ->
+            runCatching { userDao.getUserSync(id.trim().lowercase())?.toDomain() }.getOrNull()
+        }
+        return (stored ?: conectate.com.data.model.User()).copy(
             id = cached.otherUserId ?: "", 
             display_name = cached.otherUserName,
             avatar_url = cached.otherUserImage,
-            username = cached.otherUserName ?: ""
+            username = stored?.username,
+            is_admin = stored?.is_admin ?: cached.otherUserIsAdmin,
+            is_verified = stored?.is_verified ?: cached.otherUserVerified
         )
     }
 

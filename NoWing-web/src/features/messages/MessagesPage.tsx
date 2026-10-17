@@ -1,3 +1,4 @@
+import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import {acknowledgeInboxPreview,applyInboxUnreadSnapshot,confirmInboxConversationRead,inboxActivityEvent,inboxUnreadCount,latestInboxMessage,markInboxConversationRead,useInboxUnreadCounts,type InboxActivity} from '../../core/inboxActivity'
 import { readConversationDraft, useDraftRevision } from '../../core/conversationDrafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -1265,7 +1266,7 @@ export function MessagesPage() {
       />
       <div className="conversation-copy">
         <div className="row-between">
-          <h3>{item.title}</h3>
+          <h3>{item.title} {item.kind === 'chat' && item.profileId ? <ProfileStatusBadges profileId={item.profileId}/> : null}</h3>
           <small className="timestamp">{inboxTime(item.updatedAt)}</small>
         </div>
         <p className={item.kind!=='voice'&&readConversationDraft(user?.id,item.kind,item.id)?'conversation-draft':undefined}>{item.kind!=='voice'&&readConversationDraft(user?.id,item.kind,item.id)?`Borrador: ${readConversationDraft(user?.id,item.kind,item.id)}`:item.subtitle}</p>

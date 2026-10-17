@@ -1175,8 +1175,12 @@ fun ParticipantCard(
             Text(
                 text = when(connectionState) {
                      "CONNECTED" -> "Conectado"
+                     "COMPLETED" -> "Conectado"
+                     "NEW", "CONNECTING", "CHECKING" -> "Conectando audio…"
+                     "DISCONNECTED" -> "Reconectando…"
+                     "CLOSED" -> "Desconectado"
                      "FAILED" -> "Error Conexión"
-                     else -> connectionState
+                     else -> "Conectando audio…"
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = when (connectionState) {

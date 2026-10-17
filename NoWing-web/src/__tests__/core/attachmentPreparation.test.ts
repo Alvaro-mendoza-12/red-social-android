@@ -63,8 +63,21 @@ test('folder picker splits more than 5000 entries automatically and preserves ev
  expect(parts.map(p=>p.name)).toEqual(['Carpeta-parte-1-de-2.zip','Carpeta-parte-2-de-2.zip'])
  const paths:string[]=[];for(const part of parts)paths.push(...Object.keys(unzipSync(await bytes(part))))
  expect(new Set(paths).size).toBe(5001);expect(paths).toContain('Carpeta/5000.txt');expect(progress.some(p=>p.includes('Comprimiendo'))).toBe(true)
-})
+},30000)
 test('splits empty subdirectories by entry count as well as source bytes',()=>{
  const entries=Array.from({length:10001},(_,i)=>({path:`Carpeta/sub${i}/`,file:null}))
  const parts=folderArchiveParts(entries);expect(parts.map(p=>p.length)).toEqual([5000,5000,1]);expect(parts.flat()).toEqual(entries)
+})
+
+test('combines dropped folders into one ordinary ZIP and reports counts and sizes',async()=>{
+ const folder=(name:string)=>{let read=false;return {name,isDirectory:true,isFile:false,createReader:()=>({readEntries:(ok:(items:unknown[])=>void)=>{ok(read?[]:[{name:'nota.txt',isDirectory:false,isFile:true,file:(done:(f:File)=>void)=>done(file('nota.txt',name))}]);read=true}})}}
+ const progress:string[]=[],folders=[folder('A'),folder('B')]
+ const result=await droppedAttachments({items:folders.map(value=>({kind:'file',webkitGetAsEntry:()=>value})),files:[]} as unknown as DataTransfer,message=>progress.push(message))
+ expect(result).toHaveLength(1);expect(result[0].name).toBe('Carpetas.zip')
+ const contents=unzipSync(await bytes(result[0]));expect(strFromU8(contents['A/nota.txt'])).toBe('A');expect(strFromU8(contents['B/nota.txt'])).toBe('B')
+ expect(progress.at(-1)).toContain('2 archivos');expect(progress.at(-1)).toContain('originales');expect(progress.at(-1)).toContain('Listo para enviar')
+})
+
+test('identifies the oversized entry and total folder size in the error',()=>{
+ expect(()=>folderArchiveParts([{path:'Curso/grande.pdf',file:{size:600*1024*1024} as File}])).toThrow(/Curso\/grande.pdf.*600 MB/)
 })

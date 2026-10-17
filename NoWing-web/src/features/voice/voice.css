@@ -546,3 +546,12 @@
 .voice-cue-settings input[type=range]{width:100%}
 .voice-cue-settings input[type=checkbox]{width:18px;height:18px;flex:none;margin:0}
 .voice-cue-settings button{justify-self:start}
+.voice-room-minimized { margin: 0; padding: 0; min-height: 0; }
+.voice-room-minimized > :not(.voice-floating-controls) { display: none !important; }
+.voice-floating-controls { position: fixed; z-index: 85; right: 20px; bottom: 22px; display: flex; align-items: center; gap: 5px; width: min(390px,calc(100vw - 24px)); padding: 10px; border: 1px solid var(--border,#444); border-radius: 18px; background: var(--surface,#202126); box-shadow: 0 8px 30px #0007; }
+.voice-floating-title { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; border: 0; color: inherit; background: transparent; text-align: left; }
+.voice-floating-title span { min-width: 0; }
+.voice-floating-title strong,.voice-floating-title small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voice-floating-title small { font-size: .72rem; color: var(--text-muted,#aaa); }
+.voice-floating-controls .icon-btn { flex-shrink: 0; width: 36px; height: 36px; }
+@media(max-width:768px) { .voice-floating-controls { right: 12px; bottom: calc(78px + env(safe-area-inset-bottom)); } }

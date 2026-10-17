@@ -28,10 +28,15 @@ function useStreamPlayback<T extends HTMLMediaElement>(stream: MediaStream | nul
     node.addEventListener('loadedmetadata', update)
     stream.addEventListener('addtrack', update)
     void (async () => {
-      if (node.setSinkId) {
+      // Muted previews have no audible output to route. Setting an empty sink
+      // can itself be denied by browser policy even when default playback works.
+      if (node.setSinkId && !muted && (outputDeviceId || node.sinkId)) {
         try { await node.setSinkId(outputDeviceId); if (active) setIssue(current => current?.type === 'output' ? null : current) }
-        catch { if (active) setIssue({ stream, type: 'output' }) }
-      }
+        catch {
+          try { await node.setSinkId('') } catch { /* Keep browser's default route. */ }
+          if (active && outputDeviceId) setIssue({ stream, type: 'output' })
+        }
+      } else if (active) setIssue(current => current?.type === 'output' ? null : current)
       if (active) await play()
     })()
     return () => {

@@ -1659,6 +1659,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
               Limpiar
             </button>
           </div>
+          {preparationStatus ? <p className="attachment-preparation-summary" role="status">{preparationStatus}</p> : null}
           <div className="attachment-draft-grid">
             {pendingAttachments.map((attachment) => (
               <article key={attachment.id} className="attachment-draft-item">

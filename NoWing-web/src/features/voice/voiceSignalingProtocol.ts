@@ -4,6 +4,8 @@ export type NormalizedSignalingParticipant = {
   name?: string
   avatarUrl?: string
   isMuted?: boolean
+  isCameraSharing?: boolean
+  isScreenSharing?: boolean
 }
 
 function text(value: unknown): string {
@@ -34,6 +36,8 @@ export function normalizeSignalingParticipant(value: unknown): NormalizedSignali
     ...(mutedValue !== undefined
       ? { isMuted: mutedValue === true || String(mutedValue).toLowerCase() === 'true' }
       : {}),
+    ...(typeof record.isCameraSharing === 'boolean' ? { isCameraSharing: record.isCameraSharing } : {}),
+    ...(typeof record.isScreenSharing === 'boolean' ? { isScreenSharing: record.isScreenSharing } : {}),
   }
 }
 

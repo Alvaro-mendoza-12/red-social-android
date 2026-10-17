@@ -1,4 +1,5 @@
 import { RoomVideo } from './RoomVideo'
+import { mediaPeerIsInitiator } from '../../core/mediaPeerRole'
 import {useVoiceRoomCues} from './useVoiceRoomCues'
 import { Camera, CameraOff, MonitorUp, Settings } from 'lucide-react'
 import './voice.css'
@@ -116,6 +117,7 @@ type ServerEvents = {
 }
 
 type ClientEvents = {
+  'media-status': (payload: { roomId: string; userId: string; isCameraSharing: boolean; isScreenSharing: boolean }) => void
   'join-room': (payload: { roomId: string; userId: string; name: string; avatarUrl: string; isMuted?: boolean }) => void
   offer: (payload: { target: string; offer: RTCSessionDescriptionInit; userId: string; name: string }) => void
   answer: (payload: { target: string; answer: RTCSessionDescriptionInit; userId: string; name: string }) => void
@@ -260,12 +262,13 @@ function extractIceServers(payload: unknown): RTCIceServer[] {
   return candidate.filter(isIceServer)
 }
 
-export function VoiceRoomPage() {
+export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { roomIdOverride?: string; minimized?: boolean; onExit?: () => void } = {}) {
   const [searchParams] = useSearchParams()
   const explicitJoin = searchParams.get('join') === '1'
   const { user, isFallbackSession } = useAuth()
   const useUbuntuVoice = shouldUseUbuntuBackend(isFallbackSession)
-  const { roomId } = useParams<{ roomId: string }>()
+  const params = useParams<{ roomId: string }>()
+  const roomId = roomIdOverride || params.roomId
   const navigate = useNavigate()
   const [room, setRoom] = useState<VoiceRoom | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
@@ -304,6 +307,8 @@ export function VoiceRoomPage() {
   const joinedRef = useRef(false)
   const autoJoinAttemptedRef = useRef(false)
   const socketToUserIdRef = useRef(new Map<string, string>())
+  const liveParticipantStateRef = useRef(new Map<string, { socketId: string; isMuted: boolean }>())
+  const visualSourceRef = useRef<'none' | 'camera' | 'screen'>('none')
   const pendingIceRef = useRef(new Map<string, RTCIceCandidateInit[]>())
 
   const {session:roomCues,settings:cueSettings,setSettings:setCueSettings}=useVoiceRoomCues(user?.id||'',roomId||'',isDeafened,outputDevice)
@@ -345,6 +350,7 @@ export function VoiceRoomPage() {
       socketRef.current = null
     }
     socketToUserIdRef.current.clear()
+    liveParticipantStateRef.current.clear()
     pendingIceRef.current.clear()
     setPeerStates({})
     setRemoteStreams({})
@@ -353,7 +359,7 @@ export function VoiceRoomPage() {
   const stopLocalMedia = useCallback(() => {
     visualOperationRef.current++
     audioOperationRef.current++
-    visualTrackRef.current?.stop(); visualTrackRef.current = null; setLocalVideo(null); setVisualSource('none')
+    visualTrackRef.current?.stop(); visualTrackRef.current = null; visualSourceRef.current = 'none'; setLocalVideo(null); setVisualSource('none')
     stopSpeakingDetection()
     stopSignaling()
     if (webrtcManagerRef.current) {
@@ -482,7 +488,10 @@ export function VoiceRoomPage() {
         const mapped = (payload.participants ?? []).map(mapParticipant)
         setParticipants((current) => {
           const signalOnly = current.filter((participant) => participant.socketId && !mapped.some((db) => db.userId === participant.userId))
-          return [...mapped, ...signalOnly]
+          return [...mapped.map(db => {
+            const live = liveParticipantStateRef.current.get(db.userId)
+            return live ? { ...db, socketId: live.socketId, isMuted: live.isMuted } : db
+          }), ...signalOnly]
         })
         setRoom((current) =>
           current && current.id === targetRoomId
@@ -490,12 +499,8 @@ export function VoiceRoomPage() {
             : current,
         )
 
-        const self = mapped.find((participant) => participant.userId === user?.id)
-        if (self) {
-          setIsJoined(true)
-          joinedRef.current = true
-          setIsMuted(self.isMuted)
-        }
+        // Persisted presence may belong to another device; only this tab's
+        // admission/media lifecycle can mark its own connection as joined.
       } catch (caught) {
         setJoinError(friendlyError(caught, 'No se pudieron cargar los participantes desde Ubuntu'))
       } finally {
@@ -640,6 +645,9 @@ export function VoiceRoomPage() {
     const userId = String(participant.userId ?? '').trim()
     if (!socketId || !userId || userId === user?.id) return
     socketToUserIdRef.current.set(socketId, userId)
+    const existing = liveParticipantStateRef.current.get(userId)
+    const isMuted = participant.isMuted ?? existing?.isMuted ?? true
+    liveParticipantStateRef.current.set(userId, { socketId, isMuted })
     setParticipants((current) => {
       const nextParticipant: Participant = {
         id: `signal-${socketId}`,
@@ -647,12 +655,13 @@ export function VoiceRoomPage() {
         userId,
         userName: String(participant.name ?? '').trim() || userId,
         userAvatarUrl: String(participant.avatarUrl ?? '').trim(),
-        isMuted: Boolean(participant.isMuted),
+        isMuted,
         isSpeaking: false,
         joinedAt: new Date().toISOString(),
       }
       const withoutDuplicate = current.filter((item) => item.userId !== userId && item.socketId !== socketId)
-      return [...withoutDuplicate, nextParticipant]
+      const previous = current.find(item => item.userId === userId || item.socketId === socketId)
+      return [...withoutDuplicate, { ...nextParticipant, userName: participant.name || previous?.userName || nextParticipant.userName, userAvatarUrl: participant.avatarUrl || previous?.userAvatarUrl || '', joinedAt: previous?.joinedAt || nextParticipant.joinedAt }]
     })
   }, [user?.id])
 
@@ -707,10 +716,7 @@ export function VoiceRoomPage() {
     // WebRTC Perfect Negotiation Parity with Android
     // Android isPolite: (currentUserId < remoteUserId) || (currentUserId == remoteUserId && localSocketId < remoteSocketId)
     // The "impolite" peer (who sends the offer) is the one where isPolite == false.
-    if (ownUserId !== resolvedPeerUserId) {
-      return ownUserId.localeCompare(resolvedPeerUserId) > 0
-    }
-    return ownSocketId.localeCompare(peerSocketId) > 0
+    return mediaPeerIsInitiator(ownUserId, resolvedPeerUserId, ownSocketId, peerSocketId)
   }, [user?.id])
 
   const configureIceServers = useCallback(async (manager: WebRTCManager, accessToken: string) => {
@@ -812,6 +818,7 @@ export function VoiceRoomPage() {
       if (payload.roomId && payload.roomId !== room.id) return
       void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))
       roomCues.connect(mutedRef.current)
+      socket.emit('media-status', { roomId: room.id, userId: user.id, isCameraSharing: visualSourceRef.current === 'camera', isScreenSharing: visualSourceRef.current === 'screen' })
       setConnectionLabel('Sala sincronizada')
       if (Number.isFinite(Number(payload.participantCount))) {
         setRoom((current) => current ? {
@@ -830,6 +837,10 @@ export function VoiceRoomPage() {
 
     socket.on('current-participants', (rawParticipants) => {
       const signalParticipants = normalizeSignalingParticipants(rawParticipants)
+      const present = new Set(signalParticipants.map(participant => participant.socketId))
+      for (const peerId of manager.getConnectionStats().keys()) if (!present.has(peerId)) manager.disconnectPeer(peerId)
+      setRemoteStreams(current => Object.fromEntries(Object.entries(current).filter(([peerId]) => present.has(peerId))))
+      setPeerStates(current => Object.fromEntries(Object.entries(current).filter(([peerId]) => present.has(peerId))))
       roomCues.baseline(signalParticipants.map(p=>({userId:p.userId,socketId:p.socketId,isMuted:p.isMuted??true})))
       signalParticipants.forEach(upsertSignalParticipant)
       signalParticipants.forEach((participant) => {
@@ -852,6 +863,7 @@ export function VoiceRoomPage() {
     socket.on('user-left', (socketId) => {
       roomCues.left(socketId)
       const userIdForSocket = socketToUserIdRef.current.get(socketId)
+      if (userIdForSocket && liveParticipantStateRef.current.get(userIdForSocket)?.socketId === socketId) liveParticipantStateRef.current.delete(userIdForSocket)
       socketToUserIdRef.current.delete(socketId)
       manager.disconnectPeer(socketId)
       setRemoteStreams((current) => {
@@ -879,7 +891,7 @@ export function VoiceRoomPage() {
             name: payload.name,
           })
           if (!manager.hasPeerConnection(payload.sender)) {
-            manager.createPeerConnection(payload.sender, false)
+            manager.createPeerConnection(payload.sender, shouldOfferToPeer(payload.sender, payload.userId))
           }
           const answer = await manager.createAnswer(payload.sender, payload.offer)
           if (!answer) return
@@ -922,6 +934,9 @@ export function VoiceRoomPage() {
     })
 
     socket.on('mute-state', (payload) => {
+      if (payload.roomId && payload.roomId !== room.id) return
+      const live = liveParticipantStateRef.current.get(payload.userId)
+      if (live) liveParticipantStateRef.current.set(payload.userId, { ...live, isMuted: payload.isMuted })
       if(!payload.roomId||payload.roomId===room.id)roomCues.mute(payload.userId,payload.isMuted)
       setParticipants((current) =>
         current.map((participant) =>
@@ -1108,6 +1123,11 @@ export function VoiceRoomPage() {
 
     setIsLeaving(true)
     setJoinError(null)
+    // Leave is immediate locally even if the presence cleanup needs the network.
+    joinedRef.current = false
+    setIsJoined(false)
+    writeJoinedRoomToStorage(user.id, null)
+    stopLocalMedia()
     try {
       if (useUbuntuVoice) {
         await leaveFallbackVoiceRoom(room.id)
@@ -1117,6 +1137,7 @@ export function VoiceRoomPage() {
         writeJoinedRoomToStorage(user.id, null)
         stopLocalMedia()
         await loadParticipants(room.id, { silent: true })
+        onExit?.()
         navigate('/app/voice')
         return
       }
@@ -1138,13 +1159,14 @@ export function VoiceRoomPage() {
       writeJoinedRoomToStorage(user.id, null)
       stopLocalMedia()
       await loadParticipants(room.id, { silent: true })
+      onExit?.()
       navigate('/app/voice')
     } catch (caught) {
       setJoinError(friendlyError(caught, 'No se pudo salir de la sala'))
     } finally {
       setIsLeaving(false)
     }
-  }, [isLeaving, loadParticipants, navigate, room, roomCues, stopLocalMedia, syncParticipantCounter, useUbuntuVoice, user])
+  }, [isLeaving, loadParticipants, navigate, onExit, room, roomCues, stopLocalMedia, syncParticipantCounter, useUbuntuVoice, user])
 
   const toggleMute = useCallback(async () => {
     if (!user || !room || !isJoined) return
@@ -1200,7 +1222,9 @@ export function VoiceRoomPage() {
   async function stopVisual() {
     visualOperationRef.current++
     visualTrackRef.current?.stop(); visualTrackRef.current = null
+    visualSourceRef.current = 'none'
     setVisualSource('none'); setLocalVideo(null)
+    if (room && user) socketRef.current?.emit('media-status', { roomId: room.id, userId: user.id, isCameraSharing: false, isScreenSharing: false })
     try { await webrtcManagerRef.current?.removeOutgoingTrack('video') }
     catch { if (joinedRef.current) setJoinError('No se pudo detener el envío de video. Vuelve a conectar a la sala.') }
   }
@@ -1217,6 +1241,8 @@ export function VoiceRoomPage() {
       try { await webrtcManagerRef.current!.replaceOutgoingTrack('video', track) } catch(error) { capture.getTracks().forEach(value => value.stop()); throw error }
       if (!joinedRef.current || operation !== visualOperationRef.current) { capture.getTracks().forEach(value => value.stop()); return }
       visualTrackRef.current = track; setLocalVideo(new MediaStream([track])); setVisualSource(source)
+      visualSourceRef.current = source
+      if (room && user) socketRef.current?.emit('media-status', { roomId: room.id, userId: user.id, isCameraSharing: source === 'camera', isScreenSharing: source === 'screen' })
       track.onended = () => { if (visualTrackRef.current?.id === track.id) void stopVisual() }
     } catch(error) {
       if (source === 'camera' || !(error instanceof DOMException && error.name === 'NotAllowedError')) setJoinError('No se pudo activar la cámara o pantalla. Revisa los permisos del navegador.')
@@ -1328,7 +1354,13 @@ export function VoiceRoomPage() {
   }
 
   return (
-    <section className="voice-room-stage">
+    <section className={`voice-room-stage${minimized ? ' voice-room-minimized' : ''}`}>
+      {minimized && isJoined ? <aside className="voice-floating-controls" aria-label="Sala de voz activa">
+        <button type="button" className="voice-floating-title" onClick={() => navigate(`/app/voice/${room.id}`)}><Radio size={18}/><span><strong>{room.title}</strong><small>{connectionQuality}</small></span></button>
+        <button type="button" className="icon-btn" aria-label={isMuted ? 'Activar micrófono en sala' : 'Silenciar micrófono en sala'} aria-pressed={isMuted} onClick={() => void toggleMute()}>{isMuted ? <MicOff/> : <Mic/>}</button>
+        <button type="button" className="icon-btn" aria-label="Volver a sala de voz" onClick={() => navigate(`/app/voice/${room.id}`)}><Headphones/></button>
+        <button type="button" className="icon-btn danger" aria-label="Salir de sala de voz" disabled={isLeaving} onClick={() => void leaveRoom()}><PhoneOff/></button>
+      </aside> : null}
       <header className="voice-room-stage-header">
         <div className="voice-room-heading">
           <Link className="voice-back-link" to="/app/voice">

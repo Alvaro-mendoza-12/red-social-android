@@ -1,4 +1,5 @@
 import { clipboardFilesFrom, canPasteIntoChat, pastedAsSticker, isStickerImage } from '../../core/chatClipboard'
+import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
@@ -1946,7 +1947,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
             <button type="button" className="identity-link compact" onClick={() => setProfilePanelOpen(value => !value)} aria-expanded={profilePanelOpen} aria-label={`Ver perfil de ${otherParticipant.name}`}>
               <FallbackAvatar url={otherParticipant.avatarUrl} name={otherParticipant.name} className="avatar-sm" />
               <div className="col-stack-tight">
-                <strong>{otherParticipant.name}</strong>
+                <strong>{otherParticipant.name} <ProfileStatusBadges profileId={otherParticipant.id}/></strong>
                 <small>Chat privado</small>
               </div>
             </button>
@@ -2401,6 +2402,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
               Limpiar
             </button>
           </div>
+          {preparationStatus ? <p className="attachment-preparation-summary" role="status">{preparationStatus}</p> : null}
           <div className="attachment-draft-grid">
             {pendingAttachments.map((attachment) => (
               <article key={attachment.id} className="attachment-draft-item">

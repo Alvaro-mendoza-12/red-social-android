@@ -1,4 +1,5 @@
 import { useLiveSfu } from './useLiveSfu'
+import { mediaPeerIsInitiator } from '../../core/mediaPeerRole'
 import { liveReactionEmoji } from '../../core/liveReaction'
 import { publicProfileSummaries } from '../../core/publicProfileSummaries'
 import { Settings, Maximize, UserPlus, X } from 'lucide-react'
@@ -361,18 +362,18 @@ export function LiveSessionPage() {
     }
   }, [])
 
-  const startOffer = useCallback(async (peerId: string) => {
+  const startOffer = useCallback(async (peerId: string, peerUserId?: string) => {
     const manager = managerRef.current
     if (!manager || !peerId || manager.hasPeerConnection(peerId)) return
     try {
-      manager.createPeerConnection(peerId, true)
+      manager.createPeerConnection(peerId, !peerUserId || mediaPeerIsInitiator(userId, peerUserId, socketRef.current?.id || '', peerId))
       await manager.createOffer(peerId)
       await drainIce(peerId)
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo conectar con un espectador'))
       manager.disconnectPeer(peerId)
     }
-  }, [drainIce])
+  }, [drainIce, userId])
 
   useEffect(() => {
     if (!streamId || !userId || !isFallbackSession || !cleanLiveId) return
@@ -481,10 +482,10 @@ export function LiveSessionPage() {
         socket.on('auth-error', (payload) => setError(payload.error || 'La sesión del directo fue rechazada'))
         socket.on('current-viewers', (participants) => {
           if (role !== 'host') return
-          participants.forEach((participant) => void startOffer(participant.socketId))
+          participants.forEach((participant) => void startOffer(participant.socketId, participant.userId))
         })
         socket.on('viewer-joined', (participant) => {
-          if (role === 'host') void startOffer(participant.socketId)
+          if (role === 'host') void startOffer(participant.socketId, participant.userId)
         })
         socket.on('viewer-left', (socketId) => manager.disconnectPeer(socketId))
         socket.on('host-info', () => setConnectionLabel('Esperando video'))
@@ -514,10 +515,11 @@ export function LiveSessionPage() {
           window.setTimeout(() => setReactions((current) => current.filter((item) => item.id !== reaction.id)), 2200)
         })
         socket.on('offer', (payload) => {
-          if (role !== 'viewer' || !payload.sender || !payload.offer) return
+          if (!payload.sender || !payload.offer) return
           void (async () => {
             try {
-              if (!manager.hasPeerConnection(payload.sender)) manager.createPeerConnection(payload.sender, false)
+              if (!manager.hasPeerConnection(payload.sender)) manager.createPeerConnection(payload.sender,
+                payload.userId ? mediaPeerIsInitiator(currentUser.id, payload.userId, socket.id || '', payload.sender) : false)
               const answer = await manager.createAnswer(payload.sender, payload.offer)
               if (!answer) return
               socket.emit('answer', { target: payload.sender, answer, userId: currentUser.id, name: displayName })
@@ -528,7 +530,7 @@ export function LiveSessionPage() {
           })()
         })
         socket.on('answer', (payload) => {
-          if (role !== 'host' || !payload.sender || !payload.answer) return
+          if (!payload.sender || !payload.answer) return
           void manager.handleAnswer(payload.sender, payload.answer)
             .then(() => drainIce(payload.sender))
             .catch((caught) => setError(friendlyError(caught, 'No se pudo completar la conexión del espectador')))

@@ -1,4 +1,5 @@
 import { useLegacyCallBroadcast } from '../features/calls/useLegacyCallBroadcast'
+import { VoiceRoomHost } from '../features/voice/VoiceRoomHost'
 import { StreamingImage } from '../components/StreamingMedia'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -1070,6 +1071,7 @@ export function AppLayout() {
         <main className="content-pane">
           <div className={contentShellClassName}>
             <Outlet />
+            <VoiceRoomHost />
           </div>
         </main>
 

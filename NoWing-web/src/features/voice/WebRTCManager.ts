@@ -6,6 +6,7 @@ export class WebRTCManager {
   private mediaRevision = 0;
   private peerConnections: Map<string, RTCPeerConnection> = new Map();
   private peerSessions: Map<string, WebRtcPeerSession> = new Map();
+  private remoteStreams: Map<string, MediaStream> = new Map();
   private dataChannels: Map<string, RTCDataChannel> = new Map();
   private onTrackCallbacks: ((track: MediaStreamTrack, stream: MediaStream, peerId: string) => void)[] = [];
   private onDataChannelCallbacks: ((data: any, from: string) => void)[] = [];
@@ -91,9 +92,14 @@ export class WebRTCManager {
     };
 
     peerConnection.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
+      {
+        // Android Unified Plan can announce streamless tracks. Keep one stable
+        // stream per peer, including video added after the audio connection.
+        const stream = this.remoteStreams.get(peerId) || new MediaStream();
+        this.remoteStreams.set(peerId, stream);
+        if (!stream.getTracks().some(track => track.id === event.track.id)) stream.addTrack(event.track);
         this.onTrackCallbacks.forEach(callback => {
-          callback(event.track, event.streams[0], peerId);
+          callback(event.track, stream, peerId);
         });
       }
     };
@@ -109,6 +115,11 @@ export class WebRTCManager {
       this.localStream.getTracks().forEach(track => {
         peerConnection.addTrack(track, this.localStream!);
       });
+    }
+    for (const kind of ['audio', 'video'] as const) {
+      if (!peerConnection.getTransceivers().some(value => value.receiver.track.kind === kind)) {
+        peerConnection.addTransceiver(kind, { direction: 'recvonly' });
+      }
     }
 
     this.peerConnections.set(peerId, peerConnection);
@@ -239,6 +250,7 @@ export class WebRTCManager {
   }
 
   disconnectPeer(peerId: string): void {
+    this.remoteStreams.delete(peerId);
     const peerConnection = this.peerConnections.get(peerId);
     const dataChannel = this.dataChannels.get(peerId);
 
