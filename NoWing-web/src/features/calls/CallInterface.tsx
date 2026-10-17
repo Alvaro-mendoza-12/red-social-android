@@ -1,5 +1,5 @@
 import { SafeAvatar } from '../../components/SafeAvatar'
-import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Maximize, Settings, Volume2, VolumeX } from 'lucide-react'
+import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Maximize, Minimize2, Settings, Volume2, VolumeX } from 'lucide-react'
 import './calls.css'
 import { LiveStreamVideo } from '../../components/LiveStreamMedia'
 import { useLiveVideoAvailable } from '../../core/media/useLiveVideoAvailable'
@@ -53,6 +53,7 @@ export function CallInterface({
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [outputDevice, setOutputDevice] = useState('')
   const [mediaBusy, setMediaBusy] = useState(false)
+  const [minimized, setMinimized] = useState(false)
   const container = useRef<HTMLDivElement>(null)
   const [fallbackAccessToken, setFallbackAccessToken] = useState('')
 
@@ -380,7 +381,15 @@ export function CallInterface({
 
   // Show active call interface
   return (
-    <div ref={container} className="call-interface-container active-call">
+    <div ref={container} className={`call-interface-container active-call floating-call${minimized ? ' call-minimized' : ''}`}>
+      {minimized ? <div className="call-mini-panel">
+        <button type="button" className="call-restore" aria-label="Ampliar llamada" onClick={() => setMinimized(false)}>
+          <SafeAvatar size="lg" url={remoteParticipant?.avatarUrl} name={remoteParticipant?.name || initialRemoteName || 'Usuario'} />
+          <strong>{remoteParticipant?.name || initialRemoteName || 'Llamada'}</strong>
+          <small>{callState.connectionLabel || 'En llamada'} · {Math.floor(callState.duration / 60)}:{(callState.duration % 60).toString().padStart(2, '0')}</small>
+        </button>
+        <div className="call-mini-controls"><button className="icon-btn" type="button" aria-label={callState.isMuted ? 'Activar micrófono' : 'Silenciar micrófono'} onClick={toggleMute}>{callState.isMuted ? <MicOff /> : <Mic />}</button><button className="icon-btn end-call-btn" type="button" aria-label="Colgar llamada" onClick={endCall}><PhoneOff /></button></div>
+      </div> : null}
       <header className="call-header">
         <div className="call-info">
           <h2>
@@ -392,6 +401,7 @@ export function CallInterface({
           </p>
         </div>
         <div className="call-status">
+          <button className="icon-btn" type="button" aria-label="Minimizar llamada" title="Minimizar llamada" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); setShowSettings(false); setMinimized(true) }}><Minimize2 size={18} /></button>
           {callState.isIncomingCall && (
             <span className="incoming-indicator">📞 Entrante</span>
           )}

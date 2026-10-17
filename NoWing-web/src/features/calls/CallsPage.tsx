@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { lazy, Suspense, useCallback, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Headphones, MessageCircle, PhoneCall } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
@@ -7,6 +7,7 @@ import { CallInterface } from './CallInterface'
 import './calls.css'
 
 type CallEntryIcon = 'call' | 'messages' | 'voice'
+const ChatDetailPage = lazy(() => import('../messages/ChatDetailPage').then(module => ({ default: module.ChatDetailPage })))
 
 const callEntryCards = [
   {
@@ -66,6 +67,7 @@ export function CallsPage() {
   if (activeCall) {
     return (
       <section className="section-stack calls-page">
+        {initialContextId ? <div className="call-chat-background"><Suspense fallback={null}><ChatDetailPage chatIdOverride={initialContextId} embedded /></Suspense></div> : null}
         <section className="calls-live-shell">
           <CallInterface
             initialContextId={initialContextId}

@@ -320,6 +320,9 @@ class AccountSessionRepository @Inject constructor(
 
     private fun syncActiveSessionSnapshot(snapshot: ActiveSessionSnapshot) {
         if (!TestRuntimeOverrides.isEnabled(context) && prefsOrNull == null) return
+        // A queued observer emission can arrive after a synchronous local logout.
+        if (!authService.isLoggedIn() ||
+            (!snapshot.userId.isNullOrBlank() && !snapshot.userId.equals(authService.getCurrentUserId(), true))) return
 
         var existing = _accounts.value.firstOrNull {
             (!snapshot.userId.isNullOrBlank() && it.user_id == snapshot.userId) ||

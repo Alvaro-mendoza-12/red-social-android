@@ -17,7 +17,7 @@ import { SafeAvatar } from '../../components/SafeAvatar'
 import { conversationWindow } from '../../core/conversationWindow'
 import { sharedVideoReference } from '../../core/sharedVideoReference'
 import { SharedVideoCard } from '../../components/SharedVideoCard'
-import { retryPendingWebMessage } from '../../core/webOutbox'
+import { cancelPendingWebMessage, retryPendingWebMessage } from '../../core/webOutbox'
 import {
   Fragment,
   useCallback,
@@ -28,7 +28,9 @@ import {
   type DragEvent,
   type FormEvent,
 } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ChatOptionsMenu } from '../../components/ChatOptionsMenu'
+import { MediaDownloadButton } from '../../components/MediaDownloadButton'
 import { MoreHorizontal } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
 import {
@@ -62,6 +64,7 @@ import { ViewOnceMediaDialog } from '../../components/ViewOnceMediaDialog'
 import { requestViewOnceMedia } from '../../core/media/viewOnceClient'
 import type { ViewOnceLease } from '../../core/media/viewOnceLease'
 import { ChatAttachmentMedia } from '../../components/ChatAttachmentMedia'
+import { OutboxTransferStatus } from '../../components/OutboxTransferStatus'
 import { StickerPicker, type CatalogSticker } from '../../components/StickerPicker'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 
@@ -350,7 +353,7 @@ function mediaSizeOf(row: GenericRow): number {
 
 function ChatMessageMedia({ message, onImageOpen }: { message: ChatMessage; onImageOpen: () => void }) {
   if (!message.mediaUrl) return null
-  return <ChatAttachmentMedia url={message.mediaUrl} kind={mediaKindFor(message.contentType, message.mediaUrl)} title={message.content.trim() || fileNameFromUrl(message.mediaUrl)} size={message.mediaSize} onImageOpen={onImageOpen} />
+  return <ChatAttachmentMedia url={message.mediaUrl} kind={mediaKindFor(message.contentType, message.mediaUrl)} inlineDownload={false} title={message.content.trim() || fileNameFromUrl(message.mediaUrl)} size={message.mediaSize} onImageOpen={onImageOpen} />
 }
 
 function dayKeyOf(value: string): string {
@@ -461,6 +464,14 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const [showMessageSearch, setShowMessageSearch] = useState(false)
   const [messageSearchQuery, setMessageSearchQuery] = useState('')
   const [showQuickShare, setShowQuickShare] = useState(false)
+  const [showAdvancedTools, setShowAdvancedTools] = useState(false)
+  const [selectingMessages, setSelectingMessages] = useState(false)
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set())
+  const [selectionBusy, setSelectionBusy] = useState(false)
+  const navigate = useNavigate()
+  function toggleSelectedMessage(id: string) {
+    setSelectedMessageIds(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next })
+  }
   const [replyToId, setReplyToId] = useState<string | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState('')
@@ -503,6 +514,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const loadSequenceRef = useRef(0)
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
+  useEffect(() => { setSelectedMessageIds(new Set()); setSelectingMessages(false); setShowQuickShare(false); setShowAdvancedTools(false) }, [cleanChatId])
   preparationOwnerRef.current = `${user?.id}/${cleanChatId}`
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
   const normalizedMessageSearch = useMemo(() => messageSearchQuery.trim().toLowerCase(), [messageSearchQuery])
@@ -1509,16 +1521,19 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   async function deleteMessageForMe(message: ChatMessage) {
+    if (useUbuntu && ['pending','failed'].includes(message.status)) {
+      try { await cancelPendingWebMessage('chat', cleanChatId, message.id); setMessages(current => current.filter(item => item.id !== message.id)); return true }
+      catch(caught) { setError(friendlyError(caught, 'No se pudo cancelar el envío')); return false }
+    }
     if (useUbuntu) {
       try {
         const response = await deleteFallbackChatMessage(cleanChatId, message.id, false)
-        upsertMessageInState(mapMessage(response.message))
+        upsertMessageInState(mapMessage(response.message)); return true
       } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo borrar para mi'))
+        setError(friendlyError(caught, 'No se pudo borrar para mi')); return false
       }
-      return
     }
-    if (!supabase || !user) return
+    if (!supabase || !user) return false
     try {
       const nextDeletedBy = Array.from(new Set([...message.deletedBy, user.id]))
       const { error: deleteError } = await supabase
@@ -1531,8 +1546,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           entry.id === message.id ? { ...entry, deletedBy: nextDeletedBy } : entry,
         ),
       )
+      return true
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo borrar para mi'))
+      setError(friendlyError(caught, 'No se pudo borrar para mi')); return false
     }
   }
 
@@ -1966,7 +1982,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           <button
             className={showQuickShare ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
             type="button"
-            title="Menú"
+            title="Menú" aria-label="Opciones del chat" aria-haspopup="menu" aria-expanded={showQuickShare} aria-controls="chat-options-menu"
             onClick={() => setShowQuickShare((c) => !c)}
           >
             <svg viewBox="0 0 24 24" width="20" height="20">
@@ -2005,45 +2021,18 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         </div>
       ) : null}
 
-      {showQuickShare ? (
-        <div className="chat-tools-overlay fade-in">
+      {showQuickShare ? <ChatOptionsMenu pinned={settings.isPinned} muted={settings.isMuted} favorite={settings.isFavorite} archived={settings.isArchived} busy={savingSettings}
+        onPreference={patch => void saveChatPreferences(patch)} onInfo={() => setProfilePanelOpen(true)} onSearch={() => setShowMessageSearch(true)}
+        onSelect={() => setSelectingMessages(true)} onAdvanced={() => setShowAdvancedTools(true)} onLeave={() => navigate('/app/messages')} onClose={() => setShowQuickShare(false)} /> : null}
+      {showAdvancedTools ? (
+        <div className="chat-tools-overlay chat-advanced-options fade-in" role="dialog" aria-label="Más opciones del chat" onKeyDown={event => { if(event.key === 'Escape') setShowAdvancedTools(false) }}>
           <article className="surface-card section-stack shadow-lg">
             <div className="row-between">
-              <h3>Herramientas de Chat</h3>
-              <button className="icon-btn-sm" onClick={() => setShowQuickShare(false)}>✕</button>
+              <h3>Más opciones del chat</h3>
+              <button className="icon-btn-sm" aria-label="Cerrar más opciones" onClick={() => setShowAdvancedTools(false)}>✕</button>
             </div>
 
             <div className="grid-2-col">
-              <section className="tool-section">
-                <h4>Preferencias</h4>
-                <div className="row-actions wrap">
-                  <button
-                    className={settings.isPinned ? 'chip-btn active' : 'chip-btn'}
-                    onClick={() => void saveChatPreferences({ isPinned: !settings.isPinned })}
-                  >
-                    {settings.isPinned ? 'Despinear' : 'Pinear'}
-                  </button>
-                  <button
-                    className={settings.isMuted ? 'chip-btn active' : 'chip-btn'}
-                    onClick={() => void saveChatPreferences({ isMuted: !settings.isMuted })}
-                  >
-                    {settings.isMuted ? 'Notificaciones' : 'Silenciar'}
-                  </button>
-                  <button
-                    className={settings.isFavorite ? 'chip-btn active' : 'chip-btn'}
-                    onClick={() => void saveChatPreferences({ isFavorite: !settings.isFavorite })}
-                  >
-                    {settings.isFavorite ? 'Quitar favorito' : 'Favorito'}
-                  </button>
-                  <button
-                    className={settings.isArchived ? 'chip-btn active' : 'chip-btn'}
-                    onClick={() => void saveChatPreferences({ isArchived: !settings.isArchived })}
-                  >
-                    {settings.isArchived ? 'Desarchivar' : 'Archivar'}
-                  </button>
-                </div>
-              </section>
-
               <section className="tool-section">
                 <h4>Traducción</h4>
                 <div className="composer mini-composer">
@@ -2111,8 +2100,21 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
         </div>
       ) : null}
 
+      {selectingMessages ? <div className="message-selection-toolbar" role="region" aria-label="Mensajes seleccionados">
+        <button type="button" className="icon-btn" aria-label="Cancelar selección" onClick={() => { setSelectingMessages(false); setSelectedMessageIds(new Set()) }}>✕</button>
+        <strong>{selectedMessageIds.size} seleccionados</strong>
+        <button type="button" className="mini-action-btn" onClick={() => setSelectedMessageIds(new Set(renderedMessages.filter(item => !item.deletedForAll && !item.deletedBy.includes(user?.id ?? '')).map(item => item.id)))}>Seleccionar visibles</button>
+        <button type="button" className="mini-action-btn" disabled={!selectedMessageIds.size} onClick={() => { void navigator.clipboard.writeText(messages.filter(item => selectedMessageIds.has(item.id)).map(item => item.content || item.mediaUrl).join('\n')).catch(() => setError('No se pudo copiar. Permite el acceso al portapapeles.')) }}>Copiar</button>
+        <button type="button" className="mini-action-btn danger" disabled={!selectedMessageIds.size || selectionBusy} onClick={async () => {
+          if (!window.confirm(`¿Eliminar ${selectedMessageIds.size} mensajes de tu vista?`)) return
+          setSelectionBusy(true)
+          const completed = new Set<string>()
+          try { for (const item of messages.filter(item => selectedMessageIds.has(item.id))) { if (!await deleteMessageForMe(item)) break; completed.add(item.id) } }
+          finally { setSelectionBusy(false); setSelectedMessageIds(current => new Set([...current].filter(id => !completed.has(id)))); if(completed.size === selectedMessageIds.size) setSelectingMessages(false) }
+        }}>{selectionBusy ? 'Eliminando…' : 'Eliminar para mí'}</button>
+      </div> : null}
       <div className="chat-thread-shell">
-        <section className="chat-thread" ref={threadRef} onScroll={handleThreadScroll} onLoadCapture={keepLatestMessageVisible} onLoadedMetadataCapture={keepLatestMessageVisible}>
+        <section className="chat-thread" ref={threadRef} onContextMenu={event => { if(event.target === event.currentTarget) { event.preventDefault(); setShowQuickShare(true) } }} onScroll={handleThreadScroll} onLoadCapture={keepLatestMessageVisible} onLoadedMetadataCapture={keepLatestMessageVisible}>
           {renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
             const thread = threadRef.current, height = thread?.scrollHeight || 0, top = thread?.scrollTop || 0
             shouldStickToBottomRef.current = false
@@ -2135,8 +2137,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           if (deletedForMe) return null
           const mine = message.senderId === user?.id
           const album = albums.get(message.id)
-          if (album && album.leader !== message.id) return null
-          if (album) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} deliveryState={item => mineDeliveryState(item, toMillis(item.createdAt) > 0 && toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(item.createdAt))} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteMessageForMe(item)} onDeleteForAll={item => void deleteMessageForAll(item)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
+          if (album && !selectingMessages && album.leader !== message.id) return null
+          if (album && !selectingMessages) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} deliveryState={item => mineDeliveryState(item, toMillis(item.createdAt) > 0 && toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(item.createdAt))} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteMessageForMe(item)} onDeleteForAll={item => void deleteMessageForAll(item)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
 
           const replied = message.replyToId ? messageById.get(message.replyToId) : null
           const pollRows =
@@ -2162,7 +2164,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                   <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
-              <article id={`message-${message.id}`} className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}`}>
+              <article id={`message-${message.id}`} className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${selectingMessages ? ' message-selectable' : ''}${selectedMessageIds.has(message.id) ? ' message-selected' : ''}${message.contentType === 'text' && !message.mediaUrl && !replied && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`} >
+                {selectingMessages ? <label className="message-select-control"><input type="checkbox" aria-label={`Seleccionar mensaje de ${mine ? 'ti' : title} a las ${new Date(message.createdAt).toLocaleTimeString('es')}`} checked={selectedMessageIds.has(message.id)} onChange={() => toggleSelectedMessage(message.id)} /></label> : null}
                 {message.isForwarded ? <small>Reenviado</small> : null}
                 {replied ? <MessageReplyPreview message={replied} name={replied.senderId === user?.id ? 'Tú' : title}/> : null}
 
@@ -2250,6 +2253,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                       <MoreHorizontal aria-hidden="true" />
                     </summary>
                     <div className="message-menu-popover">
+                    <button className="mini-action-btn" type="button" onClick={() => { setSelectingMessages(true); setSelectedMessageIds(new Set([message.id])) }}>Seleccionar mensaje</button>
+                    <button className="mini-action-btn" type="button" onClick={() => void navigator.clipboard.writeText(message.content || message.mediaUrl).catch(() => setError('No se pudo copiar el mensaje.'))}>Copiar</button>
+                    {message.mediaUrl && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={fileNameFromUrl(message.mediaUrl)} /> : null}
                     {['👍', '❤️', '😂'].map((emoji) => (
                       <button key={emoji} className="mini-action-btn reaction-action" type="button" aria-label={`Reaccionar con ${emoji}`} onClick={() => void toggleReaction(message.id, emoji)}>
                         {emoji}
@@ -2275,17 +2281,18 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                     ) : null}
                     {mine ? (
                       <button className="mini-action-btn danger" type="button" onClick={() => void deleteMessageForAll(message)}>
-                        Borrar todos
+                        Eliminar para todos
                       </button>
                     ) : null}
                     <button className="mini-action-btn" type="button" onClick={() => void deleteMessageForMe(message)}>
-                      Borrar mi vista
+                      Eliminar para mí
                     </button>
                     </div>
                   </details>
                 ) : null}
 
                 {mine && message.status==='failed' && message.deliveryError ? <p className="message-delivery-error" role="status">{message.deliveryError}</p> : null}
+                {mine && message.status==='pending' ? <OutboxTransferStatus id={message.id}/> : null}
                 <small className="message-meta">
                       {new Date(message.createdAt).toLocaleTimeString("es", {
                         hour: "2-digit",
@@ -2453,8 +2460,21 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           />
         </label><FolderAttachmentPicker onFiles={handleAttachFile}/></div></details>
 
+        <input
+          className="text-input chat-input-field"
+          placeholder={editingMessageId ? 'Edita tu mensaje...' : 'Escribe un mensaje...'}
+          value={composerText}
+          onChange={(event) => {
+            if (editingMessageId) setEditingDraft(event.target.value)
+            else {
+              draftRevisionRef.current += 1
+              setDraft(event.target.value)
+            }
+          }}
+        />
+
         <button
-          className={isRecordingAudio ? 'icon-btn recording' : 'icon-btn'}
+          className={isRecordingAudio ? 'icon-btn chat-mic-button recording' : 'icon-btn chat-mic-button'}
           type="button"
           title={isRecordingAudio ? 'Detener grabación' : 'Grabar audio'}
           onClick={() => void toggleAudioRecording()}
@@ -2469,19 +2489,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
             </svg>
           )}
         </button>
-
-        <input
-          className="text-input chat-input-field"
-          placeholder={editingMessageId ? 'Edita tu mensaje...' : 'Escribe un mensaje...'}
-          value={composerText}
-          onChange={(event) => {
-            if (editingMessageId) setEditingDraft(event.target.value)
-            else {
-              draftRevisionRef.current += 1
-              setDraft(event.target.value)
-            }
-          }}
-        />
 
         <button className="primary-btn circle-btn" type="submit" aria-label="Enviar mensaje" disabled={sending || uploading || preparingAttachments}>
           {sending || uploading ? (

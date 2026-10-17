@@ -14,9 +14,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import coil.compose.SubcomposeAsyncImage
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
 import conectate.com.presentation.theme.LocalChatBackgroundKey
 
 @Composable
@@ -115,40 +115,7 @@ fun ChatBackgroundLayer(
                 }
             }
 
-            "pattern_doodles" -> {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val lineColor = Color(0xFF7F93A0).copy(alpha = 0.20f)
-                    val dotColor = Color(0xFF5E7381).copy(alpha = 0.16f)
-                    val spacing = size.minDimension / 7.5f
-                    val radius = size.minDimension / 120f
-                    val stroke = size.minDimension / 95f
-                    val dash = PathEffect.dashPathEffect(floatArrayOf(stroke * 2f, stroke * 3f))
-
-                    var row = 0
-                    var y = spacing / 2f
-                    while (y < size.height + spacing) {
-                        var x = if (row % 2 == 0) spacing / 2f else spacing
-                        while (x < size.width + spacing) {
-                            drawCircle(dotColor, radius = radius, center = Offset(x, y))
-                            drawArc(
-                                color = lineColor,
-                                startAngle = 0f,
-                                sweepAngle = 180f,
-                                useCenter = false,
-                                topLeft = Offset(x - spacing / 3f, y - spacing / 3f),
-                                size = Size(spacing / 1.5f, spacing / 1.5f),
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                    width = stroke,
-                                    pathEffect = dash
-                                )
-                            )
-                            x += spacing
-                        }
-                        y += spacing * 0.85f
-                        row++
-                    }
-                }
-            }
+            "pattern_doodles" -> ChatDoodleWallpaper()
 
             "preset_ocean" -> PresetGradient(
                 colors = listOf(Color(0xFF071B26), Color(0xFF0B3948), Color(0xFF10242D))
@@ -194,3 +161,51 @@ private fun PresetGradient(colors: List<Color>) {
     )
 }
 
+
+/** Original line art, repeated at a stable density on every screen size. */
+@Composable
+private fun ChatDoodleWallpaper() {
+    val color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.085f)
+    Canvas(Modifier.fillMaxSize()) {
+        val tile = 132.dp.toPx()
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx())
+        var row = 0
+        var y = -tile / 4
+        while (y < size.height) {
+            var x = if (row % 2 == 0) -tile / 4 else tile / 4
+            while (x < size.width) {
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(x + tile * .12f, y + tile * .15f)
+                    lineTo(x + tile * .42f, y + tile * .15f)
+                    quadraticTo(x + tile * .49f, y + tile * .15f, x + tile * .49f, y + tile * .22f)
+                    lineTo(x + tile * .49f, y + tile * .39f)
+                    lineTo(x + tile * .28f, y + tile * .39f)
+                    lineTo(x + tile * .18f, y + tile * .47f)
+                    lineTo(x + tile * .18f, y + tile * .39f)
+                    lineTo(x + tile * .12f, y + tile * .39f)
+                    close()
+                }
+                drawPath(path, color, style = stroke)
+                val star = androidx.compose.ui.graphics.Path().apply {
+                    for (i in 0 until 10) {
+                        val angle = Math.PI * i / 5 - Math.PI / 2
+                        val radius = tile * if (i % 2 == 0) .13f else .058f
+                        val px = x + tile * .77f + kotlin.math.cos(angle).toFloat() * radius
+                        val py = y + tile * .3f + kotlin.math.sin(angle).toFloat() * radius
+                        if (i == 0) moveTo(px, py) else lineTo(px, py)
+                    }
+                    close()
+                }
+                drawPath(star, color, style = stroke)
+                val center = Offset(x + tile * .53f, y + tile * .76f)
+                drawCircle(color, tile * .14f, center, style = stroke)
+                drawArc(color, 15f, 150f, false, Offset(center.x - tile * .08f, center.y - tile * .04f), Size(tile * .16f, tile * .12f), style = stroke)
+                drawCircle(color, 1.dp.toPx(), Offset(center.x - tile * .05f, center.y - tile * .03f))
+                drawCircle(color, 1.dp.toPx(), Offset(center.x + tile * .05f, center.y - tile * .03f))
+                x += tile
+            }
+            y += tile
+            row++
+        }
+    }
+}

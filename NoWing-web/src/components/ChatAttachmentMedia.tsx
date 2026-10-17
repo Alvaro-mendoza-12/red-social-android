@@ -41,9 +41,9 @@ function acceptsInline(kind: ChatAttachmentKind, mime: string): boolean {
 
 
 export function ChatAttachmentMedia({
-  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen, preserveAnimation = false, allowRetry = true,
+  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen, preserveAnimation = false, allowRetry = true, inlineDownload = true,
 }: {
-  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void; preserveAnimation?: boolean; allowRetry?: boolean
+  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void; preserveAnimation?: boolean; allowRetry?: boolean; inlineDownload?: boolean
 }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const rewritten = rewriteRuntimeStorageUrl(url)
@@ -130,8 +130,8 @@ export function ChatAttachmentMedia({
 
   if (kind === 'video' || kind === 'audio') {
     return <div ref={container}>{kind === 'video'
-      ? <><button type="button" className="chat-video-preview" aria-label="Abrir video en pantalla completa" onClick={()=>{container.current?.querySelector('video')?.pause();if(onImageOpen)onImageOpen();else setViewerOpen(true)}}><StreamingVideo className="chat-media-video" src={visible ? rewritten : undefined} preload="metadata" playsInline muted /><span className="chat-video-play" aria-hidden="true">▶</span></button><div className="chat-attachment-actions"><button type="button" className="mini-action-btn" onClick={()=>onImageOpen?onImageOpen():setViewerOpen(true)}>Ampliar video</button><MediaDownloadButton url={rewritten} name={title}/></div>{viewerOpen?<MediaViewer items={[{url:rewritten,type:'video',title}]} onClose={()=>setViewerOpen(false)}/>:null}</>
-      : <><StreamingAudio className="chat-audio-player" src={visible ? rewritten : undefined} controls preload="metadata" /><MediaDownloadButton url={rewritten} name={title}/></>}</div>
+      ? <><button type="button" className="chat-video-preview" aria-label="Abrir video en pantalla completa" onClick={()=>{container.current?.querySelector('video')?.pause();if(onImageOpen)onImageOpen();else setViewerOpen(true)}}><StreamingVideo className="chat-media-video" src={visible ? rewritten : undefined} preload="metadata" playsInline muted /><span className="chat-video-play" aria-hidden="true">▶</span></button><div className="chat-attachment-actions"><button type="button" className="mini-action-btn" onClick={()=>onImageOpen?onImageOpen():setViewerOpen(true)}>Ampliar video</button>{inlineDownload ? <MediaDownloadButton url={rewritten} name={title}/> : null}</div>{viewerOpen?<MediaViewer items={[{url:rewritten,type:'video',title}]} onClose={()=>setViewerOpen(false)}/>:null}</>
+      : <><StreamingAudio className="chat-audio-player" src={visible ? rewritten : undefined} controls preload="metadata" />{inlineDownload ? <MediaDownloadButton url={rewritten} name={title}/> : null}</>}</div>
   }
   let content
   if (ownStorage && !identity.accountId) {
@@ -155,5 +155,5 @@ export function ChatAttachmentMedia({
   } else {
     content = <a className="chat-file-card" href={playbackUrl} download={title} rel="noopener noreferrer"><span className="chat-file-icon">DOC</span><span><strong>{title}</strong>{ready?.size ? <small>{Math.ceil(ready.size / 1024)} KB</small> : null}</span></a>
   }
-  return <div ref={container}>{content}{kind==='image'&&imageLink?<MediaDownloadButton url={rewritten} name={title}/>:null}{viewerOpen && playbackUrl && (!ownStorage || identity.accountId) ? <MediaViewer items={[{url:playbackUrl,type:kind==='pdf'?'pdf':kind==='file'?'document':'image',title,documentName:attachmentName(rewritten, title),downloadUrl:rewritten}]} onClose={()=>setViewerOpen(false)}/> : null}</div>
+  return <div ref={container}>{content}{kind==='image'&&imageLink&&inlineDownload?<MediaDownloadButton url={rewritten} name={title}/>:null}{viewerOpen && playbackUrl && (!ownStorage || identity.accountId) ? <MediaViewer items={[{url:playbackUrl,type:kind==='pdf'?'pdf':kind==='file'?'document':'image',title,documentName:attachmentName(rewritten, title),downloadUrl:rewritten}]} onClose={()=>setViewerOpen(false)}/> : null}</div>
 }

@@ -660,29 +660,36 @@ class NotificationRepository @Inject constructor(
         }
     }
 
-    suspend fun unregisterFcmToken(): Result<Unit> {
+    fun capturedFcmToken(): String? = prefs.getString(KEY_LAST_REGISTERED_FCM, null)
+        ?.substringAfter('|', "")?.trim()?.ifBlank { null }
+
+    fun clearAccountAlerts(userId: String?) {
+        conectate.com.util.MessageNotificationFactory.cancelAccount(context, userId)
+    }
+
+    suspend fun unregisterFcmToken(
+        userId: String? = authService.getCurrentUserId()?.trim()?.lowercase(),
+        accessToken: String? = authService.getAccessToken(),
+        lastRegisteredToken: String? = capturedFcmToken(),
+        localFallback: Boolean = authService.isLocalFallbackSession()
+    ): Result<Unit> {
         return try {
-            var userId = authService.getCurrentUserId()?.trim()?.lowercase()
-            var accessToken = authService.getAccessToken()
-            var lastRegisteredToken = prefs.getString(KEY_LAST_REGISTERED_FCM, null)
-                ?.substringAfter('|', "")
-                ?.trim()
-                ?.ifBlank { null }
             if (userId.isNullOrBlank() || accessToken.isNullOrBlank()) {
-                prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
                 return Result.success(Unit)
             }
 
             if (lastRegisteredToken == null) {
-                prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
                 return Result.success(Unit)
             }
 
-            if (authService.isLocalFallbackSession()) {
+            fun clearCapturedRegistration() {
+                if (prefs.getString(KEY_LAST_REGISTERED_FCM, null) == buildFcmRegistrationCacheKey(userId, lastRegisteredToken)) {
+                    prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
+                }
+            }
+            if (localFallback) {
                 return localFallbackApiClient.unregisterFcmToken(accessToken, lastRegisteredToken)
-                    .onSuccess {
-                        prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
-                    }
+                    .onSuccess { clearCapturedRegistration() }
             }
 
             var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/fcm_tokens") {
@@ -693,7 +700,7 @@ class NotificationRepository @Inject constructor(
             }
 
             if (response.status.isSuccess()) {
-                prefs.edit().remove(KEY_LAST_REGISTERED_FCM).apply()
+                clearCapturedRegistration()
                 Log.d("NotificationRepository", "FCM token unregistered for current session")
                 Result.success(Unit)
             } else {

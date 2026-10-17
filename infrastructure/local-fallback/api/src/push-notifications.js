@@ -164,10 +164,16 @@ async function sendCurrentPush(pool, notification, extraData) {
             OR lower(supabase_user_id::text) = lower($1::text)
           )
      )
-     SELECT token
-       FROM fallback_fcm_tokens
-      WHERE lower(user_id) IN (SELECT id FROM recipient_ids WHERE id <> '')
-      ORDER BY updated_at DESC`,
+     SELECT fcm.token
+       FROM fallback_fcm_tokens fcm
+      WHERE lower(fcm.user_id) IN (SELECT id FROM recipient_ids WHERE id <> '')
+        AND (fcm.auth_session_id IS NULL OR EXISTS (
+          SELECT 1 FROM fallback_auth_sessions session
+           WHERE session.id=fcm.auth_session_id AND session.revoked_at IS NULL
+             AND session.expires_at>NOW()
+             AND lower(session.user_id::text) IN (SELECT id FROM recipient_ids WHERE id <> '')
+        ))
+      ORDER BY fcm.updated_at DESC`,
     [notification.recipient_id],
   )
   const tokens = [...new Set(rows.map((row) => String(row.token || '').trim()).filter(Boolean))]

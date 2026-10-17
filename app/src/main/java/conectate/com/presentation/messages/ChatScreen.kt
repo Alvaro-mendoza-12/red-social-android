@@ -1400,7 +1400,7 @@ fun ChatScreen(
                     .background(MaterialTheme.colorScheme.surface)
                     .navigationBarsPadding()
                     .imePadding() // Keep TextField visible when keyboard is shown
-                    .padding(8.dp)
+                    .padding(horizontal = 8.dp, vertical = 5.dp)
             ) {
                 // Reply Preview
                 replyToMessage?.let { reply ->
@@ -1662,19 +1662,6 @@ fun ChatScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        // Attach Button
-                        IconButton(
-                            onClick = { showAttachmentSheet = true },
-                            enabled = !isBlocked
-                        ) {
-                            Icon(Icons.Default.Add, "Adjuntar", tint = MaterialTheme.colorScheme.primary)
-                        }
-
-                        StickerButton(
-                            onClick = stickerKeyboardPanel.toggle, showingStickers = showStickerCatalogDialog,
-                            enabled = !isBlocked
-                        )
-                     
                     // Input Field with mobile keyboard support
                     TextField(
                         value = messageText,
@@ -1693,7 +1680,12 @@ fun ChatScreen(
                             }
                         },
                         maxLines = 4,
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(28.dp),
+                        leadingIcon = {
+                            IconButton(onClick = stickerKeyboardPanel.toggle, enabled = !isBlocked) {
+                                Icon(Icons.Default.EmojiEmotions, "Emojis y stickers", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
                             imeAction = androidx.compose.ui.text.input.ImeAction.Send
@@ -1720,7 +1712,10 @@ fun ChatScreen(
                         ),
                         trailingIcon = {
                              Row {
-                                 IconButton(onClick = {
+                                 IconButton(onClick = { showAttachmentSheet = true }, enabled = !isBlocked) {
+                                     Icon(Icons.Default.AttachFile, "Adjuntar", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                 }
+                                 IconButton(enabled = !isBlocked, onClick = {
                                      composerInitialStep = "camera"
                                      showMediaComposer = true
                                  }) {

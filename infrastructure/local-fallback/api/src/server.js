@@ -2598,6 +2598,7 @@ app.post('/v1/auth/logout', async (req, res, next) => {
       [hashAuthRefreshToken(refreshToken)],
     )
     if (rows[0]) {
+      await pool.query('DELETE FROM fallback_fcm_tokens WHERE auth_session_id=$1::uuid', [rows[0].id])
       await recordAudit('auth_logout', rows[0].user_id, { sessionId: rows[0].id })
     }
     return res.json({ ok: true, revoked: Boolean(rows[0]) })

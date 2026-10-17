@@ -652,6 +652,7 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun signOut() {
+        notificationRepository.clearAccountAlerts(authService.getCurrentUserId())
         // Ensure the user is marked offline as soon as possible.
         runCatching {
             var userId = authService.getCurrentUserId()
@@ -693,6 +694,8 @@ class AuthRepository @Inject constructor(
         val accessTokenSnapshot = runCatching { authService.getAccessToken()?.trim() }.getOrNull()
         val refreshTokenSnapshot = runCatching { authService.getRefreshToken()?.trim() }.getOrNull()
         val wasLocalFallbackSession = authService.isLocalFallbackSession()
+        val fcmTokenSnapshot = notificationRepository.capturedFcmToken()
+        notificationRepository.clearAccountAlerts(userIdSnapshot)
 
         accountSessionRepository.removeCurrentAccount()
 
@@ -703,6 +706,9 @@ class AuthRepository @Inject constructor(
 
         // Fire-and-forget full cleanup (DB wipe + Supabase SDK signOut).
         repositoryScope.launch {
+            runCatching {
+                notificationRepository.unregisterFcmToken(userIdSnapshot, accessTokenSnapshot, fcmTokenSnapshot, wasLocalFallbackSession)
+            }.onFailure { android.util.Log.w("AuthRepository", "Captured notification unlink failed", it) }
             runCatching { authService.clearLocalDataForAccountSwitch(userIdSnapshot) }
                 .onFailure { android.util.Log.w("AuthRepository", "Failed to clear local DB during forceLocalLogout", it) }
             // Mark offline best-effort before SDK signOut potentially revokes the token.
@@ -1096,7 +1102,28 @@ class AuthRepository @Inject constructor(
     }
 
     fun removeStoredAccount(accountId: String) {
+        val account = accountSessionRepository.accounts.value.firstOrNull { it.id == accountId.trim() }
+        val fcmToken = notificationRepository.capturedFcmToken()
+        notificationRepository.clearAccountAlerts(account?.user_id)
+        if (account != null && authService.isLocalFallbackStoredSessionToken(account.access_token, account.refresh_token)) {
+            authService.rememberServerLogout(account.refresh_token)
+        }
         accountSessionRepository.removeAccount(accountId)
+        if (account != null && conectate.com.util.NotificationAccountTarget(account.user_id, account.email)
+                .matches(authService.getCurrentUserId(), authService.getCurrentUserEmail())) {
+            forceLocalLogout()
+            return
+        }
+        if (account != null) repositoryScope.launch {
+            runCatching {
+                notificationRepository.unregisterFcmToken(account.user_id, account.access_token, fcmToken,
+                    authService.isLocalFallbackStoredSessionToken(account.access_token, account.refresh_token))
+            }
+            runCatching {
+                authService.finishForcedLogout(account.refresh_token,
+                    authService.isLocalFallbackStoredSessionToken(account.access_token, account.refresh_token))
+            }
+        }
     }
 
     private suspend fun createUserProfile(user: User): Result<Unit> {

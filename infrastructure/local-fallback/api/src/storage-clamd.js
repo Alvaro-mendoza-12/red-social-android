@@ -21,12 +21,12 @@ function parseDaemonVersion(value, now, maxAgeMs) {
 }
 
 function createStorageClamd({ host = process.env.STORAGE_CLAMD_HOST || 'storage-antivirus', port = Number(process.env.STORAGE_CLAMD_PORT || 3310),
-  maxBytes = LIMIT, timeoutMs = 180_000, maxSignatureAgeMs = 24 * 60 * 60 * 1000,
+  maxBytes = LIMIT, timeoutMs = 660_000, maxSignatureAgeMs = 24 * 60 * 60 * 1000,
   attestationFile = process.env.STORAGE_CLAMD_POLICY_FILE, policySha256 = process.env.STORAGE_CLAMD_POLICY_SHA256,
   daemonConfigFile = process.env.STORAGE_CLAMD_CONFIG_FILE,
   connect = net.createConnection, now = Date.now } = {}) {
   if (!host || !Number.isInteger(port) || port < 1 || port > 65535 || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > LIMIT ||
-      !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 180_000 || !Number.isSafeInteger(maxSignatureAgeMs) || maxSignatureAgeMs < 1) throw error('STORAGE_SCAN_CONFIGURATION_INVALID')
+      !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 660_000 || !Number.isSafeInteger(maxSignatureAgeMs) || maxSignatureAgeMs < 1) throw error('STORAGE_SCAN_CONFIGURATION_INVALID')
 
   function socketCommand(command) {
     return new Promise((resolve, reject) => {
@@ -70,7 +70,7 @@ function createStorageClamd({ host = process.env.STORAGE_CLAMD_HOST || 'storage-
         policy.maxThreads !== 2 || policy.maxQueue !== 4 || policy.scanArchive !== true || policy.scanPE !== true || policy.scanOLE2 !== true ||
         !/^[a-f0-9]{64}$/.test(policy.configSha256 || '')) throw error('STORAGE_SCAN_POLICY_INSUFFICIENT')
     const required = { StreamMaxLength: '500M', MaxFileSize: '500M', MaxScanSize: '1000M', MaxThreads: '2', MaxQueue: '4',
-      AlertExceedsMax: 'yes', AlertEncrypted: 'yes', ScanArchive: 'yes', ScanPE: 'yes', ScanOLE2: 'yes' }
+      AlertExceedsMax: 'yes', AlertEncrypted: 'yes', ScanArchive: 'yes', ScanPE: 'yes', ScanOLE2: 'yes', MaxScanTime:'600000' }
     for (const [key, value] of Object.entries(required)) {
       const lines = daemonConfig.split(/\r?\n/).map(line => line.trim()).filter(line => !line.startsWith('#')).filter(line => line.startsWith(key + ' '))
       if (lines.length !== 1 || lines[0] !== key + ' ' + value) throw error('STORAGE_SCAN_CONFIG_INSUFFICIENT')
@@ -111,6 +111,8 @@ function createStorageClamd({ host = process.env.STORAGE_CLAMD_HOST || 'storage-
           const result = reply.subarray(0, delimiter).toString('utf8')
           if (!finishedWriting || delimiter !== reply.length - 1 || sentBytes !== stat.size) return finish(error('STORAGE_SCAN_REPLY_INVALID'))
           if (result === 'stream: OK') return finish()
+          if (/^stream: Heuristics\.Limits\.Exceeded\..+ FOUND$/.test(result)) return finish(error('STORAGE_SCAN_LIMIT_EXCEEDED', 422))
+          if (/^stream: Heuristics\.Encrypted\..+ FOUND$/.test(result)) return finish(error('STORAGE_ARCHIVE_ENCRYPTED', 415))
           if (/^stream: .+ FOUND$/.test(result)) return finish(error('STORAGE_FILE_REJECTED', 415))
           finish(error('STORAGE_SCAN_NOT_COMPLETE'))
         })

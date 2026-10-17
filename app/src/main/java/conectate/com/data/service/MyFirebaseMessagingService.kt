@@ -151,6 +151,13 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 !communityId.isNullOrBlank()
             val remoteAccountTarget = notificationAccountTargetFromRemoteData(data)
             val currentAccountTarget = currentNotificationAccountTarget()
+            if (!conectate.com.util.canReceiveAccountNotification(
+                    remoteAccountTarget,
+                    authService.getCurrentUserId(),
+                    authService.getCurrentUserEmail(),
+                    authService.isLoggedIn(),
+                    accountSessionRepository.accounts.value
+                )) return
             val effectiveAccountTarget = remoteAccountTarget ?: currentAccountTarget
             val isTargetingActiveAccount = remoteAccountTarget
                 ?.matches(authService.getCurrentUserId(), authService.getCurrentUserEmail())

@@ -222,6 +222,15 @@ object MessageNotificationFactory {
     }
 
     @Synchronized
+    fun cancelAccount(context: Context, userId: String?) {
+        if (userId.isNullOrBlank()) return
+        val manager = context.getSystemService(NotificationManager::class.java)
+        currentNotifications(context).filter {
+            it.notification.extras.getString(EXTRA_ACCOUNT)?.equals(userId, true) == true
+        }.forEach { cancelPublished(manager, it.tag, it.id) }
+    }
+
+    @Synchronized
     fun finishAction(context: Context, scope: String, messageId: String?, notificationId: Int, errorText: String? = null) {
         val manager = context.getSystemService(NotificationManager::class.java)
         val active = currentNotifications(context).firstOrNull { it.id == notificationId &&

@@ -120,6 +120,22 @@ fun resolveStoredAccountForTarget(
     return accounts.firstOrNull { target.matches(it) }
 }
 
+/** A removed account must never create an alert or an unread hint on this installation. */
+fun canReceiveAccountNotification(
+    target: NotificationAccountTarget?,
+    activeUserId: String?,
+    activeEmail: String?,
+    activeSessionAvailable: Boolean,
+    accounts: List<StoredAccountSession>
+): Boolean {
+    if (target == null || !target.isDefined) {
+        return activeSessionAvailable && !activeUserId.isNullOrBlank() &&
+            accounts.all { it.user_id?.trim()?.equals(activeUserId.trim(), true) == true }
+    }
+    if (activeSessionAvailable && target.matches(activeUserId, activeEmail)) return true
+    return accounts.any { target.matches(it) && it.access_token.isNotBlank() && it.refresh_token.isNotBlank() }
+}
+
 fun storedAccountDisplayLabel(account: StoredAccountSession): String {
     return account.display_name.normalizeDisplayName()
         ?: account.email.normalizeEmail()?.substringBefore('@')?.takeIf { it.isNotBlank() }

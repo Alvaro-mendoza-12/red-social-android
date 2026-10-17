@@ -10,7 +10,7 @@ const { createStorageClamd, parseDaemonVersion } = require('../src/storage-clamd
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex')
 const at = Date.UTC(2026, 9, 7, 12)
 const version = 'ClamAV 1.4.6/28150/Wed Oct 7 11:00:00 2026 COMMANDS: INSTREAM VERSIONCOMMANDS PING'
-const config = ['StreamMaxLength 500M','MaxFileSize 500M','MaxScanSize 1000M','MaxThreads 2','MaxQueue 4','AlertExceedsMax yes','AlertEncrypted yes','ScanArchive yes','ScanPE yes','ScanOLE2 yes'].join('\n')
+const config = ['StreamMaxLength 500M','MaxFileSize 500M','MaxScanSize 1000M','MaxThreads 2','MaxQueue 4','AlertExceedsMax yes','AlertEncrypted yes','ScanArchive yes','ScanPE yes','ScanOLE2 yes','MaxScanTime 600000'].join('\n')
 function fixture(mode = 'clean') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 's-')), file = path.join(root,'inert.txt'), policyFile = path.join(root,'policy.json'), configFile = path.join(root,'clamd.conf')
   const bytes = Buffer.alloc(192 * 1024, 'A'); fs.writeFileSync(file,bytes); fs.writeFileSync(configFile,config)
@@ -35,7 +35,7 @@ function fixture(mode = 'clean') {
         if(pending.length<4+size) break
         pending=pending.subarray(4+size)
         if(size===0) {
-          const reply = mode==='found' ? 'stream: Inert.Test.Result FOUND\0' : mode==='limit' ? 'INSTREAM size limit exceeded. ERROR\0' : mode==='partial' ? 'stream: OK' : mode==='extra' ? 'stream: OK\0stream: x FOUND\0' : 'stream: OK\0'
+          const reply = mode==='budget' ? 'stream: Heuristics.Limits.Exceeded.MaxScanTime FOUND\0' : mode==='encrypted' ? 'stream: Heuristics.Encrypted.Zip FOUND\0' : mode==='found' ? 'stream: Inert.Test.Result FOUND\0' : mode==='limit' ? 'INSTREAM size limit exceeded. ERROR\0' : mode==='partial' ? 'stream: OK' : mode==='extra' ? 'stream: OK\0stream: x FOUND\0' : 'stream: OK\0'
           queueMicrotask(()=>{ socket.emit('data',Buffer.from(reply)); if(mode==='partial')socket.emit('end') })
         } else {framedBytes+=size;frames++}
       }
@@ -64,4 +64,11 @@ test('FOUND, limit, incomplete, extra, early, timeout and stale replies fail clo
 })
 test('daemon config modification fails readiness before any bytes are sent',async()=>{
   const f=fixture();try{fs.appendFileSync(f.configFile,'\nMaxFileSize 1M');await assert.rejects(f.scanner.scan(f.file,{expectedSize:f.bytes.length}),/POLICY_UNVERIFIED/);assert.equal(f.sockets.length,0)}finally{f.cleanup()}
+})
+
+test('scan budget exhaustion and encrypted containers stay rejected with actionable distinct codes',async t=>{
+  for(const [mode,code,status] of [['budget','STORAGE_SCAN_LIMIT_EXCEEDED',422],['encrypted','STORAGE_ARCHIVE_ENCRYPTED',415],['found','STORAGE_FILE_REJECTED',415]])await t.test(mode,async()=>{
+    const f=fixture(mode)
+    try{await assert.rejects(f.scanner.scan(f.file,{expectedSize:f.bytes.length}),error=>error.code===code&&error.status===status)}finally{f.cleanup()}
+  })
 })

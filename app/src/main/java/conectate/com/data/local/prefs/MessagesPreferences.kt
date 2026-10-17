@@ -99,7 +99,7 @@ class MessagesPreferences @Inject constructor(
     val chatAccent: StateFlow<String> = _chatAccent
 
     private val _chatBackground = MutableStateFlow(
-        prefs.getString(KEY_CHAT_BACKGROUND, "deep_black") ?: "deep_black"
+        prefs.getString(KEY_CHAT_BACKGROUND, "pattern_doodles") ?: "pattern_doodles"
     )
     val chatBackground: StateFlow<String> = _chatBackground
 

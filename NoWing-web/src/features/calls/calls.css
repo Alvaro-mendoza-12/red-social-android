@@ -68,6 +68,21 @@
 .call-interface-container .participant-avatar { width: 30px; height: 30px; border-radius: 50%; flex: 0 0 30px; }
 .call-media-error { padding: 12px; border-radius: 12px; color: var(--danger); background: var(--surface-raised); font-size: .85rem; }
 .active-call:fullscreen { width: 100vw; max-width: none; height: 100dvh; border: 0; border-radius: 0; }
+.floating-call { position:fixed; inset:50% auto auto 50%; transform:translate(-50%,-50%); width:min(700px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; z-index:80; box-shadow:0 18px 70px #0008; }
+.floating-call .videos-container { height:clamp(220px,42dvh,430px); }
+.call-chat-background { width:100%; height:calc(100dvh - 100px); min-height:0; }
+.call-chat-background>.chat-detail-page { height:100%; }
+.call-mini-panel { display:grid; gap:8px; padding:12px; }
+.call-restore { display:flex; flex-direction:column; align-items:center; gap:10px; padding:14px; border:0; background:transparent; color:inherit; cursor:pointer; }
+.call-restore strong { font-size:1.2rem; }
+.call-restore small { color:var(--secondary-text); }
+.call-mini-controls { display:flex; justify-content:space-between; gap:12px; }
+.call-minimized { inset:auto 18px 82px auto; transform:none; width:min(270px,calc(100vw - 32px)); }
+/* Keep the existing media nodes mounted so minimizing never stops remote audio. */
+.call-minimized>.call-header { display:none; }
+.call-minimized>.call-main { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); pointer-events:none; visibility:hidden; }
+.floating-call:fullscreen { inset:0; transform:none; }
+@media(max-width:600px) { .floating-call:not(.call-minimized) { width:calc(100vw - 12px); max-height:calc(100dvh - 12px); } .call-minimized { right:8px; bottom:78px; } }
 .active-call:fullscreen .call-main { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .active-call:fullscreen .videos-container { flex: 1; height: auto; min-height: 0; }
 .active-call:fullscreen .call-controls { flex-shrink: 0; }

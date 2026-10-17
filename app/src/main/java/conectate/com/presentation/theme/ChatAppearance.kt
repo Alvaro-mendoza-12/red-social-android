@@ -12,7 +12,7 @@ data class ChatAccentColors(
 )
 
 val LocalChatAccentKey = staticCompositionLocalOf { "conectate_red" }
-val LocalChatBackgroundKey = staticCompositionLocalOf { "deep_black" }
+val LocalChatBackgroundKey = staticCompositionLocalOf { "pattern_doodles" }
 
 fun resolveChatAccent(key: String, darkTheme: Boolean): ChatAccentColors = when (key.trim().lowercase()) {
     "clean_white" -> ChatAccentColors(

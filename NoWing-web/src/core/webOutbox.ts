@@ -4,6 +4,8 @@ import { fallbackApiJson, fallbackSessionToUser, readFallbackSession } from './a
 import { ConversationSendQueue } from './conversationSendQueue'
 import { outboxFailureMessage } from './outboxFailureMessage'
 import { MAX_MESSAGE_UPLOAD_BYTES } from './attachmentPreparation'
+import {setOutboxProgress,clearOutboxProgress} from './outboxProgress'
+import { outboxDeliveryLane } from './outboxDeliveryPolicy'
 import type { GenericRow } from './utils'
 
 type Scope = 'chat' | 'group' | 'community'
@@ -15,6 +17,7 @@ type Cached = { key: string; owner: string; value: Record<string, unknown> }
 const pendingPrefix = 'novvin-pending-file:'
 let opening: Promise<IDBDatabase> | undefined
 const sendQueue = new ConversationSendQueue(3)
+const fileQueue = new ConversationSendQueue(2)
 const roomKey = (owner: string, scope: Scope, room: string) => [owner, scope, room].join('/')
 const roomLock = (owner: string, scope: Scope, room: string) => 'novvin-outbox-room/' + roomKey(owner, scope, room)
 const urls = new Map<string, string>()
@@ -101,12 +104,16 @@ export async function retryPendingWebMessage(id: string) {
 }
 export async function cancelPendingWebMessage(scope: Scope, room: string, id: string): Promise<GenericRow | null> {
   const owner = outboxOwner(); requireOwner(owner)
+  const previous = await operation<Pending | undefined>('messages', false, s => s.get(id))
+  requireOwner(owner)
+  if(!previous||previous.owner!==owner||previous.scope!==scope||previous.room!==room)return null
   const cancel = async () => {
     const item = await operation<Pending | undefined>('messages', false, s => s.get(id))
     requireOwner(owner)
     if (!item || item.owner !== owner || item.scope !== scope || item.room !== room) return null
     // Without Web Locks an outstanding send must finish before deciding if it is local.
-    if (!navigator.locks && sendQueue.has(roomKey(owner, scope, room))) throw new Error('Espera a que termine el envío para borrar este mensaje.')
+    const key=roomKey(owner,scope,room)+'/'+outboxDeliveryLane(item)
+    if (!navigator.locks && (sendQueue.has(key)||fileQueue.has(key))) throw new Error('Espera a que termine el envío para borrar este mensaje.')
     await remove('messages', id)
     const media = String(item.payload.mediaUrl || '')
     if (media.startsWith(pendingPrefix)) await remove('files', media.slice(pendingPrefix.length))
@@ -115,7 +122,9 @@ export async function cancelPendingWebMessage(scope: Scope, room: string, id: st
     if (cached) await cacheConversation(scope, room, { ...cached, messages: ((cached.messages || []) as GenericRow[]).filter(row => row.id !== id) }, owner)
     changed(owner); return message
   }
-  return await withConversationLock(owner, scope, room, false, cancel) ?? null
+  const cancelled=await withConversationLock(owner, scope, room+'/'+outboxDeliveryLane(previous), true, cancel)
+  if(cancelled===undefined)throw new Error('Espera a que termine el envío para borrar este mensaje.')
+  return cancelled
 }
 export async function cacheConversation(scope: Scope, room: string, value: Record<string, unknown>, owner: string) {
   requireOwner(owner)
@@ -135,11 +144,12 @@ async function deliver(item: Pending) {
     requireOwner(item.owner)
     if (!file || file.owner !== item.owner) throw new Error('No se encontró el archivo pendiente.')
     if (!file.uploadedUrl) {
+      setOutboxProgress({owner:item.owner,id:item.id,phase:'uploading',loaded:0,total:file.blob.size})
       // Existing queued Windows archives can predate the MIME normalization in the picker.
       const blob = /\.zip$/i.test(file.name) && file.blob.type !== 'application/zip' ? new Blob([file.blob], { type: 'application/zip' }) : file.blob
       const body = new FormData(); body.set('bucket', file.bucket); body.set('path', file.path); body.set('file', blob, file.name)
       // Upload time includes the server's antivirus scan, as well as transferring bytes.
-      const result = await fallbackApiJson<{ object: { publicUrl: string } }>('/v1/storage/upload', { method: 'POST', body, expectedAccountId: item.owner, signal: AbortSignal.timeout(300000) })
+      const result = await fallbackApiJson<{ object: { publicUrl: string } }>('/v1/storage/upload', { method: 'POST', body, expectedAccountId: item.owner, signal: AbortSignal.timeout(1200000),onUploadProgress:value=>setOutboxProgress({owner:item.owner,id:item.id,...value}) })
       requireOwner(item.owner); file.uploadedUrl = result.object.publicUrl; await put('files', file)
     }
     if (file.favoriteSticker && !file.favoriteSaved) {
@@ -152,6 +162,7 @@ async function deliver(item: Pending) {
     }
     payload.mediaUrl = file.uploadedUrl
   }
+  setOutboxProgress({owner:item.owner,id:item.id,phase:'sending'})
   const collection = item.scope === 'chat' ? 'chats' : item.scope === 'group' ? 'groups' : 'communities'
   const result = await fallbackApiJson<{ message: GenericRow }>(`/v1/data/messages/${collection}/${encodeURIComponent(item.room)}/messages`, {
     method: 'POST', body: JSON.stringify(payload), expectedAccountId: item.owner, signal: AbortSignal.timeout(25000),
@@ -160,6 +171,7 @@ async function deliver(item: Pending) {
   const cached = await cachedConversation(item.scope, item.room, item.owner)
   if (cached) await cacheConversation(item.scope, item.room, { ...cached, messages: [...((cached.messages || []) as GenericRow[]).filter(row => row.id !== item.id), result.message] }, item.owner)
   await remove('messages', item.id)
+  clearOutboxProgress(item.owner,item.id)
   if (media.startsWith(pendingPrefix)) await remove('files', media.slice(pendingPrefix.length))
   changed(item.owner)
   return result
@@ -180,18 +192,19 @@ export async function flushWebOutbox() {
   const items = (await all<Pending>('messages')).filter(item => item.owner === owner && item.state === 'pending').sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   requireOwner(owner)
   const rooms = new Map<string, Pending>()
-  for (const item of items) if (!rooms.has(roomKey(owner, item.scope, item.room))) rooms.set(roomKey(owner, item.scope, item.room), item)
-  await Promise.allSettled(Array.from(rooms, ([key, room]) => sendQueue.schedule(key, async () => {
+  for (const item of items) {const key=roomKey(owner,item.scope,item.room)+'/'+outboxDeliveryLane(item);if(!rooms.has(key))rooms.set(key,item)}
+  await Promise.allSettled(Array.from(rooms, ([key, room]) => (outboxDeliveryLane(room)==='ready'?sendQueue:fileQueue).schedule(key, async () => {
     const drain = async () => {
-      // Re-read after acquiring the cross-tab lock and after every delivery. A new
-      // message must not overtake an earlier pending message in the same room.
+      // Re-read under the cross-tab lock. Ready messages stay ordered within
+      // their lane; independent file transfers may complete in any order.
       while (navigator.onLine) {
         requireOwner(owner)
-        const item = (await all<Pending>('messages')).filter(entry => entry.owner === owner && entry.scope === room.scope && entry.room === room.room && entry.state === 'pending').sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
+        const item = (await all<Pending>('messages')).filter(entry => entry.owner === owner && entry.scope === room.scope && entry.room === room.room && entry.state === 'pending' && outboxDeliveryLane(entry)===outboxDeliveryLane(room)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
         if (!item || item.retryAt > Date.now()) return
         try { await deliver(item) }
         catch (error) {
           requireOwner(owner)
+          clearOutboxProgress(owner,item.id)
           item.attempts += 1; item.state = isTransientOutboxError(error) ? 'pending' : 'failed'
           item.failureMessage = item.state==='failed' ? outboxFailureMessage(error) : undefined
           item.retryAt = Date.now() + Math.min(60000, 1000 * 2 ** Math.min(item.attempts, 6))
@@ -200,7 +213,7 @@ export async function flushWebOutbox() {
         }
       }
     }
-    await withConversationLock(owner, room.scope, room.room, true, drain)
+    await withConversationLock(owner, room.scope, room.room+'/'+outboxDeliveryLane(room), true, drain)
   })))
 }
-export function revokeOutboxPreviews() { clearOutboxPreviewRegistry(); for (const url of urls.values()) URL.revokeObjectURL(url); urls.clear() }
+export function revokeOutboxPreviews(owner = outboxOwner()) { clearOutboxProgress(owner);clearOutboxPreviewRegistry(); for (const url of urls.values()) URL.revokeObjectURL(url); urls.clear() }

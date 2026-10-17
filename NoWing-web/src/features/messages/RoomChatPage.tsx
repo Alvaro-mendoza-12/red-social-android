@@ -1,4 +1,6 @@
+import { MediaDownloadButton } from '../../components/MediaDownloadButton'
 import { FolderAttachmentPicker } from '../../components/FolderAttachmentPicker'
+import { OutboxTransferStatus } from '../../components/OutboxTransferStatus'
 import { MessageSticker } from '../../components/MessageSticker'
 import { useConversationDraft } from '../../core/conversationDrafts'
 import { MessageText } from '../../components/MessageText'
@@ -1506,7 +1508,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   <>
                     {message.content && message.contentType !== 'sticker' ? <MessageText text={message.content}/> : null}
                     {message.mediaUrl && !isViewOnceType(message.contentType) ? (
-                      message.contentType === 'sticker' ? <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => setReplyToId(message.id)} onForward={() => void sendForwardedMessage(message)} /> : <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} onImageOpen={() => openGallery(message)} />
+                      message.contentType === 'sticker' ? <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => setReplyToId(message.id)} onForward={() => void sendForwardedMessage(message)} /> : <ChatAttachmentMedia inlineDownload={false} url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} onImageOpen={() => openGallery(message)} />
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
                       consumed ? (
@@ -1540,6 +1542,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                       <MoreHorizontal aria-hidden="true" />
                     </summary>
                     <div className="message-menu-popover">
+                    {message.mediaUrl && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={message.content || 'archivo'} /> : null}
                     {['👍', '❤️', '😂'].map((emoji) => (
                       <button key={emoji} className="mini-action-btn reaction-action" type="button" aria-label={`Reaccionar con ${emoji}`} onClick={() => void toggleReaction(message.id, emoji)}>
                         {emoji}
@@ -1584,6 +1587,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   </div>
                 ) : null}
                 {mine && message.status==='failed' && message.deliveryError ? <p className="message-delivery-error" role="status">{message.deliveryError}</p> : null}
+                {mine && message.status==='pending' ? <OutboxTransferStatus id={message.id}/> : null}
                 <small className="message-meta">
                   {Number.isFinite(Date.parse(message.createdAt)) ? new Date(message.createdAt).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'}) : ''}{message.isEdited ? ' · editado' : ''}
                   {mine ? <span className={`message-status ${message.status}`} aria-label={message.status==='pending'?'Pendiente':message.status==='failed'?'Error al enviar':message.status==='read'?'Leído':message.status==='delivered'?'Entregado':'Enviado'}>{message.status==='pending'?'◷':message.status==='failed'?<button type="button" className="mini-action-btn" onClick={()=>void retryPendingWebMessage(message.id)}>Reintentar</button>:message.status==='sent'?'✓':'✓✓'}</span> : null}

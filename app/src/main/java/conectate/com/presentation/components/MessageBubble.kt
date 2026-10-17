@@ -25,6 +25,9 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -468,10 +471,10 @@ fun MessageBubble(
         if (isFromCurrentUser) sentBgColor else receivedBgColor
     }
     val bubbleShape = RoundedCornerShape(
-        topStart = 18.dp,
-        topEnd = 18.dp,
-        bottomStart = if (isFromCurrentUser) 18.dp else 5.dp,
-        bottomEnd = if (isFromCurrentUser) 5.dp else 18.dp
+        topStart = 10.dp,
+        topEnd = 10.dp,
+        bottomStart = if (isFromCurrentUser) 10.dp else 3.dp,
+        bottomEnd = if (isFromCurrentUser) 3.dp else 10.dp
     )
 
     Row(
@@ -532,10 +535,10 @@ fun MessageBubble(
                 )
                 .padding(
                     horizontal = if (isStickerMessage) 4.dp else 11.dp,
-                    vertical = if (isStickerMessage) 1.dp else 7.dp
+                    vertical = if (isStickerMessage) 1.dp else 5.dp
                 )
         ) {
-            Column {
+            Column(modifier = if (message.content_type == "text" && message.reply_to_id == null && conectate.com.data.model.sharedVideoReference(message.content) == null) Modifier.width(IntrinsicSize.Max) else Modifier) {
                 // Sender Name and Badge (For Group/Community or own messages if name provided)
                 if (senderName != null && !isFromCurrentUser) {
                     Row(
@@ -748,7 +751,7 @@ fun MessageBubble(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .wrapContentHeight()
-                                    .heightIn(max = 300.dp),
+                                    .heightIn(max = 420.dp),
                                 contentScale = androidx.compose.ui.layout.ContentScale.FillWidth,
                                 loading = {
                                     Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
@@ -874,14 +877,28 @@ fun MessageBubble(
                                         tint = audioTint,
                                     )
                                 }
-                                AudioWaveform(
-                                    active = isPlaying,
-                                    progress = if (isAudioActive) progress else 0f,
-                                    color = audioTint,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(28.dp),
-                                )
+                                Box(modifier = Modifier.weight(1f).height(36.dp), contentAlignment = Alignment.Center) {
+                                    AudioWaveform(
+                                        active = isPlaying,
+                                        progress = if (isAudioActive) progress else 0f,
+                                        color = audioTint,
+                                        modifier = Modifier.fillMaxWidth().height(26.dp),
+                                    )
+                                    Slider(
+                                        value = if (isAudioActive) progress.coerceIn(0f, 1f) else 0f,
+                                        onValueChange = { value -> onSeekAudio(message, value) },
+                                        enabled = isAudioActive,
+                                        modifier = Modifier.fillMaxSize().semantics { contentDescription = "Posición del audio" },
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = audioTint,
+                                            activeTrackColor = Color.Transparent,
+                                            inactiveTrackColor = Color.Transparent,
+                                            disabledActiveTrackColor = Color.Transparent,
+                                            disabledInactiveTrackColor = Color.Transparent,
+                                            disabledThumbColor = Color.Transparent,
+                                        ),
+                                    )
+                                }
                                 Text(
                                     text = formatPlaybackSpeed(playbackSpeed),
                                     style = MaterialTheme.typography.labelMedium,
@@ -892,14 +909,6 @@ fun MessageBubble(
                                         .padding(horizontal = 7.dp, vertical = 5.dp),
                                 )
                             }
-                            Slider(
-                                value = if (isAudioActive) progress.coerceIn(0f, 1f) else 0f,
-                                onValueChange = { value -> onSeekAudio(message, value) },
-                                enabled = isAudioActive,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(24.dp),
-                            )
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Text(
                                     text = if (isAudioActive && duration != "0:00") duration else "0:00",

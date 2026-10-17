@@ -226,7 +226,6 @@ internal fun isGalleryMediaType(type: String): Boolean {
     if (normalized.startsWith("view_once_")) return false
     return normalized == "image" ||
         normalized == "gif" ||
-        normalized == "sticker" ||
         normalized.startsWith("image/") ||
         isVideoMediaType(normalized)
 }

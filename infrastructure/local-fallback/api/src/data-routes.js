@@ -5938,6 +5938,7 @@ async function ensureLocalDataTables(pool) {
     `CREATE INDEX IF NOT EXISTS idx_fallback_fcm_tokens_user
      ON fallback_fcm_tokens(lower(user_id), updated_at DESC)`,
   )
+  await pool.query(`ALTER TABLE fallback_fcm_tokens ADD COLUMN IF NOT EXISTS auth_session_id UUID`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_room_messages (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -7994,8 +7995,9 @@ function registerDataRoutes(app, {
       if (!token) return res.status(400).json({ error: 'TOKEN_REQUIRED' })
       await pool.query(
         `DELETE FROM fallback_fcm_tokens
-         WHERE lower(user_id) = $1 AND token = $2`,
-        [identity.displayUserId, token],
+         WHERE lower(user_id) = $1 AND token = $2
+           AND (auth_session_id IS NULL OR auth_session_id::text = $3)`,
+        [identity.displayUserId, token, String(req.auth?.sid || '')],
       )
       res.json({ ok: true })
     } catch (error) {
@@ -8043,11 +8045,12 @@ function registerDataRoutes(app, {
       const platform = cleanText(req.body?.platform, 40) || 'android'
       if (!token) return res.status(400).json({ error: 'TOKEN_REQUIRED' })
       await pool.query(
-        `INSERT INTO fallback_fcm_tokens(user_id, token, platform, created_at, updated_at)
-         VALUES ($1, $2, $3, NOW(), NOW())
+        `INSERT INTO fallback_fcm_tokens(user_id, token, platform, auth_session_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $4::uuid, NOW(), NOW())
          ON CONFLICT (user_id, token)
-         DO UPDATE SET platform = EXCLUDED.platform, updated_at = NOW()`,
-        [identity.displayUserId, token, platform],
+         DO UPDATE SET platform = EXCLUDED.platform, auth_session_id = EXCLUDED.auth_session_id, updated_at = NOW()`,
+        [identity.displayUserId, token, platform,
+          req.auth?.client !== 'web' ? validUuid(req.auth?.sid) : null],
       )
       res.status(201).json({ ok: true })
     } catch (error) {

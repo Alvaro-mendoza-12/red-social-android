@@ -1,4 +1,5 @@
 import type { User } from '@supabase/supabase-js'
+import { uploadWithProgress, type UploadProgress } from '../uploadProgress'
 import { invalidateStorageReadIdentity, updateStorageReadIdentity } from '../media/storageReadSession'
 import {
   getRuntimeBackendUrl,
@@ -127,7 +128,7 @@ async function parseFallbackResponse(response: Response) {
 
 export async function fallbackApiJson<T>(
   path: string,
-  init?: RequestInit & { auth?: boolean; webSession?: boolean; expectedAccountId?: string },
+  init?: RequestInit & { auth?: boolean; webSession?: boolean; expectedAccountId?: string; onUploadProgress?: (value:UploadProgress)=>void },
 ): Promise<T> {
   if (!isFallbackAuthConfigured) {
     throw new Error('El servidor Ubuntu no está configurado para esta web.')
@@ -165,12 +166,14 @@ export async function fallbackApiJson<T>(
   delete requestInit.auth
   delete requestInit.webSession
   delete requestInit.expectedAccountId
+  const onUploadProgress=init?.onUploadProgress
+  delete (requestInit as {onUploadProgress?:unknown}).onUploadProgress
 
   let response = await fetchFallback(normalizedPath, {
     ...requestInit,
     headers,
     credentials: requestInit.credentials ?? 'include',
-  })
+  }, onUploadProgress)
   let payload = await parseFallbackResponse(response)
   let code = String(payload.error || payload.message || '').trim()
   if (requiresAuth && response.status === 401 && code === 'INVALID_TOKEN') {
@@ -186,7 +189,7 @@ export async function fallbackApiJson<T>(
         ...requestInit,
         headers,
         credentials: requestInit.credentials ?? 'include',
-      })
+      }, onUploadProgress)
       payload = await parseFallbackResponse(response)
       code = String(payload.error || payload.message || '').trim()
     }
@@ -207,7 +210,7 @@ export async function fallbackApiJson<T>(
   return payload as T
 }
 
-async function fetchFallback(path: string, init: RequestInit): Promise<Response> {
+async function fetchFallback(path: string, init: RequestInit, onUploadProgress?: (value:UploadProgress)=>void): Promise<Response> {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const firstBaseUrl = fallbackApiUrl
   const retrySafe = isHttpRetrySafeMethod(init.method)
@@ -217,7 +220,7 @@ async function fetchFallback(path: string, init: RequestInit): Promise<Response>
   const requestInit = { ...init, credentials: init.credentials ?? 'include' } satisfies RequestInit
   const send = (url: string) => normalizedPath.startsWith('/v1/auth/')
     ? fetchAuthentication(url, requestInit)
-    : fetch(url, requestInit)
+    : onUploadProgress && init.body instanceof FormData ? uploadWithProgress(url,requestInit,onUploadProgress) : fetch(url, requestInit)
   try {
     const response = await send(`${firstBaseUrl}${normalizedPath}`)
     if (![502, 503, 504].includes(response.status) || !canRetryBody || !retrySafe) return response

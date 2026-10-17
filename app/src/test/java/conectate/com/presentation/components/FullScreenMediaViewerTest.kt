@@ -122,6 +122,8 @@ class FullScreenMediaViewerTest {
         assertTrue(isVideoMediaType("view_once_video"))
         assertFalse(isGalleryMediaType("view_once_video"))
         assertFalse(isGalleryMediaType("audio"))
+        assertFalse(isGalleryMediaType("sticker"))
+        assertFalse(isGalleryMediaType(" STICKER "))
     }
 
     @Test

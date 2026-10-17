@@ -935,10 +935,20 @@ class AuthService @Inject constructor(
     }
 
     /** Completes an immediate UI logout without clearing a newly signed-in session. */
+    fun rememberServerLogout(refreshToken: String?) {
+        val token = refreshToken?.trim().orEmpty()
+        if (token.isNotBlank() && !queueLogoutRevocation(token)) {
+            Log.e("AuthService", "Could not persist pending server logout")
+        }
+    }
+
     suspend fun finishForcedLogout(outgoingRefreshToken: String?, outgoingWasLocalFallback: Boolean) {
         if (outgoingWasLocalFallback) {
             val token = outgoingRefreshToken?.trim().orEmpty()
-            if (token.isNotBlank()) revokeCapturedSession(token)
+            if (token.isNotBlank()) {
+                rememberServerLogout(token)
+                revokeCapturedSession(token)
+            }
         } else if (isForcedLogout()) {
             supabaseConfig.client.auth.signOut()
         }

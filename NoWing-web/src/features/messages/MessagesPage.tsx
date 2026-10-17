@@ -1283,7 +1283,7 @@ export function MessagesPage() {
                     setOpenChatMenuId(null)
                   }}
                 >
-                  {item.isPinned ? 'Despinear chat' : 'Pinear chat'}
+                  {item.isPinned ? 'Desfijar chat' : 'Fijar chat'}
                 </button>
                 <button
                   type="button"
