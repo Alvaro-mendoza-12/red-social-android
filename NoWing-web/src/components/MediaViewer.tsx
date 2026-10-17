@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Film, Minus, Plus, RotateCcw, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Film, X } from 'lucide-react'
 import { StreamingImage, StreamingVideo } from './StreamingMedia'
 import { onStorageReadInvalidated } from '../core/media/storageReadSession'
 import { DocumentPreview } from './DocumentPreview'
+import { ZoomableImage } from './ZoomableImage'
 import { MediaDownloadButton } from './MediaDownloadButton'
 
 export type ViewerItem = {
@@ -26,10 +27,8 @@ export function MediaViewer({
   const close = useRef(onClose)
   useEffect(() => { close.current = onClose }, [onClose])
   const [index, setIndex] = useState(Math.max(0, Math.min(initialIndex, items.length - 1)))
-  const [zoomState, setZoomState] = useState({index:-1,value:1})
   const [failedIndex, setFailedIndex] = useState<number|null>(null)
-  const zoom = zoomState.index === index ? zoomState.value : 1, failed = failedIndex === index
-  const setZoom = (value: number | ((current: number) => number)) => setZoomState({index,value:typeof value === 'function'?value(zoom):value})
+  const failed = failedIndex === index
   const item = items[index]
   useEffect(() => {
     strip.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({block:'nearest',inline:'center'})
@@ -83,36 +82,6 @@ export function MediaViewer({
           ) : null}
         </div>
         <div className="row-actions">
-          {item.type === 'image' ? (
-            <>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Alejar"
-                disabled={zoom <= 1}
-                onClick={() => setZoom((value) => Math.max(1, value - 0.5))}
-              >
-                <Minus />
-              </button>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Ampliar"
-                disabled={zoom >= 3}
-                onClick={() => setZoom((value) => Math.min(3, value + 0.5))}
-              >
-                <Plus />
-              </button>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Restablecer tamaño"
-                onClick={() => setZoom(1)}
-              >
-                <RotateCcw size={19} />
-              </button>
-            </>
-          ) : null}
           <MediaDownloadButton url={item.downloadUrl || item.url} name={item.documentName || item.title || ''} iconOnly />
           <button type="button" className="icon-btn" aria-label="Cerrar visor" onClick={onClose}>
             <X />
@@ -120,7 +89,7 @@ export function MediaViewer({
         </div>
       </header>
       <div
-        className={`media-viewer-stage${zoom > 1 ? ' zoomed' : ''}`}
+        className={`media-viewer-stage${item.type === 'image' ? ' image-stage' : ''}`}
         onClick={(event) => {
           if (event.target === event.currentTarget) onClose()
         }}
@@ -143,18 +112,7 @@ export function MediaViewer({
             onError={() => setFailedIndex(index)}
           />
         ) : (
-          <StreamingImage
-            key={item.url}
-            src={item.url}
-            alt={item.title || 'Imagen ampliada'}
-            draggable={false}
-            onError={() => setFailedIndex(index)}
-            style={{
-              width: zoom > 1 ? `${zoom * 100}%` : undefined,
-              maxWidth: zoom > 1 ? 'none' : undefined,
-              maxHeight: zoom > 1 ? 'none' : undefined,
-            }}
-          />
+          <ZoomableImage key={`${index}:${item.url}`} src={item.url} title={item.title || 'Imagen ampliada'} onError={() => setFailedIndex(index)} />
         )}
       </div>
       {items.length>1?<nav ref={strip} className="media-viewer-filmstrip" aria-label="Archivos de la conversación">{items.map((entry,i)=><button type="button" key={`${entry.url}-${i}`} aria-label={`Ver archivo ${i+1}`} aria-current={i===index?'true':undefined} onClick={()=>setIndex(i)}>{entry.type==='image'?<StreamingImage src={entry.url} alt="" loading="lazy"/>:entry.type==='video'&&Math.abs(i-index)<=4?<StreamingVideo src={entry.url} muted preload="metadata" playsInline/>:<Film size={24}/>}<small>{i+1}</small></button>)}</nav>:null}

@@ -258,6 +258,9 @@ fun SocialScreen(
 
     var showCreatePostDialog by remember { mutableStateOf(false) }
     var showSurveysMenu by remember { mutableStateOf(false) }
+    val promotionState=rememberPromotionState(viewModel.currentUserId)
+    var showPromotionManager by remember {mutableStateOf(false)}
+    if(showPromotionManager)SocialPromotionManager(promotionState){showPromotionManager=false}
     var postToEdit by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var postToReport by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var showInternalShareDialog by remember { mutableStateOf(false) }
@@ -1734,6 +1737,7 @@ fun SocialScreen(
                                     Icon(Icons.Default.MoreVert, contentDescription = "Más opciones de Social", tint = MaterialTheme.colorScheme.primary)
                                 }
                                 DropdownMenu(expanded = showSurveysMenu, onDismissRequest = { showSurveysMenu = false }) {
+                                    if(promotionState.catalog?.canManage==true)DropdownMenuItem(text={Text("Publicidad · Crear y gestionar")},onClick={showSurveysMenu=false;showPromotionManager=true})
                                     DropdownMenuItem(text = { Text("Crear encuesta") }, onClick = {
                                         showSurveysMenu = false
                                         navController.navigate(Screen.Surveys.createRoute(mode = "create"))
@@ -1885,7 +1889,8 @@ fun SocialScreen(
                                         )
                                     }
                                     item(key = "novvin-promotion") {
-                                        SocialPromotionCard(viewModel.currentUserId) { destination ->
+                                        SocialPromotionCard(promotionState) { destination ->
+                                            if(destination.startsWith("https://")){runCatching{context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(destination)))};return@SocialPromotionCard}
                                             val route = when(destination) {
                                                 "/app/videos" -> Screen.Videos.route
                                                 "/app/social" -> Screen.Social.route

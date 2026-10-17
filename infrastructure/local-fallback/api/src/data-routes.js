@@ -290,6 +290,9 @@ function previewFromMessage(row) {
   const contentType = textOf(row, ['content_type'], '').toLowerCase()
   if (contentType === 'contact') return 'Contacto'
   const content = messageContentOf(row)
+  if (contentType === 'question') {
+    try { const value=JSON.parse(content);return typeof value.prompt==='string' && value.prompt.trim() ? 'Pregunta: '+value.prompt.trim().slice(0,160) : 'Pregunta de la comunidad' } catch { return 'Pregunta de la comunidad' }
+  }
   if (content) return content
   if (contentType === 'image') return 'Imagen'
   if (contentType === 'video') return 'Video'

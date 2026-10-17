@@ -2542,7 +2542,7 @@ async function insertDirectRpcMessage(pool, auth, body, { publishEvent = true } 
   return serializeCompatMessage(message)
 }
 
-async function insertCollectionRpcMessage(pool, auth, body, kind, { publishEvent = true } = {}) {
+async function insertCollectionRpcMessage(pool, auth, body, kind, { publishEvent = true, participantPoll = false } = {}) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   const roomId = normalizeIdentityValue(messageBodyValue(body, `${kind}_id`, ''))
@@ -2576,7 +2576,9 @@ async function insertCollectionRpcMessage(pool, auth, body, kind, { publishEvent
 
   const publicationRoom = await findCompatEntity(pool, kind === 'group' ? 'groups' : 'communities', roomId)
   const isPublicationOwner = ['creator_id','owner_id','user_id'].some(key => identity.values.includes(normalizeIdentityValue(publicationRoom?.[key])))
-  if (!(await require('./community-questions').collectionPublicationAllowed(pool,kind,roomId,isPublicationOwner))) throw httpError('ONLY_CREATOR_CAN_TALK')
+  // Set only by the transactional poll creator. Client descriptors cannot bypass policy.
+  const allowedPoll = participantPoll && contentType === 'poll' && Boolean(pollId) && !mediaUrl && !isForwarded
+  if (!allowedPoll && !(await require('./community-questions').collectionPublicationAllowed(pool,kind,roomId,isPublicationOwner))) throw httpError('ONLY_CREATOR_CAN_TALK')
   const roomResult = await pool.query(
     `SELECT only_admins_can_talk
      FROM fallback_collection_rooms
@@ -2584,7 +2586,7 @@ async function insertCollectionRpcMessage(pool, auth, body, kind, { publishEvent
      LIMIT 1`,
     [kind, roomId],
   )
-  if (roomResult.rows[0]?.only_admins_can_talk === true &&
+  if (!allowedPoll && roomResult.rows[0]?.only_admins_can_talk === true &&
       !(await canManageCollection(pool, kind, identity, roomId))) {
     throw httpError('ONLY_ADMINS_CAN_TALK')
   }
@@ -2792,7 +2794,7 @@ async function createPollMessageRpc(pool, auth, body, kind) {
       }
       message = kind === 'chat'
         ? await insertDirectRpcMessage(client, auth, messageBody, { publishEvent: false })
-        : await insertCollectionRpcMessage(client, auth, messageBody, kind, { publishEvent: false })
+        : await insertCollectionRpcMessage(client, auth, messageBody, kind, { publishEvent: false, participantPoll: true })
       created = true
     }
     await client.query('COMMIT')

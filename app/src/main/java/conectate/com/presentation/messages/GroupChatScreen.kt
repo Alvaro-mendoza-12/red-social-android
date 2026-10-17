@@ -514,7 +514,7 @@ fun GroupChatScreen(
                                         }
                                     )
                                 } else if (msg.content_type == "question") {
-                                    CommunityQuestionCard("group", groupId, msg.content, currentUserId)
+                                    CommunityQuestionCard("group", groupId, msg.content, currentUserId, reactions=msg.reactions, onReact={viewModel.openReactionPicker(msg)}, onReaction={viewModel.reactToMessage(msg,it)}, onLongClick={viewModel.onMessageLongClick(msg)})
                                 } else if (msg.content_type == "raffle") {
                                     conectate.com.presentation.raffles.RaffleMessageCard(msg.content, msg.sender_name) {
                                         navController.navigate(conectate.com.presentation.navigation.RaffleNavigation.createRoute("group", groupId, msg.media_url))
@@ -861,7 +861,7 @@ fun GroupChatScreen(
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                             Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text(if(publicationAllowed) "Solo los administradores pueden escribir" else "Solo el creador publica. Puedes reaccionar, votar y responder preguntas.", style = MaterialTheme.typography.bodyMedium)
+                            Column(Modifier.weight(1f)) { Text(if(publicationAllowed) "Solo los administradores pueden escribir" else "Solo el creador escribe. Puedes reaccionar, crear encuestas y responder preguntas.", style = MaterialTheme.typography.bodyMedium); if(!publicationAllowed) TextButton(onClick={showPollDialog=true}){Text("Crear encuesta")} }
                         }
                     }
                 }

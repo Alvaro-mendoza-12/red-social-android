@@ -74,7 +74,7 @@ fun GroupItem(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = if (draft.isNotEmpty()) "Borrador: $draft" else group.last_message ?: group.description ?: "Sin mensajes",
+                    text = if (draft.isNotEmpty()) "Borrador: $draft" else group.last_message?.let { readableCollectionPreview(it) } ?: group.description ?: "Sin mensajes",
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (draft.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     maxLines = 1,

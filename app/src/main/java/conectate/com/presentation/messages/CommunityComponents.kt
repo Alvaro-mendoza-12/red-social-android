@@ -81,7 +81,7 @@ fun CommunityItem(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = if (draft.isNotEmpty()) "Borrador: $draft" else community.last_message ?: community.description ?: "Explora esta comunidad",
+                    text = if (draft.isNotEmpty()) "Borrador: $draft" else community.last_message?.let { readableCollectionPreview(it) } ?: community.description ?: "Explora esta comunidad",
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (draft.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     maxLines = 1,

@@ -1702,7 +1702,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             window.location.assign('/app/messages')
           } catch { setError('No se pudo borrar el chat. Inténtalo de nuevo.') }
         }}>Borrar de mi lista</button>
-      </section> : !canPublish ? <p className="composer muted-line">Solo el creador publica mensajes. Puedes reaccionar, votar y responder las preguntas.</p> : <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
+      </section> : !canPublish ? <div className="composer muted-line"><p>Solo el creador escribe. Puedes reaccionar, crear encuestas y responder preguntas.</p><button type="button" className="mini-action-btn" onClick={()=>setShowPollComposer(true)}>Crear encuesta</button></div> : <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
         <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar">＋</summary><div className="chat-attachment-popover"><FolderAttachmentPicker onFiles={handleAttachFile}/>
         <button type="button" className="chat-attachment-option" onClick={event => { setShowStickers(true); event.currentTarget.closest('details')?.removeAttribute('open') }}>Buscar stickers</button>
         <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Importar sticker" aria-label="Importar sticker">

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MediaViewer } from '../../components/MediaViewer'
 import { invalidateStorageReadIdentity } from '../../core/media/storageReadSession'
+beforeAll(()=>{global.ResizeObserver=class { observe(){} unobserve(){} disconnect(){} } as unknown as typeof ResizeObserver})
 jest.mock('../../components/DocumentPreview', () => ({ DocumentPreview: ({ title, pdf }: { title:string; pdf:boolean }) => <section aria-label="Documento PDF" data-pdf={String(pdf)}>{title}</section> }))
 
 jest.mock('../../components/StreamingMedia', () => ({
@@ -12,9 +13,10 @@ test('shows selected image, zooms and moves between gallery items', () => {
   render(<MediaViewer items={[{url:'https://media.test/one.png',type:'image',title:'Una'},{url:'https://media.test/two.png',type:'image',title:'Dos'}]} onClose={()=>{}}/>)
   expect(screen.getByAltText('Una')).toHaveAttribute('src','https://media.test/one.png')
   fireEvent.click(screen.getByRole('button',{name:'Ampliar',exact:true}))
-  expect(screen.getByAltText('Una')).toHaveStyle({width:'150%'})
+  expect(screen.getByAltText('Una')).toHaveStyle({transform:'translate(0px, 0px) scale(1.5)'})
   fireEvent.click(screen.getByRole('button',{name:'Siguiente archivo',exact:true}))
   expect(screen.getByAltText('Dos')).toHaveAttribute('src','https://media.test/two.png')
+  expect(screen.getByAltText('Dos')).toHaveStyle({transform:'translate(0px, 0px) scale(1)'})
   fireEvent.click(screen.getByRole('button',{name:'Archivo anterior',exact:true}))
   expect(screen.getByAltText('Una')).toBeInTheDocument()
 })
@@ -42,4 +44,14 @@ test('the filmstrip selects images and videos directly and downloads are always 
  expect(screen.getByRole('button',{name:'Ver archivo 2'})).toHaveAttribute('aria-current','true')
  expect(container.querySelector('.media-viewer-stage video')).toHaveAttribute('controls')
  expect(screen.getByRole('button',{name:'Descargar archivo'})).toBeEnabled()
+})
+
+test('wheel, double click and keyboard control image zoom within bounds',()=>{
+ render(<MediaViewer items={[{url:'https://media.test/zoom.png',type:'image',title:'Zoom'}]} onClose={()=>{}}/> )
+ const stage=screen.getByRole('img',{name:/Usa la rueda/})
+ fireEvent.wheel(stage,{deltaY:-400});expect(screen.getByAltText('Zoom').style.transform).not.toContain('scale(1)')
+ fireEvent.click(screen.getByRole('button',{name:'Restablecer tamaño'}));expect(screen.getByAltText('Zoom').style.transform).toContain('scale(1)')
+ fireEvent.doubleClick(stage,{clientX:50,clientY:50});expect(screen.getByAltText('Zoom').style.transform).toContain('scale(2.5)')
+ fireEvent.keyDown(stage,{key:'0'});expect(screen.getByAltText('Zoom').style.transform).toContain('scale(1)')
+ fireEvent.click(screen.getByRole('button',{name:'Ampliar',exact:true}));fireEvent.keyDown(stage,{key:'+'});expect(screen.getByAltText('Zoom').style.transform).toContain('scale(2)')
 })

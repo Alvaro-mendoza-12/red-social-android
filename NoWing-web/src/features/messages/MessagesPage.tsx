@@ -402,6 +402,7 @@ async function loadCollection(
 }
 
 function previewFromMessage(row: GenericRow): string {
+  if(row.content_type === 'question') { try { const q=JSON.parse(String(row.content || '')); return q.prompt ? `Pregunta: ${String(q.prompt).slice(0,160)}` : 'Pregunta de la comunidad' } catch { return 'Pregunta de la comunidad' } }
   const content = textOf(row, ['content'], '').trim()
   if (content) return content
   const contentType = textOf(row, ['content_type'], '').toLowerCase()

@@ -108,6 +108,8 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const [webPreferences] = useWebPreferences()
   const feedCacheKey = `feed:${user?.id ?? 'anon'}`
+  const [promotionManager,setPromotionManager]=useState(false)
+  const [canManagePromotions,setCanManagePromotions]=useState(false)
   const [gallery, setGallery] = useState<{ items: ViewerItem[]; index: number } | null>(null)
   const [items, setItems] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -542,6 +544,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
               <Shuffle size={18} />
               Mezclar publicaciones
             </button>
+            {canManagePromotions?<button type="button" className="ghost-btn" onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setPromotionManager(true)}}>Publicidad · Crear y gestionar</button>:null}
           </div>
         </details>
       </div>
@@ -562,7 +565,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
         </Link>
       </div>
       <SocialMoments />
-      <SocialPromotion />
+      <SocialPromotion manageOpen={promotionManager} onClose={()=>setPromotionManager(false)} onManageAccess={setCanManagePromotions}/>
       {composerOpen ? (
         <div className="app-dialog-backdrop" role="presentation" onMouseDown={onCloseComposer}>
           <article

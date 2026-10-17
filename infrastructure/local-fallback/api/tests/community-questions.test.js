@@ -15,8 +15,20 @@ test('publication setting denies members while allowing the actual room creator'
   assert.equal(await collectionPublicationAllowed(db,'community','id',true),true)
   assert.equal(await collectionPublicationAllowed({query:async()=>({rows:[]})},'group','id',false),true)
 })
-test('own promotions accept internal destinations and reject external redirects',()=>{
+test('promotions accept internal routes and HTTPS product destinations',()=>{
   assert.equal(promotionInput({title:'Novvin',destination:'/app/messages'}).destination,'/app/messages')
-  for(const destination of ['//evil.test','https://evil.test','javascript:alert(1)','/app/\\evil.test'])assert.throws(()=>promotionInput({title:'Novvin',destination}))
+  for(const destination of ['//evil.test','http://shop.example','https://user:pass@shop.example','javascript:alert(1)','/app/\\evil.test'])assert.throws(()=>promotionInput({title:'Novvin',destination}))
   assert.throws(()=>promotionInput({title:'x'.repeat(101)}));assert.throws(()=>promotionInput({title:' '}))
+})
+
+test('carousel validates every card and enforces one to ten images',()=>{
+ const card={title:'Producto',imageUrl:'https://media.example/card.png',destination:'https://shop.example/product',cta:'Comprar'}
+ assert.equal(promotionInput({title:'Catálogo',cards:[card,card]}).cards.length,2)
+ for(const cards of [[],Array(11).fill(card),[null],[{...card,imageUrl:''}],[{...card,destination:'javascript:alert(1)'}]])assert.throws(()=>promotionInput({title:'Catálogo',cards}))
+ assert.equal(promotionInput({title:'Novvin'}).cards.length,0)
+})
+test('question preview is readable and never leaks the descriptor',()=>{
+ const {previewFromMessage}=require('../src/data-routes')
+ assert.equal(previewFromMessage({content_type:'question',content:JSON.stringify({questionId:'private-id',prompt:'2+2?'})}),'Pregunta: 2+2?')
+ assert.equal(previewFromMessage({content_type:'question',content:'{bad'}),'Pregunta de la comunidad')
 })

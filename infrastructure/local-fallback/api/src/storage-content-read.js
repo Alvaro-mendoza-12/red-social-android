@@ -5,7 +5,7 @@
 const {parseObjectReference, MAX_REFERENCES}=require('./storage-read-access');
 const SOURCES=Object.freeze({
   fallback_posts:{kind:'post',key:'id',fields:['media_url','media_urls']},
-  fallback_social_promotions:{kind:'post',key:'id',fields:['image_url']},
+  fallback_social_promotions:{kind:'post',key:'id',fields:['image_url','media_urls']},
   fallback_videos:{kind:'video',key:'id',fields:['video_url','cover_url','thumbnail_url','sound_url']},
   fallback_moments:{kind:'moment',key:'id',fields:['media_url','thumbnail_url','music_audio_url','music_url']},
   fallback_users:{kind:'profile',key:'id',fields:['avatar_url']},

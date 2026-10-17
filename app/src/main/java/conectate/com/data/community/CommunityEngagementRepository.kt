@@ -11,13 +11,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import dagger.hilt.android.qualifiers.ApplicationContext
+import conectate.com.data.supabase.StorageService
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Serializable data class QuestionAccess(val canCreate: Boolean = false, val isOwner: Boolean = false, val onlyCreator: Boolean = false, val canRespond: Boolean = false)
 @Serializable data class CommunityAnswer(val id: String, val userId: String, val username: String = "", val name: String = "Usuario", val content: String, val createdAt: String, val likes: Int = 0, val dislikes: Int = 0, val myVote: Int = 0)
 @Serializable data class CommunityQuestion(val id: String, val prompt: String, val maxLength: Int = 40, val closed: Boolean = false, val canRespond: Boolean = false, val total: Int = 0, val answers: List<CommunityAnswer> = emptyList(), val nextOffset: Int? = null)
-@Serializable data class SocialPromotion(val id: String, val title: String, val description: String = "", val imageUrl: String = "", val destination: String, val cta: String = "Abrir", val active: Boolean = true)
+@Serializable data class PromotionCard(val title: String = "", val description: String = "", val imageUrl: String = "", val destination: String = "/app/messages", val cta: String = "Abrir")
+@Serializable data class SocialPromotion(val id: String, val title: String, val description: String = "", val imageUrl: String = "", val destination: String, val cta: String = "Abrir", val active: Boolean = true, val cards: List<PromotionCard> = emptyList())
 @Serializable data class SocialPromotions(val items: List<SocialPromotion> = emptyList(), val canManage: Boolean = false)
 
 fun questionApiError(code: String) = when(code) {
@@ -29,7 +35,7 @@ fun questionApiError(code: String) = when(code) {
     else -> "No se pudo completar la acción. Inténtalo de nuevo."
 }
 @Singleton
-class CommunityEngagementRepository @Inject constructor(private val config: SupabaseConfig, private val auth: AuthService) {
+class CommunityEngagementRepository @Inject constructor(private val config: SupabaseConfig, private val auth: AuthService, private val storage: StorageService, @ApplicationContext private val context: Context) {
     private fun base(kind: String, roomId: String): String {
         require(kind in setOf("group", "community")); require(roomId.matches(Regex("[a-fA-F0-9-]{36}")))
         return "/v1/data/questions/$kind/$roomId"
@@ -40,8 +46,25 @@ class CommunityEngagementRepository @Inject constructor(private val config: Supa
     suspend fun policy(kind: String, roomId: String, onlyCreator: Boolean) = request(base(kind,roomId)+"/policy",buildJsonObject { put("onlyCreator",onlyCreator) },true)
     suspend fun answer(kind: String, roomId: String, id: String, content: String) = request(base(kind,roomId)+"/$id/answers",buildJsonObject { put("content",content) })
     suspend fun vote(kind: String, roomId: String, id: String, answerId: String, value: Int) = request(base(kind,roomId)+"/$id/votes",buildJsonObject { put("answerId",answerId);put("value",value) })
-    suspend fun promotions() = request("/v1/data/social/promotions").map { config.json.decodeFromJsonElement<SocialPromotions>(it) }
-    suspend fun createPromotion(title: String, description: String) = request("/v1/data/social/promotions",buildJsonObject {put("title",title);put("description",description);put("destination","/app/messages");put("cta","Abrir mensajes")})
+    suspend fun promotions(manage: Boolean = false) = request("/v1/data/social/promotions" + if(manage) "?manage=1" else "").map { config.json.decodeFromJsonElement<SocialPromotions>(it) }
+    suspend fun savePromotion(id: String?, title: String, description: String, cards: List<PromotionCard>) = request("/v1/data/social/promotions"+(id?.let{"/$it"} ?: ""),buildJsonObject {
+        put("title",title);put("description",description);put("destination",cards.firstOrNull()?.destination ?: "/app/messages");put("cta",cards.firstOrNull()?.cta ?: "Abrir")
+        put("cards",config.json.encodeToJsonElement(cards))
+    },id!=null)
+    suspend fun activatePromotion(id: String, active: Boolean) = request("/v1/data/social/promotions/$id",buildJsonObject{put("active",active)},true)
+    suspend fun uploadPromotionImage(uri: Uri, accountId: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val mime=context.contentResolver.getType(uri).orEmpty()
+            require(mime in setOf("image/jpeg","image/png","image/webp")){"Elige una imagen JPG, PNG o WebP."}
+            val size=context.contentResolver.query(uri,arrayOf(OpenableColumns.SIZE),null,null,null)?.use{if(it.moveToFirst())it.getLong(0)else 0L} ?: 0L
+            require(size in 1..(16L*1024*1024)){"La imagen debe pesar hasta 16 MB."}
+            val extension=when(mime){"image/png"->"png";"image/webp"->"webp";else->"jpg"}
+            val name="$accountId/promotions/${java.util.UUID.randomUUID()}.$extension"
+            val uploaded=storage.uploadFileFromUri("post-media",name,uri,size,mime,false,{}).getOrThrow()
+            val key=uploaded.Key?.removePrefix("post-media/")?.takeIf{it.isNotBlank()} ?: error("El servidor no devolvió la imagen subida.")
+            Result.success(storage.getPublicUrl("post-media",key))
+        }catch(cancelled: CancellationException){throw cancelled}catch(error: Exception){Result.failure(error)}
+    }
     private suspend fun request(path: String, payload: JsonObject? = null, patch: Boolean = false): Result<JsonObject> = withContext(Dispatchers.IO) {
         try {
             val token=auth.ensureValidAccessToken().getOrThrow()
