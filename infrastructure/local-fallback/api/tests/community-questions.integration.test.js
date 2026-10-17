@@ -35,6 +35,8 @@ test('question persistence, creator permissions, Unicode limits, votes, paginati
     await call('/'+q.id+'/votes',other,'POST',{answerId,value:0});assert.equal((await(await call('/'+q.id)).json()).answers[0].dislikes,0)
     assert.equal((await call('/'+q.id+'?offset=-1')).status,400)
     assert.equal((await call('/'+q.id+'/votes',other,'POST',{answerId:randomUUID(),value:1})).status,404)
+    await pool.query("INSERT INTO fallback_question_answers(id,question_id,user_id,content,created_at) SELECT gen_random_uuid(),$1,'pagination-'||i,'Respuesta '||i,NOW()+i*INTERVAL '1 second' FROM generate_series(1,60) i",[q.id])
+    detail=await(await call('/'+q.id,member)).json();assert.equal(detail.total,61);assert.equal(detail.answers.length,50);assert.equal(detail.nextOffset,50);assert.equal(detail.myAnswer.content,'5');assert.equal(detail.myAnswer.userId,member.id);assert.ok(!detail.answers.some(a=>a.userId===member.id))
     revoked=true;assert.equal((await call('/'+q.id,member)).status,403);assert.equal((await call('/'+q.id+'/answers',member,'POST',{content:'6'})).status,403)
     await pool.query('UPDATE fallback_room_messages SET deleted_for_all=TRUE WHERE id=$1',[q.messageId]);assert.equal((await call('/'+q.id)).status,404)
   }finally{if(server)await new Promise(resolve=>server.close(resolve));await pool.end();await admin.query(`DROP SCHEMA ${schema} CASCADE`);await admin.end()}

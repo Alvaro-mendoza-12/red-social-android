@@ -21,7 +21,7 @@ import javax.inject.Singleton
 
 @Serializable data class QuestionAccess(val canCreate: Boolean = false, val isOwner: Boolean = false, val onlyCreator: Boolean = false, val canRespond: Boolean = false)
 @Serializable data class CommunityAnswer(val id: String, val userId: String, val username: String = "", val name: String = "Usuario", val content: String, val createdAt: String, val likes: Int = 0, val dislikes: Int = 0, val myVote: Int = 0)
-@Serializable data class CommunityQuestion(val id: String, val prompt: String, val maxLength: Int = 40, val closed: Boolean = false, val canRespond: Boolean = false, val total: Int = 0, val answers: List<CommunityAnswer> = emptyList(), val nextOffset: Int? = null)
+@Serializable data class CommunityQuestion(val id: String, val prompt: String, val maxLength: Int = 40, val closed: Boolean = false, val canRespond: Boolean = false, val total: Int = 0, val answers: List<CommunityAnswer> = emptyList(), val nextOffset: Int? = null, val myAnswer: CommunityAnswer? = null)
 @Serializable data class PromotionCard(val title: String = "", val description: String = "", val imageUrl: String = "", val destination: String = "/app/messages", val cta: String = "Abrir")
 @Serializable data class SocialPromotion(val id: String, val title: String, val description: String = "", val imageUrl: String = "", val destination: String, val cta: String = "Abrir", val active: Boolean = true, val cards: List<PromotionCard> = emptyList())
 @Serializable data class SocialPromotions(val items: List<SocialPromotion> = emptyList(), val canManage: Boolean = false)

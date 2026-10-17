@@ -118,8 +118,10 @@ function registerCommunityQuestionRoutes(app, deps) {
       LEFT JOIN fallback_question_votes m ON m.answer_id=a.id AND m.user_id=$2
       WHERE question_id=$1 ORDER BY a.created_at DESC,a.id DESC LIMIT 50 OFFSET $3`,[q.id,ctx.identity.displayUserId,offset])).rows
     const total=(await db.query('SELECT count(*)::int AS total FROM fallback_question_answers WHERE question_id=$1',[q.id])).rows[0].total
-    const profiles=await publicProfilesByIds(db,answers.map(a=>a.user_id))
+    const mine=(await db.query('SELECT id,user_id,content,created_at FROM fallback_question_answers WHERE question_id=$1 AND user_id=$2 LIMIT 1',[q.id,ctx.identity.displayUserId])).rows[0]
+    const profiles=await publicProfilesByIds(db,[...answers.map(a=>a.user_id),...(mine?[mine.user_id]:[])])
     return {id:q.id,prompt:q.prompt,maxLength:q.max_length,closed:q.closed,canRespond:ctx.active,total,nextOffset:offset+answers.length<total?offset+answers.length:null,
+      myAnswer:mine?{id:mine.id,userId:mine.user_id,content:mine.content,createdAt:mine.created_at}:null,
       answers:answers.map(a=>{const p=profiles.find(p=>[p.id,p.supabase_user_id,p.user_id].includes(a.user_id));return{id:a.id,userId:a.user_id,username:p?.username || '',name:p?.display_name || p?.full_name || 'Usuario',content:a.content,createdAt:a.created_at,likes:a.likes,dislikes:a.dislikes,myVote:a.my_vote}})}
   }))
   app.post(base+'/:id/answers',authRequired,route(async(db,ctx,kind,roomId,req)=>{

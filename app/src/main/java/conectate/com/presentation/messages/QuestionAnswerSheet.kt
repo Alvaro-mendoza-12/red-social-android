@@ -19,8 +19,10 @@ import java.time.format.DateTimeFormatter
 internal fun QuestionAnswerSheet(question: CommunityQuestion?, prompt: String, initialAnswer: Boolean, accountId: String?, busy: Boolean, error: String?,
     onClose: () -> Unit, onAnswer: (String, () -> Unit) -> Unit, onVote: (String, Int) -> Unit, onMore: () -> Unit) {
     var tab by remember { mutableIntStateOf(if(initialAnswer) 0 else 1) }
-    val mine=question?.answers?.find{it.userId==accountId}
+    val mine=question?.myAnswer ?: question?.answers?.find{it.userId==accountId}
     var draft by remember { mutableStateOf(mine?.content.orEmpty()) }
+    var edited by remember {mutableStateOf(false)}
+    LaunchedEffect(mine?.content){if(!edited)draft=mine?.content.orEmpty()}
     val limit=question?.maxLength ?: 40
     ModalBottomSheet(onDismissRequest=onClose, sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
         Column(Modifier.fillMaxWidth().height((LocalConfiguration.current.screenHeightDp * .75f).dp).imePadding().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -33,7 +35,7 @@ internal fun QuestionAnswerSheet(question: CommunityQuestion?, prompt: String, i
                 Column(Modifier.weight(1f).fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                     Text("Comparte una respuesta breve. Puedes actualizarla cuando quieras.",style=MaterialTheme.typography.bodyMedium)
                     if(question?.canRespond==true && !question.closed) {
-                        OutlinedTextField(value=draft,onValueChange={draft=limitedQuestionAnswer(it,limit)},label={Text("Tu respuesta")},minLines=2,maxLines=4,modifier=Modifier.fillMaxWidth(),supportingText={Text("${draft.codePointCount(0,draft.length)}/$limit caracteres · Una por persona")})
+                        OutlinedTextField(value=draft,onValueChange={edited=true;draft=limitedQuestionAnswer(it,limit)},label={Text("Tu respuesta")},minLines=2,maxLines=4,modifier=Modifier.fillMaxWidth(),supportingText={Text("${draft.codePointCount(0,draft.length)}/$limit caracteres · Una por persona")})
                         Button(enabled=!busy&&draft.isNotBlank(),modifier=Modifier.fillMaxWidth(),onClick={onAnswer(draft){tab=1}}){Text(if(busy)"Guardando…" else if(mine!=null)"Actualizar respuesta" else "Enviar respuesta")}
                     } else Text(if(question?.closed==true)"Esta pregunta está cerrada." else "Únete para responder.")
                 }

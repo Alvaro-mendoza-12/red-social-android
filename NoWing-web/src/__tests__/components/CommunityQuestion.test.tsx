@@ -28,3 +28,11 @@ test('floating answers open the list and switching tabs does not duplicate answe
  fireEvent.click(screen.getByRole('tab',{name:'Tu respuesta'}));expect(screen.getByLabelText('Tu respuesta')).toBeVisible()
  fireEvent.click(screen.getByRole('tab',{name:'Respuestas (50)'}));expect(document.querySelectorAll('.question-answer-list article')).toHaveLength(50)
 })
+
+test('my saved answer is restored even when it is outside the loaded page',async()=>{
+ api.mockResolvedValue({...reference,id:reference.questionId,canRespond:true,closed:false,total:61,nextOffset:50,answers:[],myAnswer:{id:'mine',userId:'me',content:'Mi respuesta anterior'}})
+ render(<CommunityQuestion scope="group" roomId="room" content={JSON.stringify(reference)}/>)
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Responder',exact:true})).toBeEnabled())
+ fireEvent.click(screen.getByRole('button',{name:'Responder',exact:true}))
+ expect(screen.getByLabelText('Tu respuesta')).toHaveValue('Mi respuesta anterior')
+})
