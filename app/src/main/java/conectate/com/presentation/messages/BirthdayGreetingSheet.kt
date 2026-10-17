@@ -15,6 +15,7 @@ import conectate.com.presentation.components.BirthdayLetter
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BirthdayGreetingSheet(initial: BirthdayCard, recipientName: String, busy: Boolean,
+    canSend: Boolean, conversationNotice: @Composable () -> Unit,
     onChange: (BirthdayCard) -> Unit, onDismiss: () -> Unit, onSend: (BirthdayCard) -> Unit) {
     var message by rememberSaveable { mutableStateOf(initial.message) }
     var theme by rememberSaveable { mutableStateOf(initial.theme) }
@@ -26,6 +27,7 @@ internal fun BirthdayGreetingSheet(initial: BirthdayCard, recipientName: String,
             Text("Felicítalo ahora", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(if (recipientName.isBlank()) "Prepara una carta de cumpleaños" else "Una carta de cumpleaños para $recipientName",
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            conversationNotice()
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BirthdayCard.themes.zip(listOf("Confeti", "Amanecer", "Jardín")).forEach { (id, label) ->
                     FilterChip(selected = theme == id, onClick = { theme = id }, label = { Text(label) })
@@ -36,7 +38,7 @@ internal fun BirthdayGreetingSheet(initial: BirthdayCard, recipientName: String,
                 message = if (value.codePointCount(0, value.length) > 600) value.substring(0, value.offsetByCodePoints(0, 600)) else value
             }, label = { Text("Tu felicitación") }, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 6,
                 supportingText = { Text("${message.codePointCount(0, message.length)}/600 · Se guarda como borrador") })
-            Button(onClick = { onSend(card) }, enabled = card.isValid && !busy, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { onSend(card) }, enabled = card.isValid && canSend && !busy, modifier = Modifier.fillMaxWidth()) {
                 Text(if (busy) "Preparando envío…" else "Enviar carta de cumpleaños")
             }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("Ahora no") }

@@ -135,8 +135,25 @@ fun ChatScreen(
     val otherUserReactive by viewModel.otherUserMetadata.collectAsState()
     val isSending by viewModel.isSending.collectAsState()
     var showBirthdayGreeting by rememberSaveable { mutableStateOf(birthdayGreeting) }
+    val messageRequest by viewModel.messageRequest.collectAsState()
+    val requestWarningAcknowledged by viewModel.requestWarningAcknowledged.collectAsState()
+    val requestDecisionBusy by viewModel.requestDecisionBusy.collectAsState()
+    val isBlocked by viewModel.isBlocked.collectAsState()
     if (showBirthdayGreeting && chatState is ChatUiState.Success) {
         BirthdayGreetingSheet(initial = remember { viewModel.restoreBirthdayCard() }, busy = isSending,
+            canSend = !isBlocked && !requestDecisionBusy && messageRequest.permitsLocalQueue &&
+                (!messageRequest.needsFirstMessageWarning || requestWarningAcknowledged),
+            conversationNotice = {
+                if (isBlocked) Text("No puedes enviar mensajes a este usuario.")
+                else DirectMessageRequestNotice(
+                    state = messageRequest, senderName = otherUserReactive?.displayName.orEmpty(),
+                    warningAcknowledged = requestWarningAcknowledged, busy = requestDecisionBusy,
+                    onContinue = viewModel::acknowledgeMessageRequestWarning,
+                    onAccept = { viewModel.decideMessageRequest(true) },
+                    onReject = { viewModel.decideMessageRequest(false) },
+                    onRefresh = viewModel::refreshMessageRequest,
+                )
+            },
             recipientName = otherUserReactive?.displayName.orEmpty(), onChange = viewModel::updateBirthdayCard,
             onDismiss = { showBirthdayGreeting = false },
             onSend = { viewModel.sendBirthdayCard(it) { showBirthdayGreeting = false } })
@@ -144,10 +161,6 @@ fun ChatScreen(
     val transfers by conectate.com.core.messaging.MessageUploadProgress.transfers.collectAsState()
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMessages by viewModel.selectedMessages.collectAsState()
-    val isBlocked by viewModel.isBlocked.collectAsState()
-    val messageRequest by viewModel.messageRequest.collectAsState()
-    val requestWarningAcknowledged by viewModel.requestWarningAcknowledged.collectAsState()
-    val requestDecisionBusy by viewModel.requestDecisionBusy.collectAsState()
     val isBlockedByMe by viewModel.isBlockedByMe.collectAsState()
     val isBlockedByOther by viewModel.isBlockedByOther.collectAsState()
     var showDeleteDialog by remember { mutableStateOf(false) }

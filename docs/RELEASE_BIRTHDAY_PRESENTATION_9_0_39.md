@@ -1,6 +1,6 @@
 # Novvin: presentación y cartas de cumpleaños
 
-Versiones preparadas: Android 9.0.39 (136), web 9.0.46.
+Versiones preparadas: Android 9.0.39 (136), web 9.0.47.
 
 ## Cambios
 

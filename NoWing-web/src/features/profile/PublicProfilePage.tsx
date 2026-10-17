@@ -1,3 +1,4 @@
+import { birthdayLabel } from '../../core/birthdayCard'
 import { ProfilePostPreview } from '../../components/ProfilePostPreview'
 import { StreamingImage, StreamingVideo, StreamingAudio } from '../../components/StreamingMedia'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -50,6 +51,9 @@ type PublicProfileData = {
   hobbies: string[]
   linkedGames: string[]
   career: string
+  education: string
+  workplace: string
+  birthDate: string
   favoriteSport: string
   favoriteMusicUrl: string
   badges: Array<{ id: string; name: string; icon: string }>
@@ -118,6 +122,9 @@ function mapPublicProfile(
     hobbies: stringArrayFrom(row.hobbies),
     linkedGames: stringArrayFrom(row.linked_games ?? row.linkedGames),
     career: textOf(row, ['career'], ''),
+    education: textOf(row, ['education'], ''),
+    workplace: textOf(row, ['workplace'], ''),
+    birthDate: textOf(row, ['birth_date', 'birthDate'], ''),
     favoriteSport: textOf(row, ['favorite_sport', 'favoriteSport'], ''),
     favoriteMusicUrl: textOf(row, ['favorite_music_url', 'favoriteMusicUrl'], ''),
     badges: profileBadgesFrom(row.badges),
@@ -612,7 +619,9 @@ export function PublicProfilePage() {
         ) : (
           <div className="profile-about-copy">
             <p>{profile.bio || 'Sin presentación todavía.'}</p>
-            {profile.career ? <p>{profile.career}</p> : null}
+            {profile.education ? <p>🎓 Estudios: {profile.education}</p> : null}
+            {profile.career ? <p>Profesión o carrera: {profile.career}</p> : null}
+            {profile.workplace ? <p>Trabajo: {profile.workplace}</p> : null}
             <div className="chip-row">
               {[...profile.interests, ...profile.hobbies, ...profile.linkedGames].map((value) => (
                 <span className="profile-badge" key={value}>
@@ -624,6 +633,7 @@ export function PublicProfilePage() {
             {profile.favoriteMusicUrl ? (
               <StreamingAudio src={profile.favoriteMusicUrl} controls preload="none" />
             ) : null}
+            {profile.birthDate && birthdayLabel(profile.birthDate) ? <p>🎂 Cumpleaños: {birthdayLabel(profile.birthDate)}</p> : null}
           </div>
         )}
       </div>
