@@ -1,3 +1,5 @@
+import { clipboardFilesFrom, canPasteIntoChat, pastedAsSticker, isStickerImage } from '../../core/chatClipboard'
+import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
 import { CommunityRaffles } from '../../components/CommunityRaffles'
@@ -139,7 +141,7 @@ const roomConfigByScope: Record<RoomScope, RoomConfig> = {
 type PendingAttachment = {
   id: string
   file: File
-  contentType: 'image' | 'video' | 'audio' | 'file'
+  contentType: 'image' | 'video' | 'audio' | 'file' | 'sticker'
   previewUrl: string
   caption: string
 }
@@ -384,7 +386,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         return [...current, nextMessage].sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt))
       }
       const next = [...current]
-      next[index] = nextMessage
+      next[index] = newerMessage(current[index], nextMessage)
       next.sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt))
       return next
     })
@@ -424,7 +426,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     setShowScrollToBottom(!isNearBottom && messages.length > 0)
   }, [messages.length])
 
-  const queueAttachmentFiles = useCallback((input: FileList | File[] | null) => {
+  const queueAttachmentFiles = useCallback((input: FileList | File[] | null, pasted = false, stickerIntent = false) => {
     if (!input || input.length === 0) return
     const files = Array.from(input).filter((entry) => entry.size > 0)
     if (files.length === 0) return
@@ -433,7 +435,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       ...files.map((file) => ({
         id: crypto.randomUUID(),
         file,
-        contentType: inferContentType(file),
+        contentType: pasted && pastedAsSticker(file, stickerIntent) ? 'sticker' as const : inferContentType(file),
         previewUrl: previewUrlForFile(file),
         caption: '',
       })),
@@ -569,14 +571,15 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   useEffect(() => {
     if (editingMessageId) return
     const paste = (event: ClipboardEvent) => {
-      const files = Array.from(event.clipboardData?.files || []).filter(file => file.size > 0)
+      if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
+      const files = clipboardFilesFrom(event.clipboardData)
       if (!files.length) return
-      event.preventDefault(); queueAttachmentFiles(files)
-      const image = files.find(file => /^image\/(png|jpeg)$/.test(file.type)); if (image) setImageEditorFile(image)
+      event.preventDefault()
+      queueAttachmentFiles(files, true, showStickers)
     }
     window.addEventListener('paste', paste)
     return () => window.removeEventListener('paste', paste)
-  }, [editingMessageId, queueAttachmentFiles])
+  }, [editingMessageId, queueAttachmentFiles, showStickers])
 
   useEffect(() => {
     pendingAttachmentsRef.current = pendingAttachments
@@ -721,7 +724,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         setRoomAvatar(resolveSupabasePublicUrl(scope === 'group' ? 'groups' : 'communities',conversationAvatarSource(response.room || response.chat || {})))
         setTitle(response.title || (scope === 'group' ? 'Grupo' : 'Comunidad'))
         const mappedMessages = (response.messages ?? []).map(mapRoomMessage)
-        setMessages(mappedMessages)
+        setMessages(current => mergeMessageSnapshot(current, mappedMessages))
         await loadPollStates(mappedMessages)
         if (!isStaleLoad() && response.historyAccess?.isMember !== false && navigator.onLine && document.visibilityState === 'visible') void markAsRead().catch(() => {})
         setConsumedViewOnce({})
@@ -762,7 +765,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
 
       const mappedMessages = ((messageRows ?? []) as GenericRow[]).map(mapRoomMessage)
       if (isStaleLoad()) return
-      setMessages(mappedMessages)
+      setMessages(current => mergeMessageSnapshot(current, mappedMessages))
       await Promise.all([loadPollStates(mappedMessages), loadConsumedViewOnce(mappedMessages), markAsRead()])
     } catch (caught) {
       if (!isStaleLoad() && !options?.silent) {
@@ -988,7 +991,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         const safeName = attachment.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const filePath = `${scope}/${user.id}/${Date.now()}_${index}_${safeName}`
         const publicUrl = useUbuntu
-          ? (await uploadFallbackFile(config.mediaBucket, attachment.file, filePath)).publicUrl
+          ? (await uploadFallbackFile(config.mediaBucket, attachment.file, filePath, undefined,
+              attachment.contentType === 'sticker' ? { id: crypto.randomUUID(), title: attachment.caption.trim() || 'Sticker', isAnimated: /^image\/(gif|webp)$/.test(attachment.file.type) } : undefined)).publicUrl
           : await (async () => {
               const { error: uploadError } = await supabase!.storage
                 .from(config.mediaBucket)
@@ -998,7 +1002,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
               return data.publicUrl
             })()
         const caption =
-          attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || attachment.file.name
+          attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || (attachment.contentType === 'sticker' ? 'Sticker' : attachment.file.name)
         await sendMessage(caption, publicUrl, attachment.contentType, index === 0 ? replyToId : null)
         setPendingAttachments((current) => current.filter((entry) => entry.id !== attachment.id))
         if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
@@ -1018,27 +1022,36 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     }
     const text = (editingMessageId ? editingDraft : draft).trim()
     if ((!text && pendingAttachments.length === 0) || sending || uploading || sendInFlightRef.current) return
+    if (editingMessageId && (!text || text.length > 4096)) { setError('Escribe entre 1 y 4096 caracteres para guardar la corrección.'); return }
     const submittedDraft = draft
     const draftRevisionAtSend = draftRevisionRef.current
     const sendingTextOnly = !editingMessageId && pendingAttachments.length === 0
+    const sendOwner = preparationOwnerRef.current
     sendInFlightRef.current = true
+    setError(null)
     setSending(true)
     try {
       if (editingMessageId) {
         const response = useUbuntu
           ? await editFallbackRoomMessage(scope, cleanRoomId, editingMessageId, text)
           : null
+        if (sendOwner !== preparationOwnerRef.current) return
+        loadSequenceRef.current += 1
         if (response) {
           upsertMessageInState(mapRoomMessage(response.message))
         } else if (supabase && user) {
           const nowIso = new Date().toISOString()
-          const { error: editError } = await supabase
+          const { data: editedRow, error: editError } = await supabase
             .from(config.messageTable)
             .update({ content: text, is_edited: true, updated_at: nowIso })
             .eq('id', editingMessageId)
             .eq(config.roomForeignKey, cleanRoomId)
             .eq('sender_id', user.id)
+            .select('id').maybeSingle()
           if (editError) throw editError
+          if (!editedRow) throw new Error('No se pudo guardar: el mensaje ya no está disponible para editar.')
+          if (sendOwner !== preparationOwnerRef.current) return
+          loadSequenceRef.current += 1
           setMessages((current) => current.map((entry) => entry.id === editingMessageId
             ? { ...entry, content: text, isEdited: true, updatedAt: nowIso }
             : entry))
@@ -1057,7 +1070,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       if (sendingTextOnly && draftRevisionRef.current === draftRevisionAtSend) {
         setDraft(submittedDraft)
       }
-      setError(friendlyError(caught, 'No se pudo enviar mensaje'))
+      if (sendOwner === preparationOwnerRef.current) setError(friendlyError(caught, editingMessageId ? 'No se pudo guardar la corrección. Tu texto sigue aquí para volver a intentarlo.' : 'No se pudo enviar el mensaje'))
     } finally {
       sendInFlightRef.current = false
       setSending(false)
@@ -1560,7 +1573,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                     </button>
                     {mine && message.contentType === 'text' ? (
                       <button className="mini-action-btn" type="button" onClick={() => {
-                        setEditingMessageId(message.id)
+                        setError(null)
+                          setEditingMessageId(message.id)
+                          requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.chat-input-field')?.focus())
                         draftRevisionRef.current += 1
                         setEditingDraft(message.content)
                       }}>
@@ -1662,10 +1677,11 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   <div className="attachment-draft-meta">
                     <strong>{attachment.file.name}</strong>{attachment.contentType === 'image' && !/\.(gif|webp)$/i.test(attachment.file.name) ? <button type="button" className="mini-action-btn" onClick={() => setImageEditorFile(attachment.file)}>Editar imagen</button> : null}
                     <small>{formatFileSize(attachment.file.size)}</small>
+                    {isStickerImage(attachment.file) ? <button type="button" className="mini-action-btn attachment-sticker-toggle" aria-pressed={attachment.contentType === 'sticker'} onClick={() => setPendingAttachments(current => current.map(item => item.id === attachment.id ? { ...item, contentType: item.contentType === 'sticker' ? 'image' : 'sticker' } : item))}>{attachment.contentType === 'sticker' ? 'Sticker · Cambiar a imagen' : 'Enviar como sticker'}</button> : null}
                   </div>
                   <input
                     className="text-input tiny-input"
-                    placeholder="Texto opcional para este archivo"
+                    placeholder={attachment.contentType === 'sticker' ? 'Nombre del sticker (opcional)' : 'Texto opcional para este archivo'}
                     value={attachment.caption}
                     onChange={(event) =>
                       updatePendingAttachmentCaption(attachment.id, event.target.value)
@@ -1768,7 +1784,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         </button>
         <input
           className="text-input chat-input-field"
-          placeholder={`Escribe en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}
+          disabled={Boolean(editingMessageId) && sending}
+          placeholder={editingMessageId ? 'Edita tu mensaje...' : `Escribe en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}
           value={editingMessageId ? editingDraft : draft}
           onChange={(event) => {
             draftRevisionRef.current += 1
@@ -1776,7 +1793,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           }}
         />
 
-        <button className="primary-btn circle-btn" type="submit" disabled={sending || uploading || preparingAttachments}>
+        <button className="primary-btn circle-btn" type="submit" aria-label={editingMessageId ? 'Guardar corrección' : 'Enviar mensaje'} disabled={sending || uploading || preparingAttachments}>
           {sending || uploading ? (
             '...'
           ) : (

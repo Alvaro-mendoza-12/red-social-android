@@ -1,7 +1,15 @@
 import type { ImportedSticker } from './webOutbox'
-import { cachedConversation, cacheConversation, cancelPendingWebMessage, isTransientOutboxError, outboxOwner, pendingConversationMessages, sendDurableWebMessage, stageOfflineChatAttachment } from './webOutbox'
+import { cachedConversation, cacheConversation, cancelPendingWebMessage, editPendingWebMessage, isTransientOutboxError, outboxOwner, pendingConversationMessages, sendDurableWebMessage, stageOfflineChatAttachment } from './webOutbox'
 import { fallbackApiJson } from './auth/fallbackAuth'
 import type { GenericRow } from './utils'
+import { notifyInboxMessage } from './inboxActivity'
+
+async function saveEditedConversationMessage(scope: 'chat' | 'group' | 'community', room: string, owner: string, result: { message: GenericRow }) {
+  const cached = await cachedConversation(scope, room, owner)
+  if (cached) await cacheConversation(scope, room, { ...cached, messages: ((cached.messages || []) as GenericRow[]).map(row => row.id === result.message.id ? result.message : row) }, owner)
+  notifyInboxMessage(String(result.message.sender_id || owner), scope, room, result.message)
+  return result
+}
 
 export type FallbackProfileMeResponse = {
   profile: GenericRow
@@ -593,10 +601,14 @@ export async function editFallbackChatMessage(
   messageId: string,
   content: string,
 ): Promise<{ message: GenericRow }> {
-  return fallbackApiJson<{ message: GenericRow }>(
+  const owner = outboxOwner()
+  const pending = await editPendingWebMessage('chat', chatId, messageId, content)
+  if (pending) return { message: pending }
+  const result = await fallbackApiJson<{ message: GenericRow }>(
     `/v1/data/messages/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}`,
-    { method: 'PATCH', body: JSON.stringify({ content }) },
+    { method: 'PATCH', body: JSON.stringify({ content }), expectedAccountId: owner },
   )
+  return saveEditedConversationMessage('chat', chatId, owner, result)
 }
 
 export async function deleteFallbackChatMessage(
@@ -646,11 +658,15 @@ export async function editFallbackRoomMessage(
   messageId: string,
   content: string,
 ): Promise<{ message: GenericRow }> {
+  const owner = outboxOwner()
+  const pending = await editPendingWebMessage(scope, roomId, messageId, content)
+  if (pending) return { message: pending }
   const collection = scope === 'group' ? 'groups' : 'communities'
-  return fallbackApiJson<{ message: GenericRow }>(
+  const result = await fallbackApiJson<{ message: GenericRow }>(
     `/v1/data/messages/${collection}/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}`,
-    { method: 'PATCH', body: JSON.stringify({ content }) },
+    { method: 'PATCH', body: JSON.stringify({ content }), expectedAccountId: owner },
   )
+  return saveEditedConversationMessage(scope, roomId, owner, result)
 }
 
 export async function deleteFallbackRoomMessage(

@@ -1,3 +1,5 @@
+import { clipboardFilesFrom, canPasteIntoChat, pastedAsSticker, isStickerImage } from '../../core/chatClipboard'
+import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
 import { BirthdayComposer, BirthdayLetter } from '../../components/BirthdayLetter'
@@ -146,7 +148,7 @@ type SendMessageInput = {
 type PendingAttachment = {
   id: string
   file: File
-  contentType: 'image' | 'video' | 'audio' | 'file'
+  contentType: 'image' | 'video' | 'audio' | 'file' | 'sticker'
   previewUrl: string
   caption: string
 }
@@ -213,16 +215,6 @@ function shouldRenderMessageText(message: ChatMessage): boolean {
   if (!message.mediaUrl) return true
   if (message.contentType === 'location' || message.contentType === 'contact') return true
   return !contentLooksLikeAttachmentName(content)
-}
-
-function clipboardFilesFrom(dataTransfer: DataTransfer | null): File[] {
-  if (!dataTransfer) return []
-  const files = Array.from(dataTransfer.files ?? []).filter((file) => file.size > 0)
-  if (files.length > 0) return files
-  return Array.from(dataTransfer.items ?? [])
-    .filter((item) => item.kind === 'file')
-    .map((item) => item.getAsFile())
-    .filter((file): file is File => Boolean(file && file.size > 0))
 }
 
 function toBoolean(value: unknown): boolean {
@@ -568,7 +560,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         return [...current, nextMessage].sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt))
       }
       const next = [...current]
-      next[index] = nextMessage
+      next[index] = newerMessage(current[index], nextMessage)
       next.sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt))
       return next
     })
@@ -609,7 +601,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     return () => window.removeEventListener('resize', keepLatestMessageVisible)
   }, [keepLatestMessageVisible])
 
-  const queueAttachmentFiles = useCallback((input: FileList | File[] | null) => {
+  const queueAttachmentFiles = useCallback((input: FileList | File[] | null, pasted = false, stickerIntent = false) => {
     if (!input || input.length === 0) return
     const files = Array.from(input).filter((entry) => entry.size > 0)
     if (files.length === 0) return
@@ -618,7 +610,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       ...files.map((file) => ({
         id: crypto.randomUUID(),
         file,
-        contentType: inferContentType(file),
+        contentType: pasted && pastedAsSticker(file, stickerIntent) ? 'sticker' as const : inferContentType(file),
         previewUrl: previewUrlForFile(file),
         caption: '',
       })),
@@ -752,17 +744,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   )
 
   useEffect(() => {
-    if (editingMessageId) return undefined
-    const handlePaste = (event: ClipboardEvent) => {
+    if (editingMessageId) return
+    const paste = (event: ClipboardEvent) => {
+      if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
       const files = clipboardFilesFrom(event.clipboardData)
-      if (files.length === 0) return
+      if (!files.length) return
       event.preventDefault()
-      queueAttachmentFiles(files)
-      const firstImage = files.find(file => /^image\/(png|jpeg)$/.test(file.type)); if (firstImage) setImageEditorFile(firstImage)
+      queueAttachmentFiles(files, true, showStickers)
     }
-    window.addEventListener('paste', handlePaste)
-    return () => window.removeEventListener('paste', handlePaste)
-  }, [editingMessageId, queueAttachmentFiles])
+    window.addEventListener('paste', paste)
+    return () => window.removeEventListener('paste', paste)
+  }, [editingMessageId, queueAttachmentFiles, showStickers])
 
   useEffect(() => {
     pendingAttachmentsRef.current = pendingAttachments
@@ -1038,7 +1030,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         setTitle(response.title || 'Chat privado')
         setOtherParticipant(response.otherParticipant)
         const mappedMessages = response.messages.map(mapMessage)
-        setMessages(mappedMessages)
+        setMessages(current => mergeMessageSnapshot(current, mappedMessages))
         setSettings(response.settings)
         setScheduledJobs([])
         await loadPollStates(mappedMessages)
@@ -1121,7 +1113,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
 
       const mappedMessages = ((messageRows ?? []) as GenericRow[]).map(mapMessage)
       if (isStaleLoad()) return
-      setMessages(mappedMessages)
+      setMessages(current => mergeMessageSnapshot(current, mappedMessages))
       await Promise.all([
         loadPollStates(mappedMessages),
         loadConsumedViewOnce(mappedMessages),
@@ -1340,9 +1332,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
           const attachment = queued[index]
           const safeName = attachment.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
           const filePath = `dm/${user.id}/${Date.now()}_${index}_${safeName}`
-          const uploaded = await uploadFallbackFile('chat-media', attachment.file, filePath)
+          const uploaded = await uploadFallbackFile('chat-media', attachment.file, filePath, undefined,
+            attachment.contentType === 'sticker' ? { id: crypto.randomUUID(), title: attachment.caption.trim() || 'Sticker', isAnimated: /^image\/(gif|webp)$/.test(attachment.file.type) } : undefined)
           const caption =
-            attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || attachment.file.name
+            attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || (attachment.contentType === 'sticker' ? 'Sticker' : attachment.file.name)
           await sendMessage({
             content: caption,
             mediaUrl: uploaded.publicUrl,
@@ -1373,7 +1366,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         if (uploadError) throw uploadError
         const { data } = supabase.storage.from('chat-media').getPublicUrl(filePath)
         const caption =
-          attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || attachment.file.name
+          attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || (attachment.contentType === 'sticker' ? 'Sticker' : attachment.file.name)
         await sendMessage({
           content: caption,
           mediaUrl: data.publicUrl,
@@ -1404,15 +1397,20 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     }
     const text = (editingMessageId ? editingDraft : draft).trim()
     if ((!text && pendingAttachments.length === 0) || sending || uploading || sendInFlightRef.current) return
+    if (editingMessageId && (!text || text.length > 4096)) { setError('Escribe entre 1 y 4096 caracteres para guardar la corrección.'); return }
     const submittedDraft = draft
     const draftRevisionAtSend = draftRevisionRef.current
     const sendingTextOnly = !editingMessageId && pendingAttachments.length === 0
+    const sendOwner = preparationOwnerRef.current
     sendInFlightRef.current = true
+    setError(null)
     setSending(true)
     try {
       if (editingMessageId) {
         if (useUbuntu) {
           const response = await editFallbackChatMessage(cleanChatId, editingMessageId, text)
+          if (sendOwner !== preparationOwnerRef.current) return
+          loadSequenceRef.current += 1
           upsertMessageInState(mapMessage(response.message))
           setEditingMessageId(null)
           setEditingDraft('')
@@ -1421,13 +1419,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         if (!supabase) return
         if (!text) return
         const nowIso = new Date().toISOString()
-        const { error: editError } = await supabase
+        const { data: editedRow, error: editError } = await supabase
           .from('messages')
           .update({ content: text, is_edited: true, updated_at: nowIso })
           .eq('id', editingMessageId)
           .eq('chat_id', cleanChatId)
           .eq('sender_id', user?.id ?? '')
+          .select('id').maybeSingle()
         if (editError) throw editError
+        if (!editedRow) throw new Error('No se pudo guardar: el mensaje ya no está disponible para editar.')
+        if (sendOwner !== preparationOwnerRef.current) return
+        loadSequenceRef.current += 1
         setMessages((current) =>
           current.map((entry) =>
             entry.id === editingMessageId
@@ -1449,7 +1451,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       if (sendingTextOnly && draftRevisionRef.current === draftRevisionAtSend) {
         setDraft(submittedDraft)
       }
-      setError(friendlyError(caught, 'No se pudo enviar el mensaje'))
+      if (sendOwner === preparationOwnerRef.current) setError(friendlyError(caught, editingMessageId ? 'No se pudo guardar la corrección. Tu texto sigue aquí para volver a intentarlo.' : 'No se pudo enviar el mensaje'))
     } finally {
       sendInFlightRef.current = false
       setSending(false)
@@ -2277,7 +2279,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                         className="mini-action-btn"
                         type="button"
                         onClick={() => {
+                          setError(null)
                           setEditingMessageId(message.id)
+                          requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.chat-input-field')?.focus())
                           setEditingDraft(message.content)
                         }}
                       >
@@ -2415,10 +2419,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                   <div className="attachment-draft-meta">
                     <strong>{attachment.file.name}</strong>{attachment.contentType === 'image' && !/\.(gif|webp)$/i.test(attachment.file.name) ? <button type="button" className="mini-action-btn" onClick={() => setImageEditorFile(attachment.file)}>Editar imagen</button> : null}
                     <small>{formatFileSize(attachment.file.size)}</small>
+                    {isStickerImage(attachment.file) ? <button type="button" className="mini-action-btn attachment-sticker-toggle" aria-pressed={attachment.contentType === 'sticker'} onClick={() => setPendingAttachments(current => current.map(item => item.id === attachment.id ? { ...item, contentType: item.contentType === 'sticker' ? 'image' : 'sticker' } : item))}>{attachment.contentType === 'sticker' ? 'Sticker · Cambiar a imagen' : 'Enviar como sticker'}</button> : null}
                   </div>
                   <input
                     className="text-input tiny-input"
-                    placeholder="Texto opcional para este archivo"
+                    placeholder={attachment.contentType === 'sticker' ? 'Nombre del sticker (opcional)' : 'Texto opcional para este archivo'}
                     value={attachment.caption}
                     onChange={(event) =>
                       updatePendingAttachmentCaption(attachment.id, event.target.value)
@@ -2466,6 +2471,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
 
         <input
           className="text-input chat-input-field"
+          disabled={Boolean(editingMessageId) && sending}
           placeholder={editingMessageId ? 'Edita tu mensaje...' : 'Escribe un mensaje...'}
           value={composerText}
           onChange={(event) => {
@@ -2494,7 +2500,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
           )}
         </button>
 
-        <button className="primary-btn circle-btn" type="submit" aria-label="Enviar mensaje" disabled={sending || uploading || preparingAttachments}>
+        <button className="primary-btn circle-btn" type="submit" aria-label={editingMessageId ? 'Guardar corrección' : 'Enviar mensaje'} disabled={sending || uploading || preparingAttachments}>
           {sending || uploading ? (
             '...'
           ) : (

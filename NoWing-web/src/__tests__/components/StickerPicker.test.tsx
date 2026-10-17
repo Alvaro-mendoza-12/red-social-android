@@ -58,7 +58,8 @@ test('uses the mobile animation flag even when the URL has no animation extensio
   await screen.findByRole('button',{name:'Enviar sticker Fijo'})
   fireEvent.click(screen.getByRole('button',{name:'Animados',exact:true}))
   expect(screen.getByRole('button',{name:'Enviar sticker En movimiento'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Enviar sticker Fijo'})).toBeNull()
-  fireEvent.click(screen.getByRole('button',{name:'Guardar sticker En movimiento'}))
+  fireEvent.contextMenu(screen.getByRole('button',{name:'Enviar sticker En movimiento'}), {clientX:100,clientY:100})
+  fireEvent.click(screen.getByRole('menuitem',{name:'Guardar en favoritos'}))
   await waitFor(()=>expect(rpc).toHaveBeenCalledWith('secure_toggle_sticker_favorite',expect.objectContaining({p_is_animated:true})))
 })
 
@@ -69,5 +70,30 @@ test('refreshes favorites saved from another device without reopening the chat',
   fireEvent.click(screen.getByRole('button',{name:'Actualizar stickers'}))
   await screen.findByRole('button',{name:'Enviar sticker Del móvil'})
   fireEvent.click(screen.getByRole('button',{name:'Favoritos',exact:true}))
-  expect(screen.getByRole('button',{name:'Quitar de favoritos sticker Del móvil'})).toHaveAttribute('aria-pressed','true')
+  fireEvent.contextMenu(screen.getByRole('button',{name:'Enviar sticker Del móvil'}))
+  expect(screen.getByRole('menuitem',{name:'Quitar de favoritos'})).toBeInTheDocument()
+})
+
+
+test('keeps tiles free of stars and exposes favorites in one keyboard menu', async () => {
+  const select = jest.fn()
+  render(<StickerPicker onSelect={select} onImport={() => {}} onClose={() => {}} />)
+  const tile = await screen.findByRole('button', {name:'Enviar sticker Hola'})
+  expect(document.querySelector('.sticker-save-button')).toBeNull()
+  fireEvent.keyDown(tile, {key:'F10', shiftKey:true})
+  expect(screen.getAllByRole('menu')).toHaveLength(1)
+  expect(screen.getByRole('menuitem',{name:'Enviar sticker'})).toHaveFocus()
+  fireEvent.keyDown(screen.getByRole('menu'),{key:'ArrowDown'})
+  expect(screen.getByRole('menuitem',{name:'Guardar en favoritos'})).toHaveFocus()
+  fireEvent.keyDown(document,{key:'Escape'})
+  expect(screen.queryByRole('menu')).toBeNull()
+  expect(tile).toHaveFocus()
+  expect(select).not.toHaveBeenCalled()
+})
+
+test('closes sticker options on outside click', async () => {
+  render(<StickerPicker onSelect={() => {}} onImport={() => {}} onClose={() => {}} />)
+  fireEvent.contextMenu(await screen.findByRole('button', {name:'Enviar sticker Hola'}))
+  fireEvent.pointerDown(document.body)
+  expect(screen.queryByRole('menu')).toBeNull()
 })

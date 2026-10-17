@@ -11,7 +11,7 @@ import type { GenericRow } from './utils'
 
 type Scope = 'chat' | 'group' | 'community'
 type Payload = { id?: string; content: string; contentType?: string; mediaUrl?: string | null; [key: string]: unknown }
-type Pending = { id: string; owner: string; scope: Scope; room: string; payload: Payload; createdAt: string; senderId: string; state: 'pending' | 'failed'; attempts: number; retryAt: number; failureMessage?: string }
+type Pending = { id: string; owner: string; scope: Scope; room: string; payload: Payload; createdAt: string; updatedAt?: string; senderId: string; state: 'pending' | 'failed'; attempts: number; retryAt: number; failureMessage?: string }
 export type ImportedSticker = { id: string; title: string; isAnimated: boolean }
 type Attachment = { id: string; owner: string; bucket: string; blob: Blob; name: string; path: string; createdAt: number; uploadedUrl?: string; favoriteSticker?: ImportedSticker; favoriteSaved?: boolean }
 type Cached = { key: string; owner: string; value: Record<string, unknown> }
@@ -78,7 +78,7 @@ async function optimistic(item: Pending): Promise<GenericRow> {
   const media = String(item.payload.mediaUrl || '')
   return { ...item.payload, id: item.id, content_type: item.payload.contentType || 'text',
     media_url: media.startsWith(pendingPrefix) ? await attachmentUrl(item.owner, media.slice(pendingPrefix.length)) : media,
-    sender_id: item.senderId, created_at: item.createdAt, status: item.state, delivery_error: item.failureMessage || '',
+    sender_id: item.senderId, created_at: item.createdAt, updated_at: item.updatedAt || item.createdAt, status: item.state, delivery_error: item.failureMessage || '',
     ...(item.scope === 'chat' ? { chat_id: item.room } : { [`${item.scope}_id`]: item.room }) }
 }
 export async function stageOfflineChatAttachment(bucket: string, file: File, path?: string, favoriteSticker?: ImportedSticker) {
@@ -130,6 +130,28 @@ export async function cancelPendingWebMessage(scope: Scope, room: string, id: st
 export async function cacheConversation(scope: Scope, room: string, value: Record<string, unknown>, owner: string) {
   requireOwner(owner)
   await put('conversations', { key: `${owner}/${scope}/${room}`, owner, value } satisfies Cached)
+}
+export async function editPendingWebMessage(scope: Scope, room: string, id: string, content: string): Promise<GenericRow | null> {
+  const owner = outboxOwner(); requireOwner(owner)
+  const previous = await operation<Pending | undefined>('messages', false, store => store.get(id))
+  requireOwner(owner)
+  if (!previous || previous.owner !== owner || previous.scope !== scope || previous.room !== room) return null
+  const edit = async () => {
+    const item = await operation<Pending | undefined>('messages', false, store => store.get(id))
+    requireOwner(owner)
+    if (!item || item.owner !== owner || item.scope !== scope || item.room !== room) return null
+    const key = roomKey(owner, scope, room) + '/' + outboxDeliveryLane(item)
+    if (!navigator.locks && (sendQueue.has(key) || fileQueue.has(key))) throw new Error('El mensaje se está enviando. Espera un momento y vuelve a guardar la corrección.')
+    if (item.payload.contentType && item.payload.contentType !== 'text') throw new Error('Solo puedes editar mensajes de texto.')
+    item.payload = { ...item.payload, content }; item.updatedAt = new Date().toISOString()
+    await put('messages', item); requireOwner(owner)
+    const message = await optimistic(item)
+    notifyInboxMessage(item.senderId || owner, scope, room, message); changed(owner)
+    return message
+  }
+  const result = await withConversationLock(owner, scope, room + '/' + outboxDeliveryLane(previous), true, edit)
+  if (result === undefined) throw new Error('El mensaje se está enviando. Espera un momento y vuelve a guardar la corrección.')
+  return result
 }
 export async function cachedConversation(scope: Scope, room: string, owner = outboxOwner()) {
   const cached = await operation<Cached | undefined>('conversations', false, s => s.get(`${owner}/${scope}/${room}`))
