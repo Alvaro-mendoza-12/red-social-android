@@ -233,13 +233,13 @@ fun CommunityDetailScreen(
                         ) {
                             if (!community?.image.isNullOrEmpty()) {
                                 AsyncImage(
-                                    model = community?.image,
+                                    model = conectate.com.core.media.MediaImageRequestFactory.avatar(androidx.compose.ui.platform.LocalContext.current, conectate.com.data.localfallback.UbuntuStorageUrl.collectionAvatar("community", community?.image)),
                                     contentDescription = "Imagen de la comunidad",
                                     modifier = Modifier
                                         .size(100.dp)
                                         .clip(androidx.compose.foundation.shape.CircleShape)
                                         .clickable {
-                                            navController.navigate(Screen.FullScreenImage.createRoute(community!!.image!!))
+                                            conectate.com.data.localfallback.UbuntuStorageUrl.collectionAvatar("community", community?.image)?.let { navController.navigate(Screen.FullScreenImage.createRoute(it)) }
                                         },
                                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                                 )

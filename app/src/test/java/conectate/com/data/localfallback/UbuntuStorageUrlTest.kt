@@ -7,6 +7,16 @@ import org.junit.Test
 
 class UbuntuStorageUrlTest {
 
+    @Test fun `bare collection avatar paths use the right bucket`() {
+        val group=UbuntuStorageUrl.collectionAvatar("group","team/photo.png")
+        val community=UbuntuStorageUrl.collectionAvatar("community","photo.png")
+        org.junit.Assert.assertTrue(group.orEmpty().endsWith("/storage/v1/object/public/groups/team/photo.png"))
+        org.junit.Assert.assertTrue(community.orEmpty().endsWith("/storage/v1/object/public/communities/photo.png"))
+        assertNull(UbuntuStorageUrl.collectionAvatar("group","null"))
+        assertEquals(group,UbuntuStorageUrl.collectionAvatar("group","public/groups/team/photo.png"))
+        assertEquals("https://cdn.example/photo.png",UbuntuStorageUrl.collectionAvatar("community","https://cdn.example/photo.png"))
+    }
+
     @Test
     fun `storage cache key survives host and profile version changes`() {
         val first = "https://old.example/storage/v1/object/public/avatars/User-1/avatar.jpg?v=1"

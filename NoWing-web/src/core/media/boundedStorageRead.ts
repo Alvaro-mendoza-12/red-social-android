@@ -15,7 +15,7 @@ const waiting: Array<{ grant: () => void; signal: AbortSignal }> = []
 export function isTrustedStorageReadUrl(value: string, backendBase: string): boolean {
   try {
     // Inspect raw segments as URL parsing normalizes literal dot segments.
-    if (/\\|[\u0000-\u0020\u007f]/.test(value) || /\\|[\u0000-\u0020\u007f]/.test(backendBase)) return false
+    if ([value, backendBase].some(text => Array.from(text).some(char => char === '\\' || char.charCodeAt(0) <= 32 || char.charCodeAt(0) === 127))) return false
     const rawPath = /^https:\/\/[^/?#]+([^?#]*)/i.exec(value)?.[1] ?? ''
     const target = new URL(value)
     const backend = new URL(backendBase)
@@ -27,7 +27,7 @@ export function isTrustedStorageReadUrl(value: string, backendBase: string): boo
     if (parts[0] === 'public' || parts[0] === 'sign') parts.shift()
     if (parts.length < 2 || parts.some((part) => {
       const decoded = decodeURIComponent(part)
-      return !decoded || decoded === '.' || decoded === '..' || /[\/\\\u0000-\u001f\u007f]/.test(decoded)
+      return !decoded || decoded === '.' || decoded === '..' || Array.from(decoded).some(char => char === '/' || char === '\\' || char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
     })) return false
     return true
   } catch { return false }

@@ -1,0 +1,43 @@
+import { useCallback, useEffect, useState } from 'react'
+import { fallbackApiJson } from '../core/auth/fallbackAuth'
+import { useAuth } from '../core/auth/AuthProvider'
+import { friendlyError } from '../core/utils'
+import './communityQuestion.css'
+import { questionReference } from '../core/communityQuestion'
+import { HelpCircle } from 'lucide-react'
+type Scope='group'|'community'
+type Answer={id:string;userId:string;name:string;username:string;content:string;createdAt:string;likes:number;dislikes:number;myVote:number}
+type Question={id:string;prompt:string;maxLength:number;closed:boolean;canRespond:boolean;total:number;answers:Answer[];nextOffset:number|null}
+const base=(scope:Scope,roomId:string)=>`/v1/data/questions/${scope}/${encodeURIComponent(roomId)}`
+export function CommunityQuestion({scope,roomId,content}:{scope:Scope;roomId:string;content:string}) {
+  const {user}=useAuth(),reference=questionReference(content)
+  return reference?<QuestionBody key={`${user?.id}:${scope}:${roomId}:${reference.questionId}`} scope={scope} roomId={roomId} reference={reference}/>:<p>Pregunta no disponible</p>
+}
+function QuestionBody({scope,roomId,reference}:{scope:Scope;roomId:string;reference:NonNullable<ReturnType<typeof questionReference>>}) {
+  const endpoint=base(scope,roomId)+'/'+reference.questionId
+  const [question,setQuestion]=useState<Question|null>(null),[open,setOpen]=useState(false),[draft,setDraft]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[rotation,setRotation]=useState(0)
+  const load=useCallback(async()=>{const result=await fallbackApiJson<Question>(endpoint);setQuestion(result);return result},[endpoint])
+  useEffect(()=>{let active=true;const refresh=()=>{if(document.hidden)return;void fallbackApiJson<Question>(endpoint).then(value=>{if(active)setQuestion(value)}).catch(()=>{if(active)setError('No se pudieron cargar las respuestas.')})};refresh();const timer=setInterval(refresh,15000),rotate=setInterval(()=>{if(!document.hidden)setRotation(value=>value+1+Math.floor(Math.random()*7))},6000);return()=>{active=false;clearInterval(timer);clearInterval(rotate)}},[endpoint])
+  async function act(path:string,body:object){setBusy(true);setError('');try{await fallbackApiJson(endpoint+path,{method:'POST',body:JSON.stringify(body)});await load();return true}catch(caught){setError(friendlyError(caught,'No se pudo guardar. Comprueba el límite de caracteres y tu acceso.'));return false}finally{setBusy(false)}}
+  const answers=question?.answers || [],floating=answers.length?Array.from({length:Math.min(3,answers.length)},(_,index)=>answers[(rotation+index)%answers.length]):[]
+  return <section className="community-question" aria-label="Pregunta de la comunidad">
+    <button className="question-prompt" type="button" onClick={()=>setOpen(true)}><small>Pregunta</small><strong>{question?.prompt || reference.prompt}</strong><span>{question?.total ?? 0} respuestas · Ver todas</span></button>
+    <div className="question-floating" aria-hidden="true">{floating.map((answer,index)=><span key={index}>{answer.content}</span>)}</div>
+    {error&&!open?<p className="error-text" role="status">{error}<button type="button" className="mini-action-btn" onClick={()=>void load().then(()=>setError('')).catch(()=>{})}>Reintentar</button></p>:null}
+    {open?<div className="app-dialog-backdrop" onMouseDown={()=>setOpen(false)}><section className="surface-card question-dialog" role="dialog" aria-modal="true" aria-label="Respuestas de la pregunta" onMouseDown={event=>event.stopPropagation()} onKeyDown={event=>{if(event.key==='Escape')setOpen(false)}}>
+      <header className="row-between"><h2>{question?.prompt || reference.prompt}</h2><button className="icon-btn" aria-label="Cerrar respuestas" onClick={()=>setOpen(false)}>×</button></header>
+      <p>{question?.total ?? 0} respuestas</p>
+      <div className="question-answer-list">{answers.map(answer=><article key={answer.id}><header><strong>{answer.name}</strong>{answer.username?<small>@{answer.username}</small>:null}<time>{new Date(answer.createdAt).toLocaleString()}</time></header><p>{answer.content}</p><footer>{([1,-1]as const).map(value=><button type="button" className="mini-action-btn" aria-pressed={answer.myVote===value} disabled={busy||!question?.canRespond} key={value} onClick={()=>void act('/votes',{answerId:answer.id,value:answer.myVote===value?0:value})}>{value===1?'Me gusta':'No me gusta'} · {value===1?answer.likes:answer.dislikes}</button>)}</footer></article>)}{!answers.length?<p>Sé la primera persona en responder.</p>:null}
+      {question?.nextOffset!==null&&question?.nextOffset!==undefined?<button className="ghost-btn" disabled={busy} onClick={async()=>{setBusy(true);try{const next=await fallbackApiJson<Question>(endpoint+'?offset='+question.nextOffset);setQuestion({...next,answers:[...answers,...next.answers]})}catch{setError('No se pudieron cargar más respuestas.')}finally{setBusy(false)}}}>Ver más respuestas</button>:null}</div>
+      {error?<p role="alert" className="error-text">{error}</p>:null}
+      {question?.canRespond&&!question.closed?<form onSubmit={event=>{event.preventDefault();void act('/answers',{content:draft}).then(ok=>{if(ok)setDraft('')})}}><label>Tu respuesta <input autoFocus className="text-input" value={draft} onChange={event=>setDraft([...event.target.value].slice(0,question.maxLength).join(''))}/></label><div className="row-between"><small>{[...draft].length}/{question.maxLength} caracteres · Puedes actualizar tu respuesta</small><button className="primary-btn" disabled={busy||!draft.trim()}>Responder</button></div></form>:<p className="muted-line">{question?.closed?'Esta pregunta está cerrada.':'Únete para responder.'}</p>}
+    </section></div>:null}
+  </section>
+}
+export function CollectionQuestionTools({scope,roomId,onCreated,onPolicy}:{scope:Scope;roomId:string;onCreated:()=>void;onPolicy:(allowed:boolean)=>void}) {
+  const [access,setAccess]=useState<{canCreate:boolean;isOwner:boolean;onlyCreator:boolean}|null>(null),[open,setOpen]=useState(false),[prompt,setPrompt]=useState(''),[maxLength,setMaxLength]=useState(40),[busy,setBusy]=useState(false),[error,setError]=useState('')
+  const endpoint=base(scope,roomId)
+  useEffect(()=>{let active=true;void fallbackApiJson<NonNullable<typeof access>>(endpoint+'/access').then(value=>{if(active){setAccess(value);onPolicy(value.isOwner||!value.onlyCreator)}}).catch(()=>{});return()=>{active=false}},[endpoint,onPolicy])
+  if(!access?.isOwner)return null
+  return <><button type="button" className="mini-action-btn question-tools-trigger" aria-label="Preguntas y permisos" onClick={()=>setOpen(true)}><HelpCircle size={18} aria-hidden="true"/><span className="tool-caption">Preguntas y permisos</span></button>{open?<div className="app-dialog-backdrop" onMouseDown={()=>setOpen(false)}><section className="surface-card question-dialog" role="dialog" aria-modal="true" aria-label="Preguntas y permisos" onMouseDown={event=>event.stopPropagation()}><header className="row-between"><h2>Preguntas y permisos</h2><button className="icon-btn" aria-label="Cerrar preguntas y permisos" onClick={()=>setOpen(false)}>×</button></header><label className="collection-policy"><input type="checkbox" checked={access.onlyCreator} disabled={busy} onChange={async event=>{const onlyCreator=event.target.checked;const previous=access;setAccess({...access,onlyCreator});setBusy(true);try{await fallbackApiJson(endpoint+'/policy',{method:'PATCH',body:JSON.stringify({onlyCreator})});setAccess({...access,onlyCreator});onPolicy(true)}catch{setAccess(previous);setError('No se pudo guardar el permiso.')}finally{setBusy(false)}}}/>Solo el creador publica mensajes</label><p className="muted-line">Los participantes pueden reaccionar, votar y responder preguntas. Solo el creador puede crear sorteos.</p><form onSubmit={async event=>{event.preventDefault();setBusy(true);setError('');try{await fallbackApiJson(endpoint,{method:'POST',body:JSON.stringify({prompt,maxLength})});setPrompt('');setOpen(false);onCreated()}catch(caught){setError(friendlyError(caught,'No se pudo publicar la pregunta.'))}finally{setBusy(false)}}}><label>Pregunta<textarea className="text-input" maxLength={300} value={prompt} onChange={event=>setPrompt(event.target.value)}/></label><label>Máximo de caracteres por respuesta <input type="number" min={20} max={40} value={maxLength} onChange={event=>setMaxLength(Number(event.target.value))}/></label>{error?<p role="alert">{error}</p>:null}<button className="primary-btn" disabled={busy||!prompt.trim()}>Publicar pregunta</button></form></section></div>:null}</>
+}

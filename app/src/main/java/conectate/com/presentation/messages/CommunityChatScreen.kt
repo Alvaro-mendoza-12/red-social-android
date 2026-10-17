@@ -141,6 +141,9 @@ fun CommunityChatScreen(
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
+    var showQuestions by remember { mutableStateOf(false) }
+    var publicationAllowed by remember(communityId, currentUserId) { mutableStateOf(true) }
+    CollectionQuestionTools("community", communityId, currentUserId, showQuestions, { showQuestions = false }, { publicationAllowed = it })
     var showWorkspace by remember(communityId, selectedChannel?.id) { mutableStateOf(false) }
     var workspaceKind by remember(communityId) { mutableStateOf(ChatWorkspaceKind.TASK) }
     var workspaceSource by remember(communityId, selectedChannel?.id) { mutableStateOf<conectate.com.data.model.Message?>(null) }
@@ -368,7 +371,7 @@ fun CommunityChatScreen(
                             }
                     ) {
                         CircularProfileImage(
-                            imageUrl = state?.community?.image,
+                            imageUrl = conectate.com.data.localfallback.UbuntuStorageUrl.collectionAvatar("community", state?.community?.image),
                             size = 32.dp,
                             fallbackName = state?.community?.name ?: "Comunidad"
                         )
@@ -403,6 +406,7 @@ fun CommunityChatScreen(
                         Icon(Icons.Default.MoreVert, contentDescription = "Opciones de la comunidad")
                     }
                     DropdownMenu(expanded = showHeaderMenu, onDismissRequest = { showHeaderMenu = false }) {
+                        DropdownMenuItem(text = { Text("Preguntas y permisos") }, onClick = { showHeaderMenu = false; showQuestions = true })
                         DropdownMenuItem(text = { Text("Sorteos") }, onClick = {
                             showHeaderMenu = false
                             navController.navigate(conectate.com.presentation.navigation.RaffleNavigation.createRoute("community", communityId))
@@ -588,6 +592,8 @@ fun CommunityChatScreen(
                                             viewModel.openPollOptionVoters(pollId, option)
                                         }
                                     )
+                                } else if (msg.content_type == "question") {
+                                    CommunityQuestionCard("community", communityId, msg.content, currentUserId)
                                 } else if (msg.content_type == "raffle") {
                                     conectate.com.presentation.raffles.RaffleMessageCard(msg.content, msg.sender_name) {
                                         navController.navigate(conectate.com.presentation.navigation.RaffleNavigation.createRoute("community", communityId, msg.media_url))
@@ -791,9 +797,9 @@ fun CommunityChatScreen(
                     }
                 } else {
                 val myRole by viewModel.myRole.collectAsState()
-                val canTalk = !successState.community.only_admins_can_talk || 
+                val canTalk = publicationAllowed && (!successState.community.only_admins_can_talk ||
                              myRole == "admin" || myRole == "owner" || 
-                             successState.community.creator_id == currentUserId
+                             successState.community.creator_id == currentUserId)
 
                 if (canTalk) {
                     // Reply Preview
@@ -988,7 +994,7 @@ fun CommunityChatScreen(
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                             Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Solo los administradores pueden escribir", style = MaterialTheme.typography.bodyMedium)
+                            Text(if(publicationAllowed) "Solo los administradores pueden escribir" else "Solo el creador publica. Puedes reaccionar, votar y responder preguntas.", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }

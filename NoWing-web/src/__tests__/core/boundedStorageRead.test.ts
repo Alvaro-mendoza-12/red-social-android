@@ -11,6 +11,13 @@ import {
 
 const base = 'https://backend.test'
 const url = `${base}/storage/v1/object/public/chat-media/a/image.png`
+test.each([...Array.from({length:32},(_,index)=>index),127])('rejects control character %i in raw and decoded media paths',code=>{
+  const char=String.fromCharCode(code),encoded='%'+code.toString(16).padStart(2,'0')
+  expect(isTrustedStorageReadUrl(`${base}/storage/v1/object/public/chat-media/a/${char}file.png`,base)).toBe(false)
+  expect(isTrustedStorageReadUrl(`${base}/storage/v1/object/public/chat-media/a/${encoded}file.png`,base)).toBe(false)
+  updateStorageReadIdentity('account'+char+'id','fallback')
+  expect(getStorageReadIdentity().accountId).toBe('')
+})
 const fetcher = jest.fn()
 const token = 'synthetic.test.signature'
 

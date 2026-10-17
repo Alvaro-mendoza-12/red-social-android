@@ -5,7 +5,10 @@ import { buildProfileQrPayload } from '../core/socialLinks'
 import { formatDateTime, friendlyError } from '../core/utils'
 import { QrCodeTile } from './QrCodeTile'
 import { SafeAvatar } from './SafeAvatar'
-export function ProfileTools({
+export function ProfileTools(props: { profileId: string; name: string; showButtons?: boolean }) {
+  return <ProfileToolsContent key={props.profileId} {...props} />
+}
+function ProfileToolsContent({
   profileId,
   name,
   showButtons = true,
@@ -23,9 +26,6 @@ export function ProfileTools({
   useEffect(() => {
     if (mode !== 'visits') return
     let active = true
-    setLoading(true)
-    setError('')
-    setItems([])
     void loadOwnProfileVisits(profileId)
       .then((result) => {
         if (active) {
@@ -44,7 +44,7 @@ export function ProfileTools({
     }
   }, [mode, profileId, attempt])
   useEffect(() => {
-    const visits = () => setMode('visits'),
+    const visits = () => { setLoading(true); setError(''); setItems([]); setMode('visits') },
       qr = () => setMode('qr')
     window.addEventListener('novvin:profile-visits', visits)
     window.addEventListener('novvin:profile-qr', qr)
@@ -60,7 +60,7 @@ export function ProfileTools({
           <button className="ghost-btn" type="button" onClick={() => setMode('qr')}>
             Mi QR
           </button>
-          <button className="ghost-btn" type="button" onClick={() => setMode('visits')}>
+          <button className="ghost-btn" type="button" onClick={() => { setLoading(true); setError(''); setItems([]); setMode('visits') }}>
             Visitas recientes
           </button>
         </div>
@@ -101,7 +101,7 @@ export function ProfileTools({
                     <button
                       className="ghost-btn"
                       type="button"
-                      onClick={() => setAttempt((n) => n + 1)}
+                      onClick={() => { setLoading(true); setError(''); setItems([]); setAttempt((n) => n + 1) }}
                     >
                       Reintentar
                     </button>

@@ -538,14 +538,13 @@ fun MessageBubble(
                     vertical = if (isStickerMessage) 1.dp else 5.dp
                 )
         ) {
-            Column(modifier = if (message.content_type == "text" && message.reply_to_id == null && conectate.com.data.model.sharedVideoReference(message.content) == null) Modifier.width(IntrinsicSize.Max) else Modifier) {
+            Column {
                 // Sender Name and Badge (For Group/Community or own messages if name provided)
                 if (senderName != null && !isFromCurrentUser) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = if (isFromCurrentUser) Arrangement.End else Arrangement.Start,
                         modifier = Modifier
-                            .fillMaxWidth()
                             .padding(bottom = 4.dp)
                     ) {
                         Text(
@@ -1085,7 +1084,7 @@ fun MessageBubble(
                     )
                 }
 
-                if (!message.deleted_for_all && message.reactions.isNotEmpty()) {
+                if (!message.deleted_for_all && message.reactions.any { it.key.isNotBlank() && it.value.isNotEmpty() }) {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -1145,7 +1144,7 @@ fun MessageBubble(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.align(Alignment.End)
                 ) {
                     val metadataColor = if (isStickerMessage) {
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f)

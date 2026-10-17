@@ -34,7 +34,7 @@ fun CommunityItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         CircularProfileImage(
-            imageUrl = community.image,
+            imageUrl = conectate.com.data.localfallback.UbuntuStorageUrl.collectionAvatar("community", community.image),
             size = 52.dp,
             showBorder = false,
             fallbackName = community.name

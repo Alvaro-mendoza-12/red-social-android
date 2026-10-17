@@ -9,24 +9,28 @@ import { MomentComposer } from '../../features/moments/MomentComposer'
 
 export function SocialMoments() {
   const { user } = useAuth()
+  return <SocialMomentsContent key={user?.id || 'guest'} />
+}
+function SocialMomentsContent() {
+  const { user } = useAuth()
+  const ownerId = user?.id
   const [items, setItems] = useState<MomentItem[]>([])
   const [creating, setCreating] = useState(false)
   const request = useRef(0)
   const load = useCallback(async () => {
     const sequence = ++request.current
-    if (!user) return
+    if (!ownerId) return
     try {
-      const rows = await fetchMomentsFeed(user.id)
+      const rows = await fetchMomentsFeed(ownerId)
       if (sequence === request.current) setItems(rows)
     } catch {
       /* The main feed remains available when moments cannot refresh. */
     }
-  }, [user])
+  }, [ownerId])
   useEffect(() => {
-    setItems([])
-    setCreating(false)
-    void load()
+    const timer = window.setTimeout(() => { void load() }, 0)
     return () => {
+      window.clearTimeout(timer)
       request.current++
     }
   }, [load])

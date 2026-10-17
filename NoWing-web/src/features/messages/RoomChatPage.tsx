@@ -1,3 +1,5 @@
+import { CommunityRaffles } from '../../components/CommunityRaffles'
+import { CommunityQuestion, CollectionQuestionTools } from '../../components/CommunityQuestion'
 import { MediaDownloadButton } from '../../components/MediaDownloadButton'
 import { FolderAttachmentPicker } from '../../components/FolderAttachmentPicker'
 import { OutboxTransferStatus } from '../../components/OutboxTransferStatus'
@@ -285,6 +287,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const config = roomConfigByScope[scope]
   const cleanRoomId = useMemo(() => roomId.trim().toLowerCase(), [roomId])
   const [roomAvatar, setRoomAvatar] = useState('')
+  const [canPublish, setCanPublish] = useState(true)
   const [title, setTitle] = useState(scope === 'group' ? 'Grupo' : 'Comunidad')
   const [isMember, setIsMember] = useState(true)
   const [showInfo, setShowInfo] = useState(false)
@@ -711,7 +714,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         setIsMember(response.historyAccess?.isMember !== false)
         setParticipants(response.participants || [])
         setMentionCandidates((response.participants || []).map(person => ({ ...person, username: person.username || "" })))
-        setRoomAvatar(resolveSupabasePublicUrl('avatars',conversationAvatarSource(response.room || response.chat || {})))
+        setRoomAvatar(resolveSupabasePublicUrl(scope === 'group' ? 'groups' : 'communities',conversationAvatarSource(response.room || response.chat || {})))
         setTitle(response.title || (scope === 'group' ? 'Grupo' : 'Comunidad'))
         const mappedMessages = (response.messages ?? []).map(mapRoomMessage)
         setMessages(mappedMessages)
@@ -741,7 +744,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         return
       }
       if (!isStaleLoad()) {
-        setRoomAvatar(resolveSupabasePublicUrl('avatars',conversationAvatarSource(roomRow)))
+        setRoomAvatar(resolveSupabasePublicUrl(scope === 'group' ? 'groups' : 'communities',conversationAvatarSource(roomRow)))
         setTitle(textOf(roomRow, ['name', 'title', 'readable_id'], scope === 'group' ? 'Grupo' : 'Comunidad'))
       }
 
@@ -1344,6 +1347,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           >
             <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor" /></svg>
           </button>
+          {useUbuntu && isMember ? <CommunityRaffles key={`raffles:${user?.id}:${scope}:${cleanRoomId}`} scope={scope} roomId={cleanRoomId}/> : null}
+          {useUbuntu && isMember ? <CollectionQuestionTools key={`${user?.id}:${scope}:${cleanRoomId}`} scope={scope} roomId={cleanRoomId} onCreated={() => void loadRoom({silent:true})} onPolicy={setCanPublish}/> : null}
           <button
             className={showQuickTools ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
             type="button"
@@ -1476,14 +1481,14 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
-              <article id={`message-${message.id}`} className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}`}>
+              <article id={`message-${message.id}`} className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'question' ? ' question-bubble' : ''}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${message.contentType === 'text' && !message.mediaUrl && !replied && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`}>
                 {message.isForwarded ? <small>Reenviado</small> : null}
                 {replied ? <MessageReplyPreview message={replied} name={replied.senderId === user?.id ? 'Tú' : participants.find(person => person.id === replied.senderId)?.name || 'Participante'}/> : null}
                 {message.deletedForAll ? (
                   <p className="muted-line">Mensaje eliminado para todos</p>
                 ) : sharedVideoReference(message.content) ? (
                   <SharedVideoCard reference={sharedVideoReference(message.content)!} />
-                ) : message.contentType === 'poll' && pollRows.length > 0 ? (
+                ) : message.contentType === 'raffle' ? (<div><strong>{message.content.split('\n')[0]}</strong><CommunityRaffles scope={scope} roomId={cleanRoomId} raffleId={message.mediaUrl} label="Ver sorteo y resultados"/></div>) : message.contentType === 'question' ? (<CommunityQuestion scope={scope} roomId={cleanRoomId} content={message.content}/>) : message.contentType === 'poll' && pollRows.length > 0 ? (
                   <div className="poll-stack">
                     <strong>{pollMeta?.question || message.content}</strong>
                     {pollRows.map((option) => (
@@ -1697,7 +1702,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             window.location.assign('/app/messages')
           } catch { setError('No se pudo borrar el chat. Inténtalo de nuevo.') }
         }}>Borrar de mi lista</button>
-      </section> : <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
+      </section> : !canPublish ? <p className="composer muted-line">Solo el creador publica mensajes. Puedes reaccionar, votar y responder las preguntas.</p> : <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
         <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar">＋</summary><div className="chat-attachment-popover"><FolderAttachmentPicker onFiles={handleAttachFile}/>
         <button type="button" className="chat-attachment-option" onClick={event => { setShowStickers(true); event.currentTarget.closest('details')?.removeAttribute('open') }}>Buscar stickers</button>
         <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Importar sticker" aria-label="Importar sticker">

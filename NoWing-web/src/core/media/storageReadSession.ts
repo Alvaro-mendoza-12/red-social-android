@@ -29,7 +29,7 @@ function replaceIdentity(accountId: string, provider: StorageReadIdentity['provi
 
 export function updateStorageReadIdentity(accountId: string | null | undefined, provider: StorageReadIdentity['provider']) {
   const candidate = String(accountId ?? '').trim()
-  const valid = (provider === 'fallback' || provider === 'supabase' || provider === 'guest') && candidate.length > 0 && candidate.length <= 256 && !/[\u0000-\u0020\u007f]/.test(candidate)
+  const valid = (provider === 'fallback' || provider === 'supabase' || provider === 'guest') && candidate.length > 0 && candidate.length <= 256 && !Array.from(candidate).some(char => char.charCodeAt(0) <= 32 || char.charCodeAt(0) === 127)
   const nextId = valid ? candidate : ''
   const nextProvider = valid ? provider : ''
   if (nextId === current.accountId && nextProvider === current.provider) return

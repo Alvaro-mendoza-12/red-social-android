@@ -16,6 +16,16 @@ class ConversationDraftStore @Inject constructor(@param:ApplicationContext conte
     fun read(owner: String?, scope: String, room: String): String =
         key(owner, scope, room)?.let { preferences.getString(it, "").orEmpty() }.orEmpty()
 
+    /** Real conversation IDs remain stable when profile/participant aliases change. */
+    fun readAndMigrate(owner: String?, scope: String, room: String, legacyRoom: String?): String {
+        val current = read(owner, scope, room)
+        val legacy = legacyRoom?.takeIf { it.isNotBlank() && !it.equals(room, true) } ?: return current
+        val value = current.ifEmpty { read(owner, scope, legacy) }
+        if (value.isNotEmpty()) write(owner, scope, room, value)
+        write(owner, scope, legacy, "")
+        return value
+    }
+
     fun write(owner: String?, scope: String, room: String, text: String) {
         val name = key(owner, scope, room) ?: return
         val editor = preferences.edit()

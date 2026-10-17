@@ -5,6 +5,7 @@
 const {parseObjectReference, MAX_REFERENCES}=require('./storage-read-access');
 const SOURCES=Object.freeze({
   fallback_posts:{kind:'post',key:'id',fields:['media_url','media_urls']},
+  fallback_social_promotions:{kind:'post',key:'id',fields:['image_url']},
   fallback_videos:{kind:'video',key:'id',fields:['video_url','cover_url','thumbnail_url','sound_url']},
   fallback_moments:{kind:'moment',key:'id',fields:['media_url','thumbnail_url','music_audio_url','music_url']},
   fallback_users:{kind:'profile',key:'id',fields:['avatar_url']},
@@ -128,7 +129,8 @@ async function creatorContext(db,rawId,viewerIds,now) {
 async function contentReferenceAllows(db,reference,object,origins,viewerIds,now=Date.now()) {
   const {row,source_table:table,access_kind:kind}=reference;
   if(flag(row.is_deleted)||flag(row.deleted)||flag(row.deleted_for_all))return false;
-  const owner=kind==='profile'?(table==='fallback_profile_overrides'?row.user_id:scalar(row,['id','user_id','profile_id'])):scalar(row,['user_id','userId','owner_id','author_id','creator_id','profile_id']);
+  if(table==='fallback_social_promotions' && row.active!==true)return false;
+  const owner=kind==='profile'?(table==='fallback_profile_overrides'?row.user_id:scalar(row,['id','user_id','profile_id'])):scalar(row,['user_id','userId','owner_id','author_id','creator_id','profile_id','created_by']);
   const context=await creatorContext(db,owner,viewerIds,now);if(!context||!context.visible)return false;
   // A URL assignment cannot publish an upload belonging to another account.
   if(norm(object.owner_id)!==norm(context.user.id))return false;

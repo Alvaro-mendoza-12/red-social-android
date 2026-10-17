@@ -117,7 +117,7 @@ const contentAuthorKeys = [
 ] as const
 
 function sourceFromValue(value: unknown): string {
-  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'string') return /^(?:null|undefined|\[object Object\])$/i.test(value.trim()) ? '' : value.trim()
   if (!value || typeof value !== 'object' || Array.isArray(value)) return ''
 
   const record = value as MediaSourceRow

@@ -78,8 +78,7 @@ fun RafflesScreen(onBack: () -> Unit, viewModel: RafflesViewModel = hiltViewMode
                     item { Text("Sorteos de este ${if (viewModel.kind == "group") "grupo" else "espacio de comunidad"}", style = MaterialTheme.typography.titleMedium) }
                     if (state.canCreate) item { Button(onClick = { creating = true; viewModel.loadMembers() }, enabled = !state.busy && !state.retryOperation) { Text("+ Crear sorteo") } }
                     if (state.items.isEmpty() && state.error == null) item { Text(
-                        if (viewModel.kind == "group") "Todavía no hay sorteos. Cualquier integrante del grupo puede crear uno."
-                        else "Todavía no hay sorteos. Los administradores pueden crear uno con los miembros de esta comunidad."
+                        "Todavía no hay sorteos. Solo el creador del ${if(viewModel.kind == "group") "grupo" else "espacio de comunidad"} puede crear uno."
                     ) }
                     items(state.items, key = { it.id }) { raffle ->
                         Card(Modifier.fillMaxWidth().clickable { viewModel.open(raffle.id) }) {

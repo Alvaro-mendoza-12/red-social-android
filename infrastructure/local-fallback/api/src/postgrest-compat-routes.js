@@ -2574,6 +2574,9 @@ async function insertCollectionRpcMessage(pool, auth, body, kind, { publishEvent
     }
   }
 
+  const publicationRoom = await findCompatEntity(pool, kind === 'group' ? 'groups' : 'communities', roomId)
+  const isPublicationOwner = ['creator_id','owner_id','user_id'].some(key => identity.values.includes(normalizeIdentityValue(publicationRoom?.[key])))
+  if (!(await require('./community-questions').collectionPublicationAllowed(pool,kind,roomId,isPublicationOwner))) throw httpError('ONLY_CREATOR_CAN_TALK')
   const roomResult = await pool.query(
     `SELECT only_admins_can_talk
      FROM fallback_collection_rooms
@@ -5659,6 +5662,9 @@ async function deleteOwnAccountRpc(pool, auth) {
       await client.query(statement, [identityValues])
     }
 
+    await client.query('DELETE FROM fallback_question_votes WHERE lower(user_id)=ANY($1::text[])',[identityValues])
+    await client.query('DELETE FROM fallback_question_answers WHERE lower(user_id)=ANY($1::text[])',[identityValues])
+    await client.query('DELETE FROM fallback_social_promotions WHERE lower(created_by)=ANY($1::text[])',[identityValues])
     const musicTracksDeleted = await deleteAccountMusic(client, localUserId)
     const importedRowsDeleted = await purgeImportedIdentityRows(client, identityValues)
     const compatRowsDeleted = await purgeCompatIdentityRows(client, identityValues)

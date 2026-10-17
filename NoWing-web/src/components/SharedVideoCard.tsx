@@ -8,13 +8,13 @@ import { textOf } from '../core/utils'
 import { StreamingImage } from './StreamingMedia'
 import { resolveSupabasePublicUrl } from '../core/supabase'
 export function SharedVideoCard({ reference }: { reference: SharedVideoReference }) {
-  const { user }=useAuth()
+  const { user }=useAuth(), accountId=user?.id
   const [preview,setPreview]=useState<{owner:string;id:string;cover:string;title:string}|null>(null)
   useEffect(()=>{
     let active=true
-    if(user)void loadFallbackVideo(reference.videoId).then(({video})=>{if(active)setPreview({owner:user.id,id:reference.videoId,cover:profileVideoCoverSource(video),title:textOf(video,['title','description'],'Video de Novvin')})}).catch(()=>{})
+    if(accountId)void loadFallbackVideo(reference.videoId).then(({video})=>{if(active)setPreview({owner:accountId,id:reference.videoId,cover:profileVideoCoverSource(video),title:textOf(video,['title','description'],'Video de Novvin')})}).catch(()=>{})
     return()=>{active=false}
-  },[reference.videoId,user?.id])
+  },[reference.videoId,accountId])
   const current=preview?.owner===user?.id&&preview?.id===reference.videoId?preview:null
   return <Link className="shared-video-card" to={`/app/reels/${encodeURIComponent(reference.videoId)}`} aria-label="Abrir video compartido">
     <div>{current?.cover?<StreamingImage src={resolveSupabasePublicUrl('thumbnails',current.cover)} alt="Vista previa del video" loading="lazy"/>:null}<span className="shared-video-play" aria-hidden="true">▶</span></div>

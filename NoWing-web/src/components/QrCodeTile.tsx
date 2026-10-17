@@ -37,7 +37,7 @@ export function QrCodeTile({ value, title, description, compact = false }: QrCod
           setError(null)
           setDataUrl(url)
         }
-      } catch (caught) {
+      } catch {
         if (!cancelled) {
           setError('No se pudo preparar el código. Inténtalo de nuevo.')
         }

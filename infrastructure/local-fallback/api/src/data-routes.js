@@ -6724,6 +6724,8 @@ async function ensureLocalDataTables(pool) {
   await ensurePlayMatchTables(pool)
   await ensureMessageMarkerTables(pool)
   await ensureRaffleTables(pool)
+  await require('./community-questions').ensureCommunityQuestionTables(pool)
+  await require('./social-promotions').ensureSocialPromotionTables(pool)
   await ensureVideoWatchLaterTables(pool)
   await ensureVideoHistoryColumns(pool)
   await ensureVideoCollectionTables(pool)
@@ -6783,6 +6785,13 @@ function registerDataRoutes(app, {
     loadCollectionRoomAccess, memberUserId, rowMatchesAny, publicProfilesByIds,
     ensureDefaultCommunityChannel, publishRoomCard: publishChatMessageEvent,
     isSuspended: async (db, id) => Boolean(await require('./account-status').findActiveSuspension(db, id)),
+  })
+  require('./community-questions').registerCommunityQuestionRoutes(app, { pool, authRequired, getCurrentUser, userIdentity,
+    loadCollectionRoomAccess, memberUserId, rowMatchesAny, publicProfilesByIds,
+    ensureDefaultCommunityChannel, publishRoomCard: publishChatMessageEvent,
+  })
+  require('./social-promotions').registerSocialPromotionRoutes(app,{pool,authRequired,getCurrentUser,userIdentity,
+    mayUseImage:(user,identity,mediaUrl)=>currentUserMayReferenceMessageMedia(pool,user,identity,{mediaUrl,contentType:'image',allowedOwnedBuckets:['post-media'],isForwarded:false}),
   })
   registerVisibleMessageReadRoute(app, {
     pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,
@@ -11214,6 +11223,9 @@ function registerDataRoutes(app, {
         }
       }
       const onlyAdminsCanTalk = boolOf(roomRow, ['only_admins_can_talk', 'onlyAdminsCanTalk'], false)
+      if (!(await require('./community-questions').collectionPublicationAllowed(pool,config.kind,roomId,rowMatchesAny(roomRow,['creator_id','owner_id','user_id'],identity.ids)))) {
+        return res.status(403).json({error:'ONLY_CREATOR_CAN_TALK'})
+      }
       if (onlyAdminsCanTalk && !isAdmin) {
         return res.status(403).json({ error: 'ONLY_ADMINS_CAN_TALK' })
       }

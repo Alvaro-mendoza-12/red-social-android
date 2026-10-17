@@ -75,6 +75,15 @@ object UbuntuStorageUrl {
         return raw
     }
 
+    fun collectionAvatar(kind: String, value: String?): String? {
+        val raw = value?.trim()?.takeIf { it.isNotEmpty() && !it.equals("null", true) } ?: return null
+        val normalized = raw.removePrefix("/").removePrefix("public/")
+        val rewritten = rewrite(normalized) ?: return null
+        if (rewritten.startsWith("https://") || rewritten.startsWith("http://") || rewritten.startsWith("content://") || rewritten.startsWith("file://")) return rewritten
+        val bucket = if (kind == "group") "groups" else "communities"
+        return publicObjectUrl(bucket, normalized)
+    }
+
     fun rewriteOrEmpty(value: String?): String = rewrite(value).orEmpty()
 
     fun rewriteAll(values: Iterable<String?>): List<String> =

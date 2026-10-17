@@ -1884,6 +1884,17 @@ fun SocialScreen(
                                             onOpenSettings = { showFeedPreferences = true }
                                         )
                                     }
+                                    item(key = "novvin-promotion") {
+                                        SocialPromotionCard(viewModel.currentUserId) { destination ->
+                                            val route = when(destination) {
+                                                "/app/videos" -> Screen.Videos.route
+                                                "/app/social" -> Screen.Social.route
+                                                "/app/games" -> Screen.Games.route
+                                                else -> Screen.Messages.route
+                                            }
+                                            navController.navigate(route) { launchSingleTop = true }
+                                        }
+                                    }
                                     item(key = "reading-tools") {
                                         SocialReadingTools(posts) { postId ->
                                             navController.navigate(Screen.PostDetail.createRoute(postId))

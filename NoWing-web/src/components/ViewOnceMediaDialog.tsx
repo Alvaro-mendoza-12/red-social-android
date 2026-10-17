@@ -8,7 +8,8 @@ import { viewOnceLimit, type ViewOnceLease } from '../core/media/viewOnceLease'
 /** One authenticated GET, an ephemeral Blob, and deletion on close/background/logout. */
 export function ViewOnceMediaDialog({ lease, onClose }: { lease: ViewOnceLease; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
-  const close = useRef(onClose); close.current = onClose
+  const close = useRef(onClose)
+  useEffect(() => { close.current = onClose }, [onClose])
   const [preview, setPreview] = useState('')
   const [failed, setFailed] = useState(false)
   const [zoomed, setZoomed] = useState(false)

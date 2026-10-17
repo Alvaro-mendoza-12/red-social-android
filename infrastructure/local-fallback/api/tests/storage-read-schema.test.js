@@ -8,7 +8,8 @@ test('schema accepts the connected query-only initializer client', async () => {
   await ensureStorageReadSchema(client,{origins:['https://schema-audit.example.invalid']});
   assert.equal(statements[0], 'BEGIN'); assert.equal(statements.at(-1), 'COMMIT');
   assert.ok(statements.some(sql => sql.includes('pg_advisory_xact_lock')));
-  assert.equal(statements.filter(sql => sql.includes('CREATE OR REPLACE TRIGGER')).length, 8);
+  assert.equal(statements.filter(sql => sql.includes('CREATE OR REPLACE TRIGGER')).length, 9);
+  assert.ok(statements.some(sql=>sql.includes('fallback_social_promotions_storage_content_bindings')));
 });
 test('schema failure rolls back its own transaction without releasing caller client', async () => {
   const statements = [];

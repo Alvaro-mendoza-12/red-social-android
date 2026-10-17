@@ -55,7 +55,7 @@ function createRaffleService({ pool, getCurrentUser, userIdentity, loadCollectio
     if (revoked || (!owner && !member)) throw new RaffleError('RAFFLE_ACCESS_DENIED', 403)
     const canManage = owner || ['owner', 'creator', 'admin'].includes(lower(member?.role))
     if (manage && !canManage) throw new RaffleError('RAFFLE_ADMIN_REQUIRED', 403)
-    return { identity, members, owner, canManage, canCreate: kind === 'group' || canManage, room: roomAccess.room }
+    return { identity, members, owner, canManage, canCreate: owner, room: roomAccess.room }
   }
   // Group members run their own draws; administrators retain moderation of all draws.
   // Active membership is checked before this policy, including for the creator.

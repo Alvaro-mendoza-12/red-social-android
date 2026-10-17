@@ -41,6 +41,7 @@ import { extractMediaEntries, type MediaEntry } from '../../features/feed/mediaU
 import { createShuffleSeed, shuffleFeedItems } from '../../features/reels/reelFeedOrder'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import { profileIdentityAliases } from '../../core/profileMediaFields'
+import { SocialPromotion } from '../../components/SocialPromotion'
 import { SocialMoments } from '../../ui/novvin/SocialMoments'
 import { runtimeStoragePreviewUrl } from '../../core/runtimeBackend'
 
@@ -66,12 +67,6 @@ function profilePathFor(profileId: string, currentUserId?: string): string {
   if (!clean) return '/app/profile'
   if (currentUserId && clean === currentUserId) return '/app/profile'
   return `/app/profile/${clean}`
-}
-
-function initialsOf(name: string): string {
-  const clean = name.trim()
-  if (!clean) return 'U'
-  return clean[0]?.toUpperCase() ?? 'U'
 }
 
 function inferPostMediaType(file: File): 'image' | 'video' | 'file' {
@@ -567,6 +562,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
         </Link>
       </div>
       <SocialMoments />
+      <SocialPromotion />
       {composerOpen ? (
         <div className="app-dialog-backdrop" role="presentation" onMouseDown={onCloseComposer}>
           <article

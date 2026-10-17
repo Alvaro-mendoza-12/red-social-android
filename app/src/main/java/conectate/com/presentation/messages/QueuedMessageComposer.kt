@@ -32,6 +32,13 @@ internal class QueuedMessageComposer<Reply> {
         updateText(value)
     }
 
+    /** Empty optional navigation parameters must never erase a restored draft. */
+    fun applyInitialText(value: String?): Boolean {
+        if (value.isNullOrBlank()) return false
+        updateText(value)
+        return true
+    }
+
     fun finishEditing() {
         val previous = draftBeforeEdit ?: return
         draftBeforeEdit = null

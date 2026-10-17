@@ -4,10 +4,13 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 GlobalWorkerOptions.workerSrc = workerUrl
 
 export default function PdfDocument({ url }: { url: string }) {
+  return <PdfDocumentContent key={url} url={url} />
+}
+function PdfDocumentContent({ url }: { url: string }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null), [page, setPage] = useState(1), [scale, setScale] = useState(1), [error, setError] = useState('')
   useEffect(() => {
-    let active = true; setDocument(null); setError(''); setPage(1)
+    let active = true
     const task = getDocument({ url, stopAtErrors: true, maxImageSize: 24_000_000, withCredentials: false })
     void task.promise.then(value => { if (active) setDocument(value) }).catch(() => { if (active) setError('No se pudo abrir el PDF. Puedes descargar el archivo original.') })
     return () => { active = false; void task.destroy() }

@@ -230,7 +230,7 @@ fun GroupDetailScreen(
                     GroupInfoHeader(
                         name = group?.name.orEmpty(),
                         description = group?.description,
-                        imageUrl = group?.image,
+                        imageUrl = conectate.com.data.localfallback.UbuntuStorageUrl.collectionAvatar("group", group?.image),
                         memberCount = members.size,
                         onOpenImage = { image -> navController.navigate(Screen.FullScreenImage.createRoute(image)) },
                     )

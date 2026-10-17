@@ -131,6 +131,9 @@ fun GroupChatScreen(
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
+    var showQuestions by remember { mutableStateOf(false) }
+    var publicationAllowed by remember(groupId, currentUserId) { mutableStateOf(true) }
+    CollectionQuestionTools("group", groupId, currentUserId, showQuestions, { showQuestions = false }, { publicationAllowed = it })
     var showWorkspace by remember(groupId) { mutableStateOf(false) }
     var workspaceKind by remember(groupId) { mutableStateOf(ChatWorkspaceKind.TASK) }
     var workspaceSource by remember(groupId) { mutableStateOf<conectate.com.data.model.Message?>(null) }
@@ -346,7 +349,7 @@ fun GroupChatScreen(
                             }
                     ) {
                         CircularProfileImage(
-                            imageUrl = state?.group?.image,
+                            imageUrl = conectate.com.data.localfallback.UbuntuStorageUrl.collectionAvatar("group", state?.group?.image),
                             size = 32.dp,
                             fallbackName = state?.group?.name ?: "Grupo"
                         )
@@ -391,6 +394,7 @@ fun GroupChatScreen(
                         Icon(Icons.Default.MoreVert, contentDescription = "Opciones del grupo")
                     }
                     DropdownMenu(expanded = showHeaderMenu, onDismissRequest = { showHeaderMenu = false }) {
+                        DropdownMenuItem(text = { Text("Preguntas y permisos") }, onClick = { showHeaderMenu = false; showQuestions = true })
                         DropdownMenuItem(text = { Text("Sorteos") }, onClick = {
                             showHeaderMenu = false
                             navController.navigate(conectate.com.presentation.navigation.RaffleNavigation.createRoute("group", groupId))
@@ -509,6 +513,8 @@ fun GroupChatScreen(
                                             viewModel.openPollOptionVoters(pollId, option)
                                         }
                                     )
+                                } else if (msg.content_type == "question") {
+                                    CommunityQuestionCard("group", groupId, msg.content, currentUserId)
                                 } else if (msg.content_type == "raffle") {
                                     conectate.com.presentation.raffles.RaffleMessageCard(msg.content, msg.sender_name) {
                                         navController.navigate(conectate.com.presentation.navigation.RaffleNavigation.createRoute("group", groupId, msg.media_url))
@@ -655,9 +661,9 @@ fun GroupChatScreen(
             
             if (successState != null && isMember) {
                 val myRole by viewModel.myRole.collectAsState()
-                val canTalk = !successState.group.only_admins_can_talk || 
+                val canTalk = publicationAllowed && (!successState.group.only_admins_can_talk ||
                              myRole == "admin" || myRole == "owner" || 
-                             successState.group.creator_id == currentUserId
+                             successState.group.creator_id == currentUserId)
 
                 if (canTalk) {
                     // Reply Preview
@@ -855,7 +861,7 @@ fun GroupChatScreen(
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                             Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Solo los administradores pueden escribir", style = MaterialTheme.typography.bodyMedium)
+                            Text(if(publicationAllowed) "Solo los administradores pueden escribir" else "Solo el creador publica. Puedes reaccionar, votar y responder preguntas.", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }

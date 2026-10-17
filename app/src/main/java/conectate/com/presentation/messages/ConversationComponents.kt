@@ -43,7 +43,7 @@ fun ConversationItem(
     val draftContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val drafts = remember(draftContext) { conectate.com.data.local.ConversationDraftStore(draftContext) }
     val draftScope = if (conversation.chat.is_group) "group" else "chat"
-    val draftRoom = if (conversation.chat.is_group) conversation.chat.id else conversation.otherUserId.orEmpty()
+    val draftRoom = conversation.chat.id
     val draftFlow = remember(currentUserId, draftScope, draftRoom) { drafts.observe(currentUserId, draftScope, draftRoom) }
     val conversationDraft by draftFlow.collectAsState(initial = drafts.read(currentUserId, draftScope, draftRoom))
     val inboxRed = colors.primary

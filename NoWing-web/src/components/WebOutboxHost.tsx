@@ -6,7 +6,7 @@ import { flushWebOutbox, outboxOwner, revokeOutboxPreviews } from '../core/webOu
 export function WebOutboxHost() {
   const { user, isFallbackSession } = useAuth()
   useEffect(() => {
-    if (!user || !isFallbackSession) return
+    if (!user?.id || !isFallbackSession) return
     const owner = outboxOwner()
     warmBrowserStreaming()
     const flush = () => { void flushWebOutbox().catch(() => {}) }

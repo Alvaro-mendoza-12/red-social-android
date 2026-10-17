@@ -441,8 +441,9 @@ class ChatViewModel @Inject constructor(
                 chatId = resolvedChat.id
 
                 val draftScope = if (resolvedChat.is_group) "group" else "chat"
-                val draftRoom = if (resolvedChat.is_group) resolvedChat.id else targetUserId ?: resolvedChat.id
-                textComposer.bindDraft(conversationDraftStore.read(ownerAccountId, draftScope, draftRoom)) { text ->
+                val draftRoom = if (isPlaceholder) targetUserId ?: resolvedChat.id else resolvedChat.id
+                val restoredDraft = conversationDraftStore.readAndMigrate(ownerAccountId, draftScope, draftRoom, if (resolvedChat.is_group) null else targetUserId)
+                textComposer.bindDraft(restoredDraft) { text ->
                     if (ownerAccountId == authService.getCurrentUserId()?.trim()?.lowercase()) {
                         conversationDraftStore.write(ownerAccountId, draftScope, draftRoom, text)
                     }
@@ -568,9 +569,9 @@ class ChatViewModel @Inject constructor(
                 }
 
                 // 5. Populate Initial Message if provided (User will send manually)
-                if (initialMessage != null && !initialMessageSent) {
+                if (!initialMessageSent) {
                     initialMessageSent = true
-                    updateMessageText(initialMessage)
+                    if (textComposer.applyInitialText(initialMessage)) syncTypingPresence(initialMessage.orEmpty())
                 }
             }
         }

@@ -53,13 +53,16 @@ function GuestAuthor({ id, name }: { id: string; name: string }) {
 }
 
 export function ExplorePage() {
+  const params = useParams()
+  return <ExploreContent key={`${params.kind}/${params.id}`} />
+}
+function ExploreContent() {
   const params = useParams(), kind: GuestKind = ['posts', 'moments', 'profiles'].includes(params.kind || '') ? params.kind as GuestKind : 'videos'
   const [items, setItems] = useState<GenericRow[]>([]), [loading, setLoading] = useState(true), [failed, setFailed] = useState(false)
   const [retry, setRetry] = useState(0), [limit, setLimit] = useState(10)
   useEffect(() => () => stopGuestBrowsing(), [])
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true); setFailed(false); setItems([]); setLimit(10)
     void loadGuestContent(kind, params.id, controller.signal).then(rows => {
       if (!controller.signal.aborted) setItems(rows)
     }).catch(() => { if (!controller.signal.aborted) setFailed(true) })
@@ -79,7 +82,7 @@ export function ExplorePage() {
         <Link key={value} to={`/explore/${value}`} aria-current={kind === value && !params.id ? 'page' : undefined}>{label}</Link>)}
     </nav>
     {loading ? <StatusView title="Cargando contenido" description="Espera un momento." /> : failed ?
-      <section className="status-card"><h2>No pudimos cargar el contenido</h2><p>Comprueba tu conexión y vuelve a intentarlo.</p><button className="ghost-btn" onClick={() => setRetry(value => value + 1)}>Reintentar</button></section> : !items.length ?
+      <section className="status-card"><h2>No pudimos cargar el contenido</h2><p>Comprueba tu conexión y vuelve a intentarlo.</p><button className="ghost-btn" onClick={() => { setLoading(true); setFailed(false); setItems([]); setLimit(10); setRetry(value => value + 1) }}>Reintentar</button></section> : !items.length ?
       <StatusView title={params.id ? 'Contenido no disponible' : `Sin ${kind === 'moments' ? 'momentos activos' : 'contenido público'}`} description="Vuelve a explorar más tarde." /> :
       <section className={`explore-feed explore-${kind}`} aria-label={heading}>
         {items.slice(0, limit).map(row => {
@@ -100,7 +103,7 @@ export function ExplorePage() {
             <footer><Link to={`/login?next=${encodeURIComponent(kind === 'profiles' ? `/u/${id}` : kind === 'videos' ? `/app/reels/${id}` : kind === 'posts' ? `/app/feed/post/${id}` : '/app/social?tab=moments')}`}>Inicia sesión para participar</Link></footer>
           </article>
         })}
-        {items.length > limit ? <button className="ghost-btn" onClick={() => setLimit(value => value + 10)}>Ver más</button> : <button className="ghost-btn" onClick={() => setRetry(value => value + 1)}>Actualizar</button>}
+        {items.length > limit ? <button className="ghost-btn" onClick={() => setLimit(value => value + 10)}>Ver más</button> : <button className="ghost-btn" onClick={() => { setLoading(true); setFailed(false); setItems([]); setLimit(10); setRetry(value => value + 1) }}>Actualizar</button>}
       </section>}
   </main>
 }

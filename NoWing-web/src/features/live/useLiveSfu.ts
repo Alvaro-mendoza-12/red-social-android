@@ -12,11 +12,11 @@ export function useLiveSfu({ liveId, hostId, role, enabled, localMedia, source, 
   const { user } = useAuth(), [room,setRoom] = useState<Room|null>(null), [participants,setParticipants] = useState<SfuParticipant[]>([]), [connected,setConnected] = useState(false), [error,setError] = useState(''), [generation,setGeneration] = useState(0)
   const publicationsRef = useRef<LocalTrackPublication[]>([])
   const published = useRef<MediaStreamTrack[]>([]), requested = useRef({micEnabled,videoEnabled})
-  requested.current = {micEnabled,videoEnabled}
+  useEffect(() => { requested.current = {micEnabled,videoEnabled} }, [micEnabled,videoEnabled])
   useEffect(()=>{
     if(!enabled||!user?.id||!liveId)return
     const controller=new AbortController(), session=new Room({adaptiveStream:false,dynacast:true,disconnectOnPageLeave:true,stopLocalTrackOnUnpublish:true})
-    let active=true;setRoom(null);setParticipants([]);setConnected(false);setError('')
+    let active=true
     const update=()=>{if(!active)return;setParticipants([...session.remoteParticipants.values()].flatMap(participant=>{
       const tracks=[...participant.trackPublications.values()].filter(publication=>publication.isSubscribed&&!publication.isMuted&&publication.track).map(publication=>publication.track!.mediaStreamTrack)
       return tracks.length?[{id:participant.identity,name:participant.name||'Participante',stream:new MediaStream(tracks)}]:[]
@@ -27,6 +27,10 @@ export function useLiveSfu({ liveId, hostId, role, enabled, localMedia, source, 
     session.on(RoomEvent.Disconnected,()=>{if(active){setConnected(false);setRoom(null);setError('Se interrumpió la conexión del directo. Puedes volver a conectar.')}})
     void(async()=>{
       try{
+        // Start the external connection lifecycle asynchronously; cleanup can cancel it.
+        await Promise.resolve()
+        if(!active)return
+        setRoom(null);setParticipants([]);setConnected(false);setError('')
         const ticket=await fallbackApiJson<{wsUrl:string;token:string}>(`/v1/data/live/${encodeURIComponent(liveId)}/sfu-token`,{method:'POST',expectedAccountId:user.id,signal:controller.signal,body:JSON.stringify({role})})
         if(!active)return
         await session.connect(ticket.wsUrl,ticket.token,{autoSubscribe:true,rtcConfig:{iceTransportPolicy:'all'}})

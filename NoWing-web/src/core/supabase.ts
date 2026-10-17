@@ -208,6 +208,11 @@ export function resolveSupabasePublicUrl(bucket: string, pathOrUrl: string): str
   }
 
   const knownBuckets = [
+    'images',
+    'audios',
+    'covers',
+    'live-replays',
+    'Multimedia-Conectate',
     'avatars',
     'covers',
     'thumbnails',

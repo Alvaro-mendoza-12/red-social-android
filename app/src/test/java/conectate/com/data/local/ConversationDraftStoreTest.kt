@@ -38,4 +38,21 @@ class ConversationDraftStoreTest {
         assertNull(ConversationDraftStore.key("owner", "other", "room"))
         assertEquals("", store.read(null, "chat", "room"))
     }
+    @Test fun migrationUsesStableConversationAndCannotResurrectSentLegacyDraft() {
+        val store = ConversationDraftStore(context)
+        store.write("owner", "chat", "old-profile-alias", "borrador")
+        assertEquals("borrador", store.readAndMigrate("owner", "chat", "conversation-id", "old-profile-alias"))
+        assertEquals("", store.read("owner", "chat", "old-profile-alias"))
+        assertEquals("borrador", store.readAndMigrate("owner", "chat", "conversation-id", "new-profile-alias"))
+        store.write("owner", "chat", "conversation-id", "")
+        assertEquals("", store.readAndMigrate("owner", "chat", "conversation-id", "old-profile-alias"))
+    }
+    @Test fun migrationPreservesCurrentDraftAndAccountIsolation() {
+        val store = ConversationDraftStore(context)
+        store.write("owner", "chat", "conversation-id", "nuevo")
+        store.write("owner", "chat", "legacy", "anterior")
+        assertEquals("nuevo", store.readAndMigrate("owner", "chat", "conversation-id", "legacy"))
+        assertEquals("", store.readAndMigrate("other-owner", "chat", "conversation-id", "legacy"))
+        assertEquals("nuevo", store.read("owner", "chat", "conversation-id"))
+    }
 }
