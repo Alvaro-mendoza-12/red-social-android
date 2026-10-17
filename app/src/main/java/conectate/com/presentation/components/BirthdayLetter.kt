@@ -50,7 +50,28 @@ fun BirthdayLetter(card: BirthdayCard, expanded: Boolean = false, modifier: Modi
     }
     if (open) AlertDialog(onDismissRequest = { open = false },
         title = { Text("Tu carta de cumpleaños") },
-        text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-            BirthdayLetter(card, expanded = true)
+        text = { Box {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                BirthdayLetter(card, expanded = true)
+            }
+            BirthdayConfetti(Modifier.matchParentSize())
         } }, confirmButton = { TextButton(onClick = { open = false }) { Text("Cerrar carta") } })
+}
+
+/** Brief, decorative animation. It never captures a tap or repeats indefinitely. */
+@Composable
+private fun BirthdayConfetti(modifier: Modifier) {
+    val progress = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) { progress.animateTo(1f, androidx.compose.animation.core.tween(2600, easing = androidx.compose.animation.core.LinearEasing)) }
+    if (progress.value < 1f) androidx.compose.foundation.Canvas(modifier) {
+        val colors = listOf(Color(0xFFE75BA5), Color(0xFFFFBE3B), Color(0xFF6486FF), Color(0xFF37BA91))
+        val t = progress.value
+        repeat(44) { i ->
+            val x = ((i * 73 % 101) / 100f * size.width + kotlin.math.sin(t * 7 + i) * 18.dp.toPx()).coerceIn(0f, size.width)
+            val y = (-.3f + t * 1.5f + (i % 7) * .04f) * size.height
+            drawRect(colors[i % colors.size].copy(alpha = (1f - t) * .9f),
+                topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                size = androidx.compose.ui.geometry.Size(5.dp.toPx(), (if (i % 2 == 0) 9 else 5).dp.toPx()))
+        }
+    }
 }

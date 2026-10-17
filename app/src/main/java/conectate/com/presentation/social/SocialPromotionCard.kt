@@ -47,7 +47,11 @@ internal fun PromotionCreative(ad: SocialPromotion, onOpen: (String)->Unit) {
                         }
                     }
                 }
-                else if(card.imageUrl.isNotBlank())AsyncImage(model=MediaImageRequestFactory.preview(context,card.imageUrl),contentDescription=card.title,modifier=Modifier.fillMaxWidth().aspectRatio(1f),contentScale=ContentScale.Crop)
+                else if(card.imageUrl.isNotBlank()) {
+                    var imageFailed by remember(card.imageUrl) { mutableStateOf(false) }
+                    if (imageFailed) Box(Modifier.fillMaxWidth().aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment=Alignment.Center) { Text(card.title,Modifier.padding(24.dp),style=MaterialTheme.typography.titleLarge) }
+                    else AsyncImage(model=MediaImageRequestFactory.preview(context,card.imageUrl),contentDescription=card.title,modifier=Modifier.fillMaxWidth().aspectRatio(1f),contentScale=ContentScale.Crop,onError={imageFailed=true})
+                }
                 Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){Text(card.title,style=MaterialTheme.typography.titleSmall);if(card.description.isNotBlank())Text(card.description,style=MaterialTheme.typography.bodySmall);FilledTonalButton(onClick={onOpen(card.destination)},modifier=Modifier.fillMaxWidth()){Text(card.cta)}}
             }}
         }

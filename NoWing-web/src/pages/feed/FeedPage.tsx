@@ -1,3 +1,4 @@
+import {Fragment} from 'react'
 import { MediaViewer, type ViewerItem } from '../../components/MediaViewer'
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { MentionSuggestions } from '../../components/MentionSuggestions'
@@ -565,7 +566,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
         </Link>
       </div>
       <SocialMoments />
-      <SocialPromotion manageOpen={promotionManager} onClose={()=>setPromotionManager(false)} onManageAccess={setCanManagePromotions}/>
+      <SocialPromotion showAd={false} manageOpen={promotionManager} onClose={()=>setPromotionManager(false)} onManageAccess={setCanManagePromotions}/>
       {composerOpen ? (
         <div className="app-dialog-backdrop" role="presentation" onMouseDown={onCloseComposer}>
           <article
@@ -669,7 +670,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
         </article>
       ) : null}
       {shuffledItems.map((item, itemIndex) => (
-        <article key={item.id} className="surface-card feed-card">
+        <Fragment key={item.id}><article className="surface-card feed-card">
           <div className="row-between feed-head">
             <Link className="identity-link" to={profilePathFor(item.authorId, user?.id)}>
               <FeedAvatar url={item.authorAvatarUrl} name={item.authorName} />
@@ -793,7 +794,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
               Compartir
             </button>
           </div>
-        </article>
+        </article>{itemIndex===3?<SocialPromotion/>:null}</Fragment>
       ))}
     </section>
   )

@@ -7,6 +7,8 @@ export function attachmentPreparationError(error: unknown) { return error instan
 export const MAX_MESSAGE_UPLOAD_BYTES = 500 * 1024 * 1024
 export const FOLDER_PART_SOURCE_BYTES = 450 * 1024 * 1024
 const MAX_FILES = 5000
+const MAX_FOLDER_ENTRIES = 100000
+export type PreparationProgress = (message: string) => void
 const CHUNK_BYTES = 1024 * 1024
 type Entry = { name: string; isDirectory: boolean; isFile: boolean; file?: (ok: (file: File) => void, fail: (error: Error) => void) => void; createReader?: () => { readEntries: (ok: (entries: Entry[]) => void, fail: (error: Error) => void) => void } }
 function safeName(name: string) {
@@ -15,7 +17,7 @@ function safeName(name: string) {
 }
 
 /** Read bounded slices: never allocate every source file in the folder at once. */
-export async function compressFiles(files: Array<{ path: string; file: File | null }>, name: string) {
+export async function compressFiles(files: Array<{ path: string; file: File | null }>, name: string, onProgress?: PreparationProgress) {
   if (files.length > MAX_FILES) throw new AttachmentPreparationError('Selecciona hasta 5000 archivos por carpeta.')
   const paths = new Set<string>()
   for (const item of files) {
@@ -33,7 +35,10 @@ export async function compressFiles(files: Array<{ path: string; file: File | nu
     parts.push(new Uint8Array(data))
   })
   try {
+    let processed = 0
     for (const item of files) {
+      if (processed % 25 === 0) { onProgress?.(`Comprimiendo ${name}: ${processed} de ${files.length} elementos`); await new Promise<void>(resolve => setTimeout(resolve, 0)) }
+      processed++
       const entry = !item.file || /\.(zip|gz|7z|rar|docx|xlsx|pptx|jpe?g|png|webp|gif|mp4|mp3|m4a|pdf)$/i.test(item.path)
         ? new ZipPassThrough(item.path) : new ZipDeflate(item.path, { level: 6 })
       archive.add(entry)
@@ -59,25 +64,31 @@ export function folderArchiveParts(files: Array<{ path: string; file: File | nul
   for (const item of files) {
     const size = item.file?.size || 0
     if (size > MAX_MESSAGE_UPLOAD_BYTES) throw new AttachmentPreparationError('Un archivo supera los 500 MB permitidos. Selecciona uno más pequeño.')
-    if (part.length && bytes + size > FOLDER_PART_SOURCE_BYTES) { result.push(part); part = []; bytes = 0 }
+    if (part.length && (bytes + size > FOLDER_PART_SOURCE_BYTES || part.length >= MAX_FILES)) { result.push(part); part = []; bytes = 0 }
     part.push(item); bytes += size
   }
   if (part.length) result.push(part)
   return result
 }
 
-export async function prepareSelectedFolder(files: File[]) {
+export async function prepareSelectedFolder(files: File[], onProgress?: PreparationProgress) {
+  if (files.length > MAX_FOLDER_ENTRIES) throw new AttachmentPreparationError('La carpeta supera los 100 000 elementos. Divide la carpeta o adjunta un ZIP ya creado.')
+  onProgress?.(`Preparando carpeta: ${files.length} archivos`)
   const entries=files.map(file=>({path:file.webkitRelativePath,file}))
   const root=entries[0]?.path.split('/')[0] || 'Carpeta'
   if(entries.some(item=>!item.path||item.path.split('/')[0]!==root||item.path.split('/').length>33)) throw new AttachmentPreparationError('Selecciona una carpeta con hasta 32 niveles de subcarpetas.')
   const parts=folderArchiveParts(entries),output:File[]=[]
-  for(let i=0;i<parts.length;i++) output.push(await compressFiles(parts[i],root+(parts.length>1?`-parte-${i+1}-de-${parts.length}`:'')))
+  for(let i=0;i<parts.length;i++) {
+    const label=root+(parts.length>1?`-parte-${i+1}-de-${parts.length}`:'')
+    output.push(await compressFiles(parts[i],label,onProgress))
+  }
+  onProgress?.(`${output.length} ZIP${output.length===1?'':'s'} listos para enviar`)
   return output
 }
 
-export async function prepareAttachmentFiles(files: File[]) {
-  if (files.length > MAX_FILES) throw new AttachmentPreparationError('Selecciona hasta 5000 archivos por envío.')
-  if(files.some(file=>file.webkitRelativePath)) return prepareSelectedFolder(files)
+export async function prepareAttachmentFiles(files: File[], onProgress?: PreparationProgress) {
+  if(files.some(file=>file.webkitRelativePath)) return prepareSelectedFolder(files,onProgress)
+  if (files.length > MAX_FILES) throw new AttachmentPreparationError('Selecciona hasta 5000 archivos sueltos o adjunta la carpeta completa para dividirla en ZIPs.')
   const prepared: File[] = []
   for (const file of files) {
     if (file.size > MAX_MESSAGE_UPLOAD_BYTES) throw new AttachmentPreparationError('El archivo supera los 500 MB permitidos. Selecciona uno más pequeño.')
@@ -97,17 +108,19 @@ export async function prepareAttachmentFiles(files: File[]) {
 }
 
 /** Snapshot the granted drop entries synchronously; browsers invalidate DataTransfer after the event. */
-export function droppedAttachments(transfer: DataTransfer): Promise<File[]> {
+export function droppedAttachments(transfer: DataTransfer, onProgress?: PreparationProgress): Promise<File[]> {
   const roots = Array.from(transfer.items || []).filter(item => item.kind === 'file').map(item => item.webkitGetAsEntry?.() as Entry | null)
   const plain = Array.from(transfer.files || [])
-  if (!roots.some(entry => entry?.isDirectory)) return prepareAttachmentFiles(plain)
+  if (!roots.some(entry => entry?.isDirectory)) return prepareAttachmentFiles(plain,onProgress)
   return (async () => {
     const output: File[] = []; let count = 0
     for (const root of roots) {
       if (!root) continue
       const files: Array<{ path: string; file: File | null }> = []
       async function visit(entry: Entry, prefix: string, depth: number): Promise<void> {
-        if (depth > 32 || ++count > MAX_FILES) throw new AttachmentPreparationError('Selecciona hasta 5000 archivos y subcarpetas por envío.')
+        if (depth > 32) throw new AttachmentPreparationError('La carpeta supera los 32 niveles de subcarpetas. Puedes adjuntar un ZIP ya creado.')
+        if (++count > MAX_FOLDER_ENTRIES) throw new AttachmentPreparationError('La carpeta supera los 100 000 elementos. Divide la carpeta o adjunta un ZIP ya creado.')
+        if(count % 25 === 0) onProgress?.(`Leyendo carpeta: ${count} elementos encontrados`)
         const path = prefix + safeName(entry.name)
         if (entry.isFile && entry.file) {
           const file = await new Promise<File>((resolve, reject) => entry.file!(resolve, reject))
@@ -127,7 +140,7 @@ export function droppedAttachments(transfer: DataTransfer): Promise<File[]> {
       await visit(root, '', 0)
       if (root.isDirectory) {
         const parts = folderArchiveParts(files)
-        for (let i = 0; i < parts.length; i++) output.push(await compressFiles(parts[i], root.name + (parts.length > 1 ? `-parte-${i + 1}-de-${parts.length}` : '')))
+        for (let i = 0; i < parts.length; i++) output.push(await compressFiles(parts[i], root.name + (parts.length > 1 ? `-parte-${i + 1}-de-${parts.length}` : ''),onProgress))
       } else output.push(...await prepareAttachmentFiles(files.flatMap(item => item.file ? [item.file] : [])))
     }
     return output

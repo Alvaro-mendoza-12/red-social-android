@@ -817,7 +817,7 @@ fun ProfileScreen(
             }
         },
         floatingActionButton = {
-            if (selectedTab == 1 && (userId == null || userId == viewModel.currentUserId)) {
+            if (profileInfoTab == 0 && selectedTab == 1 && (userId == null || userId == viewModel.currentUserId)) {
                 FloatingActionButton(
                     onClick = { showCreatePostDialog = true },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -1147,7 +1147,7 @@ fun ProfileScreen(
                                     Spacer(modifier = Modifier.height(8.dp))
                                     ProfileInfoSwitcher(
                                         selected = profileInfoTab,
-                                        onSelected = { profileInfoTab = it },
+                                        onSelected = { profileInfoTab = it; if (it == 1) viewModel.loadUserProfile(userId, forceNetwork = true) },
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     if (profileInfoTab == 0) {
@@ -1181,6 +1181,7 @@ fun ProfileScreen(
                             }
                         }
 
+                        if (profileInfoTab == 0) {
                         // 3. STICKY TABS
                         stickyHeader {
                             Surface(
@@ -1443,6 +1444,8 @@ fun ProfileScreen(
                                 }
                             }
                         }
+
+                        } // Content tabs belong only to Inicio.
 
                         // Preserving Admin and Sign out buttons as final items - REMOVED per user request
                         // item {

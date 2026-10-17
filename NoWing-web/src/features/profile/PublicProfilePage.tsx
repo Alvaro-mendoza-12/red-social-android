@@ -637,6 +637,7 @@ export function PublicProfilePage() {
           </div>
         )}
       </div>
+      {homeTab === 'home' ? <>
       <div className="mobile-profile-tabs" aria-label="Contenido del perfil">
         <button
           type="button"
@@ -706,6 +707,7 @@ export function PublicProfilePage() {
           description="Las publicaciones de este perfil aparecerán aquí."
         />
       )}
+      </> : null}
       {showQr ? (
         <div className="app-dialog-backdrop" onMouseDown={() => setShowQr(false)}>
           <section

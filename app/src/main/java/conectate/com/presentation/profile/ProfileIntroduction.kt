@@ -45,6 +45,11 @@ internal fun ProfileIntroduction(user: User, isOwnProfile: Boolean, onEdit: () -
         // Birthday is intentionally the last presentation section. The API also removes hidden dates.
         val visible = isOwnProfile || user.profile_section_visibility["birthday"] != "only_me"
         val birthday = if (visible) profileBirthdayLabel(user.birth_date) else null
+        if (birthday == null && isOwnProfile) {
+            OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Cake, null); Spacer(Modifier.width(8.dp)); Text("Añadir mi cumpleaños")
+            }
+        }
         if (birthday != null) {
             Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .5f)) {
                 Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

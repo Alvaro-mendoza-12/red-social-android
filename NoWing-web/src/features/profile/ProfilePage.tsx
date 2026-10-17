@@ -403,6 +403,7 @@ export function ProfilePage() {
         )}
       </div>
 
+      {homeTab === 'home' ? <>
       <div className="mobile-profile-tabs" role="tablist" aria-label="Contenido del perfil">
         <button
           className={activeTab === 'videos' ? 'active' : ''}
@@ -477,6 +478,7 @@ export function ProfilePage() {
       ) : (
         <StatusView title="Sin contenido" description="Todavía no hay contenido en esta sección." />
       )}
+      </> : null}
     </section>
   )
 }

@@ -11,8 +11,9 @@ export function BirthdayLetter({ content }: { content: string }) {
     <button type="button" className={`birthday-letter ${card.theme}`} onClick={() => dialog.current?.showModal()}>
       <Mail size={36} aria-hidden="true"/><strong>¡Feliz cumpleaños!</strong><span>Una carta para celebrar tu día</span><small>Toca para abrir</small>
     </button>
-    <dialog ref={dialog} className="birthday-dialog" aria-label="Tu carta de cumpleaños" onClick={e => { if (e.target === e.currentTarget) dialog.current?.close() }}>
+    <dialog ref={dialog} className="birthday-dialog birthday-celebration" aria-label="Tu carta de cumpleaños" onClick={e => { if (e.target === e.currentTarget) dialog.current?.close() }}>
       <button type="button" className="birthday-close" aria-label="Cerrar carta" onClick={() => dialog.current?.close()}><X/></button>
+      <div className="birthday-confetti" aria-hidden="true">{Array.from({length:36},(_,i)=><i key={i} style={{left:`${(i*73)%101}%`,animationDelay:`${(i%7)*40}ms`,background:['#e75ba5','#ffbe3b','#6486ff','#37ba91'][i%4]}}/>)}</div>
       <BirthdayPreview card={card}/>
     </dialog>
   </>

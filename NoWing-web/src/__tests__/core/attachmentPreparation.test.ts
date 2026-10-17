@@ -56,3 +56,15 @@ test('folder picker preserves nested paths and creates a ZIP automatically',asyn
  const source=file('nota.txt','Contenido de carpeta');Object.defineProperty(source,'webkitRelativePath',{value:'Universidad/curso/nota.txt'})
  const [packed]=await prepareAttachmentFiles([source]);expect(packed.name).toBe('Universidad.zip');expect(strFromU8(unzipSync(await bytes(packed))['Universidad/curso/nota.txt'])).toBe('Contenido de carpeta')
 })
+
+test('folder picker splits more than 5000 entries automatically and preserves every path',async()=>{
+ const source=Array.from({length:5001},(_,i)=>{const f=file(`${i}.txt`,'');Object.defineProperty(f,'webkitRelativePath',{value:`Carpeta/${i}.txt`});return f})
+ const progress:string[]=[];const parts=await prepareAttachmentFiles(source,message=>progress.push(message))
+ expect(parts.map(p=>p.name)).toEqual(['Carpeta-parte-1-de-2.zip','Carpeta-parte-2-de-2.zip'])
+ const paths:string[]=[];for(const part of parts)paths.push(...Object.keys(unzipSync(await bytes(part))))
+ expect(new Set(paths).size).toBe(5001);expect(paths).toContain('Carpeta/5000.txt');expect(progress.some(p=>p.includes('Comprimiendo'))).toBe(true)
+})
+test('splits empty subdirectories by entry count as well as source bytes',()=>{
+ const entries=Array.from({length:10001},(_,i)=>({path:`Carpeta/sub${i}/`,file:null}))
+ const parts=folderArchiveParts(entries);expect(parts.map(p=>p.length)).toEqual([5000,5000,1]);expect(parts.flat()).toEqual(entries)
+})

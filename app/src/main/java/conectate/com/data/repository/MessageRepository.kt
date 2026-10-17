@@ -858,7 +858,7 @@ class MessageRepository @Inject constructor(
                         val existing = existingLocalChats[mapped.chat.id]
                         val mappedTime = mapped.chat.last_message_at ?: ""
                         val existingTime = existing?.last_message_at ?: ""
-                        val effectiveClearedAt = mapped.clearedAt ?: mapped.chat.cleared_at ?: existing?.cleared_at
+                        val effectiveClearedAt = mapped.clearedAt ?: mapped.chat.cleared_at
                         val normalizedClearedAt = normalizeDate(effectiveClearedAt.orEmpty())
                         val normalizedExistingTime = normalizeDate(existingTime)
                         
@@ -1897,6 +1897,7 @@ class MessageRepository @Inject constructor(
     suspend fun clearChat(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
+            val clearSession = captureSessionSnapshot(currentUserId)
             var cleanId = chatId.trim().lowercase()
             var now = java.time.Instant.now().toString()
 
@@ -1905,7 +1906,7 @@ class MessageRepository @Inject constructor(
                     .getOrElse { return@withContext Result.failure(it) }
                 localFallbackApiClient.clearChat(token, cleanId)
                     .getOrElse { e ->
-                        android.util.Log.w("MessageRepository", "clearChat ubuntu failed, still clearing locally", e)
+                        return@withContext Result.failure(e)
                     }
             } else {
                 var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -1923,11 +1924,11 @@ class MessageRepository @Inject constructor(
                 }
             }
 
-            // Update Local Room DB
+            if (!isSessionSnapshotValid(clearSession, "clear-chat-commit")) return@withContext Result.failure(Exception("La cuenta cambió. Vuelve a abrir el chat."))
+            // A per-user cutoff hides old rows without destroying the shared local cache.
             chatDao.updateClearedAt(cleanId, now)
 
-            // Nuclear local message delete for this chat
-            messageDao.deleteMessagesByChatId(cleanId)
+            // Keep cached rows: another signed-in account may share this conversation.
 
             // Clear In-Memory Flow
             _activeChatMessages[cleanId]?.value = emptyList()
@@ -4826,8 +4827,7 @@ class MessageRepository @Inject constructor(
 
             // Soft delete from Room (marks as deleted, hidden from UI)
             chatDao.deleteChat(cleanId, now)
-            // Hard delete messages locally to free space and prevent old messages showing up
-            messageDao.deleteMessagesByChatId(cleanId)
+            // Visibility is per user; retain message rows for other linked accounts.
             
             // Remove from in-memory cache
             var currentChats = _userChats.value.toMutableList()

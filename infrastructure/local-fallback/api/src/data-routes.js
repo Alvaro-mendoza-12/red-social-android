@@ -9800,7 +9800,8 @@ function registerDataRoutes(app, {
           const fallbackName = textOf(row, ['other_user_name', 'display_name', 'user_name', 'name'], 'Chat privado')
           const nickname = nicknamesByTarget.get(normalizeId(otherId)) || ''
           const hasVisibleLatest = Boolean(textOf(latest, ['id'], ''))
-          if (!hasVisibleLatest) return null
+          // A cleared conversation remains in its owner's inbox, with an empty preview.
+          // Only an explicit per-user hide removes a conversation from the list.
           return {
             id,
             title: nickname || (otherProfile ? profileName(otherProfile, fallbackName) : fallbackName),
@@ -9963,6 +9964,9 @@ function registerDataRoutes(app, {
       if (!cleanChatId || !uuidChatId) return res.status(400).json({ error: 'CHAT_ID_REQUIRED' })
 
       const now = new Date().toISOString()
+
+      const { hasAccess } = await privateChatAccessContext(pool, cleanChatId, identity)
+      if (!hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
 
       // Mark cleared_at in fallback_chat_participants (create row if missing)
       await pool.query(

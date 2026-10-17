@@ -404,6 +404,12 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.EditProfile.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.profile.EditProfileScreen(navController = navController)
+        }
+    }
+
     composable(Screen.AccountSettings.route) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.profile.EditProfileScreen(navController = navController)

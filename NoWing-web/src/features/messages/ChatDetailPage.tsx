@@ -460,6 +460,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const [dragActive, setDragActive] = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
   const [preparingAttachments, setPreparingAttachments] = useState(false)
+  const [preparationStatus, setPreparationStatus] = useState('Preparando archivos…')
   const [imageEditorFile, setImageEditorFile] = useState<File | null>(null)
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
   const [profilePanelOpen, setProfilePanelOpen] = useState(false)
@@ -741,9 +742,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       event.preventDefault()
       event.stopPropagation()
       setDragActive(false)
-      setPreparingAttachments(true)
+      setPreparingAttachments(true); setPreparationStatus('Preparando archivos…'); setError(null)
       const owner = preparationOwnerRef.current
-      void droppedAttachments(event.dataTransfer).then(files => { if (owner === preparationOwnerRef.current) queueAttachmentFiles(files) }).catch(error => { if (owner === preparationOwnerRef.current) setError(attachmentPreparationError(error)) }).finally(() => { if (owner === preparationOwnerRef.current) setPreparingAttachments(false) })
+      void droppedAttachments(event.dataTransfer, message => { if (owner === preparationOwnerRef.current) setPreparationStatus(message) }).then(files => { if (owner === preparationOwnerRef.current) queueAttachmentFiles(files) }).catch(error => { if (owner === preparationOwnerRef.current) setError(attachmentPreparationError(error)) }).finally(() => { if (owner === preparationOwnerRef.current) setPreparingAttachments(false) })
     },
     [queueAttachmentFiles],
   )
@@ -1452,9 +1453,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }
 
   function handleAttachFile(input: FileList | File[] | null) {
-    setPreparingAttachments(true)
+    setPreparingAttachments(true); setPreparationStatus('Preparando archivos…'); setError(null)
     const owner = preparationOwnerRef.current
-    void prepareAttachmentFiles(Array.from(input || [])).then(files => { if (owner === preparationOwnerRef.current) queueAttachmentFiles(files) }).catch(error => { if (owner === preparationOwnerRef.current) setError(attachmentPreparationError(error)) }).finally(() => { if (owner === preparationOwnerRef.current) setPreparingAttachments(false) })
+    void prepareAttachmentFiles(Array.from(input || []), message => { if (owner === preparationOwnerRef.current) setPreparationStatus(message) }).then(files => { if (owner === preparationOwnerRef.current) queueAttachmentFiles(files) }).catch(error => { if (owner === preparationOwnerRef.current) setError(attachmentPreparationError(error)) }).finally(() => { if (owner === preparationOwnerRef.current) setPreparingAttachments(false) })
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -2388,7 +2389,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       {showStickers ? <StickerPicker onEmoji={emoji => { draftRevisionRef.current += 1; setDraft(current => current + emoji) }} onSelect={item => void sendSticker(item)} onImport={file => void importSticker(file)} onClose={() => setShowStickers(false)} /> : null}
 
       {error ? <div className="chat-composer-error" role="alert"><span>{error}</span><button className="mini-action-btn" type="button" onClick={() => setError(null)}>Cerrar</button></div> : null}
-      {preparingAttachments ? <p className="attachment-preparing" role="status">Preparando archivos y comprimiendo carpetas…</p> : null}
+      {preparingAttachments ? <p className="attachment-preparing" role="status">{preparationStatus}</p> : null}
       {isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
       {imageEditorFile ? <ChatImageEditor file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
       {galleryIndex !== null && gallery[galleryIndex] ? <MediaViewer items={gallery} initialIndex={galleryIndex} onClose={() => setGalleryIndex(null)} /> : null}

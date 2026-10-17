@@ -1571,7 +1571,7 @@ async function prepareInsertRow(pool, tableName, identity, source) {
   if (tableName === 'chat_participants') {
     const chatId = row.chat_id
     if (!(await canAccessChat(pool, identity, chatId))) throw httpError('CHAT_ACCESS_DENIED')
-    return row
+    return forceActorField(row, 'user_id', identity)
   }
 
   if (tableName === 'voice_rooms') {
@@ -1832,8 +1832,17 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
       'delivered_at', 'read_at', 'reactions', 'status', 'updated_at',
     ]))
   }
-  if (tableName === 'chats' || tableName === 'chat_participants') {
-    return canAccessChat(pool, identity, row.chat_id || row.id)
+  if (tableName === 'chat_participants') {
+    // Read membership in a shared chat never grants ownership of a peer's clear/hide state.
+    return action !== 'delete' && identityOwnsRow(identity, row, ['user_id', 'profile_id']) &&
+      patchOnlyContains(patch, new Set(['cleared_at', 'last_read_at', 'is_muted', 'is_pinned', 'is_archived', 'is_favorite', 'updated_at'])) &&
+      canAccessChat(pool, identity, row.chat_id)
+  }
+  if (tableName === 'chats') {
+    // Removing a shared row would remove the conversation for every participant.
+    return action !== 'delete' &&
+      patchOnlyContains(patch, new Set(['last_message', 'last_message_at', 'last_message_id', 'last_message_sender_id', 'updated_at'])) &&
+      canAccessChat(pool, identity, row.id)
   }
   if (tableName === 'group_message_receipts' || tableName === 'community_message_receipts') {
     return identityOwnsRow(identity, row, ['user_id'])

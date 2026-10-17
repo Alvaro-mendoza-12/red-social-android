@@ -1888,18 +1888,6 @@ fun SocialScreen(
                                             onOpenSettings = { showFeedPreferences = true }
                                         )
                                     }
-                                    item(key = "novvin-promotion") {
-                                        SocialPromotionCard(promotionState) { destination ->
-                                            if(destination.startsWith("https://")){runCatching{context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(destination)))};return@SocialPromotionCard}
-                                            val route = when(destination) {
-                                                "/app/videos" -> Screen.Videos.route
-                                                "/app/social" -> Screen.Social.route
-                                                "/app/games" -> Screen.Games.route
-                                                else -> Screen.Messages.route
-                                            }
-                                            navController.navigate(route) { launchSingleTop = true }
-                                        }
-                                    }
                                     item(key = "reading-tools") {
                                         SocialReadingTools(posts) { postId ->
                                             navController.navigate(Screen.PostDetail.createRoute(postId))
@@ -2039,6 +2027,20 @@ fun SocialScreen(
                                                 navController.navigate(Screen.PostDetail.createRoute(originalPostId))
                                             }
                                         )
+                                        }
+                                        if (feedMode == SocialFeedMode.DISCOVER && index == 3) {
+                                    item(key = "novvin-promotion") {
+                                        SocialPromotionCard(promotionState) { destination ->
+                                            if(destination.startsWith("https://")){runCatching{context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(destination)))};return@SocialPromotionCard}
+                                            val tab = when(destination) {
+                                                "/app/videos" -> Screen.Videos.route
+                                                "/app/social" -> Screen.Social.route
+                                                "/app/games" -> Screen.Games.route
+                                                else -> Screen.Messages.route
+                                            }
+                                            navController.navigate(Screen.Home.createRoute(startTab = tab)) { launchSingleTop = true }
+                                        }
+                                    }
                                         }
                                         if (feedMode == SocialFeedMode.DISCOVER) {
                                             item(key = "post-divider:${post.id}") { FacebookFeedDivider() }
