@@ -55,3 +55,10 @@ test('wheel, double click and keyboard control image zoom within bounds',()=>{
  fireEvent.keyDown(stage,{key:'0'});expect(screen.getByAltText('Zoom').style.transform).toContain('scale(1)')
  fireEvent.click(screen.getByRole('button',{name:'Ampliar',exact:true}));fireEvent.keyDown(stage,{key:'+'});expect(screen.getByAltText('Zoom').style.transform).toContain('scale(2)')
 })
+
+test('Escape closes only the viewer, preserving its parent contact panel',()=>{
+ const parent=jest.fn(),close=jest.fn()
+ render(<section onKeyDown={parent}><MediaViewer items={[{url:'https://media.test/photo.png',type:'image'}]} onClose={close}/></section>)
+ fireEvent.keyDown(screen.getByRole('dialog',{name:'Visor multimedia'}),{key:'Escape'})
+ expect(close).toHaveBeenCalledTimes(1);expect(parent).not.toHaveBeenCalled()
+})

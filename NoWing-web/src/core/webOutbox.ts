@@ -1,5 +1,6 @@
 import {getStorageReadIdentity} from './media/storageReadSession'
 import {registerOutboxPreview,clearOutboxPreviewRegistry} from './media/outboxPreviewRegistry'
+import {notifyInboxMessage} from './inboxActivity'
 import { fallbackApiJson, fallbackSessionToUser, readFallbackSession } from './auth/fallbackAuth'
 import { ConversationSendQueue } from './conversationSendQueue'
 import { outboxFailureMessage } from './outboxFailureMessage'
@@ -168,6 +169,7 @@ async function deliver(item: Pending) {
     method: 'POST', body: JSON.stringify(payload), expectedAccountId: item.owner, signal: AbortSignal.timeout(25000),
   })
   requireOwner(item.owner)
+  notifyInboxMessage(item.senderId||item.owner,item.scope,item.room,result.message)
   const cached = await cachedConversation(item.scope, item.room, item.owner)
   if (cached) await cacheConversation(item.scope, item.room, { ...cached, messages: [...((cached.messages || []) as GenericRow[]).filter(row => row.id !== item.id), result.message] }, item.owner)
   await remove('messages', item.id)
@@ -183,6 +185,7 @@ export async function sendDurableWebMessage(scope: Scope, room: string, payload:
   await put('messages', item); requireOwner(owner); changed(owner)
   // Flush through the same durable path for both connected and disconnected sends.
   const message = await optimistic(item)
+  notifyInboxMessage(senderId,scope,room,message)
   if (navigator.onLine) window.setTimeout(() => { void flushWebOutbox().catch(() => {}) }, 0)
   return { message }
 }

@@ -537,4 +537,12 @@
  .voice-room-stage-header { border-radius:16px; padding:16px; }
 }
 
-.voice-cue-settings{min-width:0;display:grid;gap:12px;border:1px solid var(--outline,#555);border-radius:12px;padding:14px}.voice-cue-settings label{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.voice-cue-settings input[type=range]{width:100%}.voice-cue-settings input[type=checkbox]{width:18px;height:18px;flex:none}
+.voice-device-fields{align-items:start}
+.voice-device-fields>small,.voice-cue-settings{grid-column:1 / -1}
+.voice-cue-settings{min-width:0;display:grid;gap:14px;border:1px solid var(--outline,#555);border-radius:12px;padding:14px}
+.voice-cue-settings legend{padding-inline:6px;font-weight:600}
+.media-device-dialog .voice-cue-settings label{display:flex;align-items:center;gap:10px;line-height:1.5}
+.media-device-dialog .voice-cue-settings .voice-cue-volume{display:grid;gap:8px}
+.voice-cue-settings input[type=range]{width:100%}
+.voice-cue-settings input[type=checkbox]{width:18px;height:18px;flex:none;margin:0}
+.voice-cue-settings button{justify-self:start}

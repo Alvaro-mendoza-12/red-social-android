@@ -1,3 +1,5 @@
+import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
+import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
 import { BirthdayComposer, BirthdayLetter } from '../../components/BirthdayLetter'
 import { useSearchParams } from 'react-router-dom'
 import { FolderAttachmentPicker } from '../../components/FolderAttachmentPicker'
@@ -33,7 +35,6 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ChatOptionsMenu } from '../../components/ChatOptionsMenu'
 import { MediaDownloadButton } from '../../components/MediaDownloadButton'
-import { MoreHorizontal } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
 import {
   deleteFallbackChatMessage,
@@ -436,9 +437,10 @@ function FallbackAvatar({ url, name, className }: { url: string; name: string; c
 type ChatDetailPageProps = {
   chatIdOverride?: string
   embedded?: boolean
+  onCloseChat?:()=>void
 }
 
-export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailPageProps = {}) {
+export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }: ChatDetailPageProps = {}) {
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const { chatId: routeChatId = '' } = useParams()
@@ -905,12 +907,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
   const markAsDeliveredAndRead = useCallback(async () => {
     if (!user || !cleanChatId) return
+    const readToken=markInboxConversationRead(user.id,'chat',cleanChatId)
     if (useUbuntu) {
       try {
         await markFallbackChatRead(cleanChatId)
       } catch (caught) {
         console.warn('markFallbackChatRead failed', caught)
-      }
+      } finally {confirmInboxConversationRead(user.id,'chat',cleanChatId,readToken)}
       return
     }
     if (!supabase) return
@@ -952,7 +955,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       }
     } catch (caught) {
       console.warn('markAsDeliveredAndRead failed', caught)
-    }
+    } finally {confirmInboxConversationRead(user.id,'chat',cleanChatId,readToken)}
   }, [cleanChatId, useUbuntu, user])
 
   const loadChatSettings = useCallback(async () => {
@@ -1180,7 +1183,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   }, [showMessageSearch])
 
   useEffect(() => {
-    if (!cleanChatId || !user || useUbuntu) return
+    if (!cleanChatId || !user) return
     const syncReadState = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       void markAsDeliveredAndRead()
@@ -1211,6 +1214,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
           const messageId = textOf(row, ['id'], '')
           if (!messageId) return
           upsertMessageInState(mapMessage(row))
+          if(textOf(row,['sender_id','senderId'],'')!==user.id&&!textOf(row,['read_at','readAt'],'')&&document.visibilityState==='visible')void markAsDeliveredAndRead()
           const pollId = textOf(row, ['poll_id', 'pollId'], '')
           if (pollId) void refreshPollState(pollId)
         },
@@ -1268,7 +1272,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
     return () => {
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [cleanChatId, refreshPollState, removeMessageFromState, upsertMessageInState, useUbuntu, user])
+  }, [cleanChatId, markAsDeliveredAndRead, refreshPollState, removeMessageFromState, upsertMessageInState, useUbuntu, user])
 
   async function sendMessage(input: SendMessageInput) {
     if (!user || !cleanChatId) return
@@ -2030,7 +2034,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
       {showQuickShare ? <ChatOptionsMenu pinned={settings.isPinned} muted={settings.isMuted} favorite={settings.isFavorite} archived={settings.isArchived} busy={savingSettings}
         onPreference={patch => void saveChatPreferences(patch)} onInfo={() => setProfilePanelOpen(true)} onSearch={() => setShowMessageSearch(true)}
-        onSelect={() => setSelectingMessages(true)} onAdvanced={() => setShowAdvancedTools(true)} onLeave={() => navigate('/app/messages')} onClose={() => setShowQuickShare(false)} /> : null}
+        onSelect={() => setSelectingMessages(true)} onAdvanced={() => setShowAdvancedTools(true)} onLeave={() => onCloseChat?onCloseChat():navigate('/app/messages')} onClose={() => setShowQuickShare(false)} /> : null}
       {showAdvancedTools ? (
         <div className="chat-tools-overlay chat-advanced-options fade-in" role="dialog" aria-label="Más opciones del chat" onKeyDown={event => { if(event.key === 'Escape') setShowAdvancedTools(false) }}>
           <article className="surface-card section-stack shadow-lg">
@@ -2257,19 +2261,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                 ) : null}
 
                 {!message.deletedForAll ? (
-                  <details className={mine ? 'message-menu message-menu-mine' : 'message-menu'}>
-                    <summary title="Opciones del mensaje" aria-label="Opciones del mensaje">
-                      <MoreHorizontal aria-hidden="true" />
-                    </summary>
-                    <div className="message-menu-popover">
+                  <MessageOptionsMenu mine={mine}>
                     <button className="mini-action-btn" type="button" onClick={() => { setSelectingMessages(true); setSelectedMessageIds(new Set([message.id])) }}>Seleccionar mensaje</button>
                     <button className="mini-action-btn" type="button" onClick={() => void navigator.clipboard.writeText(message.content || message.mediaUrl).catch(() => setError('No se pudo copiar el mensaje.'))}>Copiar</button>
                     {message.mediaUrl && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={fileNameFromUrl(message.mediaUrl)} /> : null}
-                    {['👍', '❤️', '😂'].map((emoji) => (
-                      <button key={emoji} className="mini-action-btn reaction-action" type="button" aria-label={`Reaccionar con ${emoji}`} onClick={() => void toggleReaction(message.id, emoji)}>
-                        {emoji}
-                      </button>
-                    ))}
+                    <MessageReactionBar onReact={emoji=>void toggleReaction(message.id,emoji)}/>
                     <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
                       Responder
                     </button>
@@ -2296,8 +2292,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
                     <button className="mini-action-btn" type="button" onClick={() => void deleteMessageForMe(message)}>
                       Eliminar para mí
                     </button>
-                    </div>
-                  </details>
+                  </MessageOptionsMenu>
                 ) : null}
 
                 {mine && message.status==='failed' && message.deliveryError ? <p className="message-delivery-error" role="status">{message.deliveryError}</p> : null}

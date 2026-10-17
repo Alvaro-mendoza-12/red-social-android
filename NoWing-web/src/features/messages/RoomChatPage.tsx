@@ -1,3 +1,5 @@
+import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
+import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
 import { CommunityRaffles } from '../../components/CommunityRaffles'
 import { CommunityQuestion, CollectionQuestionTools } from '../../components/CommunityQuestion'
 import { MediaDownloadButton } from '../../components/MediaDownloadButton'
@@ -27,7 +29,6 @@ import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { MoreHorizontal } from 'lucide-react'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { conversationAvatarSource } from '../../core/profileMediaFields'
 import { StatusView } from '../../components/StatusView'
@@ -694,8 +695,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
 
   const markAsRead = useCallback(async () => {
     if ((!supabase && !useUbuntu) || !user || !cleanRoomId) return
-    await backendRpc(config.markReadRpc, { [config.roomIdParam]: cleanRoomId })
-  }, [cleanRoomId, config.markReadRpc, config.roomIdParam, useUbuntu, user])
+    const readToken=markInboxConversationRead(user.id,scope,cleanRoomId)
+    try{await backendRpc(config.markReadRpc, { [config.roomIdParam]: cleanRoomId })}
+    finally{confirmInboxConversationRead(user.id,scope,cleanRoomId,readToken)}
+  }, [cleanRoomId, config.markReadRpc, config.roomIdParam, scope, useUbuntu, user])
 
   const loadRoom = useCallback(async (options?: { silent?: boolean }) => {
     const loadSequence = ++loadSequenceRef.current
@@ -1543,17 +1546,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   </div>
                 ) : null}
                 {!message.deletedForAll ? (
-                  <details className={mine ? 'message-menu message-menu-mine' : 'message-menu'}>
-                    <summary title="Opciones del mensaje" aria-label="Opciones del mensaje">
-                      <MoreHorizontal aria-hidden="true" />
-                    </summary>
-                    <div className="message-menu-popover">
+                  <MessageOptionsMenu mine={mine}>
                     {message.mediaUrl && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={message.content || 'archivo'} /> : null}
-                    {['👍', '❤️', '😂'].map((emoji) => (
-                      <button key={emoji} className="mini-action-btn reaction-action" type="button" aria-label={`Reaccionar con ${emoji}`} onClick={() => void toggleReaction(message.id, emoji)}>
-                        {emoji}
-                      </button>
-                    ))}
+                    <MessageReactionBar onReact={emoji=>void toggleReaction(message.id,emoji)}/>
                     <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
                       Responder
                     </button>
@@ -1580,8 +1575,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                     <button className="mini-action-btn" type="button" onClick={() => void deleteRoomMessage(message, false)}>
                       Borrar mi vista
                     </button>
-                    </div>
-                  </details>
+                  </MessageOptionsMenu>
                 ) : null}
                 {receipts.length > 0 ? (
                   <div className="receipt-stack">

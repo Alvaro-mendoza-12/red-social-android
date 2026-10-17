@@ -92,7 +92,7 @@
 .reels-page .reel-sound-button { top: 96px; z-index: 3; border: 1px solid #ffffff50; }
 .reel-media-status { position: absolute; inset: 35% 48px auto; z-index: 4; display: grid; justify-items: center; gap: 14px; text-align: center; padding: 18px; border-radius: 14px; background: #101014dd; color: #fff; font-size: 14px; }
 .reel-media-status.loading { pointer-events: none; background: transparent; text-shadow: 0 1px 4px #000; }
-.chat-profile-hero { margin-top: 20px; padding-bottom: 2px; }
+.chat-profile-hero { position:relative; margin-top:20px; padding-bottom:34px; }
 .chat-profile-hero .chat-profile-cover { display: block; margin: 0; background: var(--surface-raised); }
 .chat-profile-hero .chat-profile-avatar { position: relative; display: block; margin: -35px 0 0 12px; object-fit: cover; flex-shrink: 0; }
 .chat-profile-hero.no-cover { padding-top: 20px; background: linear-gradient(135deg,#18676a33,#6852a033); border-radius: 12px; }
@@ -228,6 +228,16 @@
 .chat-profile-hero > .profile-media-open:first-child { width:100%; }
 .chat-profile-hero > .profile-avatar-open { position:absolute; left:0; bottom:0; border-radius:50%; }
 .chat-profile-hero .profile-avatar-open .chat-profile-avatar { position:static; }
+.chat-profile-hero+h3{margin-top:12px}
+.message-reaction-bar{display:flex;align-items:center;justify-content:space-between;gap:2px;padding:4px 0 9px;margin-bottom:5px;border-bottom:1px solid var(--outline)}
+.message-reaction-bar>button{display:grid;place-items:center;width:34px;height:36px;padding:0;border:0;background:transparent;border-radius:50%;font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;font-size:24px;line-height:1}
+.message-reaction-bar>button:hover,.message-reaction-bar>button:focus-visible{background:var(--surface-container);transform:scale(1.12)}
+.message-menu summary{display:grid;place-items:center;font-size:inherit}
+.message-menu summary svg{width:18px;height:18px}
+.message-menu summary:after{content:none}
+.message-menu[open]{z-index:35}
+.message-menu-popover{min-width:236px;max-width:calc(100vw - 16px);overflow:auto}
+.inbox-tab-count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:10px;background:var(--accent,#237bd4);color:#fff;font-size:11px;font-weight:700}
 
 .image-crop-surface { touch-action:none; }
 .crop-handle.n { top:-7px; left:calc(50% - 7px); cursor:ns-resize; }

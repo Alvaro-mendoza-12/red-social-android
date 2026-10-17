@@ -65,6 +65,7 @@ export function MediaViewer({
         onClose()
       }}
       onKeyDown={(event) => {
+        if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();return}
         if (event.target instanceof HTMLInputElement) return
         if (items.length > 1 && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
           event.preventDefault()

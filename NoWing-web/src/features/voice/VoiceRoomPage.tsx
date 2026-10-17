@@ -1384,7 +1384,7 @@ export function VoiceRoomPage() {
             <fieldset className="voice-cue-settings"><legend>Sonidos de la sala</legend>
               <label><input type="checkbox" checked={cueSettings.presence} onChange={e=>setCueSettings({...cueSettings,presence:e.target.checked})}/>Entradas y salidas</label>
               <label><input type="checkbox" checked={cueSettings.microphone} onChange={e=>setCueSettings({...cueSettings,microphone:e.target.checked})}/>Silenciar y activar micrófonos</label>
-              <label>Volumen de avisos <input type="range" min="0" max="100" value={Math.round(cueSettings.volume*100)} onChange={e=>setCueSettings({...cueSettings,volume:Number(e.target.value)/100})}/></label>
+              <label className="voice-cue-volume">Volumen de avisos · {Math.round(cueSettings.volume*100)} %<input type="range" min="0" max="100" value={Math.round(cueSettings.volume*100)} onChange={e=>setCueSettings({...cueSettings,volume:Number(e.target.value)/100})}/></label>
               <button className="ghost-btn" type="button" onClick={()=>void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))}>{cueAudioBlocked?'Habilitar sonidos':'Activar audio de avisos'}</button>
               <small>Avisos solo para ti. Silenciar el audio de la sala también los desactiva.</small>
             </fieldset>

@@ -1,3 +1,4 @@
+import {acknowledgeInboxPreview,applyInboxUnreadSnapshot,confirmInboxConversationRead,inboxActivityEvent,inboxUnreadCount,latestInboxMessage,markInboxConversationRead,useInboxUnreadCounts,type InboxActivity} from '../../core/inboxActivity'
 import { readConversationDraft, useDraftRevision } from '../../core/conversationDrafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -532,6 +533,16 @@ async function loadRoomCollectionByMembership(options: {
   return sortByUpdatedAt(mapped)
 }
 
+function withInboxActivity(accountId:string,items:ConversationItem[],requestedAt=Infinity):ConversationItem[]{
+ return sortByUpdatedAt(items.map(item=>{
+  if(item.kind==='voice')return item
+  const latest=latestInboxMessage(accountId,item.kind,item.id),at=latest?textOf(latest,['created_at','createdAt'],''):''
+  const next=latest&&toMillis(at)>=toMillis(item.updatedAt)?{...item,subtitle:previewFromMessage(latest),updatedAt:at}:item
+  if(latest&&item.subtitle===previewFromMessage(latest))acknowledgeInboxPreview(accountId,item.kind,item.id,item.updatedAt)
+  return {...next,unreadCount:inboxUnreadCount(accountId,item.kind,next,requestedAt)}
+ }))
+}
+
 export function MessagesPage() {
   useDraftRevision()
   const { user, isFallbackSession } = useAuth()
@@ -557,6 +568,8 @@ export function MessagesPage() {
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<ConversationItem[]>([])
+  const inboxCounts=useInboxUnreadCounts(user?.id||'')
+  const inboxLoadSequence=useRef(0)
   const [openingChatId, setOpeningChatId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [discoverUsers, setDiscoverUsers] = useState<DiscoverUserItem[]>([])
@@ -661,10 +674,6 @@ export function MessagesPage() {
     }
   }, [activeTab, isFallbackSession, knownChatProfileIds, normalizedSearch, user])
 
-  const totalUnreadChats = useMemo(
-    () => items.filter((item) => item.unreadCount > 0).length,
-    [items],
-  )
   const title = tabOptions.find((tab) => tab.key === activeTab)?.label || 'Mensajes'
   const supportsSplitLayout =
     !isCompactViewport &&
@@ -696,10 +705,10 @@ export function MessagesPage() {
       return
     }
     if (!selectedConversation) return
-    if (filteredItems.length === 0 || !selectedConversationItem) {
+    if (!selectedConversationItem) {
       setSelectedConversation(null)
     }
-  }, [filteredItems, selectedConversation, selectedConversationItem, supportsSplitLayout])
+  }, [selectedConversation, selectedConversationItem, supportsSplitLayout])
 
   const loadCurrentTab = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -713,13 +722,15 @@ export function MessagesPage() {
         setLoading(true)
         setError(null)
       }
+      const sequence=++inboxLoadSequence.current
+      const requestedAt=Date.now()
+      const commitItems=(next:ConversationItem[])=>{if(sequence!==inboxLoadSequence.current)return;const current=withInboxActivity(user.id,next,requestedAt);if(activeTab!=='voice')applyInboxUnreadSnapshot(user.id,activeTab==='chats'?'chat':activeTab==='groups'?'group':'community',current,requestedAt);setItems(current);writeCachedValue(inboxCacheKey,current)}
       try {
         if (isFallbackSession) {
           const response = await loadFallbackMessagesInbox(activeTab)
           const normalizedItems = await normalizeFallbackInboxItems(response.items)
           const dedupedItems = sortByUpdatedAt(dedupeInboxConversations(normalizedItems))
-          setItems(dedupedItems)
-          writeCachedValue(inboxCacheKey, dedupedItems)
+          commitItems(dedupedItems)
           return
         }
 
@@ -892,8 +903,7 @@ export function MessagesPage() {
             return toMillis(b.updatedAt) - toMillis(a.updatedAt)
           })
           const dedupedItems = dedupeInboxConversations(mapped)
-          setItems(dedupedItems)
-          writeCachedValue(inboxCacheKey, dedupedItems)
+          commitItems(dedupedItems)
         } else if (activeTab === 'groups') {
           const nextItems = await loadRoomCollectionByMembership({
             userId: user.id,
@@ -905,8 +915,7 @@ export function MessagesPage() {
             kind: 'group',
             openPathPrefix: '/app/messages/group/',
           })
-          setItems(nextItems)
-          writeCachedValue(inboxCacheKey, nextItems)
+          commitItems(nextItems)
         } else if (activeTab === 'communities') {
           const nextItems = await loadRoomCollectionByMembership({
             userId: user.id,
@@ -918,8 +927,7 @@ export function MessagesPage() {
             kind: 'community',
             openPathPrefix: '/app/messages/community/',
           })
-          setItems(nextItems)
-          writeCachedValue(inboxCacheKey, nextItems)
+          commitItems(nextItems)
         } else {
           const nextItems = await loadCollection(
             'voice_rooms',
@@ -927,8 +935,7 @@ export function MessagesPage() {
             ['topic'],
             'voice',
           )
-          setItems(nextItems)
-          writeCachedValue(inboxCacheKey, nextItems)
+          commitItems(nextItems)
         }
       } catch (caught) {
         reportSupabaseServiceRestrictionIfPresent(`messages-${activeTab}`, caught)
@@ -936,8 +943,7 @@ export function MessagesPage() {
           setError(friendlyError(caught, `No se pudo cargar ${title.toLowerCase()}`))
         }
       } finally {
-        setLoading(false)
-        setSyncing(false)
+        if(sequence===inboxLoadSequence.current){setLoading(false);setSyncing(false)}
       }
     },
     [activeTab, inboxCacheKey, isFallbackSession, localReadByChat, title, user],
@@ -946,19 +952,32 @@ export function MessagesPage() {
   useEffect(() => {
     const cached = readCachedValue<ConversationItem[]>(inboxCacheKey, 1000 * 60 * 60 * 8)
     if (cached && cached.length > 0) {
-      setItems(cached.map(normalizeConversationAvatar))
+      setItems(withInboxActivity(user?.id||'',cached.map(normalizeConversationAvatar)))
       setLoading(false)
       void loadCurrentTab({ silent: true })
-      return
+      return()=>{inboxLoadSequence.current+=1}
     }
     void loadCurrentTab({ silent: false })
-  }, [inboxCacheKey, loadCurrentTab])
+    return()=>{inboxLoadSequence.current+=1}
+  }, [inboxCacheKey, loadCurrentTab, user?.id])
 
   useEffect(() => {
     const reload = () => void loadCurrentTab({ silent: true })
     window.addEventListener('novvin:conversation-preferences-changed', reload)
     return () => window.removeEventListener('novvin:conversation-preferences-changed', reload)
   }, [loadCurrentTab])
+
+  useEffect(()=>{
+    let timer:ReturnType<typeof setTimeout>|undefined
+    const refresh=(event:Event)=>{
+      const detail=(event as CustomEvent<InboxActivity>).detail
+      if(detail?.accountId&&detail.accountId!==user?.id)return
+      setItems(current=>withInboxActivity(user?.id||'',current))
+      clearTimeout(timer);timer=setTimeout(()=>void loadCurrentTab({silent:true}),120)
+    }
+    window.addEventListener(inboxActivityEvent,refresh);window.addEventListener('novvin:inbox-changed',refresh);window.addEventListener('novvin:realtime-ready',refresh)
+    return()=>{clearTimeout(timer);window.removeEventListener(inboxActivityEvent,refresh);window.removeEventListener('novvin:inbox-changed',refresh);window.removeEventListener('novvin:realtime-ready',refresh)}
+  },[loadCurrentTab,user?.id])
 
   const updateChatPreferences = async (
     chatId: string,
@@ -1047,6 +1066,7 @@ export function MessagesPage() {
     if (!user || !chatId) return
     const nowIso = new Date().toISOString()
     const cleanChatId = chatId.trim().toLowerCase()
+    const readToken=markInboxConversationRead(user.id,'chat',cleanChatId)
     setLocalReadByChat((current) => {
       const next = { ...current, [cleanChatId]: nowIso }
       writeLocalReadByChat(next)
@@ -1062,15 +1082,16 @@ export function MessagesPage() {
         void loadCurrentTab({ silent: true })
       } catch (caught) {
         console.warn('markFallbackChatRead failed', caught)
-      }
+      } finally {confirmInboxConversationRead(user.id,'chat',cleanChatId,readToken)}
       return
     }
-    if (!supabase) return
+    if (!supabase) {confirmInboxConversationRead(user.id,'chat',cleanChatId,readToken);return}
 
     const client = supabase
 
     if (!isBrowserOnline()) {
       enqueueDeferredMutation('chat_mark_read', { chatId: cleanChatId }, user.id)
+      confirmInboxConversationRead(user.id,'chat',cleanChatId,readToken)
       return
     }
 
@@ -1096,7 +1117,7 @@ export function MessagesPage() {
       if (isLikelyTransientError(caught)) {
         enqueueDeferredMutation('chat_mark_read', { chatId: cleanChatId }, user.id)
       }
-    }
+    } finally {confirmInboxConversationRead(user.id,'chat',cleanChatId,readToken)}
   }
 
   async function openConversation(item: ConversationItem) {
@@ -1105,11 +1126,13 @@ export function MessagesPage() {
       if (item.openPath) navigate(item.openPath + (item.openPath.includes('?') ? '&' : '?') + 'join=1')
       return
     }
+    if(user)markInboxConversationRead(user.id,item.kind,item.id,item.updatedAt)
+    setItems(current=>current.map(entry=>entry.id===item.id?{...entry,unreadCount:0}:entry))
     if (item.kind === 'chat') {
       if (item.id && !openingChatId) {
         setOpeningChatId(item.id)
         try {
-          await markChatAsReadBestEffort(item.id)
+          void markChatAsReadBestEffort(item.id)
           if (supportsSplitLayout) {
             setSelectedConversation({ id: item.id, kind: 'chat' })
           } else if (item.openPath) {
@@ -1413,7 +1436,7 @@ export function MessagesPage() {
             type="button"
           >
             {tab.label}
-            {tab.key === 'chats' && totalUnreadChats > 0 ? <span className="tab-dot" /> : null}
+            {tab.key!=='voice'&&inboxCounts[tab.key]>0?<span className="inbox-tab-count" aria-label={`${inboxCounts[tab.key]} conversaciones sin leer`}>{inboxCounts[tab.key]>99?'99+':inboxCounts[tab.key]}</span>:null}
           </button>
         ))}
       </div>
@@ -1541,6 +1564,7 @@ export function MessagesPage() {
                 key={`chat-${selectedConversationItem.id}`}
                 chatIdOverride={selectedConversationItem.id}
                 embedded
+                onCloseChat={()=>setSelectedConversation(null)}
               />
             ) : (
               <RoomChatPage

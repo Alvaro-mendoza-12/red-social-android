@@ -37,6 +37,7 @@ import {
   supabase,
 } from '../core/supabase'
 import { subscribeUbuntuRealtime } from '../core/ubuntuRealtime'
+import {applyInboxUnreadSnapshot,inboxActivityEvent,inboxMessageTarget,invalidateInboxPreview,notifyInboxMessage,useInboxUnreadCounts} from '../core/inboxActivity'
 import { textOf, type GenericRow } from '../core/utils'
 import { useAuth } from '../core/auth/AuthProvider'
 import { changeFallbackPassword, ensureFallbackAccessToken } from '../core/auth/fallbackAuth'
@@ -202,7 +203,8 @@ export function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const [webPreferences] = useWebPreferences()
-  const [messageUnreadCount, setMessageUnreadCount] = useState(0)
+  const inboxCounts=useInboxUnreadCounts(user?.id||'')
+  const messageUnreadCount=inboxCounts.chats+inboxCounts.groups+inboxCounts.communities
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [isOnline, setIsOnline] = useState(isBrowserOnline())
   const [pendingDeferredMutations, setPendingDeferredMutations] = useState(
@@ -268,25 +270,25 @@ export function AppLayout() {
   const [migrationPasswordError, setMigrationPasswordError] = useState<string | null>(null)
   const [migrationPasswordInfo, setMigrationPasswordInfo] = useState<string | null>(null)
   const [savingMigrationPassword, setSavingMigrationPassword] = useState(false)
+  const counterLoadSequence=useRef(0)
 
   const loadShellCounters = useCallback(async () => {
+    const sequence=++counterLoadSequence.current,requestedAt=Date.now()
     if (isFallbackSession && user) {
       try {
-        const [notifications, inbox] = await Promise.all([
+        const [notifications, ...inboxes] = await Promise.all([
           loadFallbackNotifications(500),
           loadFallbackMessagesInbox('chats'),
+          loadFallbackMessagesInbox('groups'),
+          loadFallbackMessagesInbox('communities'),
         ])
+        if(sequence!==counterLoadSequence.current)return
         setNotificationUnreadCount(
           Number.isFinite(Number(notifications.unreadCount))
             ? Number(notifications.unreadCount)
             : (notifications.items ?? []).filter((row) => !(row.is_read ?? row.isRead)).length,
         )
-        setMessageUnreadCount(
-          (inbox.items ?? []).reduce(
-            (total, item) => total + Math.max(0, Number(item.unreadCount) || 0),
-            0,
-          ),
-        )
+        ;(['chat','group','community'] as const).forEach((scope,index)=>applyInboxUnreadSnapshot(user.id,scope,inboxes[index].items||[],requestedAt))
       } catch (caught) {
         console.warn('loadShellCounters fallback failed', caught)
       }
@@ -295,7 +297,6 @@ export function AppLayout() {
 
     const client = supabase
     if (!client || !user) {
-      setMessageUnreadCount(0)
       setNotificationUnreadCount(0)
       return
     }
@@ -316,13 +317,14 @@ export function AppLayout() {
           .limit(120),
       ])
 
+      if(sequence!==counterLoadSequence.current)return
       setNotificationUnreadCount((notificationRows ?? []).length)
       if (chatError) throw chatError
 
       const chats = (chatRows ?? []) as GenericRow[]
       const chatIds = chats.map((row) => textOf(row, ['id'], '')).filter(Boolean)
       if (chatIds.length === 0) {
-        setMessageUnreadCount(0)
+        applyInboxUnreadSnapshot(user.id,'chat',[])
         return
       }
 
@@ -348,7 +350,8 @@ export function AppLayout() {
         .neq('sender_id', user.id)
       if (messageError) throw messageError
 
-      let unreadTotal = 0
+      const unreadIds=new Set<string>()
+      const unreadDates=new Map<string,string>()
       ;((messageRows ?? []) as GenericRow[]).forEach((row) => {
         const chatId = textOf(row, ['chat_id'], '')
         if (!chatId) return
@@ -364,10 +367,12 @@ export function AppLayout() {
         if (lastReadMillis > 0 && createdAtMillis > 0 && createdAtMillis <= lastReadMillis) {
           return
         }
-        unreadTotal += 1
+        unreadIds.add(chatId)
+        const at=textOf(row,['created_at'],'');if(toMillis(at)>toMillis(unreadDates.get(chatId)||''))unreadDates.set(chatId,at)
       })
 
-      setMessageUnreadCount(unreadTotal)
+      if(sequence!==counterLoadSequence.current)return
+      applyInboxUnreadSnapshot(user.id,'chat',chatIds.map(id=>({id,unreadCount:unreadIds.has(id)?1:0,updatedAt:unreadDates.get(id)||''})),requestedAt)
     } catch (caught) {
       reportSupabaseServiceRestrictionIfPresent('shell-counters', caught)
       console.warn('loadShellCounters failed', caught)
@@ -379,9 +384,12 @@ export function AppLayout() {
   }, [loadShellCounters])
 
   useEffect(() => {
-    const reload = () => void loadShellCounters()
+    let timer:ReturnType<typeof setTimeout>|undefined
+    const reload = () => {clearTimeout(timer);timer=setTimeout(()=>void loadShellCounters(),120)}
     window.addEventListener('novvin:notifications-updated', reload)
-    return () => window.removeEventListener('novvin:notifications-updated', reload)
+    window.addEventListener(inboxActivityEvent,reload)
+    window.addEventListener('novvin:realtime-ready',reload)
+    return () => {clearTimeout(timer);window.removeEventListener('novvin:notifications-updated',reload);window.removeEventListener(inboxActivityEvent,reload);window.removeEventListener('novvin:realtime-ready',reload)}
   }, [loadShellCounters])
 
   useEffect(() => {
@@ -393,9 +401,13 @@ export function AppLayout() {
           void loadShellCounters()
         }, 250)
       }
-      return subscribeUbuntuRealtime({
+      const unsubscribe=subscribeUbuntuRealtime({
         channel: `user:${user.id}`,
         onEvent: (event) => {
+          if(event.payload?.event==='message'){
+            const target=inboxMessageTarget(event.payload.chatId)
+            if(target){if(event.payload.action==='deleted')invalidateInboxPreview(user.id,target.scope,target.id);else notifyInboxMessage(user.id,target.scope,target.id,(event.payload.message||{}) as GenericRow)}
+          }
           if (event.payload?.event === 'call_response' || event.payload?.event === 'call_cancel') {
             const callId = String(event.payload.callId ?? '').trim()
             dismissIncomingCall(callId)
@@ -416,9 +428,10 @@ export function AppLayout() {
               receivedAt: Date.now(),
             })
           }
-          scheduleRefresh()
+          if(event.payload?.event!=='message')scheduleRefresh()
         },
       })
+      return()=>{if(refreshTimer)clearTimeout(refreshTimer);unsubscribe()}
     }
     const client = supabase
     if (isFallbackSession || !client || !user) return
