@@ -35,3 +35,13 @@ Discord documenta controles separados de sonidos de micrófono y entrada/salida.
 - [Android: SoundPool](https://developer.android.com/reference/android/media/SoundPool).
 
 Este documento define la aceptación antes de implementar; sus criterios no se consideran aprobados hasta registrar las pruebas correspondientes.
+
+## Resultado de implementación y pruebas
+
+Implementado en web 9.0.51 y Android 9.0.41 (138), con cuatro muestras PCM originales de 245 ms. Las políticas de ambos clientes cubren entrada, salida, mute, unmute, estado inicial silencioso, duplicados, cambio de socket y reconexión. No hubo cambios en el protocolo ni reinicios del servidor de señalización.
+
+Dos cuentas temporales en la web publicada verificaron reproducción real de Web Audio, avisos locales y remotos, desactivación por categoría, supresión al silenciar la sala, persistencia al reentrar y recepción simultánea de audio WebRTC. Se comprobaron también los ajustes a 320 px y en horizontal. Los recursos de audio publicados coinciden por SHA-256 con las fuentes.
+
+Android pasó 1.689 pruebas en 353 suites. En el APK exacto, instalado en un emulador aislado, se comprobaron conexión real, cambios de micrófono, ajustes por cuenta, conservación tras reiniciar el proceso y orientación horizontal. El registro de Android confirmó tres reproducciones del SoundPool de la aplicación con `USAGE_VOICE_COMMUNICATION_SIGNALLING`. Esto comprueba solicitudes de reproducción al sistema; no sustituye escuchar el teléfono físico ni probar sus rutas Bluetooth.
+
+Recibos locales: `voice-cues-live-final.json`, `android-9041-sealed.json`, `android-9041-voice-cues-e2e.json` y `android-9041-voice-audio-playback.json`, en `audit/2026-10-07-integral`. La instalación en el Motorola requiere que el equipo vuelva a estar visible en ADB.
