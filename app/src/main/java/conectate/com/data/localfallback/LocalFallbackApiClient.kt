@@ -6783,7 +6783,7 @@ class LocalFallbackApiClient @Inject constructor(
     private fun LocalFallbackProfileResponse.normalized(): LocalFallbackProfileResponse =
         copy(profile = profile?.normalizedStorageUrls())
 
-    private fun mapProfileUser(row: JsonObject): User {
+    internal fun mapProfileUser(row: JsonObject): User {
         val badges = runCatching {
             row["badges"]?.let { json.decodeFromJsonElement<List<Badge>>(it) }
         }.getOrNull().orEmpty()
@@ -6801,6 +6801,7 @@ class LocalFallbackApiClient @Inject constructor(
             profile_welcome = textOf(row, "profile_welcome", "profileWelcome").ifBlank { null },
             country = textOf(row, "country").ifBlank { null },
             city = textOf(row, "city").ifBlank { null },
+            birth_date = textOf(row, "birth_date", "birthDate").ifBlank { null },
             interests = stringListOf(row, "interests"),
             hobbies = stringListOf(row, "hobbies"),
             linked_games = stringListOf(row, "linked_games", "linkedGames"),

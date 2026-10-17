@@ -14,11 +14,12 @@ data class BirthdayCard(
     val isValid: Boolean get() = version == 1 && kind == "birthday" && theme in themes &&
         message.isNotBlank() && message.codePointCount(0, message.length) <= 600 &&
         message.none { it.code in 0..8 || it.code in 11..12 || it.code in 14..31 }
-    fun encode(): String = Json { encodeDefaults = true }.encodeToString(this)
+    fun encode(): String = format.encodeToString(this)
     companion object {
+        private val format = Json { encodeDefaults = true; ignoreUnknownKeys = true }
         val themes = listOf("confetti", "sunrise", "garden")
         fun decode(value: String): BirthdayCard? = if (value.length > 5000) null else runCatching {
-            Json { ignoreUnknownKeys = true }.decodeFromString<BirthdayCard>(value)
+            format.decodeFromString<BirthdayCard>(value)
         }.getOrNull()?.takeIf { it.isValid }
     }
 }
