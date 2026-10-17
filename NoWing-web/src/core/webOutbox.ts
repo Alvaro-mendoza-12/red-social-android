@@ -149,7 +149,9 @@ export async function editPendingWebMessage(scope: Scope, room: string, id: stri
     notifyInboxMessage(item.senderId || owner, scope, room, message); changed(owner)
     return message
   }
-  const result = await withConversationLock(owner, scope, room + '/' + outboxDeliveryLane(previous), true, edit)
+  // A delivery can have reached the server while its local row is still present.
+  // Wait for that lane, then re-read: null means the caller edits the server row.
+  const result = await withConversationLock(owner, scope, room + '/' + outboxDeliveryLane(previous), false, edit)
   if (result === undefined) throw new Error('El mensaje se está enviando. Espera un momento y vuelve a guardar la corrección.')
   return result
 }
