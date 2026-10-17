@@ -1,4 +1,4 @@
-import { clipboardFilesFrom, canPasteIntoChat, pastedAsSticker, isStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, readClipboardImages, canPasteIntoChat, pastedAsSticker, isTransparentStickerPng, isStickerImage } from '../../core/chatClipboard'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
@@ -441,6 +441,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       })),
     ])
   }, [])
+  const sendPastedStickerRef = useRef<(file: File) => Promise<void>>(async () => {})
 
   const stopAudioStream = useCallback(() => {
     audioStreamRef.current?.getTracks().forEach((track) => track.stop())
@@ -573,9 +574,32 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     const paste = (event: ClipboardEvent) => {
       if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
       const files = clipboardFilesFrom(event.clipboardData)
-      if (!files.length) return
+      if (!files.length && !clipboardMayContainImage(event.clipboardData)) return
       event.preventDefault()
-      queueAttachmentFiles(files, true, showStickers)
+      void (async () => {
+        const pastedFiles = files.length
+          ? files
+          : await readClipboardImages(event.clipboardData, navigator.clipboard)
+        if (!pastedFiles.length) {
+          setError('WhatsApp no entregó la imagen al portapapeles. Usa «Copiar imagen» en el sticker y vuelve a pegarlo.')
+          return
+        }
+        const regularImages: File[] = []
+        for (const file of pastedFiles) {
+          const sticker = pastedAsSticker(file, showStickers) || await isTransparentStickerPng(file)
+          if (!sticker) {
+            regularImages.push(file)
+            continue
+          }
+          try {
+            await sendPastedStickerRef.current(file)
+          } catch (caught) {
+            queueAttachmentFiles([file], true, true)
+            setError(friendlyError(caught, 'No se pudo enviar automáticamente. El sticker quedó preparado para reintentar.'))
+          }
+        }
+        if (regularImages.length) queueAttachmentFiles(regularImages, true)
+      })()
     }
     window.addEventListener('paste', paste)
     return () => window.removeEventListener('paste', paste)
@@ -978,6 +1002,31 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     }
     const { error: insertError } = await supabase.from(config.messageTable).insert(fallbackPayload)
     if (insertError) throw insertError
+  }
+
+  sendPastedStickerRef.current = async (file: File) => {
+    if (!user || !cleanRoomId || (!supabase && !useUbuntu)) throw new Error('No hay una sesión activa para enviar el sticker')
+    setUploading(true)
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'whatsapp-sticker.webp'
+      const filePath = `${scope}/stickers/${user.id}/${Date.now()}_clipboard_${safeName}`
+      const isAnimated = /^image\/(gif|webp)$/i.test(file.type) || /\.(gif|webp)$/i.test(file.name)
+      let mediaUrl: string
+      if (useUbuntu) {
+        mediaUrl = (await uploadFallbackFile('chat-media', file, filePath, undefined, {
+          id: crypto.randomUUID(), title: 'Sticker de WhatsApp', isAnimated,
+        })).publicUrl
+      } else {
+        const { error: uploadError } = await supabase!.storage.from(config.mediaBucket)
+          .upload(filePath, file, { contentType: file.type || undefined })
+        if (uploadError) throw uploadError
+        mediaUrl = supabase!.storage.from(config.mediaBucket).getPublicUrl(filePath).data.publicUrl
+      }
+      await sendMessage('Sticker', mediaUrl, 'sticker', replyToId)
+      setReplyToId(null)
+    } finally {
+      setUploading(false)
+    }
   }
 
   async function sendPendingAttachments(textFallback: string) {

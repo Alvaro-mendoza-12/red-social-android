@@ -1,4 +1,4 @@
-import { clipboardFilesFrom, canPasteIntoChat, pastedAsSticker, isStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, readClipboardImages, canPasteIntoChat, pastedAsSticker, isTransparentStickerPng, isStickerImage } from '../../core/chatClipboard'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
@@ -617,6 +617,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       })),
     ])
   }, [])
+  const sendPastedStickerRef = useRef<(file: File) => Promise<void>>(async () => {})
 
   const stopAudioStream = useCallback(() => {
     audioStreamRef.current?.getTracks().forEach((track) => track.stop())
@@ -749,9 +750,32 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     const paste = (event: ClipboardEvent) => {
       if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
       const files = clipboardFilesFrom(event.clipboardData)
-      if (!files.length) return
+      if (!files.length && !clipboardMayContainImage(event.clipboardData)) return
       event.preventDefault()
-      queueAttachmentFiles(files, true, showStickers)
+      void (async () => {
+        const pastedFiles = files.length
+          ? files
+          : await readClipboardImages(event.clipboardData, navigator.clipboard)
+        if (!pastedFiles.length) {
+          setError('WhatsApp no entregó la imagen al portapapeles. Usa «Copiar imagen» en el sticker y vuelve a pegarlo.')
+          return
+        }
+        const regularImages: File[] = []
+        for (const file of pastedFiles) {
+          const sticker = pastedAsSticker(file, showStickers) || await isTransparentStickerPng(file)
+          if (!sticker) {
+            regularImages.push(file)
+            continue
+          }
+          try {
+            await sendPastedStickerRef.current(file)
+          } catch (caught) {
+            queueAttachmentFiles([file], true, true)
+            setError(friendlyError(caught, 'No se pudo enviar automáticamente. El sticker quedó preparado para reintentar.'))
+          }
+        }
+        if (regularImages.length) queueAttachmentFiles(regularImages, true)
+      })()
     }
     window.addEventListener('paste', paste)
     return () => window.removeEventListener('paste', paste)
@@ -1321,6 +1345,30 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       .from('chats')
       .update({ last_message: input.content || 'Archivo', last_message_at: nowIso, updated_at: nowIso })
       .eq('id', cleanChatId)
+  }
+
+  sendPastedStickerRef.current = async (file: File) => {
+    if (!user || !cleanChatId || (!supabase && !useUbuntu)) throw new Error('No hay una sesión activa para enviar el sticker')
+    setUploading(true)
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'whatsapp-sticker.webp'
+      const filePath = `dm/${user.id}/${Date.now()}_clipboard_${safeName}`
+      const isAnimated = /^image\/(gif|webp)$/i.test(file.type) || /\.(gif|webp)$/i.test(file.name)
+      let mediaUrl: string
+      if (useUbuntu) {
+        mediaUrl = (await uploadFallbackFile('chat-media', file, filePath, undefined, {
+          id: crypto.randomUUID(), title: 'Sticker de WhatsApp', isAnimated,
+        })).publicUrl
+      } else {
+        const { error: uploadError } = await supabase!.storage.from('chat-media').upload(filePath, file, { contentType: file.type || undefined })
+        if (uploadError) throw uploadError
+        mediaUrl = supabase!.storage.from('chat-media').getPublicUrl(filePath).data.publicUrl
+      }
+      await sendMessage({ content: 'Sticker', mediaUrl, contentType: 'sticker', mediaSize: file.size, replyToId })
+      setReplyToId(null)
+    } finally {
+      setUploading(false)
+    }
   }
 
   async function sendPendingAttachments(textFallback: string) {

@@ -1,4 +1,4 @@
-import { clipboardFilesFrom, pastedAsSticker, canPasteIntoChat, isStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, readClipboardImages, pastedAsSticker, canPasteIntoChat, isStickerImage } from '../../core/chatClipboard'
 
 test('accepts file data and items-only clipboard payloads without duplicates', () => {
   const file = new File(['sticker'], 'sticker.webp', { type: 'image/webp' })
@@ -10,6 +10,28 @@ test('accepts file data and items-only clipboard payloads without duplicates', (
 test('does not treat links, plain text, or empty blobs as sticker files', () => {
   expect(clipboardFilesFrom({ files: [], items: [{kind:'string',getAsFile:()=>null}] } as unknown as DataTransfer)).toEqual([])
   expect(clipboardFilesFrom({ files: [new File([], 'empty.png')], items: [] } as unknown as DataTransfer)).toEqual([])
+  expect(clipboardFilesFrom({ files: [new File(['pdf'],'notes.pdf',{type:'application/pdf'})], items: [] } as unknown as DataTransfer).map(file => file.name)).toEqual(['notes.pdf'])
+})
+test('extracts only embedded image bytes from rich clipboard HTML', () => {
+  const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jOZ0AAAAASUVORK5CYII='
+  const data = { files: [], items: [], types: ['text/html'], getData: (type: string) => type === 'text/html' ? `<img src="${dataUrl}">` : '' } as unknown as DataTransfer
+  const files = clipboardFilesFrom(data)
+  expect(files).toHaveLength(1)
+  expect(files[0]).toMatchObject({ type: 'image/png', size: expect.any(Number) })
+  const remote = { ...data, getData: (type: string) => type === 'text/html' ? '<img src="https://example.com/sticker.webp">' : '' } as unknown as DataTransfer
+  expect(clipboardFilesFrom(remote)).toEqual([])
+})
+test('uses async image clipboard data only when paste advertises image content', async () => {
+  const getType = jest.fn(async () => new Blob(['sticker'], { type: 'image/webp' }))
+  const clipboard = { read: async () => [{ types: ['image/webp'], getType }] } as unknown as Clipboard
+  const data = { files: [], items: [], types: ['image/webp'], getData: () => '' } as unknown as DataTransfer
+  const files = await readClipboardImages(data, clipboard)
+  expect(getType).toHaveBeenCalledWith('image/webp')
+  expect(files).toHaveLength(1)
+  expect(files[0]).toMatchObject({ type: 'image/webp', name: 'sticker-clipboard.webp' })
+  const textOnly = { files: [], items: [], types: ['text/plain'], getData: () => 'hola' } as unknown as DataTransfer
+  expect(clipboardMayContainImage(textOnly)).toBe(false)
+  expect(await readClipboardImages(textOnly, clipboard)).toEqual([])
 })
 test('recognizes sticker formats and explicit tray intent, leaving ordinary photos alone', () => {
   for (const mime of ['image/webp','image/gif']) expect(pastedAsSticker(new File(['a'],'sticker',{type:mime}),false)).toBe(true)
