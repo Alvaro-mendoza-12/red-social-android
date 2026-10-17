@@ -31,7 +31,15 @@ Las pruebas visuales simuladas no sustituyen las comprobaciones con el servidor 
 
 Web 9.0.44 publicada en https://red-social-android.vercel.app, despliegue `dpl_AYxN8Zys4PnsLak6Br4H6rLupZqJ`. La API publicada utiliza la imagen `sha256:1a4fec9f63731d01c1a05b442f0c4526963ada92cb2fc540ca02655f89533695`; `/ready` responde 200 y el proceso sirve con UID 10001. Se conservaron la configuración y los demás servicios.
 
-Android se entrega como AAB para Google Play en `artifacts/releases/Novvin-9.0.37-134`. La instalación del teléfono tiene la firma de Play y no admite sustituirse por una APK firmada con la clave de subida. No se borró esa instalación ni sus datos. La AAB no se ha publicado en Google Play.
+Android se entrega como AAB para Google Play en `artifacts/releases/Novvin-9.0.37-134`. La instalación inicial del teléfono tenía la firma de Play y no admitía sustituirse por una APK firmada con la clave de subida. La AAB no se ha publicado en Google Play.
+
+### Instalación en Motorola, 17 de octubre de 2026 UTC
+
+Se comprobó el Motorola moto g04 conectado. La primera comprobación encontró Google Play 9.0.33 (130). Se preparó la vía de APK firmada por Play, pero Google devolvió 403 al guardar la edición. No se publicó ninguna versión ni se modificaron los canales o borradores existentes: se descartó la edición propia y se contrastaron los canales con el estado anterior.
+
+En la comprobación posterior, el paquete `conectate.com` ya no estaba instalado. Se instaló directamente la APK preparada de 9.0.37 (134), SHA256 `615f2a1aa59046f2600a593933a50084a3f6cfb5f9f88bd653270218501d0d25`. Se confirmó la versión, se comparó el SHA256 de la APK instalada y se abrió la aplicación. La pantalla de bienvenida se mostró correctamente y el proceso continuó ejecutándose. Esta operación no desinstaló aplicaciones ni borró sus datos; fue una instalación nueva sobre un paquete previamente ausente, no una actualización que conserve la sesión anterior. La APK instalada utiliza la firma local de subida; no se ha comprobado una actualización de Google Play sobre esa instalación.
+
+La revisión adicional `npm audit --omit=dev` no reportó vulnerabilidades en las dependencias de producción de web ni API. Este resultado no sustituye una revisión completa de seguridad. Las evidencias de instalación y descarte de la edición se encuentran en `audit/2026-10-07-integral/motorola-9037-install`.
 
 La entrega está publicada y comprobada para el alcance anterior. No constituye una certificación integral de todos los apartados: no se repitieron todas las llamadas, videollamadas y directos entre dispositivos físicos con esta APK; no se comprobó Safari real ni la creación de publicidad con una cuenta administradora real. Los anuncios propios y sus permisos cuentan con revisión de código y pruebas; su formulario web tiene comprobación visual simulada. Las salas sin una foto original conservan el avatar de iniciales. El posicionamiento y la presentación final en buscadores dependen también de sus índices; no se promete un puesto ni un plazo de indexación.
 
