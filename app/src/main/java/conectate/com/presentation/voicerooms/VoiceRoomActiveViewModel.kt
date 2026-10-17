@@ -38,6 +38,8 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     private val _room = MutableStateFlow<VoiceRoom?>(null)
     val room: StateFlow<VoiceRoom?> = _room.asStateFlow()
+    val cueSettings = voiceRoomRepository.cueSettings
+    fun updateCueSettings(value: conectate.com.data.voice.VoiceCueSettings) = voiceRoomRepository.updateCueSettings(value)
 
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()

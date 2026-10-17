@@ -1,4 +1,5 @@
 import { RoomVideo } from './RoomVideo'
+import {useVoiceRoomCues} from './useVoiceRoomCues'
 import { Camera, CameraOff, MonitorUp, Settings } from 'lucide-react'
 import './voice.css'
 import { SafeAvatar } from '../../components/SafeAvatar'
@@ -305,6 +306,8 @@ export function VoiceRoomPage() {
   const socketToUserIdRef = useRef(new Map<string, string>())
   const pendingIceRef = useRef(new Map<string, RTCIceCandidateInit[]>())
 
+  const {session:roomCues,settings:cueSettings,setSettings:setCueSettings}=useVoiceRoomCues(user?.id||'',roomId||'',isDeafened,outputDevice)
+  const [cueAudioBlocked,setCueAudioBlocked]=useState(false)
   const displayName = useMemo(() => displayNameFromUser(user), [user])
   const avatarUrl = useMemo(() => avatarFromUser(user), [user])
   const localParticipantInList = participants.some((participant) => participant.userId === user?.id)
@@ -334,6 +337,7 @@ export function VoiceRoomPage() {
   }, [])
 
   const stopSignaling = useCallback(() => {
+    roomCues.suspend()
     const socket = socketRef.current
     if (socket) {
       socket.removeAllListeners()
@@ -344,7 +348,7 @@ export function VoiceRoomPage() {
     pendingIceRef.current.clear()
     setPeerStates({})
     setRemoteStreams({})
-  }, [])
+  }, [roomCues])
 
   const stopLocalMedia = useCallback(() => {
     visualOperationRef.current++
@@ -796,6 +800,7 @@ export function VoiceRoomPage() {
     })
 
     socket.on('disconnect', () => {
+      roomCues.suspend()
       setConnectionLabel('Reconectando voz')
     })
 
@@ -805,6 +810,8 @@ export function VoiceRoomPage() {
 
     socket.on('room-joined', (payload) => {
       if (payload.roomId && payload.roomId !== room.id) return
+      void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))
+      roomCues.connect(mutedRef.current)
       setConnectionLabel('Sala sincronizada')
       if (Number.isFinite(Number(payload.participantCount))) {
         setRoom((current) => current ? {
@@ -823,6 +830,7 @@ export function VoiceRoomPage() {
 
     socket.on('current-participants', (rawParticipants) => {
       const signalParticipants = normalizeSignalingParticipants(rawParticipants)
+      roomCues.baseline(signalParticipants.map(p=>({userId:p.userId,socketId:p.socketId,isMuted:p.isMuted??true})))
       signalParticipants.forEach(upsertSignalParticipant)
       signalParticipants.forEach((participant) => {
         if (shouldOfferToPeer(participant.socketId, participant.userId)) {
@@ -834,6 +842,7 @@ export function VoiceRoomPage() {
     socket.on('user-joined', (rawParticipant) => {
       const participant = normalizeSignalingParticipant(rawParticipant)
       if (!participant) return
+      roomCues.join({userId:participant.userId,socketId:participant.socketId,isMuted:participant.isMuted??true})
       upsertSignalParticipant(participant)
       if (shouldOfferToPeer(participant.socketId, participant.userId)) {
         void startPeerOffer(participant.socketId)
@@ -841,6 +850,7 @@ export function VoiceRoomPage() {
     })
 
     socket.on('user-left', (socketId) => {
+      roomCues.left(socketId)
       const userIdForSocket = socketToUserIdRef.current.get(socketId)
       socketToUserIdRef.current.delete(socketId)
       manager.disconnectPeer(socketId)
@@ -912,6 +922,7 @@ export function VoiceRoomPage() {
     })
 
     socket.on('mute-state', (payload) => {
+      if(!payload.roomId||payload.roomId===room.id)roomCues.mute(payload.userId,payload.isMuted)
       setParticipants((current) =>
         current.map((participant) =>
           participant.userId === payload.userId ? { ...participant, isMuted: payload.isMuted } : participant,
@@ -931,6 +942,7 @@ export function VoiceRoomPage() {
     startPeerOffer,
     stopSignaling,
     upsertSignalParticipant,
+    roomCues,
     useUbuntuVoice,
     user,
   ])
@@ -958,6 +970,7 @@ export function VoiceRoomPage() {
   }, [beginSpeakingDetection, user])
 
   const joinRoom = useCallback(async () => {
+    void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))
     if (!user || !room || isJoining || isJoined) return
     setIsJoining(true)
     setJoinError(null)
@@ -1081,6 +1094,7 @@ export function VoiceRoomPage() {
     startLocalAudio,
     stopLocalMedia,
     syncParticipantCounter,
+    roomCues,
     useUbuntuVoice,
     user,
     visibleParticipantCount,
@@ -1097,6 +1111,7 @@ export function VoiceRoomPage() {
     try {
       if (useUbuntuVoice) {
         await leaveFallbackVoiceRoom(room.id)
+        roomCues.leave()
         setIsJoined(false)
         joinedRef.current = false
         writeJoinedRoomToStorage(user.id, null)
@@ -1117,6 +1132,7 @@ export function VoiceRoomPage() {
 
       if (deleteError && !isMissingTableError(deleteError)) throw deleteError
       if ((data?.length ?? 0) > 0) await syncParticipantCounter(room.id, -1)
+      roomCues.leave()
       setIsJoined(false)
       joinedRef.current = false
       writeJoinedRoomToStorage(user.id, null)
@@ -1128,7 +1144,7 @@ export function VoiceRoomPage() {
     } finally {
       setIsLeaving(false)
     }
-  }, [isLeaving, loadParticipants, navigate, room, stopLocalMedia, syncParticipantCounter, useUbuntuVoice, user])
+  }, [isLeaving, loadParticipants, navigate, room, roomCues, stopLocalMedia, syncParticipantCounter, useUbuntuVoice, user])
 
   const toggleMute = useCallback(async () => {
     if (!user || !room || !isJoined) return
@@ -1152,6 +1168,7 @@ export function VoiceRoomPage() {
       track.enabled = !nextMuted
     })
     emitMuteState(nextMuted)
+    roomCues.mute(user.id,nextMuted)
 
     try {
       if (useUbuntuVoice) {
@@ -1178,7 +1195,7 @@ export function VoiceRoomPage() {
       emitMuteState(!nextMuted)
       setJoinError(friendlyError(caught, 'No se pudo actualizar el micrófono'))
     }
-  }, [avatarUrl, beginSpeakingDetection, displayName, emitMuteState, isJoined, isMuted, micAvailable, room, useUbuntuVoice, user])
+  }, [avatarUrl, beginSpeakingDetection, displayName, emitMuteState, isJoined, isMuted, micAvailable, room, roomCues, useUbuntuVoice, user])
 
   async function stopVisual() {
     visualOperationRef.current++
@@ -1339,6 +1356,7 @@ export function VoiceRoomPage() {
 
       </header>
 
+      {cueAudioBlocked&&isJoined?<div role="status" className="voice-room-alert">El navegador requiere una pulsación para activar los avisos. <button className="ghost-btn" onClick={()=>void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))}>Habilitar sonidos</button></div>:null}
       {joinError ? (
         <article className="voice-room-alert" role="status">
           {joinError}
@@ -1363,6 +1381,13 @@ export function VoiceRoomPage() {
             <label>Micrófono<select aria-label="Micrófono" className="text-input" disabled={!isJoined || mediaBusy} value={microphoneDevice} onChange={event => void selectMicrophone(event.target.value)}><option value="">Micrófono predeterminado</option>{devices.filter(device => device.kind === 'audioinput' && device.deviceId && device.deviceId !== 'default').map((device,index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Micrófono ${index+1}`}</option>)}</select></label>
             <label>Cámara<select aria-label="Cámara" className="text-input" disabled={mediaBusy} value={cameraDevice} onChange={event => { const id = event.target.value; setCameraDevice(id); if (visualSource === 'camera') void startVisual('camera', id) }}><option value="">Cámara predeterminada</option>{devices.filter(device => device.kind === 'videoinput' && device.deviceId).map((device,index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Cámara ${index+1}`}</option>)}</select></label>
             <AudioOutputSelect devices={devices} value={outputDevice} onChange={setOutputDevice} />
+            <fieldset className="voice-cue-settings"><legend>Sonidos de la sala</legend>
+              <label><input type="checkbox" checked={cueSettings.presence} onChange={e=>setCueSettings({...cueSettings,presence:e.target.checked})}/>Entradas y salidas</label>
+              <label><input type="checkbox" checked={cueSettings.microphone} onChange={e=>setCueSettings({...cueSettings,microphone:e.target.checked})}/>Silenciar y activar micrófonos</label>
+              <label>Volumen de avisos <input type="range" min="0" max="100" value={Math.round(cueSettings.volume*100)} onChange={e=>setCueSettings({...cueSettings,volume:Number(e.target.value)/100})}/></label>
+              <button className="ghost-btn" type="button" onClick={()=>void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))}>{cueAudioBlocked?'Habilitar sonidos':'Activar audio de avisos'}</button>
+              <small>Avisos solo para ti. Silenciar el audio de la sala también los desactiva.</small>
+            </fieldset>
             <small>Puedes ampliar cualquier cámara o pantalla. La pantalla compartida se detiene desde sus controles o desde el navegador.</small>
           </div></MediaDeviceDialog> : null}
           <div className="voice-participant-grid">

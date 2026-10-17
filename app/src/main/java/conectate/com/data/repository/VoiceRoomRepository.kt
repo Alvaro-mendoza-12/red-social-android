@@ -107,6 +107,10 @@ class VoiceRoomRepository @Inject constructor(
     )
 
     private val scope = newSafeScope("VoiceRoomRepository", Dispatchers.IO)
+    private val roomCues = conectate.com.data.voice.VoiceRoomCues(context, scope)
+    val cueSettings = roomCues.settings
+    fun updateCueSettings(value: conectate.com.data.voice.VoiceCueSettings) = roomCues.updateSettings(value)
+
     private var json = Json { ignoreUnknownKeys = true }
     private val performanceProfile by lazy(LazyThreadSafetyMode.NONE) {
         AppPerformanceProfiles.detect(context)
@@ -506,6 +510,7 @@ class VoiceRoomRepository @Inject constructor(
         state: VoiceConnectionState,
         errorMessage: String? = null
     ) {
+        if (state == VoiceConnectionState.RECONNECTING || state == VoiceConnectionState.ERROR) roomCues.reconnecting()
         _connectionState.value = state
         _lastConnectionError.value = if (state == VoiceConnectionState.ERROR) {
             errorMessage
@@ -1271,6 +1276,7 @@ class VoiceRoomRepository @Inject constructor(
         val isWebResHealthy = webRTCManager?.isHealthy() == true
         val isReentry = (activeRoomId == signalRoom && isSocketConnected && isWebResHealthy)
         val joinMuted = startMuted || (activeRoomId == signalRoom && isSelfMuted())
+        roomCues.start(userId, signalRoom)
         if (!activeRoomId.equals(signalRoom, ignoreCase = true)) {
             disableCaptionsInternal(announce = true)
             _captionConsentUserIds.value = emptySet()
@@ -1563,6 +1569,7 @@ class VoiceRoomRepository @Inject constructor(
                 pendingConnectMetricName = null
                 pendingConnectStartedAtMs = null
                 updateConnectionState(VoiceConnectionState.CONNECTED)
+                roomCues.connected(isSelfMuted())
                 flushPendingRoomSocketEvents(roomId)
                 if (_captionsEnabled.value) {
                     emitCaptionConsent(roomId, userId, enabled = true)
@@ -1640,6 +1647,7 @@ class VoiceRoomRepository @Inject constructor(
                     return@on
                 }
                 val displayName = data.optString("name", "Invitado")
+                roomCues.joined(conectate.com.data.voice.CueParticipant(uid, sid, data.optBoolean("isMuted", true)))
                 android.util.Log.i("VoiceRoomRepository", "👤 Remote User Joined: $displayName ($uid) via $sid")
                 
                 _currentParticipants.update { current ->
@@ -1647,7 +1655,8 @@ class VoiceRoomRepository @Inject constructor(
                         id = uid, 
                         name = displayName, 
                         avatarUrl = data.optString("avatarUrl"), 
-                        socketId = sid
+                        socketId = sid,
+                        isMuted = data.optBoolean("isMuted", true)
                     )
                     (current.filterNot { it.socketId == sid || it.id == uid } + p).distinctBy { it.socketId }
                 }
@@ -1670,6 +1679,7 @@ class VoiceRoomRepository @Inject constructor(
                 if (socketId.isBlank()) return@on
                 android.util.Log.d("VoiceRoomRepository", "Socket user-left: $socketId")
                 
+                roomCues.left(socketId)
                 // v7.2-MVP: Host Disconnect Safety
                 val leavingParticipant = _currentParticipants.value.find { it.socketId == socketId }
                 leavingParticipant?.id?.trim()?.lowercase()?.takeIf(String::isNotBlank)?.let { leavingUserId ->
@@ -1752,6 +1762,7 @@ class VoiceRoomRepository @Inject constructor(
                         }
                     )
                 }
+                roomCues.baseline(remoteParticipants.map { conectate.com.data.voice.CueParticipant(it.id, it.socketId, it.isMuted) })
                 refreshParticipantAliases()
                 current
                     .asSequence()
@@ -1803,11 +1814,14 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             socket?.on("mute-state") { args ->
+                if (!isCurrentAttempt()) return@on
                 var data = extractJsonPayload(args) ?: return@on
                 var uid = data.optString("userId").trim()
                 if (uid.isBlank()) return@on
                 var isMuted = data.optBoolean("isMuted", false)
                 android.util.Log.d("VoiceRoomRepository", "🔇 Remote Mute State ($uid): $isMuted")
+                if (data.optString("roomId").isNotBlank() && data.optString("roomId") != roomId) return@on
+                roomCues.muted(uid, isMuted)
                 
                 _currentParticipants.update { current ->
                     current.map { if (it.id == uid) it.copy(isMuted = isMuted) else it }
@@ -2390,6 +2404,7 @@ class VoiceRoomRepository @Inject constructor(
     suspend fun leaveRoom(roomId: String? = null) = withContext(Dispatchers.IO + NonCancellable) {
         try {
             val actualRoomId = roomId ?: activeRoomId
+            roomCues.stop(audible = true)
             android.util.Log.w("VoiceRoomRepository", "📍 leaveRoom START: $actualRoomId")
             audioRecoveryJob?.cancel()
             mediaConnectionTimeoutJob?.cancel()
@@ -2485,6 +2500,7 @@ class VoiceRoomRepository @Inject constructor(
             return
         }
         android.util.Log.d("VoiceRoomRepository", "🎤 NUCLEAR MUTE: $isMuted")
+        roomCues.muted(authService.getCurrentUserId().orEmpty(), isMuted)
         desiredSelfMuted = isMuted
         
         // 1. Update Participants UI

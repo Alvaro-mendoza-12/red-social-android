@@ -536,3 +536,5 @@
  .voice-room-controls.joined .voice-control-btn svg { width:18px; height:18px; }
  .voice-room-stage-header { border-radius:16px; padding:16px; }
 }
+
+.voice-cue-settings{min-width:0;display:grid;gap:12px;border:1px solid var(--outline,#555);border-radius:12px;padding:14px}.voice-cue-settings label{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.voice-cue-settings input[type=range]{width:100%}.voice-cue-settings input[type=checkbox]{width:18px;height:18px;flex:none}

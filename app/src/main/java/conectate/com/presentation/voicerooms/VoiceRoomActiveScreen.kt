@@ -142,6 +142,8 @@ fun VoiceRoomActiveScreen(
     val room by viewModel.room.collectAsState()
     val isMuted by viewModel.isMuted.collectAsState()
     val isSpeaker by viewModel.isSpeaker.collectAsState()
+    val cueSettings by viewModel.cueSettings.collectAsStateWithLifecycle()
+    var showSoundSettings by remember { mutableStateOf(false) }
     val isJoined by viewModel.isJoined.collectAsStateWithLifecycle()
     val currentUserId by viewModel.currentUserId.collectAsStateWithLifecycle()
     
@@ -190,6 +192,17 @@ fun VoiceRoomActiveScreen(
     val isCinemaMode = cinemaState?.isCinemaMode == true
     
     var showEditDialog by remember { mutableStateOf(false) }
+    if (showSoundSettings) {
+        AlertDialog(onDismissRequest = { showSoundSettings = false }, title = { Text("Sonidos de la sala") },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Entradas y salidas", Modifier.weight(1f)); Switch(cueSettings.presence, { viewModel.updateCueSettings(cueSettings.copy(presence = it)) }) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Silenciar y activar micrófonos", Modifier.weight(1f)); Switch(cueSettings.microphone, { viewModel.updateCueSettings(cueSettings.copy(microphone = it)) }) }
+                Text("Volumen de avisos: ${(cueSettings.volume * 100).toInt()} %")
+                Slider(value = cueSettings.volume, onValueChange = { viewModel.updateCueSettings(cueSettings.copy(volume = it)) })
+                Text("Avisos solo para ti. Se respeta el modo silencio y No molestar.")
+            } }, confirmButton = { TextButton(onClick = { showSoundSettings = false }) { Text("Listo") } })
+    }
+
     var showContentBrowser by remember { mutableStateOf(false) }
     var showCaptionConsent by remember { mutableStateOf(false) }
     var showSummaryConsent by remember { mutableStateOf(false) }
@@ -261,6 +274,10 @@ fun VoiceRoomActiveScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = { showSoundSettings = true }) {
+                            Icon(Icons.Default.MusicNote, contentDescription = "Sonidos de la sala")
+                        }
+
                         IconButton(onClick = {
                              (room?.readableId?.takeIf { it.isNotBlank() } ?: room?.id)?.let { id ->
                                 clipboardScope.launch {
