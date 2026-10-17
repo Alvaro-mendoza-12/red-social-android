@@ -6812,7 +6812,7 @@ function registerDataRoutes(app, {
     ensureDefaultCommunityChannel, publishRoomCard: publishChatMessageEvent,
   })
   require('./social-promotions').registerSocialPromotionRoutes(app,{pool,authRequired,getCurrentUser,userIdentity,
-    mayUseImage:(user,identity,mediaUrl)=>currentUserMayReferenceMessageMedia(pool,user,identity,{mediaUrl,contentType:'image',allowedOwnedBuckets:['post-media'],isForwarded:false}),
+    mayUseImage:(user,_identity,mediaUrl)=>currentUserOwnsStorageObject(pool,user.id,mediaUrl,['post-media']),
   })
   registerVisibleMessageReadRoute(app, {
     pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,

@@ -4,6 +4,7 @@ import {fallbackApiJson} from '../core/auth/fallbackAuth'
 import {uploadFallbackFile} from '../core/fallbackData'
 import {PromotionCarousel,type Promotion,type PromotionCard,type PromotionCatalog} from './PromotionCarousel'
 import {StreamingImage} from './StreamingMedia'
+import {notifyPromotionCatalogChanged} from '../core/promotionCatalogEvents'
 type DraftCard=PromotionCard&{key:string}
 const emptyCard=():DraftCard=>({key:crypto.randomUUID(),title:'',description:'',imageUrl:'',destination:'/app/messages',cta:'Abrir mensajes'})
 const valid=(card:DraftCard)=>Boolean(card.title.trim()&&(card.file||card.imageUrl)&&card.cta.trim()&&(/^https:\/\/.+/i.test(card.destination)||['/app/messages','/app/videos','/app/social','/app/games'].includes(card.destination)))
@@ -19,7 +20,7 @@ export function PromotionEditor({catalog,accountId,onRefresh,onClose}:{catalog:P
  useEffect(()=>{const node=dialog.current;node?.showModal();return()=>node?.close()},[])
  useEffect(()=>{heading.current?.focus()},[step,creating])
  useEffect(()=>{let active=true;void fallbackApiJson<PromotionCatalog>('/v1/data/social/promotions?manage=1').then(v=>{if(active)onRefresh(v)}).catch(()=>{if(active)setError('No se pudieron cargar tus anuncios. Cierra y vuelve a intentarlo.')});return()=>{active=false}},[onRefresh])
- const refresh=async()=>onRefresh(await fallbackApiJson<PromotionCatalog>('/v1/data/social/promotions?manage=1'))
+ const refresh=async()=>{onRefresh(await fallbackApiJson<PromotionCatalog>('/v1/data/social/promotions?manage=1'));notifyPromotionCatalogChanged(accountId)}
  const patch=(value:Partial<DraftCard>)=>setCards(old=>old.map((c,i)=>i===selected?{...c,...value}:c))
  const begin=(ad:Promotion|null=null)=>{setEditing(ad);setTitle(ad?.title||'');setDescription(ad?.description||'');setCards(ad?(ad.cards?.length?ad.cards:[ad]).map(c=>({...c,key:crypto.randomUUID()})):[emptyCard()]);setSelected(0);setStep(0);setCreating(true);setError('');setNotice('')}
  const card=cards[selected],ready=Boolean(title.trim()&&cards.every(valid))
