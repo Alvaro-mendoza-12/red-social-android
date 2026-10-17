@@ -16,3 +16,14 @@ test('chat updates cannot replace participants or manufacture a shared clear cut
  for (const patch of [{participants:[actor]},{cleared_at:new Date().toISOString()},{id:'changed'}])
   assert.equal(await _test.authorizeMutation(noQuery,'chats',identity,{id:'shared'},patch,'patch'),false)
 })
+
+const {conversationHiddenForViewer}=require('../src/data-routes')
+test('hiding an already cleared chat stays hidden with no new message activity',()=>{
+ assert.equal(conversationHiddenForViewer('2026-10-17T10:00:00Z',''),true)
+ assert.equal(conversationHiddenForViewer('2026-10-17T10:00:00Z','2026-10-17T09:59:59Z'),true)
+ assert.equal(conversationHiddenForViewer('2026-10-17T10:00:00Z','2026-10-17T10:00:00Z'),true)
+})
+test('only newer message activity restores a hidden conversation',()=>{
+ assert.equal(conversationHiddenForViewer('2026-10-17T10:00:00Z','2026-10-17T10:00:00.001Z'),false)
+ assert.equal(conversationHiddenForViewer(null,'2026-10-17T10:00:00Z'),false)
+})

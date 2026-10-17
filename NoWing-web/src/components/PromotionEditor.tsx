@@ -8,15 +8,15 @@ type DraftCard=PromotionCard&{key:string}
 const emptyCard=():DraftCard=>({key:crypto.randomUUID(),title:'',description:'',imageUrl:'',destination:'/app/messages',cta:'Abrir mensajes'})
 const valid=(card:DraftCard)=>Boolean(card.title.trim()&&(card.file||card.imageUrl)&&card.cta.trim()&&(/^https:\/\/.+/i.test(card.destination)||['/app/messages','/app/videos','/app/social','/app/games'].includes(card.destination)))
 function ImagePreview({card}:{card:DraftCard}){
- const [url,setURL]=useState('')
- useEffect(()=>{if(!card.file)return;const next=URL.createObjectURL(card.file);setURL(next);return()=>URL.revokeObjectURL(next)},[card.file])
- return card.file?<img src={url} alt="Vista previa de la tarjeta"/>:card.imageUrl?<StreamingImage src={card.imageUrl} alt="Vista previa de la tarjeta"/>:<><ImagePlus/><span>Añadir imagen</span></>
+ const image=useRef<HTMLImageElement>(null)
+ useEffect(()=>{if(!card.file)return;const next=URL.createObjectURL(card.file);if(image.current)image.current.src=next;return()=>URL.revokeObjectURL(next)},[card.file])
+ return card.file?<img ref={image} alt="Vista previa de la tarjeta"/>:card.imageUrl?<StreamingImage src={card.imageUrl} alt="Vista previa de la tarjeta"/>:<><ImagePlus/><span>Añadir imagen</span></>
 }
 export function PromotionEditor({catalog,accountId,onRefresh,onClose}:{catalog:PromotionCatalog;accountId:string;onRefresh:(value:PromotionCatalog)=>void;onClose:()=>void}){
  const dialog=useRef<HTMLDialogElement>(null),heading=useRef<HTMLHeadingElement>(null)
  const [creating,setCreating]=useState(false),[step,setStep]=useState(0),[selected,setSelected]=useState(0),[editing,setEditing]=useState<Promotion|null>(null)
  const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[cards,setCards]=useState<DraftCard[]>([emptyCard()]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[status,setStatus]=useState('')
- useEffect(()=>{dialog.current?.showModal();return()=>dialog.current?.close()},[])
+ useEffect(()=>{const node=dialog.current;node?.showModal();return()=>node?.close()},[])
  useEffect(()=>{heading.current?.focus()},[step,creating])
  useEffect(()=>{let active=true;void fallbackApiJson<PromotionCatalog>('/v1/data/social/promotions?manage=1').then(v=>{if(active)onRefresh(v)}).catch(()=>{if(active)setError('No se pudieron cargar tus anuncios. Cierra y vuelve a intentarlo.')});return()=>{active=false}},[onRefresh])
  const refresh=async()=>onRefresh(await fallbackApiJson<PromotionCatalog>('/v1/data/social/promotions?manage=1'))

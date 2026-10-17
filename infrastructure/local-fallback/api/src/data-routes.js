@@ -785,6 +785,13 @@ async function privateChatAccessContext(pool, chatId, identity) {
   return { chat, participantRows, hasAccess }
 }
 
+function conversationHiddenForViewer(hiddenAt, latestMessageAt) {
+  const hidden = toMillis(hiddenAt)
+  if (!hidden) return false
+  // A clear cutoff is not new conversation activity.
+  return !toMillis(latestMessageAt) || hidden >= toMillis(latestMessageAt)
+}
+
 function ownChatParticipant(rows, identity) {
   // Local rows follow imported rows and hold the preferences saved by the current API.
   const own = rows.filter(row => identity.ids.has(normalizeId(textOf(row, ['user_id', 'profile_id'], '')))).reverse()
@@ -9796,7 +9803,7 @@ function registerDataRoutes(app, {
             (myClearedAt ? textOf(participant, ['cleared_at', 'clearedAt'], '') : '') ||
             textOf(row, ['last_message_at', 'updated_at', 'created_at'], '')
           const hiddenAt = hiddenByChat.get(cleanChatId)
-          if (hiddenAt && toMillis(hiddenAt) >= toMillis(effectiveUpdatedAt)) return null
+          if (conversationHiddenForViewer(hiddenAt, textOf(latest, ['created_at', 'updated_at'], ''))) return null
           const fallbackName = textOf(row, ['other_user_name', 'display_name', 'user_name', 'name'], 'Chat privado')
           const nickname = nicknamesByTarget.get(normalizeId(otherId)) || ''
           const hasVisibleLatest = Boolean(textOf(latest, ['id'], ''))
@@ -13897,10 +13904,7 @@ function registerDataRoutes(app, {
         const id = normalizeId(textOf(row, ['user_id', 'profile_id'], ''))
         return id && !identity.ids.has(id)
       })
-      const myParticipantRow = memberRows.find((row) => {
-        const id = normalizeId(textOf(row, ['user_id', 'profile_id'], ''))
-        return id && identity.ids.has(id)
-      })
+      const myParticipantRow = ownChatParticipant(memberRows, identity)
       const myClearedAt = toMillis(textOf(myParticipantRow || {}, ['cleared_at', 'clearedAt'], ''))
 
       const [importedMessages, fallbackMessages] = await Promise.all([
@@ -14707,6 +14711,7 @@ module.exports = {
   messageContentOf,
   lookupMarkerMessages,
   mapVoiceRoom,
+  conversationHiddenForViewer,
   normalizeMessageRow,
   previewFromMessage,
   normalizeFeedMode,
