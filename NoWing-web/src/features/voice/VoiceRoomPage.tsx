@@ -560,7 +560,10 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
 
       setParticipants((current) => {
         const signalOnly = current.filter((participant) => participant.socketId && !mapped.some((db) => db.userId === participant.userId))
-        return [...mapped, ...signalOnly]
+        return [...mapped.map(db => {
+          const live = liveParticipantStateRef.current.get(db.userId)
+          return live ? { ...db, socketId: live.socketId, isMuted: live.isMuted } : db
+        }), ...signalOnly]
       })
       setRoom((current) =>
         current && current.id === targetRoomId
@@ -568,12 +571,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           : current,
       )
 
-      const self = mapped.find((participant) => participant.userId === user?.id)
-      if (self) {
-        setIsJoined(true)
-        joinedRef.current = true
-        setIsMuted(self.isMuted)
-      }
+      // Presence is shared between devices; admission belongs to this session.
     } catch (caught) {
       if (!isMissingTableError(caught)) {
         reportSupabaseServiceRestrictionIfPresent('voice-participants-load', caught)

@@ -21,5 +21,5 @@ export function canPasteIntoChat(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return true
   if (target.closest('[role="dialog"], .image-editor, .media-viewer')) return false
   const field = target.closest('input, textarea, [contenteditable="true"]')
-  return !field || field.classList.contains('chat-input-field')
+  return !field || field.classList.contains('chat-input-field') || Boolean(target.closest('.stickers-tray'))
 }

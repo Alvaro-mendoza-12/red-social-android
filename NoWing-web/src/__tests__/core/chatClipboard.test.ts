@@ -22,6 +22,8 @@ test('preserves text paste in unrelated inputs and dialogs', () => {
   const input=document.createElement('input');document.body.append(input)
   expect(canPasteIntoChat(input)).toBe(false)
   input.className='chat-input-field';expect(canPasteIntoChat(input)).toBe(true)
+  const tray=document.createElement('section');tray.className='stickers-tray';const search=document.createElement('input');tray.append(search)
+  expect(canPasteIntoChat(search)).toBe(true)
   const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.append(input)
   expect(canPasteIntoChat(input)).toBe(false)
   expect(canPasteIntoChat(document.body)).toBe(true)

@@ -11,7 +11,7 @@ const MAX_FOLDER_ENTRIES = 100000
 export type PreparationProgress = (message: string) => void
 const CHUNK_BYTES = 1024 * 1024
 type Entry = { name: string; isDirectory: boolean; isFile: boolean; file?: (ok: (file: File) => void, fail: (error: Error) => void) => void; createReader?: () => { readEntries: (ok: (entries: Entry[]) => void, fail: (error: Error) => void) => void } }
-const sizeLabel = (bytes: number) => `${(bytes / (1024 * 1024)).toLocaleString('es', { maximumFractionDigits: 1 })} MB`
+const sizeLabel = (bytes: number) => bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024).toLocaleString('es')} KB` : `${(bytes / (1024 * 1024)).toLocaleString('es', { maximumFractionDigits: 1 })} MB`
 function folderSummary(entries: Array<{ path: string; file: File | null }>) {
   return `${entries.filter(item => item.file).length.toLocaleString('es')} archivos · ${sizeLabel(entries.reduce((sum, item) => sum + (item.file?.size || 0), 0))} originales`
 }
