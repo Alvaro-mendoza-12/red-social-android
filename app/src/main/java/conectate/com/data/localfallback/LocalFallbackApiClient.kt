@@ -976,6 +976,8 @@ internal data class LocalFallbackUpdateProfileRequest(
     val favoriteBook: String? = null,
     val favoriteSport: String? = null,
     val career: String? = null,
+    val education: String? = null,
+    val workplace: String? = null,
     val availabilitySchedule: String? = null,
     val profileSectionOrder: List<String>? = null,
     val profileSectionVisibility: Map<String, String>? = null,
@@ -1023,6 +1025,8 @@ internal fun LocalFallbackUpdateProfileRequest.toSparseJson(): JsonObject = buil
     favoriteMusicUrl?.let { put("favoriteMusicUrl", JsonPrimitive(it)) }
     favoriteBook?.let { put("favoriteBook", JsonPrimitive(it)) }
     favoriteSport?.let { put("favoriteSport", JsonPrimitive(it)) }
+    education?.let { put("education", JsonPrimitive(it)) }
+    workplace?.let { put("workplace", JsonPrimitive(it)) }
     career?.let { put("career", JsonPrimitive(it)) }
     availabilitySchedule?.let { put("availabilitySchedule", JsonPrimitive(it)) }
     profileSectionOrder?.let { values ->
@@ -2809,6 +2813,8 @@ class LocalFallbackApiClient @Inject constructor(
         favoriteBook: String? = null,
         favoriteSport: String? = null,
         career: String? = null,
+        education: String? = null,
+        workplace: String? = null,
         availabilitySchedule: String? = null,
         profileSectionOrder: List<String>? = null,
         profileSectionVisibility: Map<String, String>? = null,
@@ -2854,6 +2860,8 @@ class LocalFallbackApiClient @Inject constructor(
                         favoriteBook = favoriteBook,
                         favoriteSport = favoriteSport,
                         career = career,
+                        education = education,
+                        workplace = workplace,
                         availabilitySchedule = availabilitySchedule,
                         profileSectionOrder = profileSectionOrder,
                         profileSectionVisibility = profileSectionVisibility,
@@ -6801,6 +6809,8 @@ class LocalFallbackApiClient @Inject constructor(
             favorite_book = textOf(row, "favorite_book", "favoriteBook").ifBlank { null },
             favorite_sport = textOf(row, "favorite_sport", "favoriteSport").ifBlank { null },
             career = textOf(row, "career", "profession").ifBlank { null },
+            education = textOf(row, "education").ifBlank { null },
+            workplace = textOf(row, "workplace").ifBlank { null },
             availability_schedule = textOf(row, "availability_schedule", "availabilitySchedule").ifBlank { null },
             profile_section_order = stringListOf(row, "profile_section_order", "profileSectionOrder"),
             profile_section_visibility = stringMapOf(row, "profile_section_visibility", "profileSectionVisibility"),

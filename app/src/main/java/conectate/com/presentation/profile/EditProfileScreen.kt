@@ -79,6 +79,10 @@ fun EditProfileScreen(
     var city by remember { mutableStateOf("") }
     var gender by remember { mutableStateOf("unspecified") }
     var birthDate by remember { mutableStateOf("") }
+    var education by remember { mutableStateOf("") }
+    var workplace by remember { mutableStateOf("") }
+    var career by remember { mutableStateOf("") }
+    var birthdayVisible by remember { mutableStateOf(true) }
     var showGenderDropdown by remember { mutableStateOf(false) }
     var showBirthDatePicker by remember { mutableStateOf(false) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
@@ -126,6 +130,10 @@ fun EditProfileScreen(
             city = user.city ?: ""
             gender = user.gender
             birthDate = user.birth_date.orEmpty()
+            education = user.education.orEmpty()
+            workplace = user.workplace.orEmpty()
+            career = user.career.orEmpty()
+            birthdayVisible = user.profile_section_visibility["birthday"] != "only_me"
             avatarMediaType = user.avatar_media_type
             avatarDurationMs = user.avatar_duration_ms
             avatarVideoMuted = user.avatar_video_muted
@@ -298,6 +306,10 @@ fun EditProfileScreen(
                         onGenderChange = { gender = it },
                         showGenderDropdown = showGenderDropdown,
                         onGenderDropdownChange = { showGenderDropdown = it },
+                        education = education, onEducationChange = { education = it.take(180) },
+                        workplace = workplace, onWorkplaceChange = { workplace = it.take(180) },
+                        career = career, onCareerChange = { career = it.take(180) },
+                        birthdayVisible = birthdayVisible, onBirthdayVisibleChange = { birthdayVisible = it },
                         birthDate = birthDate,
                         birthDateIsValid = birthDateIsValid,
                         onOpenBirthDate = { showBirthDatePicker = true },
@@ -399,6 +411,10 @@ fun EditProfileScreen(
                                         city = city.trim(),
                                         gender = gender,
                                         birthDate = birthDate.takeIf(String::isNotBlank),
+                                        education = education.takeIf { currentSection == ProfileEditSection.BASIC },
+                                        workplace = workplace.takeIf { currentSection == ProfileEditSection.BASIC },
+                                        career = career.takeIf { currentSection == ProfileEditSection.BASIC },
+                                        sectionVisibility = (state.user.profile_section_visibility + ("birthday" to if (birthdayVisible) state.user.profile_section_visibility["birthday"]?.takeIf { it == "followers" } ?: "everyone" else "only_me")).takeIf { currentSection == ProfileEditSection.BASIC },
                                         imageUri = imageUri.takeIf {
                                             currentSection == ProfileEditSection.APPEARANCE
                                         },

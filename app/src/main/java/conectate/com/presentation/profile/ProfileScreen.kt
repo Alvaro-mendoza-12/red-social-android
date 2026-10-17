@@ -205,9 +205,8 @@ private fun MomentHighlightsRow(
 }
 
 @Composable
-private fun ProfileDetailsSections(user: conectate.com.data.model.User) {
+internal fun ProfileDetailsSections(user: conectate.com.data.model.User) {
     val rows = mapOf(
-        "career" to ("Profesión o carrera" to user.career.orEmpty()),
         "sports" to ("Deporte" to user.favorite_sport.orEmpty()),
         "books" to ("Libro" to user.favorite_book.orEmpty()),
         "hobbies" to ("Hobbies" to user.hobbies.joinToString(" · ")),
@@ -324,63 +323,7 @@ private fun ProfileInfoSwitcher(
 }
 
 @Composable
-private fun ProfileIntroduction(user: conectate.com.data.model.User) {
-    val hasBio = !user.bio.isNullOrBlank()
-    val hasLocation = !user.city.isNullOrBlank() || !user.country.isNullOrBlank()
-    val hasSocialLinks = user.social_links.isNotEmpty()
-    if (!hasBio && !hasLocation && !hasSocialLinks) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-        ) {
-            Text(
-                "Este perfil todavía no ha añadido una presentación.",
-                modifier = Modifier.padding(14.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-        return
-    }
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (hasBio) {
-                Text("Descripción", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                Text(user.bio.orEmpty(), style = MaterialTheme.typography.bodyMedium)
-            }
-            if (hasLocation) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = "Ubicación",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        listOfNotNull(user.city, user.country).joinToString(", "),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-            if (hasSocialLinks) {
-                Text("Redes", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                ProfileSocialLinks(user.social_links)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProfileSocialLinks(links: Map<String, String>) {
+internal fun ProfileSocialLinks(links: Map<String, String>) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val platforms = listOf(
         SocialPlatform.INSTAGRAM,
@@ -1230,8 +1173,9 @@ fun ProfileScreen(
                                         }
                                     )
                                     } else {
-                                        ProfileIntroduction(user)
-                                        ProfileDetailsSections(user)
+                                        ProfileIntroduction(user, isOwnProfile,
+                                            onEdit = { (mainNavController ?: navController).navigate(Screen.EditProfile.route) },
+                                            onBirthday = { (mainNavController ?: navController).navigate(Screen.Chat.createRoute(user.id, birthdayGreeting = true)) })
                                     }
                                 }
                             }

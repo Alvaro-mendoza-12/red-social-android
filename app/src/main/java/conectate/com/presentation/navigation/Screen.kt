@@ -38,15 +38,16 @@ sealed class Screen(val route: String) {
     }
     object Messages : Screen("messages")
     object Novvin : Screen("novvin")
-    object Chat : Screen("chat/{userId}?initialMessage={initialMessage}&focusMessageId={focusMessageId}") {
+    object Chat : Screen("chat/{userId}?initialMessage={initialMessage}&focusMessageId={focusMessageId}&birthdayGreeting={birthdayGreeting}") {
         fun createRoute(
             userId: String,
             initialMessage: String? = null,
-            focusMessageId: String? = null
+            focusMessageId: String? = null,
+            birthdayGreeting: Boolean = false
         ): String {
             val initial = initialMessage?.let { android.net.Uri.encode(it) } ?: ""
             val focus = focusMessageId?.let { android.net.Uri.encode(it) } ?: ""
-            return "chat/${android.net.Uri.encode(userId.trim())}?initialMessage=$initial&focusMessageId=$focus"
+            return "chat/${android.net.Uri.encode(userId.trim())}?initialMessage=$initial&focusMessageId=$focus&birthdayGreeting=$birthdayGreeting"
         }
     }
     

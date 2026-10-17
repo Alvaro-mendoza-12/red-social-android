@@ -288,6 +288,7 @@ function sortByDateDesc(rows, keys) {
 function previewFromMessage(row) {
   if (isDeletedForAll(row)) return 'Mensaje eliminado'
   const contentType = textOf(row, ['content_type'], '').toLowerCase()
+  if (contentType === 'birthday_card') return '🎂 Tarjeta de cumpleaños'
   if (contentType === 'contact') return 'Contacto'
   const content = messageContentOf(row)
   if (contentType === 'question') {
@@ -2357,6 +2358,8 @@ async function fallbackUserProfileRows(pool, limit = 5000, profileIds = []) {
             COALESCE(o.profile->>'favorite_book', o.profile->>'favoriteBook', '') AS favorite_book,
             COALESCE(o.profile->>'favorite_sport', o.profile->>'favoriteSport', '') AS favorite_sport,
             COALESCE(o.profile->>'career', '') AS career,
+            COALESCE(o.profile->>'education', '') AS education,
+            COALESCE(o.profile->>'workplace', '') AS workplace,
             COALESCE(o.profile->>'availability_schedule', o.profile->>'availabilitySchedule', '') AS availability_schedule,
             COALESCE(o.profile->'profile_section_order', o.profile->'profileSectionOrder', '[]'::jsonb) AS profile_section_order,
             COALESCE(o.profile->'profile_section_visibility', o.profile->'profileSectionVisibility', '{}'::jsonb) AS profile_section_visibility,
@@ -3424,6 +3427,8 @@ function normalizeProfileForPublic(row, fallbackId = '') {
     favorite_book: textOf(row, ['favorite_book', 'favoriteBook'], ''),
     favorite_sport: textOf(row, ['favorite_sport', 'favoriteSport'], ''),
     career: textOf(row, ['career'], ''),
+    education: textOf(row, ['education'], ''),
+    workplace: textOf(row, ['workplace'], ''),
     availability_schedule: textOf(row, ['availability_schedule', 'availabilitySchedule'], ''),
     profile_section_order: normalizeProfileSectionOrder(row?.profile_section_order ?? row?.profileSectionOrder),
     profile_section_visibility: normalizeProfileSectionVisibility(row?.profile_section_visibility ?? row?.profileSectionVisibility),
@@ -3772,6 +3777,8 @@ function profilePatchFromBody(body) {
     ['favorite_book', ['favorite_book', 'favoriteBook']],
     ['favorite_sport', ['favorite_sport', 'favoriteSport']],
     ['career', ['career']],
+    ['education', ['education']],
+    ['workplace', ['workplace']],
     ['availability_schedule', ['availability_schedule', 'availabilitySchedule']],
     ['avatar_url', ['avatar_url', 'avatarUrl']],
     ['avatar_media_type', ['avatar_media_type', 'avatarMediaType']],
@@ -3952,7 +3959,7 @@ function profileClearFields(profile) {
   const clearableFields = [
     'bio', 'country', 'city', 'status',
     'interests', 'hobbies', 'linked_games', 'game_logo_urls',
-    'favorite_music_url', 'favorite_book', 'favorite_sport', 'career', 'availability_schedule',
+    'favorite_music_url', 'favorite_book', 'favorite_sport', 'career', 'education', 'workplace', 'availability_schedule',
     'profile_section_order', 'profile_section_visibility', 'social_links',
     'profile_welcome', 'avatar_url', 'avatar_media_type', 'cover_url',
   ]
@@ -4090,7 +4097,7 @@ function parsePublicStorageObjectUrl(rawUrl, allowedBuckets = []) {
   }
 }
 
-const profileSectionIds = ['welcome', 'music', 'interests', 'hobbies', 'career', 'games', 'sports', 'books', 'availability']
+const profileSectionIds = ['welcome', 'music', 'interests', 'hobbies', 'career', 'games', 'sports', 'books', 'availability', 'education', 'birthday']
 
 function normalizeProfileSectionOrder(value) {
   const values = Array.isArray(value) ? value : []
@@ -4178,7 +4185,9 @@ function profileForViewer(profile, { viewerIsTarget = false, isFollowing = false
   if (!canSee('music')) visible.favorite_music_url = ''
   if (!canSee('interests')) visible.interests = []
   if (!canSee('hobbies')) visible.hobbies = []
-  if (!canSee('career')) visible.career = ''
+  if (!canSee('career')) { visible.career = ''; visible.workplace = '' }
+  if (!canSee('education')) visible.education = ''
+  if (!canSee('birthday')) visible.birth_date = ''
   if (!canSee('games')) {
     visible.linked_games = []
     visible.game_logo_urls = {}
@@ -11327,7 +11336,7 @@ function registerDataRoutes(app, {
             type: 'message',
             targetId: roomId,
             targetType: config.kind,
-            content: content || previewFromMessage({ content_type: contentType }),
+            content: contentType === 'birthday_card' ? '🎂 Te envió una tarjeta de cumpleaños' : content || previewFromMessage({ content_type: contentType }),
             extraData: {
               [`${config.kind}_id`]: roomId,
               // Identity comes from the authorized room, including when the
@@ -14524,11 +14533,16 @@ async function processBirthdayNotifications(
         `SELECT u.id::text AS local_user_id,
                 COALESCE(NULLIF(u.supabase_user_id::text, ''), u.id::text) AS public_user_id,
                 COALESCE(NULLIF(o.profile->>'display_name', ''), u.display_name, 'Usuario') AS display_name,
-                COALESCE(NULLIF(o.profile->>'avatar_url', ''), u.avatar_url, '') AS avatar_url
+                COALESCE(NULLIF(o.profile->>'avatar_url', ''), u.avatar_url, '') AS avatar_url,
+                COALESCE(o.profile->'profile_section_visibility'->>'birthday', o.profile->'profileSectionVisibility'->>'birthday', 'everyone') AS birthday_visibility,
+                COALESCE(o.profile->>'profile_visibility', 'everyone') AS profile_visibility
            FROM fallback_users u
            JOIN fallback_profile_overrides o ON o.user_id = u.id
           WHERE COALESCE(o.profile->>'birth_date', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
             AND substring(o.profile->>'birth_date' FROM 6 FOR 5) = $1
+            AND COALESCE(o.profile->'profile_section_visibility'->>'birthday', o.profile->'profileSectionVisibility'->>'birthday', 'everyone') NOT IN ('only_me', 'nobody')
+            AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
+            AND COALESCE(o.profile->>'profile_visibility', 'everyone') NOT IN ('only_me', 'nobody')
             AND ($3::uuid IS NULL OR u.id > $3::uuid)
           ORDER BY u.id
           LIMIT $2`,
@@ -14566,7 +14580,12 @@ async function processBirthdayNotifications(
         for (const recipientAlias of recipientAliases) {
           const recipientUser = recipientUsers.get(recipientAlias)
           if (!recipientUser) continue
-          const recipientId = userIdentity(recipientUser).displayUserId
+          const recipientIdentity = userIdentity(recipientUser)
+          const recipientId = recipientIdentity.displayUserId
+          if (['followers', 'connections'].includes(birthdayUser.birthday_visibility) || ['followers', 'connections'].includes(birthdayUser.profile_visibility)) {
+            const followed = await pool.query(`SELECT 1 FROM fallback_follows WHERE lower(follower_id) = ANY($1::text[]) AND lower(following_id) = ANY($2::text[]) LIMIT 1`, [Array.from(recipientIdentity.ids), Array.from(actorAliases)])
+            if (!followed.rows.length) continue
+          }
           const deliveryClaim = await pool.query(
             `INSERT INTO fallback_birthday_notification_deliveries(
                 birthday_user_id, recipient_id, birthday_year
@@ -14587,11 +14606,12 @@ async function processBirthdayNotifications(
               type: 'birthday',
               targetId: birthdayUser.public_user_id,
               targetType: 'profile',
-              content: `${birthdayUser.display_name} cumple años hoy. ¡Deséale un feliz cumpleaños!`,
+              content: `${birthdayUser.display_name} cumple años hoy. ¡Felicítalo ahora!`,
               extraData: {
                 birthday_user_id: birthdayUser.public_user_id,
                 birthday_year: year,
-                open_path: `/app/profile/${birthdayUser.public_user_id}`,
+                open_path: `/app/messages?birthday=${encodeURIComponent(birthdayUser.public_user_id)}`,
+                action: 'birthday_greeting',
               },
             })
             if (notification) delivered += 1

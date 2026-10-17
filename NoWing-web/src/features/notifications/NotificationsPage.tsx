@@ -206,6 +206,7 @@ function resolveNotificationAction(item: NotificationItem): NotificationAction |
   if (type === 'follow') {
     return { label: 'Ver social', path: '/app/follows' }
   }
+  if (type === 'birthday' && (item.actorId || item.targetId)) return { label: 'Felicítalo ahora', path: `/app/messages?birthday=${encodeURIComponent(item.actorId || item.targetId || '')}` }
   if (targetType === 'profile' && item.targetId) {
     return { label: 'Ver perfil', path: `/app/profile/${item.targetId}` }
   }

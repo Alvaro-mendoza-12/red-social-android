@@ -1,3 +1,4 @@
+import { birthdayLabel } from '../../core/birthdayCard'
 import { ProfilePostPreview } from '../../components/ProfilePostPreview'
 import { StreamingImage, StreamingVideo, StreamingAudio } from '../../components/StreamingMedia'
 import { useEffect, useMemo, useState } from 'react'
@@ -46,6 +47,9 @@ type ProfileData = {
   interests: string[]
   hobbies: string[]
   linkedGames: string[]
+  education: string
+  workplace: string
+  birthDate: string
   career: string
   favoriteBook: string
   favoriteSport: string
@@ -108,6 +112,9 @@ function mapProfile(
     hobbies: stringArrayFrom(row.hobbies),
     linkedGames: stringArrayFrom(row.linked_games ?? row.linkedGames),
     career: textOf(row, ['career'], ''),
+    education: textOf(row, ['education'], ''),
+    workplace: textOf(row, ['workplace'], ''),
+    birthDate: textOf(row, ['birth_date'], ''),
     favoriteBook: textOf(row, ['favorite_book'], ''),
     favoriteSport: textOf(row, ['favorite_sport'], ''),
     favoriteMusicUrl: textOf(row, ['favorite_music_url', 'favoriteMusicUrl'], ''),
@@ -372,7 +379,9 @@ export function ProfilePage() {
         ) : (
           <div className="profile-about-copy">
             <p>{profile?.bio || 'Sin presentación todavía.'}</p>
-            {profile?.career ? <p>{profile.career}</p> : null}
+            {profile?.education ? <p>🎓 Estudios: {profile.education}</p> : null}
+            {profile?.career ? <p>Profesión o carrera: {profile.career}</p> : null}
+            {profile?.workplace ? <p>Trabajo: {profile.workplace}</p> : null}
             <div className="chip-row">
               {[
                 ...(profile?.interests || []),
@@ -389,6 +398,7 @@ export function ProfilePage() {
             {profile?.favoriteMusicUrl ? (
               <StreamingAudio controls preload="none" src={profile.favoriteMusicUrl} />
             ) : null}
+            {profile?.birthDate && birthdayLabel(profile.birthDate) ? <p>🎂 Cumpleaños: {birthdayLabel(profile.birthDate)}</p> : null}
           </div>
         )}
       </div>

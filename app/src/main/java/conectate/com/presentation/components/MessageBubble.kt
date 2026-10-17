@@ -727,6 +727,10 @@ fun MessageBubble(
                             }
                         }
                     }
+                    "birthday_card" -> {
+                        val letter = conectate.com.data.model.BirthdayCard.decode(message.content)
+                        if (letter != null) BirthdayLetter(letter) else Text("Tarjeta de cumpleaños", color = receivedTextColor)
+                    }
                     "text" -> {
                         val videoReference = remember(message.content) { conectate.com.data.model.sharedVideoReference(message.content) }
                         if (videoReference != null) {

@@ -86,7 +86,8 @@ fun ChatScreen(
     navController: NavController,
     viewModel: ChatViewModel = hiltViewModel(),
     initialMessage: String? = null,
-    focusMessageId: String? = null
+    focusMessageId: String? = null,
+    birthdayGreeting: Boolean = false
 ) {
     val chatState by viewModel.chatState.collectAsState()
     val workspaceViewModel: ChatWorkspaceViewModel = hiltViewModel()
@@ -133,6 +134,13 @@ fun ChatScreen(
     val messageText by viewModel.messageText.collectAsState()
     val otherUserReactive by viewModel.otherUserMetadata.collectAsState()
     val isSending by viewModel.isSending.collectAsState()
+    var showBirthdayGreeting by rememberSaveable { mutableStateOf(birthdayGreeting) }
+    if (showBirthdayGreeting && chatState is ChatUiState.Success) {
+        BirthdayGreetingSheet(initial = remember { viewModel.restoreBirthdayCard() }, busy = isSending,
+            recipientName = otherUserReactive?.displayName.orEmpty(), onChange = viewModel::updateBirthdayCard,
+            onDismiss = { showBirthdayGreeting = false },
+            onSend = { viewModel.sendBirthdayCard(it) { showBirthdayGreeting = false } })
+    }
     val transfers by conectate.com.core.messaging.MessageUploadProgress.transfers.collectAsState()
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMessages by viewModel.selectedMessages.collectAsState()

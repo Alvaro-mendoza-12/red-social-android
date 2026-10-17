@@ -73,7 +73,7 @@ class LocalNotificationHelper(private val context: Context) {
             "comment", "comment_post", "reply_post", "comment_video", "reply_video",
             "mention", "mention_post", "mention_video",
             "share", "share_post", "share_video", "admin_warning_video",
-            "challenge_invite", "voice_invite", "voice_access_request"
+            "challenge_invite", "voice_invite", "voice_access_request", "birthday"
         )
         
         val channelId = when {
@@ -121,6 +121,7 @@ class LocalNotificationHelper(private val context: Context) {
             normalizedTargetType?.let { putExtra("target_type", it) }
 
             when (normalizedType) {
+                "birthday" -> { putExtra("birthday_user_id", getExtraDataValue(extraData, "birthday_user_id") ?: senderId ?: targetId); putExtra("target_id", targetId) }
                 "follow", "friend_request", "voice_access_request" -> {
                     putExtra("follower_id", senderId ?: targetId)
                 }
@@ -172,6 +173,7 @@ class LocalNotificationHelper(private val context: Context) {
             .setPriority(if (isLiveStarted) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_HIGH)
             .setCategory(if (isLiveStarted || normalizedType in socialTypes) NotificationCompat.CATEGORY_SOCIAL else NotificationCompat.CATEGORY_SYSTEM)
 
+        if (normalizedType == "birthday") notificationBuilder.addAction(0, "Felicítalo ahora", pendingIntent)
         if (normalizedType == "new_moment") {
             val expiry = runCatching {
                 getExtraDataValue(extraData, "expires_at")

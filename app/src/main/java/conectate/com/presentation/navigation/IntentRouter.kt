@@ -266,7 +266,14 @@ object IntentRouter {
                 }
             }
 
-            "follow", "friend_request", "voice_access_request", "birthday" -> {
+            "birthday" -> {
+                val target = incomingIntent.getStringExtra("birthday_user_id") ?: incomingIntent.getStringExtra("follower_id") ?: incomingIntent.getStringExtra("target_id")
+                if (!target.isNullOrBlank()) {
+                    navigateNotificationDestination(incomingIntent, navController, authRepository, Screen.Chat.createRoute(target, birthdayGreeting = true))
+                    clearIntent(); return true
+                }
+            }
+            "follow", "friend_request", "voice_access_request" -> {
                 val followerId = incomingIntent.getStringExtra("follower_id")
                     ?: incomingIntent.getStringExtra("target_id")
                 if (!followerId.isNullOrBlank()) {

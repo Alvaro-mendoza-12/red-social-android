@@ -624,6 +624,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             notificationId?.takeIf { it.isNotBlank() }?.let { putExtra("notification_id", it) }
             commentId?.let { putExtra("comment_id", it) }
             when (type) {
+                "birthday" -> putExtra("birthday_user_id", senderId.ifBlank { targetId })
                 "follow", "friend_request", "friend_request_accepted", "voice_access_request" -> putExtra("follower_id", senderId.ifBlank { targetId })
                 "like", "like_post", "comment", "comment_post", "reply_post", "mention", "mention_post", "share", "share_post" -> putExtra("post_id", targetId)
                 "like_video", "comment_video", "reply_video", "mention_video", "share_video", "admin_warning_video" -> putExtra("video_id", targetId)
@@ -662,6 +663,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
 
+        if (type == "birthday") notificationBuilder.addAction(0, "Felicítalo ahora", pendingIntent)
         if (type == "new_moment") {
             val remaining = runCatching {
                 expiresAt?.let { java.time.Instant.parse(it).toEpochMilli() - System.currentTimeMillis() }

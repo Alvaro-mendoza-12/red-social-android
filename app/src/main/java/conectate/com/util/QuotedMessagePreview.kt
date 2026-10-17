@@ -7,6 +7,7 @@ internal fun quotedMessagePreview(message: Message): String {
     if (message.deleted_for_all) return "Mensaje eliminado"
     val content = message.content.trim()
     return when (message.content_type) {
+        "birthday_card" -> "🎂 Tarjeta de cumpleaños"
         "image" -> "📷 Imagen"
         "video" -> "📹 Video"
         "view_once_image" -> "📷 Foto para ver una vez"

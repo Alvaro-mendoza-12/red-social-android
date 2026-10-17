@@ -5131,6 +5131,7 @@ class MessageRepository @Inject constructor(
         buildConversationBackgroundPreview(contentType, fallbackContent)?.let { return it }
         buildCallEventPreview(contentType, fallbackContent)?.let { return it }
         return when (contentType.trim().lowercase()) {
+            "birthday_card" -> "🎂 Tarjeta de cumpleaños"
             "image" -> "📷 Foto"
             "video" -> "🎥 Video"
             "audio" -> "🎤 Audio"

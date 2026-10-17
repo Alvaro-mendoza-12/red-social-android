@@ -7,7 +7,7 @@ import {
   subscribeRuntimeBackend,
 } from '../runtimeBackend'
 import { isHttpRetrySafeMethod } from '../httpRetryPolicy'
-import { authenticationConnectionMessage, fetchAuthentication } from './authRequest'
+import { AuthenticationLocalNetworkError, authenticationConnectionMessage, fetchAuthentication } from './authRequest'
 import {
   accessTokenExpiration,
   fallbackAccountMatches,
@@ -230,6 +230,7 @@ async function fetchFallback(path: string, init: RequestInit, onUploadProgress?:
       ? await send(`${refreshedUrl}${normalizedPath}`)
       : response
   } catch (error) {
+    if (error instanceof AuthenticationLocalNetworkError) throw error
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     if (canRetryBody && retrySafe) {
       const refreshedUrl = await refreshRuntimeBackend(`${firstBaseUrl}${normalizedPath}`)

@@ -1,3 +1,5 @@
+import { BirthdayComposer, BirthdayLetter } from '../../components/BirthdayLetter'
+import { useSearchParams } from 'react-router-dom'
 import { FolderAttachmentPicker } from '../../components/FolderAttachmentPicker'
 import { MessageSticker } from '../../components/MessageSticker'
 import { useConversationDraft } from '../../core/conversationDrafts'
@@ -440,6 +442,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const { chatId: routeChatId = '' } = useParams()
+  const [birthdayParams, setBirthdayParams] = useSearchParams()
+  const showBirthday = birthdayParams.get('birthdayGreeting') === '1'
+  const closeBirthday = () => { const next = new URLSearchParams(birthdayParams); next.delete('birthdayGreeting'); setBirthdayParams(next, { replace: true }) }
   const chatId = chatIdOverride ?? routeChatId
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -1915,6 +1920,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
       onDragLeave={handleDropZoneDragLeave}
       onDrop={handleDropZoneDrop}
     >
+      {showBirthday && user && cleanChatId && otherParticipant ? <BirthdayComposer key={cleanChatId} owner={user.id} chatId={cleanChatId} recipient={otherParticipant.name} onClose={closeBirthday} onSend={async content => { await sendMessage({ content, contentType: 'birthday_card' }) }}/> : null}
       {profilePanelOpen && otherParticipant ? <ChatProfilePanel key={otherParticipant.id} profileId={otherParticipant.id} onClose={() => setProfilePanelOpen(false)} /> : null}
       {dragActive ? (
         <div className="chat-drop-overlay">
@@ -2171,6 +2177,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false }: ChatDetailP
 
                 {message.deletedForAll ? (
                   <p className="muted-line">Mensaje eliminado para todos</p>
+                ) : message.contentType === 'birthday_card' ? (
+                  <BirthdayLetter content={message.content}/>
                 ) : sharedVideoReference(message.content) ? (
                   <SharedVideoCard reference={sharedVideoReference(message.content)!} />
                 ) : message.contentType === 'poll' && pollRows.length > 0 ? (

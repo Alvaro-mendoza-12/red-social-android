@@ -20,6 +20,7 @@ function conflict() {
 /** Call only after the route has authorized the conversation and media references. */
 async function insertMessageOnce(pool, { kind, scopeId, channelId = null, actorIds, message }) {
   if (!['dm', 'group', 'community'].includes(kind)) throw new Error('INVALID_MESSAGE_SCOPE')
+  if (message.content_type === 'birthday_card') message = { ...message, content: require('./birthday-card').birthdayCardContent(message.content, { kind, mediaUrl: message.media_url, pollId: message.poll_id }) }
   const senderId = normalize(message.sender_id)
   const scope = normalize(scopeId)
   const owners = [...new Set(Array.from(actorIds || [], normalize).filter(Boolean))]

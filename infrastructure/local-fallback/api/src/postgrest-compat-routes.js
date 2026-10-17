@@ -2456,7 +2456,7 @@ async function insertDirectRpcMessage(pool, auth, body, { publishEvent = true } 
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   const chatId = normalizeIdentityValue(messageBodyValue(body, 'chat_id', ''))
   const messageId = validUuidOrNull(messageBodyValue(body, 'message_id', ''))
-  const content = String(messageBodyValue(body, 'content', '') || '').trim().slice(0, 10_000)
+  let content = String(messageBodyValue(body, 'content', '') || '').trim().slice(0, 10_000)
   const mediaUrl = String(messageBodyValue(body, 'media_url', '') || '').trim().slice(0, 2000) || null
   const contentType = String(messageBodyValue(body, 'content_type', mediaUrl ? 'media' : 'text') || 'text').trim().slice(0, 40)
   const mediaSize = Math.max(0, Math.min(Number(messageBodyValue(body, 'media_size', 0)) || 0, 512 * 1024 * 1024))
@@ -2466,6 +2466,7 @@ async function insertDirectRpcMessage(pool, auth, body, { publishEvent = true } 
   const forwardedFromMessageId = validUuidOrNull(messageBodyValue(body, 'forwarded_from_message_id', ''))
   const forwardedFromUserId = normalizeIdentityValue(messageBodyValue(body, 'forwarded_from_user_id', '')) || null
 
+  if (contentType === 'birthday_card') content = require('./birthday-card').birthdayCardContent(content, { mediaUrl, pollId })
   if (!chatId || !messageId || (!content && !mediaUrl)) {
     throw httpError('CHAT_ID_MESSAGE_ID_AND_CONTENT_OR_MEDIA_REQUIRED', 400)
   }
@@ -2547,7 +2548,7 @@ async function insertCollectionRpcMessage(pool, auth, body, kind, { publishEvent
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   const roomId = normalizeIdentityValue(messageBodyValue(body, `${kind}_id`, ''))
   const messageId = validUuidOrNull(messageBodyValue(body, 'message_id', ''))
-  const content = String(messageBodyValue(body, 'content', '') || '').trim().slice(0, 10_000)
+  let content = String(messageBodyValue(body, 'content', '') || '').trim().slice(0, 10_000)
   const mediaUrl = String(messageBodyValue(body, 'media_url', '') || '').trim().slice(0, 2000) || null
   const contentType = String(messageBodyValue(body, 'content_type', mediaUrl ? 'media' : 'text') || 'text').trim().slice(0, 40)
   const mediaSize = Math.max(0, Math.min(Number(messageBodyValue(body, 'media_size', 0)) || 0, 512 * 1024 * 1024))
@@ -2556,6 +2557,7 @@ async function insertCollectionRpcMessage(pool, auth, body, kind, { publishEvent
   const isForwarded = Boolean(messageBodyValue(body, 'is_forwarded', false))
   const forwardedFromMessageId = validUuidOrNull(messageBodyValue(body, 'forwarded_from_message_id', ''))
   const forwardedFromUserId = normalizeIdentityValue(messageBodyValue(body, 'forwarded_from_user_id', '')) || null
+  if (contentType === 'birthday_card') throw httpError('BIRTHDAY_CARD_DIRECT_ONLY', 400)
   if (!roomId || !messageId || (!content && !mediaUrl)) {
     throw httpError('ROOM_ID_MESSAGE_ID_AND_CONTENT_OR_MEDIA_REQUIRED', 400)
   }

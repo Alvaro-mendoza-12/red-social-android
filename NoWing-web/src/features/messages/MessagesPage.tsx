@@ -1,6 +1,6 @@
 import { readConversationDraft, useDraftRevision } from '../../core/conversationDrafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, MessageSquarePlus, MoreVertical, Phone, Plus } from 'lucide-react'
 import { openNovvinMenu } from '../../ui/novvin/navigation'
 import { StatusView } from '../../components/StatusView'
@@ -402,6 +402,7 @@ async function loadCollection(
 }
 
 function previewFromMessage(row: GenericRow): string {
+  if(row.content_type === 'birthday_card') return '🎂 Tarjeta de cumpleaños'
   if(row.content_type === 'question') { try { const q=JSON.parse(String(row.content || '')); return q.prompt ? `Pregunta: ${String(q.prompt).slice(0,160)}` : 'Pregunta de la comunidad' } catch { return 'Pregunta de la comunidad' } }
   const content = textOf(row, ['content'], '').trim()
   if (content) return content
@@ -536,6 +537,16 @@ export function MessagesPage() {
   const { user, isFallbackSession } = useAuth()
   const [webPreferences] = useWebPreferences()
   const navigate = useNavigate()
+  const [birthdayParams] = useSearchParams()
+  const birthdayTarget = birthdayParams.get('birthday') || ''
+  useEffect(() => {
+    if (!user?.id || !/^[a-zA-Z0-9-]{1,80}$/.test(birthdayTarget)) return
+    let live = true
+    void getOrCreateDirectChat(user.id, birthdayTarget).then(chat => {
+      if (live) navigate(`/app/messages/${encodeURIComponent(chat)}?birthdayGreeting=1`, { replace: true })
+    }).catch(() => { if (live) setError('No se pudo abrir el chat para felicitar. Inténtalo de nuevo.') })
+    return () => { live = false }
+  }, [birthdayTarget, user?.id, navigate])
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [activeTab, setActiveTab] = useState<InboxTab>('chats')
   const [isCompactViewport, setIsCompactViewport] = useState(() => {

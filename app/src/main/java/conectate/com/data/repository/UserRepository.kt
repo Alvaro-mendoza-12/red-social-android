@@ -302,6 +302,8 @@ class UserRepository @Inject constructor(
                 favorite_book = sanitizeProfileText(profile.stringValue("favorite_book", "favoriteBook")),
                 favorite_sport = sanitizeProfileText(profile.stringValue("favorite_sport", "favoriteSport")),
                 career = sanitizeProfileText(profile.stringValue("career", "profession")),
+                education = sanitizeProfileText(profile.stringValue("education")),
+                workplace = sanitizeProfileText(profile.stringValue("workplace")),
                 availability_schedule = sanitizeProfileText(
                     profile.stringValue("availability_schedule", "availabilitySchedule")
                 ),
@@ -487,6 +489,8 @@ class UserRepository @Inject constructor(
             user.country?.let { put("country", JsonPrimitive(it)) }
             user.city?.let { put("city", JsonPrimitive(it)) }
             put("gender", JsonPrimitive(user.gender))
+            user.education?.let { put("education", JsonPrimitive(it)) }
+            user.workplace?.let { put("workplace", JsonPrimitive(it)) }
             user.birth_date?.let { put("birth_date", JsonPrimitive(it)) }
             user.avatar_url?.let { put("avatar_url", JsonPrimitive(it)) }
             user.bio?.let { put("bio", JsonPrimitive(it)) }
@@ -562,6 +566,8 @@ class UserRepository @Inject constructor(
             request.favorite_music_url?.let { put("favorite_music_url", JsonPrimitive(it)) }
             request.favorite_book?.let { put("favorite_book", JsonPrimitive(it)) }
             request.favorite_sport?.let { put("favorite_sport", JsonPrimitive(it)) }
+            request.education?.let { put("education", JsonPrimitive(it)) }
+            request.workplace?.let { put("workplace", JsonPrimitive(it)) }
             request.career?.let { put("career", JsonPrimitive(it)) }
             request.availability_schedule?.let { put("availability_schedule", JsonPrimitive(it)) }
             request.profile_section_order?.let { values ->
@@ -628,6 +634,8 @@ class UserRepository @Inject constructor(
         if (request.favorite_music_url?.let { !sameUrl(it, user.favorite_music_url) } == true) return "favorite_music_url"
         if (request.favorite_book?.let { !sameText(it, user.favorite_book) } == true) return "favorite_book"
         if (request.favorite_sport?.let { !sameText(it, user.favorite_sport) } == true) return "favorite_sport"
+        if (request.education?.let { !sameText(it, user.education) } == true) return "education"
+        if (request.workplace?.let { !sameText(it, user.workplace) } == true) return "workplace"
         if (request.career?.let { !sameText(it, user.career) } == true) return "career"
         if (request.availability_schedule?.let { !sameText(it, user.availability_schedule) } == true) {
             return "availability_schedule"
@@ -1783,6 +1791,8 @@ class UserRepository @Inject constructor(
                     favoriteMusicUrl = request.favorite_music_url,
                     favoriteBook = request.favorite_book,
                     favoriteSport = request.favorite_sport,
+                    education = request.education,
+                    workplace = request.workplace,
                     career = request.career,
                     availabilitySchedule = request.availability_schedule,
                     profileSectionOrder = request.profile_section_order,

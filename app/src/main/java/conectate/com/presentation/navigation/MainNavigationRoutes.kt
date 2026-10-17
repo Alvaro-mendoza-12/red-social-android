@@ -42,6 +42,7 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         route = Screen.Chat.route,
         arguments = listOf(
             navArgument("userId") { type = NavType.StringType },
+            navArgument("birthdayGreeting") { type = NavType.BoolType; defaultValue = false },
             navArgument("initialMessage") {
                 type = NavType.StringType
                 nullable = true
@@ -59,6 +60,7 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.messages.ChatScreen(
                 navController = navController,
+                birthdayGreeting = backStackEntry.arguments?.getBoolean("birthdayGreeting") ?: false,
                 initialMessage = initialMessage,
                 focusMessageId = focusMessageId
             )

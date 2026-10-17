@@ -20,6 +20,8 @@ data class UpdateProfileRequest(
     val favorite_book: String? = null,
     val favorite_sport: String? = null,
     val career: String? = null,
+    val education: String? = null,
+    val workplace: String? = null,
     val availability_schedule: String? = null,
     val profile_section_order: List<String>? = null,
     val profile_section_visibility: Map<String, String>? = null,

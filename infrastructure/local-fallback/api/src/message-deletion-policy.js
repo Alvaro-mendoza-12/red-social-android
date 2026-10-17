@@ -236,6 +236,7 @@ async function ensureMessageDeletionTables(db) {
 function messagePreview(row) {
   if (!row) return null
   if (isDeletedForAll(row)) return 'Mensaje eliminado'
+  if (row.content_type === 'birthday_card') return '🎂 Tarjeta de cumpleaños'
   if (row.content_type === 'contact') return 'Contacto'
   if (String(row.content || '').trim()) return String(row.content).trim()
   return ({ image: 'Imagen', video: 'Video', audio: 'Audio', sticker: 'Sticker', poll: 'Encuesta' })[row.content_type] ||

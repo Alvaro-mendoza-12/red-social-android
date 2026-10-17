@@ -307,6 +307,9 @@ fun NotificationItem(
                 lineHeight = 20.sp
             )
             
+            if (type == "birthday") {
+                androidx.compose.material3.TextButton(onClick = onClick) { Text("Felicítalo ahora") }
+            }
             val commentPreview = notificationCommentPreview(notification)
             if (!commentPreview.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
@@ -495,7 +498,7 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
         "new_post" -> " hizo una nueva publicación"
         "friend_request" -> " te envió una solicitud de amistad"
         "friend_request_accepted" -> " aceptó tu solicitud de amistad"
-        "birthday" -> " cumple años hoy. ¡Deséale un feliz cumpleaños!"
+        "birthday" -> " cumple años hoy. ¡Felicítalo!"
         "live_started", "new_live" -> " inició un directo"
         "group_member_added" -> {
             val groupName = n.content?.trim().orEmpty()
@@ -603,7 +606,8 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
     // requiera ser exhaustivo.
     try {
     when (type) {
-        "follow", "friend_request_accepted", "birthday" -> {
+        "birthday" -> { if (n.actorId.isNotBlank()) navController.navigate(Screen.Chat.createRoute(n.actorId, birthdayGreeting = true)) }
+        "follow", "friend_request_accepted" -> {
             if (n.actorId.isNotBlank()) {
                 navController.navigate(Screen.UserProfile.createRoute(n.actorId))
             }

@@ -96,6 +96,10 @@ internal fun ProfileEditSections(
     onGenderChange: (String) -> Unit,
     showGenderDropdown: Boolean,
     onGenderDropdownChange: (Boolean) -> Unit,
+    education: String, onEducationChange: (String) -> Unit,
+    workplace: String, onWorkplaceChange: (String) -> Unit,
+    career: String, onCareerChange: (String) -> Unit,
+    birthdayVisible: Boolean, onBirthdayVisibleChange: (Boolean) -> Unit,
     birthDate: String,
     birthDateIsValid: Boolean,
     onOpenBirthDate: () -> Unit,
@@ -252,6 +256,13 @@ internal fun ProfileEditSections(
                         }
                     }
                 }
+                OutlinedTextField(value = education, onValueChange = onEducationChange,
+                    label = { Text("Dónde estudiaste") }, placeholder = { Text("Colegio, instituto o universidad") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = career, onValueChange = onCareerChange,
+                    label = { Text("Profesión o carrera") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = workplace, onValueChange = onWorkplaceChange,
+                    label = { Text("Lugar de trabajo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 val displayedBirthDate = remember(birthDate) {
                     runCatching { LocalDate.parse(birthDate) }
                         .getOrNull()
@@ -273,6 +284,14 @@ internal fun ProfileEditSections(
                     supportingText = { Text("Se usa para cumpleaños y controles de edad") },
                     modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenBirthDate),
                 )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Mostrar mi cumpleaños", style = MaterialTheme.typography.bodyLarge)
+                        Text("Aparece al final de Presentación y permite avisar a tus amigos.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = birthdayVisible, onCheckedChange = onBirthdayVisibleChange)
+                }
                 ProfileSaveArea(isLoading, errorMessage, onSave)
             }
 

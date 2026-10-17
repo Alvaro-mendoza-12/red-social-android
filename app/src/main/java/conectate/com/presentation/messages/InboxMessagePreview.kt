@@ -18,6 +18,7 @@ internal fun inboxMessagePreview(message: Message?): String = when {
         "contact" -> "Contacto"
         "location" -> "Ubicación"
         "question" -> readableCollectionPreview(message.content)
+        "birthday_card" -> "🎂 Tarjeta de cumpleaños"
         "poll" -> "Encuesta"
         "document", "file" -> "Archivo"
         else -> message.content

@@ -1507,7 +1507,8 @@ class ChatViewModel @Inject constructor(
         content: String,
         contentType: String,
         errorPrefix: String,
-        mediaUrl: String? = null
+        mediaUrl: String? = null,
+        onQueued: () -> Unit = {}
     ) {
         if (!ensureNotBlockedForSending()) return
         if (_isSending.value) return
@@ -1538,7 +1539,9 @@ class ChatViewModel @Inject constructor(
                     mediaType = contentType,
                     existingMediaUrl = mediaUrl,
                     replyToId = replySnapshot.replyTo?.id,
-                    onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
+                    onQueued = { withContext(Dispatchers.Main.immediate) {
+                        if (ownerAccountId == authService.getCurrentUserId()?.trim()?.lowercase()) { textComposer.queuedReply(replySnapshot); onQueued() }
+                    } }
                 )
                 if (result.isFailure) {
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())
@@ -1551,6 +1554,23 @@ class ChatViewModel @Inject constructor(
                 _isSending.value = false
             }
         }
+    }
+
+    fun restoreBirthdayCard(): conectate.com.data.model.BirthdayCard =
+        conectate.com.data.model.BirthdayCard.decode(conversationDraftStore.read(ownerAccountId, "chat", "birthday:$otherUserId"))
+            ?: conectate.com.data.model.BirthdayCard()
+
+    fun updateBirthdayCard(card: conectate.com.data.model.BirthdayCard) {
+        if (ownerAccountId == authService.getCurrentUserId()?.trim()?.lowercase())
+            conversationDraftStore.write(ownerAccountId, "chat", "birthday:$otherUserId", card.encode())
+    }
+
+    fun sendBirthdayCard(card: conectate.com.data.model.BirthdayCard, onQueued: () -> Unit) {
+        if (!isDirectConversation || !card.isValid) return
+        sendStructuredMessage(card.copy(message = card.message.trim()).encode(), "birthday_card", "No se pudo enviar la carta", onQueued = {
+            conversationDraftStore.write(ownerAccountId, "chat", "birthday:$otherUserId", "")
+            onQueued()
+        })
     }
 
     // Audio Logic

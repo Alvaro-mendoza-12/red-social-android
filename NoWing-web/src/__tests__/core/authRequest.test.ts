@@ -1,4 +1,4 @@
-import { authenticationConnectionMessage, authenticationTimeoutMs, fetchAuthentication } from '../../core/auth/authRequest'
+import { AuthenticationLocalNetworkError, authenticationConnectionMessage, authenticationTimeoutMs, fetchAuthentication } from '../../core/auth/authRequest'
 
 const originalFetch = global.fetch
 beforeEach(() => { jest.useFakeTimers(); global.fetch = jest.fn() })
@@ -52,4 +52,11 @@ test('a request cancelled before sending never reaches fetch', async () => {
 test('connection errors do not mention infrastructure or blame the entered password', () => {
   expect(authenticationConnectionMessage).toContain('Novvin')
   expect(authenticationConnectionMessage).not.toMatch(/Ubuntu|Tailscale|contraseña|https?:/i)
+})
+
+test('a denied browser network permission gives a clear action without replaying credentials',async()=>{
+ const original=Object.getOwnPropertyDescriptor(navigator,'permissions')
+ Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:jest.fn().mockResolvedValue({state:'denied'})}})
+ ;(global.fetch as jest.Mock).mockRejectedValue(new TypeError('Failed to fetch'))
+ try{await expect(fetchAuthentication('https://conectate.tail9b267c.ts.net/v1/auth/login',{method:'POST'})).rejects.toBeInstanceOf(AuthenticationLocalNetworkError);expect(global.fetch).toHaveBeenCalledTimes(1)}finally{if(original)Object.defineProperty(navigator,'permissions',original);else Reflect.deleteProperty(navigator,'permissions')}
 })
