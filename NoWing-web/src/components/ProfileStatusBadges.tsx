@@ -10,7 +10,7 @@ function read(owner: string, id: string): Promise<ProfileIdentity | null> {
   const key = owner + ':' + id, hit = cache.get(key)
   if (hit && Date.now() - hit.at < 120000) return Promise.resolve(hit.value)
   return new Promise(resolve => {
-    const batch = pending.get(owner) || new Map()
+    const batch = pending.get(owner) || new Map<string, Array<(value: ProfileIdentity | null) => void>>()
     const listeners = batch.get(id) || []; listeners.push(resolve); batch.set(id, listeners)
     if (pending.has(owner)) return
     pending.set(owner, batch)
