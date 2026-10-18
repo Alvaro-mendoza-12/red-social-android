@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Room, RoomEvent, Track, type LocalTrackPublication } from 'livekit-client'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { useAuth } from '../../core/auth/AuthProvider'
+import { syncMediaTracks } from '../../core/media/stableMediaStream'
 
 type LiveRole = 'host' | 'guest' | 'viewer'
-export type SfuParticipant = { id: string; name: string; stream: MediaStream }
+export type SfuParticipant = { id: string; name: string; stream: MediaStream; videoEnabled: boolean }
 export function useLiveSfu({ liveId, hostId, role, enabled, localMedia, source, micEnabled, videoEnabled }: {
   liveId: string; hostId: string; role: LiveRole; enabled: boolean; localMedia: MediaStream | null
   source: 'camera' | 'screen'; micEnabled: boolean; videoEnabled: boolean
@@ -17,11 +18,16 @@ export function useLiveSfu({ liveId, hostId, role, enabled, localMedia, source, 
     if(!enabled||!user?.id||!liveId)return
     const controller=new AbortController(), session=new Room({adaptiveStream:false,dynacast:true,disconnectOnPageLeave:true,stopLocalTrackOnUnpublish:true})
     let active=true
-    const update=()=>{if(!active)return;setParticipants([...session.remoteParticipants.values()].flatMap(participant=>{
+    const streams = new Map<string, MediaStream>()
+    const update=()=>{if(!active)return
+      for (const id of streams.keys()) if (!session.remoteParticipants.has(id)) streams.delete(id)
+      setParticipants([...session.remoteParticipants.values()].map(participant=>{
       const tracks=[...participant.trackPublications.values()].filter(publication=>publication.isSubscribed&&!publication.isMuted&&publication.track).map(publication=>publication.track!.mediaStreamTrack)
-      return tracks.length?[{id:participant.identity,name:participant.name||'Participante',stream:new MediaStream(tracks)}]:[]
+      const stream = syncMediaTracks(streams.get(participant.identity) || new MediaStream(), tracks)
+      streams.set(participant.identity, stream)
+      return {id:participant.identity,name:participant.name||'Participante',stream,videoEnabled:tracks.some(track=>track.kind==='video'&&track.readyState==='live')}
     }))}
-    session.on(RoomEvent.TrackSubscribed,update).on(RoomEvent.TrackUnsubscribed,update).on(RoomEvent.TrackMuted,update).on(RoomEvent.TrackUnmuted,update).on(RoomEvent.ParticipantDisconnected,update)
+    session.on(RoomEvent.TrackSubscribed,update).on(RoomEvent.TrackUnsubscribed,update).on(RoomEvent.TrackMuted,update).on(RoomEvent.TrackUnmuted,update).on(RoomEvent.ParticipantConnected,update).on(RoomEvent.ParticipantDisconnected,update)
     session.on(RoomEvent.Reconnecting,()=>{if(active)setConnected(false)})
     session.on(RoomEvent.Reconnected,()=>{if(active){setConnected(true);setError('');update()}})
     session.on(RoomEvent.Disconnected,()=>{if(active){setConnected(false);setRoom(null);setError('Se interrumpió la conexión del directo. Puedes volver a conectar.')}})
@@ -39,7 +45,7 @@ export function useLiveSfu({ liveId, hostId, role, enabled, localMedia, source, 
         await fallbackApiJson(`/v1/data/live/${encodeURIComponent(liveId)}/participants/state`,{method:'POST',expectedAccountId:user.id,signal:controller.signal,body:JSON.stringify({state:'connected'})})
       }catch{if(active)setError('No se pudo conectar el audio y video del directo. Intenta conectar de nuevo.')}
     })()
-    return()=>{active=false;controller.abort();session.removeAllListeners();void session.disconnect();published.current.forEach(track=>track.stop());published.current=[]}
+    return()=>{active=false;controller.abort();session.removeAllListeners();void session.disconnect();streams.clear();published.current.forEach(track=>track.stop());published.current=[]}
   },[enabled,liveId,user?.id,role,generation])
   useEffect(()=>{
     if(!room||!localMedia||role==='viewer')return
@@ -61,5 +67,5 @@ export function useLiveSfu({ liveId, hostId, role, enabled, localMedia, source, 
   },[room,localMedia,role,source])
   useEffect(()=>{published.current.forEach(track=>{track.enabled=track.kind==='audio'?micEnabled:videoEnabled});publicationsRef.current.forEach(publication=>{const enabled=publication.kind===Track.Kind.Audio?micEnabled:videoEnabled;void(enabled?publication.unmute():publication.mute()).catch(()=>{})})},[micEnabled,videoEnabled])
   const host=participants.find(participant=>participant.id.toLowerCase()===hostId.toLowerCase())
-  return { connected, error, hostStream:host?.stream||null, guests:participants.filter(participant=>participant!==host), retry:()=>setGeneration(value=>value+1) }
+  return { connected, error, hostStream:host?.stream||null, hostVideoEnabled:host?.videoEnabled, guests:participants.filter(participant=>participant!==host), retry:()=>setGeneration(value=>value+1) }
 }

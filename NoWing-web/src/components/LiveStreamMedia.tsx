@@ -8,25 +8,41 @@ type OutputElement = HTMLMediaElement & { setSinkId?: (deviceId: string) => Prom
 function useStreamPlayback<T extends HTMLMediaElement>(stream: MediaStream | null, muted: boolean, outputDeviceId: string) {
   const element = useRef<T>(null)
   const attempt = useRef<() => Promise<void>>(async () => {})
+  const preferences = useRef({ muted, outputDeviceId })
+  useEffect(() => { preferences.current = { muted, outputDeviceId } }, [muted, outputDeviceId])
   const [issue, setIssue] = useState<{ stream: MediaStream; type: 'autoplay' | 'output' } | null>(null)
   useEffect(() => {
     const node = element.current as OutputElement | null
     if (!node || !stream) return
     let active = true
     node.srcObject = stream
-    node.muted = muted
+    node.muted = preferences.current.muted
     const play = async () => {
       try {
         await node.play()
         if (active) setIssue(current => current?.type === 'autoplay' ? null : current)
       } catch (error) {
-        if (active && !muted && error instanceof Error && error.name === 'NotAllowedError') setIssue({ stream, type: 'autoplay' })
+        if (active && !preferences.current.muted && error instanceof Error && error.name === 'NotAllowedError') setIssue({ stream, type: 'autoplay' })
       }
     }
     attempt.current = play
     const update = () => { void play() }
     node.addEventListener('loadedmetadata', update)
     stream.addEventListener('addtrack', update)
+    return () => {
+      active = false
+      attempt.current = async () => {}
+      node.removeEventListener('loadedmetadata', update)
+      stream.removeEventListener('addtrack', update)
+      node.pause()
+      node.srcObject = null
+    }
+  }, [stream])
+  useEffect(() => {
+    const node = element.current as OutputElement | null
+    if (!node || !stream) return
+    let active = true
+    node.muted = muted
     void (async () => {
       // Muted previews have no audible output to route. Setting an empty sink
       // can itself be denied by browser policy even when default playback works.
@@ -37,16 +53,9 @@ function useStreamPlayback<T extends HTMLMediaElement>(stream: MediaStream | nul
           if (active && outputDeviceId) setIssue({ stream, type: 'output' })
         }
       } else if (active) setIssue(current => current?.type === 'output' ? null : current)
-      if (active) await play()
+      if (active) await attempt.current()
     })()
-    return () => {
-      active = false
-      attempt.current = async () => {}
-      node.removeEventListener('loadedmetadata', update)
-      stream.removeEventListener('addtrack', update)
-      node.pause()
-      node.srcObject = null
-    }
+    return () => { active = false }
   }, [stream, muted, outputDeviceId])
   const currentIssue = issue?.stream === stream ? issue : null
   return { element, play: () => void attempt.current(), blocked: !muted && currentIssue?.type === 'autoplay', outputFailed: currentIssue?.type === 'output' }

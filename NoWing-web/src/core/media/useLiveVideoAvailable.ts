@@ -30,6 +30,8 @@ export function useLiveVideoAvailable(stream: MediaStream | null) {
       for (const track of observed) for (const event of ['mute', 'unmute', 'ended']) track.removeEventListener(event, notify)
     }
   }, [stream])
-  const snapshot = useCallback(() => Boolean(stream?.getVideoTracks().some(track => track.readyState === 'live' && track.enabled && !track.muted)), [stream])
+  // RTP mute can be a brief network interruption. Keep the renderer and its
+  // last frame mounted; the participant's signaled video state handles camera off.
+  const snapshot = useCallback(() => Boolean(stream?.getVideoTracks().some(track => track.readyState === 'live' && track.enabled)), [stream])
   return useSyncExternalStore(subscribe, snapshot, () => false)
 }

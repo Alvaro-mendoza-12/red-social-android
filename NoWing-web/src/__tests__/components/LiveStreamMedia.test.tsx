@@ -25,7 +25,7 @@ test('reveals a camera arriving on the existing audio stream and hides a removed
   render(<VideoStatus stream={asStream(stream)} />)
   expect(screen.getByText('oculto')).toBeInTheDocument()
   act(() => stream.add(track)); expect(screen.getByText('visible')).toBeInTheDocument()
-  act(() => { track.muted = true; track.dispatchEvent(new Event('mute')) }); expect(screen.getByText('oculto')).toBeInTheDocument()
+  act(() => { track.muted = true; track.dispatchEvent(new Event('mute')) }); expect(screen.getByText('visible')).toBeInTheDocument()
   act(() => { track.muted = false; track.dispatchEvent(new Event('unmute')) }); expect(screen.getByText('visible')).toBeInTheDocument()
   act(() => { track.readyState = 'ended'; track.dispatchEvent(new Event('ended')) }); expect(screen.getByText('oculto')).toBeInTheDocument()
   act(() => { stream.remove(track); track.readyState = 'live'; track.dispatchEvent(new Event('unmute')) }); expect(screen.getByText('oculto')).toBeInTheDocument()
@@ -38,6 +38,16 @@ test('attaches a stream already available before the video mounts and clears it 
   await waitFor(() => expect(play).toHaveBeenCalled())
   expect(video.srcObject).toBe(stream)
   unmount(); expect(video.srcObject).toBeNull(); expect(pause).toHaveBeenCalled()
+})
+
+test('keeps the video attached when muting or choosing another output', async () => {
+  const stream = asStream(new Stream())
+  const { rerender } = render(<LiveStreamVideo stream={stream} label="Pantalla" muted />)
+  const video = screen.getByLabelText('Pantalla') as HTMLVideoElement
+  await waitFor(() => expect(play).toHaveBeenCalled())
+  rerender(<LiveStreamVideo stream={stream} label="Pantalla" outputDeviceId="headset" />)
+  expect(video.srcObject).toBe(stream)
+  expect(pause).not.toHaveBeenCalled()
 })
 
 test('does not request an output route for muted previews or an untouched default output', async () => {

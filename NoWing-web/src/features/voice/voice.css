@@ -525,6 +525,18 @@
 .voice-video-tile:fullscreen video { width: 100%; height: 100%; max-height: 100dvh; aspect-ratio: auto; object-fit: contain; }
 
 .voice-video-tile { margin: 0; }
+.voice-chat-section { display:flex; flex-direction:column; gap:12px; grid-column:1 / -1; }
+.voice-chat-heading { display:flex; gap:8px; align-items:center; background:transparent; color:inherit; padding:0; text-align:left; }
+.voice-chat-heading>span { margin-left:auto; border-radius:20px; padding:3px 8px; background:var(--primary); color:var(--on-primary); }
+.voice-chat-messages { overflow-y:auto; overscroll-behavior:contain; height:220px; display:flex; flex-direction:column; gap:12px; }
+.voice-chat-messages article { border-radius:10px; padding:9px; background:var(--surface-raised,#292a30); }
+.voice-chat-messages article header { display:flex; justify-content:space-between; gap:8px; font-size:.75rem; }
+.voice-chat-messages article time { color:var(--secondary-text); font-size:.65rem; }
+.voice-chat-messages article p { margin:6px 0 0; font-size:.85rem; white-space:pre-wrap; overflow-wrap:anywhere; }
+.voice-chat-messages article.own { border-left:2px solid var(--primary); }
+.voice-chat-composer { display:flex; gap:6px; }
+.voice-chat-composer input { flex:1; width:0; min-width:0; padding:10px 12px; border-radius:18px; border:1px solid var(--outline,#555); background:var(--surface-raised,#292a30); color:inherit; }
+.voice-chat-composer button { display:grid; place-items:center; width:36px; flex:none; color:inherit; }
 .voice-side-section,.voice-connection-card { min-width: 0; overflow-wrap: anywhere; }
 @media(max-width:500px) { .voice-room-side-panel { grid-template-columns: minmax(0,1fr); } }
 

@@ -803,6 +803,8 @@ class WebRTCManager(
         Log.i("WebRTCManager", "Add Remote Track: ${track.kind()} ($socketId)")
         if (track.kind() == "video" && track is VideoTrack) {
             track.setEnabled(true)
+            val existing = _remoteVideoTracks.value[socketId]
+            if (existing != null && runCatching { existing.id() == track.id() }.getOrDefault(false)) return
             var map = _remoteVideoTracks.value.toMutableMap()
             map[socketId] = track
             _remoteVideoTracks.value = map

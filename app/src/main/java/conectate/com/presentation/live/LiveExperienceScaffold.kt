@@ -127,6 +127,7 @@ import conectate.com.presentation.wallet.GiftCelebrationOverlay
 import conectate.com.data.model.GiftReceipt
 import conectate.com.data.livekit.LiveKitRoomBridge
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.components.videoZoom
 import conectate.com.presentation.components.WebRtcVideoView
 import java.time.Instant
 import kotlinx.coroutines.delay
@@ -227,7 +228,7 @@ internal fun NovvinLiveViewerExperience(
         center = {
             when {
                 paused -> LiveStateBadge("DIRECTO EN PAUSA")
-                !videoEnabled -> LiveStateBadge(if (source == LiveSource.SCREEN) "PANTALLA DESACTIVADA" else "CÁMARA DESACTIVADA")
+                !videoEnabled -> LiveStateBadge("En vivo · Solo audio")
                 hostTrack == null && matchingLiveParticipantIndex(
                     stream?.hostUserId.orEmpty(), liveKitVideos.map { it.participantIdentity }
                 ) == null -> ConnectingState(stream, "Conectando directo…")
@@ -441,7 +442,7 @@ internal fun NovvinLiveHostExperience(
         center = {
             when {
                 paused -> LiveStateBadge("DIRECTO EN PAUSA")
-                !videoEnabled -> LiveStateBadge(if (source == LiveSource.SCREEN) "PANTALLA DESACTIVADA" else "CÁMARA DESACTIVADA")
+                !videoEnabled -> LiveStateBadge("En vivo · Solo audio")
                 localTrack == null -> ConnectingState(stream, "Preparando transmisión…")
             }
         },
@@ -1101,6 +1102,7 @@ private fun LiveParticipantCell(
 ) {
     Box(
         modifier
+            .videoZoom(!showLabel && scaling == RendererCommon.ScalingType.SCALE_ASPECT_FIT && (track != null || liveKitVideo != null), liveKitVideo?.trackId ?: track)
             .clip(if (showLabel) RoundedCornerShape(16.dp) else RoundedCornerShape(0.dp))
             .background(
                 Brush.verticalGradient(

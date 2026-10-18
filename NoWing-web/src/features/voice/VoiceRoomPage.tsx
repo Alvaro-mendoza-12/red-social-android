@@ -1,7 +1,7 @@
 import { RoomVideo } from './RoomVideo'
 import { mediaPeerIsInitiator } from '../../core/mediaPeerRole'
 import {useVoiceRoomCues} from './useVoiceRoomCues'
-import { Camera, CameraOff, MonitorUp, Settings } from 'lucide-react'
+import { Camera, CameraOff, MonitorUp, Settings, MessageCircle, Send } from 'lucide-react'
 import './voice.css'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { LiveStreamAudio } from '../../components/LiveStreamMedia'
@@ -99,7 +99,10 @@ type MutePayload = {
   isMuted: boolean
 }
 
+type RoomChatMessage = { roomId: string; userId: string; userName: string; text: string; id: string; timestamp: number }
+
 type ServerEvents = {
+  'chat-message': (payload: Partial<RoomChatMessage>) => void
   'media-status': (payload: { roomId?: string; userId: string; isCameraSharing: boolean; isScreenSharing: boolean }) => void
   connect: () => void
   disconnect: (reason: string) => void
@@ -118,6 +121,7 @@ type ServerEvents = {
 }
 
 type ClientEvents = {
+  'chat-message': (payload: RoomChatMessage) => void
   'media-status': (payload: { roomId: string; userId: string; isCameraSharing: boolean; isScreenSharing: boolean }) => void
   'join-room': (payload: { roomId: string; userId: string; name: string; avatarUrl: string; isMuted?: boolean }) => void
   offer: (payload: { target: string; offer: RTCSessionDescriptionInit; userId: string; name: string }) => void
@@ -296,6 +300,14 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const [microphoneDevice, setMicrophoneDevice] = useState('')
   const [outputDevice, setOutputDevice] = useState('')
   const [mediaBusy, setMediaBusy] = useState(false)
+  const [chatMessages, setChatMessages] = useState<RoomChatMessage[]>([])
+  const [chatDraft, setChatDraft] = useState('')
+  const [chatOpen, setChatOpen] = useState(true)
+  const [chatUnread, setChatUnread] = useState(0)
+  const chatVisibleRef = useRef(true)
+  const chatEndRef = useRef<HTMLDivElement | null>(null)
+  const participantsRef = useRef(participants)
+  useEffect(() => { chatVisibleRef.current = chatOpen && !minimized; participantsRef.current = participants }, [chatOpen, minimized, participants])
   const visualTrackRef = useRef<MediaStreamTrack | null>(null)
   const visualOperationRef = useRef(0)
   const audioOperationRef = useRef(0)
@@ -325,6 +337,13 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const remoteParticipants = participants.filter((participant) => participant.userId !== user?.id)
   const connectedPeerCount = Object.values(peerStates).filter((state) => state === 'connected').length
   const connectionQuality = connectedPeerCount > 0 ? 'Audio conectado' : isJoined ? (remoteParticipants.length ? 'Conectando audio…' : 'En la sala') : 'Sin conectar'
+
+  useEffect(() => { setChatMessages([]); setChatDraft(''); setChatUnread(0) }, [roomId, user?.id])
+  useEffect(() => {
+    if (!chatOpen || minimized) return
+    setChatUnread(0)
+    chatEndRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [chatOpen, minimized, chatMessages])
 
   useEffect(() => {
     mutedRef.current = isMuted
@@ -580,7 +599,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     } finally {
       setSyncingParticipants(false)
     }
-  }, [useUbuntuVoice, user?.id])
+  }, [useUbuntuVoice])
 
   const fallbackParticipantUpdate = useCallback(async (targetRoomId: string, delta: number) => {
     if (useUbuntuVoice) {
@@ -724,6 +743,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     const signalingUrl = readSignalingUrl()
     try {
       const response = await fetch(`${signalingUrl.replace(/\/$/, '')}/turn-credentials`, {
+        signal: AbortSignal.timeout(6000),
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${accessToken}`,
@@ -767,6 +787,18 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     })
 
     socketRef.current = socket
+    socket.on('chat-message', payload => {
+      if (payload.roomId !== room.id || !payload.userId || typeof payload.text !== 'string' || !payload.text.trim()) return
+      const participant = participantsRef.current.find(item => item.userId === payload.userId)
+      const message: RoomChatMessage = {
+        roomId: room.id, userId: payload.userId,
+        userName: participant?.userName || (typeof payload.userName === 'string' ? payload.userName.slice(0, 100) : 'Participante'),
+        text: payload.text.slice(0, 2000), id: String(payload.id || crypto.randomUUID()).slice(0, 160),
+        timestamp: typeof payload.timestamp === 'number' && Number.isFinite(payload.timestamp) ? payload.timestamp : Date.now(),
+      }
+      setChatMessages(current => current.some(item => item.userId === message.userId && item.id === message.id) ? current : [...current.slice(-199), message])
+      if (!chatVisibleRef.current) setChatUnread(current => current + 1)
+    })
     manager.onIceCandidate((target, candidate) => {
       socket.emit('ice-candidate', {
         target,
@@ -784,7 +816,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       })
     })
     manager.onTrack((_track, stream, peerId) => {
-      setRemoteStreams((current) => ({ ...current, [peerId]: new MediaStream(stream.getTracks()) }))
+      setRemoteStreams((current) => current[peerId] === stream ? current : ({ ...current, [peerId]: stream }))
     })
     manager.onConnectionState((state, peerId) => {
       setPeerStates((current) => ({ ...current, [peerId]: state }))
@@ -1490,6 +1522,28 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         </main>
 
         <aside className="voice-room-side-panel">
+          <section className="voice-side-section voice-chat-section">
+            <button type="button" className="voice-chat-heading" aria-expanded={chatOpen} onClick={() => setChatOpen(value => !value)}><MessageCircle size={18}/><strong>Chat de la sala</strong>{chatUnread > 0 ? <span>{chatUnread}</span> : null}</button>
+            {chatOpen ? <>
+              <div className="voice-chat-messages" role="log" aria-label="Mensajes de la sala" aria-live="polite">
+                {!chatMessages.length ? <p className="voice-room-subtle">Los mensajes de esta sesión aparecen aquí al entrar en la sala.</p> : null}
+                {chatMessages.map(message => <article key={`${message.userId}:${message.id}`} className={message.userId === user?.id ? 'own' : ''}><header><strong>{message.userId === user?.id ? 'Tú' : message.userName}</strong><time>{new Date(message.timestamp).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}</time></header><p>{message.text}</p></article>)}
+                <div ref={chatEndRef}/>
+              </div>
+              <form className="voice-chat-composer" onSubmit={event => {
+                event.preventDefault()
+                const socket = socketRef.current, text = chatDraft.trim()
+                if (!text || !user || !isJoined || !socket?.connected) return
+                const message: RoomChatMessage = { roomId: room.id, userId: user.id, userName: displayName, text, id: crypto.randomUUID(), timestamp: Date.now() }
+                socket.emit('chat-message', message)
+                setChatMessages(current => [...current.slice(-199), message])
+                setChatDraft('')
+              }}>
+                <input aria-label="Mensaje para la sala" placeholder={isJoined ? 'Escribe un mensaje…' : 'Únete para escribir'} spellCheck lang="es" maxLength={2000} value={chatDraft} disabled={!isJoined} onChange={event => setChatDraft(event.target.value)}/>
+                <button type="submit" aria-label="Enviar mensaje a la sala" disabled={!isJoined || !socketRef.current?.connected || !chatDraft.trim()}><Send size={18}/></button>
+              </form>
+            </> : null}
+          </section>
           <section className="voice-side-section">
             <small>Detalle</small>
             <h3>{room.title}</h3>
@@ -1535,6 +1589,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         </aside>
       </div>
         <footer className={`voice-room-controls${isJoined ? ' joined' : ''}`} aria-label="Controles de sala">
+          <button className="voice-control-btn" type="button" aria-label="Mostrar chat de la sala" aria-expanded={chatOpen} onClick={() => { setChatOpen(value => !value); window.setTimeout(() => document.querySelector('.voice-chat-section')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0) }}><MessageCircle size={18}/>Chat{chatUnread ? ` (${chatUnread})` : ''}</button>
           <button className="voice-control-btn" type="button" onClick={() => void openDeviceSettings()} aria-label="Ajustes de audio y video" aria-expanded={showDeviceSettings}><Settings size={18} />Ajustes</button>
           {!isJoined ? (
             <button className="voice-control-btn primary" type="button" onClick={() => void joinRoom()} disabled={isJoining}>

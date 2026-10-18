@@ -369,7 +369,9 @@ fun CallScreen(
                                     videoTrack = remoteVideoTrack,
                                     sharedEglContext = viewModel.eglContext,
                                     modifier = Modifier.fillMaxSize(),
-                                    mirror = false
+                                    mirror = false,
+                                    scalingType = org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT,
+                                    zoomEnabled = true
                                 )
                             } else {
                                 Column(
@@ -398,7 +400,8 @@ fun CallScreen(
                                         videoTrack = localVideoTrack,
                                         sharedEglContext = viewModel.eglContext,
                                         modifier = Modifier.fillMaxSize(),
-                                        mirror = true
+                                        mirror = true,
+                                          mediaOverlay = true
                                     )
                                 }
                             }

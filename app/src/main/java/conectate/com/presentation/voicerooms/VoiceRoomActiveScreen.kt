@@ -71,6 +71,7 @@ import conectate.com.data.repository.VoiceCaption
 import conectate.com.data.repository.VoiceRoomSummary
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
+import conectate.com.presentation.components.videoZoom
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -215,7 +216,9 @@ fun VoiceRoomActiveScreen(
     // v18.0: Background Audio - "Back" minimizes (pops stack) but keeps room active.
     androidx.activity.compose.BackHandler(enabled = true) {
         val isCinemaActive = cinemaState?.isCinemaMode == true
-        if (isCinemaActive) {
+        if (fullScreenParticipantId != null) {
+            viewModel.toggleFullScreen(null)
+        } else if (isCinemaActive) {
             viewModel.exitCinemaMode()
         } else {
             // Minimize only
@@ -988,7 +991,7 @@ fun VideoGridLayout(
                          VideoRenderer(
                              track = track, 
                              eglBaseContext = eglBaseContext,
-                             scalingType = RendererCommon.ScalingType.SCALE_ASPECT_FILL
+                             scalingType = RendererCommon.ScalingType.SCALE_ASPECT_FIT
                          )
                          
                          // Name Overlay
@@ -1046,30 +1049,9 @@ fun VideoRenderer(
     eglBaseContext: EglBase.Context?,
     scalingType: RendererCommon.ScalingType = RendererCommon.ScalingType.SCALE_ASPECT_FIT
 ) {
-    AndroidView(
-        factory = { ctx ->
-            SurfaceViewRenderer(ctx).apply {
-                init(eglBaseContext, null)
-                setScalingType(scalingType)
-                setEnableHardwareScaler(true)
-                tag = track
-                track.addSink(this)
-            }
-        },
-        update = { view ->
-            val oldTrack = view.tag as? VideoTrack
-            if (oldTrack != track) {
-                oldTrack?.removeSink(view)
-                track.addSink(view)
-                view.tag = track
-            }
-        },
-        onRelease = { view ->
-            val currentTrack = view.tag as? VideoTrack
-            currentTrack?.removeSink(view)
-            view.release()
-        },
-        modifier = Modifier.fillMaxSize()
+    conectate.com.presentation.components.WebRtcVideoView(
+        videoTrack = track, sharedEglContext = eglBaseContext,
+        modifier = Modifier.fillMaxSize(), scalingType = scalingType,
     )
 }
 
@@ -1813,7 +1795,7 @@ fun ParticipantVideoBubble(
             VideoRenderer(
                 track = track,
                 eglBaseContext = eglBaseContext,
-                scalingType = org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL
+                scalingType = org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT
             )
             
             Surface(
@@ -2215,7 +2197,7 @@ fun FullScreenParticipantView(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .clickable { onFullscreenToggle() }
+            .videoZoom(track != null, track)
     ) {
         if (track != null) {
             VideoRenderer(
