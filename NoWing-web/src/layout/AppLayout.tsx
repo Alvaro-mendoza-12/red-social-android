@@ -1,5 +1,6 @@
 import { useLegacyCallBroadcast } from '../features/calls/useLegacyCallBroadcast'
 import { VoiceRoomHost } from '../features/voice/VoiceRoomHost'
+import { AttachmentJobsStatus } from '../components/AttachmentJobsStatus'
 import { StreamingImage } from '../components/StreamingMedia'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -1072,6 +1073,7 @@ export function AppLayout() {
           <div className={contentShellClassName}>
             <Outlet />
             <VoiceRoomHost />
+            <AttachmentJobsStatus />
           </div>
         </main>
 
@@ -1151,6 +1153,9 @@ export function AppLayout() {
                   {item.label}
                 </NavLink>
               ))}
+              {isSocialRoute ? <NavLink to="/app/social?tab=posts&advertising=1" className="mobile-explore-link" onClick={() => setIsMobileExploreOpen(false)}>
+                <Plus aria-hidden="true" />Publicidad · Crear y gestionar
+              </NavLink> : null}
               <button className="mobile-explore-link" type="button" onClick={() => void signOut()}>
                 <LogOut aria-hidden="true" />
                 Cerrar sesión

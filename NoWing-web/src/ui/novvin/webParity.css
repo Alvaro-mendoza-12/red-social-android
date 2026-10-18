@@ -41,6 +41,10 @@
 @keyframes recording-pulse { to { opacity: .35; transform: scaleY(.4); } }
 .attachment-audio-preview { width: 100%; height: 48px; }
 .attachment-preparing { padding: 10px 16px; font-size: 13px; color: var(--text-muted,#aaa); }
+.attachment-jobs-status { position: fixed; bottom: calc(80px + env(safe-area-inset-bottom)); right: 16px; z-index: 75; max-width: min(420px,calc(100vw - 32px)); }
+.attachment-jobs-status section { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 14px 16px; margin-top: 8px; background: var(--surface,#202024); color: var(--text,#fff); border: 1px solid var(--border,#444); border-radius: 16px; box-shadow: 0 6px 28px #0004; }
+.attachment-jobs-status span { flex-basis: 100%; font-size: 13px; }
+.attachment-jobs-status a { font-size: 13px; font-weight: 600; }
 .video-comments-panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 35; width: min(400px,100%); background: var(--surface,#15151b); border-left: 1px solid var(--outline,#333); display: flex; flex-direction: column; padding: 20px; gap: 14px; box-sizing: border-box; box-shadow: -12px 0 32px #0003; }
 .video-comments-panel h2 { font-size: 18px; }.video-comments-panel h2 small { color: var(--text-muted,#999); }
 .video-comments-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }

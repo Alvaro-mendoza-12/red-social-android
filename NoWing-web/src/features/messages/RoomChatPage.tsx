@@ -11,7 +11,8 @@ import { MessageSticker } from '../../components/MessageSticker'
 import { useConversationDraft } from '../../core/conversationDrafts'
 import { MessageText } from '../../components/MessageText'
 import { MessageReplyPreview } from '../../components/MessageReplyPreview'
-import { attachmentPreparationError, droppedAttachments, prepareAttachmentFiles } from '../../core/attachmentPreparation'
+import { droppedAttachments, prepareAttachmentFiles } from '../../core/attachmentPreparation'
+import { useAttachmentDraft, useAttachmentPreparation } from '../../core/attachmentJobs'
 import { chatGallery } from '../../core/chatGallery'
 import { MediaViewer } from '../../components/MediaViewer'
 import { ChatImageEditor } from '../../components/ChatImageEditor'
@@ -319,9 +320,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [showStickers, setShowStickers] = useState(false)
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
   const [dragActive, setDragActive] = useState(false)
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
-  const [preparingAttachments, setPreparingAttachments] = useState(false)
-  const [preparationStatus, setPreparationStatus] = useState('Preparando archivos…')
+  const [pendingAttachments, setPendingAttachments] = useAttachmentDraft<PendingAttachment>(user?.id || '', scope, cleanRoomId)
   const [imageEditorFile, setImageEditorFile] = useState<File | null>(null)
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
   const discardRecordingRef = useRef(false)
@@ -354,7 +353,6 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const shouldStickToBottomRef = useRef(true)
   const forceScrollToBottomRef = useRef(true)
   const pendingInitialBottomSnapRef = useRef(true)
-  const pendingAttachmentsRef = useRef<PendingAttachment[]>([])
   const audioRecorderRef = useRef<MediaRecorder | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -440,7 +438,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         caption: '',
       })),
     ])
-  }, [])
+  }, [setPendingAttachments])
+  const { start: startPreparation, preparing: preparingAttachments, status: preparationStatus } = useAttachmentPreparation(user?.id || '', scope, cleanRoomId, queueAttachmentFiles, setError)
   const sendPastedStickerRef = useRef<(file: File) => Promise<void>>(async () => {})
 
   const stopAudioStream = useCallback(() => {
@@ -516,7 +515,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     setPendingAttachments((current) =>
       current.map((entry) => (entry.id === attachmentId ? { ...entry, caption } : entry)),
     )
-  }, [])
+  }, [setPendingAttachments])
 
   const removePendingAttachment = useCallback((attachmentId: string) => {
     setPendingAttachments((current) => {
@@ -524,7 +523,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
       return current.filter((entry) => entry.id !== attachmentId)
     })
-  }, [])
+  }, [setPendingAttachments])
 
   const clearPendingAttachments = useCallback(() => {
     setPendingAttachments((current) => {
@@ -533,11 +532,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       })
       return []
     })
-  }, [])
+  }, [setPendingAttachments])
 
   useEffect(() => {
-    setPendingAttachments(current => { current.forEach(entry => { if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl) }); return [] })
-    setPreparingAttachments(false); setImageEditorFile(null); setGalleryIndex(null)
+    setImageEditorFile(null); setGalleryIndex(null)
     discardRecordingRef.current = true
     const recorder = audioRecorderRef.current
     if (recorder) { recorder.onstop = null; if (recorder.state !== 'inactive') recorder.stop(); audioRecorderRef.current = null }
@@ -562,11 +560,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       event.preventDefault()
       event.stopPropagation()
       setDragActive(false)
-      setPreparingAttachments(true); setPreparationStatus('Preparando archivos…'); setError(null)
-      const owner = preparationOwnerRef.current
-      void droppedAttachments(event.dataTransfer, message => { if (owner === preparationOwnerRef.current) setPreparationStatus(message) }).then(files => { if (owner === preparationOwnerRef.current) queueAttachmentFiles(files) }).catch(error => { if (owner === preparationOwnerRef.current) setError(attachmentPreparationError(error)) }).finally(() => { if (owner === preparationOwnerRef.current) setPreparingAttachments(false) })
+      setError(null)
+      startPreparation(progress => droppedAttachments(event.dataTransfer, progress))
     },
-    [queueAttachmentFiles],
+    [startPreparation],
   )
 
   useEffect(() => {
@@ -605,18 +602,6 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     window.addEventListener('paste', paste)
     return () => window.removeEventListener('paste', paste)
   }, [editingMessageId, queueAttachmentFiles, showStickers])
-
-  useEffect(() => {
-    pendingAttachmentsRef.current = pendingAttachments
-  }, [pendingAttachments])
-
-  useEffect(() => {
-    return () => {
-      pendingAttachmentsRef.current.forEach((entry) => {
-        if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl)
-      })
-    }
-  }, [])
 
   useEffect(() => {
     return () => {
@@ -1128,9 +1113,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }
 
   function handleAttachFile(input: FileList | File[] | null) {
-    setPreparingAttachments(true); setPreparationStatus('Preparando archivos…'); setError(null)
-    const owner = preparationOwnerRef.current
-    void prepareAttachmentFiles(Array.from(input || []), message => { if (owner === preparationOwnerRef.current) setPreparationStatus(message) }).then(files => { if (owner === preparationOwnerRef.current) queueAttachmentFiles(files) }).catch(error => { if (owner === preparationOwnerRef.current) setError(attachmentPreparationError(error)) }).finally(() => { if (owner === preparationOwnerRef.current) setPreparingAttachments(false) })
+    setError(null)
+    const selected = Array.from(input || [])
+    startPreparation(progress => prepareAttachmentFiles(selected, progress))
   }
 
   async function toggleReaction(messageId: string, emoji: string) {

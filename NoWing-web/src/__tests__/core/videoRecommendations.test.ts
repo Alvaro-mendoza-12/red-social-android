@@ -1,4 +1,4 @@
-import { loadRecommendedVideoPage } from '../../core/videoRecommendations'
+import { loadRecommendedVideoPage, mixBasicVideoSession } from '../../core/videoRecommendations'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 jest.mock('../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn() }))
 const api = jest.mocked(fallbackApiJson)
@@ -26,4 +26,14 @@ test('cursor failures and network errors are never silently replaced with the fi
   api.mockRejectedValue(new Error('RECOMMENDATION_CURSOR_STALE'))
   await expect(loadRecommendedVideoPage({owner:'account',refreshId:'session',cursor:'opaque'})).rejects.toThrow('RECOMMENDATION_CURSOR_STALE')
   expect(api).toHaveBeenCalledTimes(1)
+})
+
+test('basic feeds are stable within a session and change on entry without repeating the first video', () => {
+  const items = Array.from({ length: 20 }, (_, id) => ({ id: String(id) }))
+  const first = mixBasicVideoSession(items, 'viewer', 'entry-one')
+  expect(mixBasicVideoSession(items, 'viewer', 'entry-one')).toEqual(first)
+  const second = mixBasicVideoSession(items, 'viewer', 'entry-two')
+  expect(second[0].id).not.toBe(first[0].id)
+  expect(new Set(second.map(item => item.id))).toEqual(new Set(items.map(item => item.id)))
+  expect(mixBasicVideoSession(items, 'another-viewer', 'entry-two')).not.toEqual(second)
 })

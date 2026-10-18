@@ -98,13 +98,15 @@ function mapPost(row: GenericRow): FeedItem {
 type FeedPageProps = {
   composerOpen?: boolean
   onCloseComposer?: () => void
+  promotionsOpen?: boolean
+  onClosePromotions?: () => void
 }
 
 function FeedAvatar({ url, name }: { url: string; name: string }) {
   return <SafeAvatar url={url} name={name} />
 }
 
-export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProps) {
+export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen = false, onClosePromotions }: FeedPageProps) {
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const [webPreferences] = useWebPreferences()
@@ -566,7 +568,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
         </Link>
       </div>
       <SocialMoments />
-      <SocialPromotion showAd={false} manageOpen={promotionManager} onClose={()=>setPromotionManager(false)} onManageAccess={setCanManagePromotions}/>
+      <SocialPromotion showAd={false} manageOpen={promotionManager || promotionsOpen} onClose={()=>{setPromotionManager(false);onClosePromotions?.()}} onManageAccess={setCanManagePromotions}/>
       {composerOpen ? (
         <div className="app-dialog-backdrop" role="presentation" onMouseDown={onCloseComposer}>
           <article
@@ -794,7 +796,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer }: FeedPageProp
               Compartir
             </button>
           </div>
-        </article>{itemIndex===3?<SocialPromotion/>:null}</Fragment>
+        </article>{itemIndex===Math.min(3,shuffledItems.length-1)?<SocialPromotion/>:null}</Fragment>
       ))}
     </section>
   )

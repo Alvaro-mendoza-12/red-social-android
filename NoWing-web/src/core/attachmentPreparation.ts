@@ -24,7 +24,7 @@ function safeName(name: string) {
 }
 
 /** Read bounded slices: never allocate every source file in the folder at once. */
-export async function compressFiles(files: Array<{ path: string; file: File | null }>, name: string, onProgress?: PreparationProgress) {
+export async function compressFiles(files: Array<{ path: string; file: File | null }>, name: string, onProgress?: PreparationProgress, useWorker = true): Promise<File> {
   if (files.length > MAX_FILES) throw new AttachmentPreparationError('Selecciona hasta 5000 archivos por carpeta.')
   const paths = new Set<string>()
   for (const item of files) {
@@ -32,6 +32,18 @@ export async function compressFiles(files: Array<{ path: string; file: File | nu
     if (paths.has(item.path)) throw new AttachmentPreparationError('Hay archivos con el mismo nombre en la carpeta.')
     paths.add(item.path)
     if ((item.file?.size || 0) > MAX_MESSAGE_UPLOAD_BYTES) throw new AttachmentPreparationError(`${folderSummary(files)}. «${item.path}» ocupa ${sizeLabel(item.file!.size)} y supera los 500 MB permitidos por archivo, también dentro de un ZIP. Divide ese archivo o exclúyelo para enviar la carpeta.`)
+  }
+  if (useWorker && typeof Worker !== 'undefined') {
+    return await new Promise<File>((resolve, reject) => {
+      const worker = new Worker(new URL('./folderZip.worker.ts', import.meta.url), { type: 'module' })
+      worker.onmessage = (event: MessageEvent<{ progress?: string; file?: File; error?: string }>) => {
+        if (event.data.progress) onProgress?.(event.data.progress)
+        if (event.data.file) { worker.terminate(); resolve(event.data.file) }
+        if (event.data.error) { worker.terminate(); reject(new AttachmentPreparationError(event.data.error)) }
+      }
+      worker.onerror = () => { worker.terminate(); reject(new AttachmentPreparationError('No se pudo comprimir la carpeta. Vuelve a seleccionarla para reintentar.')) }
+      worker.postMessage({ files, name })
+    })
   }
   const parts: Uint8Array<ArrayBuffer>[] = []
   let bytes = 0, failure: Error | null = null
@@ -42,25 +54,35 @@ export async function compressFiles(files: Array<{ path: string; file: File | nu
     parts.push(new Uint8Array(data))
   })
   try {
-    let processed = 0
+    let processed = 0, sourceBytes = 0, lastProgress = 0
+    const totalBytes = files.reduce((sum, item) => sum + (item.file?.size || 0), 0)
+    const progress = (path: string, force = false) => {
+      if (!force && Date.now() - lastProgress < 150) return
+      lastProgress = Date.now()
+      const percent = totalBytes ? Math.floor(sourceBytes / totalBytes * 100) : Math.floor(processed / Math.max(1, files.length) * 100)
+      onProgress?.(`Comprimiendo ${name}: ${percent}% · ${processed} de ${files.length} elementos · ${sizeLabel(sourceBytes)} de ${sizeLabel(totalBytes)} · ${path}`)
+    }
     for (const item of files) {
-      if (processed % 25 === 0) { onProgress?.(`Comprimiendo ${name}: ${processed} de ${files.length} elementos`); await new Promise<void>(resolve => setTimeout(resolve, 0)) }
-      processed++
+      progress(item.path, processed === 0)
       const entry = !item.file || /\.(zip|gz|7z|rar|docx|xlsx|pptx|jpe?g|png|webp|gif|mp4|mp3|m4a|pdf)$/i.test(item.path)
-        ? new ZipPassThrough(item.path) : new ZipDeflate(item.path, { level: 6 })
+        ? new ZipPassThrough(item.path) : new ZipDeflate(item.path, { level: 1 })
       archive.add(entry)
       if (!item.file || !item.file.size) entry.push(new Uint8Array(), true)
       else for (let offset = 0; offset < item.file.size; offset += CHUNK_BYTES) {
         const end = Math.min(item.file.size, offset + CHUNK_BYTES)
         entry.push(new Uint8Array(await item.file.slice(offset, end).arrayBuffer()), end === item.file.size)
+        sourceBytes += end - offset
+        progress(item.path)
         if (failure) throw failure
-        // Let input, progress announcements and painting run between chunks.
-        await new Promise<void>(resolve => setTimeout(resolve, 0))
+        // The worker can stream continuously. The compatibility path yields to UI.
+        if (useWorker) await new Promise<void>(resolve => setTimeout(resolve, 0))
       }
+      processed++
       if (failure) throw failure
     }
     archive.end()
     if (failure) throw failure
+    progress('ZIP preparado', true)
     return new File(parts, `${safeName(name).replace(/\.zip$/i, '')}.zip`, { type: 'application/zip' })
   } catch (error) { archive.terminate(); throw error }
 }

@@ -20,7 +20,7 @@ import {
   ChevronDown,
   Play,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { ShareVideoDialog } from '../../components/ShareVideoDialog'
 import { StatusView } from '../../components/StatusView'
@@ -775,6 +775,7 @@ export function ReelsPage() {
   const [commentsVideo, setCommentsVideo] = useState<ReelItem | null>(null)
   const [feedMuted, setFeedMuted] = useState(true)
   const { user, isFallbackSession } = useAuth()
+  const location = useLocation()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const reelsCacheKey = `reels:${user?.id ?? 'anon'}`
   const [items, setItems] = useState<ReelItem[]>([])
@@ -1039,7 +1040,7 @@ export function ReelsPage() {
       return
     }
     void loadVideos({ silent: false })
-  }, [loadVideos, reelsCacheKey, useUbuntu])
+  }, [loadVideos, reelsCacheKey, useUbuntu, location.key])
 
   useEffect(() => {
     if (!useUbuntu) {

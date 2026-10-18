@@ -6,6 +6,7 @@ import { StatusView } from '../components/StatusView'
 import { loadGuestContent, stopGuestBrowsing, type GuestKind } from '../core/auth/guestAccess'
 import { resolveSupabasePublicUrl } from '../core/supabase'
 import { textOf, type GenericRow } from '../core/utils'
+import { mixBasicVideoSession } from '../core/videoRecommendations'
 import './explore.css'
 
 function GuestVideo({ src, poster, title }: { src: string; poster?: string; title: string }) {
@@ -63,8 +64,9 @@ function ExploreContent() {
   useEffect(() => () => stopGuestBrowsing(), [])
   useEffect(() => {
     const controller = new AbortController()
+    const entrySession = crypto.randomUUID()
     void loadGuestContent(kind, params.id, controller.signal).then(rows => {
-      if (!controller.signal.aborted) setItems(rows)
+      if (!controller.signal.aborted) setItems(kind === 'videos' && !params.id ? mixBasicVideoSession(rows, 'guest', entrySession) : rows)
     }).catch(() => { if (!controller.signal.aborted) setFailed(true) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()

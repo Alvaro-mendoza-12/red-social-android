@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { StreamingImage } from './StreamingMedia'
+import { promotionLinkTarget } from '../core/promotionDestination'
 
 export type PromotionCard = { title: string; description: string; imageUrl: string; destination: string; cta: string; file?: File }
 export type Promotion = PromotionCard & { id: string; active: boolean; cards?: PromotionCard[] }
@@ -9,7 +10,8 @@ export type PromotionCatalog = { items: Promotion[]; canManage: boolean }
 function LocalImage({file,alt}:{file:File;alt:string}) { const ref=useRef<HTMLImageElement>(null);useEffect(()=>{const url=URL.createObjectURL(file);if(ref.current)ref.current.src=url;return()=>URL.revokeObjectURL(url)},[file]);return <img ref={ref} alt={alt}/> }
 export function PromotionCarousel({ad,preview=false}:{ad:Promotion;preview?:boolean}) {
   const rail=useRef<HTMLDivElement>(null), [page,setPage]=useState(0)
-  const cards=ad.cards?.length?ad.cards:[ad]
+  const source=Array.isArray(ad.cards)&&ad.cards.length?ad.cards:[ad]
+  const cards=source.filter(card=>card&&typeof card==='object').map(card=>({...card,destination:promotionLinkTarget(card.destination)}))
   const move=(delta:number)=>{const node=rail.current;if(node)node.scrollBy({left:delta*((node.firstElementChild?.getBoundingClientRect().width || node.clientWidth)+12),behavior:'smooth'})}
   return <article className="promotion-creative" aria-label={preview?'Vista previa del anuncio':'Anuncio de Novvin'}>
     <h3>{ad.title || 'Título de tu anuncio'}</h3><p>{ad.description}</p>
