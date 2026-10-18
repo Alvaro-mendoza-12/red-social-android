@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 data class WebLoginScannerUiState(
@@ -180,6 +182,7 @@ class WebLoginScannerViewModel @Inject constructor(
                 )
             }
             if (linkAfterScan && result.getOrNull()?.status == "pending") approvePairing()
+            else if (linkAfterScan && result.getOrNull()?.status == "approved") waitForBrowserLink()
         }
     }
 
@@ -192,7 +195,7 @@ class WebLoginScannerViewModel @Inject constructor(
 
     fun refreshPairing() {
         val payload = uiState.value.lastPayload ?: return
-        submitPayload(payload)
+        submitPayload(payload, linkAfterScan = uiState.value.linkAfterScan)
     }
 
     fun approvePairing() {
@@ -257,9 +260,9 @@ class WebLoginScannerViewModel @Inject constructor(
                 result.fold(
                     onSuccess = { updated ->
                         state.copy(
-                            isSubmitting = false,
+                            isSubmitting = state.linkAfterScan && updated.status == "approved",
                             pairing = updated,
-                            infoMessage = "Dispositivo vinculado. Ya puedes usar Novvin Web."
+                            infoMessage = if (state.linkAfterScan && updated.status == "approved") null else "Dispositivo vinculado. Ya puedes usar Novvin Web."
                         )
                     },
                     onFailure = { error ->
@@ -272,7 +275,29 @@ class WebLoginScannerViewModel @Inject constructor(
                     }
                 )
             }
+            if (result.isSuccess && uiState.value.linkAfterScan) waitForBrowserLink()
         }
+    }
+
+    private suspend fun waitForBrowserLink() {
+        _uiState.update { it.copy(isSubmitting = true) }
+        val completed = withTimeoutOrNull(8_000) {
+            while (true) {
+                delay(400)
+                val current = uiState.value
+                val pairing = webLoginPairingRepository.getPairingStatus(current.resolvedPairId.orEmpty(), current.resolvedNonce.orEmpty()).getOrNull() ?: continue
+                if (pairing.status == "consumed") {
+                    _uiState.update { it.copy(pairing = pairing, infoMessage = "Dispositivo vinculado. Ya puedes usar Novvin Web.", isSubmitting = false) }
+                    return@withTimeoutOrNull true
+                }
+                if (pairing.status in setOf("expired", "rejected")) {
+                    _uiState.update { it.copy(pairing = pairing, isSubmitting = false, errorMessage = "Este QR ya no está disponible. Abre uno nuevo en la web y vuelve a escanearlo.") }
+                    return@withTimeoutOrNull true
+                }
+            }
+            @Suppress("UNREACHABLE_CODE") false
+        }
+        if (completed != true) _uiState.update { it.copy(isSubmitting = false, infoMessage = "QR escaneado. Abre Novvin Web para terminar de vincularlo.") }
     }
 
     fun rejectPairing() {

@@ -121,7 +121,7 @@ fun WebLoginScannerScreen(
         requestScan()
     }
 
-    val linked = uiState.linkAfterScan && uiState.pairing?.status in setOf("approved", "consumed")
+    val linked = uiState.linkAfterScan && uiState.pairing?.status == "consumed"
     LaunchedEffect(linked) {
         if (linked && navController.previousBackStackEntry != null) {
             android.widget.Toast.makeText(context, "Dispositivo vinculado. Ya puedes usar Novvin Web.", android.widget.Toast.LENGTH_LONG).show()
