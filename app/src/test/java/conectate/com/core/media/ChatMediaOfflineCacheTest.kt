@@ -378,6 +378,48 @@ class ChatMediaOfflineCacheTest {
         }
     }
 
+    @Test
+    fun `a slow video cannot block a received sticker from becoming available offline`() = runBlocking {
+        withTemporaryDirectory { root ->
+            val videoStarted = CountDownLatch(1)
+            val releaseVideo = CountDownLatch(1)
+            val videoFinished = CountDownLatch(1)
+            val stickerStored = CountDownLatch(1)
+            val sticker = "https://cdn.example.test/chat-media/sticker.webp"
+            val cache = ChatMediaOfflineCache(
+                rootDirectory = root,
+                accountIdProvider = { "viewer" },
+                automaticMediaEnabled = { true },
+                availableBytes = { Long.MAX_VALUE / 4L },
+                minFreeSpaceBytes = 0L,
+                onCachedMedia = { _, key, _ -> if (key.contains("sticker.webp")) stickerStored.countDown() },
+                connectionFactory = { url ->
+                    object : HttpURLConnection(url) {
+                        private val video = url.path.endsWith(".mp4")
+                        override fun connect() = Unit
+                        override fun usingProxy() = false
+                        override fun disconnect() { if (video) videoFinished.countDown() }
+                        override fun getResponseCode(): Int {
+                            if (video) { videoStarted.countDown(); check(releaseVideo.await(15, TimeUnit.SECONDS)) }
+                            return HTTP_OK
+                        }
+                        override fun getContentType() = if (video) "video/mp4" else "image/webp"
+                        override fun getContentLengthLong() = 2L
+                        override fun getInputStream() = ByteArrayInputStream(byteArrayOf(1, 2))
+                    }
+                },
+            )
+            try {
+                val video = "https://cdn.example.test/chat-media/slow.mp4"
+                cache.cacheOpenedMedia(video, video)
+                assertTrue(videoStarted.await(5, TimeUnit.SECONDS))
+                cache.cacheOpenedMedia(sticker, sticker)
+                assertTrue(stickerStored.await(5, TimeUnit.SECONDS))
+                assertNotNull(cache.resolveCachedUri(sticker))
+            } finally { releaseVideo.countDown(); assertTrue(videoFinished.await(5, TimeUnit.SECONDS)) }
+        }
+    }
+
     private fun cache(
         root: File,
         accountId: String = "viewer",
