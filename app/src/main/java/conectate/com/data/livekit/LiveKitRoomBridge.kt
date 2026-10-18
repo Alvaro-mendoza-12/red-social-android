@@ -326,7 +326,9 @@ class LiveKitRoomBridge @Inject constructor(
         val connectedRoom = room ?: return false
         connectedRoom.initVideoRenderer(renderer)
         renderer.setMirror(false)
-        renderer.setScalingType(livekit.org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+        // The SFU carries both camera frames and full desktop/mobile displays.
+        // Fit the complete frame so screen shares are never cropped on phones.
+        renderer.setScalingType(livekit.org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT)
         val recovery = LiveRendererRecoveryPolicy(android.os.SystemClock.elapsedRealtime())
         val sink = livekit.org.webrtc.VideoSink { frame ->
             recovery.recordFrame(android.os.SystemClock.elapsedRealtime())

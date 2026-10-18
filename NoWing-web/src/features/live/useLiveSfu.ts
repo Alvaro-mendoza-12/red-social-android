@@ -43,7 +43,12 @@ export function useLiveSfu({ liveId, hostId, role, enabled, localMedia, source, 
         if(!active){await session.disconnect();return}
         setConnected(true);setRoom(session);update()
         await fallbackApiJson(`/v1/data/live/${encodeURIComponent(liveId)}/participants/state`,{method:'POST',expectedAccountId:user.id,signal:controller.signal,body:JSON.stringify({state:'connected'})})
-      }catch{if(active)setError('No se pudo conectar el audio y video del directo. Intenta conectar de nuevo.')}
+      }catch(error){
+        if(active){
+          console.warn('[live-sfu] No se pudo abrir el transporte multimedia', error instanceof Error ? error.name : 'error desconocido')
+          setError('No se pudo conectar el audio y video del directo. Intenta conectar de nuevo.')
+        }
+      }
     })()
     return()=>{active=false;controller.abort();session.removeAllListeners();void session.disconnect();streams.clear();published.current.forEach(track=>track.stop());published.current=[]}
   },[enabled,liveId,user?.id,role,generation])

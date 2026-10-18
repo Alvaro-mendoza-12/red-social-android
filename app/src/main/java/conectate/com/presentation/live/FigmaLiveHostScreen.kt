@@ -115,6 +115,7 @@ fun LiveHostScreen(
     val activeGuests by viewModel.activeGuests.collectAsStateWithLifecycle()
     val giftEvents by viewModel.giftEvents.collectAsStateWithLifecycle()
     val battle by viewModel.battleState.collectAsStateWithLifecycle()
+    val collaborationCapabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
     val battleCandidates by viewModel.battleCandidates.collectAsStateWithLifecycle()
     val cameraFilter by viewModel.cameraFilter.collectAsStateWithLifecycle()
     val liveMusic by viewModel.liveMusic.collectAsStateWithLifecycle()
@@ -139,19 +140,32 @@ fun LiveHostScreen(
     var liveSummary by remember(liveId) { mutableStateOf<HostLiveSummarySnapshot?>(null) }
     var showMusicPicker by remember { mutableStateOf(false) }
     var pendingToolScreenStart by remember { mutableStateOf(false) }
+    var liveKitFailureShown by remember(liveId) { mutableStateOf(false) }
 
-    LaunchedEffect(battle.battleId, battle.status, battle.opponentLiveId) {
-        if (
-            battle.status == conectate.com.data.model.LiveBattleStatus.ACTIVE &&
+    LaunchedEffect(
+        session?.stream?.id, session?.role, collaborationCapabilities.sfuAvailable,
+        autoStarted, isMediaReady, currentSource,
+        localVideoTrack, battle.battleId, battle.status, battle.opponentLiveId
+    ) {
+        val active = session ?: return@LaunchedEffect
+        if (active.role != LiveRole.HOST || !isMediaReady || !autoStarted) return@LaunchedEffect
+        val battleActive = battle.status == conectate.com.data.model.LiveBattleStatus.ACTIVE &&
             battle.battleId.isNotBlank() && battle.opponentLiveId.isNotBlank()
-        ) {
-            viewModel.connectLiveKit(
-                liveId = liveId,
-                role = "host",
-                publishAudio = micEnabled,
-                publishCamera = isVideoEnabled && !isPaused,
-            ).onFailure {
-                AppFeedbackBus.showError("No se pudo conectar la sala compartida de batalla.")
+        if (!collaborationCapabilities.sfuAvailable && !battleActive) return@LaunchedEffect
+        val publishVideo = isVideoEnabled && !isPaused
+        if (publishVideo && localVideoTrack == null) return@LaunchedEffect
+
+        viewModel.connectLiveKit(
+            liveId = active.stream.id,
+            role = "host",
+            publishAudio = micEnabled,
+            publishCamera = publishVideo,
+        ).onSuccess {
+            liveKitFailureShown = false
+        }.onFailure {
+            if (!liveKitFailureShown) {
+                liveKitFailureShown = true
+                AppFeedbackBus.showError("No se pudo conectar el audio y video del directo.")
             }
         }
     }

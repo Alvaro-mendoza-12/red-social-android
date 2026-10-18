@@ -46,6 +46,7 @@ fun LiveViewerScreen(
     val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
     val liveKitRemoteParticipants by viewModel.liveKitRemoteParticipants.collectAsStateWithLifecycle()
     val liveKitState by viewModel.liveKitState.collectAsStateWithLifecycle()
+    val collaborationCapabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
     val eglBaseContext by viewModel.eglBaseContext.collectAsStateWithLifecycle()
     val session by viewModel.activeSession.collectAsStateWithLifecycle()
     val isFollowingHost by viewModel.isFollowingHost.collectAsStateWithLifecycle()
@@ -89,16 +90,17 @@ fun LiveViewerScreen(
     var pendingGuestStart by remember(liveId) { mutableStateOf<Pair<Boolean, Boolean>?>(null) }
     val exitGate = remember(liveId) { FigmaLiveViewerExitGate() }
 
-    val battleCollaborationPlan = liveViewerBattleCollaborationPlan(
+    val mediaPlan = liveViewerMediaPlan(
         liveId = session?.stream?.id?.takeIf {
             it.equals(liveId, ignoreCase = true) && !manualLeaveRequested
         },
-        battle = battle
+        battle = battle,
+        sfuAvailable = collaborationCapabilities.sfuAvailable
     )
-    // The active viewer screen keeps its native guest broadcast. The optional
-    // cross-LIVE room only receives media and has one connection owner.
+    // Keep legacy guest signaling, while receiving the host's actual broadcast
+    // from the same SFU room used by web viewers.
     LiveViewerCollaborationConnectionOwner(
-        plan = battleCollaborationPlan,
+        plan = mediaPlan,
         transportState = liveKitState,
         leaving = manualLeaveRequested,
         disconnect = { viewModel.disconnectLiveKit() },

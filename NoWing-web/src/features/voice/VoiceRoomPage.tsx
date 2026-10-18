@@ -1,7 +1,7 @@
 import { RoomVideo } from './RoomVideo'
 import { mediaPeerIsInitiator } from '../../core/mediaPeerRole'
 import {useVoiceRoomCues} from './useVoiceRoomCues'
-import { Camera, CameraOff, MonitorUp, Settings, MessageCircle, Send } from 'lucide-react'
+import { Camera, CameraOff, MonitorUp, Settings, MessageCircle, Send, Maximize2, Minimize2 } from 'lucide-react'
 import './voice.css'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { LiveStreamAudio } from '../../components/LiveStreamMedia'
@@ -300,6 +300,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const [microphoneDevice, setMicrophoneDevice] = useState('')
   const [outputDevice, setOutputDevice] = useState('')
   const [mediaBusy, setMediaBusy] = useState(false)
+  const [cinemaMode, setCinemaMode] = useState(false)
   const [chatMessages, setChatMessages] = useState<RoomChatMessage[]>([])
   const [chatDraft, setChatDraft] = useState('')
   const [chatOpen, setChatOpen] = useState(true)
@@ -1391,7 +1392,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   }
 
   return (
-    <section className={`voice-room-stage${minimized ? ' voice-room-minimized' : ''}`}>
+    <section className={`voice-room-stage${minimized ? ' voice-room-minimized' : ''}${cinemaMode ? ' voice-room-cinema' : ''}`}>
       {minimized && isJoined ? <aside className="voice-floating-controls" aria-label="Sala de voz activa">
         <button type="button" className="voice-floating-title" onClick={() => navigate(`/app/voice/${room.id}`)}><Radio size={18}/><span><strong>{room.title}</strong><small>{connectionQuality}</small></span></button>
         <button type="button" className="icon-btn" aria-label={isMuted ? 'Activar micrófono en sala' : 'Silenciar micrófono en sala'} aria-pressed={isMuted} onClick={() => void toggleMute()}>{isMuted ? <MicOff/> : <Mic/>}</button>
@@ -1589,6 +1590,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         </aside>
       </div>
         <footer className={`voice-room-controls${isJoined ? ' joined' : ''}`} aria-label="Controles de sala">
+          <button className="voice-control-btn" type="button" onClick={() => setCinemaMode(value => !value)} aria-pressed={cinemaMode} aria-label={cinemaMode ? 'Salir del modo cine' : 'Activar modo cine'} title={cinemaMode ? 'Salir del modo cine' : 'Modo cine'}>{cinemaMode ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}Modo cine</button>
           <button className="voice-control-btn" type="button" aria-label="Mostrar chat de la sala" aria-expanded={chatOpen} onClick={() => { setChatOpen(value => !value); window.setTimeout(() => document.querySelector('.voice-chat-section')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0) }}><MessageCircle size={18}/>Chat{chatUnread ? ` (${chatUnread})` : ''}</button>
           <button className="voice-control-btn" type="button" onClick={() => void openDeviceSettings()} aria-label="Ajustes de audio y video" aria-expanded={showDeviceSettings}><Settings size={18} />Ajustes</button>
           {!isJoined ? (

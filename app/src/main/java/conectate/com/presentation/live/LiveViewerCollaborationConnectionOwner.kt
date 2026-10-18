@@ -81,9 +81,9 @@ internal fun LiveViewerCollaborationConnectionOwner(
     ) {
         AlertDialog(
             onDismissRequest = { retryRequested = false },
-            title = { Text("Conexión de invitados interrumpida") },
+            title = { Text("Conexión del directo interrumpida") },
             text = {
-                Text("No se pudo mantener la conexión de invitados y batallas. Puedes reintentar sin salir del directo principal.")
+                Text("No se pudo conectar el audio y video del directo. Puedes reintentar sin salir de la transmisión.")
             },
             confirmButton = {
                 TextButton(onClick = {

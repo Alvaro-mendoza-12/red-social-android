@@ -971,10 +971,7 @@ class LiveRepository @Inject constructor(
                 // HTTP Result wrappers may catch cancellation. Do not open media afterwards.
                 ensureActorCurrent()
                 val session = issued.getOrElse { return@runLatest Result.failure(it) }
-                val followControls = conectate.com.data.livekit.shouldFollowLiveHostControls(
-                    role, publishAudio, publishCamera,
-                    _battleState.value.status == LiveBattleStatus.ACTIVE && _battleState.value.opponentLiveId.isNotBlank()
-                )
+                val followControls = conectate.com.data.livekit.shouldFollowLiveHostControls(role)
                 val existingVideo = webRTCManager?.localVideoTrack.takeIf {
                     followControls && _activeSession.value?.role == LiveRole.HOST
                 }
@@ -3752,7 +3749,17 @@ class LiveRepository @Inject constructor(
         if (mediaConnectionTimeoutJob?.isActive == true) return
         mediaConnectionTimeoutJob = scope.launch {
             try {
+                // When this server advertises the SFU, regular LIVE media uses
+                // LiveKit. The legacy peer connection can remain disconnected
+                // even while the real stream is playing, so it must not report
+                // a false failure or trigger ICE recovery in that case.
+                if (_activeSession.value?.role == LiveRole.VIEWER &&
+                    _collaborationCapabilities.value.sfuAvailable
+                ) return@launch
                 delay(25_000L)
+                if (_activeSession.value?.role == LiveRole.VIEWER &&
+                    _collaborationCapabilities.value.sfuAvailable
+                ) return@launch
                 val manager = webRTCManager ?: return@launch
                 val states = manager.peerConnectionStates.value
                 val connected = states.values.any { state ->
@@ -3765,6 +3772,9 @@ class LiveRepository @Inject constructor(
                     // real ICE restart while preserving camera/audio tracks.
                     manager.recoverAfterNetworkChange(reason = "live-media-timeout")
                     delay(15_000L)
+                    if (_activeSession.value?.role == LiveRole.VIEWER &&
+                        _collaborationCapabilities.value.sfuAvailable
+                    ) return@launch
                     val recovered = manager.peerConnectionStates.value.values.any { state ->
                         state == org.webrtc.PeerConnection.IceConnectionState.CONNECTED ||
                             state == org.webrtc.PeerConnection.IceConnectionState.COMPLETED

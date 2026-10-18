@@ -74,4 +74,18 @@ class LiveViewerCollaborationPolicyTest {
         assertNull(liveViewerBattleCollaborationPlan("live", battle.copy(status = LiveBattleStatus.INVITED)))
         assertNull(liveViewerBattleCollaborationPlan("live", battle.copy(opponentLiveId = "")))
     }
+
+    @Test fun `ordinary viewer joins the broadcast SFU when available`() {
+        val actual = liveViewerMediaPlan("live", LiveBattleState(), sfuAvailable = true)!!
+        assertEquals("viewer", actual.role)
+        assertFalse(actual.publishAudio)
+        assertFalse(actual.publishCamera)
+        assertNull(actual.battleId)
+        assertNull(liveViewerMediaPlan("live", LiveBattleState(), sfuAvailable = false))
+    }
+
+    @Test fun `battle viewer retains the shared room identity`() {
+        val battle = LiveBattleState(battleId = "battle", status = LiveBattleStatus.ACTIVE, opponentLiveId = "opponent")
+        assertEquals("battle", liveViewerMediaPlan("live", battle, sfuAvailable = true)?.battleId)
+    }
 }

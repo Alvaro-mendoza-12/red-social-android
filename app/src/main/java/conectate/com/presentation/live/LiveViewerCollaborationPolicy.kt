@@ -48,3 +48,18 @@ internal fun liveViewerBattleCollaborationPlan(
         LiveViewerCollaborationPlan(id, "viewer", false, false, battleId = battle.battleId)
     } else null
 }
+
+/** A normal LIVE viewer must join the SFU when the broadcaster uses it. */
+internal fun liveViewerMediaPlan(
+    liveId: String?,
+    battle: LiveBattleState,
+    sfuAvailable: Boolean
+): LiveViewerCollaborationPlan? {
+    val id = liveId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (battle.status == LiveBattleStatus.ACTIVE &&
+        battle.battleId.isNotBlank() && battle.opponentLiveId.isNotBlank()
+    ) {
+        return LiveViewerCollaborationPlan(id, "viewer", false, false, battleId = battle.battleId)
+    }
+    return if (sfuAvailable) LiveViewerCollaborationPlan(id, "viewer", false, false) else null
+}

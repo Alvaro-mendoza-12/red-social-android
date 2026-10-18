@@ -1,9 +1,4 @@
 package conectate.com.data.livekit
 
-/** A receive-only preparation must not start publishing because a state changes. */
-internal fun shouldFollowLiveHostControls(
-    role: String,
-    requestedAudio: Boolean,
-    requestedVideo: Boolean,
-    activeCrossLiveBattle: Boolean
-): Boolean = role == "host" && (requestedAudio || requestedVideo || activeCrossLiveBattle)
+/** Keep the host publisher connected while media controls are temporarily off. */
+internal fun shouldFollowLiveHostControls(role: String): Boolean = role == "host"

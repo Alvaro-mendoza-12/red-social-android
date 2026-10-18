@@ -979,20 +979,19 @@ fun VideoGridLayout(
              }
              
              if (track != null) {
-                 key(track) { // Recreate renderer if track instance changes
-                     Box(
-                         modifier = Modifier
-                             .fillMaxWidth()
-                             .aspectRatio(0.7f)
-                             .clip(RoundedCornerShape(12.dp))
-                             .background(Color.Black)
-                             .clickable { onFullscreenToggle(participant.id) }
-                     ) {
-                         VideoRenderer(
-                             track = track, 
-                             eglBaseContext = eglBaseContext,
-                             scalingType = RendererCommon.ScalingType.SCALE_ASPECT_FIT
-                         )
+                 Box(
+                     modifier = Modifier
+                         .fillMaxWidth()
+                         .aspectRatio(0.7f)
+                         .clip(RoundedCornerShape(12.dp))
+                         .background(Color.Black)
+                         .clickable { onFullscreenToggle(participant.id) }
+                 ) {
+                     VideoRenderer(
+                         track = track,
+                         eglBaseContext = eglBaseContext,
+                         scalingType = RendererCommon.ScalingType.SCALE_ASPECT_FIT
+                     )
                          
                          // Name Overlay
                          Surface(
@@ -1029,7 +1028,6 @@ fun VideoGridLayout(
                                   
                              }
                          }
-                     }
                   } else {
                       ParticipantCard(
                           participant = participant,

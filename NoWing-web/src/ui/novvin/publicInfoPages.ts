@@ -42,11 +42,12 @@ export const publicInfoPages = {
     ],
   },
   '/salas-de-voz': {
-    title: 'Salas de voz de Novvin: conversa con tu comunidad',
-    description: 'Encuentra salas de voz en Novvin y conversa con tu comunidad desde el móvil o la web. Controla el micrófono y el audio al participar.',
+    title: 'Salas de voz de Novvin: conversación y pantalla compartida',
+    description: 'Únete a salas de voz de Novvin desde la web o Android. Activa el micrófono, comparte cámara o pantalla y usa el modo cine para ampliar el escenario.',
     heading: 'Encuentra una sala y únete a la conversación.',
     sections: [
       { heading: 'Salas con personas de tu comunidad', body: 'Consulta el tema de una sala y sus participantes antes de unirte. Desde Novvin Web puedes participar con el micrófono de tu computadora o tus auriculares.' },
+      { heading: 'Cámara, pantalla y modo cine', body: 'En la web puedes compartir la cámara o una pantalla. Activa el modo cine para ampliar el escenario y ver mejor la transmisión de la sala.' },
       { heading: 'Tú controlas tu audio', body: 'Activa o silencia el micrófono, desactiva el sonido de la sala y sal cuando lo necesites. El navegador te pedirá permiso para utilizar el micrófono.' },
       { heading: 'También desde el móvil', body: 'Usa tu cuenta de Novvin para encontrar salas desde la aplicación y desde el navegador. Para conversar con estabilidad, mantén una conexión a internet y comprueba los permisos de audio.' },
     ],
