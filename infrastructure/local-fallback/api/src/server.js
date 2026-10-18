@@ -44,6 +44,7 @@ const {
 } = require('./storage-routes')
 const { registerAiRoutes } = require('./ai-routes')
 const { pushNotificationsStatus } = require('./push-notifications')
+const { publishWebSessionsRevoked } = require('./web-session-events')
 const { ensureSystemAnnouncementSchema, registerSystemAnnouncementRoutes, createAnnouncementWorker } = require('./system-announcements')
 const { accountSuspendedPayload, findActiveSuspension } = require('./account-status')
 const { appAdminHasCapability } = require('./admin-moderation-routes')
@@ -3336,6 +3337,7 @@ app.delete('/v1/auth/web-session', async (req, res, next) => {
       [hashAuthRefreshToken(refreshToken)],
     )
     if (rows[0]) {
+      void publishWebSessionsRevoked(rows[0].user_id, rows).catch(() => {})
       await recordAudit('auth_web_session_logout', rows[0].user_id, { sessionId: rows[0].id })
     }
     return res.json({ ok: true, revoked: Boolean(rows[0]) })
@@ -3496,6 +3498,7 @@ app.get('/v1/auth/web-sessions', authRequired, async (req, res, next) => {
        FROM fallback_web_sessions
        WHERE user_id = $1
          AND revoked_at IS NULL
+         AND expires_at > NOW()
        ORDER BY last_seen_at DESC, created_at DESC
        LIMIT 50`,
       [req.auth.sub],
@@ -3517,6 +3520,7 @@ app.delete('/v1/auth/web-sessions', authRequired, async (req, res, next) => {
        RETURNING *`,
       [req.auth.sub],
     )
+    void publishWebSessionsRevoked(req.auth.sub, rows).catch(() => {})
     await recordAudit('auth_web_sessions_revoked_all', req.auth.sub, { count: rows.length })
     return res.json({ ok: true, revoked: rows.length, sessions: rows.map(serializeWebSession) })
   } catch (error) {
@@ -3545,6 +3549,7 @@ app.delete('/v1/auth/web-sessions/:sessionId', authRequired, async (req, res, ne
       return res.status(404).json({ error: 'WEB_SESSION_NOT_FOUND' })
     }
 
+    void publishWebSessionsRevoked(req.auth.sub, rows).catch(() => {})
     await recordAudit('auth_web_session_revoked', req.auth.sub, { sessionId })
     return res.json({ ok: true, session: serializeWebSession(rows[0]) })
   } catch (error) {

@@ -195,6 +195,7 @@ export async function fallbackApiJson<T>(
     }
   }
   if (!response.ok) {
+    guardAccount()
     if (requiresAuth && (code === 'WEB_SESSION_REVOKED' || code === 'INVALID_TOKEN' || code === 'ACCOUNT_DELETED')) {
       clearFallbackSession()
     }

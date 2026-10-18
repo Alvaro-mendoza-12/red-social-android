@@ -2,12 +2,14 @@ import { useEffect } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { Session } from '@supabase/supabase-js'
 import { AuthProvider, useAuth } from '../../core/auth/AuthProvider'
+jest.mock('../../core/ubuntuRealtime', () => ({ subscribeUbuntuRealtime: ({onEvent}: {onEvent:(value:{payload:Record<string,unknown>})=>void}) => {mockRealtimeEvent=onEvent;return () => {}}, ubuntuRealtimeConnected: () => true }))
 import { getStorageReadIdentity, invalidateStorageReadIdentity } from '../../core/media/storageReadSession'
 
 let mockSession: { user: { id: string }; access_token: string } | null = null
 let mockFallback: { accessToken: string; user: { id: string; email: string } } | null = null
 let mockAuthEvent: (event: string, session: Session | null) => void
 let mockFallbackEvent: () => void
+let mockRealtimeEvent: (value:{payload:Record<string,unknown>})=>void
 const mockGetSession = jest.fn()
 const mockSignOut = jest.fn(async () => {})
 const mockSignOutFallback = jest.fn(async () => {})
@@ -47,6 +49,17 @@ beforeEach(() => {
   mockGetSession.mockImplementation(async () => ({ data: { session: mockSession } })); invalidateStorageReadIdentity()
 })
 afterEach(() => act(() => invalidateStorageReadIdentity()))
+
+test('a remote device revocation clears authentication and protected media immediately', async () => {
+  mockFallback = {accessToken:`header.${btoa(JSON.stringify({sid:'browser-one'}))}.signature`,user:{id:'fallback-a',email:'synthetic@invalid'}}
+  render(<AuthProvider><Consumer/></AuthProvider>)
+  await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('fallback-a'))
+  act(() => mockRealtimeEvent({payload:{event:'web_sessions_revoked',sessionIds:['browser-two']}}))
+  expect(screen.getByTestId('user')).toHaveTextContent('fallback-a')
+  act(() => mockRealtimeEvent({payload:{event:'web_sessions_revoked',sessionIds:['browser-one']}}))
+  await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('none'))
+  expect(getStorageReadIdentity().accountId).toBe('')
+})
 
 test('binds initial Supabase session before protected media can read', async () => {
   mockSession = session('account-a'); render(<AuthProvider><Consumer /></AuthProvider>)

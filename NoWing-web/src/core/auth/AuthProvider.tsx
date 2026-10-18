@@ -7,6 +7,7 @@ import { isSupabaseConfigured, supabase } from '../../core/supabase'
 import { textOf, type GenericRow } from '../../core/utils'
 import {
   clearFallbackSession,
+  fallbackApiJson,
   fallbackSessionNeedsRefresh,
   fallbackSessionToUser,
   hasFallbackSessionHint,
@@ -22,6 +23,8 @@ import { bootstrapSessionProfile } from './sessionBootstrap'
 import { loginReturnPath } from './loginReturnPath'
 import { retainUnchangedAuthUser } from './stableAuthUser'
 import { getStorageReadIdentity, invalidateStorageReadIdentity, updateStorageReadIdentity } from '../media/storageReadSession'
+import { subscribeUbuntuRealtime, ubuntuRealtimeConnected } from '../ubuntuRealtime'
+import { webSessionWasRevoked } from './webSessionRevocation'
 
 type SuspensionState = {
   isSuspended: boolean
@@ -164,6 +167,41 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (!session) setUser(null)
     })
   }, [session])
+
+  const fallbackOwner = fallbackSession?.user.id || ''
+  useEffect(() => {
+    if (!fallbackOwner) return
+
+    const owner = fallbackOwner
+    let checking = false
+    const controller = new AbortController()
+    const verifySession = async () => {
+      if (checking || controller.signal.aborted || document.hidden) return
+      checking = true
+      try { await fallbackApiJson('/v1/auth/me', { expectedAccountId: owner, signal: controller.signal }) }
+      catch { /* The API clears revoked sessions; a network failure keeps local state. */ }
+      finally { checking = false }
+    }
+    const unsubscribe = subscribeUbuntuRealtime({
+      channel: `user:${owner.toLowerCase()}`,
+      onEvent: event => {
+        const current = readFallbackSession()
+        if (current?.user.id === owner && webSessionWasRevoked(event.payload, current.accessToken)) clearFallbackSession()
+      },
+    })
+    const verify = () => { void verifySession() }
+    const onVisibility = () => { if (!document.hidden) verify() }
+    const fallback = window.setInterval(() => { if (!ubuntuRealtimeConnected()) verify() }, 5000)
+    window.addEventListener('novvin:realtime-ready', verify)
+    window.addEventListener('novvin:realtime-disconnected', verify)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      controller.abort(); unsubscribe(); window.clearInterval(fallback)
+      window.removeEventListener('novvin:realtime-ready', verify)
+      window.removeEventListener('novvin:realtime-disconnected', verify)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [fallbackOwner])
 
   useEffect(() => {
     if (!fallbackSession) return

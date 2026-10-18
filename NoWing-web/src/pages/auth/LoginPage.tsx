@@ -172,7 +172,7 @@ export function LoginPage() {
             setError(toPairingError(caught, 'No se pudo revisar el estado del QR.'))
           }
         } finally {
-          if (!cancelled) pollId = window.setTimeout(() => void poll(), 2500)
+          if (!cancelled) pollId = window.setTimeout(() => void poll(), document.hidden ? 5000 : 1500)
         }
     }
     void poll()
@@ -193,7 +193,7 @@ export function LoginPage() {
     async function consumePairing() {
       setConsumingQr(true)
       setError(null)
-      setInfo('Aprobado desde el móvil. Terminando el inicio de sesión...')
+      setInfo('QR escaneado. Vinculando tu cuenta…')
       try {
         const key = `${pairing.pairId}/${pairing.nonce}`
         if (consumptionRef.current?.key !== key) {

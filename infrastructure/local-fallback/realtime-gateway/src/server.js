@@ -101,6 +101,8 @@ function subscriptionAuthorizationUrl(channel) {
     ['raffles:community:', (id) => `/v1/data/raffles/community/${encodeURIComponent(id)}/access`],
     ['video-comments:', (id) => `/v1/data/videos/${encodeURIComponent(id)}`],
     ['live-comments:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
+    ['live-collaboration:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
+    ['live-moderation:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
   ]
   for (const [prefix, resolvePath] of mappings) {
     if (channel.startsWith(prefix)) {
@@ -194,6 +196,7 @@ wss.on('connection', (ws, req) => {
       return null
     }
     ws._token = token
+    ws._sessionId = String(payload.sid || '')
     ws._userId = String(payload.sub)
     ws._identityReady = resolveUserIds(token, payload).then((ids) => {
     if (!ids || ws.readyState !== WebSocket.OPEN || !verifyToken(token)) {
@@ -300,6 +303,13 @@ function broadcast(channel, payload) {
     const matchesCanonicalUser = Boolean(targetUserId && client._userIds?.has(targetUserId))
     if (!subscribedDirectly && !matchesCanonicalUser) return
     send(client, message)
+    // Revocation is committed in the API before this private event is sent.
+    // Close this device only; other browser sessions of the same user stay open.
+    if (matchesCanonicalUser && payload?.event === 'web_sessions_revoked' &&
+        client._sessionId && Array.isArray(payload.sessionIds) && payload.sessionIds.includes(client._sessionId)) {
+      client._authenticated = false
+      client.close(4401, 'WEB_SESSION_REVOKED')
+    }
   })
 }
 

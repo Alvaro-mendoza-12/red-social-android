@@ -1,4 +1,4 @@
-import { ensureFallbackAccessToken, isFallbackAuthConfigured } from './auth/fallbackAuth'
+import { ensureFallbackAccessToken, isFallbackAuthConfigured, onFallbackAuthChanged, readFallbackSession } from './auth/fallbackAuth'
 import { getRuntimeBackendUrl, subscribeRuntimeBackend } from './runtimeBackend'
 
 export type UbuntuRealtimeEvent = {
@@ -13,6 +13,19 @@ let sharedToken = ''
 const channelHandlers = new Map<string, Set<(event: UbuntuRealtimeEvent) => void>>()
 const pendingChannels = new Set<string>()
 let reconnectTimer: number | null = null
+
+export function ubuntuRealtimeConnected(): boolean { return sharedSocket?.readyState === WebSocket.OPEN }
+
+onFallbackAuthChanged(() => {
+  const nextToken = readFallbackSession()?.accessToken || ''
+  if (!sharedToken || nextToken === sharedToken) return
+  const old = sharedSocket
+  sharedSocket = null
+  sharedToken = ''
+  if (reconnectTimer) { window.clearTimeout(reconnectTimer); reconnectTimer = null }
+  old?.close()
+  if (nextToken && channelHandlers.size) void ensureSocket()
+})
 
 function fallbackApiOrigin(): string {
   return getRuntimeBackendUrl()
@@ -111,6 +124,7 @@ async function ensureSocket() {
 
   socket.addEventListener('close', () => {
     if (sharedSocket !== socket) return
+    window.dispatchEvent(new Event('novvin:realtime-disconnected'))
     if (reconnectTimer) window.clearTimeout(reconnectTimer)
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = null
