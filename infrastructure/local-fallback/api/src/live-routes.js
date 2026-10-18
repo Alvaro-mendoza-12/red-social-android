@@ -62,7 +62,7 @@ function roleGrant(role, audioMutedByHost = false) {
   }
 }
 
-function issueLiveSfuToken({ liveId, roomName, userId, displayName, role, configuration, audioMutedByHost = false, now = Math.floor(Date.now() / 1000) }) {
+function issueLiveSfuToken({ liveId, roomName, userId, displayName, avatarUrl, role, configuration, audioMutedByHost = false, now = Math.floor(Date.now() / 1000) }) {
   const expiresAt = now + 10 * 60
   const token = jwt.sign(
     {
@@ -76,7 +76,8 @@ function issueLiveSfuToken({ liveId, roomName, userId, displayName, role, config
         ...roleGrant(role, audioMutedByHost),
         room: cleanText(roomName, 240) || liveRoomName(liveId),
       },
-      metadata: JSON.stringify({ liveId: normalizeId(liveId), role }),
+      metadata: JSON.stringify({ liveId: normalizeId(liveId), role,
+        ...(avatarUrl ? { avatarUrl: cleanText(avatarUrl, 900) } : {}) }),
     },
     configuration.apiSecret,
     { algorithm: 'HS256' },
@@ -839,11 +840,15 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         [liveId, identity.values],
       )
       const audioMutedByHost = requestedRole === 'guest' && moderationState.rows[0]?.audio_muted_by_host === true
+      // Auth identity contains IDs, not profile fields. Use the public profile;
+      // never substitute a private email address for a missing public name.
+      const profile = await resolvedProfile(pool, { ...user, email: '' })
       const participant = issueLiveSfuToken({
         liveId,
         roomName: resolvedRoomName,
         userId: identity.displayUserId,
-        displayName: identity.displayName,
+        displayName: profile.name,
+        avatarUrl: profile.avatarUrl,
         role: requestedRole,
         audioMutedByHost,
         configuration,

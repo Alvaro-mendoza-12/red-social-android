@@ -5,12 +5,13 @@ require.cache[require.resolve('../src/realtime-publish')] = { id: require.resolv
 const { registerLiveRoutes } = require('../src/live-routes')
 const liveId = '11111111-1111-4111-8111-111111111111'
 const commentId = '22222222-2222-4222-8222-222222222222'
-function fixture() {
+function fixture(profile = { display_name: 'Ana', avatar_url: 'https://example.test/ana.webp' }) {
   const stored = new Map(), handlers = new Map()
   let total = 0
   const pool = { async query(sql, params) {
     if (sql.includes('FROM fallback_live_streams')) return { rows: [{ id: liveId, host_user_id: 'host', is_active: true }] }
-    if (sql.includes('fallback_profile_overrides')) return { rows: [{ profile: { display_name: 'Ana' } }] }
+    if (sql.includes('fallback_profile_overrides')) return { rows: [{ profile }] }
+    if (sql.includes('fallback_live_battles') || sql.includes('fallback_live_participants')) return { rows: [] }
     if (sql.includes('WITH inserted AS')) {
       const [live_id, user_id, user_name, avatar_url, content, id] = params
       if (stored.has(id)) return { rows: [] }
@@ -24,12 +25,13 @@ function fixture() {
     throw new Error('Unexpected query: ' + sql.slice(0, 80))
   } }
   const app = Object.fromEntries(['get', 'post', 'patch', 'delete', 'put'].map(method => [method, (path, ...chain) => handlers.set(method + ' ' + path, chain.at(-1))]))
-  registerLiveRoutes(app, { pool, authRequired: () => {}, getCurrentUser: async () => ({ id: 'host' }), userIdentity: () => ({ ids: new Set(['host']), values: ['host'], displayUserId: 'host' }) })
-  return { total: () => total, send: async body => {
-    const res = { statusCode: 200, status(code) { this.statusCode = code; return this }, json(value) { this.body = value; return this } }
-    await handlers.get('post /v1/data/live/:liveId/comments')({ params: { liveId }, body }, res, error => { throw error })
+  registerLiveRoutes(app, { pool, authRequired: () => {}, getCurrentUser: async () => ({ id: 'host', email: 'private@example.invalid' }), userIdentity: () => ({ ids: new Set(['host']), values: ['host'], displayUserId: 'host' }) })
+  const invoke = async (path, body) => {
+    const res = { statusCode: 200, setHeader() {}, status(code) { this.statusCode = code; return this }, json(value) { this.body = value; return this } }
+    await handlers.get('post /v1/data/live/:liveId/' + path)({ params: { liveId }, body }, res, error => { throw error })
     return res
-  } }
+  }
+  return { total: () => total, send: body => invoke('comments', body), token: body => invoke('sfu-token', body) }
 }
 test('publishes the complete saved comment immediately and retries never double count', async () => {
   events.length = 0
@@ -48,4 +50,21 @@ test('rejects malformed client IDs before creating a comment', async () => {
   const f = fixture()
   assert.equal((await f.send({ content: 'Hola', clientCommentId: 'invalid' })).statusCode, 400)
   assert.equal(f.total(), 0)
+})
+test('media tokens use the public profile and spectators cannot publish', async () => {
+  const settings = { LIVE_GUESTS_BATTLES_ENABLED: 'true', LIVE_SFU_ENABLED: 'true', LIVEKIT_URL: 'wss://example.test', LIVEKIT_API_KEY: 'synthetic', LIVEKIT_API_SECRET: 'synthetic-secret' }
+  const saved = Object.fromEntries(Object.keys(settings).map(key => [key, process.env[key]]))
+  Object.assign(process.env, settings)
+  try {
+    const response = await fixture().token({ role: 'viewer' })
+    assert.equal(response.statusCode, 200)
+    const claims = require('jsonwebtoken').verify(response.body.token, settings.LIVEKIT_API_SECRET)
+    assert.equal(claims.name, 'Ana')
+    assert.equal(JSON.parse(claims.metadata).avatarUrl, 'https://example.test/ana.webp')
+    assert.equal(claims.video.canPublish, false)
+    const fallback = await fixture({}).token({ role: 'viewer' })
+    assert.equal(require('jsonwebtoken').verify(fallback.body.token, settings.LIVEKIT_API_SECRET).name, 'Usuario')
+  } finally {
+    for (const [key, value] of Object.entries(saved)) { if (value == null) delete process.env[key]; else process.env[key] = value }
+  }
 })
