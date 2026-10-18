@@ -69,7 +69,7 @@ export function PublicHome() {
             <summary>¿Cómo inicio sesión en Novvin Web?</summary>
             <p>
               Abre <a href="/login">Iniciar sesión</a> y usa el correo y la contraseña de tu cuenta.
-              También puedes elegir el código QR y aprobar el acceso desde Perfil → Vincular web en
+              También puedes elegir el código QR y escanearlo desde Perfil → Vincular web en
               Novvin móvil.
             </p>
           </details>
