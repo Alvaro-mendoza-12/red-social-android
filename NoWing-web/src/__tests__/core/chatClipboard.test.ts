@@ -1,4 +1,4 @@
-import { clipboardFilesFrom, clipboardMayContainImage, readClipboardImages, pastedAsSticker, canPasteIntoChat, isStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, pastedAsSticker, canPasteIntoChat, isStickerImage, isCopiedStickerImage } from '../../core/chatClipboard'
 
 test('accepts file data and items-only clipboard payloads without duplicates', () => {
   const file = new File(['sticker'], 'sticker.webp', { type: 'image/webp' })
@@ -28,7 +28,7 @@ test('uses async image clipboard data only when paste advertises image content',
   const files = await readClipboardImages(data, clipboard)
   expect(getType).toHaveBeenCalledWith('image/webp')
   expect(files).toHaveLength(1)
-  expect(files[0]).toMatchObject({ type: 'image/webp', name: 'sticker-clipboard.webp' })
+  expect(files[0]).toMatchObject({ type: 'image/webp', name: 'clipboard-image.webp' })
   const textOnly = { files: [], items: [], types: ['text/plain'], getData: () => 'hola' } as unknown as DataTransfer
   expect(clipboardMayContainImage(textOnly)).toBe(false)
   expect(await readClipboardImages(textOnly, clipboard)).toEqual([])
@@ -50,4 +50,24 @@ test('preserves text paste in unrelated inputs and dialogs', () => {
   expect(canPasteIntoChat(input)).toBe(false)
   expect(canPasteIntoChat(document.body)).toBe(true)
   input.remove()
+})
+
+test('keeps opaque square clipboard PNGs as stickers without auto-sending large photos', async () => {
+  const previous = globalThis.createImageBitmap
+  const close = jest.fn()
+  globalThis.createImageBitmap = jest.fn(async () => ({ width: 512, height: 512, close })) as unknown as typeof createImageBitmap
+  try {
+    const png = new File(['png'], 'image.png', { type: 'image/png' })
+    expect(await isCopiedStickerImage(png)).toBe(true)
+    expect(close).toHaveBeenCalledTimes(1)
+    globalThis.createImageBitmap = jest.fn(async () => ({ width: 1920, height: 1080, close })) as unknown as typeof createImageBitmap
+    expect(await isCopiedStickerImage(png)).toBe(false)
+    expect(await isCopiedStickerImage(png, true)).toBe(true)
+  } finally { globalThis.createImageBitmap = previous }
+})
+
+test('reads sticker semantics from clipboard metadata even when its file became PNG', () => {
+  const data = { types: ['text/html'], getData: () => '<img alt="Sticker" src="blob:https://web.whatsapp.com/example">' } as unknown as DataTransfer
+  expect(clipboardHasStickerHint(data)).toBe(true)
+  expect(clipboardHasStickerHint({ ...data, getData: () => '<img alt="Foto" src="https://example.com/photo.jpg">' } as unknown as DataTransfer)).toBe(false)
 })

@@ -21,7 +21,7 @@ function fileFromDataUrl(value: string, index: number): File | null {
     if (!binary.length || binary.length > MAX_INLINE_CLIPBOARD_IMAGE_BYTES) return null
     const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
     const mime = match[1].toLowerCase()
-    return new File([bytes], `sticker-${index + 1}.${mime.split('/')[1] === 'jpeg' ? 'jpg' : mime.split('/')[1]}`, { type: mime })
+    return new File([bytes], `clipboard-image-${index + 1}.${mime.split('/')[1] === 'jpeg' ? 'jpg' : mime.split('/')[1]}`, { type: mime })
   } catch {
     return null
   }
@@ -99,7 +99,7 @@ export async function readClipboardImages(data: DataTransfer | null, clipboard: 
           const blob = await item.getType(type)
           if (blob.size && blob.size <= MAX_INLINE_CLIPBOARD_IMAGE_BYTES) {
             const extension = type.toLowerCase().split('/')[1].replace('jpeg', 'jpg')
-            files.push(new File([blob], `sticker-clipboard.${extension}`, { type: type.toLowerCase() }))
+            files.push(new File([blob], `clipboard-image.${extension}`, { type: type.toLowerCase() }))
           }
         } else if (type.toLowerCase() === 'text/html') {
           files.push(...inlineImagesFromHtml(await (await item.getType(type)).text()))
@@ -117,20 +117,51 @@ export function isStickerImage(file: File): boolean {
 }
 
 export function pastedAsSticker(file: File, stickerTrayOpen: boolean): boolean {
-  // Browsers can normalize a copied sticker to PNG. In that case the preview
-  // lets the person choose; a normal pasted photo must remain a photo.
   const normalized = normalizeImageFile(file)
-  return Boolean(normalized && (stickerTrayOpen || /^image\/(webp|gif)$/.test(normalized.type)))
+  return Boolean(normalized && (stickerTrayOpen || /^image\/(webp|gif)$/.test(normalized.type) || /(?:sticker|wasticker|pegatina)/i.test(file.name)))
 }
 
-/** Treat a PNG as a copied sticker only when its small image has transparency. */
-export async function isTransparentStickerPng(file: File): Promise<boolean> {
+/** Preserve a sticker hint before the browser strips the original WebP format. */
+export function clipboardHasStickerHint(data: DataTransfer | null): boolean {
+  if (!data) return false
+  if (Array.from(data.types || []).some(type => /sticker/i.test(type))) return true
+  const html = data.getData?.('text/html') || ''
+  return /<img\b[^>]*(?:alt|title|aria-label|data-testid|class)\s*=\s*["'][^"']*(?:sticker|pegatina)/i.test(html) ||
+    /<img\b[^>]*src\s*=\s*["'][^"']*(?:\.webp(?:[?"']|$)|sticker)/i.test(html)
+}
+
+/**
+ * Desktop clipboard images can lose both their WebP MIME type and alpha channel.
+ * A copied small square PNG (the WhatsApp sticker canvas) is still a sticker.
+ * Larger photos/screenshots keep the attachment preview instead of auto-sending.
+ */
+export async function isCopiedStickerImage(file: File, explicitHint = false): Promise<boolean> {
   const normalized = normalizeImageFile(file)
-  if (!normalized || normalized.type !== 'image/png' || typeof createImageBitmap !== 'function') return false
+  if (!normalized) return false
+  if (explicitHint || pastedAsSticker(normalized, false)) return true
+  if (normalized.type !== 'image/png') return false
+  let closeImage: (() => void) | undefined
   try {
-    const bitmap = await createImageBitmap(normalized)
+    let bitmap: ImageBitmap | HTMLImageElement
+    if (typeof createImageBitmap === 'function') {
+      const decoded = await createImageBitmap(normalized)
+      bitmap = decoded
+      closeImage = () => decoded.close()
+    } else {
+      const objectUrl = URL.createObjectURL(normalized)
+      closeImage = () => URL.revokeObjectURL(objectUrl)
+      bitmap = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => resolve(img)
+        img.onerror = reject
+        img.src = objectUrl
+      })
+    }
     try {
-      if (bitmap.width > 512 || bitmap.height > 512) return false
+      const width = bitmap instanceof HTMLImageElement ? bitmap.naturalWidth : bitmap.width
+      const height = bitmap instanceof HTMLImageElement ? bitmap.naturalHeight : bitmap.height
+      if (!width || !height || width > 512 || height > 512) return false
+      if (width === height && width >= 96) return true
       const canvas = document.createElement('canvas')
       canvas.width = 64
       canvas.height = 64
@@ -142,10 +173,13 @@ export async function isTransparentStickerPng(file: File): Promise<boolean> {
       for (let index = 3; index < pixels.length; index += 4) if (pixels[index] < 245) transparent += 1
       return transparent >= 20
     } finally {
-      bitmap.close()
+      closeImage?.()
+      closeImage = undefined
     }
   } catch {
     return false
+  } finally {
+    closeImage?.()
   }
 }
 

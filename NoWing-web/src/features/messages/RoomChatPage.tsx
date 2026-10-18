@@ -1,4 +1,4 @@
-import { clipboardFilesFrom, clipboardMayContainImage, readClipboardImages, canPasteIntoChat, pastedAsSticker, isTransparentStickerPng, isStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isStickerImage } from '../../core/chatClipboard'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
@@ -575,6 +575,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
       const files = clipboardFilesFrom(event.clipboardData)
       if (!files.length && !clipboardMayContainImage(event.clipboardData)) return
+      const stickerHint = clipboardHasStickerHint(event.clipboardData)
       event.preventDefault()
       void (async () => {
         const pastedFiles = files.length
@@ -586,7 +587,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         }
         const regularImages: File[] = []
         for (const file of pastedFiles) {
-          const sticker = pastedAsSticker(file, showStickers) || await isTransparentStickerPng(file)
+          const sticker = pastedAsSticker(file, showStickers) || await isCopiedStickerImage(file, stickerHint)
           if (!sticker) {
             regularImages.push(file)
             continue

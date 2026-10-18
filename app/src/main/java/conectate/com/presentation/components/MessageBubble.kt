@@ -797,34 +797,11 @@ fun MessageBubble(
                             contentAlignment = Alignment.Center,
                         ) {
                         if (!message.media_url.isNullOrBlank()) {
-                                SubcomposeAsyncImage(
-                                    model = mediaPreviewRequest,
-                                    contentDescription = "Sticker",
+                                StickerArtwork(
+                                    url = resolvedUrl ?: message.media_url,
+                                    thumbnailUrl = message.thumbnail_url,
+                                    description = "Sticker",
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                                    loading = {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(72.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                        }
-                                    },
-                                    error = {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(72.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.BrokenImage,
-                                                contentDescription = "Error sticker",
-                                                tint = Color.Gray,
-                                                modifier = Modifier.size(28.dp)
-                                            )
-                                        }
-                                    }
                                 )
                         } else {
                             Text(

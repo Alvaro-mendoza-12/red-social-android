@@ -323,12 +323,11 @@ fun StickerItemCard(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (!sticker.media_url.isNullOrBlank()) {
-                SubcomposeAsyncImage(
-                    model = sticker.thumbnail_url ?: sticker.media_url,
-                    contentDescription = sticker.title,
+                conectate.com.presentation.components.StickerArtwork(
+                    url = sticker.media_url,
+                    thumbnailUrl = sticker.thumbnail_url,
+                    description = sticker.title,
                     modifier = Modifier.fillMaxSize().padding(8.dp),
-                    contentScale = ContentScale.Fit,
-                    loading = { CircularProgressIndicator(modifier = Modifier.padding(24.dp)) }
                 )
             } else {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

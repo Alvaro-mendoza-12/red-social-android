@@ -1,4 +1,4 @@
-import { clipboardFilesFrom, clipboardMayContainImage, readClipboardImages, canPasteIntoChat, pastedAsSticker, isTransparentStickerPng, isStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isStickerImage } from '../../core/chatClipboard'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
@@ -751,6 +751,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
       const files = clipboardFilesFrom(event.clipboardData)
       if (!files.length && !clipboardMayContainImage(event.clipboardData)) return
+      const stickerHint = clipboardHasStickerHint(event.clipboardData)
       event.preventDefault()
       void (async () => {
         const pastedFiles = files.length
@@ -762,7 +763,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         }
         const regularImages: File[] = []
         for (const file of pastedFiles) {
-          const sticker = pastedAsSticker(file, showStickers) || await isTransparentStickerPng(file)
+          const sticker = pastedAsSticker(file, showStickers) || await isCopiedStickerImage(file, stickerHint)
           if (!sticker) {
             regularImages.push(file)
             continue

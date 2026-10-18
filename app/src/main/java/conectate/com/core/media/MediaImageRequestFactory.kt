@@ -69,7 +69,7 @@ object MediaImageRequestFactory {
      * intentionally returns a bounded static WebP, which would freeze GIF/WebP stickers.
      */
     fun animated(context: Context, url: String?): ImageRequest? {
-        val data = UbuntuStorageUrl.rewrite(url) ?: return null
+        val data = UbuntuStorageUrl.originalObjectUrl(url) ?: return null
         val sourceKey = UbuntuStorageUrl.stableCacheKey(data)
         val animatedKey = sourceKey?.let { "animated-source:$it" }
         return ImageRequest.Builder(context)

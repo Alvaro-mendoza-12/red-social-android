@@ -98,16 +98,11 @@ fun StickerGrid(
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     if (!sticker.media_url.isNullOrBlank()) {
-                        SubcomposeAsyncImage(
-                            model = sticker.thumbnail_url ?: sticker.media_url,
-                            contentDescription = sticker.title,
+                        conectate.com.presentation.components.StickerArtwork(
+                            url = sticker.media_url,
+                            thumbnailUrl = sticker.thumbnail_url,
+                            description = sticker.title,
                             modifier = Modifier.fillMaxSize().padding(6.dp),
-                            contentScale = ContentScale.Fit,
-                            loading = {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(modifier = Modifier.padding(18.dp))
-                                }
-                            }
                         )
                     } else {
                         Box(
