@@ -7,7 +7,7 @@ const topics = [
   { title: '¿Cómo protejo mi cuenta?', answer: 'En Ajustes revisa privacidad y seguridad. Puedes cambiar tu contraseña y elegir qué datos de perfil compartes.', path: '/app/settings', action: 'Abrir Ajustes' },
   { title: '¿Cómo reporto contenido o una persona?', answer: 'Abre la opción Reportar desde el contenido o perfil. Después consulta el estado en Mis reportes.', path: '/app/reports', action: 'Ver mis reportes' },
   { title: '¿Cómo empiezo en Juegos?', answer: 'Configura tu perfil de jugador, confirma tu edad, agrega un juego y decide si quieres aparecer en las búsquedas. La búsqueda de partida requiere un juego y un perfil visible.', path: '/app/games', action: 'Abrir Juegos' },
-  { title: '¿Cómo entro a la web con mi móvil?', answer: 'En la pantalla de acceso elige Iniciar sesión con QR y aprueba el código desde la app Android. El código vence por seguridad.', path: '/app/settings#acceso-qr-ajustes', action: 'Ver acceso y QR' },
+  { title: '¿Cómo entro a la web con mi móvil?', answer: 'En la pantalla de acceso elige Iniciar sesión con QR. En la app Android abre Vincular web y escanea el código: la cuenta elegida se vinculará automáticamente. El código vence por seguridad.', path: '/app/settings#acceso-qr-ajustes', action: 'Ver acceso y QR' },
 ]
 
 export function HelpPage() {

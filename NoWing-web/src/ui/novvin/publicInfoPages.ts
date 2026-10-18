@@ -65,14 +65,14 @@ export const publicInfoPages = {
   },
   '/ayuda/vincular-web': {
     title: 'Cómo entrar a Novvin Web con el QR de tu teléfono',
-    description: 'Guía para vincular Novvin Web: abre el código en el navegador, escanéalo desde Perfil y confirma el acceso en tu móvil.',
+    description: 'Guía para vincular Novvin Web: abre el código en el navegador y escanéalo desde Perfil en tu móvil para vincular automáticamente tu cuenta.',
     heading: 'Cómo vincular Novvin Web con tu teléfono.',
     sections: [
       { heading: '1. Abre el código en la web', body: 'Entra a Novvin Web y elige «Iniciar sesión con QR». Mantén abierto el código en la pantalla de la computadora o tablet mientras preparas el teléfono.' },
       { heading: '2. Escanea desde Novvin', body: 'En tu teléfono, abre Novvin con la cuenta que quieres usar. Entra a Perfil y toca «Vincular web». Permite el acceso a la cámara si el teléfono lo solicita y apunta al código completo, incluyendo su borde blanco.' },
-      { heading: '3. Confirma el navegador', body: 'Después del escaneo, revisa la cuenta elegida y la solicitud de acceso que aparece en el móvil. Confirma solo el navegador que estás usando. La web abrirá tus mensajes cuando reciba la aprobación.' },
+      { heading: '3. Tu cuenta queda vinculada', body: 'Al escanear desde la app Android actualizada, la cuenta elegida se vincula automáticamente. Verás la confirmación en el teléfono y tus mensajes se abrirán en el navegador. Escanea únicamente el QR de la computadora que estás usando.' },
       { heading: 'Si el código no se reconoce', body: 'Sube un poco el brillo de la pantalla, limpia la cámara y aleja el teléfono hasta que se vea todo el código. Comprueba que la cámara tenga permiso en los ajustes del teléfono. Si el código venció, pulsa «Generar otro QR» en la web y escanea el nuevo.' },
-      { heading: 'Si escanea pero no abre la sesión', body: 'Mantén conexión a internet en ambos dispositivos y confirma la solicitud en el móvil. Si cambiaste de cuenta, revisa cuál aprobará el acceso. También puedes entrar con contraseña mientras actualizas la aplicación o vuelves a intentar la vinculación.' },
+      { heading: 'Si escanea pero no abre la sesión', body: 'Mantén conexión a internet en ambos dispositivos y actualiza la app Android. Si cambiaste de cuenta, elígela antes de escanear. También puedes entrar con contraseña o generar otro QR si el anterior caducó.' },
     ],
   },
   "/social": {
@@ -197,7 +197,7 @@ export const publicInfoPages = {
     "sections": [
         {
             "heading": "Entrar desde la computadora",
-            "body": "Abre Iniciar sesión para utilizar tu cuenta de Novvin en la web. Puedes entrar con tus datos de acceso o elegir el código QR y aprobar el navegador desde Perfil, Vincular web, en el teléfono. La guía de vinculación explica cómo escanear y qué revisar si el código no se reconoce."
+            "body": "Abre Iniciar sesión para utilizar tu cuenta de Novvin en la web. Puedes entrar con tus datos de acceso o elegir el código QR y escanearlo desde Perfil, Vincular web, en el teléfono. La app actualizada vincula automáticamente la cuenta elegida. La guía explica cómo escanear y qué revisar si el código no se reconoce."
         },
         {
             "heading": "Enviar mensajes y archivos",

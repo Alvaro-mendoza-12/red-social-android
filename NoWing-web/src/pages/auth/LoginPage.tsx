@@ -675,7 +675,7 @@ export function LoginPage() {
                   <QrCodeTile
                     value={qrPairing.qrUrl}
                     title="Escanéalo desde el móvil"
-                    description="Abre Novvin en tu teléfono, entra a Perfil y aprueba el acceso web."
+                    description="Abre Novvin en tu teléfono, entra a Perfil y escanea el QR para vincular tu cuenta."
                   />
                 ) : (
                   <StatusView
@@ -688,7 +688,7 @@ export function LoginPage() {
               <ol className="auth-qr-instructions">
                 <li>Abre Novvin en tu teléfono.</li>
                 <li>En Perfil, toca Vincular web y escanea este código.</li>
-                <li>Confirma el acceso en tu teléfono.</li>
+                <li>Tu cuenta se vinculará automáticamente.</li>
               </ol>
               <p className="auth-qr-status" role="status">
                 {consumingQr
@@ -698,7 +698,7 @@ export function LoginPage() {
                     : qrPairing?.status === 'expired'
                       ? 'El código caducó. Genera otro para continuar.'
                       : qrPairing?.qrUrl
-                        ? 'Esperando tu confirmación.'
+                        ? 'Esperando el escaneo desde tu teléfono.'
                         : 'No se pudo generar el código.'}
               </p>
               <div className="auth-inline-actions">
