@@ -475,13 +475,8 @@ fun ProfileScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("@${profilePublicHandle(identityUser)}")
-                    Text("Código corto: ${profileShortId(identityUser)}")
                     Text(
-                        text = identityUser.id,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        text = "Comparte el ID completo para que puedan encontrarte sin confundir tu perfil con otro.",
+                        text = "Usa Copiar ID para compartir el identificador de este perfil.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }

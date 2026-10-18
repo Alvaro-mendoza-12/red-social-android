@@ -259,11 +259,6 @@ fun VoiceRoomActiveScreen(
                                 color = if (hasRealVideo) Color.White else MaterialTheme.colorScheme.onSurface 
                             )
                             Text(
-                                text = "ID: ${room?.readableId?.takeIf { it.isNotBlank() } ?: room?.id ?: "..."}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = (if (hasRealVideo) Color.White else MaterialTheme.colorScheme.onSurface).copy(alpha = 0.7f)
-                            )
-                            Text(
                                 text = buildString {
                                     if (isStage) append("Escenario · ")
                                     append("Estado: ${if (isJoined) "Conectado" else "Conectando..."} · ${participants.size} en sala")

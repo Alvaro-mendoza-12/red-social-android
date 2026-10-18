@@ -182,7 +182,7 @@ internal fun ProfilePublicIdentity(
             modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Ver ID del perfil" },
             contentPadding = PaddingValues(horizontal = 4.dp),
         ) {
-            Text("#" + shortId, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+            Text("Ver ID", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
             Spacer(Modifier.width(4.dp))
             Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(14.dp))
         }

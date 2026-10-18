@@ -151,7 +151,10 @@ private fun MarkerRow(message: MarkerMessagePreview?, label: String, detail: Str
         Text(message?.content?.ifBlank { "Adjunto · ${message.contentType}" } ?: "Mensaje ya no disponible",
             maxLines = 2, overflow = TextOverflow.Ellipsis)
         message?.let {
-            Text("${it.senderId.take(12)} · ${it.createdAt.take(16)} · ${detail.take(80)}",
+            val date = runCatching { java.time.Instant.parse(it.createdAt)
+                .atZone(java.time.ZoneId.systemDefault())
+                .format(java.time.format.DateTimeFormatter.ofPattern("dd MMM · HH:mm")) }.getOrDefault("")
+            Text(listOf(date, detail.take(80)).filter(String::isNotBlank).joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
