@@ -1,5 +1,6 @@
 import { useLegacyCallBroadcast } from '../features/calls/useLegacyCallBroadcast'
 import { VoiceRoomHost } from '../features/voice/VoiceRoomHost'
+import { LiveSessionHost } from '../features/live/LiveSessionHost'
 import { AttachmentJobsStatus } from '../components/AttachmentJobsStatus'
 import { StreamingImage } from '../components/StreamingMedia'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -1073,6 +1074,7 @@ export function AppLayout() {
           <div className={contentShellClassName}>
             <Outlet />
             <VoiceRoomHost />
+            <LiveSessionHost />
             <AttachmentJobsStatus />
           </div>
         </main>

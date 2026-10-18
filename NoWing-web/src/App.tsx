@@ -82,11 +82,6 @@ const LiveHubPage = lazy(() =>
     default: module.LiveHubPage,
   })),
 )
-const LiveSessionPage = lazy(() =>
-  import('./features/live/LiveSessionPage').then((module) => ({
-    default: module.LiveSessionPage,
-  })),
-)
 const ProximityPage = lazy(() =>
   import('./features/proximity/ProximityPage').then((module) => ({
     default: module.ProximityPage,
@@ -402,7 +397,7 @@ function AppRouter() {
             path="live/:liveId"
             element={
               <RouteSuspense>
-                <LiveSessionPage />
+                <span aria-hidden="true" />
               </RouteSuspense>
             }
           />

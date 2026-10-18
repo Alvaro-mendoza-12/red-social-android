@@ -1,4 +1,12 @@
 .live-hub-page { max-width: 1060px; margin: auto; }
+.live-session-minimized { position:fixed; right:16px; bottom:86px; z-index:90; max-width:calc(100vw - 32px); }
+.live-session-minimized > :not(.live-floating-controls) { position:absolute!important; width:1px!important; height:1px!important; overflow:hidden!important; clip-path:inset(50%); pointer-events:none; }
+.live-floating-controls { display:flex; align-items:center; gap:8px; padding:10px 12px; background:var(--surface); border:1px solid #e84b7b; border-radius:16px; box-shadow:0 4px 24px #0008; }
+.live-floating-controls strong { color:#ff759c; font-size:.78rem; }
+.live-floating-controls span { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8rem; }
+.media-session-conflict { padding:20px; margin:12px 0; border:1px solid var(--outline); border-radius:16px; background:var(--surface); }
+.media-session-conflict p { margin:10px 0; line-height:1.5; }
+.media-session-conflict button { margin:6px 10px 0 0; }
 .live-strip-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-size: .8rem; }
 .live-strip-heading > span { display: flex; align-items: center; gap: 6px; }
 .live-strip-heading svg { width: 16px; height: 16px; color: #ff6484; }

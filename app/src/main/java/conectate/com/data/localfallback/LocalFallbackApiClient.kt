@@ -3928,6 +3928,15 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun leaveLiveGuest(accessToken: String, liveId: String): Result<Unit> = runCatching {
+        val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/live/${urlEncode(liveId)}/guests/leave") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { })
+        }
+        if (!response.status.isSuccess()) throw toException(response, decodeError(response.bodyAsText()))
+    }
+
     suspend fun removeLiveGuest(
         accessToken: String,
         liveId: String,

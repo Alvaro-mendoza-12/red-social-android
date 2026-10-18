@@ -167,12 +167,6 @@ fun LiveViewerScreen(
         context.startActivity(Intent.createChooser(shareIntent, "Compartir directo"))
     }
 
-    DisposableEffect(liveId) {
-        onDispose {
-            exitGate.runOnce(viewModel::leaveLive)
-        }
-    }
-
     LaunchedEffect(liveId) {
         try {
             viewModel.joinAsViewer(liveId)

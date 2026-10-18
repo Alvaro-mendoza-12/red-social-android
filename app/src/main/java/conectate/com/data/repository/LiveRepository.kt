@@ -127,7 +127,8 @@ class LiveRepository @Inject constructor(
     private val liveKitRoomBridge: LiveKitRoomBridge,
     private val storageService: StorageService,
     private val livePreferences: LivePreferences,
-    private val appMetrics: AppMetrics
+    private val appMetrics: AppMetrics,
+    private val interactiveMediaGate: conectate.com.core.media.InteractiveMediaGate
 ) {
     private companion object {
         private const val SOCKET_RECONNECT_ATTEMPTS = 10
@@ -277,6 +278,7 @@ class LiveRepository @Inject constructor(
     val collaborationCapabilities: StateFlow<LiveCollaborationCapabilities> = _collaborationCapabilities.asStateFlow()
 
     private val _guestInvitations = MutableStateFlow<List<LiveGuestInvitation>>(emptyList())
+    private val eligibleGuestInvitationIds = MutableStateFlow<Set<String>>(emptySet())
     val guestInvitations: StateFlow<List<LiveGuestInvitation>> = _guestInvitations.asStateFlow()
 
     private val _activeBattle = MutableStateFlow<LiveBattle?>(null)
@@ -352,11 +354,12 @@ class LiveRepository @Inject constructor(
 
     init {
         scope.launch {
-            combine(_guestInvitations, _activeSession) { invitations, active -> invitations to active }.collect { (invitations, session) ->
+            combine(_guestInvitations, _activeSession, eligibleGuestInvitationIds) { invitations, active, eligible -> Triple(invitations, active, eligible) }.collect { (invitations, session, eligible) ->
                 val active = session ?: return@collect
                 if (active.role != LiveRole.VIEWER) return@collect
                 val owner = authService.getCurrentUserId()?.trim().orEmpty()
                 val own = invitations.firstOrNull { it.liveId.equals(active.stream.id, true) && it.inviteeUserId.equals(owner, true) } ?: return@collect
+                if (own.id !in eligible) return@collect
                 val status = when (own.status.lowercase()) {
                     "accepted" -> LiveGuestRequestStatus.ACCEPTED
                     "pending" -> LiveGuestRequestStatus.PENDING
@@ -755,6 +758,7 @@ class LiveRepository @Inject constructor(
             val normalizedId = normalizeLiveSessionId(liveId)
                 ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
             localFallbackApiClient.requestToJoinLive(token, normalizedId).onSuccess { invitation ->
+                eligibleGuestInvitationIds.update { it + invitation.id }
                 _guestInvitations.update { mergeLiveInvitations(it, listOf(invitation), normalizedId, authService.getCurrentUserId().orEmpty()) }
             }
         }
@@ -793,6 +797,7 @@ class LiveRepository @Inject constructor(
             invitationId,
             if (accept) "accepted" else "rejected"
         ).onSuccess { invitation ->
+            if (invitation.inviteeUserId.equals(authService.getCurrentUserId(), true) && accept) eligibleGuestInvitationIds.update { it + invitation.id }
             _guestInvitations.update { mergeLiveInvitations(it, listOf(invitation), normalizedId, authService.getCurrentUserId().orEmpty()) }
         }
     }
@@ -1261,6 +1266,9 @@ class LiveRepository @Inject constructor(
             validateHostCapturePermissions()?.let { message ->
                 return@withContext Result.failure(SecurityException(message))
             }
+            if (!interactiveMediaGate.acquire(conectate.com.core.media.InteractiveMediaKind.LIVE)) {
+                return@withContext Result.failure(Exception(interactiveMediaGate.conflictMessage()))
+            }
 
             _viewerCount.value = stream.viewerCount
             _reactionCount.value = stream.totalReactions.coerceAtLeast(0)
@@ -1330,6 +1338,10 @@ class LiveRepository @Inject constructor(
             }
 
             viewerStartupTrace.start()
+            if (!interactiveMediaGate.acquire(conectate.com.core.media.InteractiveMediaKind.LIVE)) {
+                return@withContext Result.failure(Exception(interactiveMediaGate.conflictMessage()))
+            }
+            eligibleGuestInvitationIds.value = emptySet()
             // Prepare the native engine while the authoritative access read runs.
             // No signaling, publication or session is started before both complete.
             val (loadedStream, mediaReady) = coroutineScope {
@@ -2104,6 +2116,7 @@ class LiveRepository @Inject constructor(
     fun cancelGuestAccessRequest() {
         val session = _activeSession.value ?: return
         if (session.role != LiveRole.VIEWER) return
+        leaveGuestGrant(session.stream.id)
         socket?.emit(
             "live-guest-cancel",
             org.json.JSONObject().put("liveId", session.stream.id)
@@ -2336,11 +2349,22 @@ class LiveRepository @Inject constructor(
     }
 
     fun leaveGuestSeat() {
+        _activeSession.value?.takeIf { it.role == LiveRole.VIEWER }?.let { leaveGuestGrant(it.stream.id) }
         stopGuestMedia(emitLeave = true)
         _guestAccessState.value = LiveGuestAccessState(
             status = LiveGuestRequestStatus.NONE,
             message = "Saliste de la sala multi-host."
         )
+    }
+
+    private fun leaveGuestGrant(liveId: String) {
+        eligibleGuestInvitationIds.value = emptySet()
+        _guestInvitations.update { current -> current.map { if (it.liveId.equals(liveId, true) && it.inviteeUserId.equals(authService.getCurrentUserId(), true)) it.copy(status = "canceled") else it } }
+        if (usesUbuntuPersistence()) scope.launch {
+            val actor = authService.getCurrentUserId()
+            val token = localAccessToken()
+            if (token.isNotBlank() && actor == authService.getCurrentUserId()) localFallbackApiClient.leaveLiveGuest(token, liveId)
+        }
     }
 
     private fun stopGuestMedia(emitLeave: Boolean) = guestMediaStartCoordinator.withLock {
@@ -2784,6 +2808,7 @@ class LiveRepository @Inject constructor(
                     val session = _activeSession.value
                     val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
                     val isHost = session?.role == LiveRole.HOST
+                    val guestExitToken = if (session?.role == LiveRole.VIEWER && usesUbuntuPersistence()) localAccessToken() else ""
                     val peak = maxOf(_audienceStats.value.peakConcurrent, _viewerCount.value).coerceAtLeast(0)
                     val totalComments = sessionCommentCount.coerceAtLeast(0)
                     val totalReactions = sessionReactionCount.coerceAtLeast(0)
@@ -2800,6 +2825,9 @@ class LiveRepository @Inject constructor(
                     }
 
                     disconnectAndClear()
+                    if (session != null && guestExitToken.isNotBlank()) withTimeoutOrNull(3_000L) {
+                        localFallbackApiClient.leaveLiveGuest(guestExitToken, session.stream.id)
+                    }
 
                     val remoteConfirmed = if (session != null && isHost) {
                         serverConfirmedEnd && currentUserId.isNotBlank() && withTimeoutOrNull(8_000L) {
@@ -3644,6 +3672,10 @@ class LiveRepository @Inject constructor(
     }
 
     private suspend fun initializeWebRTC(userId: String): Boolean {
+        if (!interactiveMediaGate.canEnter(conectate.com.core.media.InteractiveMediaKind.LIVE)) {
+            _runtimeErrors.tryEmit(interactiveMediaGate.conflictMessage())
+            return false
+        }
         var events = object : conectate.com.data.webrtc.SignalingEvents {
             override fun onSendOffer(targetSocketId: String, offer: org.json.JSONObject) {
                 var data = org.json.JSONObject().apply {
@@ -4094,6 +4126,7 @@ class LiveRepository @Inject constructor(
         _isGuestVideoEnabled.value = true
         _battleState.value = LiveBattleState()
         _guestInvitations.value = emptyList()
+        eligibleGuestInvitationIds.value = emptySet()
         _activeBattle.value = null
         _battleCandidates.value = emptyList()
         _collaborationCapabilities.value = LiveCollaborationCapabilities()
@@ -4106,6 +4139,7 @@ class LiveRepository @Inject constructor(
         screenCaptureActive = false
         updateCameraFilterPerformanceForSource()
         hostSessionStartedElapsedMs = 0L
+        interactiveMediaGate.release(conectate.com.core.media.InteractiveMediaKind.LIVE)
     }
 
     private fun scheduleReactionExpiry(reaction: LiveReaction) {

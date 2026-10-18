@@ -1,4 +1,6 @@
 import { useLiveSfu } from './useLiveSfu'
+import { claimInteractiveMediaSession, releaseInteractiveMediaSession, useInteractiveMediaSession } from '../../core/interactiveMediaSession'
+import { MediaSessionConflict } from '../../components/MediaSessionConflict'
 import { mediaPeerIsInitiator } from '../../core/mediaPeerRole'
 import { liveReactionEmoji } from '../../core/liveReaction'
 import { publicProfileSummaries } from '../../core/publicProfileSummaries'
@@ -137,10 +139,13 @@ function StreamVideo({ stream, muted, className }: { stream: MediaStream | null;
   return <LiveStreamVideo stream={stream} label="Vídeo del directo" className={className} muted={muted}/>
 }
 
-export function LiveSessionPage() {
-  const { liveId = '' } = useParams()
-  const [searchParams] = useSearchParams()
+export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = false, onExit }: { liveIdOverride?: string; initialSearch?: string; minimized?: boolean; onExit?: () => void } = {}) {
+  const params = useParams()
+  const liveId = liveIdOverride || params.liveId || ''
+  const [routeSearch] = useSearchParams()
+  const searchParams = new URLSearchParams(initialSearch ?? routeSearch.toString())
   const navigate = useNavigate()
+  const navigationRef = useRef(navigate); navigationRef.current = navigate
   const { user, isFallbackSession } = useAuth()
   const role: LiveRole = searchParams.get('host') === '1' ? 'host' : 'viewer'
   const initialSource = sourceFrom(searchParams.get('source'))
@@ -174,6 +179,13 @@ export function LiveSessionPage() {
   const [hostCaptureAttempt, setHostCaptureAttempt] = useState(0)
   const [remoteMedia, setRemoteMedia] = useState<MediaStream | null>(null)
   const cleanLiveId = liveId.trim()
+  const [closed, setClosed] = useState(false)
+  const activeMedia = useInteractiveMediaSession()
+  const mediaKey = `live:${user?.id}:${cleanLiveId}`
+  const conflict = activeMedia && user && activeMedia.accountId === user.id && activeMedia.key !== mediaKey ? activeMedia : null
+  const blocked = Boolean(conflict)
+  const closeRef = useRef<() => Promise<void>>(async () => {})
+  const eligibleInvitations = useRef(new Set<string>())
   const [comments, setComments] = useState<FallbackLiveComment[]>([])
   const pendingCommentIds = useRef(new Set<string>()), removedCommentIds = useRef(new Set<string>()), commentsRevision = useRef(0)
   const commentScope = useRef(cleanLiveId)
@@ -196,7 +208,12 @@ export function LiveSessionPage() {
   const hostName = stream ? textOf(stream, ['host_name'], 'Creador') : 'Creador'
   const isOwner = Boolean(user && stream && textOf(stream, ['host_user_id'], '') === user.id)
 
-  const sfu = useLiveSfu({ liveId: cleanLiveId, hostId: textOf(stream || {}, ['host_user_id']), role: role === 'host' ? 'host' : guestMedia ? 'guest' : 'viewer', enabled: sfuAvailable && Boolean(stream?.is_active), localMedia: role === 'host' ? localMedia : guestMedia, source: role === 'host' ? liveState.source : 'camera', micEnabled: role === 'host' ? liveState.micEnabled : guestMic, videoEnabled: role === 'host' ? liveState.videoEnabled && !liveState.isPaused : guestCamera })
+  const sfu = useLiveSfu({ liveId: cleanLiveId, hostId: textOf(stream || {}, ['host_user_id']), role: role === 'host' ? 'host' : guestMedia ? 'guest' : 'viewer', enabled: !blocked && !closed && sfuAvailable && Boolean(stream?.is_active), localMedia: role === 'host' ? localMedia : guestMedia, source: role === 'host' ? liveState.source : 'camera', micEnabled: role === 'host' ? liveState.micEnabled : guestMic, videoEnabled: role === 'host' ? liveState.videoEnabled && !liveState.isPaused : guestCamera })
+  useEffect(() => {
+    if (!streamId || !userId || blocked || closed) return
+    claimInteractiveMediaSession({ accountId: userId, key: mediaKey, kind: 'live', title: hostName, host: role === 'host', path: `/app/live/${encodeURIComponent(cleanLiveId)}${initialSearch || ''}`, close: () => closeRef.current() })
+    return () => releaseInteractiveMediaSession(mediaKey)
+  }, [streamId, userId, blocked, closed, mediaKey])
   useEffect(() => {
     let active = true
     setCapabilitiesReady(false)
@@ -230,7 +247,7 @@ export function LiveSessionPage() {
     document.addEventListener('visibilitychange', visible)
     return () => { active = false; window.clearInterval(timer); unsubscribe(); document.removeEventListener('visibilitychange', visible) }
   }, [sfuAvailable, cleanLiveId, isOwner, settingsOpen, guestRequested, guestMedia, userId])
-  const acceptedInvitation = invitations.some(item => item.status === 'accepted' && textOf(item, ['invitee_user_id']).toLowerCase() === userId.toLowerCase())
+  const acceptedInvitation = invitations.some(item => eligibleInvitations.current.has(String(item.id)) && item.status === 'accepted' && textOf(item, ['invitee_user_id']).toLowerCase() === userId.toLowerCase())
   const pendingRequests = invitations.filter(item => item.status === 'pending' && item.initiated_by === 'viewer')
   useEffect(() => {
     if (!guestMedia || acceptedInvitation) return
@@ -240,7 +257,7 @@ export function LiveSessionPage() {
   }, [guestMedia, acceptedInvitation])
   async function requestGuest() {
     if (guestBusy) return; setGuestBusy(true)
-    try { const value = await fallbackApiJson<{invitation:GenericRow}>(`/v1/data/live/${encodeURIComponent(cleanLiveId)}/guests/requests`, { method: 'POST', expectedAccountId: userId, body: JSON.stringify({requestNonce:crypto.randomUUID()}) }); setInvitations([value.invitation]); setGuestRequested(true) } catch(caught) { setError(friendlyError(caught,'No se pudo enviar la solicitud.')) } finally { setGuestBusy(false) }
+    try { const value = await fallbackApiJson<{invitation:GenericRow}>(`/v1/data/live/${encodeURIComponent(cleanLiveId)}/guests/requests`, { method: 'POST', expectedAccountId: userId, body: JSON.stringify({requestNonce:crypto.randomUUID()}) }); eligibleInvitations.current.add(String(value.invitation.id)); setInvitations([value.invitation]); setGuestRequested(true) } catch(caught) { setError(friendlyError(caught,'No se pudo enviar la solicitud.')) } finally { setGuestBusy(false) }
   }
   async function joinAsGuest() {
     if (guestBusy || !acceptedInvitation) return; setGuestBusy(true)
@@ -282,16 +299,18 @@ export function LiveSessionPage() {
     } catch (caught) { setError(friendlyError(caught, 'No se pudo cambiar el chat.')) }
     finally { setSettingsBusy(false) }
   }
-  function leaveGuest() {
+  async function leaveGuest() {
     guestCaptureSequence.current++
     guestMediaRef.current?.getTracks().forEach(track => track.stop())
     setGuestMedia(null)
     setGuestRequested(false)
-    void fallbackApiJson(`/v1/data/live/${encodeURIComponent(cleanLiveId)}/participants/state`, { method: 'POST', expectedAccountId: userId, body: JSON.stringify({ state: 'disconnected' }) }).catch(() => {})
+    eligibleInvitations.current.clear()
+    setInvitations([])
+    await fallbackApiJson(`/v1/data/live/${encodeURIComponent(cleanLiveId)}/guests/leave`, { method: 'POST', expectedAccountId: userId, body: '{}' }).catch(() => setError('Saliste como invitado. La conexión debe volver para confirmar la salida.'))
   }
 
   function beginBroadcast() {
-    if (role !== 'host' || !isOwner || hostCaptureRef.current) return
+    if (blocked || closed || role !== 'host' || !isOwner || hostCaptureRef.current) return
     setError(null)
     // Screen capture must start in this click, before network requests consume user activation.
     const capture = async () => {
@@ -431,7 +450,7 @@ export function LiveSessionPage() {
   }, [drainIce, userId, sfuAvailable])
 
   useEffect(() => {
-    if (!streamId || !userId || !isFallbackSession || !cleanLiveId || !capabilitiesReady) return
+    if (blocked || closed || !streamId || !userId || !isFallbackSession || !cleanLiveId || !capabilitiesReady) return
     if (role === 'host' && !isOwner) {
       setError('Esta cuenta no es propietaria del directo.')
       return
@@ -564,7 +583,8 @@ export function LiveSessionPage() {
           if (endingRef.current) return
           setError('El directo terminó.')
           setConnectionLabel('Finalizado')
-          window.setTimeout(() => navigate('/app/live', { replace: true }), 1200)
+          setClosed(true); releaseInteractiveMediaSession(mediaKey); onExit?.()
+          window.setTimeout(() => navigationRef.current('/app/live', { replace: true }), 1200)
         })
         socket.on('reaction', (payload) => {
           const reaction = { id: payload.reactionId || crypto.randomUUID(), emoji: liveReactionEmoji(payload) }
@@ -617,7 +637,7 @@ export function LiveSessionPage() {
       managerRef.current = null
       pendingIce.clear()
     }
-  }, [addIceCandidate, avatarUrl, cleanLiveId, displayName, drainIce, hostCaptureAttempt, isFallbackSession, isOwner, navigate, role, startOffer, streamId, userId, capabilitiesReady, sfuAvailable])
+  }, [addIceCandidate, avatarUrl, cleanLiveId, displayName, drainIce, hostCaptureAttempt, isFallbackSession, isOwner, role, startOffer, streamId, userId, capabilitiesReady, sfuAvailable, blocked, closed])
 
   const emitState = useCallback((next: LiveState) => {
     liveStateRef.current = next
@@ -696,6 +716,9 @@ export function LiveSessionPage() {
   async function leaveOrEnd() {
     if (endingRef.current) return
     endingRef.current = true
+    setClosed(true)
+    guestMediaRef.current?.getTracks().forEach(track => track.stop())
+    managerRef.current?.stopLocalStream()
     try {
       if (role === 'host') {
         socketRef.current?.emit('end-live', { liveId: cleanLiveId })
@@ -705,11 +728,14 @@ export function LiveSessionPage() {
           peakViewerCount: viewerCount,
           totalComments: comments.length,
         }).catch(() => null)
-      }
+      } else await leaveGuest()
     } finally {
-      navigate('/app/live', { replace: true })
+      releaseInteractiveMediaSession(mediaKey)
+      onExit?.()
+      if (!minimized) navigate('/app/live', { replace: true })
     }
   }
+  closeRef.current = leaveOrEnd
 
   async function shareLive() {
     const url = window.location.href.replace(/([?&])host=1(&|$)/, '$1').replace(/[?&]$/, '')
@@ -727,11 +753,14 @@ export function LiveSessionPage() {
   const reactionButtons = useMemo(() => ['👏', '🔥', '😮'], [])
 
   if (!isFallbackSession) return <StatusView title="Directo no disponible" description="Inicia sesión con el servidor de producción." />
+  if (conflict) return minimized ? null : <MediaSessionConflict session={conflict}/>
+  if (closed) return null
   if (loading) return <StatusView title="Abriendo directo" description="Preparando la sesión segura..." />
   if (!stream) return <StatusView title="Directo no encontrado" description={error || 'La emisión terminó o ya no está disponible.'} />
 
   return (
-    <section className="live-session-page">
+    <section className={`live-session-page${minimized ? ' live-session-minimized' : ''}`}>
+      {minimized ? <aside className="live-floating-controls" aria-label="Directo activo"><strong>{role === 'host' ? 'Transmitiendo' : guestMedia ? 'Participando en directo' : 'Viendo directo'}</strong><span>{hostName}</span><button className="icon-btn" aria-label="Volver al directo" onClick={() => navigate(`/app/live/${encodeURIComponent(cleanLiveId)}${initialSearch || ''}`)}><Maximize/></button>{role === 'host' || guestMedia ? <button className="icon-btn" aria-label="Alternar micrófono del directo" onClick={() => role === 'host' ? toggleMic() : void toggleGuestMedia('audio')}>{(role === 'host' ? liveState.micEnabled : guestMic) ? <Mic/> : <MicOff/>}</button> : <button className="icon-btn" aria-label="Alternar sonido del directo" onClick={() => setViewerMuted(value => !value)}>{viewerMuted ? <VolumeX/> : <Volume2/>}</button>}<button className="icon-btn danger" aria-label={role === 'host' ? 'Finalizar directo' : 'Salir del directo'} onClick={() => void leaveOrEnd()}><PhoneOff/></button></aside> : null}
       {sfu.error && (role === 'host' || !media) ? <div className="live-reconnect-notice" role="status">{sfu.error}<button className="ghost-btn" type="button" onClick={sfu.retry}>Volver a conectar</button></div> : null}
       {settingsOpen ? <div className="app-dialog-backdrop"><section className="surface-card live-settings-dialog" role="dialog" aria-modal="true" aria-label="Ajustes del directo">
         <header className="row-between"><h2>Ajustes del directo</h2><button type="button" className="icon-btn" onClick={() => setSettingsOpen(false)} aria-label="Cerrar ajustes del directo"><X/></button></header>
@@ -768,7 +797,7 @@ export function LiveSessionPage() {
         ) : null}
 
         <div className="live-session-topbar">
-          <button className="live-icon-button" type="button" onClick={() => void leaveOrEnd()} title="Volver" aria-label="Volver"><ArrowLeft aria-hidden="true" /></button>
+          <button className="live-icon-button" type="button" onClick={() => navigate('/app/live')} title="Minimizar directo" aria-label="Minimizar directo"><ArrowLeft aria-hidden="true" /></button>
           <Link className="live-host-link" to={textOf(stream, ['host_user_id'], '') ? `/app/profile/${encodeURIComponent(textOf(stream, ['host_user_id'], ''))}` : '/app/live'}>
             <SafeAvatar url={textOf(stream, ['host_avatar_url'], '')} name={hostName} />
             <span><strong>{hostName}</strong><small><Radio aria-hidden="true" /> {mediaLabel}</small></span>
@@ -807,7 +836,7 @@ export function LiveSessionPage() {
           <button className="live-control" type="button" aria-label="Pantalla completa" onClick={() => { const node = document.querySelector<HTMLElement>('.live-session-page'); void (document.fullscreenElement ? document.exitFullscreen() : node?.requestFullscreen())?.catch(() => setError('No se pudo ampliar el directo.')) }}><Maximize/></button>
           {role === 'viewer' && sfuAvailable && stream.allow_guest_requests && !guestMedia && !acceptedInvitation ? <button className="live-control" type="button" aria-label="Solicitar participar" disabled={guestBusy || invitations.some(item => item.status === 'pending')} onClick={() => void requestGuest()}><UserPlus/></button> : null}
           {guestMedia ? <><button type="button" className="live-control" aria-label="Activar o silenciar tu micrófono" disabled={guestBusy} onClick={() => void toggleGuestMedia('audio')}>{guestMic?<Mic/>:<MicOff/>}</button><button type="button" className="live-control" aria-label="Activar o apagar tu cámara" disabled={guestBusy} onClick={() => void toggleGuestMedia('video')}>{guestCamera?<Camera/>:<CameraOff/>}</button><button type="button" className="live-control danger" aria-label="Dejar de participar" onClick={leaveGuest}><PhoneOff/></button></> : null}
-          {role === 'viewer' ? <button className="live-control" type="button" onClick={() => setViewerMuted(current => !current)} aria-label={viewerMuted ? 'Activar sonido' : 'Silenciar directo'} title={viewerMuted ? 'Activar sonido' : 'Silenciar directo'}>{viewerMuted ? <VolumeX /> : <Volume2 />}</button> : null}
+          {role === 'viewer' ? <><button className="live-control" type="button" onClick={() => setViewerMuted(current => !current)} aria-label={viewerMuted ? 'Activar sonido' : 'Silenciar directo'} title={viewerMuted ? 'Activar sonido' : 'Silenciar directo'}>{viewerMuted ? <VolumeX /> : <Volume2 />}</button><button className="live-control danger" aria-label="Salir del directo" onClick={() => void leaveOrEnd()}><PhoneOff/></button></> : null}
           {role === 'host' ? (
             <>
               <button className={liveState.micEnabled ? 'live-control' : 'live-control off'} type="button" onClick={toggleMic} title="Micrófono" aria-label="Alternar micrófono">{liveState.micEnabled ? <Mic aria-hidden="true" /> : <MicOff aria-hidden="true" />}</button>

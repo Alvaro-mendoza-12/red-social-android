@@ -2,6 +2,7 @@ const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
 const { publishRealtimeEvent } = require('./realtime-publish')
 const { publishLiveCollaborationEvent } = require('./live-collaboration-events')
+const { leaveLiveGuest } = require('./live-guest-exit')
 const { drawGuessEnabled } = require('./live-draw-guess-routes')
 const { netWithdrawableGiftAmount } = require('./economic-provenance')
 const { constantTimeSecretEqual } = require('./request-security')
@@ -930,6 +931,22 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
     } catch (error) {
       next(error)
     }
+  })
+
+  app.post('/v1/data/live/:liveId/guests/leave', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const liveId = validUuid(req.params.liveId)
+      if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const identity = userIdentity(user), stream = await streamById(pool, liveId)
+      if (!stream) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      if (ownsStream(stream, identity)) return res.status(400).json({ error: 'LIVE_HOST_CANNOT_LEAVE_AS_GUEST' })
+      const result = await leaveLiveGuest(pool, liveId, identity)
+      await Promise.all(result.invitations.map(invitation => publishLiveCollaborationEvent(liveId, { type: 'guest_invitation_canceled', invitation })))
+      if (result.participant) await publishLiveCollaborationEvent(liveId, { type: 'participant_disconnected', participant: result.participant })
+      res.json({ left: true })
+    } catch (error) { next(error) }
   })
 
   app.post('/v1/data/live/:liveId/guests/invitations', authRequired, async (req, res, next) => {

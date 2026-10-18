@@ -1,4 +1,6 @@
 import { RoomVideo } from './RoomVideo'
+import { claimInteractiveMediaSession, releaseInteractiveMediaSession, useInteractiveMediaSession } from '../../core/interactiveMediaSession'
+import { MediaSessionConflict } from '../../components/MediaSessionConflict'
 import { mediaPeerIsInitiator } from '../../core/mediaPeerRole'
 import {useVoiceRoomCues} from './useVoiceRoomCues'
 import { Camera, CameraOff, MonitorUp, Settings, MessageCircle, Send, Maximize2, Minimize2 } from 'lucide-react'
@@ -274,6 +276,11 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const useUbuntuVoice = shouldUseUbuntuBackend(isFallbackSession)
   const params = useParams<{ roomId: string }>()
   const roomId = roomIdOverride || params.roomId
+  const activeMedia = useInteractiveMediaSession()
+  const mediaKey = `voice:${user?.id}:${roomId}`
+  const conflict = activeMedia && user && activeMedia.accountId === user.id && activeMedia.key !== mediaKey ? activeMedia : null
+  const closeMediaRef = useRef<() => Promise<void>>(async () => {})
+  useEffect(() => () => releaseInteractiveMediaSession(mediaKey), [mediaKey])
   const navigate = useNavigate()
   const [room, setRoom] = useState<VoiceRoom | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
@@ -1025,6 +1032,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const joinRoom = useCallback(async () => {
     void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))
     if (!user || !room || isJoining || isJoined) return
+    if (!claimInteractiveMediaSession({ accountId: user.id, key: mediaKey, kind: 'voice', title: room.title, path: `/app/voice/${encodeURIComponent(room.id)}`, close: () => closeMediaRef.current() })) return
     setIsJoining(true)
     setJoinError(null)
     setConnectionLabel('Conectando')
@@ -1128,6 +1136,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         await syncParticipantCounter(room.id, -1).catch(() => {})
       }
       stopLocalMedia()
+      releaseInteractiveMediaSession(mediaKey)
       setIsJoined(false)
       joinedRef.current = false
       setConnectionLabel('Sin conectar')
@@ -1153,7 +1162,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     visibleParticipantCount,
   ])
 
-  const leaveRoom = useCallback(async () => {
+  const leaveRoom = useCallback(async (keepPage = false) => {
     if (!user || !room || isLeaving) {
       navigate('/app/voice')
       return
@@ -1166,6 +1175,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     setIsJoined(false)
     writeJoinedRoomToStorage(user.id, null)
     stopLocalMedia()
+    releaseInteractiveMediaSession(mediaKey)
     try {
       if (useUbuntuVoice) {
         await leaveFallbackVoiceRoom(room.id)
@@ -1176,7 +1186,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         stopLocalMedia()
         await loadParticipants(room.id, { silent: true })
         onExit?.()
-        navigate('/app/voice')
+        if (!keepPage) navigate('/app/voice')
         return
       }
 
@@ -1198,13 +1208,14 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       stopLocalMedia()
       await loadParticipants(room.id, { silent: true })
       onExit?.()
-      navigate('/app/voice')
+      if (!keepPage) navigate('/app/voice')
     } catch (caught) {
       setJoinError(friendlyError(caught, 'No se pudo salir de la sala'))
     } finally {
       setIsLeaving(false)
     }
   }, [isLeaving, loadParticipants, navigate, onExit, room, roomCues, stopLocalMedia, syncParticipantCounter, useUbuntuVoice, user])
+  closeMediaRef.current = () => leaveRoom(true)
 
   const toggleMute = useCallback(async () => {
     if (!user || !room || !isJoined) return
@@ -1379,6 +1390,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     }
   }, [stopLocalMedia])
 
+  if (conflict) return minimized ? null : <MediaSessionConflict session={conflict}/>
   if (loading) {
     return <StatusView title="Cargando sala" description="Preparando sala de voz..." />
   }

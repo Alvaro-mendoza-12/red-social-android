@@ -70,7 +70,8 @@ class VoiceRoomRepository @Inject constructor(
     private val localFallbackApiClient: LocalFallbackApiClient,
     private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val appMetrics: AppMetrics,
-    private val crashReporter: CrashReporter
+    private val crashReporter: CrashReporter,
+    private val interactiveMediaGate: conectate.com.core.media.InteractiveMediaGate
 ) {
     private fun extractJsonPayload(args: Array<Any>): JSONObject? {
         var first = args.firstOrNull() ?: return null
@@ -565,6 +566,9 @@ class VoiceRoomRepository @Inject constructor(
     ): Result<VoiceRoom?> = withContext(Dispatchers.IO) {
         if (!hasActiveSessionFor(roomId)) {
             return@withContext Result.failure(IllegalStateException("No hay una sala activa compatible para adjuntar."))
+        }
+        if (!interactiveMediaGate.acquire(conectate.com.core.media.InteractiveMediaKind.VOICE_ROOM)) {
+            return@withContext Result.failure(IllegalStateException(interactiveMediaGate.conflictMessage()))
         }
 
         appMetrics.incrementCounter(
@@ -1260,6 +1264,9 @@ class VoiceRoomRepository @Inject constructor(
         roomPassword: String? = null,
         resolvedRoom: VoiceRoom? = null
     ) = withContext(Dispatchers.IO) {
+        if (!interactiveMediaGate.canEnter(conectate.com.core.media.InteractiveMediaKind.VOICE_ROOM)) {
+            throw IllegalStateException(interactiveMediaGate.conflictMessage())
+        }
         android.util.Log.w("VoiceRoomRepository", "📍 joinRoom START: roomId=$roomId, userId=$userId")
         pendingConnectMetricName = "voice_room_join"
         pendingConnectStartedAtMs = android.os.SystemClock.elapsedRealtime()
@@ -1335,6 +1342,7 @@ class VoiceRoomRepository @Inject constructor(
                 }
             }
 
+            check(interactiveMediaGate.acquire(conectate.com.core.media.InteractiveMediaKind.VOICE_ROOM)) { interactiveMediaGate.conflictMessage() }
             activeRoomId = signalRoom
             activeRoomPassword = roomPassword?.takeIf { it.isNotBlank() }
             desiredSelfMuted = joinMuted
@@ -1424,6 +1432,7 @@ class VoiceRoomRepository @Inject constructor(
             android.util.Log.w("VoiceRoomRepository", "📍 joinRoom END: Setup complete")
         } catch (e: Exception) {
             android.util.Log.e("VoiceRoomRepository", "❌ CRITICAL error joining room", e)
+            leaveRoom()
             updateConnectionState(
                 VoiceConnectionState.ERROR,
                 e.message?.takeIf { it.isNotBlank() } ?: "No pudimos abrir esta sala de voz."
@@ -2485,6 +2494,7 @@ class VoiceRoomRepository @Inject constructor(
             updateConnectionState(VoiceConnectionState.IDLE)
             stopVoiceForegroundService()
             releaseVoiceAudioSession()
+            interactiveMediaGate.release(conectate.com.core.media.InteractiveMediaKind.VOICE_ROOM)
         }
     }
 
