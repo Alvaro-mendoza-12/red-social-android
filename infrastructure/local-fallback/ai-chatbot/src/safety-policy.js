@@ -27,6 +27,7 @@ function classifyGeneralRisk(value) {
     /(?:Bearer\s+)?(?:eyJ|sk-|pk_)[A-Za-z0-9._-]{20,}/i.test(raw) ||
     /\b[0-9a-f]{32,}\b/i.test(raw) ||
     /(^|[^\w])(\+?\d[\d\s().-]{7,}\d)\b/.test(raw) ||
+    /\b(?:dni|cedula|pasaporte|documento de identidad)(?:\s+(?:es|numero|nro|n))?\s+(?=[a-z0-9]*\d)[a-z0-9]{6,20}\b/.test(normalized) ||
     /\b(?:mi direccion|direccion particular|direccion de casa|domicilio)\s+(?:es\s+)?(?:calle|avenida|av|jiron|jr|carrera|cra)\b/.test(normalized)
   if (containsPersonalData) return 'personal_data'
   if (/\b(salud|medicos?|medicas?|medicina|medicamentos?|pastillas?|remedios?|dosis|sintomas?|diagnosticos?|enfermedades?|dolor|fiebre|tratamientos?|terapia|psicologos?|psicologas?|psiquiatras?|suicidio|autolesion|embarazo|urgencias?)\b/.test(normalized)) return 'health'
@@ -60,6 +61,7 @@ function redactSensitiveText(value, maximum = 1500) {
     .replace(/\b(?:Bearer\s+)?(?:eyJ|sk-|pk_)[A-Za-z0-9._-]{20,}\b/gi, '[secreto omitido]')
     .replace(/\b[0-9a-f]{32,}\b/gi, '[secreto omitido]')
     .replace(/(^|[^\w])(\+?\d[\d\s().-]{7,}\d)\b/g, '$1[numero omitido]')
+    .replace(/\b(dni|c[eé]dula|pasaporte|documento de identidad)(?:\s+(?:es|n[uú]mero|nro|n))?\s+(?=[a-z0-9]*\d)[a-z0-9]{6,20}\b/gi, '$1 [documento omitido]')
     .trim()
 }
 
