@@ -450,12 +450,13 @@ export async function loadFallbackLiveComments(
 export async function sendFallbackLiveComment(
   liveId: string,
   content: string,
+  clientCommentId?: string,
 ): Promise<{ comment: FallbackLiveComment }> {
   return fallbackApiJson<{ comment: FallbackLiveComment }>(
     `/v1/data/live/${encodeURIComponent(liveId)}/comments`,
     {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, clientCommentId }),
     },
   )
 }

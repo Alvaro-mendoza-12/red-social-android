@@ -2428,6 +2428,8 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const liveId = validUuid(req.params.liveId)
       if (!liveId) return res.status(400).json({ error: 'LIVE_ID_INVALID' })
+      const clientId = req.body?.clientCommentId == null ? null : validUuid(req.body.clientCommentId)
+      if (req.body?.clientCommentId != null && !clientId) return res.status(400).json({ error: 'LIVE_COMMENT_ID_INVALID' })
       const content = cleanText(req.body?.content, 300)
       if (!content) return res.status(400).json({ error: 'LIVE_COMMENT_REQUIRED' })
       const stream = await streamById(pool, liveId)
@@ -2449,8 +2451,9 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const profile = await resolvedProfile(pool, user)
       const { rows } = await pool.query(
         `WITH inserted AS (
-           INSERT INTO fallback_live_comments(live_id, user_id, user_name, avatar_url, content)
-           VALUES ($1::uuid, $2, $3, $4, $5)
+           INSERT INTO fallback_live_comments(id, live_id, user_id, user_name, avatar_url, content)
+           VALUES (COALESCE($6::uuid, gen_random_uuid()), $1::uuid, $2, $3, $4, $5)
+           ON CONFLICT (id) DO NOTHING
            RETURNING id::text, live_id::text, user_id, user_name, avatar_url, content, created_at
          ), counted AS (
            UPDATE fallback_live_streams
@@ -2459,13 +2462,22 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
            RETURNING id
          )
          SELECT inserted.* FROM inserted JOIN counted ON counted.id::text = inserted.live_id`,
-        [liveId, identity.displayUserId, profile.name, profile.avatarUrl, content],
+        [liveId, identity.displayUserId, profile.name, profile.avatarUrl, content, clientId],
       )
-      if (!rows[0]) return res.status(409).json({ error: 'LIVE_NOT_ACTIVE' })
+      if (!rows[0]) {
+        if (clientId) {
+          const existing = await pool.query(`SELECT id::text, live_id::text, user_id, user_name, avatar_url, content, created_at
+            FROM fallback_live_comments WHERE id=$1::uuid AND live_id=$2::uuid AND user_id=$3 AND content=$4`,
+          [clientId, liveId, identity.displayUserId, content])
+          if (existing.rows[0]) return res.json({ comment: existing.rows[0] })
+        }
+        return res.status(409).json({ error: 'LIVE_COMMENT_CONFLICT' })
+      }
       await publishRealtimeEvent(`live-comments:${liveId}`, {
         event: 'live_comment_created',
         liveId,
         commentId: rows[0].id,
+        comment: rows[0],
       }).catch((error) => {
         console.error('[live] Comment saved but realtime notification failed', error)
       })

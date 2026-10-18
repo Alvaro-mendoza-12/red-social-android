@@ -44,6 +44,7 @@ fun LiveViewerScreen(
     val localGuestTrack by viewModel.localVideoTrack.collectAsStateWithLifecycle()
     val remoteTracks by viewModel.remoteVideoTracks.collectAsStateWithLifecycle()
     val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
+    val liveKitLocalPreview by viewModel.liveKitLocalPreview.collectAsStateWithLifecycle()
     val liveKitRemoteParticipants by viewModel.liveKitRemoteParticipants.collectAsStateWithLifecycle()
     val liveKitState by viewModel.liveKitState.collectAsStateWithLifecycle()
     val collaborationCapabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
@@ -95,7 +96,9 @@ fun LiveViewerScreen(
             it.equals(liveId, ignoreCase = true) && !manualLeaveRequested
         },
         battle = battle,
-        sfuAvailable = collaborationCapabilities.sfuAvailable
+        sfuAvailable = collaborationCapabilities.sfuAvailable,
+        guestAccepted = guestState.status == conectate.com.data.model.LiveGuestRequestStatus.ACCEPTED,
+        guestMediaConfirmed = guestBroadcasting
     )
     // Keep legacy guest signaling, while receiving the host's actual broadcast
     // from the same SFU room used by web viewers.
@@ -238,8 +241,10 @@ fun LiveViewerScreen(
         viewers = liveViewers,
         hostTrack = hostTrack,
         remoteTracks = guestTracks,
-        liveKitVideos = liveKitRemoteVideos,
-        liveKitParticipants = liveKitRemoteParticipants,
+        liveKitVideos = liveKitRemoteVideos + listOfNotNull(liveKitLocalPreview.takeIf { guestBroadcasting }),
+        liveKitParticipants = liveKitRemoteParticipants + if (guestBroadcasting) listOf(
+            conectate.com.data.livekit.LiveKitRoomBridge.RemoteParticipant(currentUserId, "Tú")
+        ) else emptyList(),
         onAttachLiveKit = viewModel::attachLiveKitRenderer,
         onDetachLiveKit = viewModel::detachLiveKitRenderer,
         activeGuests = activeGuests,

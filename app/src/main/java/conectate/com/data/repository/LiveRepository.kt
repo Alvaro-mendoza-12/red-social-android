@@ -102,6 +102,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.coroutines.flow.onSubscription
+import kotlinx.coroutines.flow.combine
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import conectate.com.services.LiveForegroundService
@@ -157,6 +158,9 @@ class LiveRepository @Inject constructor(
     private var webRTCManager: WebRTCManager? = null
     private var commentsChannel: RealtimeChannel? = null
     private var commentsJob: Job? = null
+    private val pendingLiveCommentIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val removedLiveCommentIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val liveCommentRevision = java.util.concurrent.atomic.AtomicLong()
     @Volatile
     private var adaptiveQualityJob: Job? = null
     private var socketEndpointRecoveryJob: Job? = null
@@ -347,6 +351,25 @@ class LiveRepository @Inject constructor(
     private var screenCaptureActive = false
 
     init {
+        scope.launch {
+            combine(_guestInvitations, _activeSession) { invitations, active -> invitations to active }.collect { (invitations, session) ->
+                val active = session ?: return@collect
+                if (active.role != LiveRole.VIEWER) return@collect
+                val owner = authService.getCurrentUserId()?.trim().orEmpty()
+                val own = invitations.firstOrNull { it.liveId.equals(active.stream.id, true) && it.inviteeUserId.equals(owner, true) } ?: return@collect
+                val status = when (own.status.lowercase()) {
+                    "accepted" -> LiveGuestRequestStatus.ACCEPTED
+                    "pending" -> LiveGuestRequestStatus.PENDING
+                    else -> LiveGuestRequestStatus.NONE
+                }
+                if (status != LiveGuestRequestStatus.ACCEPTED && _isGuestBroadcasting.value) stopGuestMedia(emitLeave = false)
+                _guestAccessState.value = LiveGuestAccessState(status = status, message = when (status) {
+                    LiveGuestRequestStatus.ACCEPTED -> "Solicitud aceptada. Elige tu cámara y micrófono para entrar."
+                    LiveGuestRequestStatus.PENDING -> "Solicitud enviada al anfitrión."
+                    else -> "La solicitud fue cerrada."
+                })
+            }
+        }
         scope.launch {
             if (usesUbuntuPersistence()) {
                 conectate.com.core.network.refreshWhileObserved(_activeStreams.subscriptionCount, LOCAL_LIVE_REFRESH_MS) {
@@ -928,6 +951,9 @@ class LiveRepository @Inject constructor(
     val liveKitRemoteVideos: StateFlow<List<LiveKitRoomBridge.RemoteVideo>>
         get() = liveKitRoomBridge.remoteVideos
 
+    val liveKitLocalPreview: StateFlow<LiveKitRoomBridge.RemoteVideo?>
+        get() = liveKitRoomBridge.localPreview
+
     val liveKitRemoteParticipants: StateFlow<List<LiveKitRoomBridge.RemoteParticipant>>
         get() = liveKitRoomBridge.remoteParticipants
 
@@ -980,7 +1006,9 @@ class LiveRepository @Inject constructor(
                     )
                 ) clearCollaborationParticipant(previous.accessToken, previous.liveId)
                 ensureActorCurrent()
-                val connected = liveKitRoomBridge.connect(session, publishAudio, publishCamera, existingVideo)
+                val connected = liveKitRoomBridge.connect(session,
+                    if (role == "guest") _isGuestMicEnabled.value else publishAudio,
+                    if (role == "guest") _isGuestVideoEnabled.value else publishCamera, existingVideo)
                 ensureActorCurrent()
                 if (connected.isFailure) {
                     closeCollaborationAttempt(token, normalizedId)
@@ -1306,7 +1334,8 @@ class LiveRepository @Inject constructor(
             // No signaling, publication or session is started before both complete.
             val (loadedStream, mediaReady) = coroutineScope {
                 val media = async {
-                    initializeWebRTC(userId = currentUserId).also { ready ->
+                    val useSfu = usesUbuntuPersistence() && getLiveCollaborationCapabilities().getOrNull()?.sfuAvailable == true
+                    (if (useSfu) true else initializeWebRTC(userId = currentUserId)).also { ready ->
                         if (ready) {
                             webRTCManager?.setAudioEnabled(false)
                             webRTCManager?.setVideoSendEnabled(false, renegotiate = false)
@@ -1586,6 +1615,7 @@ class LiveRepository @Inject constructor(
             _isGuestBroadcasting.value && _isGuestVideoEnabled.value &&
             !guestMediaStartCoordinator.isStarting(session.stream.id)
         if (!hostCamera && !guestCamera) return false
+        if (guestCamera && _collaborationCapabilities.value.sfuAvailable) return liveKitRoomBridge.switchCamera()
         val manager = webRTCManager ?: return false
         val wasFront = _isFrontCamera.value
         return runCatching {
@@ -2140,6 +2170,12 @@ class LiveRepository @Inject constructor(
                 return@withLock false
             }
 
+            if (_collaborationCapabilities.value.sfuAvailable) {
+                _isGuestMicEnabled.value = micEnabled
+                _isGuestVideoEnabled.value = videoEnabled
+                _isGuestBroadcasting.value = true
+                return@withLock true
+            }
             val manager = webRTCManager ?: return@withLock false
             val attempt = guestMediaStartCoordinator.begin(session.stream.id)
             _isGuestMicEnabled.value = micEnabled
@@ -2209,7 +2245,9 @@ class LiveRepository @Inject constructor(
             return@withLock
         }
         _isGuestMicEnabled.value = enabled
-        webRTCManager?.setAudioEnabled(enabled)
+        if (_collaborationCapabilities.value.sfuAvailable) {
+            liveKitRoomBridge.updateMediaEnabled(enabled, _isGuestVideoEnabled.value)
+        } else webRTCManager?.setAudioEnabled(enabled)
         Unit
     }
 
@@ -2224,6 +2262,11 @@ class LiveRepository @Inject constructor(
             _guestAccessState.value.status != LiveGuestRequestStatus.ACCEPTED
         ) {
             return@withLock false
+        }
+        if (_collaborationCapabilities.value.sfuAvailable) {
+            _isGuestVideoEnabled.value = enabled
+            liveKitRoomBridge.updateMediaEnabled(_isGuestMicEnabled.value, enabled)
+            return@withLock true
         }
         val manager = webRTCManager ?: return@withLock false
         _isGuestVideoEnabled.value = enabled
@@ -2308,6 +2351,9 @@ class LiveRepository @Inject constructor(
             webRTCManager?.setVideoSendEnabled(false, renegotiate = false)
             webRTCManager?.stopVideo()
         }
+        if (_isGuestBroadcasting.value && _collaborationCapabilities.value.sfuAvailable) {
+            liveKitRoomBridge.updateMediaEnabled(false, false)
+        }
         _isGuestBroadcasting.value = false
         _isGuestMicEnabled.value = true
         _isGuestVideoEnabled.value = true
@@ -2359,16 +2405,26 @@ class LiveRepository @Inject constructor(
         if (usesUbuntuPersistence()) {
             val token = localAccessToken()
             if (token.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
-            return@withContext localFallbackApiClient.createLiveComment(
+            val id = UUID.randomUUID().toString()
+            val profile = userRepository.getCachedUserById(currentUserId)
+            pendingLiveCommentIds.add(id); liveCommentRevision.incrementAndGet()
+            _comments.update { current -> (current + LiveComment(id, session.stream.id, currentUserId,
+                profile?.displayName ?: profile?.username ?: "Tú", profile?.avatar_url, text.take(300), java.time.Instant.now().toString())).takeLast(200) }
+            val result = localFallbackApiClient.createLiveComment(
                 accessToken = token,
                 liveId = session.stream.id,
-                content = text.take(300)
+                content = text.take(300), clientCommentId = id
             ).map { comment ->
-                _comments.update { current ->
-                    if (current.any { it.id == comment.id }) current else (current + comment).takeLast(200)
+                if (_activeSession.value?.stream?.id == session.stream.id && authService.getCurrentUserId() == currentUserId) {
+                    liveCommentRevision.incrementAndGet()
+                    _comments.update { current -> (current.filterNot { it.id == id } + comment).takeLast(200) }
+                    sessionCommentCount += 1
                 }
-                sessionCommentCount += 1
+            }.onFailure {
+                if (_activeSession.value?.stream?.id == session.stream.id) _comments.update { current -> current.filterNot { it.id == id } }
             }
+            pendingLiveCommentIds.remove(id)
+            return@withContext result
         }
 
         var profile = userRepository.getUserById(currentUserId).getOrNull()
@@ -3464,7 +3520,8 @@ class LiveRepository @Inject constructor(
                     }
                     if (isOwnOptimisticBatch) return@runCatching
                     val count = data.optInt("count", 1).coerceIn(1, REACTION_BATCH_MAX)
-                    val incoming = List(count) { LiveReaction(kind = "heart", userId = fromUserId) }
+                    val effect = data.optString("emoji").takeIf { it in setOf("👏", "🔥", "😮") } ?: "heart"
+                    val incoming = List(count) { LiveReaction(kind = effect, userId = fromUserId) }
                     _reactions.update { (it + incoming).takeLast(MAX_ACTIVE_REACTION_PARTICLES) }
                     incoming.forEach(::scheduleReactionExpiry)
                 }.onFailure { logMalformedSignal("reaction", it) }
@@ -3814,7 +3871,7 @@ class LiveRepository @Inject constructor(
     }
 
     private suspend fun subscribeToComments(liveId: String) {
-        commentsJob?.cancel()
+        commentsJob?.cancelAndJoin()
         commentsJob = null
 
         try {
@@ -3822,22 +3879,55 @@ class LiveRepository @Inject constructor(
         } catch (_: Exception) { }
         commentsChannel = null
         _comments.value = emptyList()
+        pendingLiveCommentIds.clear(); removedLiveCommentIds.clear()
 
         if (usesUbuntuPersistence()) {
+            val owner = authService.getCurrentUserId()
+            val channel = "live-comments:$liveId"
             commentsJob = scope.launch {
-                while (
-                    currentCoroutineContext().isActive &&
-                    _activeSession.value?.stream?.id.equals(liveId, ignoreCase = true)
-                ) {
-                    val token = localAccessToken()
-                    if (token.isNotBlank()) {
-                        localFallbackApiClient.loadLiveComments(token, liveId, limit = 200)
-                            .onSuccess { history -> _comments.value = history }
-                            .onFailure { error ->
-                                android.util.Log.w("LiveRepository", "Unable to refresh Ubuntu live comments", error)
+                launch {
+                    ubuntuRealtimeClient.events.onSubscription {
+                        val token = localAccessToken()
+                        if (token.isNotBlank() && owner == authService.getCurrentUserId()) {
+                            ubuntuRealtimeClient.updateAccessToken(token)
+                            ubuntuRealtimeClient.subscribe(channel)
+                        }
+                    }.collect { event ->
+                        if (event.channel != channel || owner != authService.getCurrentUserId() || _activeSession.value?.stream?.id != liveId) return@collect
+                        when (event.event) {
+                            "live_comment_created" -> {
+                                val comment = event.payload["comment"]?.let { runCatching {
+                                    supabaseConfig.json.decodeFromJsonElement<LiveComment>(it)
+                                }.getOrNull() } ?: return@collect
+                                if (comment.liveId != liveId || comment.id in removedLiveCommentIds) return@collect
+                                liveCommentRevision.incrementAndGet()
+                                _comments.update { current -> (current.filterNot { it.id == comment.id } + comment).takeLast(200) }
                             }
+                            "live_comment_deleted" -> {
+                                val id = event.payload["commentId"]?.jsonPrimitive?.contentOrNull ?: return@collect
+                                removedLiveCommentIds.add(id); liveCommentRevision.incrementAndGet()
+                                _comments.update { current -> current.filterNot { it.id == id } }
+                            }
+                        }
                     }
-                    delay(LOCAL_COMMENT_REFRESH_MS)
+                }
+                try {
+                    while (currentCoroutineContext().isActive && _activeSession.value?.stream?.id == liveId && owner == authService.getCurrentUserId()) {
+                        val token = localAccessToken()
+                        val revision = liveCommentRevision.get()
+                        if (token.isNotBlank()) localFallbackApiClient.loadLiveComments(token, liveId, limit = 200)
+                            .onSuccess { history ->
+                                if (owner == authService.getCurrentUserId() && _activeSession.value?.stream?.id == liveId) {
+                                    _comments.update { current ->
+                                        val retained = if (revision == liveCommentRevision.get()) current.filter { it.id in pendingLiveCommentIds } else current
+                                        (history + retained).filterNot { it.id in removedLiveCommentIds }.distinctBy { it.id }.sortedBy { it.createdAt.orEmpty() }.takeLast(200)
+                                    }
+                                }
+                            }
+                        delay(8_000L)
+                    }
+                } finally {
+                    if (_activeSession.value?.stream?.id != liveId) ubuntuRealtimeClient.unsubscribe(channel)
                 }
             }
             return

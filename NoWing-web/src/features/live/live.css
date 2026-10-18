@@ -69,10 +69,12 @@
 .live-reaction-button { display: grid; place-items: center; border-radius: 50%; width: 38px; height: 38px; font-size: 1.15rem; padding: 0; background: #151519b3; border: 1px solid #fff3; }
 .live-like-button { display: inline-flex; align-items: center; gap: 7px; background: #151519e6; border: 1px solid #fff3; border-radius: 24px; padding: 9px 14px; min-height: 40px; font-size: .82rem; font-weight: 700; color: #fff; }
 .live-like-button svg { width: 20px; height: 20px; color: #ff6484; }
-.live-reaction-overlay { position: absolute; left: 20px; right: 330px; bottom: 90px; pointer-events: none; display: flex; gap: 12px; justify-content: flex-end; z-index: 3; }
-.live-reaction-overlay span { font-size: 1.6rem; animation: novvin-live-rise 2.2s ease-out both; }
+.live-reaction-overlay { position: absolute; left: 20px; right: 330px; bottom: 90px; pointer-events: none; height: 0; z-index: 3; }
+.live-reaction-overlay span { position: absolute; bottom: 0; font-size: 1.7rem; animation: novvin-live-rise 3s ease-out both; will-change: transform, opacity; }
+.live-reaction-overlay span:nth-child(3n) { --live-drift: -32px; --live-tilt: -14deg; }
+.live-reaction-overlay span:nth-child(3n + 1) { --live-drift: 24px; --live-tilt: 12deg; }
 .live-session-error { position: absolute; left: 16px; right: 326px; top: 80px; z-index: 5; padding: 12px 16px; background: #2e2027e6; color: #ffe2e2; border: 1px solid #ff9a9a55; border-radius: 12px; font-size: .8rem; overflow-wrap: anywhere; }
-@keyframes novvin-live-rise { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-130px); } }
+@keyframes novvin-live-rise { 0% { opacity: 0; transform: translate(0, 10px) scale(.65); } 12% { opacity: 1; transform: translate(0, -15px) scale(1.15); } 70% { opacity: .9; } 100% { opacity: 0; transform: translate(var(--live-drift, 15px), -260px) rotate(var(--live-tilt, 8deg)) scale(1.25); } }
 @media (max-width: 980px) {
   .live-video-stage { grid-template-columns: minmax(0, 1fr) 270px; }
   .live-video-placeholder { width: calc(100% - 270px); }

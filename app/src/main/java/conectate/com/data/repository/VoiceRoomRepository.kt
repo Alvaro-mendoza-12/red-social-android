@@ -2783,8 +2783,9 @@ class VoiceRoomRepository @Inject constructor(
         emitOrQueueRoomSocketEvent(roomId, "chat-message") {
             put("roomId", (roomId ?: "") as String)
             put("userId", message.userId as String)
-            put("userName", message.userName as String)
-            put("text", message.text as String)
+            put("userName", message.userName.ifBlank { _currentParticipants.value.firstOrNull { it.id == message.userId }?.name ?: "Participante" })
+            put("text", message.text.take(2000))
+            put("id", message.id)
             put("timestamp", message.timestamp)
         }
     }

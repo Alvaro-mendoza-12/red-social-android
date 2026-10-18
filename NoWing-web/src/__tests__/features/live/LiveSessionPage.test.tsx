@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { LiveSessionPage } from '../../../features/live/LiveSessionPage'
 import { fallbackApiJson } from '../../../core/auth/fallbackAuth'
 import { subscribeUbuntuRealtime } from '../../../core/ubuntuRealtime'
+import { sendFallbackLiveComment } from '../../../core/fallbackData'
 
 let mockSfuAvailable = true
 const mockStream = { id: 'live-a', host_user_id: 'host-a', host_name: 'Ana', is_active: true, allow_guest_requests: false, chat_paused: false }
@@ -23,7 +24,7 @@ jest.mock('../../../core/ubuntuRealtime', () => ({ subscribeUbuntuRealtime: jest
 jest.mock('../../../core/runtimeBackend', () => ({ getRuntimeBackendUrl: () => 'https://synthetic.invalid' }))
 jest.mock('../../../components/SafeAvatar', () => ({ SafeAvatar: ({ name }: { name: string }) => <span>{name}</span> }))
 jest.mock('../../../components/LiveStreamMedia', () => ({ LiveStreamVideo: () => <video/> }))
-jest.mock('socket.io-client', () => ({ io: () => ({ on: jest.fn(), connect: jest.fn(), disconnect: jest.fn(), emit: mockEmit }) }))
+jest.mock('socket.io-client', () => ({ io: () => ({ connected: true, on: jest.fn(), connect: jest.fn(), disconnect: jest.fn(), emit: mockEmit }) }))
 jest.mock('../../../features/voice/WebRTCManager', () => ({ __esModule: true, default: jest.fn(() => {
   let stream: MediaStream | null = null
   return { setLocalStream: (value: MediaStream) => {stream=value}, getLocalStream: () => stream, onTrack: jest.fn(), onConnectionState: jest.fn(), onIceCandidate: jest.fn(), onOfferNeeded: jest.fn(), disconnectAll: jest.fn(), stopLocalStream: jest.fn() }
@@ -31,6 +32,7 @@ jest.mock('../../../features/voice/WebRTCManager', () => ({ __esModule: true, de
 
 beforeEach(() => {
   mockSfuAvailable = true; mockInvitations = []; mockEmit.mockClear()
+  Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => '11111111-1111-4111-8111-111111111111' })
   jest.mocked(fallbackApiJson).mockImplementation(async path => {
     if (String(path).endsWith('/capabilities')) return { sfuAvailable: mockSfuAvailable } as never
     if (String(path).endsWith('/invitations')) return { invitations: mockInvitations } as never
@@ -68,4 +70,32 @@ test('turning off host video keeps the broadcast unpaused', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Alternar video' }))
   expect(mockEmit).toHaveBeenCalledWith('update-live-state', expect.objectContaining({ videoEnabled: false, isPaused: false }))
   expect(screen.getByText('En vivo · Solo audio')).toBeInTheDocument()
+})
+
+test('shows a sent comment before HTTP completes and merges its realtime echo once', async () => {
+  let finish!: (value: never) => void
+  jest.mocked(sendFallbackLiveComment).mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  openHost()
+  const input = await screen.findByRole('textbox', { name: 'Comentario para el directo' })
+  fireEvent.change(input, { target: { value: 'Comentario inmediato' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Enviar comentario' }))
+  expect(screen.getByText('Comentario inmediato')).toBeInTheDocument()
+  const [, , id] = jest.mocked(sendFallbackLiveComment).mock.calls.at(-1)!
+  expect(id).toMatch(/^[a-f0-9-]{36}$/i)
+  const comment = { id, live_id: 'live-a', user_id: 'host-a', user_name: 'Ana', content: 'Comentario inmediato', created_at: new Date().toISOString() }
+  const subscription = jest.mocked(subscribeUbuntuRealtime).mock.calls.findLast(([options]) => options.channel === 'live-comments:live-a')![0]
+  act(() => { subscription.onEvent({ payload: { event: 'live_comment_created', comment } } as never) })
+  expect(screen.getAllByText('Comentario inmediato')).toHaveLength(1)
+  await act(async () => { finish({ comment } as never) })
+  expect(screen.getAllByText('Comentario inmediato')).toHaveLength(1)
+})
+
+test('renders a received comment directly from realtime without another HTTP round trip', async () => {
+  openHost()
+  await screen.findByText('Chat del directo')
+  const subscription = jest.mocked(subscribeUbuntuRealtime).mock.calls.findLast(([options]) => options.channel === 'live-comments:live-a')![0]
+  act(() => { subscription.onEvent({ payload: { event: 'live_comment_created', comment: {
+    id: 'incoming-a', live_id: 'live-a', user_id: 'guest-a', user_name: 'Luis', content: 'Desde el celular', created_at: new Date().toISOString(),
+  } } } as never) })
+  expect(screen.getByText('Desde el celular')).toBeInTheDocument()
 })

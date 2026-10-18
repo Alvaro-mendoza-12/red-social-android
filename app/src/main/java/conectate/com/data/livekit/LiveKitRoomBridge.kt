@@ -73,6 +73,8 @@ class LiveKitRoomBridge @Inject constructor(
     private val _remoteVideos = MutableStateFlow<List<RemoteVideo>>(emptyList())
     private val remoteVideoBindings = LiveRemoteVideoBindings()
     val remoteVideos: StateFlow<List<RemoteVideo>> = _remoteVideos.asStateFlow()
+    private val _localPreview = MutableStateFlow<RemoteVideo?>(null)
+    val localPreview: StateFlow<RemoteVideo?> = _localPreview.asStateFlow()
     private val _remoteParticipants = MutableStateFlow<List<RemoteParticipant>>(emptyList())
     val remoteParticipants: StateFlow<List<RemoteParticipant>> = _remoteParticipants.asStateFlow()
     private val _errors = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
@@ -249,6 +251,7 @@ class LiveKitRoomBridge @Inject constructor(
             _state.value = State.CONNECTED
             connectionIdentity = identity
             sharedVideoSource = existingVideo
+            refreshRemoteVideos(candidate)
             lastStartupTimings = StartupTimings(roomCreationMs, signalingMs, audioMs, videoMs,
                 android.os.SystemClock.elapsedRealtime() - startupStarted)
             Result.success(Unit)
@@ -272,6 +275,13 @@ class LiveKitRoomBridge @Inject constructor(
     }
 
     /** Latest controls win even when the user changes them while connecting. */
+    fun switchCamera(): Boolean {
+        val track = room?.localParticipant?.getTrackPublication(io.livekit.android.room.track.Track.Source.CAMERA)?.track
+            as? io.livekit.android.room.track.LocalVideoTrack ?: return false
+        scope.launch { runCatching { track.switchCamera() }.onFailure { _errors.emit("No se pudo cambiar la cámara.") } }
+        return true
+    }
+
     fun updateMediaEnabled(audio: Boolean, video: Boolean) {
         desiredMedia.set(audio to video)
         scope.launch {
@@ -427,12 +437,18 @@ class LiveKitRoomBridge @Inject constructor(
             android.util.Log.e("LiveKitRoomBridge", "Could not release the ended room", error)
         }
         _remoteVideos.value = emptyList()
+        _localPreview.value = null
         remoteVideoBindings.clear()
         _remoteParticipants.value = emptyList()
         _state.value = State.DISCONNECTED
     }
 
     private fun refreshRemoteVideos(candidate: Room) {
+        val own = candidate.localParticipant.getTrackPublication(io.livekit.android.room.track.Track.Source.CAMERA)
+        _localPreview.value = if (connectionIdentity?.third == "guest" && own?.muted == false) {
+            (own.track as? VideoTrack)?.let { RemoteVideo(own.sid, "Tú", it,
+                participantIdentity = candidate.localParticipant.identity?.value.orEmpty()) }
+        } else null
         remoteVideoBindings.retain(candidate.remoteParticipants.values.flatMap {it.trackPublications.keys}.toSet())
         _remoteVideos.value = if (candidate.state != Room.State.CONNECTED) emptyList() else {
             candidate.remoteParticipants.values.flatMap { participant ->
@@ -449,6 +465,7 @@ class LiveKitRoomBridge @Inject constructor(
 
     private fun refreshRemoteParticipants(candidate: Room) {
         _remoteParticipants.value = candidate.remoteParticipants.values.mapNotNull { participant ->
+            if (participant.permissions?.canPublish != true) return@mapNotNull null
             val userId = participant.identity?.value?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             val avatar = participant.metadata?.takeIf { it.length <= 2_048 }?.let { metadata ->
                 runCatching { org.json.JSONObject(metadata).optString("avatarUrl").takeIf(String::isNotBlank) }.getOrNull()

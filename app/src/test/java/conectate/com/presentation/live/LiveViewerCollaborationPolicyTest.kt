@@ -88,4 +88,16 @@ class LiveViewerCollaborationPolicyTest {
         val battle = LiveBattleState(battleId = "battle", status = LiveBattleStatus.ACTIVE, opponentLiveId = "opponent")
         assertEquals("battle", liveViewerMediaPlan("live", battle, sfuAvailable = true)?.battleId)
     }
+
+    @Test fun `server acceptance and local media consent are both required to join as guest`() {
+        for ((accepted, confirmed) in listOf(false to false, true to false, false to true)) {
+            assertEquals("viewer", liveViewerMediaPlan("live", LiveBattleState(), true, accepted, confirmed)?.role)
+        }
+        val guest = liveViewerMediaPlan("live", LiveBattleState(), true, true, true)!!
+        assertEquals("guest", guest.role)
+        // Controls are read at connection time, so toggling them cannot recreate the room.
+        assertFalse(guest.publishAudio)
+        assertFalse(guest.publishCamera)
+        assertNull(liveViewerMediaPlan("live", LiveBattleState(), false, true, true))
+    }
 }

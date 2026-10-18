@@ -21,13 +21,13 @@ export function useLiveSfu({ liveId, hostId, role, enabled, localMedia, source, 
     const streams = new Map<string, MediaStream>()
     const update=()=>{if(!active)return
       for (const id of streams.keys()) if (!session.remoteParticipants.has(id)) streams.delete(id)
-      setParticipants([...session.remoteParticipants.values()].map(participant=>{
+      setParticipants([...session.remoteParticipants.values()].filter(participant=>participant.permissions?.canPublish === true).map(participant=>{
       const tracks=[...participant.trackPublications.values()].filter(publication=>publication.isSubscribed&&!publication.isMuted&&publication.track).map(publication=>publication.track!.mediaStreamTrack)
       const stream = syncMediaTracks(streams.get(participant.identity) || new MediaStream(), tracks)
       streams.set(participant.identity, stream)
       return {id:participant.identity,name:participant.name||'Participante',stream,videoEnabled:tracks.some(track=>track.kind==='video'&&track.readyState==='live')}
     }))}
-    session.on(RoomEvent.TrackSubscribed,update).on(RoomEvent.TrackUnsubscribed,update).on(RoomEvent.TrackMuted,update).on(RoomEvent.TrackUnmuted,update).on(RoomEvent.ParticipantConnected,update).on(RoomEvent.ParticipantDisconnected,update)
+    session.on(RoomEvent.TrackSubscribed,update).on(RoomEvent.TrackUnsubscribed,update).on(RoomEvent.TrackMuted,update).on(RoomEvent.TrackUnmuted,update).on(RoomEvent.ParticipantConnected,update).on(RoomEvent.ParticipantDisconnected,update).on(RoomEvent.ParticipantPermissionsChanged,update)
     session.on(RoomEvent.Reconnecting,()=>{if(active)setConnected(false)})
     session.on(RoomEvent.Reconnected,()=>{if(active){setConnected(true);setError('');update()}})
     session.on(RoomEvent.Disconnected,()=>{if(active){setConnected(false);setRoom(null);setError('Se interrumpió la conexión del directo. Puedes volver a conectar.')}})

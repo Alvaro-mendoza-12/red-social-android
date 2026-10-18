@@ -13,7 +13,10 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -48,12 +51,12 @@ fun LiveReactionsOverlay(
         val maxRiseDp = (maxHeight.value - 88f).coerceIn(260f, 900f)
 
         reactions.takeLast(20).forEach { reaction ->
-            FloatingReaction(
+            key(reaction.id) { FloatingReaction(
                 reaction = reaction,
                 maxWidthPx = maxWidthPx,
                 maxRiseDp = maxRiseDp,
                 animationsEnabled = animationsEnabled
-            )
+            ) }
         }
     }
 }
@@ -91,10 +94,7 @@ private fun BoxWithConstraintsScope.FloatingReaction(
         maxRiseDp = maxRiseDp,
     )
 
-    Icon(
-        imageVector = Icons.Default.Favorite,
-        contentDescription = null,
-        modifier = Modifier
+    val particleModifier = Modifier
             .offset(x = xDp + motion.lateralDp.dp, y = motion.riseDp.dp)
             .offset(y = (-8).dp)
             .size((24 + seed % 9).dp)
@@ -104,9 +104,10 @@ private fun BoxWithConstraintsScope.FloatingReaction(
                 scaleY = motion.scale
                 rotationZ = motion.rotationDegrees
             }
-            .align(Alignment.BottomStart),
-        tint = liveHeartColors[seed % liveHeartColors.size]
-    )
+            .align(Alignment.BottomStart)
+    if (reaction.kind in setOf("👏", "🔥", "😮")) {
+        Text(reaction.kind, fontSize = 28.sp, modifier = particleModifier)
+    } else Icon(Icons.Default.Favorite, null, modifier = particleModifier, tint = liveHeartColors[seed % liveHeartColors.size])
 }
 
 internal data class LiveReactionMotion(

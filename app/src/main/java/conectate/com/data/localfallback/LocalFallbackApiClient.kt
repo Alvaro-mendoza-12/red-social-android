@@ -571,6 +571,7 @@ private data class LocalFallbackCreateLiveRequest(
 
 @Serializable
 private data class LocalFallbackCreateLiveCommentRequest(
+    val clientCommentId: String? = null,
     val content: String
 )
 
@@ -4375,7 +4376,8 @@ class LocalFallbackApiClient @Inject constructor(
     suspend fun createLiveComment(
         accessToken: String,
         liveId: String,
-        content: String
+        content: String,
+        clientCommentId: String? = null
     ): Result<LiveComment> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
@@ -4384,7 +4386,7 @@ class LocalFallbackApiClient @Inject constructor(
             ) {
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
-                setBody(LocalFallbackCreateLiveCommentRequest(content = content))
+                setBody(LocalFallbackCreateLiveCommentRequest(content = content, clientCommentId = clientCommentId))
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {

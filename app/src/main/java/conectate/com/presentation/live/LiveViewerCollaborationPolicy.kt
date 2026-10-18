@@ -53,7 +53,9 @@ internal fun liveViewerBattleCollaborationPlan(
 internal fun liveViewerMediaPlan(
     liveId: String?,
     battle: LiveBattleState,
-    sfuAvailable: Boolean
+    sfuAvailable: Boolean,
+    guestAccepted: Boolean = false,
+    guestMediaConfirmed: Boolean = false
 ): LiveViewerCollaborationPlan? {
     val id = liveId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     if (battle.status == LiveBattleStatus.ACTIVE &&
@@ -61,5 +63,7 @@ internal fun liveViewerMediaPlan(
     ) {
         return LiveViewerCollaborationPlan(id, "viewer", false, false, battleId = battle.battleId)
     }
-    return if (sfuAvailable) LiveViewerCollaborationPlan(id, "viewer", false, false) else null
+    return if (sfuAvailable) LiveViewerCollaborationPlan(
+        id, if (guestAccepted && guestMediaConfirmed) "guest" else "viewer", false, false
+    ) else null
 }

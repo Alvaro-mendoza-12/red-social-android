@@ -620,7 +620,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
     fun sendMessage(text: String) {
         viewModelScope.launch {
             val msg = ChatMessage(
-                id = System.currentTimeMillis().toString(),
+                id = UUID.randomUUID().toString(),
                 userId = getCurrentUserId(),
                 text = text,
                 timestamp = System.currentTimeMillis()
@@ -628,7 +628,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
             val current = _messages.value.toMutableList()
             current.add(msg)
             _messages.value = current
-            _room.value?.id?.let { roomId -> voiceRoomRepository.sendMessage(roomId, text) }
+            _room.value?.id?.let { voiceRoomRepository.sendMessage(msg) }
         }
     }
 

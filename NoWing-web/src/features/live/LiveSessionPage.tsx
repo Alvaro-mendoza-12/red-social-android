@@ -72,7 +72,7 @@ type ServerEvents = {
   'reaction-count': (payload: { reactionCount?: number }) => void
   'live-state': (payload: Partial<LiveState>) => void
   'live-ended': () => void
-  reaction: (payload: { emoji?: string; kind?: string }) => void
+  reaction: (payload: { emoji?: string; kind?: string; reactionId?: string }) => void
   offer: (payload: OfferPayload) => void
   answer: (payload: AnswerPayload) => void
   'ice-candidate': (payload: IcePayload) => void
@@ -91,7 +91,7 @@ type ClientEvents = {
     micEnabled: boolean
   }) => void
   'end-live': (payload: { liveId: string }) => void
-  'send-reaction': (payload: { liveId: string; emoji: string; userId: string }) => void
+  'send-reaction': (payload: { liveId: string; emoji: string; userId: string; reactionId: string }) => void
   'update-live-state': (payload: LiveState & { liveId: string }) => void
   offer: (payload: { target: string; offer: RTCSessionDescriptionInit; userId: string; name: string }) => void
   answer: (payload: { target: string; answer: RTCSessionDescriptionInit; userId: string; name: string }) => void
@@ -173,7 +173,12 @@ export function LiveSessionPage() {
   const hostCaptureRef = useRef<Promise<MediaStream> | null>(null)
   const [hostCaptureAttempt, setHostCaptureAttempt] = useState(0)
   const [remoteMedia, setRemoteMedia] = useState<MediaStream | null>(null)
+  const cleanLiveId = liveId.trim()
   const [comments, setComments] = useState<FallbackLiveComment[]>([])
+  const pendingCommentIds = useRef(new Set<string>()), removedCommentIds = useRef(new Set<string>()), commentsRevision = useRef(0)
+  const commentScope = useRef(cleanLiveId)
+  commentScope.current = cleanLiveId
+  useEffect(() => { pendingCommentIds.current.clear(); removedCommentIds.current.clear(); setComments([]) }, [cleanLiveId])
   const [commentDraft, setCommentDraft] = useState('')
   const [sendingComment, setSendingComment] = useState(false)
   const [reactions, setReactions] = useState<LiveReaction[]>([])
@@ -184,7 +189,6 @@ export function LiveSessionPage() {
   const liveStateRef = useRef(liveState)
   const sourceOperationRef = useRef(0)
   const commentsEndRef = useRef<HTMLDivElement | null>(null)
-  const cleanLiveId = liveId.trim()
   const userId = user?.id || ''
   const streamId = stream?.id || ''
   const displayName = displayNameOf(user)
@@ -318,8 +322,13 @@ export function LiveSessionPage() {
   const loadComments = useCallback(async () => {
     if (!cleanLiveId || !isFallbackSession) return
     try {
+      const revision = commentsRevision.current
       const response = await loadFallbackLiveComments(cleanLiveId, 120)
-      setComments(response.items)
+      if (commentScope.current !== cleanLiveId) return
+      setComments(current => {
+        const retained = revision === commentsRevision.current ? current.filter(item => pendingCommentIds.current.has(item.id)) : current
+        return [...new Map([...response.items, ...retained].filter(item => !removedCommentIds.current.has(item.id)).map(item => [item.id, item])).values()].slice(-200)
+      })
     } catch {
       // Realtime or the next polling cycle can recover comments without interrupting video.
     }
@@ -351,7 +360,18 @@ export function LiveSessionPage() {
     if (!cleanLiveId || !isFallbackSession) return
     const unsubscribe = subscribeUbuntuRealtime({
       channel: `live-comments:${cleanLiveId}`,
-      onEvent: () => void loadComments(),
+      onEvent: event => {
+        if (commentScope.current !== cleanLiveId) return
+        const payload = event.payload, comment = payload.comment as FallbackLiveComment | undefined
+        if (payload.event === 'live_comment_created' && comment?.id && comment.live_id === cleanLiveId && typeof comment.content === 'string') {
+          if (removedCommentIds.current.has(comment.id)) return
+          commentsRevision.current++
+          setComments(current => [...new Map([...current, comment].map(item => [item.id, item])).values()].slice(-200))
+        } else if (payload.event === 'live_comment_deleted' && typeof payload.commentId === 'string') {
+          commentsRevision.current++; removedCommentIds.current.add(payload.commentId)
+          setComments(current => current.filter(item => item.id !== payload.commentId))
+        } else void loadComments()
+      },
     })
     const interval = window.setInterval(() => void loadComments(), 8_000)
     return () => {
@@ -547,9 +567,9 @@ export function LiveSessionPage() {
           window.setTimeout(() => navigate('/app/live', { replace: true }), 1200)
         })
         socket.on('reaction', (payload) => {
-          const reaction = { id: crypto.randomUUID(), emoji: liveReactionEmoji(payload) }
-          setReactions((current) => [...current.slice(-14), reaction])
-          window.setTimeout(() => setReactions((current) => current.filter((item) => item.id !== reaction.id)), 2200)
+          const reaction = { id: payload.reactionId || crypto.randomUUID(), emoji: liveReactionEmoji(payload) }
+          setReactions((current) => current.some(item => item.id === reaction.id) ? current : [...current.slice(-23), reaction])
+          window.setTimeout(() => setReactions((current) => current.filter((item) => item.id !== reaction.id)), 3000)
         })
         socket.on('offer', (payload) => {
           if (sfuAvailable || !payload.sender || !payload.offer) return
@@ -644,21 +664,31 @@ export function LiveSessionPage() {
 
   function sendReaction(emoji: string) {
     if (!user) return
-    socketRef.current?.emit('send-reaction', { liveId: cleanLiveId, emoji, userId: user.id })
+    if (!socketRef.current?.connected) return
+    const id = crypto.randomUUID()
+    setReactions(current => [...current.slice(-23), {id, emoji}])
+    window.setTimeout(() => setReactions(current => current.filter(item => item.id !== id)), 3000)
+    socketRef.current.emit('send-reaction', { liveId: cleanLiveId, emoji, userId: user.id, reactionId: id })
   }
 
   async function submitComment(event: FormEvent) {
     event.preventDefault()
     const content = commentDraft.trim()
     if (!content || sendingComment) return
+    const id = crypto.randomUUID()
+    pendingCommentIds.current.add(id); commentsRevision.current++
+    setComments(current => [...current, {id, live_id:cleanLiveId, user_id:userId, user_name:displayName, avatar_url:avatarUrl, content, created_at:new Date().toISOString()}].slice(-200))
+    setCommentDraft('')
     setSendingComment(true)
     try {
-      const response = await sendFallbackLiveComment(cleanLiveId, content)
+      const response = await sendFallbackLiveComment(cleanLiveId, content, id)
+      if (commentScope.current !== cleanLiveId) return
+      commentsRevision.current++
       setComments((current) => [...current.filter((item) => item.id !== response.comment.id), response.comment])
-      setCommentDraft('')
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo enviar el comentario'))
+      if (commentScope.current === cleanLiveId) { setComments(current => current.filter(item => item.id !== id)); setCommentDraft(content); setError(friendlyError(caught, 'No se pudo enviar el comentario')) }
     } finally {
+      pendingCommentIds.current.delete(id)
       setSendingComment(false)
     }
   }

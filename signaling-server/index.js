@@ -9,6 +9,7 @@ const { normalizeSignalPayload } = require('./payload-policy');
 const { registerSafeSocketEvent, validateSocketPayload } = require('./socket-event-guard');
 const { authorizeCallJoin } = require('./call-join-policy');
 const { updateLiveGuestMediaState } = require('./live-guest-media-state');
+const { liveReactionPolicy } = require('./live-reaction-policy');
 
 const callPermissionCache = new WeakMap();
 async function refreshCallPermission(socket, force = false) {
@@ -2551,13 +2552,16 @@ liveIo.on('connection', (socket) => {
         if (!session) return;
         if (!consumeRateLimitToken('live-reaction', `${liveId}:${userId}`, 12, 2_000)) return;
 
-        session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + 1;
-        liveIo.to(liveId).emit('reaction', { liveId, kind: 'heart', userId });
-        liveIo.to(liveId).emit('reaction-count', {
+        const effect = liveReactionPolicy(data?.emoji);
+        if (!effect) return;
+        session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + effect.heartDelta;
+        const reactionId = typeof data?.reactionId === 'string' && /^[a-f0-9-]{36}$/i.test(data.reactionId) ? data.reactionId : crypto.randomUUID();
+        liveIo.to(liveId).emit('reaction', { liveId, kind: effect.kind, emoji: effect.emoji, userId, reactionId });
+        if (effect.heartDelta) liveIo.to(liveId).emit('reaction-count', {
             liveId,
             reactionCount: session.reactionCount
         });
-        if (session.reactionCount % 25 === 0) {
+        if (effect.heartDelta && session.reactionCount % 25 === 0) {
             void setLiveReactionCount(liveId, session.reactionCount, session.hostAuthToken);
             persistLiveSessionInBackground(liveId, session);
         }

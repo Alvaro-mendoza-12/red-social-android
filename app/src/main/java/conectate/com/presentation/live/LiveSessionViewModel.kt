@@ -104,6 +104,7 @@ class LiveSessionViewModel @Inject constructor(
     val remoteVideoTracks = liveRepository.remoteVideoTracks
     val liveKitState: StateFlow<LiveKitRoomBridge.State> = liveRepository.liveKitState
     val liveKitRemoteVideos = liveRepository.liveKitRemoteVideos
+    val liveKitLocalPreview = liveRepository.liveKitLocalPreview
     val liveKitRemoteParticipants = liveRepository.liveKitRemoteParticipants
     val liveMusic = liveRepository.liveMusic
 

@@ -91,18 +91,12 @@ internal fun LiveKitRemoteVideoSurface(
     modifier: Modifier = Modifier,
     label: String = video.participantName,
 ) {
-    val context = LocalContext.current
-    val renderer = remember(video.trackId, video.track, video.bindingVersion) { TextureViewRenderer(context) }
-    DisposableEffect(video.trackId, video.track, video.bindingVersion, renderer) {
-        onAttach(video, renderer)
-        onDispose { onDetach(video, renderer) }
-    }
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(Color.Black)
     ) {
-        key(renderer) { AndroidView(factory = { renderer }, modifier = Modifier.fillMaxSize()) }
+        ContainedLiveKitVideo(video, onAttach, onDetach, Modifier.fillMaxSize())
         Text(
             text = label,
             color = Color.White,
@@ -161,12 +155,6 @@ private fun LiveKitGuestVideo(
     height: androidx.compose.ui.unit.Dp = 154.dp,
     pictureInPicture: Boolean = false,
 ) {
-    val context = LocalContext.current
-    val renderer = remember(video.trackId, video.track, video.bindingVersion) { TextureViewRenderer(context) }
-    DisposableEffect(video.trackId, video.track, video.bindingVersion, renderer) {
-        onAttach(video, renderer)
-        onDispose { onDetach(video, renderer) }
-    }
     if (pictureInPicture) {
         Box(
             modifier = Modifier
@@ -176,7 +164,7 @@ private fun LiveKitGuestVideo(
                 .background(Color.Black.copy(alpha = 0.68f))
                 .border(1.dp, Color.White.copy(alpha = 0.62f), RoundedCornerShape(18.dp))
         ) {
-            key(renderer) { AndroidView(factory = { renderer }, modifier = Modifier.fillMaxSize()) }
+            ContainedLiveKitVideo(video, onAttach, onDetach, Modifier.fillMaxSize())
             LiveQualityBars(
                 tint = Color(0xFF5EEAD4),
                 modifier = Modifier
@@ -203,10 +191,7 @@ private fun LiveKitGuestVideo(
                 .background(Color.Black.copy(alpha = 0.72f))
                 .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
         ) {
-            key(renderer) { AndroidView(
-                factory = { renderer },
-                modifier = Modifier.fillMaxWidth().height(height)
-            ) }
+            ContainedLiveKitVideo(video, onAttach, onDetach, Modifier.fillMaxWidth().height(height))
             Text(
                 text = video.participantName,
                 color = Color.White,
