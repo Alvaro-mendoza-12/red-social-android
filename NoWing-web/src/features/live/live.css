@@ -1,5 +1,7 @@
 .live-hub-page { max-width: 1060px; margin: auto; }
-.live-session-minimized { position:fixed; right:16px; bottom:86px; z-index:90; max-width:calc(100vw - 32px); }
+.live-console { display:contents; }
+.live-session-page.live-session-minimized { position:fixed; right:16px; bottom:86px; z-index:90; max-width:calc(100vw - 32px); }
+.live-session-minimized .live-console { display:block; }
 .live-session-minimized > :not(.live-floating-controls) { position:absolute!important; width:1px!important; height:1px!important; overflow:hidden!important; clip-path:inset(50%); pointer-events:none; }
 .live-floating-controls { display:flex; align-items:center; gap:8px; padding:10px 12px; background:var(--surface); border:1px solid #e84b7b; border-radius:16px; box-shadow:0 4px 24px #0008; }
 .live-floating-controls strong { color:#ff759c; font-size:.78rem; }

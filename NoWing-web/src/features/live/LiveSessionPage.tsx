@@ -301,6 +301,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
   }
   async function leaveGuest() {
     guestCaptureSequence.current++
+    guestCaptureSequence.current++
     guestMediaRef.current?.getTracks().forEach(track => track.stop())
     setGuestMedia(null)
     setGuestRequested(false)
@@ -716,6 +717,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
   async function leaveOrEnd() {
     if (endingRef.current) return
     endingRef.current = true
+    guestCaptureSequence.current++
     setClosed(true)
     guestMediaRef.current?.getTracks().forEach(track => track.stop())
     managerRef.current?.stopLocalStream()
@@ -761,6 +763,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
   return (
     <section className={`live-session-page${minimized ? ' live-session-minimized' : ''}`}>
       {minimized ? <aside className="live-floating-controls" aria-label="Directo activo"><strong>{role === 'host' ? 'Transmitiendo' : guestMedia ? 'Participando en directo' : 'Viendo directo'}</strong><span>{hostName}</span><button className="icon-btn" aria-label="Volver al directo" onClick={() => navigate(`/app/live/${encodeURIComponent(cleanLiveId)}${initialSearch || ''}`)}><Maximize/></button>{role === 'host' || guestMedia ? <button className="icon-btn" aria-label="Alternar micrófono del directo" onClick={() => role === 'host' ? toggleMic() : void toggleGuestMedia('audio')}>{(role === 'host' ? liveState.micEnabled : guestMic) ? <Mic/> : <MicOff/>}</button> : <button className="icon-btn" aria-label="Alternar sonido del directo" onClick={() => setViewerMuted(value => !value)}>{viewerMuted ? <VolumeX/> : <Volume2/>}</button>}<button className="icon-btn danger" aria-label={role === 'host' ? 'Finalizar directo' : 'Salir del directo'} onClick={() => void leaveOrEnd()}><PhoneOff/></button></aside> : null}
+      <div className="live-console" inert={minimized}>
       {sfu.error && (role === 'host' || !media) ? <div className="live-reconnect-notice" role="status">{sfu.error}<button className="ghost-btn" type="button" onClick={sfu.retry}>Volver a conectar</button></div> : null}
       {settingsOpen ? <div className="app-dialog-backdrop"><section className="surface-card live-settings-dialog" role="dialog" aria-modal="true" aria-label="Ajustes del directo">
         <header className="row-between"><h2>Ajustes del directo</h2><button type="button" className="icon-btn" onClick={() => setSettingsOpen(false)} aria-label="Cerrar ajustes del directo"><X/></button></header>
@@ -850,6 +853,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
         </div>
 
         {error ? <div className="live-session-error">{error}</div> : null}
+      </div>
       </div>
     </section>
   )
