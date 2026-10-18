@@ -22,6 +22,11 @@ test('SMTP recovery requires a configured sender and encrypted connection', asyn
   assert.equal(deliveredMessage.to, 'person@example.org')
   assert.match(deliveredMessage.text, /test-token/)
   assert.match(deliveredMessage.text, /30 minutos/)
+  const deliveryId = 'a6c737d4-d3cb-4fd3-835e-f4f22549db02'
+  await mailer.deliver('person@example.org', 'test-token', 30, deliveryId)
+  assert.equal(deliveredMessage.messageId, `<novvin-recovery-${deliveryId}@example.org>`)
+  await mailer.deliver('person@example.org', 'test-token', 30, deliveryId)
+  assert.equal(deliveredMessage.messageId, `<novvin-recovery-${deliveryId}@example.org>`)
 })
 
 test('SMTP recovery rejects missing credentials and header injection', () => {

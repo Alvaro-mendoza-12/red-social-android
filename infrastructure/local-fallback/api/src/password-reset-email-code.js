@@ -12,7 +12,7 @@ function matchesCode(expected, actual) {
   return a.length === 32 && b.length === 32 && crypto.timingSafeEqual(a, b)
 }
 
-function createEmailRecoveryStore({ pool, secret, makeToken, hashToken, enqueueMail }) {
+function createEmailRecoveryStore({ pool, secret, makeToken, hashToken, enqueueMail, mayIssueMail }) {
   if (!secret || secret.length < 32) throw new Error('Email recovery requires a private hashing key')
   async function transaction(task) {
     const client = await pool.connect()
@@ -29,9 +29,10 @@ function createEmailRecoveryStore({ pool, secret, makeToken, hashToken, enqueueM
   return {
     async issue(userId, email) {
       const code = generateEmailCode()
-      await transaction(async (client) => {
+      const issued = await transaction(async (client) => {
         const account = await client.query('SELECT id FROM fallback_users WHERE id = $1 FOR UPDATE', [userId])
         if (!account.rows[0]) throw new Error('Email recovery account unavailable')
+        if (mayIssueMail && !(await mayIssueMail(client, userId))) return false
         await client.query('UPDATE fallback_password_reset_tokens SET consumed_at = NOW() WHERE user_id = $1 AND consumed_at IS NULL', [userId])
         await client.query(`INSERT INTO fallback_password_reset_email_codes(user_id, code_hash, attempts, expires_at, consumed_at)
           VALUES ($1, $2, 0, NOW() + INTERVAL '15 minutes', NULL)
@@ -39,18 +40,21 @@ function createEmailRecoveryStore({ pool, secret, makeToken, hashToken, enqueueM
           expires_at = EXCLUDED.expires_at, consumed_at = NULL, created_at = NOW()`, [userId, emailCodeHash(email, code, secret)])
         if (enqueueMail) await enqueueMail(client, { userId, email, token: code,
           codeHash: emailCodeHash(email, code, secret), minutes: CODE_MINUTES, kind: 'numeric' })
+        return true
       })
-      return code
+      return issued ? code : null
     },
     async issueLegacy(userId, tokenHash, minutes, delivery) {
-      await transaction(async (client) => {
+      return transaction(async (client) => {
         await client.query('SELECT id FROM fallback_users WHERE id = $1 FOR UPDATE', [userId])
+        if (mayIssueMail && !(await mayIssueMail(client, userId))) return false
         await client.query('UPDATE fallback_password_reset_email_codes SET consumed_at = NOW() WHERE user_id = $1 AND consumed_at IS NULL', [userId])
         await client.query('UPDATE fallback_password_reset_tokens SET consumed_at = NOW() WHERE user_id = $1 AND consumed_at IS NULL', [userId])
         await client.query(`INSERT INTO fallback_password_reset_tokens(user_id, token_hash, expires_at)
           VALUES ($1, $2, NOW() + ($3::text || ' minutes')::interval)`, [userId, tokenHash, minutes])
         if (enqueueMail && delivery) await enqueueMail(client, { userId, ...delivery,
           codeHash: tokenHash, minutes, kind: 'legacy' })
+        return true
       })
     },
     async verify(email, code) {

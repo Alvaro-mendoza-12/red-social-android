@@ -1,7 +1,24 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createPasswordMailCipher, createPasswordMailOutbox, retryDelaySeconds, mailErrorCode } = require('../src/password-reset-mail-outbox')
+const { createPasswordMailCipher, createPasswordMailOutbox, retryDelaySeconds, mailErrorCode, recoveryMailAllowed } = require('../src/password-reset-mail-outbox')
 const secret = 'private-unit-fixture-key-with-at-least-32-characters'
+
+test('recipient budget prevents rapid duplicates and sustained email floods across sources', () => {
+  assert.equal(recoveryMailAllowed(), true)
+  assert.equal(recoveryMailAllowed({ seconds_since_last: 59 }), false)
+  assert.equal(recoveryMailAllowed({ seconds_since_last: 60, hour_count: 4, day_count: 9 }), true)
+  assert.equal(recoveryMailAllowed({ seconds_since_last: 3600, hour_count: 5 }), false)
+  assert.equal(recoveryMailAllowed({ seconds_since_last: 3600, day_count: 10 }), false)
+})
+
+test('recipient budget reads all code formats under the issuing account lock', async () => {
+  const { pool, calls, outbox } = fixture()
+  assert.equal(await outbox.mayIssueMail(pool, 'user-a'), true)
+  const query = calls.find(c => c.sql.includes('seconds_since_last'))
+  assert.deepEqual(query.params, ['user-a'])
+  assert.match(query.sql, /WHERE user_id=\$1/)
+  assert(!query.sql.includes('kind='))
+})
 
 test('encrypted mail is bound to its job and hides the recipient and recovery code', () => {
   const cipher = createPasswordMailCipher(secret)

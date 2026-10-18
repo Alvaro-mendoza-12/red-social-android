@@ -1,6 +1,13 @@
 const crypto = require('node:crypto')
 
 const MAX_ATTEMPTS = 5
+const MAIL_COOLDOWN_SECONDS = 60
+const MAX_MAILS_PER_HOUR = 5
+const MAX_MAILS_PER_DAY = 10
+function recoveryMailAllowed({ hour_count = 0, day_count = 0, seconds_since_last = null } = {}) {
+  return Number(hour_count) < MAX_MAILS_PER_HOUR && Number(day_count) < MAX_MAILS_PER_DAY &&
+    (seconds_since_last == null || Number(seconds_since_last) >= MAIL_COOLDOWN_SECONDS)
+}
 function retryDelaySeconds(attempt) { return Math.min(60, 2 ** Math.max(0, attempt - 1)) }
 function mailErrorCode(error) {
   const code = String(error?.code || 'MAIL_DELIVERY_FAILED').toUpperCase()
@@ -48,6 +55,16 @@ function createPasswordMailOutbox({ pool, secret, mailer, onError = () => {} }) 
   const cipher = createPasswordMailCipher(secret)
   let running = null
   let stopped = false
+  // The issuer holds the account row lock, so this shared recipient budget is
+  // enforced across every API process, IP address and code format.
+  async function mayIssueMail(client, userId) {
+    const { rows } = await client.query(`SELECT
+      count(*) FILTER (WHERE created_at > NOW()-INTERVAL '1 hour')::int AS hour_count,
+      count(*)::int AS day_count,
+      EXTRACT(EPOCH FROM NOW()-MAX(created_at)) AS seconds_since_last
+      FROM fallback_password_mail_outbox WHERE user_id=$1 AND created_at>NOW()-INTERVAL '1 day'`, [userId])
+    return recoveryMailAllowed(rows[0])
+  }
   async function enqueue(client, { userId, email, token, codeHash, minutes, kind }) {
     if (!['numeric', 'legacy'].includes(kind) || !Number.isInteger(minutes) || minutes < 1 || minutes > 60 ||
         !email || !token || !codeHash) throw new Error('INVALID_MAIL_JOB')
@@ -93,7 +110,7 @@ function createPasswordMailOutbox({ pool, secret, mailer, onError = () => {} }) 
           continue
         }
         const minutes = Math.max(1, Math.ceil((new Date(job.expires_at).getTime() - Date.now()) / 60_000))
-        await mailer.deliver(payload.email, payload.token, minutes)
+        await mailer.deliver(payload.email, payload.token, minutes, job.id)
         await pool.query(`UPDATE fallback_password_mail_outbox SET status='sent',ciphertext=NULL,
           lease_until=NULL,delivered_at=NOW(),last_error_code=NULL WHERE id=$1 AND status='delivering'`, [job.id])
       } catch (error) {
@@ -119,7 +136,7 @@ function createPasswordMailOutbox({ pool, secret, mailer, onError = () => {} }) 
   }
   function wake() { setImmediate(() => { drain().catch((error) => onError(mailErrorCode(error))) }) }
   async function stop() { stopped = true; await running }
-  return { enqueue, drain, wake, stop }
+  return { enqueue, drain, wake, stop, mayIssueMail }
 }
 module.exports = { createPasswordMailCipher, createPasswordMailOutbox, ensurePasswordMailOutboxSchema,
-  retryDelaySeconds, mailErrorCode, MAX_ATTEMPTS }
+  retryDelaySeconds, mailErrorCode, MAX_ATTEMPTS, recoveryMailAllowed }

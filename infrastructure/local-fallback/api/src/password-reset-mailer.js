@@ -25,8 +25,12 @@ function createPasswordResetMailer(config = process.env, createTransport = nodem
   })
 
   return {
-    async deliver(email, token, expiresInMinutes) {
+    async deliver(email, token, expiresInMinutes, deliveryId) {
+      const domain = from.match(/@([a-zA-Z0-9.-]+)/)?.[1] || 'novvin.invalid'
+      const messageId = /^[a-f0-9-]{36}$/i.test(String(deliveryId || ''))
+        ? `<novvin-recovery-${deliveryId}@${domain}>` : null
       await transport.sendMail({
+        ...(messageId ? { messageId } : {}),
         from,
         to: email,
         subject: 'Novvin: recupera tu contraseña',

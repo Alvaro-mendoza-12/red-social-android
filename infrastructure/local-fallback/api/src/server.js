@@ -703,6 +703,7 @@ const passwordResetMailOutbox = passwordResetMailer ? createPasswordMailOutbox({
 const emailRecoveryStore = createEmailRecoveryStore({ pool, secret: twoFactorEncryptionSecret,
   makeToken: createPasswordResetToken, hashToken: hashPasswordResetToken,
   enqueueMail: passwordResetMailOutbox?.enqueue,
+  mayIssueMail: passwordResetMailOutbox?.mayIssueMail,
 })
 
 function createAuthRefreshToken() {
@@ -2897,18 +2898,24 @@ app.post('/v1/auth/password-reset/request', async (req, res, next) => {
     }
 
     const row = rows[0]
+    const auditRecoveryRequest = (queued) => recordAudit('auth_password_reset_requested', row.id, {
+      delivery: passwordResetDelivery, queued,
+      client: String(req.get('user-agent') || '').replace(/[^ -~]/g, '').slice(0, 160),
+    }).catch(() => {})
     if (numericCode) {
-      await emailRecoveryStore.issue(row.id, email)
-      passwordResetMailOutbox.wake()
+      const issued = await emailRecoveryStore.issue(row.id, email)
+      if (issued) passwordResetMailOutbox.wake()
+      await auditRecoveryRequest(Boolean(issued))
       return reply()
     }
     // Preserve long-token support for installed clients and manual recovery.
     const token = createPasswordResetToken()
     const tokenHash = hashPasswordResetToken(token)
-    await emailRecoveryStore.issueLegacy(row.id, tokenHash, passwordResetTokenTtlMinutes,
+    const issued = await emailRecoveryStore.issueLegacy(row.id, tokenHash, passwordResetTokenTtlMinutes,
       passwordResetMailOutbox ? { email, token } : undefined)
     if (passwordResetMailOutbox) {
-      passwordResetMailOutbox.wake()
+      if (issued) passwordResetMailOutbox.wake()
+      await auditRecoveryRequest(Boolean(issued))
       return reply()
     }
 

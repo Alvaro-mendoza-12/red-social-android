@@ -13,7 +13,7 @@ test('email codes have exactly six digits; hashing binds the email and preserves
   assert.equal(matchesCode(a, '00'), false)
 })
 
-function fixture({ expired = false, unknown = false } = {}) {
+function fixture({ expired = false, unknown = false, mayIssueMail } = {}) {
   const calls = []
   const row = { code_hash: emailCodeHash('person@example.org', '000123', secret), attempts: 0, consumed: false }
   const client = {
@@ -31,9 +31,21 @@ function fixture({ expired = false, unknown = false } = {}) {
     release() { calls.push({ sql: 'RELEASE' }) },
   }
   const store = createEmailRecoveryStore({ pool: { connect: async () => client }, secret,
-    makeToken: () => 'a'.repeat(64), hashToken: (token) => 'hash:' + token })
+    makeToken: () => 'a'.repeat(64), hashToken: (token) => 'hash:' + token, mayIssueMail })
   return { store, row, calls }
 }
+
+test('suppressed requests leave the existing code and reset grant usable', async () => {
+  for (const legacy of [false, true]) {
+    const { store, calls } = fixture({ mayIssueMail: async () => false })
+    const result = legacy ? await store.issueLegacy('fixture-user', 'hash', 15, {})
+      : await store.issue('fixture-user', 'person@example.org')
+    assert.equal(result, legacy ? false : null)
+    assert(calls.some(c => c.sql.includes('FOR UPDATE')))
+    assert(!calls.some(c => /^(UPDATE|INSERT)/.test(c.sql)))
+    assert(calls.some(c => c.sql === 'COMMIT'))
+  }
+})
 
 test('the code is consumed before a separate password-reset grant is issued', async () => {
   const { store, calls } = fixture()
