@@ -128,6 +128,7 @@ class CommunityRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val readJournal: conectate.com.data.repository.message.VisibleReadJournal = conectate.com.data.repository.message.VisibleReadJournal(context),
     private val readSynchronizer: conectate.com.data.repository.message.VisibleReadSynchronizer = conectate.com.data.repository.message.VisibleReadSynchronizer(readJournal, localFallbackApiClient, authService),
+    private val chatImages: dagger.Lazy<MessageRepository>? = null,
 ) : CommunitySyncDataSource {
     private val maxForwardTargetsPerBatch = 20
     private val deletedMessageStore by lazy { conectate.com.util.DeletedMessageStore(context) }
@@ -1504,6 +1505,10 @@ class CommunityRepository @Inject constructor(
                     )
                 }
             communityDao.insertCommunities(communities)
+            conectate.com.core.media.ProfileIdentityImageStore.warm(
+                context, activeItems.map { it.avatarUrl }, userId,
+                conectate.com.core.media.ProfileIdentityImageStore.generation(userId)
+            )
             communityDao.insertMembers(activeItems.filter { it.isMember || it.historyAccess?.canReadHistory == true }.map { item ->
                 CommunityMemberEntity(item.id.trim().lowercase(), userId,
                     if (item.isMember) item.currentUserRole ?: "member" else "former_member",
@@ -3343,7 +3348,7 @@ class CommunityRepository @Inject constructor(
 
     suspend fun getCommunityMembers(communityId: String): Result<List<CommunityMember>> = withContext(Dispatchers.IO) {
         val cleanCommunityId = communityId.trim().lowercase()
-        val cachedMembers = runCatching { loadCachedCommunityMembers(cleanCommunityId) }
+        val cachedMembers = runCatching { getCachedCommunityMembers(cleanCommunityId) }
             .getOrDefault(emptyList())
         try {
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
@@ -3406,7 +3411,7 @@ class CommunityRepository @Inject constructor(
             Result.success(enriched)
         } catch (e: Exception) {
             val local = cachedMembers.ifEmpty {
-                runCatching { loadCachedCommunityMembers(cleanCommunityId) }.getOrDefault(emptyList())
+                runCatching { getCachedCommunityMembers(cleanCommunityId) }.getOrDefault(emptyList())
             }
             if (local.isNotEmpty()) Result.success(local)
             else Result.failure(e)
@@ -3418,7 +3423,7 @@ class CommunityRepository @Inject constructor(
      * Room stores membership separately from profile data, so enrich it with
      * the account-scoped UserRepository cache for offline chat headers/lists.
      */
-    private suspend fun loadCachedCommunityMembers(communityId: String): List<CommunityMember> {
+    internal suspend fun getCachedCommunityMembers(communityId: String): List<CommunityMember> {
         val basicMembers = communityDao.getMembersFlow(communityId).first().map {
             CommunityMember(it.community_id, it.user_id, it.role, it.joined_at)
         }
@@ -3507,6 +3512,7 @@ class CommunityRepository @Inject constructor(
                 }
                 if (mergedResponse.isNotEmpty()) {
                     communityDao.insertMessages(mergedResponse.map { CommunityMessageEntity.fromDomain(it) })
+                    chatImages?.get()?.prefetchRecentCommunityMedia(mergedResponse)
                     mergedResponse.maxByOrNull { it.created_at }?.let { lastMsg ->
                         deletedMessageStore.recordSummary(currentSessionUserId(), "community", cleanId, lastMsg.id, lastMsg.created_at)
                         communityDao.updateMetadata(

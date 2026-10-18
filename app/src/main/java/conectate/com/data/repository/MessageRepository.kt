@@ -4553,6 +4553,23 @@ class MessageRepository @Inject constructor(
         }.toMap()
     }
     
+    internal suspend fun cachedChatImage(source: String, identity: conectate.com.core.media.StorageReadIdentity): String? {
+        conectate.com.core.media.StorageReadSession.requireCurrent(identity)
+        if (currentSessionUserId() != identity.accountId.trim().lowercase()) return null
+        return offlineMediaCache.resolveCachedUri(source, retain = true).also {
+            conectate.com.core.media.StorageReadSession.requireCurrent(identity)
+        }
+    }
+
+    internal fun retainLoadedChatImage(source: String, identity: conectate.com.core.media.StorageReadIdentity) {
+        val original = UbuntuStorageUrl.originalObjectUrl(source) ?: return
+        scope.launch {
+            if (conectate.com.core.media.StorageReadSession.snapshot()?.identity != identity ||
+                currentSessionUserId() != identity.accountId.trim().lowercase()) return@launch
+            mediaResolver.getPlayableUrl(original, allowOfflineMediaCache = true)
+        }
+    }
+
     suspend fun getPlayableUrl(
         path: String,
         allowOfflineMediaCache: Boolean = true

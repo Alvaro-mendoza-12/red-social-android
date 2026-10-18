@@ -6,6 +6,7 @@ import coil.request.ImageRequest
 import conectate.com.data.localfallback.UbuntuStorageUrl
 
 object MediaImageRequestFactory {
+    internal const val OFFLINE_CHAT_IMAGE = "novvin_offline_chat_image"
     const val DEFAULT_PREVIEW_WIDTH = 1080
     const val AVATAR_PREVIEW_WIDTH = 384
     const val AVATAR_PREVIEW_QUALITY = 84
@@ -55,6 +56,7 @@ object MediaImageRequestFactory {
         val cacheKey = UbuntuStorageUrl.stableCacheKey(data)
         return ImageRequest.Builder(context)
             .data(data)
+            .setParameter(OFFLINE_CHAT_IMAGE, true)
             .memoryCacheKey(cacheKey)
             .diskCacheKey(cacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
@@ -74,6 +76,7 @@ object MediaImageRequestFactory {
         val animatedKey = sourceKey?.let { "animated-source:$it" }
         return ImageRequest.Builder(context)
             .data(data)
+            .setParameter(OFFLINE_CHAT_IMAGE, true)
             .memoryCacheKey(animatedKey)
             .diskCacheKey(animatedKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
@@ -89,6 +92,7 @@ object MediaImageRequestFactory {
         val previewKey = previewCacheKey(data)
         return ImageRequest.Builder(context)
             .data(data)
+            .setParameter(OFFLINE_CHAT_IMAGE, true)
             // Enough source pixels for a 3x zoom on common phone displays without
             // decoding an untrusted 50 MP upload into hundreds of megabytes of RAM.
             .size(MAX_FULLSCREEN_IMAGE_DIMENSION_PX, MAX_FULLSCREEN_IMAGE_DIMENSION_PX)

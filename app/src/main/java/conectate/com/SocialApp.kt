@@ -50,6 +50,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
     @Inject lateinit var appMetrics: Lazy<AppMetrics>
     @Inject lateinit var telemetryExporter: Lazy<SupabaseTelemetryExporter>
     @Inject lateinit var syncManager: Lazy<SyncManager>
+    @Inject lateinit var chatImages: Lazy<conectate.com.data.repository.MessageRepository>
     @Inject lateinit var runtimeStabilityMonitor: Lazy<RuntimeStabilityMonitor>
     
     // 🔥 PRODUCTION OPTIMIZER
@@ -222,7 +223,10 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
             .diskCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .components {
-                add(conectate.com.core.media.StorageReadCoilInterceptor())
+                add(conectate.com.core.media.StorageReadCoilInterceptor(
+                    cachedImage = { source, identity -> chatImages.get().cachedChatImage(source, identity) },
+                    retainImage = { source, identity -> chatImages.get().retainLoadedChatImage(source, identity) },
+                ))
                 add(coil.decode.VideoFrameDecoder.Factory())
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     add(ImageDecoderDecoder.Factory())

@@ -292,7 +292,7 @@ class GroupChatViewModel @Inject constructor(
             // Observe group status for deletion
             launch {
                 groupRepository.getGroupFlow(groupId).collect { group ->
-                    if (group == null || group.is_deleted) {
+                    if (group?.is_deleted == true) {
                         _isDeleted.value = true
                     }
                 }
@@ -314,8 +314,8 @@ class GroupChatViewModel @Inject constructor(
             }
 
             // 1. Initial Load from Room
-            val group = groupRepository.getGroupById(groupId) ?: run {
-                _isDeleted.value = true
+            val group = kotlinx.coroutines.withTimeoutOrNull(10_000L) { groupRepository.getGroupById(groupId) } ?: run {
+                _uiState.value = GroupChatUiState.Error("Este grupo todavía no está guardado en el equipo. Conéctate para cargarlo.")
                 return@launch
             }
 
@@ -323,20 +323,18 @@ class GroupChatViewModel @Inject constructor(
             launch {
                  try {
                      groupRepository.syncGroups()
-                     groupRepository.getGroupMembers(groupId)
                  } catch (e: Exception) {
                      android.util.Log.e("GroupChatVM", "Background sync failed", e)
                  }
             }
             
-            val members = groupRepository.getGroupMembers(groupId).getOrNull() ?: emptyList()
+            val members = groupRepository.getCachedGroupMembers(groupId)
             
             // Fetch User profiles for members
             val userIds = members.map { it.user_id }
             val memberIds = userIds
-            val fetchedProfiles = userRepository.getUsersByIds(userIds).getOrNull()
-                ?.associateBy { it.id.trim().lowercase() }
-                ?: emptyMap()
+            val fetchedProfiles = userIds.mapNotNull { userRepository.getCachedUserById(it) }
+                .associateBy { it.id.trim().lowercase() }
             val memberProfiles = members.associate { member ->
                 val cleanMemberId = member.user_id.trim().lowercase()
                 val fallbackName = member.userName?.takeIf { it.isNotBlank() }
@@ -352,6 +350,24 @@ class GroupChatViewModel @Inject constructor(
             
             _myRole.value = members.find { it.user_id == userId }?.role
             
+            // The local snapshot is ready before any member/profile HTTP request.
+            _uiState.value = GroupChatUiState.Success(
+                group, groupRepository.getCachedMessages(groupId), memberProfiles, memberIds
+            )
+            launch {
+                val refreshedMembers = groupRepository.getGroupMembers(groupId).getOrDefault(members)
+                val refreshedProfiles = userRepository.getUsersByIds(refreshedMembers.map { it.user_id })
+                    .getOrDefault(emptyList()).associateBy { it.id.trim().lowercase() }
+                ensureActive()
+                if (ownerAccountId != authService.getCurrentUserId()) return@launch
+                _uiState.update { state ->
+                    if (state is GroupChatUiState.Success) state.copy(
+                        memberProfiles = state.memberProfiles + refreshedProfiles,
+                        memberIds = refreshedMembers.map { it.user_id }
+                    ) else state
+                }
+            }
+
             // 3. Observe Group and Messages from Repo
             launch {
                 groupRepository.getGroupFlow(groupId).collect { grp ->
@@ -370,13 +386,9 @@ class GroupChatViewModel @Inject constructor(
                 messageRepository.prefetchRecentGroupMedia(messages)
                 val currentGroup = groupRepository.getGroupById(groupId) ?: group
                 refreshPollStates(messages)
-                _uiState.update {
-                    GroupChatUiState.Success(
-                        group = currentGroup,
-                        messages = messages,
-                        memberProfiles = memberProfiles,
-                        memberIds = memberIds
-                    )
+                _uiState.update { state ->
+                    if (state is GroupChatUiState.Success) state.copy(group = currentGroup, messages = messages)
+                    else GroupChatUiState.Success(currentGroup, messages, memberProfiles, memberIds)
                 }
                 maybeMarkAsRead(groupId.trim().lowercase(), messages, _visibleMessageIds.value)
             }

@@ -308,12 +308,13 @@ fun CircularProfileImage(
                     )
                 }
                 AsyncImage(
-                    model = request,
+                    model = cachedIdentityImage.value ?: request,
                     contentDescription = "Profile Image",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                     onSuccess = { state ->
                         hasSuccessfulImage.value = true
+                        if (cachedIdentityImage.value != null) return@AsyncImage
                         val bitmap = state.result.drawable.toBitmap()
                         coroutineScope.launch {
                             ProfileIdentityImageStore.save(context, resolvedImageUrl, bitmap, identityAccountId, identityGeneration)

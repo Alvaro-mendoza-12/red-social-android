@@ -128,6 +128,7 @@ class GroupRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val readJournal: conectate.com.data.repository.message.VisibleReadJournal = conectate.com.data.repository.message.VisibleReadJournal(context),
     private val readSynchronizer: conectate.com.data.repository.message.VisibleReadSynchronizer = conectate.com.data.repository.message.VisibleReadSynchronizer(readJournal, localFallbackApiClient, authService),
+    private val chatImages: dagger.Lazy<MessageRepository>? = null,
 ) : GroupSyncDataSource {
     private val maxForwardTargetsPerBatch = 20
     private val deletedMessageStore by lazy { conectate.com.util.DeletedMessageStore(context) }
@@ -2312,6 +2313,7 @@ class GroupRepository @Inject constructor(
                     }
                     if (mergedResponse.isNotEmpty()) {
                         groupDao.insertMessages(mergedResponse.map { GroupMessageEntity.fromDomain(it) })
+                        chatImages?.get()?.prefetchRecentGroupMedia(mergedResponse)
                         mergedResponse.maxByOrNull { it.created_at }?.let { lastMsg ->
                         deletedMessageStore.recordSummary(currentSessionUserId(), "group", cleanId, lastMsg.id, lastMsg.created_at)
                             groupDao.updateMetadata(
@@ -2462,6 +2464,10 @@ class GroupRepository @Inject constructor(
                         )
                     )
                 }
+            )
+            conectate.com.core.media.ProfileIdentityImageStore.warm(
+                context, activeItems.map { it.avatarUrl }, userId,
+                conectate.com.core.media.ProfileIdentityImageStore.generation(userId)
             )
             groupDao.insertMembers(
                 activeIds.map { groupId ->
@@ -2741,7 +2747,7 @@ class GroupRepository @Inject constructor(
 
     suspend fun getGroupMembers(groupId: String): Result<List<GroupMember>> = withContext(Dispatchers.IO) {
         val cleanGroupId = groupId.trim().lowercase()
-        val cachedMembers = runCatching { loadCachedGroupMembers(cleanGroupId) }
+        val cachedMembers = runCatching { getCachedGroupMembers(cleanGroupId) }
             .getOrDefault(emptyList())
         try {
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
@@ -2809,7 +2815,7 @@ class GroupRepository @Inject constructor(
             Result.success(enrichedMembers)
         } catch (e: Exception) {
             val local = cachedMembers.ifEmpty {
-                runCatching { loadCachedGroupMembers(cleanGroupId) }.getOrDefault(emptyList())
+                runCatching { getCachedGroupMembers(cleanGroupId) }.getOrDefault(emptyList())
             }
             if (local.isNotEmpty()) Result.success(local)
             else Result.failure(e)
@@ -2821,7 +2827,7 @@ class GroupRepository @Inject constructor(
      * Room stores membership separately from profile data, so enrich it with
      * the account-scoped UserRepository cache for offline chat headers/lists.
      */
-    private suspend fun loadCachedGroupMembers(groupId: String): List<GroupMember> {
+    internal suspend fun getCachedGroupMembers(groupId: String): List<GroupMember> {
         val basicMembers = groupDao.getMembersFlow(groupId).first().map {
             GroupMember(it.group_id, it.user_id, it.role, it.joined_at)
         }

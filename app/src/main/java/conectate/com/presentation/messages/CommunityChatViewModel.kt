@@ -420,15 +420,15 @@ class CommunityChatViewModel @Inject constructor(
             // Observe community status for deletion
             launch {
                 communityRepository.getCommunityFlow(communityId).collect { comm: Community? ->
-                    if (comm == null || comm.is_deleted) {
+                    if (comm?.is_deleted == true) {
                         _isDeleted.value = true
                     }
                 }
             }
 
             // 1. Initial Load from Local Room
-            val community = communityRepository.getCommunityById(communityId) ?: run {
-                _isDeleted.value = true
+            val community = kotlinx.coroutines.withTimeoutOrNull(10_000L) { communityRepository.getCommunityById(communityId) } ?: run {
+                _uiState.value = CommunityChatUiState.Error("Esta comunidad todavía no está guardada en el equipo. Conéctate para cargarla.")
                 return@launch
             }
             
@@ -444,15 +444,14 @@ class CommunityChatViewModel @Inject constructor(
             val userId = authService.getCurrentUserId() ?: ""
             
             // 1. Force sync members
-            val members = communityRepository.getCommunityMembers(communityId).getOrNull() ?: emptyList()
+            val members = communityRepository.getCachedCommunityMembers(communityId)
             _myRole.value = members.find { it.user_id == userId }?.role
             
             // 2. Fetch User profiles for members to get names/emails
             val userIds = members.map { it.user_id }
             val memberIds = userIds
-            val fetchedProfiles = userRepository.getUsersByIds(userIds).getOrNull()
-                ?.associateBy { it.id.trim().lowercase() }
-                ?: emptyMap()
+            val fetchedProfiles = userIds.mapNotNull { userRepository.getCachedUserById(it) }
+                .associateBy { it.id.trim().lowercase() }
             val memberProfiles = members.associate { member ->
                 val cleanMemberId = member.user_id.trim().lowercase()
                 val fallbackName = member.userName?.takeIf { it.isNotBlank() }
@@ -466,6 +465,26 @@ class CommunityChatViewModel @Inject constructor(
                 ))
             }
             
+            // The local snapshot is ready before any member/profile HTTP request.
+            _uiState.value = CommunityChatUiState.Success(
+                community, communityRepository.getCachedMessages(communityId),
+                communityRepository.isUserMemberFlow(communityId, userId).first(),
+                memberProfiles, memberIds
+            )
+            launch {
+                val refreshedMembers = communityRepository.getCommunityMembers(communityId).getOrDefault(members)
+                val refreshedProfiles = userRepository.getUsersByIds(refreshedMembers.map { it.user_id })
+                    .getOrDefault(emptyList()).associateBy { it.id.trim().lowercase() }
+                ensureActive()
+                if (ownerAccountId != authService.getCurrentUserId()) return@launch
+                _uiState.update { state ->
+                    if (state is CommunityChatUiState.Success) state.copy(
+                        memberProfiles = state.memberProfiles + refreshedProfiles,
+                        memberIds = refreshedMembers.map { it.user_id }
+                    ) else state
+                }
+            }
+
             // 3. Observe Messages (Directly, more stable)
             val messagesFlow = communityRepository.getCommunityMessagesFlow(communityId)
             
@@ -476,7 +495,7 @@ class CommunityChatViewModel @Inject constructor(
                 membershipFlow.collect { isMember ->
                     _uiState.update { state ->
                         if (state is CommunityChatUiState.Success) {
-                            state.copy(isMember = isMember, memberProfiles = memberProfiles)
+                            state.copy(isMember = isMember)
                         } else {
                             CommunityChatUiState.Success(
                                 community = community,
@@ -516,13 +535,10 @@ class CommunityChatViewModel @Inject constructor(
                 val currentState = _uiState.value
                 val isMember = if (currentState is CommunityChatUiState.Success) currentState.isMember else false
                 val currentComm = communityRepository.getCommunityById(communityId) ?: community
-                _uiState.value = CommunityChatUiState.Success(
-                    community = currentComm,
-                    messages = messages,
-                    isMember = isMember,
-                    memberProfiles = memberProfiles,
-                    memberIds = memberIds
-                )
+                _uiState.update { state ->
+                    if (state is CommunityChatUiState.Success) state.copy(community = currentComm, messages = messages)
+                    else CommunityChatUiState.Success(currentComm, messages, isMember, memberProfiles, memberIds)
+                }
                 maybeMarkAsRead(communityId.trim().lowercase(), messages, _visibleMessageIds.value)
             }
         }

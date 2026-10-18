@@ -4,23 +4,46 @@ import coil.intercept.Interceptor
 import coil.request.CachePolicy
 import coil.request.ErrorResult
 import coil.request.ImageResult
+import coil.request.SuccessResult
+import kotlinx.coroutines.CancellationException
 import java.io.IOException
 
 /** Cache visibility cannot be inferred from a bucket or a signed/public URL label. */
-internal class StorageReadCoilInterceptor : Interceptor {
+internal class StorageReadCoilInterceptor(
+    private val cachedImage: suspend (String, StorageReadIdentity) -> String? = { _, _ -> null },
+    private val retainImage: (String, StorageReadIdentity) -> Unit = { _, _ -> },
+) : Interceptor {
     override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
         val original = chain.request
         if (!StorageReadSession.isStorageRequest(original.data.toString())) return chain.proceed(original)
+        val source = original.data.toString()
         val identity = StorageReadSession.snapshot()?.identity
+        val offlineAllowed = identity != null && !identity.accountId.startsWith("guest_") &&
+            original.parameters.value<Boolean>(MediaImageRequestFactory.OFFLINE_CHAT_IMAGE) == true
+        val cached = if (offlineAllowed) {
+            try {
+                StorageReadSession.requireCurrent(identity)
+                cachedImage(source, checkNotNull(identity)).also { StorageReadSession.requireCurrent(identity) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: IOException) { null }
+        } else null
         val request = original.newBuilder()
+            .data(cached ?: original.data)
             .memoryCachePolicy(CachePolicy.DISABLED)
             .diskCachePolicy(CachePolicy.DISABLED)
             // Remove an old account's preview before EngineInterceptor accesses placeholders.
             .placeholderMemoryCacheKey(null as String?)
             .removeHeader("Authorization")
             .build()
-        val result = chain.proceed(request)
-        return try { StorageReadSession.requireCurrent(identity); result }
+        return try {
+            StorageReadSession.requireCurrent(identity)
+            val result = chain.proceed(request)
+            StorageReadSession.requireCurrent(identity)
+            if (offlineAllowed && cached == null && result is SuccessResult) {
+                runCatching { retainImage(source, checkNotNull(identity)) }
+            }
+            result
+        }
         catch (changed: IOException) { ErrorResult(null, request, changed) }
     }
 }
