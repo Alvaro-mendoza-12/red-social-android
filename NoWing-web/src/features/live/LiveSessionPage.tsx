@@ -684,7 +684,7 @@ export function LiveSessionPage() {
       const response = await sendFallbackLiveComment(cleanLiveId, content, id)
       if (commentScope.current !== cleanLiveId) return
       commentsRevision.current++
-      setComments((current) => [...current.filter((item) => item.id !== response.comment.id), response.comment])
+      setComments((current) => [...current.filter((item) => item.id !== id && item.id !== response.comment.id), response.comment].slice(-200))
     } catch (caught) {
       if (commentScope.current === cleanLiveId) { setComments(current => current.filter(item => item.id !== id)); setCommentDraft(content); setError(friendlyError(caught, 'No se pudo enviar el comentario')) }
     } finally {

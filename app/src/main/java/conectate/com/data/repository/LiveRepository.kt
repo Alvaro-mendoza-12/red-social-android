@@ -2417,7 +2417,7 @@ class LiveRepository @Inject constructor(
             ).map { comment ->
                 if (_activeSession.value?.stream?.id == session.stream.id && authService.getCurrentUserId() == currentUserId) {
                     liveCommentRevision.incrementAndGet()
-                    _comments.update { current -> (current.filterNot { it.id == id } + comment).takeLast(200) }
+                    _comments.update { current -> (current.filterNot { it.id == id || it.id == comment.id } + comment).takeLast(200) }
                     sessionCommentCount += 1
                 }
             }.onFailure {
@@ -3885,7 +3885,8 @@ class LiveRepository @Inject constructor(
             val owner = authService.getCurrentUserId()
             val channel = "live-comments:$liveId"
             commentsJob = scope.launch {
-                launch {
+                val refresh = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+                val notifications = launch {
                     ubuntuRealtimeClient.events.onSubscription {
                         val token = localAccessToken()
                         if (token.isNotBlank() && owner == authService.getCurrentUserId()) {
@@ -3895,10 +3896,12 @@ class LiveRepository @Inject constructor(
                     }.collect { event ->
                         if (event.channel != channel || owner != authService.getCurrentUserId() || _activeSession.value?.stream?.id != liveId) return@collect
                         when (event.event) {
+                            "subscription_ready" -> refresh.trySend(Unit)
                             "live_comment_created" -> {
                                 val comment = event.payload["comment"]?.let { runCatching {
                                     supabaseConfig.json.decodeFromJsonElement<LiveComment>(it)
-                                }.getOrNull() } ?: return@collect
+                                }.getOrNull() }
+                                if (comment == null) { refresh.trySend(Unit); return@collect }
                                 if (comment.liveId != liveId || comment.id in removedLiveCommentIds) return@collect
                                 liveCommentRevision.incrementAndGet()
                                 _comments.update { current -> (current.filterNot { it.id == comment.id } + comment).takeLast(200) }
@@ -3924,9 +3927,11 @@ class LiveRepository @Inject constructor(
                                     }
                                 }
                             }
-                        delay(8_000L)
+                        withTimeoutOrNull(8_000L) { refresh.receive() }
                     }
                 } finally {
+                    notifications.cancel()
+                    refresh.close()
                     if (_activeSession.value?.stream?.id != liveId) ubuntuRealtimeClient.unsubscribe(channel)
                 }
             }
