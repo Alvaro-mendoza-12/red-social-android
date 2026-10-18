@@ -278,9 +278,11 @@ test('historical AV backfill: isolated PostgreSQL, real files, synthetic scanner
       {name:'fake.txt',bytes:Buffer.from([0x4d,0x5a,1,2,3,4]),type:'text/plain',code:'EXECUTABLE_UPLOAD_BLOCKED'}]
     for(const sample of cases){const f=await fixture(t),object=await f.add(sample);await f.pool.query('UPDATE fallback_storage_objects SET content_type=$2 WHERE id=$1',[object.id,sample.type]);const result=await f.apply(await f.plan());assert.equal(result.results[0].code,sample.code);assert.equal((await f.row(object.id)).scan_state,'legacy_unverified');assert.equal(f.scans(),0);assert.equal((await f.reservations()).length,0);assert.deepEqual(await fs.promises.readFile(object.source),sample.bytes)}
   })
-  await t.test('unknown bucket is blocked and messaging byte limit cannot be widened to500MiB',async t=>{
+  await t.test('unknown bucket is blocked and messaging image limit remains 60MiB',async t=>{
     const f=await fixture(t),object=await f.add();await f.pool.query("UPDATE fallback_storage_objects SET bucket_id='unknown-audit' WHERE id=$1",[object.id]);const unknown=await f.plan();assert.equal(unknown.plan.entries.length,0);assert.equal(unknown.plan.blocked[0].code,'BUCKET_NOT_ALLOWED');assert.equal((await f.row(object.id)).scan_state,'legacy_unverified')
-    await f.pool.query("UPDATE fallback_storage_objects SET bucket_id='chat-media',size_bytes=$2 WHERE id=$1",[object.id,60*1024**2+1]);const handle=await fs.promises.open(object.source,'r+');await handle.truncate(60*1024**2+1);await handle.close();const result=await f.apply(await f.plan());assert.equal(result.results[0].code,'UPLOAD_TOO_LARGE');assert.equal((await f.row(object.id)).scan_state,'legacy_unverified');assert.equal(f.scans(),0);assert.equal((await f.reservations()).length,0)
+    // Documents now permit 500MiB. Use an actual image signature to exercise the
+    // separate image budget instead of zero-padding a text file into invalid media.
+    const image=await f.add({name:'oversized.png',bytes:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64')});await f.pool.query("UPDATE fallback_storage_objects SET content_type='image/png',size_bytes=$2 WHERE id=$1",[image.id,60*1024**2+1]);const handle=await fs.promises.open(image.source,'r+');await handle.truncate(60*1024**2+1);await handle.close();const result=await f.apply(await f.plan());assert.equal(result.results[0].code,'UPLOAD_TOO_LARGE');assert.equal((await f.row(image.id)).scan_state,'legacy_unverified');assert.equal(f.scans(),0);assert.equal((await f.reservations()).length,0)
   })
   await t.test('file and directory fsync failures never commit clean and preserve original source',async t=>{
     for(const stage of ['copy','revision','journal']) {
