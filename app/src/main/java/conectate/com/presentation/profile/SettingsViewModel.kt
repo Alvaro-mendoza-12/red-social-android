@@ -571,17 +571,21 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun revokeWebSession(sessionId: String) {
+        if (_webSessionsLoading.value) return
+        _webSessionsLoading.value = true
         viewModelScope.launch {
             val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
             if (accessToken.isBlank()) {
                 _webSessionMessage.value = "Inicia sesión nuevamente para cerrar sesiones web."
+                _webSessionsLoading.value = false
                 return@launch
             }
             _webSessionsLoading.value = true
             val result = webLoginPairingRepository.revokeWebSession(sessionId, accessToken)
             if (result.isSuccess) {
                 _webSessionMessage.value = "Sesión web cerrada."
-                loadWebSessions()
+                _webSessions.value = _webSessions.value.filterNot { it.sessionId == sessionId }
+                _webSessionsLoading.value = false
             } else {
                 _webSessionsLoading.value = false
                 _webSessionMessage.value = result.exceptionOrNull()?.message ?: "No se pudo cerrar la sesión web."
@@ -590,10 +594,13 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun revokeAllWebSessions() {
+        if (_webSessionsLoading.value) return
+        _webSessionsLoading.value = true
         viewModelScope.launch {
             val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
             if (accessToken.isBlank()) {
                 _webSessionMessage.value = "Inicia sesión nuevamente para cerrar sesiones web."
+                _webSessionsLoading.value = false
                 return@launch
             }
             _webSessionsLoading.value = true
@@ -602,7 +609,8 @@ class SettingsViewModel @Inject constructor(
                 val count = result.getOrDefault(0)
                 _webSessionMessage.value =
                     if (count == 1) "Se cerró 1 sesión web." else "Se cerraron $count sesiones web."
-                loadWebSessions()
+                _webSessions.value = emptyList()
+                _webSessionsLoading.value = false
             } else {
                 _webSessionsLoading.value = false
                 _webSessionMessage.value = result.exceptionOrNull()?.message ?: "No se pudieron cerrar las sesiones web."

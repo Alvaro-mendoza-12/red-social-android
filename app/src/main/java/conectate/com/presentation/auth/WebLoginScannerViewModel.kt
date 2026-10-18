@@ -18,6 +18,7 @@ import javax.inject.Inject
 data class WebLoginScannerUiState(
     val isLoading: Boolean = false,
     val isSubmitting: Boolean = false,
+    val linkAfterScan: Boolean = false,
     val currentUserId: String? = null,
     val currentUserEmail: String? = null,
     val storedAccounts: List<StoredAccountSession> = emptyList(),
@@ -129,7 +130,8 @@ class WebLoginScannerViewModel @Inject constructor(
         }
     }
 
-    fun submitPayload(rawPayload: String) {
+    fun submitPayload(rawPayload: String, linkAfterScan: Boolean = false) {
+        if (uiState.value.isLoading || uiState.value.isSubmitting) return
         val parsed = WebLoginQrPayloadParser.parse(rawPayload)
         if (parsed == null) {
             _uiState.update {
@@ -144,6 +146,7 @@ class WebLoginScannerViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     isLoading = true,
+                    linkAfterScan = linkAfterScan,
                     lastPayload = rawPayload.trim(),
                     resolvedPairId = parsed.pairId,
                     resolvedNonce = parsed.nonce,
@@ -176,6 +179,7 @@ class WebLoginScannerViewModel @Inject constructor(
                     }
                 )
             }
+            if (linkAfterScan && result.getOrNull()?.status == "pending") approvePairing()
         }
     }
 
@@ -192,6 +196,7 @@ class WebLoginScannerViewModel @Inject constructor(
     }
 
     fun approvePairing() {
+        if (uiState.value.isSubmitting) return
         viewModelScope.launch {
             val pairing = uiState.value.pairing
             if (pairing == null) {
@@ -254,7 +259,7 @@ class WebLoginScannerViewModel @Inject constructor(
                         state.copy(
                             isSubmitting = false,
                             pairing = updated,
-                            infoMessage = "Acceso web aprobado correctamente."
+                            infoMessage = "Dispositivo vinculado. Ya puedes usar Novvin Web."
                         )
                     },
                     onFailure = { error ->

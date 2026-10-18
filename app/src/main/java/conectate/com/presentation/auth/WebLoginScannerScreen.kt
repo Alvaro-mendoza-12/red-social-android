@@ -89,7 +89,7 @@ fun WebLoginScannerScreen(
         val contents = result.contents?.trim().orEmpty()
         if (contents.isNotBlank()) {
             manualPayload = contents
-            viewModel.submitPayload(contents)
+            viewModel.submitPayload(contents, linkAfterScan = true)
         }
     }
 
@@ -171,6 +171,7 @@ fun WebLoginScannerScreen(
             }
 
             ApprovalAccountCard(
+                enabled = !uiState.isLoading && !uiState.isSubmitting,
                 storedAccounts = uiState.storedAccounts,
                 currentUserId = uiState.currentUserId,
                 currentUserEmail = uiState.currentUserEmail,
@@ -184,7 +185,7 @@ fun WebLoginScannerScreen(
                 onManualPayloadChange = { manualPayload = it },
                 onOpenScanner = ::requestScan,
                 onSubmitManualPayload = {
-                    viewModel.submitPayload(manualPayload)
+                    viewModel.submitPayload(manualPayload, linkAfterScan = true)
                 },
                 isBusy = uiState.isLoading || uiState.isSubmitting
             )
@@ -207,12 +208,12 @@ fun WebLoginScannerScreen(
                 )
             }
 
-            if (uiState.isLoading) {
+            if (uiState.isLoading || uiState.isSubmitting) {
                 LoadingCard()
             }
 
             uiState.pairing?.let { pairing ->
-                PairingStatusCard(
+                if (!uiState.linkAfterScan || pairing.status !in setOf("pending", "approved", "consumed")) PairingStatusCard(
                     deviceLabel = pairing.deviceLabel,
                     status = pairing.status,
                     approvedByEmail = pairing.approvedByEmail,
@@ -222,7 +223,7 @@ fun WebLoginScannerScreen(
                     consumedAt = pairing.consumedAt
                 )
 
-                if (pairing.status == "pending") {
+                if (pairing.status == "pending" && (!uiState.linkAfterScan || uiState.errorMessage != null)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -297,7 +298,7 @@ private fun HeroCard() {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Escanea el QR desde la APK, revisa qué dispositivo pide acceso y apruébalo con la cuenta correcta. También puedes pegar el enlace si el escáner no está disponible.",
+                text = "Abre Novvin Web en tu computadora y escanea su QR. Se vinculará automáticamente con la cuenta que elegiste.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -338,6 +339,7 @@ private fun EmptyAccountState(
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun ApprovalAccountCard(
+    enabled: Boolean,
     storedAccounts: List<StoredAccountSession>,
     currentUserId: String?,
     currentUserEmail: String?,
@@ -369,14 +371,14 @@ private fun ApprovalAccountCard(
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Cuenta que aprobará el acceso",
+                    text = "Cuenta para vincular",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
 
             Text(
-                text = "Puedes usar la sesión activa o una cuenta guardada. Esto evita aprobar el navegador con la cuenta equivocada.",
+                text = "Esta es la cuenta que usarás en la computadora.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -387,6 +389,7 @@ private fun ApprovalAccountCard(
             ) {
                 if (!currentNormalizedEmail.isNullOrBlank() || !currentNormalizedId.isNullOrBlank()) {
                     FilterChip(
+                        enabled = enabled,
                         selected = selectedAccountId == null,
                         onClick = onSelectCurrentSession,
                         label = {
@@ -406,6 +409,7 @@ private fun ApprovalAccountCard(
 
                 filteredStoredAccounts.forEach { account ->
                     FilterChip(
+                        enabled = enabled,
                         selected = selectedAccountId == account.id,
                         onClick = { onSelectStoredAccount(account.id) },
                         label = {
@@ -481,7 +485,7 @@ private fun ScannerActionsCard(
                     contentDescription = null
                 )
                 Spacer(modifier = Modifier.size(10.dp))
-                Text("Validar contenido")
+                Text("Vincular dispositivo")
             }
         }
     }
@@ -527,7 +531,7 @@ private fun LoadingCard() {
         ) {
             CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
             Text(
-                text = "Validando QR y revisando el estado del acceso web...",
+                text = "QR escaneado. Vinculando dispositivo…",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
