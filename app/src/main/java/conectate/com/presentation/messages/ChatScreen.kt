@@ -1686,6 +1686,7 @@ fun ChatScreen(
                     // Input Field with mobile keyboard support
                     TextField(
                         value = messageText,
+                        visualTransformation = conectate.com.presentation.components.rememberChatSpellCheck(messageText),
                         onValueChange = { viewModel.updateMessageText(it) },
                         modifier = Modifier
                             .weight(1f)
@@ -1708,7 +1709,7 @@ fun ChatScreen(
                             }
                         },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, autoCorrectEnabled = true,
                             imeAction = androidx.compose.ui.text.input.ImeAction.Send
                         ),
                         keyboardActions = androidx.compose.foundation.text.KeyboardActions(

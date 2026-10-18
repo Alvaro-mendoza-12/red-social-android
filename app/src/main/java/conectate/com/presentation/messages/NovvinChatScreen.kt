@@ -192,6 +192,7 @@ fun NovvinChatScreen(
                 ) {
                     OutlinedTextField(
                         value = draft,
+                        visualTransformation = conectate.com.presentation.components.rememberChatSpellCheck(draft),
                         onValueChange = { draft = it.take(1000) },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Escribe a Novvin") },
@@ -199,7 +200,7 @@ fun NovvinChatScreen(
                         minLines = 1,
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Sentences,
+                            capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true,
                             imeAction = ImeAction.Send
                         ),
                         keyboardActions = KeyboardActions(onSend = { submitDraft() }),

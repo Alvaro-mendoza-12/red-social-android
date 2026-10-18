@@ -1,4 +1,5 @@
-import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isStickerImage } from '../../core/chatClipboard'
+import { copyChatMessage } from '../../core/media/copyChatMessage'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, normalizeClipboardFiles, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isStickerImage } from '../../core/chatClipboard'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
@@ -752,7 +753,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       event.preventDefault()
       void (async () => {
         const pastedFiles = files.length
-          ? files
+          ? await normalizeClipboardFiles(files)
           : await readClipboardImages(event.clipboardData, navigator.clipboard)
         if (!pastedFiles.length) {
           setError('WhatsApp no entregó la imagen al portapapeles. Usa «Copiar imagen» en el sticker y vuelve a pegarlo.')
@@ -2300,7 +2301,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                 {!message.deletedForAll ? (
                   <MessageOptionsMenu mine={mine}>
                     <button className="mini-action-btn" type="button" onClick={() => { setSelectingMessages(true); setSelectedMessageIds(new Set([message.id])) }}>Seleccionar mensaje</button>
-                    <button className="mini-action-btn" type="button" onClick={() => void navigator.clipboard.writeText(message.content || message.mediaUrl).catch(() => setError('No se pudo copiar el mensaje.'))}>Copiar</button>
+                    <button className="mini-action-btn" type="button" onClick={() => void copyChatMessage(message.content, message.mediaUrl, message.contentType).catch(() => setError('No se pudo copiar. Permite el acceso al portapapeles o descarga la imagen.'))}>Copiar</button>
                     {message.mediaUrl && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={fileNameFromUrl(message.mediaUrl)} /> : null}
                     <MessageReactionBar onReact={emoji=>void toggleReaction(message.id,emoji)}/>
                     <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
@@ -2507,6 +2508,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
 
         <input
           className="text-input chat-input-field"
+          lang="es" spellCheck={true} autoCorrect="on" autoCapitalize="sentences"
           disabled={Boolean(editingMessageId) && sending}
           placeholder={editingMessageId ? 'Edita tu mensaje...' : 'Escribe un mensaje...'}
           value={composerText}

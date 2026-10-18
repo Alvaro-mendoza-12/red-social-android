@@ -687,7 +687,13 @@ fun MessageBubble(
                          )
                     }
                 } else {
+                    var mediaRequestAttempt by remember(message.media_url) { mutableStateOf(0) }
+                    var mediaRequestFailed by remember(message.media_url, mediaRequestAttempt) { mutableStateOf(false) }
+                    LaunchedEffect(mediaRequestFailed, mediaRequestAttempt) {
+                        if (mediaRequestFailed && mediaRequestAttempt == 0) { kotlinx.coroutines.delay(350); mediaRequestAttempt++ }
+                    }
                     val mediaPreviewRequest = remember(
+                        mediaRequestAttempt,
                         resolvedUrl,
                         message.media_url,
                         message.content_type
@@ -696,7 +702,9 @@ fun MessageBubble(
                         if (message.content_type == "sticker" || message.content_type == "gif") {
                             MediaImageRequestFactory.animated(context, source)
                         } else {
-                            MediaImageRequestFactory.preview(context, source)
+                            (if (mediaRequestAttempt == 0) MediaImageRequestFactory.preview(context, source)
+                            else MediaImageRequestFactory.fullScreen(context, source))
+                                ?.newBuilder()?.setParameter("chat_image_retry", mediaRequestAttempt)?.build()
                         }
                     }
                     when (message.content_type) {
@@ -750,6 +758,7 @@ fun MessageBubble(
                         Box(modifier = Modifier.clip(RoundedCornerShape(8.dp))) {
                             SubcomposeAsyncImage(
                                 model = mediaPreviewRequest,
+                                onError = { mediaRequestFailed = true },
                                 contentDescription = "Imagen",
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -762,7 +771,7 @@ fun MessageBubble(
                                     }
                                 },
                                 error = {
-                                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                                    Box(modifier = Modifier.fillMaxWidth().height(200.dp).clickable(onClickLabel = "Volver a cargar imagen") { mediaRequestAttempt++ }, contentAlignment = Alignment.Center) {
                                         Icon(
                                             imageVector = Icons.Default.BrokenImage,
                                             contentDescription = "Error al cargar imagen",

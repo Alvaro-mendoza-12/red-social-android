@@ -29,6 +29,17 @@ const perfil = bot.answer('como cambio mi foto de perfil')
 assert.strictEqual(perfil.intent, 'perfil_foto')
 assert.ok(perfil.confidence > 0.3)
 
+for (const message of ['¿Cómo vinculo la web con mi teléfono?', 'Quiero conectar Novvin web con mi celular', 'Como sincronizo mi cuenta con el navegador']) {
+  const linked = bot.answer(message)
+  assert.strictEqual(linked.intent, 'vincular_web')
+  assert.match(linked.answer, /Vincular Novvin Web por QR/)
+  assert.doesNotMatch(linked.answer, /Retira correos/)
+}
+const { classifyGeneralRisk } = require('../src/safety-policy')
+assert.strictEqual(classifyGeneralRisk('¿Cómo cambio mi correo en mi perfil?'), null)
+assert.strictEqual(classifyGeneralRisk('Mi teléfono es +51 987 654 321'), 'personal_data')
+assert.strictEqual(classifyGeneralRisk('mi correo es persona@example.com'), 'personal_data')
+
 const videos = bot.answer('quiero subir un video')
 assert.strictEqual(videos.intent, 'videos_publicar')
 

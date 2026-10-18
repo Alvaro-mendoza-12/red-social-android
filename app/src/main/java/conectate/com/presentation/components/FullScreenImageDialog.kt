@@ -529,7 +529,8 @@ internal fun ZoomableImageViewer(
             .size(MediaImageRequestFactory.MAX_FULLSCREEN_IMAGE_DIMENSION_PX, MediaImageRequestFactory.MAX_FULLSCREEN_IMAGE_DIMENSION_PX)
             .memoryCachePolicy(coil.request.CachePolicy.DISABLED).diskCachePolicy(coil.request.CachePolicy.DISABLED)
             .networkCachePolicy(coil.request.CachePolicy.DISABLED).crossfade(false).build()
-        else MediaImageRequestFactory.fullScreen(context, item.url)
+        else MediaImageRequestFactory.fullScreen(context, item.url)?.newBuilder()
+            ?.setParameter("fullscreen_retry", requestRevision)?.build()
     }
     val previewRequest = remember(context, item.url, secureContent) {
         if (secureContent) null else MediaImageRequestFactory.preview(context, item.url)

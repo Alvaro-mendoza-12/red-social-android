@@ -20,7 +20,10 @@ export function MessageOptionsMenu({mine,children}:{mine:boolean;children:ReactN
         if(!menu.open)return
         const area=menu.closest('.chat-thread')?.getBoundingClientRect(),top=(area?.top||0)+8,bottom=Math.min(area?.bottom||innerHeight,innerHeight)-8
         popover.style.maxHeight=Math.max(100,bottom-top)+'px'
-        const rect=popover.getBoundingClientRect(),anchor=menu.getBoundingClientRect(),dx=rect.left<8?8-rect.left:rect.right>innerWidth-8?innerWidth-8-rect.right:0
+        const left=Math.max(8,(area?.left||0)+8),right=Math.min(innerWidth-8,(area?.right||innerWidth)-8)
+        popover.style.minWidth='0';popover.style.width='236px'
+        popover.style.maxWidth=Math.max(0,right-left)+'px'
+        const rect=popover.getBoundingClientRect(),anchor=menu.getBoundingClientRect(),dx=rect.left<left?left-rect.left:rect.right>right?right-rect.right:0
         const dy=rect.bottom>bottom?Math.max(top-rect.top,anchor.top-rect.height-6-rect.top):0
         popover.style.transform=`translate(${dx}px,${dy}px)`
       })}

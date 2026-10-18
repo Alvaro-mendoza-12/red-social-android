@@ -14,6 +14,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /**
@@ -45,6 +47,8 @@ internal class ChatMediaOfflineCache(
 ) {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val writeMutex = Mutex()
+    // A long video must not leave every image and sticker waiting behind it.
+    private val downloadSlots = Semaphore(3)
     private val fileLock = Any()
     private val accountEpochs = mutableMapOf<String, Long>()
     private val inFlight = mutableMapOf<String, DownloadWork>()
@@ -169,7 +173,7 @@ internal class ChatMediaOfflineCache(
     }
 
     private suspend fun downloadAndStore(work: DownloadWork, remoteUrl: String) {
-        writeMutex.withLock {
+        downloadSlots.withPermit {
             synchronized(fileLock) {
                 if (!isCurrent(work) || resolveEntry(work.accountId, work.sourceKey, work.retain) != null) return
             }

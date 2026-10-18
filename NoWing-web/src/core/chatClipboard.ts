@@ -11,6 +11,24 @@ function normalizeImageFile(file: File): File | null {
   return type === file.type ? file : new File([file], file.name || `sticker.${type.split('/')[1]}`, { type, lastModified: file.lastModified })
 }
 
+/** Desktop clipboard files sometimes have neither an extension nor a useful MIME. */
+export async function normalizeClipboardFiles(files: File[]): Promise<File[]> {
+  return Promise.all(files.map(async file => {
+    try {
+      const bytes = new Uint8Array(await file.slice(0, 16).arrayBuffer())
+      const ascii = (start: number, end: number) => String.fromCharCode(...bytes.slice(start, end))
+      const mime = ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP' ? 'image/webp'
+        : bytes[0] === 137 && ascii(1, 4) === 'PNG' && bytes[4] === 13 && bytes[5] === 10 ? 'image/png'
+          : ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a' ? 'image/gif'
+            : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 ? 'image/jpeg' : ''
+      if (!mime) return normalizeImageFile(file) ?? file
+      const extension = mime.split('/')[1].replace('jpeg', 'jpg')
+      const name = /\.(?:png|jpe?g|webp|gif)$/i.test(file.name) ? file.name : `${file.name || 'clipboard-image'}.${extension}`
+      return new File([file], name, { type: mime, lastModified: file.lastModified })
+    } catch { return normalizeImageFile(file) ?? file }
+  }))
+}
+
 function fileFromDataUrl(value: string, index: number): File | null {
   const match = value.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,([a-z\d+/=\s]+)$/i)
   if (!match || !SUPPORTED_IMAGE_MIMES.has(match[1].toLowerCase())) return null
@@ -89,7 +107,7 @@ export function clipboardMayContainImage(data: DataTransfer | null): boolean {
  */
 export async function readClipboardImages(data: DataTransfer | null, clipboard: Pick<Clipboard, 'read'> | undefined): Promise<File[]> {
   const direct = clipboardFilesFrom(data)
-  if (direct.length || !clipboardMayContainImage(data) || !clipboard?.read) return direct
+  if (direct.length || !clipboardMayContainImage(data) || !clipboard?.read) return normalizeClipboardFiles(direct)
   try {
     const items = await clipboard.read()
     const files: File[] = []

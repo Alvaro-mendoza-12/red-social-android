@@ -1,4 +1,4 @@
-import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, pastedAsSticker, canPasteIntoChat, isStickerImage, isCopiedStickerImage } from '../../core/chatClipboard'
+import { normalizeClipboardFiles, clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, pastedAsSticker, canPasteIntoChat, isStickerImage, isCopiedStickerImage } from '../../core/chatClipboard'
 
 test('accepts file data and items-only clipboard payloads without duplicates', () => {
   const file = new File(['sticker'], 'sticker.webp', { type: 'image/webp' })
@@ -70,4 +70,21 @@ test('reads sticker semantics from clipboard metadata even when its file became 
   const data = { types: ['text/html'], getData: () => '<img alt="Sticker" src="blob:https://web.whatsapp.com/example">' } as unknown as DataTransfer
   expect(clipboardHasStickerHint(data)).toBe(true)
   expect(clipboardHasStickerHint({ ...data, getData: () => '<img alt="Foto" src="https://example.com/photo.jpg">' } as unknown as DataTransfer)).toBe(false)
+})
+
+test('recognizes extensionless WhatsApp sticker files from their bytes', async () => {
+  const file = new File(['image'], 'WhatsApp Sticker 2026-10-17 at 4.56.51 PM', { type: 'application/octet-stream' })
+  const bytes = Uint8Array.from([82, 73, 70, 70, 20, 0, 0, 0, 87, 69, 66, 80, 86, 80, 56, 32])
+  jest.spyOn(file, 'slice').mockReturnValue({ arrayBuffer: async () => bytes.buffer } as Blob)
+  const [normalized] = await normalizeClipboardFiles([file])
+  expect(normalized.type).toBe('image/webp')
+  expect(normalized.name).toBe(`${file.name}.webp`)
+  expect(pastedAsSticker(normalized, false)).toBe(true)
+  const data = { files: [file], items: [], types: ['Files'] } as unknown as DataTransfer
+  expect((await readClipboardImages(data, undefined))[0].type).toBe('image/webp')
+})
+
+test('does not rename an ordinary document with an unknown type', async () => {
+  const document = new File(['text'], 'notas', { type: 'application/octet-stream' })
+  expect(await normalizeClipboardFiles([document])).toEqual([document])
 })

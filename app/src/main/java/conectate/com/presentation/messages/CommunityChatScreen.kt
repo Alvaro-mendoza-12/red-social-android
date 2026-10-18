@@ -934,7 +934,7 @@ fun CommunityChatScreen(
                             StickerButton(onClick = stickerKeyboardPanel.toggle, showingStickers = showStickerCatalogDialog)
                             TextField(
                                 value = mentionDraft,
-                                visualTransformation = conectate.com.presentation.components.mentionInputTransformation,
+                                visualTransformation = conectate.com.presentation.components.rememberChatSpellCheck(mentionDraft.text, conectate.com.presentation.components.mentionInputTransformation),
                                 onValueChange = { mentionDraft = it; viewModel.updateMessageText(it.text) },
                                 modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
                                     .focusRequester(stickerKeyboardPanel.inputFocusRequester)
@@ -943,7 +943,7 @@ fun CommunityChatScreen(
                                 placeholder = { Text("Mensaje") },
                                 maxLines = 4,
                                 shape = RoundedCornerShape(12.dp),
-                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, autoCorrectEnabled = true, imeAction = androidx.compose.ui.text.input.ImeAction.Send),
                                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { if (messageText.isNotBlank()) { if (editingMessage != null) viewModel.confirmEditMessage() else viewModel.sendMessage() } }),
                                 colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent),
                                 trailingIcon = {

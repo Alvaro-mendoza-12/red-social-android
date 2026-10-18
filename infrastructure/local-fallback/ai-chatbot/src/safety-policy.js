@@ -27,7 +27,7 @@ function classifyGeneralRisk(value) {
     /(?:Bearer\s+)?(?:eyJ|sk-|pk_)[A-Za-z0-9._-]{20,}/i.test(raw) ||
     /\b[0-9a-f]{32,}\b/i.test(raw) ||
     /(^|[^\w])(\+?\d[\d\s().-]{7,}\d)\b/.test(raw) ||
-    /\b(mi direccion|direccion particular|direccion de casa|domicilio|mi telefono|mi correo|cedula|documento de identidad|pasaporte|datos personales)\b/.test(normalized)
+    /\b(?:mi direccion|direccion particular|direccion de casa|domicilio)\s+(?:es\s+)?(?:calle|avenida|av|jiron|jr|carrera|cra)\b/.test(normalized)
   if (containsPersonalData) return 'personal_data'
   if (/\b(salud|medicos?|medicas?|medicina|medicamentos?|pastillas?|remedios?|dosis|sintomas?|diagnosticos?|enfermedades?|dolor|fiebre|tratamientos?|terapia|psicologos?|psicologas?|psiquiatras?|suicidio|autolesion|embarazo|urgencias?)\b/.test(normalized)) return 'health'
   const scientificLaw = /\bley(?:es)? de (?:gravedad|movimiento|termodinamica|conservacion|newton|ohm)\b/.test(normalized)

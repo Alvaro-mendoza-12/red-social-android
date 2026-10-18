@@ -22,6 +22,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -315,8 +319,15 @@ fun MediaGridItem(
             ?: rawUrl
     }
     val displayUrl = UbuntuStorageUrl.rewrite(resolvedUrl)
-    val imageRequest = remember(context, displayUrl) {
-        MediaImageRequestFactory.preview(context, displayUrl)
+    var requestAttempt by remember(displayUrl) { mutableIntStateOf(0) }
+    var requestFailed by remember(displayUrl, requestAttempt) { mutableStateOf(false) }
+    val imageRequest = remember(context, displayUrl, requestAttempt) {
+        val request = if (requestAttempt == 0) MediaImageRequestFactory.preview(context, displayUrl)
+            else MediaImageRequestFactory.fullScreen(context, displayUrl)
+        request?.newBuilder()?.setParameter("chat_image_retry", requestAttempt)?.build()
+    }
+    LaunchedEffect(requestFailed, requestAttempt) {
+        if (requestFailed && requestAttempt == 0) { kotlinx.coroutines.delay(350); requestAttempt++ }
     }
     val normalizedType = message.content_type.trim().lowercase()
 
@@ -327,6 +338,7 @@ fun MediaGridItem(
     ) {
         SubcomposeAsyncImage(
             model = imageRequest,
+            onError = { requestFailed = true },
             contentDescription = when {
                 isVideoMediaType(normalizedType) -> "Video del chat"
                 normalizedType == "gif" || normalizedType == "image/gif" -> "GIF del chat"
@@ -349,10 +361,10 @@ fun MediaGridItem(
                 }
             },
             error = {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxSize().clickable(onClickLabel = "Volver a cargar imagen") { requestAttempt++ }, contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.BrokenImage,
-                        contentDescription = "No se pudo cargar el medio",
+                        contentDescription = "Reintentar carga de imagen",
                         tint = Color.White.copy(alpha = 0.78f),
                         modifier = Modifier.size(30.dp)
                     )

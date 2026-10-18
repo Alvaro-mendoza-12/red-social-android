@@ -1,4 +1,5 @@
-import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isStickerImage } from '../../core/chatClipboard'
+import { copyChatMessage } from '../../core/media/copyChatMessage'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, normalizeClipboardFiles, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isStickerImage } from '../../core/chatClipboard'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
@@ -576,7 +577,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       event.preventDefault()
       void (async () => {
         const pastedFiles = files.length
-          ? files
+          ? await normalizeClipboardFiles(files)
           : await readClipboardImages(event.clipboardData, navigator.clipboard)
         if (!pastedFiles.length) {
           setError('WhatsApp no entregó la imagen al portapapeles. Usa «Copiar imagen» en el sticker y vuelve a pegarlo.')
@@ -1595,6 +1596,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                 ) : null}
                 {!message.deletedForAll ? (
                   <MessageOptionsMenu mine={mine}>
+                    <button className="mini-action-btn" type="button" onClick={() => void copyChatMessage(message.content, message.mediaUrl, message.contentType).catch(() => setError('No se pudo copiar. Permite el acceso al portapapeles o descarga la imagen.'))}>Copiar</button>
                     {message.mediaUrl && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={message.content || 'archivo'} /> : null}
                     <MessageReactionBar onReact={emoji=>void toggleReaction(message.id,emoji)}/>
                     <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
@@ -1820,6 +1822,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         </button>
         <input
           className="text-input chat-input-field"
+          lang="es" spellCheck={true} autoCorrect="on" autoCapitalize="sentences"
           disabled={Boolean(editingMessageId) && sending}
           placeholder={editingMessageId ? 'Edita tu mensaje...' : `Escribe en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}
           value={editingMessageId ? editingDraft : draft}

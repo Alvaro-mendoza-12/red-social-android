@@ -316,6 +316,18 @@ class ConectateChatbot {
       }
     }
 
+    const normalizedQuestion = normalizeText(message)
+    if (/\b(web|navegador|computadora|ordenador|laptop)\b/.test(normalizedQuestion) &&
+        /\b(vincul\w*|conect\w*|sincroniz\w*|qr)\b/.test(normalizedQuestion) &&
+        /\b(telefono|celular|movil|android|cuenta|qr|novvin)\b/.test(normalizedQuestion)) {
+      return {
+        answer: 'Para vincular Novvin Web con tu teléfono:\n\n1. Abre Novvin Web y elige el inicio de sesión con QR.\n2. En la app del teléfono, entra a Perfil → Ajustes → Novvin Web.\n3. Pulsa «Vincular Novvin Web por QR», escanea el código de la computadora y confirma la cuenta.\n\nSi el QR caducó, genera uno nuevo en la web. No compartas el código ni lo apruebes en una computadora que no reconozcas.',
+        intent: 'vincular_web', confidence: 1, suggestions: ['¿Dónde cierro una sesión web?'],
+        source: 'conectate-first-party-hybrid-v5', learnedFromUsers: false,
+        contextual: false, guideUsed: true, responseMode: 'guided', matchedTokens: matchedTokenCount,
+        routingReason: 'web_link_help',
+      }
+    }
     const knowledgeResponse = this.knowledgeEngine.answer(contextualMessage, context)
     const hasDomainAnchor = /\b(conectate|novvin|perfil|cuenta|social|publicacion|post|momento|historia|video|clip|mensaje|chat|grupo|comunidad|voz|notificacion|android|seguidor|seguidores)\b/i.test(
       normalizeText(contextualMessage),
