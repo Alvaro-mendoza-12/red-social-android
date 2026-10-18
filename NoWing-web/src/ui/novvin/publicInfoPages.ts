@@ -1,4 +1,32 @@
 export const publicInfoPages = {
+  '/que-es-novvin': {
+    title: 'Qué es Novvin: red social para Android y navegador',
+    description: 'Novvin es una red social con mensajes, videos, publicaciones, grupos, comunidades y salas de voz. Conoce su app para Android y el acceso con Novvin Web.',
+    heading: 'Qué es Novvin y para qué sirve.',
+    sections: [
+      { heading: 'Una red social para conversar y compartir', body: 'Novvin reúne mensajes privados, grupos, comunidades, videos y publicaciones sociales en una misma cuenta. Puedes conversar con otras personas, compartir fotos y archivos, seguir creadores y participar en espacios relacionados con tus intereses.' },
+      { heading: 'Novvin para Android y Novvin Web', body: 'La aplicación móvil está disponible en Google Play con el nombre Novvin y el identificador conectate.com. Novvin Web es el acceso desde el navegador de una computadora, tablet o teléfono. Usa la misma cuenta; para entrar a la web no necesitas instalar un programa de escritorio.' },
+      { heading: 'Mensajes, grupos y comunidades', body: 'Mensajes permite conversar y compartir fotos, stickers, notas de voz y documentos. Los grupos y las comunidades organizan conversaciones entre varias personas; los permisos de cada espacio determinan quién puede publicar y administrar sus participantes.' },
+      { heading: 'Videos, Social y Momentos', body: 'Videos reúne contenido en formato de video para descubrir y compartir. Social permite publicar y comentar, y los perfiles muestran la presentación y el contenido disponible de cada persona. Momentos sirve para compartir historias con fotos, videos y música.' },
+      { heading: 'Salas de voz y perfiles de jugador', body: 'Las salas de voz permiten conversar con otras personas y compartir cámara o pantalla con los permisos necesarios del dispositivo. Juegos reúne perfiles de jugador e intereses para encontrar personas con las que coordinar partidas.' },
+      { heading: 'Cómo empezar', body: 'Abre Crear cuenta si todavía no tienes una cuenta de Novvin. Si ya usas la app, entra a Novvin Web con tus datos de acceso o escanea su código QR desde Perfil, Vincular web, en el teléfono. La entrada como invitado permite explorar contenido público; inicia sesión para participar y conversar.' },
+    ],
+  },
+  '/ayuda/preguntas-frecuentes': {
+    title: 'Preguntas frecuentes de Novvin: Android, web, cuenta y mensajes',
+    description: 'Respuestas sobre Novvin: dónde descargar la app, cómo entrar en la web, vincular por QR, recuperar la cuenta y compartir mensajes, videos y archivos.',
+    heading: 'Preguntas frecuentes sobre Novvin.',
+    sections: [
+      { heading: '¿Qué es Novvin?', body: 'Novvin es una red social que reúne mensajes privados, grupos, comunidades, videos, publicaciones y salas de voz. Tiene una aplicación para Android y un acceso desde el navegador llamado Novvin Web.' },
+      { heading: '¿Dónde puedo descargar Novvin para Android?', body: 'La ficha de Google Play se llama Novvin y su identificador es conectate.com. Puedes abrirla desde el enlace Google Play de esta página o desde Descargar Novvin para comprobar la compatibilidad, disponibilidad y versión publicada.' },
+      { heading: '¿Necesito instalar algo para usar Novvin en la computadora?', body: 'Puedes abrir Novvin Web en un navegador actualizado con JavaScript. No necesitas un programa de escritorio: entra con la misma cuenta del teléfono y mantén conexión a internet para sincronizar tu contenido.' },
+      { heading: '¿Cómo vinculo Novvin Web con mi teléfono?', body: 'Abre Iniciar sesión con QR en la web. En la app Android actualizada entra a Perfil, Vincular web, y escanea el código de tu computadora. La cuenta elegida se vincula automáticamente. La guía Vincular web con QR explica qué revisar si el código vence o no se reconoce.' },
+      { heading: '¿Puedo explorar Novvin sin crear una cuenta?', body: 'La entrada como invitado permite explorar contenido público. Inicia sesión con una cuenta para enviar mensajes, publicar, comentar y participar en las funciones disponibles para tu cuenta.' },
+      { heading: '¿Qué puedo enviar en un chat de Novvin Web?', body: 'Puedes compartir texto, fotos, stickers, videos, audios y documentos. En la web también puedes arrastrar una carpeta para prepararla como ZIP. Los archivos y ZIP admiten hasta 500 MiB por envío; las imágenes y los audios tienen un límite de 60 MiB. La pantalla de envío indica si un archivo supera el límite.' },
+      { heading: '¿Los grupos, comunidades y salas de voz son lo mismo?', body: 'Los grupos y comunidades organizan mensajes y contenido entre sus participantes, con permisos de publicación y administración. Las salas de voz permiten conversar en tiempo real con micrófono y compartir cámara o pantalla. Para audio y video debes permitir el acceso que solicite el dispositivo.' },
+      { heading: '¿Cómo recupero el acceso si olvidé mi contraseña?', body: 'En Iniciar sesión, abre la opción de recuperar contraseña y sigue las indicaciones con el correo de tu cuenta. El código recibido sirve para verificar la recuperación; no es tu contraseña. Si solicitas varios códigos, utiliza el más reciente y revisa también la carpeta de correo no deseado.' },
+    ],
+  },
   '/descargar': {
     title: 'Descargar Novvin para Android y entrar a Novvin Web',
     description: 'Encuentra Novvin en Google Play para Android o entra a Novvin Web desde tu navegador. Usa la misma cuenta para mensajes, videos y comunidades.',
@@ -61,7 +89,7 @@ export const publicInfoPages = {
       { heading: 'Conversa desde tu computadora', body: 'Abre tus conversaciones, grupos y comunidades con la misma cuenta que usas en el teléfono. En una pantalla grande puedes ver la lista de mensajes junto al chat. En una pantalla pequeña, cada conversación ocupa su propia vista.' },
       { heading: 'Comparte fotos y archivos', body: 'El botón de adjuntar permite elegir imágenes, videos, audios y documentos de tu equipo. Puedes revisar los archivos y añadir un texto antes de enviarlos. Las imágenes se abren en un visor con ampliación y los documentos compatibles permiten vista previa o descarga.' },
       { heading: 'Descubre videos y publicaciones', body: 'Explora videos verticales, sigue a sus creadores y comparte contenido con tus conversaciones. Social reúne publicaciones, comentarios y momentos. Los perfiles conservan el nombre, la foto, las relaciones y las preferencias de la cuenta.' },
-      { heading: 'Entra con contraseña o con QR', body: 'Puedes escribir tus datos de acceso o vincular el navegador escaneando un código desde Novvin en tu teléfono. Confirma en el móvil qué navegador estás autorizando. El código es temporal y puedes solicitar otro si vence.' },
+      { heading: 'Entra con contraseña o con QR', body: 'Puedes escribir tus datos de acceso o vincular el navegador escaneando su código desde Perfil, Vincular web, en Novvin Android actualizado. La cuenta elegida queda vinculada automáticamente. Escanea solo el QR de la computadora que estás usando; el código es temporal y puedes solicitar otro si vence.' },
     ],
   },
   '/ayuda/vincular-web': {
@@ -133,7 +161,7 @@ export const publicInfoPages = {
         },
         {
             "heading": "Conversa y comparte archivos",
-            "body": "Dentro de un grupo o una comunidad puedes escribir, responder mensajes y compartir fotos, videos, audios y documentos. El selector permite revisar los archivos antes de enviarlos. Las carpetas arrastradas desde la computadora se preparan como un ZIP para conservar sus archivos y subcarpetas."
+            "body": "En los espacios donde tienes permiso para publicar puedes escribir y compartir fotos, videos, audios y documentos. Las comunidades pueden limitar las publicaciones a su creador y ofrecer reacciones y preguntas para sus participantes. El selector permite revisar los archivos antes de enviarlos. Las carpetas arrastradas desde la computadora se preparan como un ZIP para conservar sus archivos y subcarpetas."
         },
         {
             "heading": "Menciones y mensajes compartidos",
@@ -202,7 +230,7 @@ export const publicInfoPages = {
         },
         {
             "heading": "Enviar mensajes y archivos",
-            "body": "En Mensajes abre una conversación y utiliza el botón de adjuntar para elegir fotos, videos, audios y documentos. Revisa la selección antes de enviar. Puedes arrastrar una carpeta para prepararla como ZIP; cada archivo enviado debe respetar el límite de 60 MiB."
+            "body": "En Mensajes abre una conversación y utiliza el botón de adjuntar para elegir fotos, videos, audios y documentos. Revisa la selección antes de enviar. Puedes arrastrar una carpeta para prepararla como ZIP; los archivos y ZIP admiten hasta 500 MiB y las imágenes y audios hasta 60 MiB. La pantalla de envío indica si un archivo supera el límite."
         },
         {
             "heading": "Buscar contenido y personas",

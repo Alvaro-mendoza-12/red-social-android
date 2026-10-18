@@ -13,7 +13,7 @@ export function PublicInfo({ path }: { path: string }) {
       <h1>{page.heading}</h1>
       <p className="public-info-intro">{page.description}</p>
       <div className="public-home-actions"><a className="primary-btn" href="/login">Entrar a Novvin</a><a className="ghost-btn" href="/explore/videos">Explorar videos</a></div>
-      {path === '/descargar' && <aside className="public-download-card" aria-label="Descarga oficial de Novvin">
+      {(path === '/descargar' || path === '/que-es-novvin') && <aside className="public-download-card" aria-label="Descarga oficial de Novvin">
         <img src="/novvin-logo.png" width="72" height="72" alt="" />
         <div><h2>Novvin para Android</h2><p>Abre la ficha de la aplicación para consultar su disponibilidad y descargarla.</p><a className="primary-btn" href={androidStoreUrl}>Ver Novvin en Google Play</a></div>
       </aside>}

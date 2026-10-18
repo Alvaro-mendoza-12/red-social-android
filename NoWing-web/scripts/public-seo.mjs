@@ -1,6 +1,8 @@
 export const site = 'https://red-social-android.vercel.app'
 export const publicRoutes = [
   ['/', 'index.html', 'Inicio'],
+  ['/que-es-novvin', 'que-es-novvin.html', 'Qué es Novvin'],
+  ['/ayuda/preguntas-frecuentes', 'preguntas-frecuentes.html', 'Preguntas frecuentes'],
   ['/novvin-web', 'novvin-web.html', 'Novvin Web'],
   ['/mensajes', 'mensajes.html', 'Mensajes'],
   ['/videos', 'videos.html', 'Videos'],
@@ -24,6 +26,14 @@ export function structuredData(route, title, description, label) {
   const website = { '@type': 'WebSite', '@id': home + '#website', name: 'Novvin', alternateName: ['Novvin Web', new URL(site).hostname], url: home, inLanguage: 'es', publisher: { '@id': organization['@id'] } }
   const page = { '@type': 'WebPage', '@id': url + '#webpage', url, name: title, description, inLanguage: 'es', isPartOf: { '@id': website['@id'] }, publisher: { '@id': organization['@id'] }, primaryImageOfPage: { '@type': 'ImageObject', url: site + '/novvin-share.png', width: 1200, height: 630 } }
   const graph = [organization, website, page]
+  // These entities describe the same Android app and browser access shown on
+  // the page. Installation links identify the actual app, without invented ratings.
+  if (['/', '/que-es-novvin', '/novvin-web', '/descargar', '/ayuda/preguntas-frecuentes'].includes(route)) {
+    const mobile = { '@type': 'MobileApplication', '@id': home + '#android-app', name: 'Novvin', url: site + '/descargar', applicationCategory: 'SocialNetworkingApplication', operatingSystem: 'Android', installUrl: 'https://play.google.com/store/apps/details?id=conectate.com', publisher: { '@id': organization['@id'] }, inLanguage: 'es' }
+    const web = { '@type': 'WebApplication', '@id': home + '#web-app', name: 'Novvin Web', url: site + '/novvin-web', applicationCategory: 'SocialNetworkingApplication', browserRequirements: 'Navegador actualizado con JavaScript', publisher: { '@id': organization['@id'] }, inLanguage: 'es' }
+    page.about = [{ '@id': mobile['@id'] }, { '@id': web['@id'] }]
+    graph.push(mobile, web)
+  }
   if (route !== '/') {
     page.breadcrumb = { '@id': url + '#breadcrumb' }
     graph.push({ '@type': 'BreadcrumbList', '@id': page.breadcrumb['@id'], itemListElement: [{ '@type': 'ListItem', position: 1, name: 'Novvin', item: home }, { '@type': 'ListItem', position: 2, name: label, item: url }] })

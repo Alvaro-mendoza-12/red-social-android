@@ -15,7 +15,7 @@ export function PublicHome() {
               comparte y descubre.
             </h1>
             <p>
-              Mensajes, videos, momentos y comunidades. Conecta con tu gente desde el móvil o abre
+              Novvin es una red social con mensajes, videos, momentos y comunidades. Conecta con tu gente desde Android o abre
               Novvin Web en tu computadora.
             </p>
             <div className="public-home-actions">
@@ -65,6 +65,15 @@ export function PublicHome() {
         <PublicGuideNavigation />
         <section className="public-home-faq">
           <h2>Tu cuenta, también en la web.</h2>
+          <details open>
+            <summary>¿Qué es Novvin y para qué sirve?</summary>
+            <p>
+              Novvin reúne conversaciones privadas, grupos, comunidades, videos y publicaciones
+              sociales. Puedes usar la app para Android y Novvin Web con la misma cuenta.
+              Conoce <a href="/que-es-novvin">qué puedes hacer en Novvin</a> o consulta las
+              <a href="/ayuda/preguntas-frecuentes"> preguntas frecuentes</a> para empezar.
+            </p>
+          </details>
           <details>
             <summary>¿Cómo inicio sesión en Novvin Web?</summary>
             <p>

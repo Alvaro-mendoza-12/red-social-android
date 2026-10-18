@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto'
 import { publicRoutes, site } from './public-seo.mjs'
 
 const checks = []
-async function request(path) {
-  return fetch(site + path, { redirect: 'manual', headers: { 'User-Agent': 'Novvin-owned-production-SEO-audit/9.0.40', 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(20000) })
+async function request(path, userAgent = 'Novvin-owned-production-SEO-audit/9.0.64') {
+  return fetch(site + path, { redirect: 'manual', headers: { 'User-Agent': userAgent, 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(20000) })
 }
 async function check(name, run) {
   try { await run(); checks.push({ name, passed: true }) }
@@ -12,7 +12,7 @@ async function check(name, run) {
 }
 function assert(value, message) { if (!value) throw new Error(message) }
 const metas = (html, name) => new RegExp('<meta (?:name|property)="' + name + '" content="([^"]*)"').exec(html)?.[1]
-const titles = new Set(), descriptions = new Set()
+const titles = new Set(), descriptions = new Set(), headings = new Set()
 for (const [route, , label] of publicRoutes) {
   await check('Public HTML, canonical, schema and security: ' + route, async () => {
     const response = await request(route), html = await response.text(), canonical = site + route
@@ -23,6 +23,9 @@ for (const [route, , label] of publicRoutes) {
     assert(html.includes('rel="canonical" href="' + canonical + '"'), 'Canonical mismatch')
     assert(metas(html, 'og:url') === canonical, 'Open Graph URL mismatch')
     assert((html.match(/<h1>/g) || []).length === 1, 'Expected one primary heading')
+    const heading = /<h1>([\s\S]*?)<\/h1>/.exec(html)?.[1]
+    assert(heading && !headings.has(heading), 'Public page body duplicates another guide')
+    headings.add(heading)
     assert(!/<script[^>]*(?:type="module"|src=)|rel="modulepreload"/.test(html), 'Public page loads application JavaScript')
     assert(html.includes('href="/login"') && html.includes('href="/mensajes"'), 'Missing useful internal links')
     const title = /<title>(.*?)<\/title>/.exec(html)?.[1], description = metas(html, 'description')
@@ -53,6 +56,22 @@ await check('Robots and canonical sitemap', async () => {
   const urls = [...(await sitemap.text()).matchAll(/<loc>(.*?)<\/loc>/g)].map(item => item[1])
   assert(sitemap.status === 200 && JSON.stringify(urls) === JSON.stringify(publicRoutes.map(([route]) => site + route)), 'Sitemap contains missing, private or noncanonical URLs')
 })
+await check('Visible product entities match the real Android and browser access', async () => {
+  const response = await request('/que-es-novvin'), html = await response.text()
+  const graph = JSON.parse(/<script type="application\/ld\+json">(.*?)<\/script>/.exec(html)[1])['@graph']
+  const mobile = graph.find(node => node['@type'] === 'MobileApplication'), web = graph.find(node => node['@type'] === 'WebApplication')
+  assert(mobile?.operatingSystem === 'Android' && mobile.installUrl === 'https://play.google.com/store/apps/details?id=conectate.com', 'Android identity mismatch')
+  assert(html.includes('href="' + mobile.installUrl + '"') && html.includes('conectate.com'), 'Product identity is not visible')
+  assert(web?.name === 'Novvin Web' && web.url === site + '/novvin-web', 'Browser identity mismatch')
+})
+// User-agent probes verify HTTP access, not visits from verified search-engine IPs.
+for (const agent of ['Googlebot', 'bingbot', 'OAI-SearchBot', 'ChatGPT-User']) {
+  await check('Public guide HTTP access with user agent: ' + agent, async () => {
+    const response = await request('/ayuda/preguntas-frecuentes', agent), html = await response.text()
+    assert(response.status === 200 && html.includes('¿Qué es Novvin?') && html.includes('500 MiB'), 'Crawler probe did not receive the complete public guide')
+    assert(!response.headers.get('x-robots-tag')?.includes('noindex') && !/<script[^>]+type="module"/.test(html), 'Public guide is blocked or depends on scripts')
+  })
+}
 for (const path of ['/no-existe-produccion-9038', '/js/no-existe-9038.js', '/icons/no-existe-9038.png']) {
   await check('Unknown URL returns 404: ' + path, async () => assert((await request(path)).status === 404, 'Missing URL did not return HTTP 404'))
 }

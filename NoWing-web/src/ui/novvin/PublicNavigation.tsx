@@ -1,4 +1,4 @@
-import { guideGroups } from './publicNavigationData'
+import { androidStoreUrl, guideGroups } from './publicNavigationData'
 
 export function PublicHeader({ path = '/' }: { path?: string }) {
   return <header className="public-site-header">
@@ -7,7 +7,7 @@ export function PublicHeader({ path = '/' }: { path?: string }) {
       <a className="ghost-btn" href="/login">Iniciar sesión</a>
     </div>
     <nav className="public-top-nav" aria-label="Navegación principal">
-      {([['/novvin-web', 'Conoce Novvin'], ['/mensajes', 'Mensajes'], ['/videos', 'Videos'], ['/descargar', 'Descargar'], ['/ayuda', 'Ayuda']] as const).map(([href, label]) =>
+      {([['/que-es-novvin', 'Conoce Novvin'], ['/mensajes', 'Mensajes'], ['/videos', 'Videos'], ['/descargar', 'Descargar'], ['/ayuda', 'Ayuda']] as const).map(([href, label]) =>
         <a key={href} href={href} aria-current={path === href ? 'page' : undefined}>{label}</a>)}
     </nav>
   </header>
@@ -28,6 +28,6 @@ export function PublicGuideNavigation({ path = '/' }: { path?: string }) {
 export function PublicFooter() {
   return <footer className="public-home-footer">
     <div><a className="public-home-brand" href="/">Novvin</a><p>Conversa. Comparte. Descubre.</p></div>
-    <nav className="public-footer-links" aria-label="Accesos a Novvin"><a href="/descargar">App para Android</a><a href="/ayuda/encontrar-novvin">Encontrar la web</a><a href="/login">Entrar a mi cuenta</a></nav>
+    <nav className="public-footer-links" aria-label="Accesos a Novvin"><a href="/descargar">App para Android</a><a href={androidStoreUrl}>Google Play</a><a href="/ayuda/encontrar-novvin">Encontrar la web</a><a href="/login">Entrar a mi cuenta</a></nav>
   </footer>
 }

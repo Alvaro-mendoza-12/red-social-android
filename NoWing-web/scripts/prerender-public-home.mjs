@@ -23,6 +23,9 @@ const { PublicHome } = componentModule('src/ui/novvin/PublicHome.tsx')
 const { PublicInfo } = componentModule('src/ui/novvin/PublicInfo.tsx')
 const { NotFoundPage } = componentModule('src/ui/novvin/NotFoundPage.tsx')
 const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8')
+if (!html.includes('<div id="root"></div>')) {
+  throw new Error('Public prerender requires a fresh Vite entry. Run npm run build to regenerate it.')
+}
 const escape = value => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 const schemaPattern = /\s*<script type="application\/ld\+json">[\s\S]*?<\/script>/g
 const publicCSS = fs.readFileSync(path.join(root, 'src/ui/novvin/public-home.css'), 'utf8')

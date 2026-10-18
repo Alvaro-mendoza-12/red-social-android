@@ -66,6 +66,8 @@ test('each public title and description is unique',()=>{
  const pages=publicRoutes.map(([,file])=>graph(read(file)).find(item=>item['@type']==='WebPage'))
  assert.equal(new Set(pages.map(page=>page.name)).size,publicRoutes.length)
  assert.equal(new Set(pages.map(page=>page.description)).size,publicRoutes.length)
+ const headings=publicRoutes.map(([,file])=>/<h1>([\s\S]*?)<\/h1>/.exec(read(file))[1])
+ assert.equal(new Set(headings).size,publicRoutes.length)
 })
 
 test('site name signals consistently prefer Novvin and offer the site hostname as last fallback',()=>{
@@ -146,4 +148,34 @@ test('manifest advertises existing icons and implemented routes only',()=>{
  assert.equal(manifest.protocol_handlers,undefined);assert.equal(manifest.scope_extensions,undefined)
  for(const icon of manifest.icons)assert.ok(fs.statSync(path.join(root,'dist',icon.src)).isFile())
  for(const shortcut of manifest.shortcuts)assert.ok(['/app/messages','/app/videos','/app/voice','/app/social'].includes(shortcut.url))
+})
+
+test('product entities identify the Android listing and browser app using visible facts',()=>{
+ for(const file of ['index.html','que-es-novvin.html','novvin-web.html','descargar.html','preguntas-frecuentes.html']){
+  const html=read(file),nodes=graph(html)
+  const mobile=nodes.find(node=>node['@type']==='MobileApplication'),web=nodes.find(node=>node['@type']==='WebApplication')
+  assert.equal(mobile.name,'Novvin');assert.equal(mobile.operatingSystem,'Android')
+  assert.equal(mobile.installUrl,'https://play.google.com/store/apps/details?id=conectate.com')
+  assert.ok(html.includes('href="'+mobile.installUrl+'"'))
+  assert.equal(web.name,'Novvin Web');assert.equal(web.url,site+'/novvin-web')
+  assert.deepEqual(nodes.find(node=>node['@type']==='WebPage').about,[{'@id':mobile['@id']},{'@id':web['@id']}])
+  assert.doesNotMatch(JSON.stringify([mobile,web]),/aggregateRating|review|offers|softwareVersion|downloadCount/)
+ }
+ assert.ok(!graph(read('videos.html')).some(node=>node['@type']==='MobileApplication'))
+})
+
+test('product overview gives an explicit definition, real platforms and usable access links',()=>{
+ const html=read('que-es-novvin.html')
+ for(const text of ['Qué es Novvin','Novvin reúne mensajes privados','conectate.com','misma cuenta','Novvin Web','Google Play'])assert.ok(html.includes(text),text)
+ assert.match(read('index.html'),/Novvin es una red social/)
+ assert.match(read('index.html'),/href="\/que-es-novvin"/)
+})
+
+test('public questions are readable directly and describe current linking and upload rules',()=>{
+ const html=read('preguntas-frecuentes.html')
+ for(const text of ['¿Qué es Novvin?','¿Cómo vinculo Novvin Web con mi teléfono?','vincula automáticamente','500 MiB','60 MiB','no es tu contraseña'])assert.ok(html.includes(text),text)
+ assert.doesNotMatch(html,/<details|primera posición garantizada/)
+ assert.ok(read('ayuda.html').includes('500 MiB'))
+ assert.ok(read('novvin-web.html').includes('vinculada automáticamente'))
+ assert.ok(read('comunidades.html').includes('permiso para publicar'))
 })
