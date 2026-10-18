@@ -13,6 +13,7 @@ let mockRealtimeEvent: (value:{payload:Record<string,unknown>})=>void
 const mockGetSession = jest.fn()
 const mockSignOut = jest.fn(async () => {})
 const mockSignOutFallback = jest.fn(async () => {})
+const mockFallbackApiJson = jest.fn(async () => ({}))
 
 jest.mock('../../core/supabase', () => ({
   isSupabaseConfigured: true,
@@ -28,6 +29,7 @@ jest.mock('../../core/supabase', () => ({
 jest.mock('../../core/auth/sessionBootstrap', () => ({ bootstrapSessionProfile: async () => {} }))
 jest.mock('../../core/auth/fallbackAuth', () => ({
   isFallbackAuthConfigured: true,
+  fallbackApiJson: (...args: unknown[]) => mockFallbackApiJson(...args),
   readFallbackSession: () => mockFallback,
   hasFallbackSessionHint: () => false,
   fallbackSessionToUser: (session: typeof mockFallback) => session?.user ?? null,
@@ -47,8 +49,19 @@ function session(id: string, token = 'synthetic.test.signature') { return { user
 beforeEach(() => {
   mockSession = null; mockFallback = null; mockGetSession.mockReset(); mockSignOut.mockClear(); mockSignOutFallback.mockReset(); mockSignOutFallback.mockResolvedValue(undefined)
   mockGetSession.mockImplementation(async () => ({ data: { session: mockSession } })); invalidateStorageReadIdentity()
+  mockFallbackApiJson.mockReset(); mockFallbackApiJson.mockResolvedValue({})
 })
 afterEach(() => act(() => invalidateStorageReadIdentity()))
+
+test('authorization is rechecked even when a connected socket missed a revocation event', async () => {
+ jest.useFakeTimers()
+ try {
+  mockFallback={accessToken:'synthetic.test.signature',user:{id:'fallback-a',email:'synthetic@invalid'}}
+  render(<AuthProvider><Consumer/></AuthProvider>)
+  await act(async()=>{jest.advanceTimersByTime(5000)})
+  expect(mockFallbackApiJson).toHaveBeenCalledWith('/v1/auth/me',expect.objectContaining({expectedAccountId:'fallback-a',signal:expect.any(AbortSignal)}))
+ } finally { jest.useRealTimers() }
+})
 
 test('a remote device revocation clears authentication and protected media immediately', async () => {
   mockFallback = {accessToken:`header.${btoa(JSON.stringify({sid:'browser-one'}))}.signature`,user:{id:'fallback-a',email:'synthetic@invalid'}}

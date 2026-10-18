@@ -52,6 +52,7 @@ class CommunityEngagementRepository @Inject constructor(private val config: Supa
         put("cards",config.json.encodeToJsonElement(cards))
     },id!=null)
     suspend fun activatePromotion(id: String, active: Boolean) = request("/v1/data/social/promotions/$id",buildJsonObject{put("active",active)},true)
+    suspend fun deletePromotion(id: String) = request("/v1/data/social/promotions/$id", method = HttpMethod.Delete)
     suspend fun uploadPromotionImage(uri: Uri, accountId: String): Result<String> = withContext(Dispatchers.IO) {
         try {
             val mime=context.contentResolver.getType(uri).orEmpty()
@@ -65,12 +66,12 @@ class CommunityEngagementRepository @Inject constructor(private val config: Supa
             Result.success(storage.getPublicUrl("post-media",key))
         }catch(cancelled: CancellationException){throw cancelled}catch(error: Exception){Result.failure(error)}
     }
-    private suspend fun request(path: String, payload: JsonObject? = null, patch: Boolean = false): Result<JsonObject> = withContext(Dispatchers.IO) {
+    private suspend fun request(path: String, payload: JsonObject? = null, patch: Boolean = false, method: HttpMethod? = null): Result<JsonObject> = withContext(Dispatchers.IO) {
         try {
             val token=auth.ensureValidAccessToken().getOrThrow()
             val endpoint=RuntimeBackendEndpoint.ensureFreshEndpoint()?.trimEnd('/') ?: error("Servidor no disponible")
             val response=config.httpClient.request(endpoint+path) {
-                method=if(payload==null) HttpMethod.Get else if(patch) HttpMethod.Patch else HttpMethod.Post
+                this.method=method ?: if(payload==null) HttpMethod.Get else if(patch) HttpMethod.Patch else HttpMethod.Post
                 header(HttpHeaders.Authorization,"Bearer ${token.trim()}");header("ngrok-skip-browser-warning","1")
                 if(payload!=null){contentType(ContentType.Application.Json);setBody(payload)}
             }

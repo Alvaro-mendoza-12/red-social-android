@@ -547,6 +547,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun loadWebSessions() {
+        if (_webSessionsLoading.value) return
         viewModelScope.launch {
             _webSessionsLoading.value = true
             _webSessionMessage.value = null

@@ -25,11 +25,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ManageAccounts
-import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
@@ -43,7 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -82,13 +79,12 @@ fun WebLoginScannerScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var manualPayload by rememberSaveable { mutableStateOf("") }
+    val scrollState = rememberScrollState()
     var attemptedAutoLaunch by rememberSaveable { mutableStateOf(false) }
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val contents = result.contents?.trim().orEmpty()
         if (contents.isNotBlank()) {
-            manualPayload = contents
             viewModel.submitPayload(contents, linkAfterScan = true)
         }
     }
@@ -114,7 +110,6 @@ fun WebLoginScannerScreen(
     LaunchedEffect(initialPairId, initialNonce) {
         if (!initialPairId.isNullOrBlank() && !initialNonce.isNullOrBlank()) {
             viewModel.loadPairing(initialPairId, initialNonce)
-            manualPayload = "conectate://web-login?pairId=$initialPairId&nonce=$initialNonce"
         }
     }
 
@@ -124,6 +119,17 @@ fun WebLoginScannerScreen(
         }
         attemptedAutoLaunch = true
         requestScan()
+    }
+
+    val linked = uiState.linkAfterScan && uiState.pairing?.status in setOf("approved", "consumed")
+    LaunchedEffect(linked) {
+        if (linked && navController.previousBackStackEntry != null) {
+            android.widget.Toast.makeText(context, "Dispositivo vinculado. Ya puedes usar Novvin Web.", android.widget.Toast.LENGTH_LONG).show()
+            navController.popBackStack()
+        }
+    }
+    LaunchedEffect(uiState.errorMessage, uiState.infoMessage, uiState.isLoading, uiState.isSubmitting) {
+        scrollState.animateScrollTo(0)
     }
 
     Scaffold(
@@ -157,38 +163,16 @@ fun WebLoginScannerScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 20.dp, vertical = 16.dp)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            HeroCard()
-
             if (!uiState.hasAnyAvailableAccount) {
                 EmptyAccountState(
                     onBack = { navController.popBackStack() }
                 )
                 return@Column
             }
-
-            ApprovalAccountCard(
-                enabled = !uiState.isLoading && !uiState.isSubmitting,
-                storedAccounts = uiState.storedAccounts,
-                currentUserId = uiState.currentUserId,
-                currentUserEmail = uiState.currentUserEmail,
-                selectedAccountId = uiState.selectedAccountId,
-                onSelectCurrentSession = viewModel::selectCurrentSession,
-                onSelectStoredAccount = viewModel::selectStoredAccount
-            )
-
-            ScannerActionsCard(
-                manualPayload = manualPayload,
-                onManualPayloadChange = { manualPayload = it },
-                onOpenScanner = ::requestScan,
-                onSubmitManualPayload = {
-                    viewModel.submitPayload(manualPayload, linkAfterScan = true)
-                },
-                isBusy = uiState.isLoading || uiState.isSubmitting
-            )
 
             uiState.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
                 FeedbackCard(
@@ -211,6 +195,22 @@ fun WebLoginScannerScreen(
             if (uiState.isLoading || uiState.isSubmitting) {
                 LoadingCard()
             }
+
+            if (linked) return@Column
+            HeroCard()
+            ApprovalAccountCard(
+                enabled = !uiState.isLoading && !uiState.isSubmitting,
+                storedAccounts = uiState.storedAccounts,
+                currentUserId = uiState.currentUserId,
+                currentUserEmail = uiState.currentUserEmail,
+                selectedAccountId = uiState.selectedAccountId,
+                onSelectCurrentSession = viewModel::selectCurrentSession,
+                onSelectStoredAccount = viewModel::selectStoredAccount
+            )
+            ScannerActionsCard(
+                onOpenScanner = ::requestScan,
+                isBusy = uiState.isLoading || uiState.isSubmitting
+            )
 
             uiState.pairing?.let { pairing ->
                 if (!uiState.linkAfterScan || pairing.status !in setOf("pending", "approved", "consumed")) PairingStatusCard(
@@ -434,10 +434,7 @@ private fun ApprovalAccountCard(
 
 @Composable
 private fun ScannerActionsCard(
-    manualPayload: String,
-    onManualPayloadChange: (String) -> Unit,
     onOpenScanner: () -> Unit,
-    onSubmitManualPayload: () -> Unit,
     isBusy: Boolean
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -458,35 +455,6 @@ private fun ScannerActionsCard(
                 Text("Escanear QR ahora")
             }
 
-            OutlinedTextField(
-                value = manualPayload,
-                onValueChange = onManualPayloadChange,
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 2,
-                label = { Text("Pegar enlace o contenido del QR") },
-                placeholder = {
-                    Text("conectate://web-login?pairId=...&nonce=...")
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.QrCode2,
-                        contentDescription = null
-                    )
-                }
-            )
-
-            OutlinedButton(
-                onClick = onSubmitManualPayload,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = manualPayload.isNotBlank() && !isBusy
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ContentPaste,
-                    contentDescription = null
-                )
-                Spacer(modifier = Modifier.size(10.dp))
-                Text("Vincular dispositivo")
-            }
         }
     }
 }

@@ -125,7 +125,7 @@ class WebLoginScannerViewModel @Inject constructor(
     fun onCameraPermissionDenied() {
         _uiState.update {
             it.copy(
-                errorMessage = "Sin permiso de cámara no puedo abrir el escáner. Puedes concederlo o pegar el QR manualmente."
+                errorMessage = "Permite el acceso a la cámara para escanear el QR de Novvin Web."
             )
         }
     }

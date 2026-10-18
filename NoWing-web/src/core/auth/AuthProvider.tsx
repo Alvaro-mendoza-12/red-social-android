@@ -23,7 +23,7 @@ import { bootstrapSessionProfile } from './sessionBootstrap'
 import { loginReturnPath } from './loginReturnPath'
 import { retainUnchangedAuthUser } from './stableAuthUser'
 import { getStorageReadIdentity, invalidateStorageReadIdentity, updateStorageReadIdentity } from '../media/storageReadSession'
-import { subscribeUbuntuRealtime, ubuntuRealtimeConnected } from '../ubuntuRealtime'
+import { subscribeUbuntuRealtime } from '../ubuntuRealtime'
 import { webSessionWasRevoked } from './webSessionRevocation'
 
 type SuspensionState = {
@@ -191,7 +191,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
     })
     const verify = () => { void verifySession() }
     const onVisibility = () => { if (!document.hidden) verify() }
-    const fallback = window.setInterval(() => { if (!ubuntuRealtimeConnected()) verify() }, 5000)
+    // Recheck authorization even if an open socket missed a subscription/event.
+    // Realtime remains the immediate path.
+    const fallback = window.setInterval(verify, 5000)
     window.addEventListener('novvin:realtime-ready', verify)
     window.addEventListener('novvin:realtime-disconnected', verify)
     document.addEventListener('visibilitychange', onVisibility)

@@ -48,6 +48,7 @@ fun SocialPromotionManager(state: PromotionState, onClose: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var uploadStatus by remember { mutableStateOf("") }
+    var deleting by remember { mutableStateOf<SocialPromotion?>(null) }
     fun change(transform: (PromotionCard) -> PromotionCard) { cards = cards.mapIndexed { i, c -> if (i == selected) transform(c) else c } }
     fun begin(ad: SocialPromotion? = null) {
         editing = ad?.id; title = ad?.title.orEmpty(); description = ad?.description.orEmpty()
@@ -90,7 +91,11 @@ fun SocialPromotionManager(state: PromotionState, onClose: () -> Unit) {
                                 catch (e: kotlinx.coroutines.CancellationException) { throw e }
                                 catch (_: Exception) { error = "No se pudo cambiar el anuncio. Inténtalo otra vez." }
                                 finally { busy = false }
-                            } }) { Text(if (ad.active) "Pausar" else "Activar") } }
+                            } }) { Text(if (ad.active) "Pausar" else "Activar") }
+                            TextButton(enabled = !busy, onClick = { error = null; deleting = ad }) {
+                                Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
                     } } }
                 } else when (step) {
                     0 -> {
@@ -148,5 +153,28 @@ fun SocialPromotionManager(state: PromotionState, onClose: () -> Unit) {
             }
             if (busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(uploadStatus, style = MaterialTheme.typography.bodySmall) }
         }
+    }
+    deleting?.let { ad ->
+        AlertDialog(
+            onDismissRequest = { if (!busy) deleting = null },
+            title = { Text("¿Eliminar anuncio?") },
+            text = { Text("«${ad.title}» dejará de aparecer en Social y en tus anuncios. Esta acción no se puede deshacer.") },
+            dismissButton = { TextButton(enabled = !busy, onClick = { deleting = null }) { Text("Cancelar") } },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = {
+                    scope.launch {
+                        busy = true; error = null; uploadStatus = "Eliminando anuncio…"
+                        try {
+                            state.repository.deletePromotion(ad.id).getOrThrow()
+                            state.catalog = state.catalog?.let { it.copy(items = it.items.filterNot { item -> item.id == ad.id }) }
+                            deleting = null; notice = "Anuncio eliminado."
+                            state.refresh(true)
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                        catch (_: Exception) { deleting = null; error = "No se pudo eliminar el anuncio. Inténtalo otra vez." }
+                        finally { busy = false }
+                    }
+                }) { Text(if (busy) "Eliminando…" else "Eliminar", color = MaterialTheme.colorScheme.error) }
+            }
+        )
     }
 }

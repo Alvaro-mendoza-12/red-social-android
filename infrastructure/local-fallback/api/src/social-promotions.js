@@ -41,8 +41,12 @@ function registerSocialPromotionRoutes(app,{pool,authRequired,getCurrentUser,use
       const identity=userIdentity(user),access=await appAdminAccess(pool,identity),canManage=hasAdminCapability(access,ADMIN_CAPABILITY.MODERATION_MANAGE)
       if(write) {
         if(!canManage)return res.status(403).json({error:'ADMIN_CAPABILITY_REQUIRED'})
-        const patch=req.method==='PATCH', id=patch?req.params.id:randomUUID()
-        if(patch&&!/^[a-f0-9-]{36}$/i.test(id))return res.status(400).json({error:'PROMOTION_INVALID'})
+        const patch=req.method==='PATCH', deleting=req.method==='DELETE', id=patch||deleting?req.params.id:randomUUID()
+        if((patch||deleting)&&!/^[a-f0-9-]{36}$/i.test(id))return res.status(400).json({error:'PROMOTION_INVALID'})
+        if(deleting) {
+          const result=await pool.query('DELETE FROM fallback_social_promotions WHERE id=$1 RETURNING id',[id])
+          return res.status(result.rows.length?200:404).json(result.rows.length?{ok:true,id}:{error:'PROMOTION_NOT_FOUND'})
+        }
         if(patch&&Object.keys(req.body || {}).length===1&&typeof req.body.active==='boolean') {
           const result=await pool.query('UPDATE fallback_social_promotions SET active=$2 WHERE id=$1 RETURNING id',[id,req.body.active])
           return res.status(result.rows.length?200:404).json({ok:result.rows.length>0})
@@ -67,5 +71,6 @@ function registerSocialPromotionRoutes(app,{pool,authRequired,getCurrentUser,use
   app.get('/v1/data/social/promotions',authRequired,(req,res,next)=>run(req,res,next))
   app.post('/v1/data/social/promotions',authRequired,(req,res,next)=>run(req,res,next,true))
   app.patch('/v1/data/social/promotions/:id',authRequired,(req,res,next)=>run(req,res,next,true))
+  app.delete('/v1/data/social/promotions/:id',authRequired,(req,res,next)=>run(req,res,next,true))
 }
 module.exports={promotionInput,promotionDestination,ensureSocialPromotionTables,registerSocialPromotionRoutes}

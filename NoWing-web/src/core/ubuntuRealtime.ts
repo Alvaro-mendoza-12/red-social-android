@@ -1,5 +1,6 @@
-import { ensureFallbackAccessToken, isFallbackAuthConfigured, onFallbackAuthChanged, readFallbackSession } from './auth/fallbackAuth'
+import { clearFallbackSession, ensureFallbackAccessToken, isFallbackAuthConfigured, onFallbackAuthChanged, readFallbackSession } from './auth/fallbackAuth'
 import { getRuntimeBackendUrl, subscribeRuntimeBackend } from './runtimeBackend'
+import { webSessionTransportWasRevoked } from './auth/webSessionRevocation'
 
 export type UbuntuRealtimeEvent = {
   type: 'event'
@@ -122,8 +123,14 @@ async function ensureSocket() {
     }
   })
 
-  socket.addEventListener('close', () => {
+  socket.addEventListener('close', event => {
     if (sharedSocket !== socket) return
+    // The transport may be revoked before its channel handler is mounted.
+    // Expiry and transient network failures must still be allowed to recover.
+    if (webSessionTransportWasRevoked(event, token, readFallbackSession()?.accessToken)) {
+      clearFallbackSession()
+      return
+    }
     window.dispatchEvent(new Event('novvin:realtime-disconnected'))
     if (reconnectTimer) window.clearTimeout(reconnectTimer)
     reconnectTimer = window.setTimeout(() => {

@@ -6,13 +6,14 @@ test('carousel image bindings include every image without interpreting arbitrary
  assert.deepEqual(sourceUrls('fallback_social_promotions',{image_url:'cover',media_urls:['one','two'],cards:[{imageUrl:'untrusted'}]}),['cover','one','two'])
  assert.throws(()=>promotionInput({title:'Ad',cards:Array(11).fill({})}))
 })
-test('promotion creation, update, pause and authorization validate every image',async()=>{
+test('promotion creation, update, pause, deletion and authorization validate every image',async()=>{
  const owner={id:randomUUID()},member={id:randomUUID()},rows=[],checked=[]
  const pool={query:async(sql,args=[])=>{
    if(sql.includes('SELECT u.email,'))return {rows:[{is_admin:args[0].includes(owner.id),admin_access_level:args[0].includes(owner.id)?'full':'none'}]}
    if(sql.startsWith('INSERT INTO fallback_social_promotions')){rows.push({id:args[0],title:args[1],description:args[2],imageUrl:args[3],destination:args[4],cta:args[5],active:true,cards:JSON.parse(args[7])});return{rows:[]}}
    if(sql.startsWith('UPDATE fallback_social_promotions SET active')){const row=rows.find(r=>r.id===args[0]);if(row)row.active=args[1];return{rows:row?[{id:row.id}]:[]}}
    if(sql.startsWith('UPDATE fallback_social_promotions SET title')){const row=rows.find(r=>r.id===args[0]);if(row)Object.assign(row,{title:args[1],cards:JSON.parse(args[6])});return{rows:row?[{id:row.id}]:[]}}
+   if(sql.startsWith('DELETE FROM fallback_social_promotions')){const index=rows.findIndex(r=>r.id===args[0]);return{rows:index<0?[]:rows.splice(index,1).map(row=>({id:row.id}))}}
    if(sql.startsWith('SELECT id,title'))return {rows:sql.includes('WHERE active=TRUE')?rows.filter(r=>r.active):rows}
    throw Error('Unexpected test query')
  }}
@@ -29,5 +30,11 @@ test('promotion creation, update, pause and authorization validate every image',
    assert.equal((await call('PATCH','/'+id,{active:false})).status,200)
    assert.equal((await(await call('GET','?manage=1')).json()).items[0].active,false)
    assert.equal((await call('PATCH','/'+id,{active:true},'member')).status,403)
+   assert.equal((await call('DELETE','/'+id,undefined,'member')).status,403);assert.equal(rows.length,1)
+   assert.equal((await call('DELETE','/invalid')).status,400)
+   assert.equal((await call('DELETE','/'+randomUUID())).status,404)
+   const removed=await call('DELETE','/'+id);assert.equal(removed.status,200);assert.deepEqual(await removed.json(),{ok:true,id})
+   assert.equal(rows.length,0);assert.equal((await call('DELETE','/'+id)).status,404)
+   assert.equal((await(await call('GET','?manage=1')).json()).items.some(item=>item.id===id),false)
  }finally{await new Promise(resolve=>server.close(resolve))}
 })

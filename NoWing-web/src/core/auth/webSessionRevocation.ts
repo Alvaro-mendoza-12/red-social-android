@@ -1,4 +1,8 @@
 /** Token claims are used only to route a server event to the current device. */
+export function webSessionTransportWasRevoked(event: {code:number;reason:string}, socketToken:string, currentToken:string|undefined):boolean {
+  return event.code===4401 && event.reason==='WEB_SESSION_REVOKED' && Boolean(socketToken) && currentToken===socketToken
+}
+
 export function webSessionWasRevoked(payload: Record<string, unknown>, accessToken: string): boolean {
   if (payload.event !== 'web_sessions_revoked' || !Array.isArray(payload.sessionIds)) return false
   try {

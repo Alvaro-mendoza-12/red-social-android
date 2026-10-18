@@ -103,6 +103,14 @@ fun SettingsScreen(
     var passwordRecoveryFactor by remember { mutableStateOf("") }
     val uriHandler = LocalUriHandler.current
     val screenContext = LocalContext.current
+    val settingsLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(settingsLifecycleOwner, viewModel) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.loadWebSessions()
+        }
+        settingsLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { settingsLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     LaunchedEffect(twoFactorDisabled) {
         if (twoFactorDisabled) onLogout()
     }
@@ -1071,7 +1079,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    "Escanea el QR que aparece en la web y aprueba el inicio desde esta cuenta.",
+                    "Escanea el QR de la web para vincularla automáticamente con esta cuenta.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
