@@ -32,7 +32,10 @@ function state(accountId: string) {
     value = { counts: empty, unread: new Map(), snapshots: new Map(), archived: new Set(), read: new Map(), seen: new Map(), latest: new Map(), remoteReads: new Map(), listeners: new Set() }
     try {
       const saved=JSON.parse(localStorage.getItem(`novvin:read-cursors:${accountId}`)||'[]')
-      if(Array.isArray(saved))for(const entry of saved.slice(-500))if(Array.isArray(entry)&&/^(chat|group|community):[\w-]{1,160}$/.test(entry[0])&&Number.isFinite(entry[1])&&entry[1]>Date.now()-30*86400000&&entry[1]<=Date.now()+86400000)value.read.set(entry[0],{through:entry[1],pending:false,confirmedAt:0,token:0})
+      if(Array.isArray(saved))for(const entry of saved.slice(-500))if(Array.isArray(entry)&&/^(chat|group|community):[\w-]{1,160}$/.test(entry[0])&&Number.isFinite(entry[1])&&entry[1]>Date.now()-30*86400000&&entry[1]<=Date.now()+86400000){
+        value.read.set(entry[0],{through:entry[1],pending:false,confirmedAt:0,token:0})
+        if(Array.isArray(entry[2]))value.remoteReads.set(entry[0],new Set(entry[2].filter((id:unknown):id is string=>typeof id==='string'&&/^[\w:-]{1,200}$/.test(id)).slice(-100).map((id:string)=>id.toLowerCase())))
+      }
     }catch{/* Storage may be unavailable; authoritative reads still work. */}
     states.set(accountId, value)
   }
@@ -40,7 +43,14 @@ function state(accountId: string) {
 }
 
 function persistReadCursors(accountId:string){
-  const entries=Array.from(state(accountId).read).filter(([,value])=>!value.pending&&value.through>0).sort((a,b)=>a[1].through-b[1].through).slice(-500).map(([id,value])=>[id,value.through])
+  const current=state(accountId)
+  let budget=4000
+  const entries=Array.from(current.read).filter(([,value])=>!value.pending&&value.through>0).sort((a,b)=>b[1].through-a[1].through).slice(0,500).map(([id,value])=>{
+    // Keep recent confirmed incoming IDs across reloads. An outgoing activity can
+    // advance updatedAt without changing which incoming messages were read.
+    const ids=budget>0?Array.from(current.remoteReads.get(id)||[]).slice(-Math.min(100,budget)):[];budget-=ids.length
+    return ids.length?[id,value.through,ids]:[id,value.through]
+  }).reverse()
   try{localStorage.setItem(`novvin:read-cursors:${accountId}`,JSON.stringify(entries))}catch{/* Optional cache. */}
 }
 
@@ -90,11 +100,11 @@ export function inboxUnreadCount(accountId: string, scope: InboxScope, item: Unr
 export function applyRemoteConversationRead(accountId: string, scope: InboxScope, id: string, messageIds: string[], through?: string) {
   const s=state(accountId), k=key(scope,id), at=millis(through)
   if(at){const old=s.read.get(k);s.read.set(k,{through:Math.max(old?.through||0,at),pending:false,confirmedAt:old?.confirmedAt||0,token:++readToken})}
-  if(at)persistReadCursors(accountId)
   const ids=s.remoteReads.get(k)||new Set<string>()
   for(const messageId of messageIds)ids.add(messageId.toLowerCase())
   while(ids.size>1000)ids.delete(ids.values().next().value!)
   s.remoteReads.set(k,ids)
+  if(at)persistReadCursors(accountId)
   publish(accountId,scope)
   emit({accountId,scope,id,action:'changed'})
 }

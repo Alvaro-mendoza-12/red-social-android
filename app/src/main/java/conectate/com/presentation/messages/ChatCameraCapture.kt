@@ -45,7 +45,6 @@ import androidx.compose.ui.platform.LocalContext
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -72,7 +71,10 @@ internal fun ChatCameraCapture(
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember(context) { ContextCompat.getMainExecutor(context) }
     val capturedCallback by rememberUpdatedState(onCaptured)
-    val active = remember { AtomicBoolean(true) }
+    val session = remember(lifecycleOwner) {
+        ChatCameraCaptureSession(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    var foreground by remember { mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
     var cameraAllowed by remember { mutableStateOf(hasCameraPermission(context)) }
     var permissionRequested by remember { mutableStateOf(false) }
     var video by remember { mutableStateOf("image" !in allowedTypes && "video" in allowedTypes) }
@@ -85,6 +87,9 @@ internal fun ChatCameraCapture(
     var canSwitchCamera by remember { mutableStateOf(false) }
     var retryCamera by remember { mutableIntStateOf(0) }
     var capturing by remember { mutableStateOf(false) }
+    var audioPending by remember { mutableStateOf(false) }
+    var audioRequestToken by remember { mutableStateOf<Long?>(null) }
+    var finalizing by remember { mutableStateOf(false) }
     var recording by remember { mutableStateOf<Recording?>(null) }
     var recordingDuration by remember { mutableLongStateOf(0L) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -103,20 +108,35 @@ internal fun ChatCameraCapture(
             this.controller = controller
         }
     }
-    fun deliver(file: File, type: String, duration: Long) {
-        if (!active.get() || !file.isFile || file.length() == 0L) {
+    fun deliver(file: File, type: String, duration: Long, token: Long) {
+        if (!session.accepts(token)) {
             file.delete()
+            return
+        }
+        if (!file.isFile || file.length() == 0L) {
+            file.delete()
+            error = "La captura quedó vacía. Comprueba el espacio disponible y vuelve a intentar."
             return
         }
         val uri = runCatching { FileProvider.getUriForFile(context, "${context.packageName}.provider", file) }.getOrElse {
             file.delete()
-            if (active.get()) error = "No se pudo abrir la captura. Inténtalo de nuevo."
+            if (session.accepts(token)) error = "No se pudo abrir la captura. Inténtalo de nuevo."
             return
         }
         capturedCallback(OutgoingMessageMedia(uri, type), duration)
     }
+    fun finishRecording() {
+        val current = recording ?: return
+        if (finalizing) return
+        finalizing = true
+        runCatching { current.stop() }.onFailure {
+            finalizing = false; recording = null
+            if (session.isOpen) error = "No se pudo finalizar el video. Inténtalo de nuevo."
+        }
+    }
     fun startRecording() {
-        if (!streaming || capturing || recording != null || !active.get()) return
+        if (!streaming || capturing || recording != null || finalizing || flashPending || !foreground) return
+        val token = session.begin() ?: return
         error = null
         recordingDuration = 0L
         val file = runCatching { createChatCaptureFile(context, true) }.getOrElse {
@@ -138,15 +158,16 @@ internal fun ChatCameraCapture(
                     )
                     is VideoRecordEvent.Finalize -> {
                         recording = null
+                        finalizing = false
                         if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("ChatCameraCapture",
-                            "video_finalize error=${event.error} duration_ms=${TimeUnit.NANOSECONDS.toMillis(event.recordingStats.recordedDurationNanos)} bytes=${event.recordingStats.numBytesRecorded} active=${active.get()}")
+                            "video_finalize error=${event.error} duration_ms=${TimeUnit.NANOSECONDS.toMillis(event.recordingStats.recordedDurationNanos)} bytes=${event.recordingStats.numBytesRecorded} active=${session.accepts(token)}")
                         val validLimit = event.error == VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED ||
                             event.error == VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED
                         if (!event.hasError() || validLimit) {
-                            deliver(file, "video", TimeUnit.NANOSECONDS.toMillis(event.recordingStats.recordedDurationNanos))
+                            deliver(file, "video", TimeUnit.NANOSECONDS.toMillis(event.recordingStats.recordedDurationNanos), token)
                         } else {
                             file.delete()
-                            if (active.get()) error = "No se pudo grabar el video. Comprueba espacio y permisos e inténtalo otra vez."
+                            if (session.accepts(token)) error = "No se pudo grabar el video. Comprueba espacio y permisos e inténtalo otra vez."
                         }
                     }
                 }
@@ -161,7 +182,10 @@ internal fun ChatCameraCapture(
         if (!granted) error = "Permite el acceso a la cámara para tomar fotos y videos. También puedes abrir la galería."
     }
     val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        if (active.get() && video) startRecording()
+        val token = audioRequestToken
+        audioPending = false
+        audioRequestToken = null
+        if (token != null && session.accepts(token) && video) startRecording()
     }
     LaunchedEffect(Unit) {
         if (!cameraAllowed && !permissionRequested) {
@@ -198,8 +222,8 @@ internal fun ChatCameraCapture(
             runCatching { controller.unbind() }
         }
     }
-    LaunchedEffect(flash, video, streaming, front, hasFlash) {
-        if (!streaming || !active.get()) return@LaunchedEffect
+    LaunchedEffect(flash, video, streaming, front, hasFlash, foreground) {
+        if (!streaming || !session.isOpen || !foreground) return@LaunchedEffect
         flashPending = true
         try {
             controller.imageCaptureFlashMode = if (hasFlash && !video && flash == ImageCapture.FLASH_MODE_AUTO) {
@@ -222,7 +246,7 @@ internal fun ChatCameraCapture(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            if (active.get()) {
+            if (session.isOpen) {
                 flash = ImageCapture.FLASH_MODE_OFF
                 error = "No se pudo activar el flash. Puedes tomar la foto sin flash o volver a intentarlo."
             }
@@ -230,26 +254,35 @@ internal fun ChatCameraCapture(
             flashPending = false
         }
     }
-    DisposableEffect(lifecycleOwner) {
-        active.set(true)
+    DisposableEffect(lifecycleOwner, session) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) recording?.stop()
+            when (event) {
+                Lifecycle.Event.ON_START -> { session.start(); foreground = true }
+                Lifecycle.Event.ON_RESUME -> { cameraAllowed = hasCameraPermission(context) }
+                Lifecycle.Event.ON_STOP -> {
+                    session.stop(); foreground = false
+                    flash = ImageCapture.FLASH_MODE_OFF
+                    if (recording != null || capturing) error = "La captura se canceló al salir de la cámara. Puedes intentarlo de nuevo."
+                    finishRecording()
+                }
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            active.set(false)
-            recording?.stop()
+            session.close()
+            runCatching { recording?.stop() }
             recording = null
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
     fun close() {
-        active.set(false)
-        recording?.stop()
+        session.close()
+        runCatching { recording?.stop() }
         onClose()
     }
     BackHandler { close() }
-    val busy = capturing || recording != null
+    val busy = capturing || recording != null || finalizing || audioPending
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (cameraAllowed) AndroidView(
             factory = { preview },
@@ -268,7 +301,7 @@ internal fun ChatCameraCapture(
                     IconButton(onClick = {
                         error = null
                         flash = nextChatCameraFlash(flash, video)
-                    }, enabled = streaming && hasFlash && !capturing && !flashPending,
+                    }, enabled = foreground && streaming && hasFlash && !capturing && !finalizing && !audioPending && !flashPending,
                         modifier = Modifier.semantics { stateDescription = flashLabel }) {
                         Icon(when (flash) {
                             ImageCapture.FLASH_MODE_AUTO -> Icons.Default.FlashAuto
@@ -300,33 +333,43 @@ internal fun ChatCameraCapture(
                     stateDescription = "${recordingDuration / 1_000} segundos grabados"
                 },
             )
+            if (audioPending || finalizing) Text(
+                if (audioPending) "Esperando permiso del micrófono…" else "Preparando video…",
+                color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally)
+                    .background(Color.Black.copy(alpha = .65f)).padding(8.dp),
+            )
             Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween) {
-                IconButton(onClick = onGallery, enabled = !busy) { Icon(Icons.Default.Image, "Abrir galería", tint = Color.White) }
+                IconButton(onClick = { session.close(); onGallery() }, enabled = !busy) { Icon(Icons.Default.Image, "Abrir galería", tint = Color.White) }
                 FilledIconButton(
                     onClick = {
                         if (video) {
-                            if (recording != null) recording?.stop()
+                            if (recording != null) finishRecording()
                             else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startRecording()
-                            else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                            else {
+                                audioRequestToken = session.begin()
+                                audioPending = audioRequestToken != null
+                                if (audioPending) audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                            }
                         } else if (!capturing) {
                             error = null
                             val file = runCatching { createChatCaptureFile(context, false) }.getOrElse {
                                 error = "No se pudo preparar la foto. Libera espacio y vuelve a intentar."
                                 return@FilledIconButton
                             }
+                            val token = session.begin() ?: return@FilledIconButton
                             capturing = true
                             runCatching {
                                 controller.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), executor,
                                     object : ImageCapture.OnImageSavedCallback {
                                         override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                                             capturing = false
-                                            deliver(file, "image", 0L)
+                                            deliver(file, "image", 0L, token)
                                         }
                                         override fun onError(exception: ImageCaptureException) {
                                             capturing = false
                                             file.delete()
-                                            if (active.get()) error = "No se pudo tomar la foto. Inténtalo otra vez."
+                                            if (session.accepts(token)) error = "No se pudo tomar la foto. Inténtalo otra vez."
                                         }
                                     })
                             }.onFailure {
@@ -335,7 +378,7 @@ internal fun ChatCameraCapture(
                                 error = "No se pudo tomar la foto. Inténtalo otra vez."
                             }
                         }
-                    }, enabled = streaming && !capturing && !flashPending,
+                    }, enabled = foreground && streaming && !capturing && !flashPending && !finalizing && !audioPending,
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = if (recording != null) Color.Red else Color.White, contentColor = Color.Black),
                     modifier = Modifier.size(80.dp).border(3.dp, Color.White, CircleShape).padding(6.dp),
                 ) { Icon(if (recording != null) Icons.Default.Stop else if (video) Icons.Default.Videocam else Icons.Default.CameraAlt,

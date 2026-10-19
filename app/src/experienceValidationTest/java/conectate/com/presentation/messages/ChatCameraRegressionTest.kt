@@ -12,6 +12,10 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
 import org.junit.Before
@@ -108,5 +112,50 @@ class ChatCameraRegressionTest {
         compose.onNodeWithText("Galería solicitada").assertIsDisplayed()
         assertEquals(1, gallery)
         assertTrue(captures.isEmpty())
+    }
+
+    @Test fun closingDuringVideoRecordingDiscardsTheLateResult() {
+        var visible by mutableStateOf(true)
+        var delivered = 0
+        val directory = java.io.File(context.cacheDir, "file-provider/chat-captures")
+        val original = directory.listFiles()?.map { it.name }?.toSet().orEmpty()
+        compose.setContent { MaterialTheme {
+            if (visible) ChatCameraCapture(setOf("video"), onClose = { visible = false }, onGallery = { visible = false },
+                onCaptured = { media, _ -> captures += media.uri; delivered++ })
+            else Text("Video cancelado")
+        } }
+        waitReady()
+        compose.onNodeWithContentDescription("Grabar video").performClick()
+        compose.waitUntil(15_000) { compose.onAllNodesWithContentDescription("Detener grabación").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Cerrar cámara").performClick()
+        compose.onNodeWithText("Video cancelado").assertIsDisplayed()
+        compose.waitUntil(15_000) { directory.listFiles().orEmpty().none { it.name !in original && it.extension == "mp4" } }
+        compose.runOnIdle { assertEquals(0, delivered) }
+    }
+
+    @Test fun backgroundingCancelsTheCaptureAndReturningAllowsANewPhoto() {
+        val owner = object : LifecycleOwner {
+            val registry = LifecycleRegistry(this)
+            override val lifecycle: Lifecycle get() = registry
+        }
+        compose.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+        var visible by mutableStateOf(true)
+        var delivered = 0
+        compose.setContent { MaterialTheme { CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+            if (visible) ChatCameraCapture(onClose = { visible = false }, onGallery = { visible = false },
+                onCaptured = { media, _ -> captures += media.uri; delivered++ ; visible = false })
+            else Text("Foto después de volver")
+        } } }
+        waitReady(); enableLight()
+        compose.runOnIdle { owner.registry.currentState = Lifecycle.State.CREATED }
+        compose.onNodeWithContentDescription("Tomar foto").assertIsNotEnabled()
+        compose.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+        waitReady()
+        compose.onNodeWithText("Flash apagado").assertIsDisplayed()
+        assertEquals(0, delivered)
+        compose.onNodeWithContentDescription("Tomar foto").performClick()
+        compose.waitUntil(20_000) { captures.isNotEmpty() }
+        compose.onNodeWithText("Foto después de volver").assertIsDisplayed()
+        assertEquals(1, delivered)
     }
 }

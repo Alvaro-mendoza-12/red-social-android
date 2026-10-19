@@ -3,6 +3,17 @@ import { retainAttachmentOwner, useAttachmentDraft, useAttachmentPreparation } f
 
 beforeEach(() => retainAttachmentOwner(''))
 
+test('a synchronous preparation failure is recoverable and a retry can finish',async()=>{
+ const onError=jest.fn(),onReady=jest.fn()
+ const hook=renderHook(()=>useAttachmentPreparation('viewer','chat','sync-error',onReady,onError))
+ act(()=>hook.result.current.start(()=>{throw new Error('No se pudo leer el archivo')}))
+ await waitFor(()=>expect(onError).toHaveBeenCalledTimes(1))
+ expect(hook.result.current.preparing).toBe(false)
+ const file=new File(['data'],'retry.png')
+ await act(async()=>hook.result.current.start(()=>Promise.resolve([file])))
+ await waitFor(()=>expect(onReady).toHaveBeenCalledWith([file]))
+})
+
 test('cancelled preparation cannot restore attachments after the preview was closed',async()=>{
  let finish!:(files:File[])=>void
  const pending=new Promise<File[]>(resolve=>{finish=resolve}),first=mount()

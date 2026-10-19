@@ -46,10 +46,16 @@ export function useAttachmentPreparation(owner: string, scope: Scope, room: stri
     const current: Job = { owner, key, route, status: 'preparing', message: 'Preparando archivos…', files: [] }
     jobs.set(key, current); notify()
     // Invoke immediately: DataTransfer grants expire at the end of the drop event.
-    const pending = prepare(message => {
-      if (jobs.get(key) !== current) return
-      current.message = message; notify()
-    })
+    let pending: Promise<File[]>
+    try {
+      pending = prepare(message => {
+        if (jobs.get(key) !== current) return
+        current.message = message; notify()
+      })
+    } catch (error) {
+      current.status = 'failed'; current.message = attachmentPreparationError(error); notify()
+      return
+    }
     void pending.then(files => {
       if (jobs.get(key) !== current) return
       current.files = files; current.status = 'ready'

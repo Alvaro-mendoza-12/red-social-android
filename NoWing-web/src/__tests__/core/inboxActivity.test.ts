@@ -2,6 +2,45 @@ import {renderHook,act} from '@testing-library/react'
 import {applyRemoteConversationRead,applyInboxUnreadSnapshot,confirmInboxConversationRead,currentInboxUnreadCount,hasUnrepresentedInboxUnread,inboxUnreadCount,markInboxConversationRead,useInboxUnreadCounts,useInboxUnreadMessageTotal,notifyInboxMessage,latestInboxMessage,inboxMessageTarget} from '../../core/inboxActivity'
 import {dedupeInboxConversations} from '../../features/messages/conversationInboxSupport'
 
+test('reloading keeps confirmed incoming IDs read after our own outgoing activity',()=>{
+ const account='reload-confirmed-ids',at=new Date(Date.now()-1000).toISOString()
+ const item={id:'chat',unreadCount:1,unreadMessageIds:['already-read'],updatedAt:at}
+ applyInboxUnreadSnapshot(account,'chat',[item],100)
+ const token=markInboxConversationRead(account,'chat','chat')
+ confirmInboxConversationRead(account,'chat','chat',token,at)
+ jest.isolateModules(()=>{
+  const fresh=jest.requireActual<typeof import('../../core/inboxActivity')>('../../core/inboxActivity')
+  const afterSending={...item,updatedAt:new Date(Date.now()+1000).toISOString()}
+  expect(fresh.inboxUnreadCount(account,'chat',afterSending)).toBe(0)
+  expect(fresh.inboxUnreadCount(account,'chat',{...afterSending,unreadCount:2,unreadMessageIds:['already-read','new-incoming']})).toBe(1)
+  expect(fresh.inboxUnreadCount('different-account','chat',afterSending)).toBe(1)
+ })
+})
+
+test('legacy cursors load and malformed persisted IDs are ignored',()=>{
+ const account='cursor-upgrade',time=Date.now()-1000
+ localStorage.setItem(`novvin:read-cursors:${account}`,JSON.stringify([['chat:old',time],['chat:new',time,[null,{},'read-id']]]))
+ expect(inboxUnreadCount(account,'chat',{id:'old',unreadCount:1,updatedAt:new Date(time).toISOString()})).toBe(0)
+ expect(inboxUnreadCount(account,'chat',{id:'new',unreadCount:2,unreadMessageIds:['read-id','new-id'],updatedAt:new Date(time+1000).toISOString()})).toBe(1)
+})
+
+test('persisted confirmed IDs have a global bound and pending reads do not become confirmed',()=>{
+ const account='bounded-confirmed-ids',at=new Date().toISOString()
+ for(let index=0;index<45;index++){
+  const id=`chat-${index}`,ids=Array.from({length:110},(_,i)=>`message-${index}-${i}`)
+  applyInboxUnreadSnapshot(account,'chat',[{id,updatedAt:at,unreadCount:ids.length,unreadMessageIds:ids}],index)
+  const token=markInboxConversationRead(account,'chat',id)
+  confirmInboxConversationRead(account,'chat',id,token,at)
+ }
+ const saved=JSON.parse(localStorage.getItem(`novvin:read-cursors:${account}`)!) as [string,number,string[]?][]
+ expect(saved.reduce((count,entry)=>count+(entry[2]?.length||0),0)).toBe(4000)
+ expect(saved.every(entry=>(entry[2]?.length||0)<=100)).toBe(true)
+ const pending='pending-not-confirmed'
+ applyInboxUnreadSnapshot(pending,'chat',[{id:'chat',updatedAt:at,unreadCount:1,unreadMessageIds:['not-confirmed']}])
+ markInboxConversationRead(pending,'chat','chat')
+ expect(localStorage.getItem(`novvin:read-cursors:${pending}`)).toBeNull()
+})
+
 test('an outgoing sticker cannot revive incoming IDs already confirmed read',()=>{
  const account='own-sticker-regression',item={id:'chat',unreadCount:1,unreadMessageIds:['incoming'],updatedAt:'2026-10-19T07:00:00Z'}
  applyInboxUnreadSnapshot(account,'chat',[item],100)
