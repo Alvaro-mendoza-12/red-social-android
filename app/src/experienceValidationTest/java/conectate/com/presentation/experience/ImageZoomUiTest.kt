@@ -120,7 +120,7 @@ class ImageZoomUiTest {
         assertEquals(1,next)
     }
     @Test fun anonymousPhotoOpensCommonViewerAndCanZoom() {
-        val message=AnonymousChatMessage("qa-image","qa-client","peer","Foto","image",Uri.fromFile(source).toString(),"2026-10-08T10:00:00Z")
+        val message=AnonymousChatMessage(id="qa-image",clientMessageId="qa-client",sender="peer",content="Foto",contentType="image",mediaUrl=Uri.fromFile(source).toString(),createdAt="2026-10-08T10:00:00Z")
         compose.setContent { MaterialTheme { AnonymousMessageBubble(message) } }
         compose.onNodeWithContentDescription("Foto").performClick();waitZoomReady()
         compose.onNodeWithTag("media_zoom_viewer").performTouchInput { doubleClick(center) }
