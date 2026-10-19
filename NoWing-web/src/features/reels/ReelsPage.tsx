@@ -25,7 +25,7 @@ import { SafeAvatar } from '../../components/SafeAvatar'
 import { ShareVideoDialog } from '../../components/ShareVideoDialog'
 import { StatusView } from '../../components/StatusView'
 import { PublicationDialog } from '../../components/PublicationDialog'
-import { loadRecommendedVideoPage } from '../../core/videoRecommendations'
+import { loadRecommendedVideoPage, loadFriendsVideoPage } from '../../core/videoRecommendations'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
   removeRealtimeChannel,
@@ -38,7 +38,6 @@ import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import {
   createFallbackVideo,
-  loadFallbackFollows,
   loadFallbackLiveStreams,
   setFallbackVideoFavorite,
   setFallbackVideoReaction,
@@ -49,7 +48,6 @@ import {
 import { fallbackApiJson, isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import {
   avatarMediaTypeSource,
-  profileIdentityAliases,
   profileVideoCoverSource,
   profileVideoSource,
   reelAuthorAvatarSource,
@@ -777,7 +775,8 @@ export function ReelsPage() {
   const { user, isFallbackSession } = useAuth()
   const location = useLocation()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
-  const reelsCacheKey = `reels:${user?.id ?? 'anon'}`
+  const [feedMode, setFeedMode] = useState<FeedMode>('recommended')
+  const reelsCacheKey = `reels:${user?.id ?? 'anon'}:${feedMode}`
   const [items, setItems] = useState<ReelItem[]>([])
   const feedPage = useRef({ owner: '', refreshId: '', cursor: null as string | null, offset: 0, hasMore: true, legacy: false })
   const feedRequest = useRef<AbortController | null>(null), feedBusy = useRef(false)
@@ -791,7 +790,7 @@ export function ReelsPage() {
     const controller = new AbortController(); feedRequest.current = controller; feedBusy.current = true
     setLoadingMore(true); setFeedPageError('')
     try {
-      const page = await loadRecommendedVideoPage({ ...state, signal: controller.signal })
+      const page = await (feedMode==='friends'?loadFriendsVideoPage({owner,offset:state.offset,signal:controller.signal}):loadRecommendedVideoPage({ ...state, signal: controller.signal }))
       if (controller.signal.aborted) return
       const mapped = page.items.map(mapVideoRow).filter(item => item.videoUrl.length > 0)
       feedPage.current = { owner, refreshId: state.refreshId, cursor: page.nextCursor, offset: page.offset, hasMore: page.hasMore, legacy: page.legacy }
@@ -812,7 +811,7 @@ export function ReelsPage() {
     } finally {
       if (feedRequest.current === controller) { feedBusy.current = false; setLoadingMore(false); setLoading(false); setSyncing(false) }
     }
-  }, [reelsCacheKey, user?.id])
+  }, [reelsCacheKey, user?.id, feedMode])
   useEffect(() => () => { feedRequest.current?.abort() }, [user?.id])
   const [liveStreams, setLiveStreams] = useState<FallbackLiveStream[]>([])
   const [loading, setLoading] = useState(true)
@@ -829,7 +828,6 @@ export function ReelsPage() {
   const [showUploadForm, setShowUploadForm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [onlyMine, setOnlyMine] = useState(false)
-  const [feedMode, setFeedMode] = useState<FeedMode>('recommended')
   const [followingIds, setFollowingIds] = useState<string[]>([])
   const [sortBy, setSortBy] = useState<FeedSort>('recommended')
   const [videoDurationSeconds, setVideoDurationSeconds] = useState(0)
@@ -873,8 +871,8 @@ export function ReelsPage() {
     const query = searchQuery.trim().toLowerCase()
     let next = items
 
-    if (feedMode === 'friends') {
-      next = filterFriendFeedItems(next, followingIds, user?.id)
+    if (feedMode === 'friends' && !useUbuntu) {
+      next = filterFriendFeedItems(next, followingIds)
     }
     if (onlyMine && user) {
       next = next.filter((item) => item.authorId === user.id)
@@ -897,7 +895,7 @@ export function ReelsPage() {
         return b.viewCount - a.viewCount || Date.parse(b.createdAt) - Date.parse(a.createdAt)
       return Date.parse(b.createdAt) - Date.parse(a.createdAt)
     })
-  }, [feedMode, followingIds, items, onlyMine, searchQuery, sortBy, user])
+  }, [feedMode, followingIds, items, onlyMine, searchQuery, sortBy, user, useUbuntu])
 
   const loadVideos = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -1000,24 +998,20 @@ export function ReelsPage() {
 
     async function loadFollowingIds() {
       try {
-        if (useUbuntu) {
-          const response = await loadFallbackFollows('following')
-          const ids = response.items.flatMap((profile) => profileIdentityAliases(profile))
-          if (!cancelled) setFollowingIds(Array.from(new Set(ids)))
-          return
-        }
+        if (useUbuntu) return
 
         if (!supabase) return
         const { data, error: followsError } = await supabase
-          .from('follows')
-          .select('following_id')
-          .eq('follower_id', userId)
+          .from('friends')
+          .select('sender_id,receiver_id')
+          .eq('status','accepted')
+          .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
         if (followsError) {
           if (!cancelled) setFollowingIds([])
           return
         }
         const ids = ((data ?? []) as GenericRow[])
-          .map((row) => textOf(row, ['following_id', 'followingId'], ''))
+          .map((row) => textOf(row,[textOf(row,['sender_id'])===userId?'receiver_id':'sender_id']))
           .filter(Boolean)
         if (!cancelled) setFollowingIds(Array.from(new Set(ids)))
       } catch {
@@ -2124,7 +2118,7 @@ export function ReelsPage() {
             )
           })}
           {useUbuntu ? <div className="reels-feed-continuation">
-            <button type="button" className="ghost-btn" disabled={loadingMore} onClick={() => { feedPage.current.owner = ''; setCommentsVideo(null); void loadRecommended(true); document.querySelector('.reels-vertical-feed')?.scrollTo({ top: 0, behavior: 'smooth' }) }}>Actualizar Para ti</button>
+            <button type="button" className="ghost-btn" disabled={loadingMore} onClick={() => { feedPage.current.owner = ''; setCommentsVideo(null); void loadRecommended(true); document.querySelector('.reels-vertical-feed')?.scrollTo({ top: 0, behavior: 'smooth' }) }}>Actualizar videos</button>
             {loadingMore ? <p role="status">Cargando tu próximo video…</p> : feedPageError ? <><p role="alert">{feedPageError}</p><button type="button" className="ghost-btn" onClick={() => void loadRecommended()}>Reintentar carga</button></> : !feedPage.current.hasMore ? <><p>Estás al día con los videos disponibles.</p><button type="button" className="ghost-btn" onClick={() => { feedPage.current.owner = ''; void loadRecommended(true) }}>Buscar novedades</button></> : null}
           </div> : null}
         </div>

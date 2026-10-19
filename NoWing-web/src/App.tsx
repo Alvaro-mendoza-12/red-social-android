@@ -1,11 +1,12 @@
 import { PageMetadata } from './ui/novvin/PageMetadata'
+import { AppErrorBoundary } from './components/AppErrorBoundary'
 import './ui/novvin/webParity.css'
 import { NotFoundPage } from './ui/novvin/NotFoundPage'
 import { PublicHome } from './ui/novvin/PublicHome'
 import { PublicInfo } from './ui/novvin/PublicInfo'
 import { WebOutboxHost } from './components/WebOutboxHost'
 import { lazy, Suspense, type ReactNode } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { StatusView } from './components/StatusView'
 import { AuthProvider, GuestOnlyRoute, RequireAuth, useAuth } from './core/auth/AuthProvider'
 import { LoginPage } from './pages/auth/LoginPage'
@@ -52,6 +53,7 @@ const MessagesPage = lazy(() =>
     default: module.MessagesPage,
   })),
 )
+const CollectionInvitePage = lazy(() => import('./features/messages/CollectionInvitePage').then(module => ({ default: module.CollectionInvitePage })))
 const NovvinPage = lazy(() =>
   import('./features/novvin/NovvinPage').then((module) => ({
     default: module.NovvinPage,
@@ -174,10 +176,11 @@ const AdminModerationPage = lazy(() =>
 )
 
 function RouteSuspense({ children }: { children: ReactNode }) {
+  const {pathname}=useLocation()
   return (
-    <Suspense fallback={<StatusView title="Cargando módulo..." description="Espera un momento." />}>
+    <AppErrorBoundary key={pathname}><Suspense fallback={<StatusView title="Cargando módulo..." description="Espera un momento." />}>
       {children}
-    </Suspense>
+    </Suspense></AppErrorBoundary>
   )
 }
 
@@ -194,6 +197,8 @@ function AppRouter() {
       <PageMetadata />
       <Routes>
         <Route path="/" element={<RootRoute />} />
+        <Route path="/group/:roomId" element={<RequireAuth><RouteSuspense><CollectionInvitePage kind="group" /></RouteSuspense></RequireAuth>} />
+        <Route path="/community/:roomId" element={<RequireAuth><RouteSuspense><CollectionInvitePage kind="community" /></RouteSuspense></RequireAuth>} />
         <Route path="/que-es-novvin" element={<PublicInfo path="/que-es-novvin" />} />
         <Route path="/ayuda/preguntas-frecuentes" element={<PublicInfo path="/ayuda/preguntas-frecuentes" />} />
       <Route path="/novvin-web" element={<PublicInfo path="/novvin-web" />} />

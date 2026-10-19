@@ -4,6 +4,7 @@ import { ProfileMediaButton } from '../../components/ProfileMediaButton'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { StreamingImage } from '../../components/StreamingMedia'
 import type { ProfileIdentity } from './profileIdentity'
+import { ProfileCoverEffect } from '../../components/ProfileCoverEffect'
 
 export function VerifiedMark() {
   return (
@@ -23,6 +24,8 @@ export function ProfileHeader({
   avatarUrl,
   avatarMediaType,
   coverUrl,
+  profileEffect,
+  profileTheme,
   frame,
   identity,
   followers,
@@ -34,6 +37,8 @@ export function ProfileHeader({
   avatarUrl: string
   avatarMediaType?: string
   coverUrl: string
+  profileEffect?: string
+  profileTheme?: string
   frame?: string
   identity: ProfileIdentity
   followers: number
@@ -43,7 +48,7 @@ export function ProfileHeader({
   return (
     <>
       <div className="mobile-profile-cover">
-        {coverUrl ? <ProfileMediaButton url={coverUrl} name={`portada de ${name}`}><StreamingImage src={coverUrl} alt={`Portada de ${name}`} /></ProfileMediaButton> : null}
+        {coverUrl ? <ProfileMediaButton url={coverUrl} name={`portada de ${name}`}><StreamingImage src={coverUrl} alt={`Portada de ${name}`} /></ProfileMediaButton> : <ProfileCoverEffect effect={profileEffect} theme={profileTheme} />}
       </div>
       <div className="mobile-profile-main novvin-profile-main-header">
         <div className="novvin-profile-header">

@@ -1184,19 +1184,22 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       if (!session || !ownsSession(session, identity)) return res.status(404).json({ error: 'SESSION_NOT_FOUND' })
       const { rows } = await pool.query(
         `SELECT id::text, sender_id, client_message_id, content, content_type, media_url, created_at
-         FROM fallback_random_chat_messages
-         WHERE session_id = $1::uuid
-         ORDER BY created_at
-         LIMIT 500`,
+         FROM (SELECT * FROM fallback_random_chat_messages WHERE session_id = $1::uuid
+           ORDER BY created_at DESC, id DESC LIMIT 500) recent
+         ORDER BY created_at, id`,
         [sessionId],
       )
       const readColumn = identity.ids.has(normalizeId(session.user_a))
         ? 'user_a_read_at'
         : 'user_b_read_at'
-      await pool.query(
-        `UPDATE fallback_random_chat_sessions SET ${readColumn} = NOW() WHERE id = $1::uuid`,
-        [sessionId],
-      )
+      const peerReadAt = identity.ids.has(normalizeId(session.user_a)) ? session.user_b_read_at : session.user_a_read_at
+      const latestVisible = rows.at(-1)?.created_at
+      if (latestVisible && req.query.markRead !== 'false') {
+        const updated = await pool.query(
+          `UPDATE fallback_random_chat_sessions SET ${readColumn} = $2::timestamptz
+           WHERE id = $1::uuid AND ${readColumn} < $2::timestamptz RETURNING id`, [sessionId, latestVisible])
+        if (updated.rows.length) void publishRealtimeEvent(`random-chat:${sessionId}`, { event: 'random_message_read', sessionId })
+      }
       res.json({
         items: rows.map((row) => ({
           id: row.id,
@@ -1206,6 +1209,7 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
           content_type: row.content_type || 'text',
           media_url: row.media_url || null,
           created_at: row.created_at,
+          is_read: identity.ids.has(normalizeId(row.sender_id)) && new Date(row.created_at).getTime() <= new Date(peerReadAt || 0).getTime(),
         })),
       })
     } catch (error) {

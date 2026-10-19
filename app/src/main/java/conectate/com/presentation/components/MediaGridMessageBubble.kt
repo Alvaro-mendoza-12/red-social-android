@@ -2,6 +2,7 @@ package conectate.com.presentation.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -140,6 +141,7 @@ fun MediaGridMessageBubble(
     messages: List<Message>,
     isFromCurrentUser: Boolean,
     onClick: (Message) -> Unit,
+    onLongClick: (Message) -> Unit = {},
     onResolveUrl: suspend (String) -> String? = { it }
 ) {
     if (messages.isEmpty()) return
@@ -172,6 +174,7 @@ fun MediaGridMessageBubble(
                     1 -> MediaGridItem(
                         message = displayMessages[0],
                         onClick = onClick,
+                        onLongClick = onLongClick,
                         onResolveUrl = onResolveUrl,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -189,6 +192,7 @@ fun MediaGridMessageBubble(
                                 MediaGridItem(
                                     message = message,
                                     onClick = onClick,
+                        onLongClick = onLongClick,
                                     onResolveUrl = onResolveUrl,
                                     modifier = Modifier
                                         .weight(1f)
@@ -208,6 +212,7 @@ fun MediaGridMessageBubble(
                             MediaGridItem(
                                 message = displayMessages[0],
                                 onClick = onClick,
+                        onLongClick = onLongClick,
                                 onResolveUrl = onResolveUrl,
                                 modifier = Modifier
                                     .weight(1f)
@@ -223,6 +228,7 @@ fun MediaGridMessageBubble(
                                     MediaGridItem(
                                         message = message,
                                         onClick = onClick,
+                        onLongClick = onLongClick,
                                         onResolveUrl = onResolveUrl,
                                         modifier = Modifier
                                             .weight(1f)
@@ -256,6 +262,7 @@ fun MediaGridMessageBubble(
                                             MediaGridItem(
                                                 message = message,
                                                 onClick = onClick,
+                        onLongClick = onLongClick,
                                                 onResolveUrl = onResolveUrl,
                                                 modifier = Modifier.fillMaxSize()
                                             )
@@ -303,6 +310,7 @@ fun MediaGridMessageBubble(
 fun MediaGridItem(
     message: Message,
     onClick: (Message) -> Unit,
+    onLongClick: (Message) -> Unit = {},
     modifier: Modifier = Modifier,
     onResolveUrl: suspend (String) -> String? = { it }
 ) {
@@ -334,7 +342,7 @@ fun MediaGridItem(
     Box(
         modifier = modifier
             .background(Color(0xFF202020))
-            .clickable(enabled = rawUrl.isNotBlank()) { onClick(message) }
+            .combinedClickable(enabled = rawUrl.isNotBlank(), onClick = { onClick(message) }, onLongClick = { onLongClick(message) })
     ) {
         SubcomposeAsyncImage(
             model = imageRequest,

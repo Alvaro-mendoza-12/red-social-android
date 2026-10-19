@@ -182,6 +182,8 @@ fun NovvinChatScreen(
         },
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
+                val spelling = conectate.com.presentation.components.rememberChatSpellCheckState(draft)
+                var spellingDraft by conectate.com.presentation.components.rememberChatSpellingDraft(draft)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -190,11 +192,23 @@ fun NovvinChatScreen(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
+                    Column(Modifier.weight(1f)) {
+                    conectate.com.presentation.components.ChatSpellingSuggestions(
+                        state = spelling,
+                        selection = spellingDraft.selection,
+                        modifier = Modifier.fillMaxWidth(),
+                        onReplace = { issue, replacement ->
+                            val corrected = spelling.replace(draft, issue, replacement)
+                            spellingDraft = androidx.compose.ui.text.input.TextFieldValue(corrected,
+                                androidx.compose.ui.text.TextRange(issue.start + replacement.length))
+                            draft = corrected
+                        }
+                    )
                     OutlinedTextField(
-                        value = draft,
-                        visualTransformation = conectate.com.presentation.components.rememberChatSpellCheck(draft),
-                        onValueChange = { draft = it.take(1000) },
-                        modifier = Modifier.weight(1f),
+                        value = spellingDraft,
+                        visualTransformation = spelling.visualTransformation,
+                        onValueChange = { if (it.text.length <= 1000) { spellingDraft = it; draft = it.text } },
+                        modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("Escribe a Novvin") },
                         enabled = !isHistoryLoading,
                         minLines = 1,
@@ -215,6 +229,7 @@ fun NovvinChatScreen(
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                         )
                     )
+                    }
                     Spacer(Modifier.width(8.dp))
                     FilledIconButton(
                         onClick = { submitDraft() },

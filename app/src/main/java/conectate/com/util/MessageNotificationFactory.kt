@@ -46,7 +46,8 @@ data class MessageNotificationPayload(
     val allowInlineActions: Boolean = true,
     val conversationIcon: Bitmap? = null,
     val channelContextId: String? = null,
-    val silent: Boolean = false
+    val silent: Boolean = false,
+    val createdAt: String? = null
 )
 
 object MessageNotificationFactory {
@@ -101,7 +102,9 @@ object MessageNotificationFactory {
     private fun publishNext() {
         publicationHandler.removeCallbacks(drainPublications)
         if (pendingPublications.isEmpty()) return
-        val remaining = MIN_PUBLICATION_INTERVAL_MS - (android.os.SystemClock.elapsedRealtime() - lastPublicationAtMs)
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now < lastPublicationAtMs) lastPublicationAtMs = -MIN_PUBLICATION_INTERVAL_MS
+        val remaining = MIN_PUBLICATION_INTERVAL_MS - (now - lastPublicationAtMs)
         if (remaining > 0) {
             publicationHandler.postDelayed(drainPublications, remaining)
             return
@@ -153,7 +156,30 @@ object MessageNotificationFactory {
 
     /** Build and publish under the same lock used by deletion/action updates. */
     @Synchronized
+    fun postReaction(context: Context, payload: MessageNotificationPayload): Boolean {
+        val identity = DeletedMessageIdentity.create(payload.notificationAccountTarget?.userId, payload.targetType, payload.conversationId, payload.messageId)
+        if (identity == null || DeletedMessageStore(context).isSuppressed(identity)) return false
+        ensureChannel(context, payload)
+        val scope = ConversationNotificationIdentity.scope(payload.notificationAccountTarget, payload.targetType, payload.conversationId, payload.channelContextId)
+        val intent = buildOpenIntent(context, payload).apply {
+            removeExtra("notification_preview")
+            putExtra("type", "message_reaction")
+        }
+        val pending = PendingIntent.getActivity(context, payload.notificationId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notification = NotificationCompat.Builder(context, payload.channelId)
+            .setSmallIcon(R.drawable.ic_notification).setContentTitle(if (payload.isGroupConversation) "${payload.senderName} · ${payload.conversationTitle}" else payload.senderName)
+            .setContentText(payload.messageBody).setStyle(NotificationCompat.BigTextStyle().bigText(payload.messageBody))
+            .setContentIntent(pending).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .addExtras(Bundle().apply { putString(EXTRA_SCOPE, scope); putString(EXTRA_ACCOUNT, payload.notificationAccountTarget?.userId)
+                putString(EXTRA_TYPE, payload.targetType); putString(EXTRA_CONVERSATION, payload.conversationId)
+                putString(EXTRA_LAST_MESSAGE_ID, payload.messageId); putBoolean("novvin_reaction_notice", true) }).build()
+        publish(context.getSystemService(NotificationManager::class.java), "$scope/reaction/${payload.senderId}", payload.notificationId, notification)
+        return true
+    }
+
+    @Synchronized
     fun post(context: Context, payload: MessageNotificationPayload): Boolean {
+        if (ConversationReadStore(context).isRead(payload.notificationAccountTarget?.userId,payload.targetType,payload.conversationId,payload.messageId,payload.createdAt)) return false
         val identity = DeletedMessageIdentity.create(payload.notificationAccountTarget?.userId, payload.targetType, payload.conversationId, payload.messageId)
         if (identity != null && DeletedMessageStore(context).isSuppressed(identity)) return false
         val scope = ConversationNotificationIdentity.scope(payload.notificationAccountTarget, payload.targetType, payload.conversationId, payload.channelContextId)
@@ -172,6 +198,14 @@ object MessageNotificationFactory {
         store.mark(identity, createdAt, forEveryone)
         val manager = context.getSystemService(NotificationManager::class.java)
         currentNotifications(context).forEach { active ->
+            if (active.notification.extras.getBoolean("novvin_reaction_notice") &&
+                active.notification.extras.getString(EXTRA_LAST_MESSAGE_ID) == identity.messageId &&
+                active.notification.extras.getString(EXTRA_ACCOUNT) == identity.accountId &&
+                active.notification.extras.getString(EXTRA_CONVERSATION) == identity.conversationId &&
+                active.notification.extras.getString(EXTRA_TYPE) == identity.targetType) {
+                cancelPublished(manager, active.tag, active.id)
+                return@forEach
+            }
             val extras = active.notification.extras
             val existing = DeletedMessageIdentity.create(extras.getString(EXTRA_ACCOUNT), extras.getString(EXTRA_TYPE), extras.getString(EXTRA_CONVERSATION), identity.messageId)
             // Legacy builds have only EXTRA_SCOPE: match every known channel using that exact account scope.
@@ -219,6 +253,32 @@ object MessageNotificationFactory {
             (extras.getString(EXTRA_ACCOUNT) == account?.userId && extras.getString(EXTRA_TYPE) == type && extras.getString(EXTRA_CONVERSATION) == id) ||
                 extras.getString(EXTRA_SCOPE) == ConversationNotificationIdentity.scope(account, type, id)
         }.forEach { cancelPublished(manager, it.tag, it.id) }
+    }
+
+    @Synchronized
+    fun applyRemoteRead(context: Context, event: ConversationReadEvent) {
+        val manager=context.getSystemService(NotificationManager::class.java)
+        currentNotifications(context).filter { active ->
+            val extras=active.notification.extras
+            extras.getString(EXTRA_ACCOUNT)?.equals(event.accountId,true)==true &&
+                extras.getString(EXTRA_TYPE)==event.kind && extras.getString(EXTRA_CONVERSATION)?.equals(event.conversationId,true)==true
+        }.forEach { active ->
+            val previous=NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(active.notification)
+            if(previous==null){
+                if(event.includes(active.notification.extras.getString(EXTRA_LAST_MESSAGE_ID),java.time.Instant.ofEpochMilli(active.notification.`when`).toString()))cancelPublished(manager,active.tag,active.id)
+                return@forEach
+            }
+            val remaining=previous.messages.filterNot { event.includes(it.extras.getString(MESSAGE_ID),java.time.Instant.ofEpochMilli(it.timestamp).toString()) }
+            if(remaining.size==previous.messages.size)return@forEach
+            if(remaining.isEmpty()){cancelPublished(manager,active.tag,active.id);return@forEach}
+            val style=NotificationCompat.MessagingStyle(previous.user).setConversationTitle(previous.conversationTitle).setGroupConversation(previous.isGroupConversation)
+            remaining.forEach { style.addMessage(it) }
+            val last=remaining.last()
+            val updated=NotificationCompat.Builder(context,active.notification).setStyle(style).setContentText(last.text)
+                .setNumber(remaining.size).setOnlyAlertOnce(true).setSilent(true)
+                .addExtras(Bundle().apply {putString(EXTRA_LAST_MESSAGE_ID,last.extras.getString(MESSAGE_ID))}).build()
+            publish(manager,active.tag,active.id,updated,redact=true)
+        }
     }
 
     @Synchronized
@@ -291,7 +351,8 @@ object MessageNotificationFactory {
                     })
                 } else style.addMessage(item)
             }
-        val current = NotificationCompat.MessagingStyle.Message(payload.messageBody.take(1000), System.currentTimeMillis(), sender)
+        val messageTime = payload.createdAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() } ?: System.currentTimeMillis()
+        val current = NotificationCompat.MessagingStyle.Message(payload.messageBody.take(1000), messageTime, sender)
         current.extras.putString(MESSAGE_ID, payload.messageId)
         current.extras.putBoolean(REAL_SENDER_ICON, hasSenderPhoto)
         style.addMessage(current)

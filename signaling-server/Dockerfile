@@ -8,7 +8,7 @@ WORKDIR /usr/src/app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY index.js resolver.js payload-policy.js socket-event-guard.js call-join-policy.js live-access-policy.js distributed-adapter.js distributed-scope.js distributed-live-state.js live-guest-media-state.js live-reaction-policy.js ./
+COPY index.js resolver.js payload-policy.js socket-event-guard.js call-join-policy.js live-access-policy.js distributed-adapter.js distributed-scope.js distributed-live-state.js live-guest-media-state.js live-reaction-policy.js room-chat-policy.js room-chat-transport.js room-chat-stream-cleanup.js ./
 
 USER node
 

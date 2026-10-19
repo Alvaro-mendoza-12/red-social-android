@@ -43,7 +43,7 @@ fun FloatingEmojiReactionOverlay(
     if (reactions.isEmpty()) return
 
     BoxWithConstraints(modifier = modifier) {
-        reactions.forEach { reaction ->
+        reactions.takeLast(16).forEach { reaction ->
             key(reaction.id) {
                 FloatingEmojiReactionBubble(reaction = reaction)
             }
@@ -55,7 +55,7 @@ fun FloatingEmojiReactionOverlay(
 private fun BoxWithConstraintsScope.FloatingEmojiReactionBubble(
     reaction: FloatingEmojiReaction
 ) {
-    val seed = abs(reaction.id.hashCode())
+    val seed = reaction.id.hashCode() and Int.MAX_VALUE
     val random = remember(reaction.id) { Random(seed) }
     val baseOffset = remember(reaction.id) { random.nextFloat() * 132f - 66f }
     val amplitude = remember(reaction.id) { 24f + random.nextFloat() * 42f }
@@ -103,27 +103,12 @@ private fun BoxWithConstraintsScope.FloatingEmojiReactionBubble(
         Color.White.copy(alpha = 0.16f)
     }
 
-    Surface(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
+    AnimatedReactionArt(
+        emoji = reaction.emoji, progress = currentProgress, seed = seed,
+        modifier = Modifier.align(Alignment.BottomCenter)
             .graphicsLayer {
-                translationX = xOffset
-                translationY = yOffset
-                alpha = alphaAnim.value
-                scaleX = currentScale
-                scaleY = currentScale
-                rotationZ = rotation
-            }
-            .sizeIn(minWidth = 56.dp, minHeight = 56.dp),
-        color = bubbleColor,
-        shape = androidx.compose.foundation.shape.CircleShape,
-        shadowElevation = 10.dp,
-        tonalElevation = 0.dp
-    ) {
-        Text(
-            text = reaction.emoji,
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
-            style = TextStyle(fontSize = 31.sp)
-        )
-    }
+                translationX = xOffset; translationY = yOffset; alpha = alphaAnim.value
+                scaleX = currentScale; scaleY = currentScale; rotationZ = rotation
+            }.sizeIn(minWidth = 54.dp, minHeight = 54.dp, maxWidth = 54.dp, maxHeight = 54.dp)
+    )
 }

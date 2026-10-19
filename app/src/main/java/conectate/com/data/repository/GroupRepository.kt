@@ -638,7 +638,8 @@ class GroupRepository @Inject constructor(
                         // Count until the viewport confirms reading, even while the room is open.
                         val isGroupCurrentlyOpen = (cleanId == currentOpenedGroupId)
                         if (currentUserId != null && msg.id !in readJournal.seenIds(currentUserId, "group", cleanId) &&
-                            UnreadPolicy.isEligibleStatusForReadTransition(msg.status)) {
+                            UnreadPolicy.isEligibleStatusForReadTransition(msg.status) &&
+                            !conectate.com.util.ConversationReadStore(context).isRead(currentUserId,"group",cleanId,msg.id,msg.created_at)) {
                             if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-before-unread:$cleanId")) return@withContext
                             groupDao.incrementUnreadCount(cleanId)
                         }
@@ -809,7 +810,8 @@ class GroupRepository @Inject constructor(
             try {
                 var cleanId = msg.group_id.trim().lowercase()
                 if (cleanId == currentOpenedGroupId) return@withContext
-                if (ConversationNotificationPrefs(context).isMuted("group", cleanId, authService.getCurrentUserId())) {
+                val isMention = msg.mentioned_user_ids.any { it.equals(receivingAccount.userId, true) }
+                if (!isMention && ConversationNotificationPrefs(context).isMuted("group", cleanId, authService.getCurrentUserId())) {
                     android.util.Log.d("GroupRepository", "🔕 [NOTIFICATION] Group $cleanId muted locally. Skipping notification.")
                     return@withContext
                 }
@@ -1120,9 +1122,10 @@ class GroupRepository @Inject constructor(
         incoming: GroupMessage,
         local: GroupMessage?
     ): GroupMessage {
-        local ?: return deletedMessageStore.redact(incoming, currentSessionUserId())
+        val wasRead = conectate.com.util.ConversationReadStore(context).isRead(currentSessionUserId(),"group",incoming.group_id,incoming.id,incoming.created_at)
+        local ?: return deletedMessageStore.redact(if (wasRead) incoming.copy(status="read") else incoming, currentSessionUserId())
         var mergedReceipt = mergeGroupReceiptState(
-            currentStatus = local.status,
+            currentStatus = if (wasRead) "read" else local.status,
             currentDeliveredAt = local.delivered_at,
             currentReadAt = local.read_at,
             incomingStatus = incoming.status,
@@ -2270,16 +2273,14 @@ class GroupRepository @Inject constructor(
                     val historyAccess = payload.historyAccess
                     val pendingHistoryIds = groupDao.getMessagesSync(cleanId).filter { !it.is_synced && it.pending_action == "send" }.map { it.id }.toSet()
                     if (historyAccess != null) {
-                        val inaccessible = groupDao.getMessagesSync(cleanId).filter {
-                            it.is_synced && it.pending_action == null && !historyAccess.allows(it.created_at)
-                        }.map { it.id }
                         if (!isSessionSnapshotValid(sessionSnapshot, "group-history-access:$cleanId")) return@withContext
                         collectionHistoryStore.save(normalizedSessionUserId, "group", cleanId, historyAccess)
                         if (!historyAccess.isMember) {
                             if (historyAccess.canReadHistory) groupDao.insertMembers(listOf(GroupMemberEntity(cleanId, normalizedSessionUserId, "former_member", historyAccess.joinedAt ?: java.time.Instant.now().toString())))
                             else groupDao.removeMember(cleanId, normalizedSessionUserId)
                         }
-                        if (inaccessible.isNotEmpty()) groupDao.deleteInaccessibleHistory(cleanId, inaccessible)
+                        // The policy filters reads. A sync snapshot must not destroy cached history;
+                        // a corrected membership epoch can make it accessible again.
                     }
                     val localMessagesById = groupDao.getMessagesSync(cleanId)
                         .associateBy { it.id.trim().lowercase() }
@@ -2915,8 +2916,9 @@ class GroupRepository @Inject constructor(
                     userId = cleanUserId,
                     role = "member"
                 ).getOrThrow()
+                val joinedAt = groupDao.getMemberJoinedAt(cleanId, cleanUserId) ?: java.time.Instant.now().toString()
                 groupDao.insertMembers(
-                    listOf(GroupMemberEntity(cleanId, cleanUserId, "member", java.time.Instant.now().toString()))
+                    listOf(GroupMemberEntity(cleanId, cleanUserId, "member", joinedAt))
                 )
                 return@withContext Result.success(Unit)
             }
@@ -3110,13 +3112,14 @@ class GroupRepository @Inject constructor(
                 val cleanRole = newRole.trim().lowercase().takeIf { it == "admin" || it == "member" }
                     ?: return@withContext Result.failure(Exception("Rol inválido."))
                 localFallbackApiClient.joinCollection(token, "groups", cleanId, targetUserId, cleanRole).getOrThrow()
-                groupDao.insertMembers(
+                val originalJoinedAt = groupDao.getMemberJoinedAt(cleanId, targetUserId)
+                if (originalJoinedAt != null) groupDao.insertMembers(
                     listOf(
                         GroupMemberEntity(
                             group_id = cleanId,
                             user_id = targetUserId,
                             role = cleanRole,
-                            joined_at = java.time.Instant.now().toString()
+                            joined_at = originalJoinedAt
                         )
                     )
                 )

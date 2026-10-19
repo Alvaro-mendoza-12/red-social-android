@@ -68,5 +68,6 @@ export function useAttachmentPreparation(owner: string, scope: Scope, room: stri
     else onError(current.message)
     notify()
   }, [key, version, onReady, onError])
-  return { start, preparing: job?.status === 'preparing', status: job?.message || 'Preparando archivos…' }
+  const cancel = useCallback(() => { jobs.delete(key); notify() }, [key])
+  return { start, cancel, preparing: job?.status === 'preparing', status: job?.message || 'Preparando archivos…' }
 }

@@ -105,9 +105,11 @@ private fun BoxWithConstraintsScope.FloatingReaction(
                 rotationZ = motion.rotationDegrees
             }
             .align(Alignment.BottomStart)
-    if (reaction.kind in setOf("👏", "🔥", "😮")) {
-        Text(reaction.kind, fontSize = 28.sp, modifier = particleModifier)
-    } else Icon(Icons.Default.Favorite, null, modifier = particleModifier, tint = liveHeartColors[seed % liveHeartColors.size])
+    conectate.com.presentation.components.AnimatedReactionArt(
+        emoji = if (reaction.kind in setOf("👏", "🔥", "😮")) reaction.kind else "❤️",
+        progress = if (animationsEnabled) progress.value else .28f,
+        seed = seed, modifier = particleModifier.size(43.dp),
+    )
 }
 
 internal data class LiveReactionMotion(

@@ -1,0 +1,10 @@
+Diccionario en español, dictionary-es 4.0.0.
+Archivos index.aff e index.dic sin modificaciones, distribuidos como código fuente bajo MPL 1.1.
+Autores y otras licencias ofrecidas por el proyecto: ver license.
+Texto de la licencia seleccionada: COPYING-MPL-1.1.txt.
+Fuente: https://github.com/wooorm/dictionaries/tree/main/dictionaries/es
+Versión reproducible: https://registry.npmjs.org/dictionary-es/-/dictionary-es-4.0.0.tgz
+Los archivos fuente se ofrecen en este mismo directorio.
+
+El motor nspell 2.1.5 usa licencia MIT, incluida en nspell-license.txt.
+Fuente: https://github.com/wooorm/nspell

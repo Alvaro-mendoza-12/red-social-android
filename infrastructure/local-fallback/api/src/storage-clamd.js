@@ -21,7 +21,7 @@ function parseDaemonVersion(value, now, maxAgeMs) {
 }
 
 function createStorageClamd({ host = process.env.STORAGE_CLAMD_HOST || 'storage-antivirus', port = Number(process.env.STORAGE_CLAMD_PORT || 3310),
-  maxBytes = LIMIT, timeoutMs = 660_000, maxSignatureAgeMs = 24 * 60 * 60 * 1000,
+  maxBytes = LIMIT, timeoutMs = 660_000, maxSignatureAgeMs = 48 * 60 * 60 * 1000,
   attestationFile = process.env.STORAGE_CLAMD_POLICY_FILE, policySha256 = process.env.STORAGE_CLAMD_POLICY_SHA256,
   daemonConfigFile = process.env.STORAGE_CLAMD_CONFIG_FILE,
   connect = net.createConnection, now = Date.now } = {}) {

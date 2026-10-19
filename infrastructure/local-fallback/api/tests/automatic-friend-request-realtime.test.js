@@ -6,7 +6,8 @@ test('first-message guard binds the durable introduction request to the exact me
   const statements = []
   await ensureDirectMessageRequestPolicy({ query: async (sql) => { statements.push(sql); return { rows: [] } } })
   assert.ok(statements.some((sql) => sql.includes('fallback_message_requests') && sql.includes("'pending',NEW.id::text")))
-  assert.ok(!statements.some((sql) => sql.includes('INSERT INTO fallback_friends')))
+  assert.ok(statements.some((sql) => sql.includes("VALUES(actor,other,'pending')")))
+  assert.ok(!statements.some((sql) => sql.includes('INSERT INTO fallback_notifications')))
 })
 
 test('relay publishes the existing notification to its recipient without a second insert', async () => {

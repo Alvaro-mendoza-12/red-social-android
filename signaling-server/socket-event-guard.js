@@ -23,7 +23,7 @@ function validateSocketPayload(event, value) {
         if (item == null || typeof item === 'boolean') { bytes += 5; return true; }
         if (typeof item === 'number') { bytes += 24; return Number.isFinite(item); }
         if (typeof item === 'string') {
-            const limit = key === 'sdp' ? MAX_SDP_LENGTH : 8 * 1024;
+            const limit = key === 'sdp' ? MAX_SDP_LENGTH : event === 'chat-message' && key === 'imageData' ? 132000 : 8 * 1024;
             if (item.length > limit) return false;
             bytes += Buffer.byteLength(item, 'utf8') + 2;
             return bytes <= MAX_PACKET_BYTES;

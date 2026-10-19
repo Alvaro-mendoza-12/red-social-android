@@ -89,6 +89,7 @@ fun CommunityChatScreen(
     }
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val openCollectionInvitation = rememberCollectionInvitationOpener(navController)
     val scope = rememberCoroutineScope()
     val downloadChatMedia = rememberChatMediaDownload(viewModel::getCurrentUserId) { viewModel.getPlayableUrl(it) }
     val shareChatMedia = rememberChatMediaShare(viewModel::getCurrentUserId) { viewModel.getPlayableUrl(it) }
@@ -112,6 +113,16 @@ fun CommunityChatScreen(
     val audioDurationLabel by viewModel.audioDurationLabel.collectAsState()
     val audioPlaybackSpeed by viewModel.audioPlaybackSpeed.collectAsState()
     val selectedMessage by viewModel.selectedMessage.collectAsState()
+    var selectedIds by remember(communityId, currentUserId) { mutableStateOf<Set<String>>(emptySet()) }
+    var highlightedId by remember(communityId) { mutableStateOf<String?>(null) }
+    var confirmSelectionDelete by remember { mutableStateOf(false) }
+    var selectionBusy by remember { mutableStateOf(false) }
+    LaunchedEffect(highlightedId) {
+        if (highlightedId != null) { kotlinx.coroutines.delay(1400); highlightedId = null }
+    }
+    androidx.activity.compose.BackHandler(selectedIds.isNotEmpty()) { selectedIds = emptySet() }
+    fun toggleSelected(id: String) { selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id }
+
     val transfers by conectate.com.core.messaging.MessageUploadProgress.transfers.collectAsState()
     val favoriteStickerMediaKeys by viewModel.favoriteStickerMediaKeys.collectAsState()
     val reactionPickerMessage by viewModel.reactionPickerMessage.collectAsState()
@@ -200,6 +211,18 @@ fun CommunityChatScreen(
         }
     }
     val chatMessages = remember(messages) { messages.map { it.asChatMessage() } }
+    val replyMessages = remember(chatMessages) { chatMessages.associateBy { it.id } }
+    if (confirmSelectionDelete) AlertDialog(
+        onDismissRequest = { confirmSelectionDelete = false },
+        title = { Text("Eliminar mensajes") },
+        text = { Text("¿Eliminar ${selectedIds.size} mensajes solo para ti?") },
+        confirmButton = { TextButton(onClick = {
+            confirmSelectionDelete = false; selectionBusy = true
+            viewModel.deleteMessagesForMe(selectedIds) { deleted -> selectedIds = selectedIds - deleted; selectionBusy = false }
+        }) { Text("Eliminar para mí") } },
+        dismissButton = { TextButton(onClick = { confirmSelectionDelete = false }) { Text("Cancelar") } },
+    )
+
     val recentGifUrls = remember(messages) {
         messages.asReversed()
             .filter { it.content_type == "gif" }
@@ -238,18 +261,14 @@ fun CommunityChatScreen(
     }
 
     fun sendCurrentLocation() {
-        val location = getBestLastKnownLocation(context)
-        if (location == null) {
-            scope.launch {
-                snackbarHostState.showSnackbar("No se pudo obtener tu ubicación actual.")
+        scope.launch {
+            val location = getBestCurrentLocation(context)
+            if (location == null) {
+                snackbarHostState.showSnackbar("No se pudo obtener tu ubicación. Revisa el permiso y activa la ubicación del dispositivo.")
+                return@launch
             }
-            return
+            viewModel.sendLocationMessage(latitude = formatCoordinate(location.latitude), longitude = formatCoordinate(location.longitude), label = "Ubicación actual")
         }
-        viewModel.sendLocationMessage(
-            latitude = formatCoordinate(location.latitude),
-            longitude = formatCoordinate(location.longitude),
-            label = "Ubicación actual"
-        )
     }
 
     // Media Launchers
@@ -359,6 +378,22 @@ fun CommunityChatScreen(
             conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
         },
         topBar = {
+            if (selectedIds.isNotEmpty()) {
+                MessageSelectionToolbar(selectedIds.size,
+                    onCancel = { selectedIds = emptySet() },
+                    onDelete = { confirmSelectionDelete = true },
+                    onForward = {
+                        val selected = chatMessages.filter { it.id in selectedIds && !it.deleted_for_all }
+                        if (universalForwardCoordinator != null) {
+                            universalForwardCoordinator.open(candidates = selected.map { it.toForwardMessagePayload() }, initiallySelectedIds = selected.map { it.id }.toSet())
+                            selectedIds = emptySet()
+                        } else scope.launch { snackbarHostState.showSnackbar("No se pudo abrir el selector de destinatarios.") }
+                    },
+                    onSave = { selectedIds.forEach { markersViewModel.toggleSaved(it) }; selectedIds = emptySet() },
+                    onMore = { chatMessages.firstOrNull { it.id in selectedIds }?.let(viewModel::onMessageLongClick) },
+                    busy = selectionBusy,
+                )
+            } else {
             val state = uiState as? CommunityChatUiState.Success
             TopAppBar(
                 title = {
@@ -451,6 +486,7 @@ fun CommunityChatScreen(
                     }
                 }
             )
+            }
         }
     ) { padding ->
         Column(
@@ -562,7 +598,8 @@ fun CommunityChatScreen(
                                     CollectionSystemNotice(msg.content)
                                     return@itemsIndexed
                                 }
-                                val mediaGroup = remember(chatMessages, msg.id) {
+                                val mediaGroup = remember(chatMessages, msg.id, selectedIds.isNotEmpty(), highlightedId) {
+                                    if (selectedIds.isNotEmpty() || highlightedId != null) listOf(msg) else
                                     conectate.com.presentation.components.mediaGridClusterAt(chatMessages, index)
                                 }
                                 if (mediaGroup == null) return@itemsIndexed
@@ -571,6 +608,7 @@ fun CommunityChatScreen(
                                 val pollId = msg.poll_id
                                 if (mediaGroup.size > 1) {
                                     conectate.com.presentation.components.MediaGridMessageBubble(
+                                        onLongClick = { toggleSelected(it.id) },
                                         messages = mediaGroup,
                                         isFromCurrentUser = isFromMe,
                                         onClick = { selectedMessage ->
@@ -601,6 +639,9 @@ fun CommunityChatScreen(
                                 } else {
                                     MessageBubble(
                                         message = msg,
+                                        replyMessage = msg.reply_to_id?.let(replyMessages::get),
+                                        isSelected = msg.id in selectedIds || msg.id == highlightedId,
+                                        selectionMode = selectedIds.isNotEmpty(),
                                         replySenderName = msg.reply_to?.sender_id?.let { memberProfiles[it]?.displayName },
                                         uploadProgress = transfers[conectate.com.core.messaging.MessageUploadProgress.key(currentUserId, msg.id)],
                                         onRetrySend = { viewModel.retryMessage(msg) },
@@ -618,7 +659,7 @@ fun CommunityChatScreen(
                                         onSeekAudio = { _, fraction -> viewModel.seekAudio(fraction) },
                                         onChangeAudioSpeed = { viewModel.cycleAudioPlaybackSpeed() },
                                         onPlayAudio = { viewModel.playAudio(it) },
-                                        onLongClick = { viewModel.onMessageLongClick(msg) },
+                                        onLongClick = { toggleSelected(msg.id) },
                                         onResolveUrl = { path ->
                                             viewModel.getPlayableUrl(
                                                 path = path,
@@ -626,6 +667,7 @@ fun CommunityChatScreen(
                                             )
                                         },
                                         onClick = { clickedUrl ->
+                                            if (selectedIds.isNotEmpty()) { toggleSelected(msg.id) } else
                                             if ((msg.content_type == "view_once_image" || msg.content_type == "view_once_video") && msg.media_url != null) {
                                                 scope.launch {
                                                     val oneTimeUrl = viewModel.consumeViewOnceMessage(msg)
@@ -657,6 +699,7 @@ fun CommunityChatScreen(
                                                 }
                                                 if (originalIndex >= 0) {
                                                     listState.animateScrollToItem(originalIndex)
+                                                    highlightedId = originalMessageId
                                                 } else {
                                                     snackbarHostState.showSnackbar(
                                                         "El mensaje original ya no está disponible."
@@ -667,8 +710,14 @@ fun CommunityChatScreen(
                                         onSenderClick = { userId ->
                                             navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
                                         },
+                                        onCollectionInvitationClick = { openCollectionInvitation(it) },
+                                        onMentionClick = { handle -> scope.launch {
+                                            val userId = viewModel.resolveMention(handle)
+                                            if (userId != null) navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
+                                            else android.widget.Toast.makeText(context, "No se encontró un perfil único para esa mención.", android.widget.Toast.LENGTH_SHORT).show()
+                                        } },
                                         onUrlClick = { url ->
-                                            conectate.com.data.model.videoIdFromSharedLink(url)?.let { id ->
+                                            if (!openCollectionInvitation(url)) conectate.com.data.model.videoIdFromSharedLink(url)?.let { id ->
                                                 navController.navigate(conectate.com.presentation.navigation.Screen.VideoPlayer.createRoute(id))
                                             }
                                         },
@@ -917,6 +966,8 @@ fun CommunityChatScreen(
                     } else {
                         // STANDARD INPUT
                         Column {
+                        val spelling = conectate.com.presentation.components.rememberChatSpellCheckState(
+                            mentionDraft.text, conectate.com.presentation.components.mentionInputTransformation)
                         conectate.com.presentation.components.MentionSuggestions(mentionSuggestions, onSelected = { user ->
                             activeMention?.let { active ->
                                 val (text, cursor) = conectate.com.data.model.insertMention(mentionDraft.text, active, conectate.com.data.model.profilePublicHandle(user))
@@ -924,6 +975,17 @@ fun CommunityChatScreen(
                                 viewModel.updateMessageText(text)
                             }
                         })
+                        conectate.com.presentation.components.ChatSpellingSuggestions(
+                            state = spelling,
+                            selection = mentionDraft.selection,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                            onReplace = { issue, replacement ->
+                                val corrected = spelling.replace(mentionDraft.text, issue, replacement)
+                                mentionDraft = androidx.compose.ui.text.input.TextFieldValue(corrected,
+                                    androidx.compose.ui.text.TextRange(issue.start + replacement.length))
+                                viewModel.updateMessageText(corrected)
+                            }
+                        )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp)
@@ -934,7 +996,7 @@ fun CommunityChatScreen(
                             StickerButton(onClick = stickerKeyboardPanel.toggle, showingStickers = showStickerCatalogDialog)
                             TextField(
                                 value = mentionDraft,
-                                visualTransformation = conectate.com.presentation.components.rememberChatSpellCheck(mentionDraft.text, conectate.com.presentation.components.mentionInputTransformation),
+                                visualTransformation = spelling.visualTransformation,
                                 onValueChange = { mentionDraft = it; viewModel.updateMessageText(it.text) },
                                 modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
                                     .focusRequester(stickerKeyboardPanel.inputFocusRequester)

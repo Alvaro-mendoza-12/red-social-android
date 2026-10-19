@@ -9,6 +9,7 @@ function useSource(raw?: string) {
   const source = rewriteRuntimeStorageUrl(raw || '')
   const protectedSource = !source.startsWith('blob:') && Boolean(trustedStorageBackend(source))
   const [ready, setReady] = useState<{ source: string; identity: typeof identity; url: string } | null>(null)
+  const [unavailable, setUnavailable] = useState<{ source: string; identity: typeof identity } | null>(null)
   const retryRef = useRef<() => boolean>(() => false)
   const loadedRef = useRef<() => void>(() => {})
   useEffect(() => {
@@ -23,13 +24,14 @@ function useSource(raw?: string) {
         if (active && sequence === request) {
           if (refresh) revision++
           setReady({ source, identity, url: revision ? `${url}?retry=${revision}` : url })
+          setUnavailable(null)
         }
       } catch { if (active && sequence === request) schedule() }
     }
     const schedule = () => {
       if (!active) return false
       if (timer) return true
-      if (failures >= 3) return false
+      if (failures >= 3) { setUnavailable({ source, identity }); return false }
       timer = setTimeout(() => { timer = undefined; void load(true) }, [350, 1200, 3000][failures++])
       return true
     }
@@ -45,7 +47,7 @@ function useSource(raw?: string) {
   }, [source, protectedSource, identity])
   const retry = useCallback(() => retryRef.current(), [])
   const loaded = useCallback(() => loadedRef.current(), [])
-  return { url: !protectedSource ? source || undefined : ready?.source === source && ready.identity === identity ? ready.url : undefined, retry, loaded }
+  return { url: !protectedSource ? source || undefined : ready?.source === source && ready.identity === identity ? ready.url : undefined, unavailable: unavailable?.source === source && unavailable.identity === identity, retry, loaded }
 }
 export const StreamingImage = forwardRef<HTMLImageElement, ImgHTMLAttributes<HTMLImageElement>>(function StreamingImage({ src, onError, onLoad, ...props }, ref) {
   const source = useSource(src)
@@ -56,7 +58,8 @@ export const StreamingVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<H
   const posterSource = useSource(poster)
   return <video {...props} ref={ref} src={source.url} poster={posterSource.url} onLoadedData={event => { source.loaded(); onLoadedData?.(event) }} onError={event => { if (!source.retry()) onError?.(event) }} data-novvin-media={src ? '' : undefined} />
 })
-export const StreamingAudio = forwardRef<HTMLAudioElement, AudioHTMLAttributes<HTMLAudioElement>>(function StreamingAudio({ src, onError, onLoadedData, ...props }, ref) {
+export const StreamingAudio = forwardRef<HTMLAudioElement, AudioHTMLAttributes<HTMLAudioElement> & { onSourceUnavailable?: () => void }>(function StreamingAudio({ src, onError, onLoadedData, onSourceUnavailable, ...props }, ref) {
   const source = useSource(src)
+  useEffect(() => { if (source.unavailable) onSourceUnavailable?.() }, [source.unavailable, onSourceUnavailable])
   return <audio {...props} ref={ref} src={source.url} onLoadedData={event => { source.loaded(); onLoadedData?.(event) }} onError={event => { if (!source.retry()) onError?.(event) }} data-novvin-media={src ? '' : undefined} />
 })

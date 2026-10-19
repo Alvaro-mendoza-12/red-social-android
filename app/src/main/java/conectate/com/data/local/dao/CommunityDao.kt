@@ -61,6 +61,12 @@ interface CommunityDao {
     @Query("UPDATE communities SET unread_count = 0 WHERE id = :communityId")
     suspend fun resetUnreadCount(communityId: String)
 
+    @Query("UPDATE community_messages SET status='read',read_at=COALESCE(read_at,:through) WHERE community_id=:id AND LOWER(sender_id)!=LOWER(:account) AND julianday(created_at)<=julianday(:through) AND LOWER(COALESCE(status,'')) IN ('sent','delivered','received')")
+    suspend fun markReadThrough(id: String, account: String, through: String)
+
+    @Query("UPDATE communities SET unread_count=(SELECT COUNT(*) FROM community_messages WHERE community_id=:id AND LOWER(sender_id)!=LOWER(:account) AND LOWER(COALESCE(status,'')) IN ('sent','delivered','received')) WHERE id=:id")
+    suspend fun reconcileUnreadCount(id: String, account: String)
+
     @Query("UPDATE communities SET unread_count = unread_count + 1 WHERE id = :communityId")
     suspend fun incrementUnreadCount(communityId: String)
 

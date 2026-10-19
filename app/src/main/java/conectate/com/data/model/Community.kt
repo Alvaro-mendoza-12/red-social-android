@@ -18,6 +18,7 @@ data class Community(
     val is_deleted: Boolean = false,
     val only_admins_can_talk: Boolean = false,
     val daily_message_limit: Int = 0,
+    val weekly_message_limit: Int = 0,
     val is_member: Boolean = false,
     val current_user_role: String? = null
 )
@@ -220,7 +221,7 @@ fun communityRoleCapabilities(role: String?): CommunityRoleCapabilities {
         canPost = true,
         canModerateMessages = isOwner || isAdmin || isModerator,
         canManageMembers = isOwner || isAdmin,
-        canManageRoles = isOwner || isAdmin,
+        canManageRoles = isOwner,
         canManageChannels = isOwner || isAdmin,
         canManageEvents = isOwner || isAdmin,
         canEditCommunity = isOwner || isAdmin,

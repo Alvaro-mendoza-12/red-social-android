@@ -89,6 +89,7 @@ async function resolveUserIds(token, payload) {
 
 function subscriptionAuthorizationUrl(channel) {
   const mappings = [
+    ['profile-counts:', (id) => `/v1/data/profiles/${encodeURIComponent(id)}`],
     ['chat:', (id) => `/v1/data/messages/chats/${encodeURIComponent(id)}`],
     ['random-chat:', (id) => `/v1/data/proximity/random/sessions/${encodeURIComponent(id)}`],
     ['typing-chat:', (id) => `/v1/data/messages/chats/${encodeURIComponent(id)}`],
@@ -99,6 +100,7 @@ function subscriptionAuthorizationUrl(channel) {
     ['message-markers:community:', (id) => `/v1/data/messages/markers/community/${encodeURIComponent(id)}/access`],
     ['raffles:group:', (id) => `/v1/data/raffles/group/${encodeURIComponent(id)}/access`],
     ['raffles:community:', (id) => `/v1/data/raffles/community/${encodeURIComponent(id)}/access`],
+    ['post-comments:', (id) => `/v1/data/feed/posts/${encodeURIComponent(id)}`],
     ['video-comments:', (id) => `/v1/data/videos/${encodeURIComponent(id)}`],
     ['live-comments:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
     ['live-collaboration:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],

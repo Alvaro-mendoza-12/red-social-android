@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import org.webrtc.VideoTrack
 import java.util.UUID
 import javax.inject.Inject
@@ -106,6 +107,13 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
+    private var chatVisible = false
+    private val deletedChatIds=linkedSetOf<String>()
+    private val confirmedDeletedChatIds=linkedSetOf<String>()
+    private val unreadChatIds=linkedSetOf<String>()
+    private val _chatError=MutableStateFlow<String?>(null)
+    val chatError=_chatError.asStateFlow()
+    fun setChatVisible(visible: Boolean) { chatVisible = visible; if (visible) markChatRead() }
 
     private val _activeReactions = MutableStateFlow<List<ReactionEvent>>(emptyList())
     val activeReactions: StateFlow<List<ReactionEvent>> = _activeReactions.asStateFlow()
@@ -147,9 +155,10 @@ class VoiceRoomActiveViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             voiceRoomRepository.currentRoom.collectLatest { room ->
-                if (room != null) {
-                    _room.value = room
+                if(room?.id!=_room.value?.id) {
+                    _messages.value=emptyList();deletedChatIds.clear();confirmedDeletedChatIds.clear();unreadChatIds.clear();_unreadChatCount.value=0
                 }
+                _room.value = room
             }
         }
         viewModelScope.launch {
@@ -237,9 +246,26 @@ class VoiceRoomActiveViewModel @Inject constructor(
         }
         viewModelScope.launch {
             voiceRoomRepository.incomingMessages.collectLatest { message ->
-                _messages.value = (_messages.value + message).distinctBy { it.id }
-                _unreadChatCount.value += 1
+                if(message.roomId!=null&&message.roomId!=_room.value?.id)return@collectLatest
+                val key="${message.userId}:${message.id}"
+                if(key in deletedChatIds)return@collectLatest
+                val known = _messages.value.any { it.id == message.id && it.userId==message.userId }
+                _messages.value = boundedRoomChat(_messages.value + message)
+                if (!known && !chatVisible && !message.userId.equals(getCurrentUserId(),true)) unreadChatIds.add(key)
+                reconcileChatUnread()
             }
+        }
+        viewModelScope.launch {
+            voiceRoomRepository.deletedRoomMessages.collectLatest { (roomId,author,id) ->
+                if(roomId!=_room.value?.id)return@collectLatest
+                val key="$author:$id";deletedChatIds.add(key);confirmedDeletedChatIds.add(key)
+                while(deletedChatIds.size>1000)deletedChatIds.remove(deletedChatIds.first())
+                while(confirmedDeletedChatIds.size>1000)confirmedDeletedChatIds.remove(confirmedDeletedChatIds.first())
+                _messages.value=_messages.value.filterNot { it.id==id&&it.userId==author };reconcileChatUnread()
+            }
+        }
+        viewModelScope.launch {
+            while(isActive) { delay(1000);if(_messages.value.isNotEmpty()){_messages.value=boundedRoomChat(_messages.value);reconcileChatUnread()} }
         }
         viewModelScope.launch {
             voiceRoomRepository.incomingReactions.collectLatest { reaction ->
@@ -614,21 +640,53 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     fun markChatRead() {
+        unreadChatIds.clear()
         _unreadChatCount.value = 0
     }
 
-    fun sendMessage(text: String) {
+    private fun reconcileChatUnread() {
+        unreadChatIds.retainAll(_messages.value.map { "${it.userId}:${it.id}" }.toSet())
+        _unreadChatCount.value=unreadChatIds.size
+    }
+
+    fun retryMessage(message: ChatMessage) {
+        if(message.userId!=getCurrentUserId()||message.expiresAt<=System.currentTimeMillis())return
+        val owner=getCurrentUserId();val roomId=_room.value?.id
+        _messages.value=boundedRoomChat(_messages.value+message.copy(delivery=RoomChatDelivery.SENDING));_chatError.value=null
+        viewModelScope.launch {
+            val result=voiceRoomRepository.sendMessage(message)
+            if(owner!=getCurrentUserId()||roomId!=_room.value?.id||"${message.userId}:${message.id}" in deletedChatIds)return@launch
+            result.onSuccess { accepted -> _messages.value=boundedRoomChat(_messages.value+accepted) }.onFailure { error ->
+                _messages.value=_messages.value.map { if(it.id==message.id&&it.userId==message.userId&&it.delivery!=RoomChatDelivery.SENT)it.copy(delivery=RoomChatDelivery.FAILED)else it }
+                _chatError.value=error.message
+            }
+        }
+    }
+
+    fun deleteMessage(message: ChatMessage) {
+        if(message.userId!=getCurrentUserId())return
+        val key="${message.userId}:${message.id}";val owner=getCurrentUserId();val roomId=_room.value?.id
+        deletedChatIds.add(key);_messages.value=_messages.value.filterNot { it.id==message.id&&it.userId==message.userId };reconcileChatUnread()
+        viewModelScope.launch {
+            val result=voiceRoomRepository.deleteRoomMessage(message)
+            if(owner!=getCurrentUserId()||roomId!=_room.value?.id)return@launch
+            result.onFailure { error -> if(key !in confirmedDeletedChatIds){deletedChatIds.remove(key);_messages.value=boundedRoomChat(_messages.value+message).sortedBy { it.timestamp };_chatError.value=error.message} }
+        }
+    }
+
+    fun sendMessage(text: String, imageData: String? = null) {
+        if (text.isBlank() && imageData == null) return
+        if (imageData != null && RoomChatPhoto.bytes(imageData) == null) return
         viewModelScope.launch {
             val msg = ChatMessage(
                 id = UUID.randomUUID().toString(),
                 userId = getCurrentUserId(),
-                text = text,
-                timestamp = System.currentTimeMillis()
+                text = text.trim().take(2000).ifBlank { "📷 Foto" },
+                timestamp = System.currentTimeMillis(),
+                imageData = imageData,
+                roomId = _room.value?.id
             )
-            val current = _messages.value.toMutableList()
-            current.add(msg)
-            _messages.value = current
-            _room.value?.id?.let { voiceRoomRepository.sendMessage(msg) }
+            retryMessage(msg)
         }
     }
 
@@ -674,13 +732,25 @@ data class CinemaState(
     val currentPosition: Long = 0L
 )
 
+const val ROOM_CHAT_TTL_MS=90L*60*1000
+enum class RoomChatDelivery { SENDING, SENT, FAILED }
 data class ChatMessage(
     val id: String,
     val userId: String,
     val text: String,
     val timestamp: Long,
-    val userName: String = ""
+    val userName: String = "",
+    val imageData: String? = null,
+    val expiresAt: Long = timestamp+ROOM_CHAT_TTL_MS,
+    val delivery: RoomChatDelivery = RoomChatDelivery.SENT,
+    val roomId: String? = null
 )
+
+internal fun boundedRoomChat(messages: List<ChatMessage>, now: Long=System.currentTimeMillis()): List<ChatMessage> {
+    val unique = messages.filter { it.expiresAt>now }.associateBy { "${it.userId}:${it.id}" }.values.toList().takeLast(100)
+    val photoIds = unique.filter { it.imageData != null }.takeLast(10).map { it.id }.toSet()
+    return unique.map { if (it.imageData != null && it.id !in photoIds) it.copy(imageData = null, text = "Foto anterior de esta sesión") else it }
+}
 
 data class ReactionEvent(
     val id: String = UUID.randomUUID().toString(),

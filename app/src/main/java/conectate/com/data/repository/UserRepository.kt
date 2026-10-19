@@ -2798,6 +2798,12 @@ class UserRepository @Inject constructor(
                 return Result.failure(Exception("No te puedes seguir a ti mismo"))
             }
 
+            if (shouldUseUbuntuBackend()) {
+                val result = localFallbackApiClient.setProfileFollow(accessToken, targetUserId, true)
+                if (result.isSuccess) _followUpdates.tryEmit(Unit)
+                return result
+            }
+
             // 1. Insert into follows
             val followData = mapOf(
                 "follower_id" to currentUserId,
@@ -2841,6 +2847,12 @@ class UserRepository @Inject constructor(
                 ?: return Result.failure(Exception("No access token"))
             var currentUserId = authService.getCurrentUserId()
                 ?: return Result.failure(Exception("No user logged in"))
+
+            if (shouldUseUbuntuBackend()) {
+                val result = localFallbackApiClient.setProfileFollow(accessToken, targetUserId, false)
+                if (result.isSuccess) _followUpdates.tryEmit(Unit)
+                return result
+            }
 
             // 1. Delete from follows
             var response = supabaseConfig.httpClient.delete(

@@ -40,7 +40,7 @@ import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.navigation.Screen
 import conectate.com.util.DateUtils
 import conectate.com.util.UbuntuMedia
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.time.Instant
@@ -332,10 +332,12 @@ fun NotificationItem(
 
         if (!targetThumbnail.isNullOrBlank()) {
             Spacer(modifier = Modifier.width(10.dp))
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = UbuntuMedia.resolveUrl(targetThumbnail) ?: targetThumbnail,
                 contentDescription = "Contenido relacionado",
                 contentScale = ContentScale.Crop,
+                loading = { NotificationTargetFallback(targetContentType, targetPreviewText) },
+                error = { NotificationTargetFallback(targetContentType, targetPreviewText) },
                 modifier = Modifier
                     .size(width = 58.dp, height = 66.dp)
                     .clip(RoundedCornerShape(8.dp))

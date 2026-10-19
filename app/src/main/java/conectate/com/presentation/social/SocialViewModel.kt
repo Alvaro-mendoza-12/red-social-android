@@ -15,7 +15,10 @@ import conectate.com.data.repository.AlgorithmRepository
 import conectate.com.data.recommendations.OpaqueRecommendationCursor
 import conectate.com.data.local.prefs.FeedPreferences
 import conectate.com.data.local.prefs.SocialFeedMode
+import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.SavedLibraryResponse
+import conectate.com.data.localfallback.UbuntuRealtimeClient
+import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +34,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import javax.inject.Inject
 import java.util.UUID
 
@@ -46,6 +51,9 @@ class SocialViewModel @Inject constructor(
     private val feedPreferences: FeedPreferences,
     private val appMetrics: AppMetrics,
     private val authService: conectate.com.data.supabase.AuthService,
+    private val localFallbackApiClient: LocalFallbackApiClient,
+    private val supabaseConfig: SupabaseConfig,
+    private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val shareRepository: conectate.com.data.repository.ShareRepository,
     private val liveRepository: conectate.com.data.repository.LiveRepository,
     private val socializationRepository: conectate.com.data.repository.SocializationRepository,
@@ -135,6 +143,7 @@ class SocialViewModel @Inject constructor(
     private val _savedLibraryMessage = MutableStateFlow<String?>(null)
     val savedLibraryMessage: StateFlow<String?> = _savedLibraryMessage.asStateFlow()
     private val likeRequestsInFlight = mutableSetOf<String>()
+    private val postReactionRefreshesInFlight = mutableSetOf<String>()
     private val shareRequestsInFlight = mutableSetOf<String>()
     private var postsJob: Job? = null
     private var morePostsJob: Job? = null
@@ -182,6 +191,47 @@ class SocialViewModel @Inject constructor(
         get() = authService.getCurrentUserId()
 
     init {
+        viewModelScope.launch {
+            authService.currentSession
+                .map { session -> session?.accessToken.orEmpty().trim() }
+                .distinctUntilChanged()
+                .collect { token ->
+                    ubuntuRealtimeClient.updateAccessToken(token)
+                    if (token.isNotBlank() && localFallbackApiClient.isConfigured &&
+                        (supabaseConfig.isLocalFallbackPrimary || authService.isLocalFallbackSession())
+                    ) {
+                        ubuntuRealtimeClient.subscribe("feed:live")
+                    }
+                }
+        }
+        viewModelScope.launch {
+            ubuntuRealtimeClient.events
+                .filter { envelope -> envelope.channel == "feed:live" && envelope.event == "post_reaction" }
+                .collect { envelope ->
+                    val postId = envelope.payload["postId"]?.jsonPrimitive?.contentOrNull
+                        ?: envelope.payload["post_id"]?.jsonPrimitive?.contentOrNull
+                        ?: return@collect
+                    if (_posts.value.none { it.id == postId } || !postReactionRefreshesInFlight.add(postId)) {
+                        return@collect
+                    }
+                    val generation = accountGeneration
+                    try {
+                        postRepository.getPostById(postId).onSuccess { fresh ->
+                            if (generation != accountGeneration) return@onSuccess
+                            _posts.value = _posts.value.map { current ->
+                                if (current.id != postId) current else current.copy(
+                                    likedByMe = fresh.likedByMe,
+                                    myReaction = fresh.myReaction,
+                                    reactionCounts = fresh.reactionCounts,
+                                    likeCount = fresh.likeCount
+                                )
+                            }
+                        }
+                    } finally {
+                        postReactionRefreshesInFlight.remove(postId)
+                    }
+                }
+        }
         feedSignalTracker.setAccount(activeAccountId)
         viewModelScope.launch {
             authService.currentSession
@@ -230,6 +280,7 @@ class SocialViewModel @Inject constructor(
         _isRefreshing.value = true
         _isUserRefreshing.value = false
         likeRequestsInFlight.clear()
+        postReactionRefreshesInFlight.clear()
         shareRequestsInFlight.clear()
         if (accountId.isNullOrBlank()) {
             _isRefreshing.value = false

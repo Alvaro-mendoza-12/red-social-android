@@ -15,6 +15,7 @@ module.exports = {
     ],
   },
   moduleNameMapper: {
+    '\\.(css|less|scss)$': '<rootDir>/scripts/jest-style-mock.cjs',
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
 }

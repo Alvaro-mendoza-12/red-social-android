@@ -44,6 +44,7 @@ function createConversationActivityAuthorizer({ privateChatAccessContext, loadCo
 function registerVisibleMessageReadRoute(app, {
   pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,
   publishReadReceipts = async () => {},
+  publishConversationRead = async () => {},
 }) {
   app.post('/v1/data/messages/chats/:chatId/read-visible', authRequired, async (req, res, next) => {
     try {
@@ -62,6 +63,7 @@ function registerVisibleMessageReadRoute(app, {
       // The database result is authoritative; publishing is best effort and must
       // not make acknowledging a visible message wait for the realtime gateway.
       if (messageIds.length) {
+        void Promise.resolve().then(() => publishConversationRead({ identity, kind: 'chat', id: chatId, messageIds })).catch(() => console.warn('[conversation-read-sync] publication failed'))
         void Promise.resolve().then(() => publishReadReceipts({
           chatId, messageIds, chat, participantRows, identity,
         })).catch(() => console.warn('[message-read-receipts] publication failed'))
@@ -95,7 +97,7 @@ async function markSelectedCollectionMessagesRead(pool, kind, roomId, identity, 
 }
 
 function registerVisibleCollectionReadRoutes(app, dependencies) {
-  const { pool, authRequired, getCurrentUser, userIdentity } = dependencies
+  const { pool, authRequired, getCurrentUser, userIdentity, publishConversationRead = async () => {} } = dependencies
   const authorize = createConversationActivityAuthorizer(dependencies)
   for (const [collection, kind] of [['groups', 'group'], ['communities', 'community']]) {
     app.post(`/v1/data/messages/${collection}/:roomId/read-visible`, authRequired, async (req, res, next) => {
@@ -109,6 +111,7 @@ function registerVisibleCollectionReadRoutes(app, dependencies) {
         const identity = userIdentity(user)
         if (!await authorize(pool, user, identity, kind, roomId)) return res.status(403).json({ error: 'ROOM_ACCESS_DENIED' })
         const messageIds = await markSelectedCollectionMessagesRead(pool, kind, roomId, identity, ids)
+        if (messageIds.length) void Promise.resolve().then(() => publishConversationRead({ identity, kind, id: roomId, messageIds })).catch(() => console.warn('[conversation-read-sync] publication failed'))
         return res.json({ ok: true, roomId, messageIds, lastReadAt: null })
       } catch (error) { next(error) }
     })

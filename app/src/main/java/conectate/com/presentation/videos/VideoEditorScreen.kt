@@ -113,9 +113,7 @@ fun VideoEditorScreen(
     var showStickerPicker by remember { mutableStateOf(false) }
     var activeCategory by rememberSaveable { mutableStateOf(EditorCategory.EDIT) }
     var showQualityMenu by remember { mutableStateOf(false) }
-    val videoClipPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
+    val videoClipPickerLauncher = conectate.com.presentation.components.rememberInAppMultipleMediaPicker { uris ->
         if (uris.any { !retainVideoDocumentAccess(context, it) }) {
             AppFeedbackBus.show("Al restaurar la edición, Android podría pedirte seleccionar de nuevo un archivo.")
         }
@@ -774,7 +772,7 @@ fun VideoEditorScreen(
                                                 colorLutPicker.launch(arrayOf("*/*"))
                                             }
                                         }
-                                        SubToolItem(Icons.Default.Contrast, "Original") {
+                                        SubToolItem(Icons.Default.Contrast, "Sin filtro") {
                                             viewModel.applyFilter(context, clip.id, FilterType.NONE)
                                         }
                                         SubToolItem(Icons.Default.Contrast, "B&N") {
@@ -792,8 +790,11 @@ fun VideoEditorScreen(
                                         SubToolItem(Icons.Default.Colorize, "Alta S.") {
                                             viewModel.applyFilter(context, clip.id, FilterType.HIGH_SATURATION)
                                         }
-                                        SubToolItem(Icons.Default.DeleteSweep, "Limpiar filtros") {
+                                        SubToolItem(Icons.Default.DeleteSweep, "Limpiar biblioteca") {
                                             viewModel.clearUnusedColorLuts(context)
+                                        }
+                                        SubToolItem(Icons.Default.Restore, "Restablecer color") {
+                                            viewModel.resetClipColor(clip.id)
                                         }
                                     }
                                 } else {
@@ -1452,19 +1453,21 @@ fun SubToolItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: St
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
+            .heightIn(min = 64.dp)
             .padding(horizontal = 8.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(45.dp)
+                .size(48.dp)
                 .background(Color(0xFF1A1A1A), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.height(4.dp))
-        Text(label, color = Color.Gray, fontSize = 10.sp)
+        Text(label, color = Color(0xFFD0D4DB), fontSize = 11.sp)
     }
 }
 

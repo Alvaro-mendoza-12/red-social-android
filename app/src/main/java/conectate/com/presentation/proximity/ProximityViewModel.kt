@@ -45,6 +45,7 @@ class ProximityViewModel @Inject constructor(
     private val apiClient: LocalFallbackApiClient,
     private val messageRepository: MessageRepository,
     private val storageService: StorageService,
+    private val realtime: conectate.com.data.localfallback.UbuntuRealtimeClient,
 ) : ViewModel() {
     private val _nearbyProfiles = MutableStateFlow<List<NearbyProfile>>(emptyList())
     val nearbyProfiles: StateFlow<List<NearbyProfile>> = _nearbyProfiles.asStateFlow()
@@ -87,6 +88,8 @@ class ProximityViewModel @Inject constructor(
 
     private val ownerAccountId = authService.getCurrentUserId()
     private var bottleInboxVisible = false
+    private var anonymousChannel: String? = null
+    private val anonymousRefresh = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
     private var anonymousSelectionGeneration = 0L
     private var anonymousMediaSendJob: Job? = null
     private var matchPollingJob: Job? = null
@@ -216,7 +219,13 @@ class ProximityViewModel @Inject constructor(
 
     fun setBottleInboxVisible(visible: Boolean) {
         bottleInboxVisible = visible
-        if (visible) activateBottleInbox() else deactivateBottleInbox()
+        if (visible) {
+            if (_anonymousSession.value != null) startMessagePolling(_anonymousSession.value!!.id)
+            else activateBottleInbox()
+        } else {
+            deactivateBottleInbox()
+            stopMessagePolling()
+        }
     }
 
     fun activateBottleInbox() {
@@ -266,7 +275,7 @@ class ProximityViewModel @Inject constructor(
                         .onFailure { _bottleInboxStatus.value = BottleInboxStatus.ERROR }
                     val outgoingResult = apiClient.loadOutgoingAnonymousBottle(token)
                     if (!isActive) return@launch
-                    outgoingResult.onSuccess(::applyBottleResult)
+                    outgoingResult.onSuccess { applyBottleResult(it) }
                 } else {
                     _bottleInboxStatus.value = BottleInboxStatus.ERROR
                 }
@@ -299,7 +308,7 @@ class ProximityViewModel @Inject constructor(
             apiClient.sendAnonymousBottle(
                 accessToken = token,
                 content = cleanContent,
-            ).onSuccess(::applyBottleResult)
+            ).onSuccess { applyBottleResult(it) }
                 .onFailure(::reportBottleFailure)
             activateBottleInbox()
             finishLoading()
@@ -315,7 +324,7 @@ class ProximityViewModel @Inject constructor(
             apiClient.respondToAnonymousBottle(token, bottle.id, accept = true)
                 .onSuccess { result ->
                     _incomingBottle.value = null
-                    applyBottleResult(result)
+                    applyBottleResult(result, selectSession = true)
                 }
                 .onFailure { error ->
                     if (error.message == "BOTTLE_OFFER_NOT_FOUND") _incomingBottle.value = null
@@ -486,8 +495,7 @@ class ProximityViewModel @Inject constructor(
 
     fun showAnonymousSessionList() {
         invalidateAnonymousSend()
-        messagePollingJob?.cancel()
-        messagePollingJob = null
+        stopMessagePolling()
         _anonymousSession.value = null
         _anonymousMessages.value = emptyList()
         refreshAnonymousSessions(showErrors = false)
@@ -497,12 +505,11 @@ class ProximityViewModel @Inject constructor(
     fun endAnonymousSession() {
         invalidateAnonymousSend()
         val session = _anonymousSession.value ?: return
-        messagePollingJob?.cancel()
-        messagePollingJob = null
+        stopMessagePolling()
         viewModelScope.launch {
             val token = accessTokenOrReport() ?: return@launch
             apiClient.endAnonymousSession(token, session.id)
-                .onFailure(::reportFailure)
+                .getOrElse { reportFailure(it); return@launch }
             _anonymousSession.value = null
             _anonymousSessions.value = _anonymousSessions.value.filterNot { it.id == session.id }
             _anonymousMessages.value = emptyList()
@@ -561,7 +568,7 @@ class ProximityViewModel @Inject constructor(
         }
     }
 
-    private fun applyBottleResult(result: AnonymousBottleResult) {
+    private fun applyBottleResult(result: AnonymousBottleResult, selectSession: Boolean = false) {
         _outgoingBottle.value = result.bottle?.takeIf { it.perspective == "sender" && it.status in setOf("searching", "offered") }
         _randomStatus.value = when (result.status) {
             "searching", "offered" -> result.status
@@ -571,9 +578,11 @@ class ProximityViewModel @Inject constructor(
             _outgoingBottle.value = null
             _incomingBottle.value = null
             updateAnonymousSession(session)
-            _anonymousSession.value = session
-            deactivateBottleInbox()
-            startMessagePolling(session.id)
+            if (selectSession) {
+                _anonymousSession.value = session
+                deactivateBottleInbox()
+                startMessagePolling(session.id)
+            }
             refreshAnonymousSessions(showErrors = false)
         }
     }
@@ -627,28 +636,45 @@ class ProximityViewModel @Inject constructor(
         }
     }
 
+    private fun stopMessagePolling() {
+        messagePollingJob?.cancel(); messagePollingJob = null
+        anonymousChannel?.let(realtime::unsubscribe); anonymousChannel = null
+    }
+
     private fun startMessagePolling(sessionId: String) {
-        messagePollingJob?.cancel()
+        stopMessagePolling()
+        if (!bottleInboxVisible) return
+        anonymousChannel = "random-chat:$sessionId"
         messagePollingJob = viewModelScope.launch {
-            while (isActive && _anonymousSession.value?.id == sessionId) {
-                val token = accessTokenOrReport(showErrors = false)
-                if (token != null) {
-                    apiClient.loadAnonymousMessages(token, sessionId)
-                        .onSuccess { _anonymousMessages.value = it }
-                    apiClient.loadAnonymousSession(token, sessionId)
-                        .onSuccess { session ->
+            val channel = "random-chat:$sessionId"
+            val eventsJob = launch {
+                realtime.events.collect { event ->
+                    if (event.channel == channel) anonymousRefresh.trySend(Unit)
+                }
+            }
+            try {
+                while (isActive && bottleInboxVisible && _anonymousSession.value?.id == sessionId) {
+                    val token = accessTokenOrReport(showErrors = false)
+                    if (token != null) {
+                        realtime.updateAccessToken(token); realtime.subscribe(channel)
+                        apiClient.loadAnonymousMessages(token, sessionId).onSuccess { messages ->
+                            if (bottleInboxVisible && _anonymousSession.value?.id == sessionId && authService.getCurrentUserId() == ownerAccountId) {
+                                _anonymousMessages.value = messages
+                            }
+                        }
+                        apiClient.loadAnonymousSession(token, sessionId).onSuccess { session ->
+                            if (_anonymousSession.value?.id != sessionId || authService.getCurrentUserId() != ownerAccountId) return@onSuccess
                             updateAnonymousSession(session)
                             maybePromoteToNormalChat(session)
                             if (session.status != "active") {
-                                _anonymousSessions.value =
-                                    _anonymousSessions.value.filterNot { it.id == session.id }
+                                _anonymousSessions.value = _anonymousSessions.value.filterNot { it.id == session.id }
                                 _anonymousSession.value = null
-                                return@launch
                             }
                         }
+                    }
+                    kotlinx.coroutines.withTimeoutOrNull(5_000) { anonymousRefresh.receive() }
                 }
-                delay(1_800)
-            }
+            } finally { eventsJob.cancel() }
         }
     }
 
@@ -675,7 +701,7 @@ class ProximityViewModel @Inject constructor(
     private fun cancelPolling() {
         invalidateAnonymousSend()
         matchPollingJob?.cancel()
-        messagePollingJob?.cancel()
+        stopMessagePolling()
         bottlePollingJob?.cancel()
         matchPollingJob = null
         messagePollingJob = null

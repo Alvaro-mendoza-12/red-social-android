@@ -856,7 +856,8 @@ class CommunityRepository @Inject constructor(
                         // Also check if this COMMUNITY is NOT currently open
                         val isCommunityCurrentlyOpen = (cleanId == currentOpenedCommunityId)
                         if (isMember && currentUserId != null && msg.id !in readJournal.seenIds(currentUserId, "community", cleanId) &&
-                            UnreadPolicy.isEligibleStatusForReadTransition(msg.status)) {
+                            UnreadPolicy.isEligibleStatusForReadTransition(msg.status) &&
+                            !conectate.com.util.ConversationReadStore(context).isRead(currentUserId,"community",cleanId,msg.id,msg.created_at)) {
                             if (!isSessionSnapshotValid(sessionSnapshot, "community-insert-before-unread:$cleanId")) return@withContext
                             communityDao.incrementUnreadCount(cleanId)
                         }
@@ -1030,7 +1031,8 @@ class CommunityRepository @Inject constructor(
             try {
                 var cleanId = msg.community_id.trim().lowercase()
                 if (cleanId == currentOpenedCommunityId) return@withContext
-                if (ConversationNotificationPrefs(context).isMuted("community", cleanId, authService.getCurrentUserId())) {
+                val isMention = msg.mentioned_user_ids.any { it.equals(receivingAccount.userId, true) }
+                if (!isMention && ConversationNotificationPrefs(context).isMuted("community", cleanId, authService.getCurrentUserId())) {
                     android.util.Log.d("CommunityRepository", "🔕 [NOTIFICATION] Community $cleanId muted locally. Skipping notification.")
                     return@withContext
                 }
@@ -1265,9 +1267,10 @@ class CommunityRepository @Inject constructor(
         incoming: CommunityMessage,
         local: CommunityMessage?
     ): CommunityMessage {
-        local ?: return deletedMessageStore.redact(incoming, currentSessionUserId())
+        val wasRead = conectate.com.util.ConversationReadStore(context).isRead(currentSessionUserId(),"community",incoming.community_id,incoming.id,incoming.created_at)
+        local ?: return deletedMessageStore.redact(if (wasRead) incoming.copy(status="read") else incoming, currentSessionUserId())
         var mergedReceipt = mergeCommunityReceiptState(
-            currentStatus = local.status,
+            currentStatus = if (wasRead) "read" else local.status,
             currentDeliveredAt = local.delivered_at,
             currentReadAt = local.read_at,
             incomingStatus = incoming.status,
@@ -1433,6 +1436,7 @@ class CommunityRepository @Inject constructor(
             is_deleted = false,
             only_admins_can_talk = item.onlyAdminsCanTalk,
             daily_message_limit = item.dailyMessageLimit.coerceIn(0, 1000),
+            weekly_message_limit = item.weeklyMessageLimit.coerceIn(0, 10000),
             current_user_role = item.currentUserRole
         )
     }
@@ -1654,6 +1658,12 @@ class CommunityRepository @Inject constructor(
             filePrefix = "community"
         )
 
+    suspend fun createCommunityInvite(communityId: String): Result<String> = withContext(Dispatchers.IO) {
+        val token = authService.getAccessTokenAwait()
+            ?: return@withContext Result.failure(Exception("Inicia sesión para compartir la comunidad."))
+        localFallbackApiClient.createCollectionInvite(token, "communities", communityId.trim().lowercase())
+    }
+
     suspend fun createCommunity(
         name: String, 
         description: String?, 
@@ -1686,6 +1696,7 @@ class CommunityRepository @Inject constructor(
                 put("created_at", now)
                 put("creator_id", creatorId)
                 put("is_deleted", false)
+                put("only_admins_can_talk", true)
             }
 
             var membershipPayloads = listOf(
@@ -1716,6 +1727,7 @@ class CommunityRepository @Inject constructor(
                     category = category,
                     is_public = isPublic,
                     created_at = now,
+                    only_admins_can_talk = true,
                     creator_id = creatorId,
                     is_member = true
                 )
@@ -1747,6 +1759,7 @@ class CommunityRepository @Inject constructor(
                     category = category,
                     is_public = isPublic,
                     created_at = now,
+                    only_admins_can_talk = true,
                     creator_id = creatorId
                 )
                 communityDao.insertCommunities(listOf(CommunityEntity.fromDomain(newCommunity)))
@@ -2029,7 +2042,7 @@ class CommunityRepository @Inject constructor(
         imageBytes: ByteArray?,
         isPublic: Boolean,
         onlyAdminsCanTalk: Boolean = false,
-        dailyMessageLimit: Int = 0
+        weeklyMessageLimit: Int = 0
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             var me = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
@@ -2056,7 +2069,8 @@ class CommunityRepository @Inject constructor(
                 put("description", normalizedDescription)
                 put("is_public", isPublic)
                 put("only_admins_can_talk", onlyAdminsCanTalk)
-                put("daily_message_limit", dailyMessageLimit.coerceIn(0, 1000))
+                put("daily_message_limit", 0)
+                put("weekly_message_limit", weeklyMessageLimit.coerceIn(0, 10000))
                 if (imageUrl != null) put("image", imageUrl)
             }
             val primaryResult = if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
@@ -2068,7 +2082,7 @@ class CommunityRepository @Inject constructor(
                     normalizedDescription,
                     isPublic,
                     onlyAdminsCanTalk,
-                    dailyMessageLimit,
+                    weeklyMessageLimit,
                     imageUrl
                 )
             } else {
@@ -2091,7 +2105,7 @@ class CommunityRepository @Inject constructor(
                     normalizedDescription,
                     isPublic,
                     onlyAdminsCanTalk,
-                    dailyMessageLimit,
+                    weeklyMessageLimit,
                     imageUrl
                 )
             } else {
@@ -2107,7 +2121,8 @@ class CommunityRepository @Inject constructor(
                 image = imageUrl ?: community.image,
                 is_public = isPublic,
                 only_admins_can_talk = onlyAdminsCanTalk,
-                daily_message_limit = dailyMessageLimit.coerceIn(0, 1000)
+                daily_message_limit = 0,
+                weekly_message_limit = weeklyMessageLimit.coerceIn(0, 10000)
             )
             communityDao.insertCommunities(
                 listOf(cached?.copy(
@@ -2116,7 +2131,8 @@ class CommunityRepository @Inject constructor(
                     image = updatedCommunity.image,
                     is_public = updatedCommunity.is_public,
                     only_admins_can_talk = updatedCommunity.only_admins_can_talk,
-                    daily_message_limit = updatedCommunity.daily_message_limit
+                    daily_message_limit = updatedCommunity.daily_message_limit,
+                    weekly_message_limit = updatedCommunity.weekly_message_limit
                 ) ?: CommunityEntity.fromDomain(updatedCommunity))
             )
             scope.launch { syncCommunities() }
@@ -2273,16 +2289,18 @@ class CommunityRepository @Inject constructor(
                 errorMessage = "No tienes permisos para gestionar roles."
             )
 
+            if (!privileges.isCreator) return@withContext Result.failure(Exception("Solo quien creó la comunidad puede gestionar administradores."))
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 val token = authService.getAccessTokenAwait()
                     ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
                 localFallbackApiClient.joinCollection(token, "communities", cleanId, targetUserId, newRole).getOrThrow()
-                communityDao.insertMembers(listOf(
+                val originalJoinedAt = communityDao.getMemberJoinedAt(cleanId, targetUserId)
+                if (originalJoinedAt != null) communityDao.insertMembers(listOf(
                     CommunityMemberEntity(
                         community_id = cleanId,
                         user_id = targetUserId,
                         role = newRole.trim().lowercase(),
-                        joined_at = java.time.Instant.now().toString()
+                        joined_at = originalJoinedAt
                     )
                 ))
                 scope.launch { syncCommunities() }
@@ -3469,16 +3487,13 @@ class CommunityRepository @Inject constructor(
                 val historyAccess = payload.historyAccess
                 val pendingHistoryIds = communityDao.getMessagesSync(cleanId).filter { !it.is_synced && it.pending_action == "send" }.map { it.id }.toSet()
                 if (historyAccess != null) {
-                    val inaccessible = communityDao.getMessagesSync(cleanId).filter {
-                        it.is_synced && it.pending_action == null && !historyAccess.allows(it.created_at)
-                    }.map { it.id }
                     if (!isSessionSnapshotValid(sessionSnapshot, "community-history-access:$cleanId")) return
                     collectionHistoryStore.save(currentUserId, "community", cleanId, historyAccess)
                         if (!historyAccess.isMember) {
                             if (historyAccess.canReadHistory) communityDao.insertMembers(listOf(CommunityMemberEntity(cleanId, currentUserId, "former_member", historyAccess.joinedAt ?: java.time.Instant.now().toString())))
                             else communityDao.removeMember(cleanId, currentUserId)
                         }
-                    if (inaccessible.isNotEmpty()) communityDao.deleteInaccessibleHistory(cleanId, inaccessible)
+                    // Access is filtered on reads; metadata synchronization is not a delete command.
                 }
                 val localMessagesById = communityDao.getMessagesSync(cleanId)
                     .associateBy { it.id.trim().lowercase() }

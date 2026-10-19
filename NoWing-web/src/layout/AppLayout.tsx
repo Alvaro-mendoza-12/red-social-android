@@ -2,6 +2,9 @@ import { useLegacyCallBroadcast } from '../features/calls/useLegacyCallBroadcast
 import { VoiceRoomHost } from '../features/voice/VoiceRoomHost'
 import { LiveSessionHost } from '../features/live/LiveSessionHost'
 import { AttachmentJobsStatus } from '../components/AttachmentJobsStatus'
+import { MessageReactionNotice } from '../components/MessageReactionNotice'
+import { dedupeInboxConversations } from '../features/messages/conversationInboxSupport'
+import { voiceBackPath } from '../core/voiceDirectory'
 import { StreamingImage } from '../components/StreamingMedia'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -40,7 +43,7 @@ import {
   supabase,
 } from '../core/supabase'
 import { subscribeUbuntuRealtime } from '../core/ubuntuRealtime'
-import {applyInboxUnreadSnapshot,inboxActivityEvent,inboxMessageTarget,invalidateInboxPreview,notifyInboxMessage,useInboxUnreadCounts} from '../core/inboxActivity'
+import {applyInboxUnreadSnapshot,applyRemoteConversationRead,inboxActivityEvent,inboxMessageTarget,invalidateInboxPreview,notifyInboxMessage,useInboxUnreadCounts} from '../core/inboxActivity'
 import { textOf, type GenericRow } from '../core/utils'
 import { useAuth } from '../core/auth/AuthProvider'
 import { changeFallbackPassword, ensureFallbackAccessToken } from '../core/auth/fallbackAuth'
@@ -291,7 +294,7 @@ export function AppLayout() {
             ? Number(notifications.unreadCount)
             : (notifications.items ?? []).filter((row) => !(row.is_read ?? row.isRead)).length,
         )
-        ;(['chat','group','community'] as const).forEach((scope,index)=>applyInboxUnreadSnapshot(user.id,scope,inboxes[index].items||[],requestedAt))
+        ;(['chat','group','community'] as const).forEach((scope,index)=>applyInboxUnreadSnapshot(user.id,scope,dedupeInboxConversations(inboxes[index].items||[]),requestedAt))
       } catch (caught) {
         console.warn('loadShellCounters fallback failed', caught)
       }
@@ -333,15 +336,17 @@ export function AppLayout() {
 
       const { data: participantRows } = await client
         .from('chat_participants')
-        .select('chat_id,last_read_at')
+        .select('*')
         .eq('user_id', user.id)
         .in('chat_id', chatIds)
 
       const participantLastReadByChat = new Map<string, string>()
+      const archivedByChat = new Map<string, boolean>()
       ;((participantRows ?? []) as GenericRow[]).forEach((row) => {
         const chatId = textOf(row, ['chat_id'], '')
         if (!chatId) return
         participantLastReadByChat.set(chatId, textOf(row, ['last_read_at'], ''))
+        archivedByChat.set(chatId, metadataBoolean(row.is_archived))
       })
 
       const localReadByChat = readLocalReadByChat()
@@ -375,7 +380,12 @@ export function AppLayout() {
       })
 
       if(sequence!==counterLoadSequence.current)return
-      applyInboxUnreadSnapshot(user.id,'chat',chatIds.map(id=>({id,unreadCount:unreadIds.has(id)?1:0,updatedAt:unreadDates.get(id)||''})),requestedAt)
+      const inboxRows=chats.map(row=>{
+        const id=textOf(row,['id'],'')
+        const participants=Array.isArray(row.participants)?row.participants.map(String):[]
+        return {id,kind:'chat',profileId:participants.find(participant=>participant.trim().toLowerCase()!==user.id.trim().toLowerCase())||null,unreadCount:unreadIds.has(id)?1:0,updatedAt:unreadDates.get(id)||'',isArchived:archivedByChat.get(id)||false,isPinned:false,isMuted:false,isFavorite:false,folders:[]}
+      })
+      applyInboxUnreadSnapshot(user.id,'chat',dedupeInboxConversations(inboxRows),requestedAt)
     } catch (caught) {
       reportSupabaseServiceRestrictionIfPresent('shell-counters', caught)
       console.warn('loadShellCounters failed', caught)
@@ -407,6 +417,10 @@ export function AppLayout() {
       const unsubscribe=subscribeUbuntuRealtime({
         channel: `user:${user.id}`,
         onEvent: (event) => {
+          if(event.payload?.event==='conversation_read' && event.payload.accountId===user.id){
+            const scope=String(event.payload.kind||''),id=String(event.payload.conversationId||'')
+            if(['chat','group','community'].includes(scope)&&id)applyRemoteConversationRead(user.id,scope as 'chat'|'group'|'community',id,Array.isArray(event.payload.messageIds)?event.payload.messageIds.filter((v):v is string=>typeof v==='string'):[],String(event.payload.through||''))
+          }
           if(event.payload?.event==='message'){
             const target=inboxMessageTarget(event.payload.chatId)
             if(target){if(event.payload.action==='deleted')invalidateInboxPreview(user.id,target.scope,target.id);else notifyInboxMessage(user.id,target.scope,target.id,(event.payload.message||{}) as GenericRow)}
@@ -748,7 +762,7 @@ export function AppLayout() {
     ? 'content-shell full'
     : isVideosRoute
       ? 'content-shell video-content'
-      : 'content-shell wide'
+      : location.pathname.startsWith('/app/voice') ? 'content-shell voice-content' : 'content-shell wide'
   const requiresMigrationPasswordChange = Boolean(
     isFallbackSession && metadataBoolean(user?.user_metadata?.password_change_required),
   )
@@ -1000,7 +1014,7 @@ export function AppLayout() {
               {!isSocialRoute && !isProfileRoute && !location.pathname.startsWith('/app/games') ? (
                 <button
                   className="icon-btn" type="button"
-                  onClick={() => { if (Number(window.history.state?.idx) > 0) navigate(-1); else navigate(location.pathname.startsWith('/app/settings') ? '/app/profile' : activeSection || '/app/messages') }}
+                  onClick={() => { const voiceTarget=voiceBackPath(location.pathname); if(voiceTarget)navigate(voiceTarget,{replace:true});else if (Number(window.history.state?.idx) > 0) navigate(-1); else navigate(location.pathname.startsWith('/app/settings') ? '/app/profile' : activeSection || '/app/messages') }}
                   aria-label="Volver"
                 >
                   <ArrowLeft />
@@ -1074,6 +1088,7 @@ export function AppLayout() {
           <div className={contentShellClassName}>
             <Outlet />
             <VoiceRoomHost />
+            <MessageReactionNotice />
             <LiveSessionHost />
             <AttachmentJobsStatus />
           </div>

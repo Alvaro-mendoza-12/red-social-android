@@ -37,6 +37,7 @@ class MessageRealtimeSync @Inject constructor(
     private val chatDao: ChatDao,
     private val appMetrics: AppMetrics,
     private val crashlytics: FirebaseCrashlytics,
+    private val conversationReadReceiver: ConversationReadReceiver,
     @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
     companion object {
@@ -163,6 +164,17 @@ class MessageRealtimeSync @Inject constructor(
             ubuntuRealtimeClient.replaceUserSubscription(userId)
             ubuntuRealtimeClient.events.collect { envelope ->
                 if (envelope.channel != "user:$userId") return@collect
+                if (envelope.event == "conversation_read") {
+                    val payload=envelope.payload
+                    val event=conectate.com.util.conversationReadEvent(mapOf(
+                        "type" to "conversation_read", "recipient_id" to (payload["accountId"]?.jsonPrimitive?.contentOrNull?:""),
+                        "target_type" to (payload["kind"]?.jsonPrimitive?.contentOrNull?:""),
+                        "conversation_id" to (payload["conversationId"]?.jsonPrimitive?.contentOrNull?:""),
+                        "message_ids" to (payload["messageIds"]?.toString()?:"[]"),
+                        "read_through" to (payload["through"]?.jsonPrimitive?.contentOrNull?:"")))
+                    if(event!=null && event.accountId==userId) { conversationReadReceiver.apply(event); refreshUserChatsFlow(force = true) }
+                    return@collect
+                }
                 if (envelope.event != "message") return@collect
                 val eventChatId = envelope.payload["chatId"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 if (eventChatId.startsWith("room:")) return@collect
@@ -206,7 +218,8 @@ class MessageRealtimeSync @Inject constructor(
                     }
 
                     // 3. Insertar/actualizar en BD local
-                    val safe = deletedMessages.redact(msg, sessionUserId)
+                    val previouslyRead=conectate.com.util.ConversationReadStore(context).isRead(sessionUserId,"chat",cleanId,msg.id,msg.created_at)
+                    val safe = deletedMessages.redact(if(previouslyRead)msg.copy(status="read") else msg, sessionUserId)
                     messageDao.insertMessage(safe)
 
                     // 4. Emitir evento para UI
@@ -240,7 +253,8 @@ class MessageRealtimeSync @Inject constructor(
                     // Actualizar mensaje existente
                     if (authService.getCurrentUserId()?.trim()?.lowercase() != sessionUserId) return@withLock
                     val local = messageDao.getMessageById(msg.id)?.toDomain()?.takeIf { it.chat_id == cleanId }
-                    val safe = deletedMessages.redact(msg.copy(deleted_for_all = msg.deleted_for_all || local?.deleted_for_all == true), sessionUserId)
+                    val wasRead = local?.status == "read" || conectate.com.util.ConversationReadStore(context).isRead(sessionUserId,"chat",cleanId,msg.id,msg.created_at)
+                    val safe = deletedMessages.redact(msg.copy(status = if (wasRead) "read" else msg.status, deleted_for_all = msg.deleted_for_all || local?.deleted_for_all == true), sessionUserId)
                     messageDao.updateMessage(safe)
                     if (safe.deleted_for_all) conectate.com.util.DeletedMessageIdentity.create(sessionUserId, "chat", cleanId, safe.id)?.let {
                         conectate.com.util.MessageNotificationFactory.redactMessage(context, it, safe.created_at)
@@ -303,7 +317,8 @@ class MessageRealtimeSync @Inject constructor(
                     last_message_timestamp = msg.created_at,
                     last_message_at = msg.created_at,
                     last_message_sender_id = msg.sender_id,
-                    unread_count = if (msg.sender_id.trim().lowercase() != sessionUserId?.trim()?.lowercase()) {
+                    unread_count = if (msg.sender_id.trim().lowercase() != sessionUserId?.trim()?.lowercase() &&
+                        conectate.com.core.messaging.UnreadPolicy.isEligibleStatusForReadTransition(msg.status)) {
                         chat.unread_count + 1
                     } else {
                         chat.unread_count
@@ -350,10 +365,10 @@ class MessageRealtimeSync @Inject constructor(
     /**
      * Refresca el flow de userChats desde la base local.
      */
-    private suspend fun refreshUserChatsFlow() {
+    private suspend fun refreshUserChatsFlow(force: Boolean = false) {
         val now = System.currentTimeMillis()
         // v22.3: Throttle list refreshes to avoid UI 'saturation' (max once per 800ms)
-        if (now - lastListRefreshAt < 800) return
+        if (!force && now - lastListRefreshAt < 800) return
         lastListRefreshAt = now
 
         try {

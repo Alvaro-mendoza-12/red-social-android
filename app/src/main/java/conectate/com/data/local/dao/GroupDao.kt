@@ -91,6 +91,12 @@ interface GroupDao {
     @Query("UPDATE groups SET unread_count = 0 WHERE id = :groupId")
     suspend fun resetUnreadCount(groupId: String)
 
+    @Query("UPDATE group_messages SET status='read',read_at=COALESCE(read_at,:through) WHERE group_id=:id AND LOWER(sender_id)!=LOWER(:account) AND julianday(created_at)<=julianday(:through) AND LOWER(COALESCE(status,'')) IN ('sent','delivered','received')")
+    suspend fun markReadThrough(id: String, account: String, through: String)
+
+    @Query("UPDATE groups SET unread_count=(SELECT COUNT(*) FROM group_messages WHERE group_id=:id AND LOWER(sender_id)!=LOWER(:account) AND LOWER(COALESCE(status,'')) IN ('sent','delivered','received')) WHERE id=:id")
+    suspend fun reconcileUnreadCount(id: String, account: String)
+
     @Query("UPDATE groups SET unread_count = unread_count + 1 WHERE id = :groupId")
     suspend fun incrementUnreadCount(groupId: String)
 

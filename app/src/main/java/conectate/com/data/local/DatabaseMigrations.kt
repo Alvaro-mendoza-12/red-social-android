@@ -15,8 +15,13 @@ object DatabaseMigrations {
                         54 -> {
                             LatestSchemaNormalizer.addMessageDeletions(db)
                             LatestSchemaNormalizer.addProfileSnapshot(db)
+                            LatestSchemaNormalizer.addCommunityWeeklyBudget(db)
                         }
-                        55 -> LatestSchemaNormalizer.addProfileSnapshot(db)
+                        55 -> {
+                            LatestSchemaNormalizer.addProfileSnapshot(db)
+                            LatestSchemaNormalizer.addCommunityWeeklyBudget(db)
+                        }
+                        56 -> LatestSchemaNormalizer.addCommunityWeeklyBudget(db)
                         else -> LatestSchemaNormalizer.migrate(db)
                     }
                     LegacyMessageDeletionMigration.import(db)
@@ -279,7 +284,7 @@ internal object LatestSchemaNormalizer {
 
     private val communitiesPlan = TablePlan(
         name = "communities",
-        createSql = "CREATE TABLE IF NOT EXISTS `communities` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `image` TEXT, `description` TEXT, `category` TEXT, `is_public` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `creator_id` TEXT NOT NULL, `last_message` TEXT, `last_message_at` TEXT, `unread_count` INTEGER NOT NULL, `is_deleted` INTEGER NOT NULL, `only_admins_can_talk` INTEGER NOT NULL, `daily_message_limit` INTEGER NOT NULL, `is_member` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        createSql = "CREATE TABLE IF NOT EXISTS `communities` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `image` TEXT, `description` TEXT, `category` TEXT, `is_public` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `creator_id` TEXT NOT NULL, `last_message` TEXT, `last_message_at` TEXT, `unread_count` INTEGER NOT NULL, `is_deleted` INTEGER NOT NULL, `only_admins_can_talk` INTEGER NOT NULL, `daily_message_limit` INTEGER NOT NULL, `weekly_message_limit` INTEGER NOT NULL DEFAULT 0, `is_member` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         columns = listOf(
             ColumnSpec("id"),
             ColumnSpec("name", "''"),
@@ -295,6 +300,7 @@ internal object LatestSchemaNormalizer {
             ColumnSpec("is_deleted", "0"),
             ColumnSpec("only_admins_can_talk", "0"),
             ColumnSpec("daily_message_limit", "0"),
+            ColumnSpec("weekly_message_limit", "0"),
             ColumnSpec("is_member", "1")
         ),
         indexSql = listOf(
@@ -470,6 +476,10 @@ internal object LatestSchemaNormalizer {
     fun addMessageDeletions(db: SupportSQLiteDatabase) {
         db.execSQL(messageDeletionsPlan.createSql)
         messageDeletionsPlan.indexSql.forEach(db::execSQL)
+    }
+
+    fun addCommunityWeeklyBudget(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `communities` ADD COLUMN `weekly_message_limit` INTEGER NOT NULL DEFAULT 0")
     }
 
     fun addProfileSnapshot(db: SupportSQLiteDatabase) {

@@ -227,7 +227,8 @@ class NotificationRepository @Inject constructor(
                     }
                 }
                 Log.d("NotificationRepository", "✅ Successfully returning ${notifications.size} notifications")
-                Result.success(notifications.filterNot { it.isRetiredNotification() })
+                Result.success(enrichPostNotificationPreviews(token,
+                    notifications.filterNot { it.isRetiredNotification() }))
             } else {
                 val errorBody = response.bodyAsText()
                 Log.e("NotificationRepository", "❌ HTTP Error: ${response.status}")
@@ -237,6 +238,65 @@ class NotificationRepository @Inject constructor(
         } catch (e: Exception) {
             Log.e("NotificationRepository", "🚨 Exception in getNotifications", e)
             Result.failure(e)
+        }
+    }
+
+    /** Old notifications only store the post ID. Resolve previews in batches, respecting post RLS. */
+    private suspend fun enrichPostNotificationPreviews(
+        token: String,
+        notifications: List<Notification>
+    ): List<Notification> {
+        fun postId(item: Notification): String? {
+            val explicit = (item.extraData?.get("post_id") as? JsonPrimitive)?.contentOrNull
+            val id = explicit ?: item.targetId.takeIf {
+                item.targetType.equals("post", true) || item.type.contains("post", true)
+            }
+            return id?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,160}")) }
+        }
+        val ids = notifications.mapNotNull(::postId).distinct()
+        if (ids.isEmpty()) return notifications
+        val posts = coroutineScope {
+            ids.chunked(50).map { batch -> async(Dispatchers.IO) {
+                try {
+                    val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/posts") {
+                        header("Authorization", "Bearer $token")
+                        header("apikey", supabaseConfig.supabaseAnonKey)
+                        parameter("select", "*")
+                        parameter("id", "in.(${batch.joinToString(",")})")
+                    }
+                    if (response.status.isSuccess())
+                        supabaseConfig.json.decodeFromString<List<JsonObject>>(response.bodyAsText())
+                    else emptyList()
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { emptyList<JsonObject>() }
+            } }.awaitAll().flatten()
+        }.associateBy { (it["id"] as? JsonPrimitive)?.contentOrNull }
+        fun text(row: JsonObject, key: String) = (row[key] as? JsonPrimitive)
+            ?.contentOrNull?.trim()?.takeIf { it.isNotBlank() && it != "null" }
+        fun mediaUrl(value: JsonElement?): String? = when (value) {
+            is JsonObject -> text(value, "thumbnail_url") ?: text(value, "url") ?: text(value, "media_url")
+            is JsonPrimitive -> value.contentOrNull?.takeIf { it.isNotBlank() && it != "null" }
+            else -> null
+        }
+        return notifications.map { item ->
+            val post = posts[postId(item)] ?: return@map item
+            val media = post["media_urls"].let { value ->
+                when (value) {
+                    is JsonArray -> value
+                    is JsonPrimitive -> runCatching {
+                        supabaseConfig.json.parseToJsonElement(value.content) as? JsonArray
+                    }.getOrNull()
+                    else -> null
+                }
+            }
+            val thumbnail = text(post, "thumbnail_url") ?: text(post, "image_url")
+                ?: media?.firstNotNullOfOrNull(::mediaUrl) ?: text(post, "media_url")
+            val extra = buildJsonObject {
+                item.extraData?.forEach { (key, value) -> put(key, value) }
+                thumbnail?.let { put("target_thumbnail_url", it) }
+                text(post, "content")?.let { put("target_preview_text", it.take(180)) }
+            }
+            item.copy(extraData = extra)
         }
     }
 

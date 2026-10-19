@@ -30,7 +30,10 @@ data class CollectionHistoryAccess(
         return !at.isBefore(from) && !at.isAfter(until)
     }
 
-    private fun instant(value: String?): Instant? = value?.let { runCatching { Instant.parse(it) }.getOrNull() }
+    private fun instant(value: String?): Instant? = value?.let {
+        val normalized = it.trim().replaceFirst(' ', 'T').replace(Regex("([+-]\\d{2})$"), "$1:00")
+        runCatching { Instant.parse(normalized) }.getOrNull()
+    }
 }
 
 @Serializable

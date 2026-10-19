@@ -509,7 +509,8 @@ fun PostCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 220.dp, max = 420.dp)
-                            .clickable { fullScreenImageIndex = 0 },
+                            .inlinePhotoZoom(image)
+                              .clickable { fullScreenImageIndex = 0 },
                         contentScale = ContentScale.Crop,
                         loading = {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -545,7 +546,7 @@ fun PostCard(
                             SubcomposeAsyncImage(
                                 model = request,
                                 contentDescription = "Imagen de publicación",
-                                modifier = Modifier.fillMaxSize().clickable { fullScreenImageIndex = page },
+                                modifier = Modifier.fillMaxSize().inlinePhotoZoom(image).clickable { fullScreenImageIndex = page },
                                 contentScale = ContentScale.Crop,
                                 loading = {
                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -594,7 +595,7 @@ fun PostCard(
             }
 
             // Stats row (Likes, Comments, and Shares)
-            if (post.likeCount > 0 || post.commentCount > 0 || post.shareCount > 0) {
+            if (reactionTotal > 0 || post.commentCount > 0 || post.shareCount > 0) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

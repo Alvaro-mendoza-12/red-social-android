@@ -48,7 +48,7 @@ import kotlin.math.sin
 
 internal fun shouldAnimateProfileAmbient(effectId: String, reduceMotion: Boolean, resumed: Boolean): Boolean =
     !reduceMotion && resumed && effectId.trim().lowercase(java.util.Locale.ROOT) in
-        setOf("sparkles", "constellation", "confetti", "waves", "orbit")
+        setOf("sparkles", "constellation", "confetti", "waves", "orbit", "rain", "equalizer")
 
 @Composable
 fun ProfileAmbientBackground(
@@ -73,10 +73,10 @@ fun ProfileAmbientBackground(
         lifecycle.addObserver(observer)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener); lifecycle.removeObserver(observer) }
     }
-    val phase = if (shouldAnimateProfileAmbient(effectId, reduceMotion.value, resumed.value)) {
+    val phase = if (shouldAnimateProfileAmbient(effectId, reduceMotion.value || !android.animation.ValueAnimator.areAnimatorsEnabled(), resumed.value)) {
         val transition = rememberInfiniteTransition(label = "profile-ambient")
         transition.animateFloat(0f, 1f,
-            infiniteRepeatable(tween(durationMillis = 6_000), RepeatMode.Restart), label = "profile-ambient-phase")
+            infiniteRepeatable(tween(durationMillis = 6_000, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "profile-ambient-phase")
     } else remember { mutableStateOf(0f) }
 
     Box(modifier = modifier.background(colors.background)) {
@@ -173,7 +173,7 @@ private fun ProfilePattern(
                     Triple(0.94f, 0.34f, 0.14f)
                 )
                 pieces.forEachIndexed { index, (x, initialY, slant) ->
-                    val y = (initialY + phase * (0.22f + index * 0.015f)) % 1f
+                    val y = (initialY + phase) % 1f
                     val start = Offset(width * x, height * y)
                     drawLine(
                         color = if (index % 2 == 0) {
@@ -229,7 +229,7 @@ private fun ProfilePattern(
             "rain" -> {
                 repeat(14) { index ->
                     val x = width * ((index * 0.073f + 0.04f) % 1f)
-                    val y = height * ((index * 0.19f + phase * (0.45f + index * 0.01f)) % 1f)
+                    val y = height * ((index * 0.19f + phase * 2f) % 1f)
                     drawLine(
                         color = if (index % 3 == 0) colors.secondary.copy(alpha = 0.5f) else colors.foreground.copy(alpha = 0.3f),
                         start = Offset(x, y),

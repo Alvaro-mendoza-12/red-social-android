@@ -48,6 +48,7 @@ function stringValue(value) {
 }
 
 function buildData(notification, extraData = {}) {
+  if (notification.type === 'conversation_read') return require('./conversation-read-sync').readControlData(notification, extraData) || {}
   if (notification.type === 'message_deleted') {
     const scope = notificationMessageScope(notification, extraData)
     if (!scope || !notification.recipient_id) return {}
@@ -133,17 +134,32 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
       if (!cancellation && ['group','community'].includes(scope.kind) &&
           !(await collectionMessageRecipients(client, scope.kind, scope.scopeId, current, [notification.recipient_id])).length)
         return { sent: 0, failed: 0, suppressed: true }
-      const persisted = cancellation ? notification : { ...notification, content: current.content || '' }
-      const authoritativeData = cancellation ? deletionData(scope, current, notification.recipient_id) : {
+      const reaction = notification.type === 'message_reaction'
+      if (reaction) {
+        const parties=await client.query(`SELECT id::text,supabase_user_id::text FROM fallback_users
+          WHERE lower(id::text)=ANY($1::text[]) OR lower(COALESCE(supabase_user_id::text,''))=ANY($1::text[])`, [[notification.recipient_id,notification.actor_id].map(value=>String(value||'').toLowerCase())])
+        const aliases=value=>parties.rows.filter(row=>[row.id,row.supabase_user_id].some(id=>String(id||'').toLowerCase()===String(value||'').toLowerCase())).flatMap(row=>[row.id,row.supabase_user_id]).filter(Boolean)
+        if (!require('./message-reaction-notifications').reactionNotice({actorId:notification.actor_id,actorIds:aliases(notification.actor_id),
+          ownerId:notification.recipient_id,ownerIds:aliases(notification.recipient_id),emoji:extraData.reaction_emoji,
+          reactions:current.reactions,deleted:current.deleted_for_all,deletedBy:Array.isArray(current.deleted_by)?current.deleted_by:[]}))
+          return {sent:0,failed:0,suppressed:true}
+      }
+      const persisted = cancellation || reaction ? notification : { ...notification, content: current.content || '' }
+      const authoritativeData = cancellation ? deletionData(scope, current, notification.recipient_id) : reaction ? {
+        ...extraData, content: notification.content || '', body: notification.content || '', content_type: 'reaction',
+        media_url: '', thumbnail_url: '',
+      } : {
         ...extraData, content: current.content || '', body: current.content || '', content_type: current.content_type || 'text',
         media_url: current.media_url || '', thumbnail_url: current.thumbnail_url || '', media_size: String(current.media_size || 0),
         created_at: current.created_at instanceof Date ? current.created_at.toISOString() : String(current.created_at || ''),
       }
       return sendCurrentPush(client, persisted, authoritativeData)
-    }, { allowDeleted: cancellation, actorId: cancellation ? undefined : notification.actor_id })
+    }, { allowDeleted: cancellation, actorId: cancellation ? undefined : reactionOwner(notification) })
   }
   return sendCurrentPush(pool, notification, extraData)
 }
+
+function reactionOwner(notification) { return notification.type === 'message_reaction' ? notification.recipient_id : notification.actor_id }
 
 async function sendCurrentPush(pool, notification, extraData) {
   const app = initializeFirebase()

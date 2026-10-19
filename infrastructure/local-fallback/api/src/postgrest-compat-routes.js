@@ -1,3 +1,4 @@
+const { visibleFollowRows, setFollowState, publishFollowChange } = require('./follow-store')
 const { loadCollectionMembershipState, collectionHistoryAllows } = require('./collection-membership-policy')
 const { normalizeCompatProfileJson } = require('./compat-profile-json')
 const { deleteAccountMusic } = require('./music-library-routes')
@@ -800,7 +801,7 @@ async function readSpecificRows(pool, tableName, auth) {
         const userId = auth?.sub || ''
         const { rows } = await pool.query(`
           SELECT r.id::text, r.creator_id AS owner_id, r.creator_id, r.name, r.description,
-                 r.image AS avatar_url, r.image, r.category, r.is_public, r.only_admins_can_talk,
+                 r.image AS avatar_url, r.image, r.category, r.is_public, r.only_admins_can_talk, r.daily_message_limit, r.weekly_message_limit,
                  '{}'::jsonb AS metadata, r.created_at, r.updated_at
           FROM fallback_collection_rooms r
           INNER JOIN fallback_collection_members m ON m.room_id = r.id::text AND m.room_kind = 'group'
@@ -812,7 +813,7 @@ async function readSpecificRows(pool, tableName, auth) {
       } else {
         const { rows } = await pool.query(`
           SELECT id::text, creator_id AS owner_id, creator_id, name, description,
-                 image AS avatar_url, image, category, is_public, only_admins_can_talk,
+                 image AS avatar_url, image, category, is_public, only_admins_can_talk, daily_message_limit, weekly_message_limit,
                  '{}'::jsonb AS metadata, created_at, updated_at
           FROM fallback_collection_rooms
           WHERE room_kind = $1 AND is_deleted = FALSE
@@ -1424,7 +1425,7 @@ async function readTableRows(pool, tableName, query, auth) {
       filters={...query,profile_id:'eq.'+identity.preferredUserId}
     }
   }
-  const filtered = applyFilters(visible, filters)
+  const filtered = applyFilters(tableName === 'follows' ? await visibleFollowRows(pool, visible) : visible, filters)
   return applyOrder(filtered, query?.order)
 }
 
@@ -1445,6 +1446,12 @@ async function storeCompatRow(pool, tableName, row) {
                    updated_at = NOW()`,
     [tableName, id, stored],
   )
+  if (tableName === 'profile_views' && stored.profile_id) {
+    const ownerId = normalizeIdentityValue(stored.profile_id)
+    const aliases = await pool.query(`SELECT id::text,supabase_user_id::text FROM fallback_users WHERE lower(id::text)=$1 OR lower(supabase_user_id::text)=$1`, [ownerId])
+    const targets = new Set([ownerId, ...aliases.rows.flatMap(row => [row.id, row.supabase_user_id])].map(normalizeIdentityValue).filter(Boolean))
+    await Promise.all([...targets].map(target => publishRealtimeEvent(`user:${target}`, { event: 'profile_views_changed' }))).catch(() => {})
+  }
   return stored
 }
 
@@ -2057,13 +2064,26 @@ async function insertFriendRow(pool, auth, row) {
   return rows[0]
 }
 
+async function writeCompatFollow(pool, identity, targetId, following) {
+  const { rows } = await pool.query(`SELECT id::text,supabase_user_id::text FROM fallback_users
+    WHERE lower(id::text)=$1 OR lower(COALESCE(supabase_user_id::text,''))=$1 LIMIT 1`, [normalizeIdentityValue(targetId)])
+  if (!rows[0]) throw httpError('PROFILE_NOT_FOUND', 404)
+  const actor = { id: identity.localUserId, supabase_user_id: identity.preferredUserId }
+  const result = await setFollowState(pool, actor, rows[0], following)
+  void publishFollowChange(result)
+  return result
+}
+
 async function handleInsert(pool, tableName, auth, body) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   const rows = []
   for (const entry of asArrayBody(body)) {
     const base = await prepareInsertRow(pool, tableName, identity, entry)
-    if (tableName === 'profiles' || tableName === 'users') {
+    if (tableName === 'follows') {
+      const state = await writeCompatFollow(pool, identity, base.following_id, true)
+      rows.push({ id: state.followerId + ':' + state.followingId, follower_id: state.followerId, following_id: state.followingId })
+    } else if (tableName === 'profiles' || tableName === 'users') {
       rows.push(await upsertProfile(pool, auth, base))
     } else if (tableName === 'chats' && base.is_group !== true) {
       const requestedParticipants = Array.from(new Set(
@@ -2215,14 +2235,16 @@ async function handlePatch(pool, tableName, auth, query, body) {
     } else if (tableName === 'groups' || tableName === 'communities') {
       await pool.query(`
         UPDATE fallback_collection_rooms
-        SET name = $1, description = $2, image = $3, is_public = $4, only_admins_can_talk = $5, updated_at = NOW()
-        WHERE lower(id::text) = $6
+        SET name = $1, description = $2, image = $3, is_public = $4, only_admins_can_talk = $5, weekly_message_limit = $6, daily_message_limit = $7, updated_at = NOW()
+        WHERE lower(id::text) = $8
       `, [
         next.name ?? current.name ?? '',
         next.description ?? current.description ?? '',
         next.image ?? next.avatar_url ?? current.image ?? current.avatar_url ?? '',
         next.is_public ?? current.is_public ?? true,
         next.only_admins_can_talk ?? current.only_admins_can_talk ?? false,
+        Math.max(0, Math.min(10000, Math.trunc(Number(next.weekly_message_limit) || 0))),
+        patch.weekly_message_limit != null ? 0 : Math.max(0, Math.min(1000, Math.trunc(Number(next.daily_message_limit) || 0))),
         String(next.id).toLowerCase()
       ])
       rows.push(next)
@@ -2256,6 +2278,10 @@ async function handleDelete(pool, tableName, auth, query) {
   for (const row of rows) {
     if (!(await authorizeMutation(pool, tableName, identity, row, {}, 'delete'))) {
       throw httpError('ROW_MUTATION_FORBIDDEN')
+    }
+    if (tableName === 'follows') {
+      await writeCompatFollow(pool, identity, row.following_id || row.target_user_id, false)
+      continue
     }
     const id = rowId(row, tableName)
     if (!id) continue
@@ -2492,6 +2518,10 @@ async function insertDirectRpcMessage(pool, auth, body, { publishEvent = true } 
     }
   }
 
+  if (!(await require('./data-routes').currentUserMayReferenceMessageMedia(pool,
+    { id: identity.localUserId }, { ...identity, displayUserId: identity.preferredUserId },
+    { mediaUrl, contentType, allowedOwnedBuckets: ['chat-media'], isForwarded, forwardedFromMessageId }))) throw httpError('CHAT_MEDIA_REFERENCE_FORBIDDEN')
+
   let rows
   try {
     ({ rows } = await pool.query(
@@ -2552,7 +2582,7 @@ async function insertDirectRpcMessage(pool, auth, body, { publishEvent = true } 
   return serializeCompatMessage(message)
 }
 
-async function insertCollectionRpcMessage(pool, auth, body, kind, { publishEvent = true, participantPoll = false } = {}) {
+async function insertCollectionRpcMessage(pool, auth, body, kind, { publishEvent = true, participantPoll = false, inTransaction = false } = {}) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   const roomId = normalizeIdentityValue(messageBodyValue(body, `${kind}_id`, ''))
@@ -2591,72 +2621,32 @@ async function insertCollectionRpcMessage(pool, auth, body, kind, { publishEvent
   const allowedPoll = participantPoll && contentType === 'poll' && Boolean(pollId) && !mediaUrl && !isForwarded
   if (!allowedPoll && !(await require('./community-questions').collectionPublicationAllowed(pool,kind,roomId,isPublicationOwner))) throw httpError('ONLY_CREATOR_CAN_TALK')
   const roomResult = await pool.query(
-    `SELECT only_admins_can_talk
+    `SELECT only_admins_can_talk, daily_message_limit, weekly_message_limit
      FROM fallback_collection_rooms
      WHERE room_kind = $1 AND lower(id::text) = $2
      LIMIT 1`,
     [kind, roomId],
   )
-  if (!allowedPoll && roomResult.rows[0]?.only_admins_can_talk === true &&
-      !(await canManageCollection(pool, kind, identity, roomId))) {
+  const isAdmin = await canManageCollection(pool, kind, identity, roomId)
+  if (roomResult.rows[0]?.only_admins_can_talk === true && !isAdmin) {
     throw httpError('ONLY_ADMINS_CAN_TALK')
   }
 
-  const { rows } = await pool.query(
-    `INSERT INTO fallback_room_messages(
-       id, room_kind, room_id, sender_id, content, content_type, media_url, media_size,
-       reply_to_id, poll_id, is_forwarded, forwarded_from_message_id, forwarded_from_user_id
-     )
-     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-     ON CONFLICT (id) DO NOTHING
-     RETURNING id::text, room_id,
-               CASE WHEN room_kind = 'group' THEN room_id ELSE NULL END AS group_id,
-               CASE WHEN room_kind = 'community' THEN room_id ELSE NULL END AS community_id,
-                sender_id, content, content_type, media_url, media_size, status,
-                delivered_at, read_at, reactions,
-               reply_to_id, poll_id, is_edited, deleted_for_all, deleted_by,
-               is_forwarded, forwarded_from_message_id, forwarded_from_user_id,
-               created_at, updated_at`,
-    [
-      messageId,
-      kind,
-      roomId,
-      identity.preferredUserId,
-      content,
-      contentType,
-      mediaUrl,
-      mediaSize,
-      replyToId,
-      pollId,
-      isForwarded,
-      forwardedFromMessageId,
-      forwardedFromUserId,
-    ],
-  )
-  let message = rows[0]
-  if (!message) {
-    const existing = await pool.query(
-      `SELECT id::text, room_id,
-              CASE WHEN room_kind = 'group' THEN room_id ELSE NULL END AS group_id,
-              CASE WHEN room_kind = 'community' THEN room_id ELSE NULL END AS community_id,
-              sender_id, content, content_type, media_url, media_size, status,
-              delivered_at, read_at, reactions,
-              reply_to_id, poll_id, is_edited, deleted_for_all, deleted_by,
-              is_forwarded, forwarded_from_message_id, forwarded_from_user_id,
-              created_at, updated_at
-       FROM fallback_room_messages WHERE id = $1::uuid LIMIT 1`,
-      [messageId],
-    )
-    message = existing.rows[0]
-    if (
-      !message ||
-      normalizeIdentityValue(message.room_id) !== roomId ||
-      !identityOwnsValue(identity, message.sender_id) ||
-      (pollId && normalizeIdentityValue(message.poll_id) !== pollId)
-    ) {
-      throw httpError('MESSAGE_ID_CONFLICT', 409)
-    }
-  }
+  if (!(await require('./data-routes').currentUserMayReferenceMessageMedia(pool,
+    { id: identity.localUserId }, { ...identity, displayUserId: identity.preferredUserId },
+    { mediaUrl, contentType, allowedOwnedBuckets: kind === 'community' ? ['community-media', 'communities'] : ['group-media', 'groups', 'group-audio'],
+      isForwarded, forwardedFromMessageId }))) throw httpError('COLLECTION_MEDIA_REFERENCE_FORBIDDEN')
+
+  const saved = await require('./community-message-budget').insertWithCommunityBudget(pool, {
+    kind, scopeId: roomId, actorIds: identity.values,
+    message: { id: messageId, sender_id: identity.preferredUserId, content, content_type: contentType,
+      media_url: mediaUrl, media_size: mediaSize, reply_to_id: replyToId, poll_id: pollId,
+      is_forwarded: isForwarded, forwarded_from_message_id: forwardedFromMessageId,
+      forwarded_from_user_id: forwardedFromUserId },
+  }, { isAdmin, weeklyLimit: roomResult.rows[0]?.weekly_message_limit,
+    dailyLimit: roomResult.rows[0]?.daily_message_limit, inTransaction })
+  const message = saved.message
+  if (pollId && normalizeIdentityValue(message.poll_id) !== pollId) throw httpError('MESSAGE_ID_CONFLICT', 409)
 
   if (publishEvent) await publishCollectionCompatMessage(pool, identity, kind, roomId, message)
   return serializeCompatMessage(message)
@@ -2805,7 +2795,7 @@ async function createPollMessageRpc(pool, auth, body, kind) {
       }
       message = kind === 'chat'
         ? await insertDirectRpcMessage(client, auth, messageBody, { publishEvent: false })
-        : await insertCollectionRpcMessage(client, auth, messageBody, kind, { publishEvent: false, participantPoll: true })
+        : await insertCollectionRpcMessage(client, auth, messageBody, kind, { publishEvent: false, participantPoll: true, inTransaction: true })
       created = true
     }
     await client.query('COMMIT')
@@ -2980,11 +2970,12 @@ async function toggleMessageReaction(pool, auth, body, collectionKind = null) {
   if (!messageId || !emoji) throw httpError('MESSAGE_ID_AND_REACTION_REQUIRED', 400)
 
   const roomResult = await pool.query(
-    `SELECT room_kind, room_id, reactions, created_at, content_type FROM fallback_room_messages WHERE id = $1::uuid LIMIT 1`,
+    `SELECT room_kind, room_id, reactions, created_at, content_type, id::text, sender_id, deleted_for_all, deleted_by, channel_id FROM fallback_room_messages WHERE id = $1::uuid LIMIT 1`,
     [messageId],
   )
   if (roomResult.rows[0]) {
     const message = roomResult.rows[0]
+    if(isDeletedForAll(message)) throw httpError('MESSAGE_NOT_FOUND',404)
     if (!(await canAccessCollection(pool, message.room_kind, identity, message.room_id))) {
       throw httpError('COLLECTION_ACCESS_DENIED')
     }
@@ -2995,6 +2986,10 @@ async function toggleMessageReaction(pool, auth, body, collectionKind = null) {
       `UPDATE fallback_room_messages SET reactions = $2::jsonb, updated_at = NOW() WHERE id = $1::uuid`,
       [messageId, reactions],
     )
+    await require('./message-reaction-notifications').notifyMessageReaction(pool, {
+      actorId: identity.preferredUserId, actorIds: identity.values, kind: message.room_kind, scopeId: message.room_id,
+      message, emoji, reactions,
+    })
     return { message_id: messageId, reactions }
   }
 
@@ -3003,6 +2998,7 @@ async function toggleMessageReaction(pool, auth, body, collectionKind = null) {
     const importedMessage = (await importedAndCompatRows(pool, tableName))
       .find((row) => normalizeIdentityValue(row.id) === messageId)
     if (importedMessage) {
+      if(isDeletedForAll(importedMessage)) throw httpError('MESSAGE_NOT_FOUND',404)
       const roomId = normalizeIdentityValue(
         importedMessage[`${collectionKind}_id`] || importedMessage.room_id
       )
@@ -3017,15 +3013,20 @@ async function toggleMessageReaction(pool, auth, body, collectionKind = null) {
         id: messageId,
         reactions,
       })
+      await require('./message-reaction-notifications').notifyMessageReaction(pool, {
+        actorId: identity.preferredUserId, actorIds: identity.values, kind: collectionKind, scopeId: roomId,
+        message: importedMessage, emoji, reactions,
+      })
       return { message_id: messageId, reactions }
     }
   }
 
   const directResult = await pool.query(
-    `SELECT chat_id, reactions FROM fallback_messages WHERE id = $1::uuid LIMIT 1`,
+    `SELECT chat_id, reactions, id::text, sender_id, deleted_for_all, deleted_by FROM fallback_messages WHERE id = $1::uuid LIMIT 1`,
     [messageId],
   )
   if (!directResult.rows[0]) throw httpError('MESSAGE_NOT_FOUND', 404)
+  if(isDeletedForAll(directResult.rows[0])) throw httpError('MESSAGE_NOT_FOUND',404)
   if (!(await canAccessChat(pool, identity, directResult.rows[0].chat_id))) {
     throw httpError('CHAT_ACCESS_DENIED')
   }
@@ -3034,6 +3035,10 @@ async function toggleMessageReaction(pool, auth, body, collectionKind = null) {
     `UPDATE fallback_messages SET reactions = $2::jsonb, updated_at = NOW() WHERE id = $1::uuid`,
     [messageId, reactions],
   )
+  await require('./message-reaction-notifications').notifyMessageReaction(pool, {
+    actorId: identity.preferredUserId, actorIds: identity.values, kind: 'chat', scopeId: directResult.rows[0].chat_id,
+    message: directResult.rows[0], emoji, reactions,
+  })
   return { message_id: messageId, reactions }
 }
 
@@ -5594,6 +5599,9 @@ async function deleteOwnAccountRpc(pool, auth) {
       await client.query(`DELETE FROM fallback_random_chat_sessions WHERE lower(id::text) = ANY($1::text[])`, [randomSessionIds])
     }
     const markerRoomIds = [...chatIds, ...roomIds]
+    await client.query(`DELETE FROM fallback_message_reaction_notices WHERE lower(actor_id)=ANY($1::text[])
+      OR message_id IN (SELECT id FROM fallback_messages WHERE lower(sender_id)=ANY($1::text[]) OR lower(chat_id)=ANY($2::text[])
+        UNION SELECT id FROM fallback_room_messages WHERE lower(sender_id)=ANY($1::text[]) OR lower(room_id)=ANY($2::text[]))`, [identityValues,markerRoomIds])
     for (const statement of [
       `DELETE FROM fallback_saved_messages WHERE lower(user_id) = ANY($1::text[]) OR lower(room_id) = ANY($2::text[])
         OR lower(message_id) IN (SELECT lower(id::text) FROM fallback_messages WHERE lower(sender_id) = ANY($1::text[])
@@ -5631,6 +5639,7 @@ async function deleteOwnAccountRpc(pool, auth) {
       `DELETE FROM fallback_saved_collections WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_shares WHERE lower(user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_follows WHERE lower(follower_id) = ANY($1::text[]) OR lower(following_id) = ANY($1::text[])`,
+      `DELETE FROM fallback_follow_overrides WHERE lower(follower_id)=ANY($1::text[]) OR lower(following_id)=ANY($1::text[])`,
       `DELETE FROM fallback_reports WHERE lower(reporter_id) = ANY($1::text[]) OR lower(reported_user_id) = ANY($1::text[])`,
       `DELETE FROM fallback_notifications WHERE lower(recipient_id) = ANY($1::text[]) OR lower(COALESCE(actor_id, '')) = ANY($1::text[])`,
       `DELETE FROM fallback_notification_digest_preferences WHERE lower(user_id) = ANY($1::text[])`,

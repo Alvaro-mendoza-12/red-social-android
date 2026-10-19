@@ -641,6 +641,8 @@ class GroupChatViewModel @Inject constructor(
         )
     }
 
+    suspend fun resolveMention(handle: String): String? = userRepository.resolvePublicMention(handle)?.id
+
     suspend fun resolveRegisteredContactUserId(payload: ChatContactPayload): String? {
         val byEmail = payload.normalizedEmail
             ?.let { userRepository.getUserByEmail(it).getOrNull() }
@@ -669,8 +671,9 @@ class GroupChatViewModel @Inject constructor(
     fun sendLocationMessage(latitude: String, longitude: String, label: String?) {
         val lat = latitude.trim()
         val lon = longitude.trim()
-        if (lat.isBlank() || lon.isBlank()) {
-            _errorMessage.value = "Completa latitud y longitud"
+        if (lat.toDoubleOrNull()?.let { it.isFinite() && it in -90.0..90.0 } != true ||
+            lon.toDoubleOrNull()?.let { it.isFinite() && it in -180.0..180.0 } != true) {
+            _errorMessage.value = "Revisa las coordenadas de la ubicación"
             return
         }
         val mapUrl = "https://maps.google.com/?q=$lat,$lon"
@@ -683,7 +686,7 @@ class GroupChatViewModel @Inject constructor(
         sendStructuredMessage(
             content = content,
             contentType = "location",
-            validationError = "Completa latitud y longitud",
+            validationError = "Revisa las coordenadas de la ubicación",
             mediaUrl = mapUrl
         )
     }
@@ -1025,6 +1028,16 @@ class GroupChatViewModel @Inject constructor(
     fun deleteMessageForEveryone(message: conectate.com.data.model.Message) {
         viewModelScope.launch {
             groupRepository.deleteGroupMessage(message.id, true)
+        }
+    }
+
+    fun deleteMessagesForMe(ids: Set<String>, onComplete: (Set<String>) -> Unit) {
+        viewModelScope.launch {
+            val deleted = mutableSetOf<String>()
+            try {
+                for (id in ids) if (groupRepository.deleteGroupMessage(id, false).isSuccess) deleted += id
+                if (deleted.size < ids.size) _errorMessage.value = "Algunos mensajes no se pudieron eliminar. Siguen seleccionados."
+            } finally { onComplete(deleted) }
         }
     }
 

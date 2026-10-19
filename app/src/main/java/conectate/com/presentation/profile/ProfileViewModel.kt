@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
@@ -58,6 +60,7 @@ class ProfileViewModel @Inject constructor(
     private val friendRepository: FriendRepository,
     private val momentHighlightRepository: MomentHighlightRepository,
     private val momentRepository: conectate.com.data.repository.MomentRepository,
+    private val realtime: conectate.com.data.localfallback.UbuntuRealtimeClient,
     private val appMetrics: AppMetrics
 ) : ViewModel() {
 
@@ -145,6 +148,14 @@ class ProfileViewModel @Inject constructor(
     private var profileBadgeJob: kotlinx.coroutines.Job? = null
 
     init {
+        viewModelScope.launch {
+            realtime.events.filter { it.event == "profile_views_changed" }.collect { event ->
+                val account = authService.getCurrentUserId() ?: return@collect
+                val own = (_profileState.value as? ProfileUiState.Success)?.user ?: return@collect
+                if (event.channel.equals("user:$account", true) && own.id.equals(account, true))
+                    loadProfileViewers(own.profile_view_history_enabled)
+            }
+        }
         viewModelScope.launch {
             authService.currentSession.map { authService.getCurrentUserId() }.distinctUntilChanged().collect {
                 profileVisitorsLoader.accountChanged()
@@ -353,11 +364,21 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
     private fun subscribeToProfileUpdates(userId: String) {
-        android.util.Log.d(
-            "ProfileViewModel",
-            "Profile realtime for $userId is handled by the Ubuntu session; skipping Supabase realtime."
-        )
+        realtimeJob?.cancel()
+        val accountId = authService.getCurrentUserId() ?: return
+        val channel = "profile-counts:$userId"
+        realtimeJob = viewModelScope.launch {
+            val token = authService.ensureValidAccessToken().getOrNull() ?: return@launch
+            if (authService.getCurrentUserId() != accountId) return@launch
+            realtime.updateAccessToken(token); realtime.subscribe(channel)
+            try {
+                realtime.events.filter { it.channel == channel && it.event == "profile_counts_updated" }.debounce(150).collect {
+                    if (authService.getCurrentUserId() == accountId && !_isToggling.value) reloadProfileSilently(userId)
+                }
+            } finally { realtime.unsubscribe(channel) }
+        }
     }
 
     private val _isToggling = MutableStateFlow(false)
@@ -512,36 +533,22 @@ class ProfileViewModel @Inject constructor(
                 }
                 
                 if (result.isFailure) {
-                    // Revert on failure - DISABLED to prevent flickering
-                    // If the backend fails (e.g. spurious 409 or network blip), we keep the UI optimistic.
-                    android.util.Log.e("ProfileViewModel", "toggleFollow FAILURE (Ignored in UI): ${result.exceptionOrNull()?.message}")
-                    
-                    // _isFollowing.value = currentFollowing
-                    // _profileState.value = ProfileUiState.Success(currentUser) 
-                    
-                    // Maintain the lock to prevent immediate overwrite by stale server data
-                    lockFollowStateUntil = System.currentTimeMillis() + 15000 
+                    _isFollowing.value = currentFollowing
+                    if ((_profileState.value as? ProfileUiState.Success)?.user?.id == targetId) _profileState.value = ProfileUiState.Success(currentUser)
+                    lockFollowStateUntil = 0L
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo guardar el seguimiento. Inténtalo de nuevo.")
                 } else {
-                     // Success!
-                     android.util.Log.d("ProfileViewModel", "toggleFollow SUCCESS")
-                     // Set intense guard (15 seconds) to allow server propagation
-                     // and avoid being overwritten by periodic checks
-                     lockFollowStateUntil = System.currentTimeMillis() + 15000 
-                     lastToggleTime = System.currentTimeMillis()
-                     
-                     // ✨ RELOAD PROFILE TO GET UPDATED COUNTERS
-                     // Wait a bit for database triggers to propagate
-                     kotlinx.coroutines.delay(300)
-                     reloadProfileSilently(targetId)
+                    lockFollowStateUntil = 0L
+                    reloadProfileSilently(targetId)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("ProfileViewModel", "toggleFollow CRASH (Ignored in UI)", e)
-                // _isFollowing.value = currentFollowing
-                // _profileState.value = ProfileUiState.Success(currentUser) // Revert
-                lockFollowStateUntil = System.currentTimeMillis() + 15000 
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (e: Exception) {
+                _isFollowing.value = currentFollowing
+                if ((_profileState.value as? ProfileUiState.Success)?.user?.id == targetId) _profileState.value = ProfileUiState.Success(currentUser)
+                lockFollowStateUntil = 0L
+                conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo guardar el seguimiento.")
             } finally {
                 // Keep the toggle state true for a tiny bit longer to prevent immediate check re-entry
-                kotlinx.coroutines.delay(500)
                 _isToggling.value = false
                 android.util.Log.d("ProfileViewModel", "toggleFollow FINISHED (isToggling set to false)")
             }

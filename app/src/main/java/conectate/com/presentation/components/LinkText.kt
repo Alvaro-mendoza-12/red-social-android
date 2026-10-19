@@ -35,17 +35,20 @@ fun LinkText(
     onTextClick: (() -> Unit)? = null,
     backgroundColor: Color = Color.Unspecified,
     onMentionClick: ((String) -> Unit)? = null,
+    onCollectionInvitationClick: ((String) -> Unit)? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val surface = MaterialTheme.colorScheme.surface
     val linkColors = readableLinkColors(
         if (backgroundColor == Color.Unspecified) surface else backgroundColor.compositeOver(surface),
     )
-    val urlClickListener = remember(uriHandler, onUrlClick) {
+    val urlClickListener = remember(uriHandler, onUrlClick, onCollectionInvitationClick) {
         LinkInteractionListener { annotation ->
             val url = (annotation as? LinkAnnotation.Url)?.url
             if (url != null) {
-                if (onUrlClick != null &&
+                if (onCollectionInvitationClick != null && conectate.com.presentation.messages.CollectionQrParser.parse(url).isSuccess) {
+                    onCollectionInvitationClick(url)
+                } else if (onUrlClick != null &&
                     (postIdFromSharedLink(url) != null || videoIdFromSharedLink(url) != null)
                 ) {
                     onUrlClick(url)

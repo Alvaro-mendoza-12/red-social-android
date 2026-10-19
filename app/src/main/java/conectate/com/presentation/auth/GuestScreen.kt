@@ -263,7 +263,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
         AlertDialog(
             onDismissRequest = { previewImage = null },
             title = { Text("Momento público") },
-            text = { AsyncImage(model = conectate.com.util.UbuntuMedia.resolveUrl(url), contentDescription = "Momento público", modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) },
+            text = { GuestContentImage(url = conectate.com.util.UbuntuMedia.resolveUrl(url), contentDescription = "Momento público", modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) },
             confirmButton = { TextButton(onClick = { previewImage = null }) { Text("Cerrar") } },
         )
     }
@@ -287,7 +287,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                                 GuestVideoPlayer(media)
                             } else {
                                 HorizontalPager(state = photoPager, modifier = Modifier.fillMaxWidth().height(photoHeight)) { page ->
-                                    AsyncImage(model = conectate.com.util.UbuntuMedia.resolveUrl(photos[page]),
+                                    GuestContentImage(url = conectate.com.util.UbuntuMedia.resolveUrl(photos[page]),
                                         contentDescription = "Imagen ${page + 1} de ${photos.size} de la publicación",
                                         modifier = Modifier.fillMaxSize())
                                 }
@@ -420,7 +420,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                                         else previewImage = moment.mediaUrl
                                     }, modifier = Modifier.width(110.dp)) {
                                         Column(Modifier.padding(8.dp)) {
-                                            AsyncImage(model = listOf(moment.thumbnailUrl, moment.mediaUrl).firstOrNull { !it.isNullOrBlank() }?.let(conectate.com.util.UbuntuMedia::resolveUrl),
+                                            GuestContentImage(url = listOf(moment.thumbnailUrl, moment.mediaUrl).firstOrNull { !it.isNullOrBlank() }?.let(conectate.com.util.UbuntuMedia::resolveUrl),
                                                 contentDescription = "Momento público",
                                                 modifier = Modifier.fillMaxWidth().height(90.dp))
                                             Text(moment.caption.ifBlank { "Ver momento" }, maxLines = 1)
@@ -526,7 +526,7 @@ private fun GuestContentList(
                     val mediaIsVideo = image?.substringBefore('?')?.endsWith(".mp4", true) == true
                     val hasVideo = content.mediaType == "video" || !content.videoUrl.isNullOrBlank()
                     if (!image.isNullOrBlank() && !mediaIsVideo) {
-                        AsyncImage(model = conectate.com.util.UbuntuMedia.resolveUrl(image), contentDescription = "Vista previa pública", modifier = Modifier.fillMaxWidth().height(180.dp))
+                        GuestContentImage(url = conectate.com.util.UbuntuMedia.resolveUrl(image), contentDescription = "Vista previa pública", modifier = Modifier.fillMaxWidth().height(180.dp))
                         val photoCount = guestPhotos(content).size
                         if (photoCount > 1) {
                             Text("1 / $photoCount · Toca para ver todas las fotos",
@@ -612,4 +612,22 @@ private fun GuestVideoPlayer(url: String) {
             }) { Text("Reintentar video") }
         }
     }
+}
+
+@Composable
+private fun GuestContentImage(url: String?, contentDescription: String, modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var attempt by remember(url) { mutableStateOf(0) }
+    val original = conectate.com.data.localfallback.UbuntuStorageUrl.originalObjectUrl(url) ?: url
+    val preview = conectate.com.core.media.MediaImageRequestFactory.previewUrl(url) ?: original
+    val request = remember(url, attempt) {
+        coil.request.ImageRequest.Builder(context).data(if (attempt == 0) preview else original)
+            .size(1080).crossfade(false).setParameter("guest_retry", attempt).build()
+    }
+    coil.compose.SubcomposeAsyncImage(model = request, contentDescription = contentDescription,
+        modifier = modifier, contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+        onError = { if (attempt == 0 && preview != original) attempt = 1 },
+        loading = { Box(Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp)) } },
+        error = { Box(Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) { TextButton(onClick = { attempt++ }) { Text("Reintentar imagen") } } },
+    )
 }

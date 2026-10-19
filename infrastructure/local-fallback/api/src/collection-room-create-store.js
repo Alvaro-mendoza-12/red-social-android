@@ -15,9 +15,9 @@ async function upsertOwnedCollectionRoom(pool, room, actorIds, importedIdExists)
   const { rows } = await pool.query(
     `INSERT INTO fallback_collection_rooms(
        id, room_kind, name, image, description, category, is_public, creator_id,
-       is_deleted, only_admins_can_talk, daily_message_limit, created_at, updated_at
+       is_deleted, only_admins_can_talk, daily_message_limit, weekly_message_limit, created_at, updated_at
      ) VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8,
-       FALSE, FALSE, 0, NOW(), NOW())
+       FALSE, ($2 = 'community'), 0, 0, NOW(), NOW())
      ON CONFLICT (id) DO UPDATE SET
        name = EXCLUDED.name, image = EXCLUDED.image, description = EXCLUDED.description,
        category = EXCLUDED.category, is_public = EXCLUDED.is_public, updated_at = NOW()
@@ -25,7 +25,7 @@ async function upsertOwnedCollectionRoom(pool, room, actorIds, importedIdExists)
        AND lower(fallback_collection_rooms.creator_id) = ANY($9::text[])
        AND fallback_collection_rooms.is_deleted = FALSE
      RETURNING id::text, room_kind, name, image, description, category, is_public,
-       creator_id, is_deleted, only_admins_can_talk, daily_message_limit, created_at, updated_at`,
+       creator_id, is_deleted, only_admins_can_talk, daily_message_limit, weekly_message_limit, created_at, updated_at`,
     [room.id || null, room.kind, room.name, room.image, room.description, room.category,
       room.isPublic, room.creatorId, ids],
   )

@@ -2,7 +2,7 @@
 
 const clean = value => String(value ?? '').trim().toLowerCase()
 const enabled = value => value === true || clean(value) === 'true'
-const messageTypes = new Set(['message', 'new_message', 'direct_message', 'group_message', 'community_message', 'message_deleted'])
+const messageTypes = new Set(['message', 'new_message', 'direct_message', 'group_message', 'community_message', 'message_deleted', 'message_reaction'])
 const messageTables = new Set(['messages', 'group_messages', 'community_messages'])
 
 function isDeletedForAll(row) {

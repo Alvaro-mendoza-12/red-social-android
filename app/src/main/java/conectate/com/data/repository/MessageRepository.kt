@@ -2298,10 +2298,19 @@ class MessageRepository @Inject constructor(
     }
 
     private fun prefetchChatMedia(candidates: Iterable<ChatMediaPrefetchCandidate>, isAllowed: (String) -> Boolean) {
-        selectRecentChatMediaForPrefetch(candidates).forEach { mediaPath ->
+        val recent = candidates.toList()
+        val typeByUrl = recent.associate { it.mediaUrl?.trim() to it.contentType }
+        selectRecentChatMediaForPrefetch(recent, maxItems = 24).asReversed()
+            .sortedBy { if (typeByUrl[it] in setOf("image", "sticker", "gif")) 0 else 1 }.forEach { mediaPath ->
             if (!isAllowed(mediaPath)) return@forEach
             scope.launch {
                 if (!isAllowed(mediaPath)) return@launch
+                val image = when (typeByUrl[mediaPath]) {
+                    "sticker", "gif" -> conectate.com.core.media.MediaImageRequestFactory.animated(context, mediaPath)
+                    "image" -> conectate.com.core.media.MediaImageRequestFactory.preview(context, mediaPath)
+                    else -> null
+                }
+                if (image != null) coil.Coil.imageLoader(context).enqueue(image)
                 mediaResolver.getPlayableUrl(
                     path = mediaPath,
                     allowOfflineMediaCache = true,

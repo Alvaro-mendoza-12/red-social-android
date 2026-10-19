@@ -1,3 +1,4 @@
+import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { birthdayLabel } from '../../core/birthdayCard'
 import { ProfilePostPreview } from '../../components/ProfilePostPreview'
 import { StreamingImage, StreamingVideo, StreamingAudio } from '../../components/StreamingMedia'
@@ -47,6 +48,8 @@ type PublicProfileData = {
   coverUrl: string
   isPrivate: boolean
   profileWelcome: string
+  profileEffect: string
+  profileTheme: string
   interests: string[]
   hobbies: string[]
   linkedGames: string[]
@@ -118,6 +121,8 @@ function mapPublicProfile(
     coverUrl: resolveSupabasePublicUrl('covers', profileCoverSource(row)),
     isPrivate: Boolean(row.is_private ?? row.isPrivate),
     profileWelcome: textOf(row, ['profile_welcome', 'profileWelcome'], ''),
+    profileEffect: textOf(row, ['profile_effect', 'profileEffect'], 'none'),
+    profileTheme: textOf(row, ['profile_theme', 'profileTheme'], 'conectate'),
     interests: stringArrayFrom(row.interests),
     hobbies: stringArrayFrom(row.hobbies),
     linkedGames: stringArrayFrom(row.linked_games ?? row.linkedGames),
@@ -353,6 +358,18 @@ export function PublicProfilePage() {
     void loadProfile()
   }, [loadProfile])
 
+  useEffect(() => {
+    if (!useFallback || !cleanProfileId || !user) return
+    let active = true
+    const refreshCounts = () => { if (!document.hidden) void loadFallbackPublicProfile(cleanProfileId).then(response => {
+      if (active) { setStats(current => ({ ...current, followers: Number(response.stats.followers || 0), following: Number(response.stats.following || 0) })); setIsFollowing(response.isFollowing) }
+    }).catch(() => {}) }
+    const unsubscribe = subscribeUbuntuRealtime({ channel: `profile-counts:${cleanProfileId}`, onEvent: refreshCounts })
+    const timer = window.setInterval(refreshCounts, 30000)
+    window.addEventListener('focus', refreshCounts)
+    return () => { active = false; unsubscribe(); window.clearInterval(timer); window.removeEventListener('focus', refreshCounts) }
+  }, [useFallback, cleanProfileId, user])
+
   async function toggleFollow() {
     if (!user || isSelf || followingAction) return
     setFollowingAction(true)
@@ -519,6 +536,8 @@ export function PublicProfilePage() {
         avatarUrl={profile.avatarUrl}
         avatarMediaType={profile.avatarMediaType}
         coverUrl={profile.coverUrl}
+        profileEffect={profile.profileEffect}
+        profileTheme={profile.profileTheme}
         frame={profile.profileFrame}
         identity={profile.identity}
         followers={stats.followers}

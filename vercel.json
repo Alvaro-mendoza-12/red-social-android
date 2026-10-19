@@ -6,6 +6,13 @@
   "outputDirectory": "dist",
   "headers": [
     {
+      "source": "/(group|community)/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {
@@ -174,6 +181,8 @@
     }
   ],
   "rewrites": [
+    { "source": "/group/:path*", "destination": "/app-shell.html" },
+    { "source": "/community/:path*", "destination": "/app-shell.html" },
     {
       "destination": "/index.html",
       "source": "/"

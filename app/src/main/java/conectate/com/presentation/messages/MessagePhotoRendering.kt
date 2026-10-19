@@ -62,6 +62,10 @@ internal data class MessagePhotoRenderState(
     val overlayEmoji: String = "",
     val strokes: List<List<Offset>> = emptyList(),
     val brushColor: Int = AndroidColor.WHITE,
+    val strokeColors: List<Int> = emptyList(),
+    val strokeWidths: List<Float> = emptyList(),
+    val textSize: Float = 0.052f,
+
 )
 
 private fun quarterTurns(value: Int): Int = ((value % 4) + 4) % 4
@@ -169,7 +173,9 @@ private fun drawPhotoAnnotations(canvas: AndroidCanvas, width: Float, height: Fl
         strokeJoin = Paint.Join.ROUND
         strokeWidth = width * 0.008f
     }
-    state.strokes.forEach { stroke ->
+    state.strokes.forEachIndexed { index, stroke ->
+        brush.color = state.strokeColors.getOrNull(index) ?: state.brushColor
+        brush.strokeWidth = width * (state.strokeWidths.getOrNull(index) ?: 0.008f).coerceIn(0.002f, 0.04f)
         stroke.zipWithNext().forEach { (start, end) ->
             if (start.x.isFinite() && start.y.isFinite() && end.x.isFinite() && end.y.isFinite()) {
                 canvas.drawLine(start.x * width, start.y * height, end.x * width, end.y * height, brush)
@@ -181,7 +187,7 @@ private fun drawPhotoAnnotations(canvas: AndroidCanvas, width: Float, height: Fl
     val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = AndroidColor.WHITE
         typeface = Typeface.DEFAULT_BOLD
-        textSize = width * 0.052f
+        textSize = width * state.textSize.coerceIn(0.025f, 0.12f)
         textAlign = Paint.Align.CENTER
     }
     val lines = mutableListOf<String>()

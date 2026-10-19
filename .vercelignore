@@ -12,6 +12,7 @@ NoWing-web/.vercel/
 NoWing-web/node_modules/
 NoWing-web/dist/
 NoWing-web/tmp/
+NoWing-web/output/
 NoWing-web/coverage/
 NoWing-web/cypress/screenshots/
 NoWing-web/cypress/videos/

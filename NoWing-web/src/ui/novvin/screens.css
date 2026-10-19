@@ -19,6 +19,7 @@
 }
 .messages-inbox-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
@@ -31,7 +32,13 @@
 }
 .messages-head-actions {
   gap: 2px;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
+.chat-request-notice { padding:12px 16px; border-bottom:1px solid var(--divider); background:var(--surface-raised); font-size:.85rem; line-height:1.5; }
+.chat-request-notice .row-actions { margin-top:8px; flex-wrap:wrap; }
+.voice-inbox-presence { display:inline-flex; align-items:center; gap:5px; color:var(--accent,#22d3ca); white-space:nowrap; font-size:.75rem; flex-shrink:0; }
 .messages-tab-row .tab-pill {
   padding: 12px 10px;
   font-size: 0.82rem;
@@ -148,7 +155,9 @@
   background: #1565c0;
   min-width: 21px;
   height: 21px;
-  border-radius: 50%;
+  border-radius: 999px;
+  padding: 0 5px;
+  flex-shrink: 0;
   font-size: 0.68rem;
   display: grid;
   place-items: center;
@@ -260,6 +269,8 @@
 }
 .chat-thread-shell {
   position: relative;
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   background-color: var(--background);
@@ -267,7 +278,8 @@
   background-size: 22px 22px;
 }
 .chat-thread {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 20px max(20px, calc((100% - 850px) / 2));
   display: flex;
@@ -915,9 +927,27 @@
   color: var(--foreground);
 }
 .social-moment-create:after {
-  display: none;
+  inset: 0;
+  background: linear-gradient(transparent 25%, #000c 100%);
+  pointer-events: none;
+}
+.social-moment-create .social-moment-cover.safe-avatar {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  object-fit: cover;
+  font-size: 2.5rem;
+  z-index: 0;
+}
+.social-moment-create strong {
+  color: #fff;
 }
 .social-moment-create svg {
+  position: relative;
+  z-index: 1;
   border-radius: 50%;
   padding: 6px;
   background: var(--primary);
@@ -2525,3 +2555,22 @@
   color: var(--foreground);
   border: 1px solid var(--outline);
 }
+
+/* Anonymous inbox and media keep their width on both narrow and large screens. */
+.anonymous-session-inbox { display: grid; gap: 12px; }
+.anonymous-session-row { display: flex; align-items: center; text-align: start; gap: 12px; padding: 12px; border: 1px solid var(--outline); border-radius: 14px; background: var(--surface-raised); color: var(--foreground); min-width: 0; width: 100%; }
+.anonymous-session-row > span { min-width: 0; flex: 1; display: grid; gap: 4px; }
+.anonymous-session-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--secondary-text); }
+.anonymous-session-row b { border-radius: 20px; padding: 3px 8px; background: var(--brand-cyan); color: #061719; }
+.random-message img { display: block; max-width: 100%; max-height: 260px; object-fit: contain; }
+.random-message audio { width: min(260px, 100%); }
+.random-chat-shell { min-width: 0; }
+.random-message > small { display: block; text-align: end; color: var(--secondary-text); font-size: .7rem; }
+.radar-messages { display: grid; gap: 16px; min-width: 0; }
+.radar-messages > header { display: flex; gap: 12px; align-items: start; }
+.radar-messages form, .radar-messages label { display: grid; gap: 8px; }
+.radar-message-invitation { padding: 16px; border: 1px solid var(--outline); border-radius: 14px; overflow-wrap: anywhere; }
+
+.message-contact-card { display: grid; gap: 10px; min-width: 160px; padding: 8px 2px; }
+.message-contact-card strong, .message-contact-card a { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.message-reaction-notice{position:fixed;bottom:calc(82px + env(safe-area-inset-bottom,0px));right:16px;z-index:1200;display:flex;align-items:center;gap:12px;width:min(420px,calc(100vw - 32px));box-sizing:border-box;padding:16px;border-radius:18px;background:var(--surface,#202026);color:var(--text,#f4f4f5);border:1px solid var(--border,#555);box-shadow:0 8px 30px #0004}.message-reaction-notice p{margin:4px 0}.message-reaction-notice>div{flex:1;min-width:0;overflow-wrap:anywhere}.message-reaction-notice a{color:var(--accent,#75c9ff);white-space:nowrap}

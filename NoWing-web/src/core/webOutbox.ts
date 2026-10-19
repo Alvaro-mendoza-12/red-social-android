@@ -60,6 +60,8 @@ const put = (store: string, value: object) => operation(store, true, s => s.put(
 const remove = (store: string, id: string) => operation(store, true, s => s.delete(id))
 function changed(owner: string) { window.dispatchEvent(new CustomEvent('novvin:outbox-changed', { detail: { owner } })) }
 export function isTransientOutboxError(error: unknown) {
+  const code = String((error as { code?: string; message?: string })?.code || (error as Error)?.message || '')
+  if (['COMMUNITY_WEEKLY_MESSAGE_LIMIT_REACHED', 'COMMUNITY_DAILY_MESSAGE_LIMIT_REACHED'].includes(code)) return false
   const status = Number((error as { status?: number })?.status)
   if (status) return status === 408 || status === 429 || status >= 500
   return /conectar|timeout|network|fetch|offline|abort/i.test(String((error as Error)?.message || error))

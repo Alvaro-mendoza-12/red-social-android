@@ -21,8 +21,8 @@ fun CollectionMembershipSettings(policy: CollectionMembershipPolicy?, busy: Bool
     if (policy?.canManagePolicy != true) return
     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("Permitir que los miembros añadan personas", style = MaterialTheme.typography.titleSmall)
-            Text("Al desactivarlo, solo los administradores podrán añadirlas.", style = MaterialTheme.typography.bodySmall)
+            Text("Permitir añadir personas directamente", style = MaterialTheme.typography.titleSmall)
+            Text("Al desactivarlo, solo la administración podrá añadirlas directamente. Los integrantes pueden compartir invitaciones revocables.", style = MaterialTheme.typography.bodySmall)
         }
         Switch(checked = policy.membersCanAdd, onCheckedChange = onChange, enabled = !busy)
     }

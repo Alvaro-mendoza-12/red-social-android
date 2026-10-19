@@ -1,5 +1,8 @@
+import { ContactMessageCard } from '../../components/ContactMessageCard'
+import { messageLocationUrl } from '../../core/messageLocation'
+import { ForwardMessagesDialog } from '../../components/ForwardMessagesDialog'
 import { copyChatMessage } from '../../core/media/copyChatMessage'
-import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, normalizeClipboardFiles, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, normalizeClipboardFiles, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage } from '../../core/chatClipboard'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
@@ -17,6 +20,8 @@ import { useAttachmentDraft, useAttachmentPreparation } from '../../core/attachm
 import { chatGallery } from '../../core/chatGallery'
 import { MediaViewer } from '../../components/MediaViewer'
 import { ChatImageEditor } from '../../components/ChatImageEditor'
+import { ChatAttachmentPreview } from '../../components/ChatAttachmentPreview'
+import { SpellingSuggestions } from '../../components/SpellingSuggestions'
 import { RecordingIndicator } from '../../components/RecordingIndicator'
 import { CollectionInfo } from '../../components/CollectionInfo'
 import { chatMediaAlbums } from '../../core/chatMediaAlbums'
@@ -26,7 +31,6 @@ import { conversationWindow } from '../../core/conversationWindow'
 import { sharedVideoReference } from '../../core/sharedVideoReference'
 import { SharedVideoCard } from '../../components/SharedVideoCard'
 import { retryPendingWebMessage } from '../../core/webOutbox'
-import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { MentionSuggestions } from '../../components/MentionSuggestions'
 import { insertMention, type MentionCandidate } from '../../core/mentionSuggestions'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
@@ -198,11 +202,6 @@ function previewUrlForFile(file: File): string {
   return ''
 }
 
-function formatFileSize(sizeInBytes: number): string {
-  if (sizeInBytes < 1024) return `${sizeInBytes} B`
-  if (sizeInBytes < 1024 * 1024) return `${Math.round(sizeInBytes / 1024)} KB`
-  return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 function dayKeyOf(value: string): string {
   if (!value) return 'sin-fecha'
@@ -292,17 +291,26 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const config = roomConfigByScope[scope]
   const cleanRoomId = useMemo(() => roomId.trim().toLowerCase(), [roomId])
   const [roomAvatar, setRoomAvatar] = useState('')
-  const [canPublish, setCanPublish] = useState(true)
+  const [publicationAllowed, setCanPublish] = useState(true)
+  const [adminsOnly, setAdminsOnly] = useState(false)
+  const [roomCreatorId, setRoomCreatorId] = useState('')
   const [title, setTitle] = useState(scope === 'group' ? 'Grupo' : 'Comunidad')
   const [isMember, setIsMember] = useState(true)
   const [showInfo, setShowInfo] = useState(false)
   const [participants, setParticipants] = useState<Array<{ id: string; name: string; avatarUrl: string; role: string; username?: string }>>([])
+  const myRole = participants.find(person => person.id === user?.id)?.role || ''
+  const isRoomAdmin = ['owner', 'creator', 'admin'].includes(myRole) || roomCreatorId === user?.id
+  const canPublish = publicationAllowed && (!adminsOnly || isRoomAdmin)
   const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([])
   const [messages, setMessages] = useState<RoomMessage[]>([])
   const [draft, setDraft] = useConversationDraft(user?.id, scope, cleanRoomId)
   const draftRevisionRef = useRef(0)
   const sendInFlightRef = useRef(false)
   const [replyToId, setReplyToId] = useState<string | null>(null)
+  const [forwardMessages, setForwardMessages] = useState<RoomMessage[]>([])
+  const [replyJumpId, setReplyJumpId] = useState<string | null>(null)
+  useMessageFocusFromUrl(messages.length > 0, setReplyJumpId)
+
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState('')
   const [pollQuestion, setPollQuestion] = useState('')
@@ -323,6 +331,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [dragActive, setDragActive] = useState(false)
   const [pendingAttachments, setPendingAttachments] = useAttachmentDraft<PendingAttachment>(user?.id || '', scope, cleanRoomId)
   const [imageEditorFile, setImageEditorFile] = useState<File | null>(null)
+  const [spellingCaret, setSpellingCaret] = useState<number|undefined>()
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
   const discardRecordingRef = useRef(false)
   const preparationOwnerRef = useRef('')
@@ -348,6 +357,22 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const gallery = chatGallery(messages, user?.id || '')
   const openGallery = (message: { id: string }) => { const index = gallery.findIndex(item => item.id === message.id); if (index >= 0) setGalleryIndex(index) }
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
+  useEffect(() => {
+    if (!replyJumpId) return
+    setMessageSearchQuery('')
+    setHistoryWindowSize(size => Math.max(size, messages.length))
+    const frame = window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const node = threadRef.current?.querySelector<HTMLElement>(`#${CSS.escape(`message-${replyJumpId}`)}`)
+      if (node) {
+        shouldStickToBottomRef.current = false
+        node.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+        node.animate([{ boxShadow: '0 0 0 3px #27c6c9', backgroundColor: '#245356' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1500 })
+      } else setError('El mensaje original no está en el historial disponible.')
+    }))
+    const timer = window.setTimeout(() => setReplyJumpId(null), 1800)
+    return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer) }
+  }, [replyJumpId, messages.length])
+
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
   const threadRef = useRef<HTMLElement | null>(null)
   const messageSearchInputRef = useRef<HTMLInputElement | null>(null)
@@ -440,8 +465,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       })),
     ])
   }, [setPendingAttachments])
-  const { start: startPreparation, preparing: preparingAttachments, status: preparationStatus } = useAttachmentPreparation(user?.id || '', scope, cleanRoomId, queueAttachmentFiles, setError)
-  const sendPastedStickerRef = useRef<(file: File) => Promise<void>>(async () => {})
+  const { start: startPreparation, cancel: cancelPreparation, preparing: preparingAttachments, status: preparationStatus } = useAttachmentPreparation(user?.id || '', scope, cleanRoomId, queueAttachmentFiles, setError)
 
   const stopAudioStream = useCallback(() => {
     audioStreamRef.current?.getTracks().forEach((track) => track.stop())
@@ -583,21 +607,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           setError('WhatsApp no entregó la imagen al portapapeles. Usa «Copiar imagen» en el sticker y vuelve a pegarlo.')
           return
         }
-        const regularImages: File[] = []
         for (const file of pastedFiles) {
           const sticker = pastedAsSticker(file, showStickers) || await isCopiedStickerImage(file, stickerHint)
-          if (!sticker) {
-            regularImages.push(file)
-            continue
-          }
-          try {
-            await sendPastedStickerRef.current(file)
-          } catch (caught) {
-            queueAttachmentFiles([file], true, true)
-            setError(friendlyError(caught, 'No se pudo enviar automáticamente. El sticker quedó preparado para reintentar.'))
-          }
+          queueAttachmentFiles([file], true, sticker)
         }
-        if (regularImages.length) queueAttachmentFiles(regularImages, true)
       })()
     }
     window.addEventListener('paste', paste)
@@ -730,6 +743,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         const response = await loadFallbackRoomChat(scope, cleanRoomId)
         if (isStaleLoad()) return
         setIsMember(response.historyAccess?.isMember !== false)
+        setAdminsOnly(Boolean(response.room?.only_admins_can_talk))
+        setRoomCreatorId(textOf(response.room || {}, ['creator_id', 'owner_id'], ''))
         setParticipants(response.participants || [])
         setMentionCandidates((response.participants || []).map(person => ({ ...person, username: person.username || "" })))
         setRoomAvatar(resolveSupabasePublicUrl(scope === 'group' ? 'groups' : 'communities',conversationAvatarSource(response.room || response.chat || {})))
@@ -764,6 +779,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       if (!isStaleLoad()) {
         setRoomAvatar(resolveSupabasePublicUrl(scope === 'group' ? 'groups' : 'communities',conversationAvatarSource(roomRow)))
         setTitle(textOf(roomRow, ['name', 'title', 'readable_id'], scope === 'group' ? 'Grupo' : 'Comunidad'))
+        setAdminsOnly(Boolean(roomRow.only_admins_can_talk))
+        setRoomCreatorId(textOf(roomRow, ['creator_id', 'owner_id'], ''))
       }
 
       const { data: messageRows, error: msgError } = await supabase
@@ -991,31 +1008,6 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     if (insertError) throw insertError
   }
 
-  sendPastedStickerRef.current = async (file: File) => {
-    if (!user || !cleanRoomId || (!supabase && !useUbuntu)) throw new Error('No hay una sesión activa para enviar el sticker')
-    setUploading(true)
-    try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'whatsapp-sticker.webp'
-      const filePath = `${scope}/stickers/${user.id}/${Date.now()}_clipboard_${safeName}`
-      const isAnimated = /^image\/(gif|webp)$/i.test(file.type) || /\.(gif|webp)$/i.test(file.name)
-      let mediaUrl: string
-      if (useUbuntu) {
-        mediaUrl = (await uploadFallbackFile('chat-media', file, filePath, undefined, {
-          id: crypto.randomUUID(), title: 'Sticker de WhatsApp', isAnimated,
-        })).publicUrl
-      } else {
-        const { error: uploadError } = await supabase!.storage.from(config.mediaBucket)
-          .upload(filePath, file, { contentType: file.type || undefined })
-        if (uploadError) throw uploadError
-        mediaUrl = supabase!.storage.from(config.mediaBucket).getPublicUrl(filePath).data.publicUrl
-      }
-      await sendMessage('Sticker', mediaUrl, 'sticker', replyToId)
-      setReplyToId(null)
-    } finally {
-      setUploading(false)
-    }
-  }
-
   async function sendPendingAttachments(textFallback: string) {
     if (!user || !cleanRoomId || pendingAttachments.length === 0) return
     if (!useUbuntu && !supabase) return
@@ -1232,21 +1224,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     } finally { viewOncePending.current = false }
   }
 
-  async function sendForwardedMessage(message: RoomMessage) {
-    try {
-      await sendMessage(
-        message.content || 'Mensaje reenviado',
-        message.mediaUrl,
-        message.contentType || 'text',
-        null,
-        true,
-        message.id,
-        message.senderId,
-      )
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo reenviar mensaje'))
-    }
-  }
+  async function sendForwardedMessage(message: RoomMessage) { setForwardMessages([message]) }
 
   async function loadMessageReceipts(messageId: string) {
     if ((!supabase && !useUbuntu) || !messageId) return
@@ -1489,7 +1467,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         </article>
       ) : null}
 
-      <div className="chat-thread-shell">
+      {forwardMessages.length ? <ForwardMessagesDialog messages={forwardMessages} onClose={() => setForwardMessages([])} /> : null}
+      <div className="chat-thread-shell" inert={pendingAttachments.length > 0}>
         <section className="chat-thread" ref={threadRef} onScroll={handleThreadScroll}>
           {renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
             const thread = threadRef.current, height = thread?.scrollHeight || 0, top = thread?.scrollTop || 0
@@ -1512,8 +1491,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           const deletedForMe = user ? message.deletedBy.includes(user.id) : false
           if (deletedForMe) return null
           const album = albums.get(message.id)
-          if (album && album.leader !== message.id) return null
-          if (album) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteRoomMessage(item, false)} onDeleteForAll={item => void deleteRoomMessage(item, true)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
+          if (album && !replyJumpId && album.leader !== message.id) return null
+          if (album && !replyJumpId) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteRoomMessage(item, false)} onDeleteForAll={item => void deleteRoomMessage(item, true)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
           if (message.contentType === "system_membership") return <div className="room-system-notice" key={message.id}>{message.content}</div>
           const mine = message.senderId === user?.id
           const replied = message.replyToId ? messageById.get(message.replyToId) : null
@@ -1536,7 +1515,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
               ) : null}
               <article id={`message-${message.id}`} className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'question' ? ' question-bubble' : ''}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${message.contentType === 'text' && !message.mediaUrl && !replied && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`}>
                 {message.isForwarded ? <small>Reenviado</small> : null}
-                {replied ? <MessageReplyPreview message={replied} name={replied.senderId === user?.id ? 'Tú' : participants.find(person => person.id === replied.senderId)?.name || 'Participante'}/> : null}
+                {message.replyToId ? <MessageReplyPreview onJump={setReplyJumpId} message={replied || { id: message.replyToId, content: 'Mensaje anterior', contentType: 'text', mediaUrl: null, deletedForAll: false }} name={replied?.senderId === user?.id ? 'Tú' : participants.find(person => person.id === replied?.senderId)?.name || 'Participante'}/> : null}
                 {message.deletedForAll ? (
                   <p className="muted-line">Mensaje eliminado para todos</p>
                 ) : sharedVideoReference(message.content) ? (
@@ -1564,8 +1543,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   </div>
                 ) : (
                   <>
-                    {message.content && message.contentType !== 'sticker' ? <MessageText text={message.content}/> : null}
-                    {message.mediaUrl && !isViewOnceType(message.contentType) ? (
+                    {message.contentType === 'contact' ? <ContactMessageCard content={message.content} /> : message.content && message.contentType !== 'sticker' ? <MessageText text={message.content} mentions={mentionCandidates}/> : null}
+                    {message.contentType === 'location' && messageLocationUrl(message.mediaUrl) ? <a className="inline-link" href={messageLocationUrl(message.mediaUrl)!} target="_blank" rel="noreferrer">📍 Abrir ubicación</a> : null}
+                    {message.mediaUrl && !['location', 'contact'].includes(message.contentType) && !isViewOnceType(message.contentType) ? (
                       message.contentType === 'sticker' ? <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => setReplyToId(message.id)} onForward={() => void sendForwardedMessage(message)} /> : <ChatAttachmentMedia inlineDownload={false} url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} onImageOpen={() => openGallery(message)} />
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
@@ -1597,7 +1577,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                 {!message.deletedForAll ? (
                   <MessageOptionsMenu mine={mine}>
                     <button className="mini-action-btn" type="button" onClick={() => void copyChatMessage(message.content, message.mediaUrl, message.contentType).catch(() => setError('No se pudo copiar. Permite el acceso al portapapeles o descarga la imagen.'))}>Copiar</button>
-                    {message.mediaUrl && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={message.content || 'archivo'} /> : null}
+                    {message.mediaUrl && !['location', 'contact'].includes(message.contentType) && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={message.content || 'archivo'} /> : null}
                     <MessageReactionBar onReact={emoji=>void toggleReaction(message.id,emoji)}/>
                     <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
                       Responder
@@ -1682,62 +1662,18 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         void sendMessage(item.title, item.mediaUrl, 'sticker', replyToId).then(() => { setShowStickers(false); setReplyToId(null) }).catch(caught => setError(friendlyError(caught, 'No se pudo enviar el sticker')))
       }} onImport={file => void importRoomSticker(file)} onClose={() => setShowStickers(false)} /> : null}
 
+      {!pendingAttachments.length ? <SpellingSuggestions text={editingMessageId ? editingDraft : draft} caret={spellingCaret} onReplace={(text,caret)=>{draftRevisionRef.current += 1;if(editingMessageId)setEditingDraft(text);else setDraft(text);setSpellingCaret(caret);requestAnimationFrame(()=>{const input=document.querySelector<HTMLInputElement>('.chat-composer .chat-input-field');input?.focus();input?.setSelectionRange(caret,caret)})}}/> : null}
       {error ? <div className="chat-composer-error" role="alert"><span>{error}</span><button className="mini-action-btn" type="button" onClick={() => setError(null)}>Cerrar</button></div> : null}
       {preparingAttachments ? <p className="attachment-preparing" role="status">{preparationStatus}</p> : null}
       {isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
-      {imageEditorFile ? <ChatImageEditor file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
+      {imageEditorFile ? <ChatImageEditor asSticker={pendingAttachments.some(item => item.file === imageEditorFile && item.contentType === 'sticker')} file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
       {galleryIndex !== null && gallery[galleryIndex] ? <MediaViewer items={gallery} initialIndex={galleryIndex} onClose={() => setGalleryIndex(null)} /> : null}
-      {pendingAttachments.length > 0 ? (
-        <section className="attachment-draft-tray fade-in">
-          <div className="row-between">
-            <strong>Adjuntos ({pendingAttachments.length})</strong>
-            <small className="muted-line">Se enviarán juntos al tocar enviar</small>
-            <button className="mini-action-btn" type="button" onClick={clearPendingAttachments}>
-              Limpiar
-            </button>
-          </div>
-          {preparationStatus ? <p className="attachment-preparation-summary" role="status">{preparationStatus}</p> : null}
-          <div className="attachment-draft-grid">
-            {pendingAttachments.map((attachment) => (
-              <article key={attachment.id} className="attachment-draft-item">
-                {attachment.previewUrl ? (
-                  attachment.contentType === 'video' ? (
-                    <StreamingVideo className="attachment-preview" src={attachment.previewUrl} controls preload="metadata" />
-                  ) : (
-                    attachment.contentType === 'audio' ? <audio className="attachment-audio-preview" src={attachment.previewUrl} controls /> : <StreamingImage className="attachment-preview" src={attachment.previewUrl} alt={attachment.file.name} />
-                  )
-                ) : (
-                  <div className="attachment-preview attachment-preview-fallback">
-                    <span>{attachment.contentType === 'audio' ? 'Audio' : 'Archivo'}</span>
-                  </div>
-                )}
-                <div className="attachment-draft-body">
-                  <div className="attachment-draft-meta">
-                    <strong>{attachment.file.name}</strong>{attachment.contentType === 'image' && !/\.(gif|webp)$/i.test(attachment.file.name) ? <button type="button" className="mini-action-btn" onClick={() => setImageEditorFile(attachment.file)}>Editar imagen</button> : null}
-                    <small>{formatFileSize(attachment.file.size)}</small>
-                    {isStickerImage(attachment.file) ? <button type="button" className="mini-action-btn attachment-sticker-toggle" aria-pressed={attachment.contentType === 'sticker'} onClick={() => setPendingAttachments(current => current.map(item => item.id === attachment.id ? { ...item, contentType: item.contentType === 'sticker' ? 'image' : 'sticker' } : item))}>{attachment.contentType === 'sticker' ? 'Sticker · Cambiar a imagen' : 'Enviar como sticker'}</button> : null}
-                  </div>
-                  <input
-                    className="text-input tiny-input"
-                    placeholder={attachment.contentType === 'sticker' ? 'Nombre del sticker (opcional)' : 'Texto opcional para este archivo'}
-                    value={attachment.caption}
-                    onChange={(event) =>
-                      updatePendingAttachmentCaption(attachment.id, event.target.value)
-                    }
-                  />
-                </div>
-                <button
-                  className="mini-action-btn attachment-remove-btn"
-                  type="button"
-                  onClick={() => removePendingAttachment(attachment.id)}
-                >
-                  Quitar
-                </button>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {pendingAttachments.length > 0 && isMember && canPublish ? <ChatAttachmentPreview items={pendingAttachments} draft={draft} busy={sending || uploading} preparing={preparingAttachments} status={preparationStatus}
+        onClose={() => { cancelPreparation(); clearPendingAttachments() }} onRemove={removePendingAttachment} onAdd={handleAttachFile} onSend={handleSend}
+        onCaption={(id, caption) => { updatePendingAttachmentCaption(id, caption); if (pendingAttachments[0]?.id === id) setDraft(caption) }}
+        onEdit={id => setImageEditorFile(pendingAttachments.find(item => item.id === id)?.file || null)}
+        onToggleSticker={id => setPendingAttachments(current => current.map(item => item.id === id ? { ...item, contentType: item.contentType === 'sticker' ? 'image' : 'sticker' } : item))}
+      /> : null}
 
       {showInfo ? <CollectionInfo scope={scope} roomId={cleanRoomId} title={title} participants={participants} isMember={isMember} onClose={() => setShowInfo(false)} onChanged={() => void loadRoom({ silent: true })} /> : null}
       {isMember ? <MentionSuggestions text={draft} candidates={mentionCandidates} actorId={user?.id} onSelect={username => { draftRevisionRef.current += 1; setDraft(insertMention(draft, username)) }} /> : null}
@@ -1751,7 +1687,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
             window.location.assign('/app/messages')
           } catch { setError('No se pudo borrar el chat. Inténtalo de nuevo.') }
         }}>Borrar de mi lista</button>
-      </section> : !canPublish ? <div className="composer muted-line"><p>Solo el creador escribe. Puedes reaccionar, crear encuestas y responder preguntas.</p><button type="button" className="mini-action-btn" onClick={()=>setShowPollComposer(true)}>Crear encuesta</button></div> : <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
+      </section> : !canPublish ? <div className="composer muted-line"><p>{adminsOnly ? 'Solo los administradores pueden escribir. Puedes reaccionar y responder preguntas.' : 'Solo el creador escribe. Puedes reaccionar, crear encuestas y responder preguntas.'}</p>{!adminsOnly ? <button type="button" className="mini-action-btn" onClick={()=>setShowPollComposer(true)}>Crear encuesta</button> : null}</div> : <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
         <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar">＋</summary><div className="chat-attachment-popover"><FolderAttachmentPicker onFiles={handleAttachFile}/>
         <button type="button" className="chat-attachment-option" onClick={event => { setShowStickers(true); event.currentTarget.closest('details')?.removeAttribute('open') }}>Buscar stickers</button>
         <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Importar sticker" aria-label="Importar sticker">
@@ -1822,6 +1758,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         </button>
         <input
           className="text-input chat-input-field"
+          onSelect={event=>setSpellingCaret(event.currentTarget.selectionStart ?? undefined)}
           lang="es" spellCheck={true} autoCorrect="on" autoCapitalize="sentences"
           disabled={Boolean(editingMessageId) && sending}
           placeholder={editingMessageId ? 'Edita tu mensaje...' : `Escribe en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}
@@ -1844,3 +1781,4 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     </section>
   )
 }
+import { useMessageFocusFromUrl } from './useMessageFocusFromUrl'

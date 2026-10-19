@@ -60,6 +60,10 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Slider
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
@@ -73,6 +77,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -157,6 +162,10 @@ private data class ComposerEditState(
     val overlayText: String = "",
     val overlayEmoji: String = "",
     val strokes: List<List<Offset>> = emptyList(),
+    val strokeColors: List<Int> = emptyList(),
+    val strokeWidths: List<Float> = emptyList(),
+    val brushWidth: Float = 0.008f,
+    val textSize: Float = 0.052f,
     val trimStartMs: Long = 0L,
     val trimEndMs: Long = 0L
 )
@@ -236,17 +245,13 @@ fun MessageMediaComposer(
     }
     var viewOnceEnabled by remember { mutableStateOf(false) }
 
-    val permissions = remember {
+    val permissions = remember(selectableMediaTypes) {
         when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> arrayOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
-            )
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO
-            )
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> buildList {
+                if ("image" in selectableMediaTypes) add(Manifest.permission.READ_MEDIA_IMAGES)
+                if ("video" in selectableMediaTypes) add(Manifest.permission.READ_MEDIA_VIDEO)
+                if (Build.VERSION.SDK_INT >= 34) add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+            }.toTypedArray()
             else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
     }
@@ -259,6 +264,18 @@ fun MessageMediaComposer(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         hasPermission = result.values.any { it }
+    }
+    val systemPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        scope.launch {
+            val picks = withContext(Dispatchers.IO) { uris.take(maxItems.coerceAtLeast(1)).mapNotNull { uri ->
+                val type = context.contentResolver.getType(uri)?.substringBefore('/')?.lowercase()
+                if (type !in selectableMediaTypes) return@mapNotNull null
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                DeviceMedia(id = uri.hashCode().toLong(), uri = uri, type = type!!, durationMs = 0, dateAdded = System.currentTimeMillis() / 1000)
+            } }
+            picks.forEach { item -> if (selected.size < maxItems && selected.none { it.uri == item.uri }) selected.add(item) }
+            if (picks.isNotEmpty()) { activeIndex = selected.lastIndex; step = "editor" }
+        }
     }
 
     LaunchedEffect(step) {
@@ -279,15 +296,17 @@ fun MessageMediaComposer(
         }
     }
 
-    LaunchedEffect(hasPermission, step) {
+    LaunchedEffect(hasPermission, step, selectableMediaTypes) {
         if (step != "gallery") return@LaunchedEffect
         if (!hasPermission) {
             isLoading = false
             return@LaunchedEffect
         }
         isLoading = true
-        media = withContext(Dispatchers.IO) { loadMessageGalleryMedia(context) }
-        isLoading = false
+        try { media = withContext(Dispatchers.IO) { loadMessageGalleryMedia(context, selectableMediaTypes) } }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { error = "No se pudo leer la galería. Puedes elegir archivos con Android." }
+        finally { isLoading = false }
     }
 
     LaunchedEffect(selected.size) {
@@ -328,6 +347,7 @@ fun MessageMediaComposer(
                     isLoading = isLoading,
                     hasPermission = hasPermission,
                     onDismiss = onDismiss,
+                    onSystemPicker = { systemPicker.launch(selectableMediaTypes.map { "$it/*" }.toTypedArray()) },
                     onToggle = { item ->
                         if (selected.any { it.uri == item.uri }) {
                             selected.removeAll { it.uri == item.uri }
@@ -585,6 +605,7 @@ internal fun MessageGalleryStep(
     title: String,
     onContinue: () -> Unit,
     onCamera: (() -> Unit)? = null,
+    onSystemPicker: (() -> Unit)? = null,
 ) {
     val filtered = remember(media, filter) {
         when (filter) {
@@ -615,6 +636,9 @@ internal fun MessageGalleryStep(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
+            if (onSystemPicker != null) IconButton(onClick = onSystemPicker) {
+                Icon(Icons.Default.FolderOpen, "Elegir archivos con Android", tint = Color.White)
+            }
             if (onCamera != null) IconButton(onClick = onCamera) {
                 Icon(Icons.Default.CameraAlt, "Abrir cámara", tint = Color.White)
             }
@@ -745,7 +769,7 @@ private fun FilterChip(
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun MessageEditorStep(
     selected: List<DeviceMedia>,
@@ -778,6 +802,26 @@ private fun MessageEditorStep(
     val reliableBottomPadding = rememberReliableBottomSafePadding()
     val active = selected.getOrNull(activeIndex) ?: return
     val edit = edits[active.uri] ?: ComposerEditState()
+    var showTextEditor by remember(active.uri) { mutableStateOf(false) }
+    var showEmojiEditor by remember(active.uri) { mutableStateOf(false) }
+    if (showTextEditor) AlertDialog(
+        onDismissRequest = { showTextEditor = false }, title = { Text("Texto sobre la foto") },
+        text = { Column {
+            OutlinedTextField(value = edit.overlayText, onValueChange = { onEditChange(active.uri, edit.copy(overlayText = it.take(120))) }, label = { Text("Escribe tu texto") }, maxLines = 3)
+            Text("Tamaño")
+            Slider(value = edit.textSize, onValueChange = { onEditChange(active.uri, edit.copy(textSize = it)) }, valueRange = 0.025f..0.12f)
+        } },
+        confirmButton = { TextButton(onClick = { showTextEditor = false }) { Text("Listo") } },
+        dismissButton = { TextButton(onClick = { onEditChange(active.uri, edit.copy(overlayText = "")); showTextEditor = false }) { Text("Quitar texto") } },
+    )
+    if (showEmojiEditor) AlertDialog(
+        onDismissRequest = { showEmojiEditor = false }, title = { Text("Añadir un emoji") },
+        text = { FlowRow { listOf("✨", "❤️", "😂", "🔥", "🎉", "😍", "👍", "🌈", "🎂", "💫").forEach { emoji ->
+            TextButton(onClick = { onEditChange(active.uri, edit.copy(overlayEmoji = emoji)); showEmojiEditor = false }) { Text(emoji, style = MaterialTheme.typography.headlineMedium) }
+        } } },
+        confirmButton = { TextButton(onClick = { onEditChange(active.uri, edit.copy(overlayEmoji = "")); showEmojiEditor = false }) { Text("Quitar emoji") } },
+    )
+
     val isAnimatedImage = active.uri in animatedPhotos
     val brushPalette = remember {
         listOf(
@@ -843,7 +887,7 @@ private fun MessageEditorStep(
                     drawEnabled = page == activeIndex && pageEdit.drawEnabled,
                     interactionEnabled = page == activeIndex && !isSending,
                     onStrokeAdded = { stroke ->
-                        onEditChange(pageItem.uri, pageEdit.copy(strokes = pageEdit.strokes + listOf(stroke)))
+                        onEditChange(pageItem.uri, pageEdit.copy(strokes = pageEdit.strokes + listOf(stroke), strokeColors = pageEdit.strokeColors + pageEdit.brushColor.toArgb(), strokeWidths = pageEdit.strokeWidths + pageEdit.brushWidth))
                     },
                     onReadyChanged = { ready -> onPhotoReady(pageItem.uri, source, photoState, ready) },
                     modifier = Modifier.fillMaxSize(),
@@ -880,6 +924,10 @@ private fun MessageEditorStep(
                     }
                 }
                 if (active.type == "image") {
+                    item { RoundToolButton(Icons.AutoMirrored.Filled.Undo, "Deshacer último trazo", enabled = !isSending && edit.strokes.isNotEmpty()) {
+                        onEditChange(active.uri, edit.copy(strokes = edit.strokes.dropLast(1), strokeColors = edit.strokeColors.dropLast(1), strokeWidths = edit.strokeWidths.dropLast(1)))
+                    } }
+                    item { RoundToolButton(Icons.Default.RestartAlt, "Restablecer edición", enabled = !isSending && edit.hasRealEdits()) { onEditChange(active.uri, ComposerEditState()) } }
                     item {
                         RoundToolButton(Icons.AutoMirrored.Filled.RotateRight, "Girar", enabled = !isSending) {
                             onEditChange(active.uri, edit.copy(rotateQuarterTurns = (edit.rotateQuarterTurns + 1) % 4))
@@ -900,52 +948,18 @@ private fun MessageEditorStep(
                     }
                     item {
                         RoundToolButton(Icons.Default.EmojiEmotions, "Emoji", enabled = !isSending) {
-                            onEditChange(active.uri, edit.copy(overlayEmoji = if (edit.overlayEmoji.isBlank()) "✨" else ""))
+                            showEmojiEditor = true
                         }
                     }
                     if (showCaptionInput) item {
                         RoundToolButton(Icons.Default.TextFields, "Texto", selected = edit.overlayText.isNotBlank(), enabled = !isSending) {
-                            onEditChange(active.uri, edit.copy(overlayText = if (edit.overlayText.isBlank()) caption.take(32) else ""))
+                            showTextEditor = true
                         }
                     }
                 }
             }
             IconButton(onClick = onDismiss, enabled = !isSending) {
                 Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
-            }
-        }
-
-        if (active.type == "image") {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 64.dp, end = 12.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color.Black.copy(alpha = 0.62f))
-                    .padding(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = if (edit.drawEnabled) "Dibujo" else if (edit.overlayText.isNotBlank()) "Texto" else "Editar",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                brushPalette.forEach { color ->
-                    Box(
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clip(CircleShape)
-                            .background(color)
-                            .border(
-                                width = if (edit.brushColor == color) 3.dp else 1.dp,
-                                color = if (edit.brushColor == color) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.7f),
-                                shape = CircleShape
-                            )
-                            .clickable(enabled = !isSending) { onEditChange(active.uri, edit.copy(brushColor = color, drawEnabled = true)) }
-                    )
-                }
             }
         }
 
@@ -962,6 +976,26 @@ private fun MessageEditorStep(
                     bottom = reliableBottomPadding
                 )
         ) {
+            if (active.type == "image" && edit.drawEnabled) {
+                Surface(color = Color.Black.copy(alpha = 0.65f), shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Color del pincel", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                            brushPalette.forEach { color ->
+                                Box(Modifier.size(32.dp).padding(3.dp).clip(CircleShape).background(color)
+                                    .border(if (edit.brushColor == color) 3.dp else 1.dp, if (edit.brushColor == color) MaterialTheme.colorScheme.primary else Color.White, CircleShape)
+                                    .semantics { contentDescription = "Color del pincel"; this.selected = edit.brushColor == color }
+                                    .clickable(enabled = !isSending) { onEditChange(active.uri, edit.copy(brushColor = color)) })
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Grosor", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                            Slider(value = edit.brushWidth, onValueChange = { onEditChange(active.uri, edit.copy(brushWidth = it)) }, valueRange = 0.002f..0.04f, enabled = !isSending, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(selected.size) { index ->
                     val item = selected[index]
@@ -1125,10 +1159,10 @@ private fun RoundToolButton(
         enabled = enabled,
         modifier = Modifier
             .padding(horizontal = 2.dp)
-            .size(42.dp)
+            .size(44.dp)
             .background(
-                if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.55f),
-                CircleShape
+                if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.35f),
+                RoundedCornerShape(12.dp)
             )
             .border(
                 width = if (selected) 2.dp else 0.dp,
@@ -1136,7 +1170,7 @@ private fun RoundToolButton(
                 shape = CircleShape
             )
     ) {
-        Icon(icon, contentDescription = label, tint = Color.White)
+        Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -1208,7 +1242,7 @@ private fun composerThumbnailRequest(context: Context, item: DeviceMedia): Image
         .build()
 }
 
-private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
+private fun loadMessageGalleryMedia(context: Context, allowedTypes: Set<String>): List<DeviceMedia> {
     val out = mutableListOf<DeviceMedia>()
     val imageProjection = arrayOf(
         MediaStore.Images.Media._ID,
@@ -1217,7 +1251,7 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
         MediaStore.Images.Media.WIDTH,
         MediaStore.Images.Media.HEIGHT
     )
-    context.contentResolver.query(
+    if ("image" in allowedTypes) try { context.contentResolver.query(
         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
         imageProjection,
         null,
@@ -1246,6 +1280,8 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
         }
     }
 
+    } catch (_: SecurityException) { /* Android may grant access to videos only. The system picker remains available. */ }
+
     val videoProjection = arrayOf(
         MediaStore.Video.Media._ID,
         MediaStore.Video.Media.DATE_ADDED,
@@ -1254,7 +1290,7 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
         MediaStore.Video.Media.WIDTH,
         MediaStore.Video.Media.HEIGHT
     )
-    context.contentResolver.query(
+    if ("video" in allowedTypes) try { context.contentResolver.query(
         MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
         videoProjection,
         null,
@@ -1283,7 +1319,8 @@ private fun loadMessageGalleryMedia(context: Context): List<DeviceMedia> {
             )
         }
     }
-    return out.sortedByDescending { it.dateAdded }.take(500)
+    } catch (_: SecurityException) { /* Partial gallery access is valid. */ }
+    return out.sortedByDescending { it.dateAdded }
 }
 
 private fun ComposerEditState.hasRealEdits(): Boolean {
@@ -1299,6 +1336,9 @@ private fun ComposerEditState.photoState() = MessagePhotoRenderState(
     overlayEmoji = overlayEmoji,
     strokes = strokes,
     brushColor = brushColor.toArgb(),
+    strokeColors = strokeColors,
+    strokeWidths = strokeWidths,
+    textSize = textSize,
 )
 
 private fun discardPreparedComposerOutputs(context: Context, outputs: List<Uri>) {

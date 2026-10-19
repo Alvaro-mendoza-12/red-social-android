@@ -40,3 +40,10 @@ export async function loadRecommendedVideoPage(input: { owner: string; refreshId
   const response = await fallbackApiJson<{ items: GenericRow[] }>('/v1/data/videos?' + params, { expectedAccountId: input.owner, signal: input.signal })
   return { items: mixBasicVideoSession(response.items, input.owner, input.refreshId, offset), nextCursor: null, hasMore: response.items.length === limit, legacy: true, offset: offset + response.items.length }
 }
+
+/** Friends use their own chronological catalogue and pagination, never a recommended sample. */
+export async function loadFriendsVideoPage(input: {owner:string;offset?:number;signal?:AbortSignal}):Promise<VideoFeedPage>{
+  const offset=input.offset||0,limit=20,params=new URLSearchParams({friendsOnly:'true',limit:String(limit),offset:String(offset)})
+  const response=await fallbackApiJson<{items:GenericRow[]}>('/v1/data/videos?'+params,{expectedAccountId:input.owner,signal:input.signal})
+  return {items:response.items,nextCursor:null,hasMore:response.items.length===limit,legacy:true,offset:offset+response.items.length}
+}

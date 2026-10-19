@@ -144,7 +144,8 @@ class GuestModeApi @Inject constructor(
         val response = config.httpClient.post("${endpoint()}/v1/guest/session")
         checkResponse(response.status.value)
         val identity = json.decodeFromString<GuestIdentity>(response.bodyAsText())
-        require(identity.role == "guest" && identity.id.startsWith("guest_"))
+        require(identity.role == "guest" && mediaGuestIdPattern.matches(identity.id) &&
+            identity.accessToken.isNotBlank() && identity.accessToken.length <= 8192 && identity.expiresIn in 1..(30L * 24 * 60 * 60))
         coroutineContext.ensureActive()
         persistIdentity(identity, revision)
         return identity

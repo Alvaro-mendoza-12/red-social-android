@@ -30,24 +30,8 @@ export async function getOrCreateDirectChat(currentUserId: string, otherUserId: 
   const existing = ((existingRows ?? []) as GenericRow[])[0]
   const existingId = textOf(existing ?? {}, ['id'], '')
   if (existingId) {
-    const nowIso = new Date().toISOString()
-    await client.from('chat_participants').upsert(
-      [
-        {
-          chat_id: existingId,
-          user_id: currentUserId,
-          joined_at: nowIso,
-          last_read_at: nowIso,
-        },
-        {
-          chat_id: existingId,
-          user_id: otherUserId,
-          joined_at: nowIso,
-          last_read_at: nowIso,
-        },
-      ],
-      { onConflict: 'chat_id,user_id' },
-    )
+    // Opening a conversation must not change either participant's join date
+    // or mark the other person's messages as read. The viewer's read flow owns that.
     return existingId
   }
 

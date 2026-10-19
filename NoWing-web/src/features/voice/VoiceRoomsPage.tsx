@@ -16,6 +16,8 @@ import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { loadFallbackVoiceRooms } from '../../core/fallbackData'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
+import { isStandaloneVoiceRoom } from '../../core/voiceDirectory'
+import { useVoiceDirectoryUpdates } from '../../core/useVoiceDirectoryUpdates'
 
 type VoiceRoom = {
   id: string
@@ -96,7 +98,7 @@ function mapRoom(row: GenericRow): VoiceRoom {
 export function VoiceRoomsPage() {
   const { user, isFallbackSession } = useAuth()
   const useUbuntuVoice = shouldUseUbuntuBackend(isFallbackSession)
-  const roomsCacheKey = `voice:rooms:list:${user?.id ?? 'signed-out'}`
+  const roomsCacheKey = `voice:rooms:list:v2:${user?.id ?? 'signed-out'}`
   const [rooms, setRooms] = useState<VoiceRoom[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -122,7 +124,7 @@ export function VoiceRoomsPage() {
       }
       try {
         const response = await loadFallbackVoiceRooms()
-        const mapped = (response.rooms ?? response.items ?? []).map(mapRoom)
+        const mapped = (response.rooms ?? response.items ?? []).filter(isStandaloneVoiceRoom).map(mapRoom)
         setRooms(mapped)
         writeCachedValue(roomsCacheKey, mapped)
       } catch (caught) {
@@ -157,7 +159,7 @@ export function VoiceRoomsPage() {
         .limit(60)
       if (queryError) throw queryError
 
-      let mapped = ((data ?? []) as GenericRow[]).map(mapRoom)
+      let mapped = ((data ?? []) as GenericRow[]).filter(isStandaloneVoiceRoom).map(mapRoom)
       const creatorIds = Array.from(new Set(mapped.map((room) => room.creatorId).filter(Boolean)))
       if (creatorIds.length > 0) {
         const { data: profileRows } = await supabase
@@ -235,13 +237,7 @@ export function VoiceRoomsPage() {
     }
   }, [loadRooms, useUbuntuVoice])
 
-  useEffect(() => {
-    if (!useUbuntuVoice) return
-    const intervalId = window.setInterval(() => {
-      void loadRooms({ silent: true })
-    }, 7000)
-    return () => window.clearInterval(intervalId)
-  }, [loadRooms, useUbuntuVoice])
+  useVoiceDirectoryUpdates(() => { setJoinedRoomId(readJoinedRoomFromStorage(user?.id)); void loadRooms({ silent: true }) }, useUbuntuVoice)
 
   if (loading) return <StatusView title="Cargando voz" description="Buscando salas..." />
   if (error && rooms.length === 0) return <StatusView title="Voz no disponible" description={error} />
@@ -355,11 +351,7 @@ export function VoiceRoomsPage() {
                 <div className="voice-room-card-actions">
                   <Link
                     className={joined ? 'primary-btn' : 'ghost-btn'}
-                    to={`/app/voice/${room.id}`}
-                    onClick={() => {
-                      setJoinedRoomId(room.id)
-                      writeJoinedRoomToStorage(user?.id, room.id)
-                    }}
+                    to={`/app/voice/${room.id}${joined ? '' : '?join=1'}`}
                   >
                     {joined ? 'Entrar' : 'Unirse'}
                   </Link>

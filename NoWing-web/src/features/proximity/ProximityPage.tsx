@@ -1,3 +1,4 @@
+import { StreamingImage, StreamingAudio } from '../../components/StreamingMedia'
 import { RadarMessages } from './RadarMessages'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
@@ -26,6 +27,7 @@ import {
   loadFallbackRandomChatStatus,
   loadFallbackRandomMessages,
   loadFallbackRandomSession,
+  loadFallbackRandomSessions,
   matchFallbackRandomChat,
   sendFallbackRandomMessage,
   type FallbackNearbyProfile,
@@ -77,6 +79,11 @@ export function ProximityPage() {
   const [loadingNearby, setLoadingNearby] = useState(false)
   const [matchStatus, setMatchStatus] = useState<MatchStatus>('idle')
   const [session, setSession] = useState<FallbackRandomSession | null>(null)
+  const [sessions, setSessions] = useState<FallbackRandomSession[]>([])
+  const activeSessionRef = useRef<string | null>(null)
+  activeSessionRef.current = session?.id || null
+  const ownerRef = useRef(user?.id)
+  ownerRef.current = user?.id
   const [messages, setMessages] = useState<FallbackRandomMessage[]>([])
   const [messageDraft, setMessageDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -104,8 +111,13 @@ export function ProximityPage() {
 
   const loadSessionMessages = useCallback(async (sessionId: string) => {
     try {
+      const owner = ownerRef.current
       const response = await loadFallbackRandomMessages(sessionId)
-      setMessages(response.items)
+      if (ownerRef.current !== owner || activeSessionRef.current !== sessionId) return
+      setMessages(current => {
+        const known = new Set(response.items.map(item => item.client_message_id))
+        return [...response.items, ...current.filter(item => item.id.startsWith('pending-') && !known.has(item.client_message_id))]
+      })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo sincronizar el chat aleatorio'))
     }
@@ -113,7 +125,9 @@ export function ProximityPage() {
 
   const refreshSession = useCallback(async (sessionId: string) => {
     try {
+      const owner = ownerRef.current
       const response = await loadFallbackRandomSession(sessionId)
+      if (ownerRef.current !== owner || activeSessionRef.current !== sessionId) return
       if (response.session.status !== 'active') {
         setSession(null)
         setMatchStatus('idle')
@@ -136,18 +150,16 @@ export function ProximityPage() {
   const refreshMatchStatus = useCallback(async () => {
     if (!isFallbackSession) return
     try {
-      const response = await loadFallbackRandomChatStatus()
-      setMatchStatus(response.status)
-      if (response.session) {
-        setSession(response.session)
-        await loadSessionMessages(response.session.id)
-      } else if (response.status !== 'matched') {
-        setSession(null)
-      }
+      const owner = ownerRef.current
+      const [response, list] = await Promise.all([loadFallbackRandomChatStatus(), loadFallbackRandomSessions()])
+      if (ownerRef.current !== owner) return
+      setSessions(list.items)
+      setMatchStatus(response.status === 'waiting' ? 'waiting' : activeSessionRef.current ? 'matched' : 'idle')
+
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo consultar la búsqueda aleatoria'))
     }
-  }, [isFallbackSession, loadSessionMessages])
+  }, [isFallbackSession])
 
   useEffect(() => {
     void loadNearby(true)
@@ -155,8 +167,7 @@ export function ProximityPage() {
   }, [loadNearby, refreshMatchStatus])
 
   useEffect(() => {
-    if (matchStatus !== 'waiting') return
-    const interval = window.setInterval(() => void refreshMatchStatus(), 4_000)
+    const interval = window.setInterval(() => { if (!document.hidden) void refreshMatchStatus() }, 5_000)
     return () => window.clearInterval(interval)
   }, [matchStatus, refreshMatchStatus])
 
@@ -178,7 +189,7 @@ export function ProximityPage() {
         void loadSessionMessages(session.id)
       },
     })
-    const interval = window.setInterval(() => void loadSessionMessages(session.id), 5_000)
+    const interval = window.setInterval(() => { if (!document.hidden) void loadSessionMessages(session.id) }, 5_000)
     return () => {
       unsubscribe()
       window.clearInterval(interval)
@@ -259,6 +270,8 @@ export function ProximityPage() {
     event.preventDefault()
     const content = messageDraft.trim()
     if (!session || !content || sending) return
+    const sessionId = session.id
+    const owner = ownerRef.current
     const clientMessageId = crypto.randomUUID()
     const optimistic: FallbackRandomMessage = {
       id: `pending-${clientMessageId}`,
@@ -271,9 +284,10 @@ export function ProximityPage() {
     setMessageDraft('')
     setSending(true)
     try {
-      await sendFallbackRandomMessage(session.id, { content, clientMessageId })
-      await loadSessionMessages(session.id)
+      await sendFallbackRandomMessage(sessionId, { content, clientMessageId })
+      if (activeSessionRef.current === sessionId && ownerRef.current === owner) await loadSessionMessages(sessionId)
     } catch (caught) {
+      if (activeSessionRef.current !== sessionId || ownerRef.current !== owner) return
       setMessages((current) => current.filter((message) => message.id !== optimistic.id))
       setMessageDraft(content)
       setError(friendlyError(caught, 'No se pudo enviar el mensaje'))
@@ -283,7 +297,7 @@ export function ProximityPage() {
   }
 
   async function endSession() {
-    if (!session) return
+    if (!session || !window.confirm('¿Terminar esta conversación para ambos? Para conservarla, usa Volver a conversaciones.')) return
     try {
       await endFallbackRandomSession(session.id)
     } catch (caught) {
@@ -294,6 +308,7 @@ export function ProximityPage() {
     setMessages([])
     setMatchStatus('idle')
     setInfo('Conversación finalizada. Puedes buscar otra persona cuando quieras.')
+    void refreshMatchStatus()
   }
 
   const peer = session?.peer
@@ -319,7 +334,7 @@ export function ProximityPage() {
       {error ? <StatusView title="No se pudo completar la operación" description={error} /> : null}
       {info ? <div className="offline-banner syncing">{info}</div> : null}
 
-      <RadarMessages onAccepted={() => void refreshMatchStatus()} />
+      <RadarMessages onAccepted={() => { setInfo('Nueva conversación disponible. Ábrela desde tus conversaciones anónimas.'); void refreshMatchStatus() }} />
       <div className="proximity-layout">
         <section className="proximity-radar-panel">
           <div className={enabled ? 'proximity-radar active' : 'proximity-radar'} aria-label={`${nearby.length} personas dentro de ${radiusKm} kilómetros`}>
@@ -373,6 +388,15 @@ export function ProximityPage() {
         </section>
       </div>
 
+      {sessions.length ? <section className="surface-card anonymous-session-inbox">
+        <header className="row-between"><h3>Tus conversaciones anónimas</h3><small>Tu identidad sigue protegida</small></header>
+        <p className="muted-line">Puedes salir de una conversación y retomarla aquí. Terminarla requiere confirmación.</p>
+        {sessions.map(item => <button className="anonymous-session-row" type="button" key={item.id} onClick={() => { setMessages([]); activeSessionRef.current = item.id; setSession(item); setMessageDraft('') }}>
+          <SafeAvatar url={item.peer.avatar_url} name={item.peer.display_name || item.peer.alias} />
+          <span><strong>{item.peer.display_name || item.peer.alias || 'Persona anónima'}</strong><small>{item.last_message || 'Abrir conversación'}</small></span>
+          {item.unread_count ? <b aria-label={`${item.unread_count} mensajes sin leer`}>{item.unread_count}</b> : null}
+        </button>)}
+      </section> : null}
       <section className="surface-card section-stack random-match-panel">
         <div className="row-between">
           <div><span className="brand-tag"><UserRoundSearch aria-hidden="true" /> Chat aleatorio</span><h3>Conexión anónima gradual</h3></div>
@@ -404,6 +428,7 @@ export function ProximityPage() {
         ) : (
           <div className="random-chat-shell">
             <header className="random-peer-header">
+              <button className="ghost-btn" type="button" onClick={() => { activeSessionRef.current = null; setSession(null); setMessages([]); setMatchStatus('idle'); void refreshMatchStatus() }}>← Volver a conversaciones</button>
               {peer?.avatar_url ? <SafeAvatar url={peer.avatar_url} name={peer.display_name} /> : <span className="anonymous-avatar"><EyeOff aria-hidden="true" /></span>}
               <div>
                 <strong>{peer?.display_name || peer?.alias || 'Persona anónima'}</strong>
@@ -418,11 +443,11 @@ export function ProximityPage() {
             </header>
             <div className="random-message-list">
               {messages.length === 0 ? <p className="muted-copy">La conversación empieza anónima. Comparte solo lo que decidas.</p> : null}
-              {messages.map((message) => <div className={message.sender === 'me' ? 'random-message mine' : 'random-message'} key={message.id}><p>{message.content}</p></div>)}
+              {messages.map((message) => <div className={message.sender === 'me' ? 'random-message mine' : 'random-message'} key={message.id}>{message.media_url && ['image', 'sticker'].includes(message.content_type || '') ? <StreamingImage src={message.media_url} alt={message.content_type === 'sticker' ? 'Sticker' : 'Foto'} loading="lazy" /> : message.media_url && message.content_type === 'audio' ? <StreamingAudio src={message.media_url} controls preload="metadata" /> : null}<p>{message.content}</p>{message.sender === 'me' ? <small>{message.id.startsWith('pending-') ? 'Enviando…' : message.is_read ? 'Visto' : 'Enviado'}</small> : null}</div>)}
               <div ref={messagesEndRef} />
             </div>
             <form className="random-message-composer" onSubmit={sendMessage}>
-              <input maxLength={1000} value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} placeholder="Escribe un mensaje..." />
+              <input spellCheck lang="es" autoCorrect="on" maxLength={1000} value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} placeholder="Escribe un mensaje..." />
               <button className="icon-btn" type="submit" disabled={!messageDraft.trim() || sending} title="Enviar" aria-label="Enviar mensaje"><Send aria-hidden="true" /></button>
             </form>
           </div>

@@ -1,6 +1,7 @@
 'use strict'
 const fs = require('node:fs'), crypto = require('node:crypto'), net = require('node:net')
-const MAX_AGE_MS = 24 * 60 * 60 * 1000
+// FreshClam still checks every two hours; fail closed if the official database is over 48 hours old.
+const MAX_AGE_MS = 48 * 60 * 60 * 1000
 function recentSignature(value, now = Date.now()) {
   const match = /^ClamAV ([0-9.]+)\/([1-9]\d*)\/([A-Za-z]{3} [A-Za-z]{3} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})(?:\|? COMMANDS: (.+))?$/.exec(value)
   if (!match) return false

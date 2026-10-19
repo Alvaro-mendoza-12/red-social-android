@@ -20,6 +20,29 @@ import java.util.UUID
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [25, 34], application = UnitTestApplication::class)
 class DeletedMessageNotificationCompatibilityTest {
+    @Test fun reactionsDoNotOverwriteMessageHistoryAndDisappearOnRecall() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val suffix = UUID.randomUUID().toString()
+        val account = NotificationAccountTarget(userId = "owned-$suffix")
+        val message = MessageNotificationPayload(channelId = "owned_reactions", channelName = "Owned", channelDescription = "No network",
+            conversationId = "room-$suffix", targetType = "group", conversationTitle = "Owned room", senderName = "Member",
+            messageBody = "Original fixture", notificationId = 740043, messageId = "message-$suffix", notificationAccountTarget = account, allowInlineActions = false)
+        try {
+            assertTrue(MessageNotificationFactory.post(context, message))
+            assertTrue(MessageNotificationFactory.postReaction(context, message.copy(notificationId = 740044, messageBody = "Reaccionó ❤️ a tu mensaje", senderId = "actor")))
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+            assertEquals(manager.activeNotifications.map { it.id }.toString(), 2, manager.activeNotifications.count { it.id in listOf(message.notificationId, 740044) })
+            val original = manager.activeNotifications.single { it.id == message.notificationId }.notification
+            assertEquals("Original fixture", original.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+            val reaction = manager.activeNotifications.single { it.id == 740044 }.notification
+            assertNull(NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(reaction))
+            MessageNotificationFactory.redactMessage(context, DeletedMessageIdentity.create(account.userId, "group", message.conversationId, message.messageId)!!)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+            assertFalse(manager.activeNotifications.any { it.id == 740044 })
+        } finally { MessageNotificationFactory.cancelConversation(context, account, "group", message.conversationId) }
+    }
+
     @Test fun recallRedactsPublishedTextBeforeAndAfterChannelSupport() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val manager = context.getSystemService(NotificationManager::class.java)

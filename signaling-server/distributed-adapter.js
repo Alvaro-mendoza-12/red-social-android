@@ -3,6 +3,7 @@
 const { createAdapter } = require('@socket.io/redis-streams-adapter');
 const { createClient } = require('redis');
 const fs = require('node:fs');
+const { createRoomChatStreamCleanup } = require('./room-chat-stream-cleanup');
 const {
     createDistributedLiveState,
     createNoopDistributedLiveState
@@ -117,6 +118,7 @@ async function connectDistributedAdapter(io, options = {}) {
     let status = publicRedisStatus(config, false);
     let closing = false;
     let connectedOnce = false;
+    let chatCleanupTimer = null;
 
     if (!config.url) {
         if (config.required) {
@@ -152,6 +154,19 @@ async function connectDistributedAdapter(io, options = {}) {
     redisClient.on('ready', () => {
         connectedOnce = true;
         status = publicRedisStatus(config, true);
+        if (chatCleanupTimer) clearInterval(chatCleanupTimer);
+        const prune = createRoomChatStreamCleanup(redisClient, config);
+        let pruning = false;
+        const cleanup = async () => {
+            if (pruning || closing || !redisClient.isReady) return;
+            pruning = true;
+            try { const result = await prune(); if (result.deleted) logger.info?.('[ROOM_CHAT] Expired legacy recovery frames removed', result); }
+            catch { logger.warn?.('[ROOM_CHAT] Legacy recovery cleanup will retry'); }
+            finally { pruning = false; }
+        };
+        void cleanup();
+        chatCleanupTimer = setInterval(cleanup, 60000);
+        chatCleanupTimer.unref?.();
         logger.info?.('[SIGNALING_REDIS] Redis Streams adapter connected');
     });
     redisClient.on('end', () => {
@@ -191,6 +206,7 @@ async function connectDistributedAdapter(io, options = {}) {
             : createNoopDistributedLiveState(),
         close: async () => {
             closing = true;
+            if (chatCleanupTimer) clearInterval(chatCleanupTimer);
             if (redisClient.isOpen) {
                 await redisClient.quit();
             }

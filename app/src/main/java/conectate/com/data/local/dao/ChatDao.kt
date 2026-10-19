@@ -44,6 +44,9 @@ interface ChatDao {
     @Query("UPDATE chats SET unread_count = 0 WHERE id = :chatId")
     suspend fun markAsRead(chatId: String)
 
+    @Query("UPDATE chats SET unread_count=(SELECT COUNT(*) FROM messages WHERE chat_id=:chatId AND LOWER(sender_id)!=LOWER(:account) AND LOWER(COALESCE(status,'')) IN ('sent','delivered','received')) WHERE id=:chatId")
+    suspend fun reconcileUnreadCount(chatId: String, account: String)
+
     @Query("UPDATE chats SET unread_count = MAX(0, unread_count - :count) WHERE id = :chatId")
     suspend fun subtractReadMessages(chatId: String, count: Int)
 

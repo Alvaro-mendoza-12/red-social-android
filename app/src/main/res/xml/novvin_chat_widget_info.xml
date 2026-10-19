@@ -4,7 +4,7 @@
     android:initialLayout="@layout/widget_novvin_destination"
     android:minWidth="170dp"
     android:minHeight="64dp"
-    android:previewImage="@mipmap/ic_launcher"
+    android:previewLayout="@layout/widget_novvin_destination"
     android:resizeMode="horizontal"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />

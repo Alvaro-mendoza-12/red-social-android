@@ -160,3 +160,7 @@ blackbox_mcp_settings.json
 
 .playwright-cli/
 !NoWing-web/.env.example
+
+# Local administrator credentials; never ship or commit these inputs.
+/nueva-red-social-c9d04-6b94a68481fe.json
+/credenciales  LiveKit.png

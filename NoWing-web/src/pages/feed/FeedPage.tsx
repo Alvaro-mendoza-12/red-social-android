@@ -20,7 +20,6 @@ import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
 import {
   createFallbackPost,
-  loadFallbackFollows,
   loadFallbackFeed,
   searchFallbackProfiles,
   setFallbackPostReaction,
@@ -41,7 +40,6 @@ import { useAuth } from '../../core/auth/AuthProvider'
 import { extractMediaEntries, type MediaEntry } from '../../features/feed/mediaUtils'
 import { createShuffleSeed, shuffleFeedItems } from '../../features/reels/reelFeedOrder'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
-import { profileIdentityAliases } from '../../core/profileMediaFields'
 import { SocialPromotion } from '../../components/SocialPromotion'
 import { SocialMoments } from '../../ui/novvin/SocialMoments'
 import { runtimeStoragePreviewUrl } from '../../core/runtimeBackend'
@@ -61,6 +59,7 @@ type FeedItem = {
 
 type LoadFeedOptions = {
   silent?: boolean
+  offset?: number
 }
 
 function profilePathFor(profileId: string, currentUserId?: string): string {
@@ -110,7 +109,8 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const [webPreferences] = useWebPreferences()
-  const feedCacheKey = `feed:${user?.id ?? 'anon'}`
+  const [discoveryTab, setDiscoveryTab] = useState<'discover' | 'following'>('discover')
+  const feedCacheKey = `feed:${user?.id ?? 'anon'}:${discoveryTab}`
   const [promotionManager,setPromotionManager]=useState(false)
   const [canManagePromotions,setCanManagePromotions]=useState(false)
   const [gallery, setGallery] = useState<{ items: ViewerItem[]; index: number } | null>(null)
@@ -148,8 +148,6 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
       window.clearTimeout(timer)
     }
   }, [newPostText, useUbuntu])
-  const [discoveryTab, setDiscoveryTab] = useState<'discover' | 'following'>('discover')
-  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set())
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const [shareStatus, setShareStatus] = useState('')
@@ -162,33 +160,22 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
     setPreviewUrl(url)
     return () => URL.revokeObjectURL(url)
   }, [attachedFile])
-  useEffect(() => {
-    let active = true
-    if (useUbuntu && user)
-      void loadFallbackFollows('following')
-        .then((result) => {
-          if (active)
-            setFollowingIds(new Set(result.items.flatMap((row) => profileIdentityAliases(row))))
-        })
-        .catch(() => undefined)
-    return () => {
-      active = false
-    }
-  }, [useUbuntu, user])
   const [posting, setPosting] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [realtimeRefreshing, setRealtimeRefreshing] = useState(false)
   const [shuffleSeed, setShuffleSeed] = useState(createShuffleSeed)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const likeRequestsRef = useRef(new Set<string>())
+  const feedRequestRef = useRef(0)
+  const loadedCountRef = useRef(60)
+  const feedScopeRef = useRef(feedCacheKey)
+  feedScopeRef.current = feedCacheKey
+  const [hasMore, setHasMore] = useState(false)
+  const [nextOffset, setNextOffset] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   const shuffledItems = useMemo(
-    () =>
-      shuffleFeedItems(
-        discoveryTab === 'following'
-          ? items.filter((item) => followingIds.has(item.authorId))
-          : items,
-        shuffleSeed,
-      ),
-    [items, shuffleSeed, discoveryTab, followingIds],
+    () => discoveryTab === 'following' ? items : shuffleFeedItems(items, shuffleSeed),
+    [items, shuffleSeed, discoveryTab],
   )
 
   function reshufflePosts() {
@@ -200,25 +187,60 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
 
   const loadFeed = useCallback(
     async (options?: LoadFeedOptions) => {
+      if (feedScopeRef.current !== feedCacheKey) return
+      const requestId = ++feedRequestRef.current
+      const offset = options?.offset ?? 0
+      const pageSize = offset === 0 && options?.silent ? Math.max(60, loadedCountRef.current) : 60
+      const currentRequest = () => feedRequestRef.current === requestId && feedScopeRef.current === feedCacheKey
+      const acceptPage = (mapped: FeedItem[], more: boolean, followingOffset: number) => {
+        if (!currentRequest()) return
+        setError(null)
+        setItems((previous) => {
+          // A realtime refresh must not undo a reaction while its write is still pending.
+          const pending = new Map(previous.filter(item => likeRequestsRef.current.has(item.id)).map(item => [item.id, item]))
+          const page = mapped.map(item => {
+            const optimistic = pending.get(item.id)
+            if (!optimistic || optimistic.likedByMe === item.likedByMe) return item
+            return { ...item, likedByMe: optimistic.likedByMe,
+              likeCount: Math.max(0, item.likeCount + (optimistic.likedByMe ? 1 : -1)) }
+          })
+          const next = offset > 0
+            ? Array.from(new Map([...previous, ...page].map(item => [item.id, item])).values())
+            : page
+          loadedCountRef.current = next.length
+          writeCachedValue(feedCacheKey, next)
+          return next
+        })
+        setHasMore(more)
+        setNextOffset(followingOffset)
+      }
+      if (offset > 0) setLoadingMore(true)
       if (useUbuntu) {
-        if (!options?.silent) {
+        if (!options?.silent && offset === 0) {
           setLoading(true)
           setError(null)
         } else {
           setRealtimeRefreshing(true)
         }
         try {
-          const feed = await loadFallbackFeed(60)
-          const mapped = feed.items.map(mapPost)
-          setItems(mapped)
-          writeCachedValue(feedCacheKey, mapped)
+          const pages = await Promise.all(Array.from({ length: Math.ceil(pageSize / 200) }, (_, index) => {
+            const limit = Math.min(200, pageSize - index * 200)
+            return loadFallbackFeed(limit, { mode: discoveryTab, offset: offset + index * 200 })
+          }))
+          const mapped = pages.flatMap(page => page.items.map(mapPost))
+          const lastPage = pages[pages.length - 1]
+          acceptPage(mapped, lastPage.hasMore ?? mapped.length === pageSize,
+            lastPage.nextOffset ?? offset + mapped.length)
         } catch (caught) {
-          if (!options?.silent) {
+          if (currentRequest()) {
             setError(friendlyError(caught, 'No se pudo cargar el feed del servidor local'))
           }
         } finally {
-          setLoading(false)
-          setRealtimeRefreshing(false)
+          if (currentRequest()) {
+            setLoading(false)
+            setRealtimeRefreshing(false)
+            setLoadingMore(false)
+          }
         }
         return
       }
@@ -228,7 +250,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
         setLoading(false)
         return
       }
-      if (!options?.silent) {
+      if (!options?.silent && offset === 0) {
         setLoading(true)
       } else {
         setRealtimeRefreshing(true)
@@ -237,11 +259,21 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
         setError(null)
       }
       try {
-        const { data, error: queryError } = await supabase
+        let query = supabase
           .from('posts')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(60)
+          .order('id', { ascending: false })
+          .range(offset, offset + pageSize - 1)
+        if (discoveryTab === 'following') {
+          if (!user) { acceptPage([], false, 0); return }
+          const { data: follows, error: followError } = await supabase.from('follows')
+            .select('following_id').eq('follower_id', user.id)
+          if (followError) throw followError
+          const followed = Array.from(new Set([user.id, ...(follows ?? []).map(row => String(row.following_id))]))
+          query = query.in('user_id', followed)
+        }
+        const { data, error: queryError } = await query
         if (queryError) throw queryError
         let mapped = ((data ?? []) as GenericRow[]).map(mapPost)
 
@@ -293,26 +325,31 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
             ...item,
             likedByMe: likedSet.has(item.id),
           }))
-          setItems(nextItems)
-          writeCachedValue(feedCacheKey, nextItems)
+          acceptPage(nextItems, mapped.length === pageSize, offset + mapped.length)
         } else {
-          setItems(mapped)
-          writeCachedValue(feedCacheKey, mapped)
+          acceptPage(mapped, mapped.length === pageSize, offset + mapped.length)
         }
       } catch (caught) {
         reportSupabaseServiceRestrictionIfPresent('feed-load', caught)
-        if (!options?.silent) {
+        if (currentRequest()) {
           setError(friendlyError(caught, 'No se pudo cargar el feed'))
         }
       } finally {
-        setLoading(false)
-        setRealtimeRefreshing(false)
+        if (currentRequest()) {
+          setLoading(false)
+          setRealtimeRefreshing(false)
+          setLoadingMore(false)
+        }
       }
     },
-    [feedCacheKey, useUbuntu, user],
+    [feedCacheKey, useUbuntu, user, discoveryTab],
   )
 
   useEffect(() => {
+    setHasMore(false)
+    loadedCountRef.current = 60
+    setNextOffset(0)
+    setLoadingMore(false)
     const cached = readCachedValue<FeedItem[]>(feedCacheKey, 1000 * 60 * 60 * 8)
     if (cached && cached.length > 0) {
       setItems(cached)
@@ -320,6 +357,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
       void loadFeed({ silent: true })
       return
     }
+    setItems([])
     void loadFeed({ silent: false })
   }, [feedCacheKey, loadFeed])
 
@@ -335,7 +373,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
         channel: `user:${user.id}`,
         onEvent: (event) => {
           const scope = String(event.payload?.scope || '')
-          if (scope === 'inbox' || event.payload?.event === 'message') scheduleRefresh()
+          if (scope === 'inbox' || event.payload?.event === 'message' || event.payload?.event === 'post_reaction') scheduleRefresh()
         },
       })
       const unsubscribeFeed = subscribeUbuntuRealtime({
@@ -451,47 +489,54 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
   }
 
   async function toggleLike(item: FeedItem) {
-    if (useUbuntu) {
-      try {
-        const nextLiked = !item.likedByMe
-        setItems((current) =>
-          current.map((entry) =>
-            entry.id === item.id
-              ? {
-                  ...entry,
-                  likedByMe: nextLiked,
-                  likeCount: Math.max(0, entry.likeCount + (nextLiked ? 1 : -1)),
-                }
-              : entry,
-          ),
-        )
-        await setFallbackPostReaction(item.id, nextLiked)
-        await loadFeed({ silent: true })
-      } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo actualizar el like en Ubuntu'))
-        await loadFeed({ silent: true })
-      }
-      return
-    }
-    if (!supabase || !user) return
+    if (likeRequestsRef.current.has(item.id)) return
+    if (!useUbuntu && (!supabase || !user)) return
+    likeRequestsRef.current.add(item.id)
+    const previousLiked = item.likedByMe
+    const nextLiked = !previousLiked
+    setItems((current) =>
+      current.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              likedByMe: nextLiked,
+              likeCount: Math.max(0, entry.likeCount + (nextLiked ? 1 : -1)),
+            }
+          : entry,
+      ),
+    )
     try {
-      if (item.likedByMe) {
-        const { error: unlikeError } = await supabase
+      if (useUbuntu) {
+        await setFallbackPostReaction(item.id, nextLiked)
+      } else if (previousLiked) {
+        const { error: unlikeError } = await supabase!
           .from('post_likes')
           .delete()
           .eq('post_id', item.id)
-          .eq('user_id', user.id)
+          .eq('user_id', user!.id)
         if (unlikeError) throw unlikeError
       } else {
-        const { error: likeError } = await supabase.from('post_likes').insert({
+        const { error: likeError } = await supabase!.from('post_likes').insert({
           post_id: item.id,
-          user_id: user.id,
+          user_id: user!.id,
         })
         if (likeError) throw likeError
       }
       await loadFeed({ silent: true })
     } catch (caught) {
+      setItems((current) =>
+        current.map((entry) => entry.id === item.id
+          ? {
+              ...entry,
+              likedByMe: previousLiked,
+              likeCount: Math.max(0, entry.likeCount + (nextLiked ? -1 : 1)),
+            }
+          : entry),
+      )
       setError(friendlyError(caught, 'No se pudo actualizar el like'))
+      await loadFeed({ silent: true })
+    } finally {
+      likeRequestsRef.current.delete(item.id)
     }
   }
 
@@ -499,12 +544,14 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
     return <StatusView title="Cargando feed" description="Trayendo publicaciones..." />
   }
 
-  if (error) {
+  if (error && items.length === 0) {
     return <StatusView title="Feed no disponible" description={error} />
   }
 
   return (
     <section className="section-stack feed-page">
+      {error ? <p role="status">{error} <button className="ghost-btn" type="button"
+        onClick={() => void loadFeed({ silent: true })}>Reintentar</button></p> : null}
       {gallery ? (
         <MediaViewer
           items={gallery.items}
@@ -798,6 +845,10 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
           </div>
         </article>{itemIndex===Math.min(3,shuffledItems.length-1)?<SocialPromotion/>:null}</Fragment>
       ))}
+      {hasMore ? <button className="secondary-btn" type="button" disabled={loadingMore}
+        onClick={() => void loadFeed({ silent: true, offset: nextOffset })}>
+        {loadingMore ? 'Cargando publicaciones…' : 'Ver más publicaciones'}
+      </button> : null}
     </section>
   )
 }

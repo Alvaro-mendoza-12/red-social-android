@@ -14,12 +14,14 @@ abstract class NovvinDestinationWidgetProvider : AppWidgetProvider() {
     abstract val destination: String
     abstract val titleRes: Int
     abstract val subtitleRes: Int
+    abstract val iconRes: Int
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         ids.forEach { widgetId ->
             val views = RemoteViews(context.packageName, R.layout.widget_novvin_destination)
             views.setTextViewText(R.id.widget_destination_title, context.getString(titleRes))
             views.setTextViewText(R.id.widget_destination_subtitle, context.getString(subtitleRes))
+            views.setImageViewResource(R.id.widget_destination_icon, iconRes)
             views.setOnClickPendingIntent(R.id.widget_destination_root, openDestination(context, widgetId))
             manager.updateAppWidget(widgetId, views)
         }
@@ -38,18 +40,21 @@ abstract class NovvinDestinationWidgetProvider : AppWidgetProvider() {
 }
 
 class NovvinChatWidgetProvider : NovvinDestinationWidgetProvider() {
+    override val iconRes = R.drawable.widget_icon_messages
     override val destination = "messages"
     override val titleRes = R.string.widget_chat_title
     override val subtitleRes = R.string.widget_chat_subtitle
 }
 
 class NovvinVideosWidgetProvider : NovvinDestinationWidgetProvider() {
+    override val iconRes = R.drawable.widget_icon_videos
     override val destination = "videos"
     override val titleRes = R.string.widget_videos_title
     override val subtitleRes = R.string.widget_videos_subtitle
 }
 
 class NovvinMomentsWidgetProvider : NovvinDestinationWidgetProvider() {
+    override val iconRes = R.drawable.widget_icon_moment
     override val destination = "create-moment"
     override val titleRes = R.string.widget_moments_title
     override val subtitleRes = R.string.widget_moments_subtitle

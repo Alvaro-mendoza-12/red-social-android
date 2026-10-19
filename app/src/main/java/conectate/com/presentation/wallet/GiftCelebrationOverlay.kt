@@ -5,6 +5,7 @@ import android.app.ActivityManager
 import android.provider.Settings
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -125,11 +126,18 @@ fun GiftCelebrationOverlay(
         if (!foreground) return@LaunchedEffect
         val event = protagonist ?: return@LaunchedEffect
         val profile = giftMotionProfile(event.gift.visualKey())
+        val animationsEnabled = giftAnimationsEnabled(context)
+        val renderQuality = giftRenderQuality(context)
+        val cinematicVideo = usesCinematicGiftVideo(event.gift, animationsEnabled, renderQuality)
         // LiveGiftEvent sólo se crea tras el commit/ack del servidor. La vista
         // previa llama GiftAnimationStage directamente y jamás llega aquí.
-        GiftSoundEngine.playConfirmed(context.applicationContext, giftSceneSpec(profile).sound)
-        val displayDuration = if (giftAnimationsEnabled(context)) {
-            giftAnimationDurationMs(event.gift.priceDiamonds).toLong() + 120L
+        // El MP4 cinematográfico ya lleva su rugido; no superponerle el tono sintético.
+        if (!cinematicVideo) {
+            GiftSoundEngine.playConfirmed(context.applicationContext, giftSceneSpec(profile).sound)
+        }
+        val displayDuration = if (animationsEnabled) {
+            if (cinematicVideo) CINEMATIC_GIFT_VIDEO_DURATION_MS.toLong()
+            else giftAnimationDurationMs(event.gift.priceDiamonds).toLong() + 120L
         } else {
             STATIC_FALLBACK_MS
         }
@@ -165,17 +173,25 @@ fun GiftAnimationStage(
 ) {
     val context = LocalContext.current
     val animationsEnabled = remember(runKey) { giftAnimationsEnabled(context) }
-    val tier = giftAnimationTier(gift.priceDiamonds)
-    val duration = giftAnimationDurationMs(gift.priceDiamonds)
-    val profile = giftMotionProfile(gift.visualKey())
     val renderQuality = remember(context) { giftRenderQuality(context) }
+    val cinematicVideo = usesCinematicGiftVideo(gift, animationsEnabled, renderQuality)
+    val tier = giftAnimationTier(gift.priceDiamonds)
+    val duration = if (cinematicVideo) CINEMATIC_GIFT_VIDEO_DURATION_MS else giftAnimationDurationMs(gift.priceDiamonds)
+    val profile = giftMotionProfile(gift.visualKey())
     val spec = remember(profile, renderQuality) {
         giftSceneForQuality(giftSceneSpec(profile), renderQuality)
     }
     val progress = remember(runKey) { Animatable(if (animationsEnabled) 0f else 0.58f) }
+    var cinematicVideoFailed by remember(runKey) { mutableStateOf(false) }
+    val showCinematicVideo = cinematicVideo && !cinematicVideoFailed
 
-    LaunchedEffect(runKey, animationsEnabled) {
-        if (animationsEnabled) progress.animateTo(1f, tween(duration, easing = FastOutSlowInEasing))
+    LaunchedEffect(runKey, animationsEnabled, duration, showCinematicVideo) {
+        if (animationsEnabled) {
+            progress.animateTo(
+                1f,
+                tween(duration, easing = if (showCinematicVideo) LinearEasing else FastOutSlowInEasing)
+            )
+        }
     }
 
     val value = progress.value
@@ -244,6 +260,7 @@ fun GiftAnimationStage(
         val artworkTranslationX = with(density) { layout.artworkTranslationXDp.dp.toPx() }
         val artworkTranslationY = with(density) { layout.artworkTranslationYDp.dp.toPx() }
         val artworkSizePx = with(density) { layout.artworkSizeDp.dp.toPx() }
+        val cinematicSize = minOf(maxWidth * 0.88f, maxHeight * 0.68f)
 
         Canvas(Modifier.fillMaxSize().alpha(fade)) {
             drawGiftEnvironment(profile, spec, value, animationsEnabled)
@@ -261,7 +278,20 @@ fun GiftAnimationStage(
                 .clipToBounds(),
             contentAlignment = Alignment.Center
         ) {
-            if (layout.artworkSizeDp > 0f) {
+            if (showCinematicVideo) {
+                Box(
+                    modifier = Modifier
+                        .size(cinematicSize)
+                        .alpha(fade),
+                    contentAlignment = Alignment.Center
+                ) {
+                    GiftCinematicVideo(
+                        runKey = runKey,
+                        modifier = Modifier.fillMaxSize(),
+                        onPlaybackError = { cinematicVideoFailed = true }
+                    )
+                }
+            } else if (layout.artworkSizeDp > 0f) {
                 Box(
                     modifier = Modifier
                         .size(layout.artworkSizeDp.dp)

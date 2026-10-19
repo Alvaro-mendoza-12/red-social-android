@@ -9,10 +9,13 @@
     android:padding="12dp">
 
     <ImageView
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:contentDescription="@string/app_name"
-        android:src="@mipmap/ic_launcher" />
+        android:id="@+id/widget_destination_icon"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:padding="8dp"
+        android:background="@drawable/widget_novvin_action"
+        android:contentDescription="@null"
+        android:src="@drawable/widget_icon_messages" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -26,6 +29,9 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="#FFFFFFFF"
+            android:text="@string/app_name"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:textSize="16sp"
             android:textStyle="bold" />
 
@@ -34,8 +40,18 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
+            android:text="@string/widget_quick_actions_subtitle"
             android:maxLines="2"
-            android:textColor="#C7FFFFFF"
+            android:ellipsize="end"
+            android:textColor="#BED1DC"
             android:textSize="11sp" />
     </LinearLayout>
+    <TextView
+        android:layout_width="24dp"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="›"
+        android:importantForAccessibility="no"
+        android:textColor="#77E3DF"
+        android:textSize="28sp" />
 </LinearLayout>

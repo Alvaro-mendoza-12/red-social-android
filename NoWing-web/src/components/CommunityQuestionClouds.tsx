@@ -1,0 +1,3 @@
+export function CommunityQuestionClouds({prompt,total,answers,rotation,onOpen}:{prompt:string;total:number;answers:{id:string;name:string;content:string}[];rotation:number;onOpen:()=>void}){
+  return <div className="question-cloud-stage"><button className="question-prompt" type="button" onClick={onOpen}><small>Pregunta</small><strong>{prompt}</strong><span>{total} respuestas · Ver todas</span></button><div className="question-floating">{answers.map((answer,index)=><button type="button" className={`floating-answer slot-${(index+rotation)%3}`} key={answer.id} onClick={onOpen} aria-label={`Ver respuesta de ${answer.name}: ${answer.content}`}>{answer.content}</button>)}</div></div>
+}

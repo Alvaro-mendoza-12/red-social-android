@@ -30,3 +30,4 @@
   .settings-page-shell .settings-save-actions { align-items: stretch; flex-direction: column; }
   .settings-page-shell .settings-profile-meta { overflow-wrap: anywhere; }
 }
+.settings-appearance-tools{border:1px solid var(--outline);border-radius:14px;padding:16px;display:grid;gap:14px}.settings-appearance-tools summary{cursor:pointer;font-weight:600;min-height:28px}.settings-appearance-tools[open]>summary{margin-bottom:12px}.settings-appearance-tools label{display:grid;gap:8px}.settings-appearance-tools p{font-size:14px;line-height:1.6}.settings-profile-cover .profile-cover-effect{min-height:100%;height:100%}

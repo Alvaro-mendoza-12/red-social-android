@@ -174,6 +174,12 @@ fun ConversationsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconButton(
+                                onClick = { navController.navigate(Screen.WebLoginScanner.createRoute()) { launchSingleTop = true } },
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(Icons.Default.QrCodeScanner, contentDescription = "Vincular Novvin Web", tint = colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(
                                 onClick = onNavigateToSearch,
                                 modifier = Modifier.size(36.dp)
                             ) {

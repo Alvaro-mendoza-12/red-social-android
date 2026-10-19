@@ -17,6 +17,7 @@ const {
   feedPostVisible,
   followedProfileIds,
   enrichNotificationTarget,
+  mergePostReactionRows,
   isChatActivityNotification,
   isMessagingModuleNotification,
   messageContentOf,
@@ -260,6 +261,19 @@ assert.strictEqual(
   true,
 )
 assert.strictEqual(isMessagingModuleNotification({ type: 'admin_access_audit', target_type: 'profile' }), false)
+
+const importedReactionAliases = [
+  { post_id: 'persisted-post', user_id: 'canonical-user', reaction_type: 'LIKE' },
+  { post_id: 'persisted-post', user_id: 'legacy-user', reaction_type: 'LIKE' },
+]
+assert.deepStrictEqual(mergePostReactionRows(importedReactionAliases, [
+  { post_id: 'persisted-post', user_id: 'canonical-user', reaction_type: 'LOVE' },
+  { post_id: 'persisted-post', user_id: 'legacy-user', is_deleted: true },
+]).map(row => row.reaction_type), ['LOVE'], 'one account must not count twice after migration')
+assert.deepStrictEqual(mergePostReactionRows(importedReactionAliases, [
+  { post_id: 'persisted-post', user_id: 'canonical-user', is_deleted: true },
+  { post_id: 'persisted-post', user_id: 'legacy-user', is_deleted: true },
+]), [], 'an unlike must survive rereading the imported snapshot')
 
 const notificationIndexes = notificationContentIndexes({
   posts: [

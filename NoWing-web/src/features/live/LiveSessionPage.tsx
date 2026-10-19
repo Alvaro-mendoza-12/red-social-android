@@ -1,3 +1,4 @@
+import { ReactionCloud } from '../../components/ReactionCloud'
 import { useLiveSfu } from './useLiveSfu'
 import { claimInteractiveMediaSession, releaseInteractiveMediaSession, useInteractiveMediaSession } from '../../core/interactiveMediaSession'
 import { MediaSessionConflict } from '../../components/MediaSessionConflict'
@@ -809,9 +810,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
           <button className="live-icon-button" type="button" onClick={() => void shareLive()} title="Compartir" aria-label="Compartir directo"><LinkIcon aria-hidden="true" /></button>
         </div>
 
-        <div className="live-reaction-overlay" aria-live="polite">
-          {reactions.map((reaction, index) => <span key={reaction.id} style={{right: `${8 + (index % 5) * 12}%`, color: ['#ff5797','#c980ff','#ff3978','#ffb1ce'][index % 4]}}>{reaction.emoji === '❤️' ? <Heart fill="currentColor" aria-hidden="true"/> : reaction.emoji}</span>)}
-        </div>
+        <ReactionCloud items={reactions}/>
 
         {sfu.guests.length || guestMedia ? <div className="live-guests-strip">{guestMedia ? <figure><StreamVideo stream={guestMedia} muted className="live-guest-video"/>{!guestCamera ? <div className="live-guest-avatar"><SafeAvatar name={displayName} url={avatarUrl}/></div> : null}<figcaption>Tú</figcaption></figure> : null}{sfu.guests.map(guest => <figure key={guest.id}><StreamVideo stream={guest.stream} muted={role === 'host' ? false : viewerMuted} className="live-guest-video"/>{!guest.videoEnabled ? <div className="live-guest-avatar"><SafeAvatar name={guest.name} url={textOf(invitationProfiles.get(guest.id) || {}, ['avatar_url'])}/></div> : null}<figcaption>{guest.name}</figcaption></figure>)}</div> : null}
         <aside className="live-comments-panel">

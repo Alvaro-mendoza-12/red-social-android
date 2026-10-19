@@ -1,9 +1,11 @@
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { PublicComments } from '../../components/PublicComments'
+import './postDetail.css'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
-import { addFallbackPostComment, loadFallbackPostDetail, shareFallbackPost } from '../../core/fallbackData'
+import { loadFallbackPostDetail, shareFallbackPost } from '../../core/fallbackData'
 import { resolveSupabasePublicUrl, supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useWebPreferences } from '../../core/webPreferences'
@@ -18,16 +20,6 @@ type PostDetail = {
   userAvatarUrl: string
   content: string
   media: MediaEntry[]
-  createdAt: string
-}
-
-type PostComment = {
-  id: string
-  postId: string
-  userId: string
-  userName: string
-  userAvatarUrl: string
-  content: string
   createdAt: string
 }
 
@@ -51,10 +43,8 @@ export function PostDetailPage() {
   const { postId = '' } = useParams()
   const cleanPostId = useMemo(() => postId.trim().toLowerCase(), [postId])
   const [post, setPost] = useState<PostDetail | null>(null)
-  const [comments, setComments] = useState<PostComment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [commentDraft, setCommentDraft] = useState('')
 
   const load = useCallback(async () => {
     if (!cleanPostId) {
@@ -77,17 +67,6 @@ export function PostDetailPage() {
           media: extractMediaEntries(row),
           createdAt: textOf(row, ['created_at'], ''),
         })
-        setComments(
-          payload.comments.map((comment) => ({
-            id: textOf(comment, ['id'], crypto.randomUUID()),
-            postId: textOf(comment, ['post_id'], ''),
-            userId: textOf(comment, ['user_id'], ''),
-            userName: textOf(comment, ['user_name', 'display_name'], '') || 'Usuario',
-            userAvatarUrl: resolveSupabasePublicUrl('avatars', textOf(comment, ['user_avatar_url', 'avatar_url'], '')),
-            content: textOf(comment, ['content'], ''),
-            createdAt: textOf(comment, ['created_at'], ''),
-          })),
-        )
         return
       }
 
@@ -151,21 +130,6 @@ export function PostDetailPage() {
         createdAt: textOf(row, ['created_at'], ''),
       })
 
-      setComments(
-        mappedComments.map((comment) => {
-          const userId = textOf(comment, ['user_id'], '')
-          const profile = profileById.get(userId)
-          return {
-            id: textOf(comment, ['id'], crypto.randomUUID()),
-            postId: textOf(comment, ['post_id'], ''),
-            userId,
-            userName: profile?.name || userId || 'Usuario',
-            userAvatarUrl: profile?.avatarUrl || '',
-            content: textOf(comment, ['content'], ''),
-            createdAt: textOf(comment, ['created_at'], ''),
-          } satisfies PostComment
-        }),
-      )
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo cargar la publicación'))
     } finally {
@@ -203,35 +167,6 @@ export function PostDetailPage() {
     }
   }, [cleanPostId, load, useUbuntu])
 
-  async function submitComment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!user || !cleanPostId) return
-    const content = commentDraft.trim()
-    if (!content) return
-    if (useUbuntu) {
-      try {
-        await addFallbackPostComment(cleanPostId, { content })
-        setCommentDraft('')
-        await load()
-      } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo comentar en Ubuntu'))
-      }
-      return
-    }
-    if (!supabase) return
-    const { error: insertError } = await supabase.from('post_comments').insert({
-      post_id: cleanPostId,
-      user_id: user.id,
-      content,
-    })
-    if (insertError) {
-      setError(friendlyError(insertError, 'No se pudo comentar'))
-      return
-    }
-    setCommentDraft('')
-    await load()
-  }
-
   async function sharePost() {
     if (!user || !cleanPostId) return
     if (useUbuntu) {
@@ -268,7 +203,7 @@ export function PostDetailPage() {
   if (!post) return <StatusView title="Post no encontrado" description="No existe o no está disponible." />
 
   return (
-    <section className="section-stack">
+    <section className="section-stack post-detail-section">
       <div className="row-between">
         <Link to="/app/feed" className="inline-link">
           ← Feed
@@ -292,7 +227,7 @@ export function PostDetailPage() {
             )}
             <span>
               <strong>{post.userName}</strong>
-              <small>@{post.userId}</small>
+              
             </span>
           </Link>
           <small>{formatDateTime(post.createdAt)}</small>
@@ -344,45 +279,7 @@ export function PostDetailPage() {
         </div>
       </article>
 
-      <section className="section-stack">
-        <h3>Comentarios ({comments.length})</h3>
-        <form className="composer" onSubmit={submitComment}>
-          <input
-            className="text-input"
-            placeholder="Escribe un comentario..."
-            value={commentDraft}
-            onChange={(event) => setCommentDraft(event.target.value)}
-          />
-          <button className="primary-btn" type="submit">
-            Comentar
-          </button>
-        </form>
-        {comments.length === 0 ? (
-          <p>No hay comentarios aún.</p>
-        ) : (
-          <div className="list-stack">
-            {comments.map((comment) => (
-              <article key={comment.id} className="surface-card">
-                <div className="row-between">
-                  <Link className="identity-link" to={profilePathFor(comment.userId, user?.id)}>
-                    {comment.userAvatarUrl ? (
-                      <StreamingImage src={comment.userAvatarUrl} alt={comment.userName} className="avatar-sm" />
-                    ) : (
-                      <span className="avatar-sm avatar-fallback">{initialsOf(comment.userName)}</span>
-                    )}
-                    <span>
-                      <strong>{comment.userName}</strong>
-                      <small>@{comment.userId}</small>
-                    </span>
-                  </Link>
-                  <small>{formatDateTime(comment.createdAt)}</small>
-                </div>
-                <p>{comment.content}</p>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+      <section className="section-stack post-detail-section"><h3>Comentarios</h3><PublicComments kind="post" targetId={cleanPostId}/></section>
     </section>
   )
 }

@@ -1,8 +1,15 @@
-import { loadRecommendedVideoPage, mixBasicVideoSession } from '../../core/videoRecommendations'
+import { loadRecommendedVideoPage, loadFriendsVideoPage, mixBasicVideoSession } from '../../core/videoRecommendations'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 jest.mock('../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn() }))
 const api = jest.mocked(fallbackApiJson)
 beforeEach(() => api.mockReset())
+
+test('friends request their own paginated catalogue without recommendations',async()=>{
+ api.mockResolvedValue({items:[{id:'friend-video'}]})
+ const page=await loadFriendsVideoPage({owner:'account',offset:40})
+ expect(api.mock.calls[0][0]).toContain('friendsOnly=true');expect(api.mock.calls[0][0]).toContain('offset=40')
+ expect(api.mock.calls[0][0]).not.toContain('recommendations');expect(page.offset).toBe(41);expect(page.hasMore).toBe(false)
+})
 test('preserves authoritative server order and its continuation cursor', async () => {
   api.mockResolvedValue({items:[{id:'second'},{id:'first'}],page:{nextCursor:'opaque',hasMore:true},algorithm:{authoritative:true}})
   const page = await loadRecommendedVideoPage({owner:'account',refreshId:'session'})

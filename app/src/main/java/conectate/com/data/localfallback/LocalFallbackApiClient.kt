@@ -60,6 +60,8 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpMethod
+import io.ktor.client.request.request
 import io.ktor.http.ContentType
 import io.ktor.http.encodeURLParameter
 import io.ktor.http.Headers
@@ -237,6 +239,7 @@ data class AnonymousChatSession(
 }
 
 data class AnonymousChatMessage(
+    val isRead: Boolean = false,
     val id: String,
     val clientMessageId: String,
     val sender: String,
@@ -325,6 +328,7 @@ data class LocalFallbackInboxItem(
     val isPublic: Boolean = true,
     val onlyAdminsCanTalk: Boolean = false,
     val dailyMessageLimit: Int = 0,
+    val weeklyMessageLimit: Int = 0,
     val restUntil: String? = null,
     @SerialName("creator_id")
     val creatorId: String? = null,
@@ -2666,6 +2670,16 @@ class LocalFallbackApiClient @Inject constructor(
             response.items.map(::mapProfileUser)
         }
     }
+
+    suspend fun setProfileFollow(accessToken: String, profileId: String, following: Boolean): Result<Unit> = try {
+        val response = supabaseConfig.httpClient.request("$baseUrl/v1/data/profiles/${urlEncode(profileId)}/follow") {
+            method = if (following) HttpMethod.Post else HttpMethod.Delete
+            localHeaders(accessToken)
+        }
+        if (response.status.isSuccess()) Result.success(Unit)
+        else Result.failure(toException(response, decodeError(response.bodyAsText())))
+    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+    catch (error: Exception) { Result.failure(error) }
 
     suspend fun loadFollowUsers(
         accessToken: String,
@@ -5136,7 +5150,7 @@ class LocalFallbackApiClient @Inject constructor(
         description: String,
         isPublic: Boolean,
         onlyAdminsCanTalk: Boolean,
-        dailyMessageLimit: Int,
+        weeklyMessageLimit: Int,
         imageUrl: String?
     ): Result<Unit> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
@@ -5149,7 +5163,8 @@ class LocalFallbackApiClient @Inject constructor(
                     put("description", description)
                     put("is_public", isPublic)
                     put("only_admins_can_talk", onlyAdminsCanTalk)
-                    put("daily_message_limit", dailyMessageLimit.coerceIn(0, 1000))
+                    put("daily_message_limit", 0)
+                    put("weekly_message_limit", weeklyMessageLimit.coerceIn(0, 10000))
                     if (imageUrl != null) put("image", imageUrl)
                 })
             }
@@ -5861,15 +5876,7 @@ class LocalFallbackApiClient @Inject constructor(
             "community" -> "communities"
             else -> return Result.failure(Exception("El QR no corresponde a un grupo o comunidad."))
         }
-        val tokenQuery = if (collection == "groups") {
-            val cleanToken = inviteToken?.trim().orEmpty()
-            if (cleanToken.isBlank()) {
-                return Result.failure(Exception("La invitación del grupo está incompleta."))
-            }
-            "?token=${urlEncode(cleanToken)}"
-        } else {
-            ""
-        }
+        val tokenQuery = runCatching { collectionInviteQuery(collection, inviteToken) }.getOrElse { return Result.failure(it) }
         return requestJson<LocalFallbackCollectionPreview>(
             "$baseUrl/v1/data/messages/$collection/${urlEncode(roomId)}/preview$tokenQuery",
             accessToken
@@ -5935,11 +5942,15 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
-    suspend fun createGroupInvite(accessToken: String, groupId: String): Result<String> {
+    suspend fun createGroupInvite(accessToken: String, groupId: String): Result<String> =
+        createCollectionInvite(accessToken, "groups", groupId)
+
+    suspend fun createCollectionInvite(accessToken: String, collection: String, roomId: String): Result<String> {
+        require(collection in setOf("groups", "communities"))
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
             val response = supabaseConfig.httpClient.post(
-                "$baseUrl/v1/data/messages/groups/${urlEncode(groupId)}/invites"
+                "$baseUrl/v1/data/messages/$collection/${urlEncode(roomId)}/invites"
             ) {
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
@@ -5961,11 +5972,15 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
-    suspend fun joinGroupWithInvite(accessToken: String, groupId: String, token: String): Result<Unit> {
+    suspend fun joinGroupWithInvite(accessToken: String, groupId: String, token: String): Result<Unit> =
+        joinCollectionWithInvite(accessToken, "groups", groupId, token)
+
+    suspend fun joinCollectionWithInvite(accessToken: String, collection: String, roomId: String, token: String): Result<Unit> {
+        require(collection in setOf("groups", "communities"))
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
             val response = supabaseConfig.httpClient.post(
-                "$baseUrl/v1/data/messages/groups/${urlEncode(groupId)}/join-invite"
+                "$baseUrl/v1/data/messages/$collection/${urlEncode(roomId)}/join-invite"
             ) {
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
@@ -5977,6 +5992,14 @@ class LocalFallbackApiClient @Inject constructor(
         } catch (error: Exception) {
             Result.failure(error)
         }
+    }
+
+    suspend fun revokeCollectionInvites(accessToken: String, collection: String, roomId: String): Result<Unit> = runCatching {
+        require(collection in setOf("groups", "communities"))
+        val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/messages/$collection/${urlEncode(roomId)}/invites/revoke") {
+            localHeaders(accessToken)
+        }
+        if (!response.status.isSuccess()) throw toException(response, decodeError(response.bodyAsText()))
     }
 
     suspend fun setGroupRestUntil(accessToken: String, groupId: String, restUntil: String?): Result<Unit> {
@@ -6576,6 +6599,10 @@ class LocalFallbackApiClient @Inject constructor(
     private fun toException(response: HttpResponse, error: LocalFallbackErrorResponse): Exception {
         val code = (error.error ?: error.message).orEmpty().trim()
         return when (code) {
+            "COMMUNITY_WEEKLY_MESSAGE_LIMIT_REACHED" -> Exception("Alcanzaste el cupo semanal de esta comunidad. Se renueva el lunes a las 00:00 UTC.")
+            "COMMUNITY_DAILY_MESSAGE_LIMIT_REACHED" -> Exception("Alcanzaste el cupo diario de esta comunidad.")
+            "ONLY_ADMINS_CAN_TALK" -> Exception("Solo los administradores pueden escribir en esta comunidad.")
+            "COMMUNITY_OWNER_ROLE_REQUIRED" -> Exception("Solo quien creó la comunidad puede asignar o quitar administradores.")
             "NOT_FOUND" -> BackendRouteUnavailableException()
             "VIDEO_NOT_FOUND", "VIDEOS_NOT_FOUND" ->
                 Exception("Este video ya no está disponible o no tienes acceso.")
@@ -6688,6 +6715,7 @@ class LocalFallbackApiClient @Inject constructor(
             "EMAIL_AND_SIX_DIGIT_CODE_REQUIRED" -> Exception("Escribe el correo de tu cuenta y el código de seis dígitos.")
             "INVALID_OR_EXPIRED_RESET_TOKEN" -> Exception("El permiso seguro venció o no es válido. Vuelve a solicitar el cambio.")
             "GROUP_INVITE_INVALID" -> Exception("La invitación del grupo está incompleta o no es válida.")
+            "GROUP_INVITE_CREATE_DENIED" -> Exception("La administración no permite añadir integrantes mediante una invitación en este momento.")
             "GROUP_INVITE_EXPIRED_OR_USED" -> Exception("La invitación del grupo venció o alcanzó su límite de usos.")
             "ROOM_NOT_FOUND" -> Exception("El grupo o la comunidad ya no existe o no está disponible.")
             "ROLE_INVALID" -> Exception("Selecciona un rol válido para la comunidad.")
@@ -7821,6 +7849,7 @@ class LocalFallbackApiClient @Inject constructor(
     )
 
     private fun mapAnonymousMessage(row: JsonObject): AnonymousChatMessage = AnonymousChatMessage(
+        isRead = boolOf(row, "is_read", "isRead"),
         id = textOf(row, "id"),
         clientMessageId = textOf(row, "client_message_id"),
         sender = textOf(row, "sender").ifBlank { "peer" },

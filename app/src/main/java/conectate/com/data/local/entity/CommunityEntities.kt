@@ -30,6 +30,7 @@ data class CommunityEntity(
     val is_deleted: Boolean = false,
     val only_admins_can_talk: Boolean = false,
     val daily_message_limit: Int = 0,
+    @ColumnInfo(defaultValue = "0") val weekly_message_limit: Int = 0,
     val is_member: Boolean = false
 ) {
     fun toDomain(): Community {
@@ -47,6 +48,7 @@ data class CommunityEntity(
             is_deleted = is_deleted,
             only_admins_can_talk = only_admins_can_talk,
             daily_message_limit = daily_message_limit,
+            weekly_message_limit = weekly_message_limit,
             is_member = is_member
         )
     }
@@ -68,6 +70,7 @@ data class CommunityEntity(
                 is_deleted = community.is_deleted,
                 only_admins_can_talk = community.only_admins_can_talk,
                 daily_message_limit = community.daily_message_limit,
+                weekly_message_limit = community.weekly_message_limit,
                 is_member = community.is_member
             )
         }

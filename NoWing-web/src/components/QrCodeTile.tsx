@@ -7,9 +7,10 @@ type QrCodeTileProps = {
   title?: string
   description?: string
   compact?: boolean
+  downloadable?: boolean
 }
 
-export function QrCodeTile({ value, title, description, compact = false }: QrCodeTileProps) {
+export function QrCodeTile({ value, title, description, compact = false, downloadable = false }: QrCodeTileProps) {
   const [dataUrl, setDataUrl] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
@@ -55,6 +56,7 @@ export function QrCodeTile({ value, title, description, compact = false }: QrCod
       {title ? <strong>{title}</strong> : null}
       {description ? <p>{description}</p> : null}
       {dataUrl ? <StreamingImage src={dataUrl} alt={title || 'Código QR'} className="qr-image" /> : null}
+      {dataUrl && downloadable ? <a className="mini-action-btn" href={dataUrl} download="novvin-invitacion-qr.png">Guardar imagen del QR</a> : null}
       {error ? <small className="error-text">{error}</small> : null}
     </div>
   )

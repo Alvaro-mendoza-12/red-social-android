@@ -30,6 +30,18 @@ class CommunityDetailViewModel @Inject constructor(
         _actionMessage.value = null
     }
 
+    fun createShareLink(onReady: (String) -> Unit) {
+        val id = communityId ?: return
+        val account = authService.getCurrentUserId()
+        viewModelScope.launch {
+            communityRepository.createCommunityInvite(id).fold(
+                onSuccess = { token -> if (communityId == id && authService.getCurrentUserId() == account)
+                    onReady("https://red-social-android.vercel.app/community/$id?invite=${android.net.Uri.encode(token)}") },
+                onFailure = { _actionMessage.value = "No se pudo crear la invitación. Comprueba los permisos de la comunidad." }
+            )
+        }
+    }
+
     private val _community = MutableStateFlow<Community?>(null)
     val community = _community.asStateFlow()
 
@@ -399,7 +411,7 @@ class CommunityDetailViewModel @Inject constructor(
         imageBytes: ByteArray?,
         isPublic: Boolean,
         onlyAdminsCanTalk: Boolean,
-        dailyMessageLimit: Int,
+        weeklyMessageLimit: Int,
         onSuccess: () -> Unit
     ) {
         val id = communityId ?: return
@@ -411,7 +423,7 @@ class CommunityDetailViewModel @Inject constructor(
                 imageBytes = imageBytes,
                 isPublic = isPublic,
                 onlyAdminsCanTalk = onlyAdminsCanTalk,
-                dailyMessageLimit = dailyMessageLimit
+                weeklyMessageLimit = weeklyMessageLimit
             )
 
             if (result.isSuccess) {
@@ -420,7 +432,8 @@ class CommunityDetailViewModel @Inject constructor(
                     description = description?.trim().orEmpty().ifBlank { null },
                     is_public = isPublic,
                     only_admins_can_talk = onlyAdminsCanTalk,
-                    daily_message_limit = dailyMessageLimit.coerceIn(0, 1000)
+                    daily_message_limit = 0,
+                    weekly_message_limit = weeklyMessageLimit.coerceIn(0, 10000)
                 )
                 onSuccess()
             } else {

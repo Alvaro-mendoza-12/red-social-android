@@ -58,7 +58,7 @@ test('typing authorization requires current membership, including public communi
 
 test('visible receipt endpoint publishes committed read updates without waiting for realtime delivery', async () => {
   let handler
-  const published = []
+  const published = [], ownReads = []
   const chat = { id }
   const participantRows = [{ user_id: 'me' }, { user_id: 'sender' }]
   registerVisibleMessageReadRoute({ post: (_path, _auth, route) => { handler = route } }, {
@@ -66,6 +66,7 @@ test('visible receipt endpoint publishes committed read updates without waiting 
     getCurrentUser: async () => ({ id: 'me' }), userIdentity: () => identity,
     privateChatAccessContext: async () => ({ chat, participantRows, hasAccess: true }),
     publishReadReceipts: (receipt) => { published.push(receipt); return new Promise(() => {}) },
+    publishConversationRead: (receipt) => { ownReads.push(receipt); return new Promise(() => {}) },
   })
   const res = { json(body) { this.body = body } }
   await handler({ body: { messageIds: [id] }, params: { chatId: id } }, res, assert.fail)
@@ -73,6 +74,7 @@ test('visible receipt endpoint publishes committed read updates without waiting 
   assert.deepEqual(res.body.messageIds, [id])
   assert.equal(published.length, 1)
   assert.deepEqual(published[0], { chatId: id, messageIds: [id], chat, participantRows, identity })
+  assert.deepEqual(ownReads, [{ identity, kind: 'chat', id, messageIds: [id] }])
 })
 
 test('empty visible receipts do not publish any message event', async () => {

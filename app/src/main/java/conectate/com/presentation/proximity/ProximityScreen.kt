@@ -1,5 +1,7 @@
 package conectate.com.presentation.proximity
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -902,6 +904,14 @@ private fun AnonymousConversation(
             }
         )
     }
+    var confirmEnd by remember(session.id) { mutableStateOf(false) }
+    if (confirmEnd) AlertDialog(
+        onDismissRequest = { confirmEnd = false },
+        title = { Text("¿Terminar esta conversación?") },
+        text = { Text("Se cerrará para ambos. Para conservarla y volver después, usa la flecha de volver.") },
+        confirmButton = { TextButton(onClick = { confirmEnd = false; onEnd() }) { Text("Terminar") } },
+        dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Conservar chat") } },
+    )
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -925,7 +935,7 @@ private fun AnonymousConversation(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            IconButton(onClick = onEnd) {
+            IconButton(onClick = { confirmEnd = true }) {
                 Icon(Icons.Default.Cancel, contentDescription = "Finalizar chat")
             }
         }
@@ -1091,6 +1101,7 @@ internal fun AnonymousMessageBubble(message: AnonymousChatMessage) {
                     }
                     else -> Text(message.content)
                 }
+                if (mine) Text(if (message.isRead) "Visto" else "Enviado", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.End))
             }
         }
     }

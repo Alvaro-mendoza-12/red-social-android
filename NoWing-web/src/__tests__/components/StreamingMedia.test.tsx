@@ -73,3 +73,17 @@ test('changing accounts cancels a scheduled retry for the previous identity', as
   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,400))})
   expect(stream).toHaveBeenCalledTimes(2)
 })
+
+test('permanent audio registration failure is reported after bounded retries', async () => {
+  jest.useFakeTimers()
+  try {
+    stream.mockRejectedValue(new Error('NOT_FOUND'))
+    const unavailable = jest.fn()
+    const { unmount } = render(<StreamingAudio src={media} onSourceUnavailable={unavailable}/>)
+    await act(async () => { await Promise.resolve() })
+    for (const delay of [350,1200,3000]) await act(async () => { jest.advanceTimersByTime(delay); await Promise.resolve() })
+    expect(unavailable).toHaveBeenCalledTimes(1)
+    expect(stream).toHaveBeenCalledTimes(4)
+    unmount()
+  } finally { jest.useRealTimers() }
+})

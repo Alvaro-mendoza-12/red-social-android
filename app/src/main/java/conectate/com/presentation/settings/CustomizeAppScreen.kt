@@ -329,9 +329,6 @@ fun CustomizeAppScreen(
                             dark = isDarkMode,
                             onSelected = {
                                 profileTheme = it
-                                // El color elegido para el perfil también gobierna toda la app.
-                                // Así evitamos mezclar una superficie negra con un perfil de otro tema.
-                                viewModel.setAppTheme(it)
                             }
                         )
                     }

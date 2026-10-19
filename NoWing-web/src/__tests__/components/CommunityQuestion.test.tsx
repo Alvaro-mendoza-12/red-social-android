@@ -29,6 +29,28 @@ test('floating answers open the list and switching tabs does not duplicate answe
  fireEvent.click(screen.getByRole('tab',{name:'Respuestas (50)'}));expect(document.querySelectorAll('.question-answer-list article')).toHaveLength(50)
 })
 
+test('cloud motion can be paused without losing the question or its answers',async()=>{
+ render(<CommunityQuestion scope="community" roomId="room" content={JSON.stringify(reference)}/>)
+ await waitFor(()=>expect(document.querySelectorAll('.floating-answer')).toHaveLength(3))
+ fireEvent.click(screen.getByRole('button',{name:'Pausar nubes'}))
+ expect(document.querySelector('.community-question')).toHaveAttribute('data-motion-paused','true')
+ expect(screen.getByRole('button',{name:'Animar nubes'})).toHaveAttribute('aria-pressed','true')
+ fireEvent.click(document.querySelector('.floating-answer')!)
+ expect(screen.getByRole('dialog')).toHaveTextContent('Respuestas (50)')
+})
+
+test('reduced motion stays the default but the user can explicitly animate the clouds',async()=>{
+ const previous=window.matchMedia
+ window.matchMedia=jest.fn().mockReturnValue({matches:true,addEventListener:jest.fn(),removeEventListener:jest.fn()})
+ try{
+  render(<CommunityQuestion scope="community" roomId="room" content={JSON.stringify(reference)}/>)
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Animar nubes'})).toBeVisible())
+  fireEvent.click(screen.getByRole('button',{name:'Animar nubes'}))
+  expect(document.querySelector('.community-question')).toHaveAttribute('data-motion-paused','false')
+  expect(document.querySelector('.community-question')).toHaveAttribute('data-motion-forced','true')
+ }finally{window.matchMedia=previous}
+})
+
 test('my saved answer is restored even when it is outside the loaded page',async()=>{
  api.mockResolvedValue({...reference,id:reference.questionId,canRespond:true,closed:false,total:61,nextOffset:50,answers:[],myAnswer:{id:'mine',userId:'me',content:'Mi respuesta anterior'}})
  render(<CommunityQuestion scope="group" roomId="room" content={JSON.stringify(reference)}/>)

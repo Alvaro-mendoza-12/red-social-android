@@ -1,5 +1,9 @@
+import { ContactMessageCard } from '../../components/ContactMessageCard'
+import { DirectMessageRequestNotice } from '../../components/DirectMessageRequestNotice'
+import { messageLocationUrl } from '../../core/messageLocation'
+import { ForwardMessagesDialog } from '../../components/ForwardMessagesDialog'
 import { copyChatMessage } from '../../core/media/copyChatMessage'
-import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, normalizeClipboardFiles, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, normalizeClipboardFiles, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage } from '../../core/chatClipboard'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
@@ -17,11 +21,12 @@ import { useAttachmentDraft, useAttachmentPreparation } from '../../core/attachm
 import { chatGallery } from '../../core/chatGallery'
 import { MediaViewer } from '../../components/MediaViewer'
 import { ChatImageEditor } from '../../components/ChatImageEditor'
+import { ChatAttachmentPreview } from '../../components/ChatAttachmentPreview'
+import { SpellingSuggestions } from '../../components/SpellingSuggestions'
 import { RecordingIndicator } from '../../components/RecordingIndicator'
 import { backendRpc } from '../../core/backendRpc'
 import { chatMediaAlbums } from '../../core/chatMediaAlbums'
 import { ChatMediaAlbum } from '../../components/ChatMediaAlbum'
-import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { conversationWindow } from '../../core/conversationWindow'
 import { sharedVideoReference } from '../../core/sharedVideoReference'
@@ -300,12 +305,6 @@ function previewUrlForFile(file: File): string {
   return ''
 }
 
-function formatFileSize(sizeInBytes: number): string {
-  if (!Number.isFinite(sizeInBytes) || sizeInBytes <= 0) return ''
-  if (sizeInBytes < 1024) return `${sizeInBytes} B`
-  if (sizeInBytes < 1024 * 1024) return `${Math.round(sizeInBytes / 1024)} KB`
-  return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 function mediaEntryUrl(entry: unknown): string {
   if (typeof entry === 'string') return entry.trim()
@@ -457,6 +456,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   const [dragActive, setDragActive] = useState(false)
   const [pendingAttachments, setPendingAttachments] = useAttachmentDraft<PendingAttachment>(user?.id || '', 'chat', chatId.trim().toLowerCase())
   const [imageEditorFile, setImageEditorFile] = useState<File | null>(null)
+  const [spellingCaret, setSpellingCaret] = useState<number|undefined>()
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
   const [profilePanelOpen, setProfilePanelOpen] = useState(false)
   const discardRecordingRef = useRef(false)
@@ -474,6 +474,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     setSelectedMessageIds(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next })
   }
   const [replyToId, setReplyToId] = useState<string | null>(null)
+  const [forwardMessages, setForwardMessages] = useState<ChatMessage[]>([])
+  const [replyJumpId, setReplyJumpId] = useState<string | null>(null)
+  useMessageFocusFromUrl(messages.length > 0, setReplyJumpId)
+
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState('')
   const [pollQuestion, setPollQuestion] = useState('')
@@ -517,6 +521,22 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   useEffect(() => { setSelectedMessageIds(new Set()); setSelectingMessages(false); setShowQuickShare(false); setShowAdvancedTools(false) }, [cleanChatId])
   preparationOwnerRef.current = `${user?.id}/${cleanChatId}`
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
+  useEffect(() => {
+    if (!replyJumpId) return
+    setMessageSearchQuery('')
+    setHistoryWindowSize(size => Math.max(size, messages.length))
+    const frame = window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const node = threadRef.current?.querySelector<HTMLElement>(`#${CSS.escape(`message-${replyJumpId}`)}`)
+      if (node) {
+        shouldStickToBottomRef.current = false
+        node.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+        node.animate([{ boxShadow: '0 0 0 3px #27c6c9', backgroundColor: '#245356' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1500 })
+      } else setError('El mensaje original no está en el historial disponible.')
+    }))
+    const timer = window.setTimeout(() => setReplyJumpId(null), 1800)
+    return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer) }
+  }, [replyJumpId, messages.length])
+
   const normalizedMessageSearch = useMemo(() => messageSearchQuery.trim().toLowerCase(), [messageSearchQuery])
   const filteredMessages = useMemo(() => {
     if (!normalizedMessageSearch) return messages
@@ -616,8 +636,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       })),
     ])
   }, [setPendingAttachments])
-  const { start: startPreparation, preparing: preparingAttachments, status: preparationStatus } = useAttachmentPreparation(user?.id || '', 'chat', cleanChatId, queueAttachmentFiles, setError)
-  const sendPastedStickerRef = useRef<(file: File) => Promise<void>>(async () => {})
+  const { start: startPreparation, cancel: cancelPreparation, preparing: preparingAttachments, status: preparationStatus } = useAttachmentPreparation(user?.id || '', 'chat', cleanChatId, queueAttachmentFiles, setError)
 
   const stopAudioStream = useCallback(() => {
     audioStreamRef.current?.getTracks().forEach((track) => track.stop())
@@ -759,21 +778,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
           setError('WhatsApp no entregó la imagen al portapapeles. Usa «Copiar imagen» en el sticker y vuelve a pegarlo.')
           return
         }
-        const regularImages: File[] = []
         for (const file of pastedFiles) {
           const sticker = pastedAsSticker(file, showStickers) || await isCopiedStickerImage(file, stickerHint)
-          if (!sticker) {
-            regularImages.push(file)
-            continue
-          }
-          try {
-            await sendPastedStickerRef.current(file)
-          } catch (caught) {
-            queueAttachmentFiles([file], true, true)
-            setError(friendlyError(caught, 'No se pudo enviar automáticamente. El sticker quedó preparado para reintentar.'))
-          }
+          queueAttachmentFiles([file], true, sticker)
         }
-        if (regularImages.length) queueAttachmentFiles(regularImages, true)
       })()
     }
     window.addEventListener('paste', paste)
@@ -914,10 +922,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     const readToken=markInboxConversationRead(user.id,'chat',cleanChatId)
     if (useUbuntu) {
       try {
-        await markFallbackChatRead(cleanChatId)
+        const result=await markFallbackChatRead(cleanChatId)
+        confirmInboxConversationRead(user.id,'chat',cleanChatId,readToken,result.lastReadAt)
       } catch (caught) {
         console.warn('markFallbackChatRead failed', caught)
-      } finally {confirmInboxConversationRead(user.id,'chat',cleanChatId,readToken)}
+      }
       return
     }
     if (!supabase) return
@@ -957,9 +966,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       if (participantUpsertError && !isMissingTableError(participantUpsertError)) {
         throw participantUpsertError
       }
+      confirmInboxConversationRead(user.id,'chat',cleanChatId,readToken)
     } catch (caught) {
       console.warn('markAsDeliveredAndRead failed', caught)
-    } finally {confirmInboxConversationRead(user.id,'chat',cleanChatId,readToken)}
+    }
   }, [cleanChatId, useUbuntu, user])
 
   const loadChatSettings = useCallback(async () => {
@@ -1203,6 +1213,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     }
   }, [cleanChatId, markAsDeliveredAndRead, useUbuntu, user])
 
+  const newestVisibleMessageId = messages[messages.length - 1]?.id
+  useEffect(() => {
+    if (newestVisibleMessageId && !loading && document.visibilityState === 'visible') void markAsDeliveredAndRead()
+  }, [newestVisibleMessageId, loading, markAsDeliveredAndRead])
+
   useEffect(() => {
     if (!useUbuntu) void loadChatSettings()
     void refreshScheduledJobs()
@@ -1332,30 +1347,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       .from('chats')
       .update({ last_message: input.content || 'Archivo', last_message_at: nowIso, updated_at: nowIso })
       .eq('id', cleanChatId)
-  }
-
-  sendPastedStickerRef.current = async (file: File) => {
-    if (!user || !cleanChatId || (!supabase && !useUbuntu)) throw new Error('No hay una sesión activa para enviar el sticker')
-    setUploading(true)
-    try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'whatsapp-sticker.webp'
-      const filePath = `dm/${user.id}/${Date.now()}_clipboard_${safeName}`
-      const isAnimated = /^image\/(gif|webp)$/i.test(file.type) || /\.(gif|webp)$/i.test(file.name)
-      let mediaUrl: string
-      if (useUbuntu) {
-        mediaUrl = (await uploadFallbackFile('chat-media', file, filePath, undefined, {
-          id: crypto.randomUUID(), title: 'Sticker de WhatsApp', isAnimated,
-        })).publicUrl
-      } else {
-        const { error: uploadError } = await supabase!.storage.from('chat-media').upload(filePath, file, { contentType: file.type || undefined })
-        if (uploadError) throw uploadError
-        mediaUrl = supabase!.storage.from('chat-media').getPublicUrl(filePath).data.publicUrl
-      }
-      await sendMessage({ content: 'Sticker', mediaUrl, contentType: 'sticker', mediaSize: file.size, replyToId })
-      setReplyToId(null)
-    } finally {
-      setUploading(false)
-    }
   }
 
   async function sendPendingAttachments(textFallback: string) {
@@ -1522,20 +1513,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     await refreshMessageById(messageId)
   }
 
-  async function sendForwardedMessage(source: ChatMessage) {
-    try {
-      await sendMessage({
-        content: source.content || 'Mensaje reenviado',
-        mediaUrl: source.mediaUrl,
-        contentType: source.contentType,
-        isForwarded: true,
-        forwardedFromMessageId: source.id,
-        forwardedFromUserId: source.senderId,
-      })
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo reenviar'))
-    }
-  }
+  async function sendForwardedMessage(message: ChatMessage) { setForwardMessages([message]) }
 
   async function deleteMessageForAll(message: ChatMessage) {
     if (useUbuntu) {
@@ -2154,6 +2132,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         <strong>{selectedMessageIds.size} seleccionados</strong>
         <button type="button" className="mini-action-btn" onClick={() => setSelectedMessageIds(new Set(renderedMessages.filter(item => !item.deletedForAll && !item.deletedBy.includes(user?.id ?? '')).map(item => item.id)))}>Seleccionar visibles</button>
         <button type="button" className="mini-action-btn" disabled={!selectedMessageIds.size} onClick={() => { void navigator.clipboard.writeText(messages.filter(item => selectedMessageIds.has(item.id)).map(item => item.content || item.mediaUrl).join('\n')).catch(() => setError('No se pudo copiar. Permite el acceso al portapapeles.')) }}>Copiar</button>
+        <button type="button" className="mini-action-btn" disabled={!selectedMessageIds.size || selectionBusy} onClick={() => setForwardMessages(messages.filter(item => selectedMessageIds.has(item.id)))}>Reenviar</button>
         <button type="button" className="mini-action-btn danger" disabled={!selectedMessageIds.size || selectionBusy} onClick={async () => {
           if (!window.confirm(`¿Eliminar ${selectedMessageIds.size} mensajes de tu vista?`)) return
           setSelectionBusy(true)
@@ -2162,7 +2141,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
           finally { setSelectionBusy(false); setSelectedMessageIds(current => new Set([...current].filter(id => !completed.has(id)))); if(completed.size === selectedMessageIds.size) setSelectingMessages(false) }
         }}>{selectionBusy ? 'Eliminando…' : 'Eliminar para mí'}</button>
       </div> : null}
-      <div className="chat-thread-shell">
+      {forwardMessages.length ? <ForwardMessagesDialog messages={forwardMessages} onClose={() => setForwardMessages([])} /> : null}
+      <div className="chat-thread-shell" inert={pendingAttachments.length > 0}>
+        {useUbuntu && user ? <DirectMessageRequestNotice key={`${user.id}:${cleanChatId}`} accountId={user.id} chatId={cleanChatId} revision={messages.length}/> : null}
         <section className="chat-thread" ref={threadRef} onContextMenu={event => { if(event.target === event.currentTarget) { event.preventDefault(); setShowQuickShare(true) } }} onScroll={handleThreadScroll} onLoadCapture={keepLatestMessageVisible} onLoadedMetadataCapture={keepLatestMessageVisible}>
           {renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
             const thread = threadRef.current, height = thread?.scrollHeight || 0, top = thread?.scrollTop || 0
@@ -2186,8 +2167,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
           if (deletedForMe) return null
           const mine = message.senderId === user?.id
           const album = albums.get(message.id)
-          if (album && !selectingMessages && album.leader !== message.id) return null
-          if (album && !selectingMessages) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} deliveryState={item => mineDeliveryState(item, toMillis(item.createdAt) > 0 && toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(item.createdAt))} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteMessageForMe(item)} onDeleteForAll={item => void deleteMessageForAll(item)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
+          if (album && !selectingMessages && !replyJumpId && album.leader !== message.id) return null
+          if (album && !selectingMessages && !replyJumpId) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} deliveryState={item => mineDeliveryState(item, toMillis(item.createdAt) > 0 && toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(item.createdAt))} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteMessageForMe(item)} onDeleteForAll={item => void deleteMessageForAll(item)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
 
           const replied = message.replyToId ? messageById.get(message.replyToId) : null
           const pollRows =
@@ -2216,7 +2197,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
               <article id={`message-${message.id}`} className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${selectingMessages ? ' message-selectable' : ''}${selectedMessageIds.has(message.id) ? ' message-selected' : ''}${message.contentType === 'text' && !message.mediaUrl && !replied && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`} >
                 {selectingMessages ? <label className="message-select-control"><input type="checkbox" aria-label={`Seleccionar mensaje de ${mine ? 'ti' : title} a las ${new Date(message.createdAt).toLocaleTimeString('es')}`} checked={selectedMessageIds.has(message.id)} onChange={() => toggleSelectedMessage(message.id)} /></label> : null}
                 {message.isForwarded ? <small>Reenviado</small> : null}
-                {replied ? <MessageReplyPreview message={replied} name={replied.senderId === user?.id ? 'Tú' : title}/> : null}
+                {message.replyToId ? <MessageReplyPreview onJump={setReplyJumpId} message={replied || { id: message.replyToId, content: 'Mensaje anterior', contentType: 'text', mediaUrl: null, deletedForAll: false }} name={replied?.senderId === user?.id ? 'Tú' : title}/> : null}
 
                 {message.deletedForAll ? (
                   <p className="muted-line">Mensaje eliminado para todos</p>
@@ -2251,13 +2232,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                       <>
                         {message.content ? <p>{message.content}</p> : null}
                         {message.mediaUrl ? (
-                          <a className="inline-link" href={message.mediaUrl} target="_blank" rel="noreferrer">
+                          <a className="inline-link" href={messageLocationUrl(message.mediaUrl) || undefined} target="_blank" rel="noreferrer">
                             Abrir ubicacion en mapa
                           </a>
                         ) : null}
                       </>
                     ) : message.contentType === 'contact' ? (
-                      <p>Contacto: {message.content}</p>
+                      <ContactMessageCard content={message.content} />
                     ) : (
                       <>
                         {message.mediaUrl && message.contentType !== 'sticker' && !isViewOnceType(message.contentType) ? (
@@ -2302,7 +2283,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                   <MessageOptionsMenu mine={mine}>
                     <button className="mini-action-btn" type="button" onClick={() => { setSelectingMessages(true); setSelectedMessageIds(new Set([message.id])) }}>Seleccionar mensaje</button>
                     <button className="mini-action-btn" type="button" onClick={() => void copyChatMessage(message.content, message.mediaUrl, message.contentType).catch(() => setError('No se pudo copiar. Permite el acceso al portapapeles o descarga la imagen.'))}>Copiar</button>
-                    {message.mediaUrl && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={fileNameFromUrl(message.mediaUrl)} /> : null}
+                    {message.mediaUrl && !['location', 'contact'].includes(message.contentType) && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={fileNameFromUrl(message.mediaUrl)} /> : null}
                     <MessageReactionBar onReact={emoji=>void toggleReaction(message.id,emoji)}/>
                     <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
                       Responder
@@ -2423,62 +2404,18 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
 
       {showStickers ? <StickerPicker onEmoji={emoji => { draftRevisionRef.current += 1; setDraft(current => current + emoji) }} onSelect={item => void sendSticker(item)} onImport={file => void importSticker(file)} onClose={() => setShowStickers(false)} /> : null}
 
+      {!pendingAttachments.length ? <SpellingSuggestions text={editingMessageId ? editingDraft : draft} caret={spellingCaret} onReplace={(text,caret)=>{draftRevisionRef.current += 1;if(editingMessageId)setEditingDraft(text);else setDraft(text);setSpellingCaret(caret);requestAnimationFrame(()=>{const input=document.querySelector<HTMLInputElement>('.chat-composer .chat-input-field');input?.focus();input?.setSelectionRange(caret,caret)})}}/> : null}
       {error ? <div className="chat-composer-error" role="alert"><span>{error}</span><button className="mini-action-btn" type="button" onClick={() => setError(null)}>Cerrar</button></div> : null}
       {preparingAttachments ? <p className="attachment-preparing" role="status">{preparationStatus}</p> : null}
       {isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
-      {imageEditorFile ? <ChatImageEditor file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
+      {imageEditorFile ? <ChatImageEditor asSticker={pendingAttachments.some(item => item.file === imageEditorFile && item.contentType === 'sticker')} file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
       {galleryIndex !== null && gallery[galleryIndex] ? <MediaViewer items={gallery} initialIndex={galleryIndex} onClose={() => setGalleryIndex(null)} /> : null}
-      {pendingAttachments.length > 0 ? (
-        <section className="attachment-draft-tray fade-in">
-          <div className="row-between">
-            <strong>Adjuntos ({pendingAttachments.length})</strong>
-            <small className="muted-line">Se enviarán juntos al tocar enviar</small>
-            <button className="mini-action-btn" type="button" onClick={clearPendingAttachments}>
-              Limpiar
-            </button>
-          </div>
-          {preparationStatus ? <p className="attachment-preparation-summary" role="status">{preparationStatus}</p> : null}
-          <div className="attachment-draft-grid">
-            {pendingAttachments.map((attachment) => (
-              <article key={attachment.id} className="attachment-draft-item">
-                {attachment.previewUrl ? (
-                  attachment.contentType === 'video' ? (
-                    <StreamingVideo className="attachment-preview" src={attachment.previewUrl} controls preload="metadata" />
-                  ) : (
-                    attachment.contentType === 'audio' ? <audio className="attachment-audio-preview" src={attachment.previewUrl} controls /> : <StreamingImage className="attachment-preview" src={attachment.previewUrl} alt={attachment.file.name} />
-                  )
-                ) : (
-                  <div className="attachment-preview attachment-preview-fallback">
-                    <span>{attachment.contentType === 'audio' ? 'Audio' : 'Archivo'}</span>
-                  </div>
-                )}
-                <div className="attachment-draft-body">
-                  <div className="attachment-draft-meta">
-                    <strong>{attachment.file.name}</strong>{attachment.contentType === 'image' && !/\.(gif|webp)$/i.test(attachment.file.name) ? <button type="button" className="mini-action-btn" onClick={() => setImageEditorFile(attachment.file)}>Editar imagen</button> : null}
-                    <small>{formatFileSize(attachment.file.size)}</small>
-                    {isStickerImage(attachment.file) ? <button type="button" className="mini-action-btn attachment-sticker-toggle" aria-pressed={attachment.contentType === 'sticker'} onClick={() => setPendingAttachments(current => current.map(item => item.id === attachment.id ? { ...item, contentType: item.contentType === 'sticker' ? 'image' : 'sticker' } : item))}>{attachment.contentType === 'sticker' ? 'Sticker · Cambiar a imagen' : 'Enviar como sticker'}</button> : null}
-                  </div>
-                  <input
-                    className="text-input tiny-input"
-                    placeholder={attachment.contentType === 'sticker' ? 'Nombre del sticker (opcional)' : 'Texto opcional para este archivo'}
-                    value={attachment.caption}
-                    onChange={(event) =>
-                      updatePendingAttachmentCaption(attachment.id, event.target.value)
-                    }
-                  />
-                </div>
-                <button
-                  className="mini-action-btn attachment-remove-btn"
-                  type="button"
-                  onClick={() => removePendingAttachment(attachment.id)}
-                >
-                  Quitar
-                </button>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {pendingAttachments.length > 0 ? <ChatAttachmentPreview items={pendingAttachments} draft={draft} busy={sending || uploading} preparing={preparingAttachments} status={preparationStatus}
+        onClose={() => { cancelPreparation(); clearPendingAttachments() }} onRemove={removePendingAttachment} onAdd={handleAttachFile} onSend={handleSend}
+        onCaption={(id, caption) => { updatePendingAttachmentCaption(id, caption); if (pendingAttachments[0]?.id === id) setDraft(caption) }}
+        onEdit={id => setImageEditorFile(pendingAttachments.find(item => item.id === id)?.file || null)}
+        onToggleSticker={id => setPendingAttachments(current => current.map(item => item.id === id ? { ...item, contentType: item.contentType === 'sticker' ? 'image' : 'sticker' } : item))}
+      /> : null}
 
       <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
         <button
@@ -2508,6 +2445,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
 
         <input
           className="text-input chat-input-field"
+          onSelect={event=>setSpellingCaret(event.currentTarget.selectionStart ?? undefined)}
           lang="es" spellCheck={true} autoCorrect="on" autoCapitalize="sentences"
           disabled={Boolean(editingMessageId) && sending}
           placeholder={editingMessageId ? 'Edita tu mensaje...' : 'Escribe un mensaje...'}
@@ -2550,3 +2488,4 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     </section>
   )
 }
+import { useMessageFocusFromUrl } from './useMessageFocusFromUrl'

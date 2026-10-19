@@ -27,6 +27,8 @@ export type FallbackProfileMeResponse = {
 
 export type FallbackFeedResponse = {
   items: GenericRow[]
+  hasMore?: boolean
+  nextOffset?: number
 }
 
 export type FallbackPostDetailResponse = {
@@ -45,6 +47,9 @@ export type FallbackInboxItem = {
   isMember?: boolean
   profileId: string | null
   unreadCount: number
+  unreadMessageIds?: string[]
+  participantCount?: number
+  maxParticipants?: number
   isPinned: boolean
   isMuted: boolean
   isArchived: boolean
@@ -184,6 +189,7 @@ export type FallbackRandomSession = {
 }
 
 export type FallbackRandomMessage = {
+  is_read?: boolean
   id: string
   client_message_id: string
   sender: 'me' | 'peer'
@@ -198,6 +204,8 @@ export async function loadFallbackProfileMe(): Promise<FallbackProfileMeResponse
 }
 
 export async function updateFallbackProfileMe(input: {
+  profileEffect?: string
+  profileTheme?: string
   displayName?: string | null
   bio?: string | null
   country?: string | null
@@ -308,8 +316,14 @@ export async function markAllFallbackNotificationsRead(): Promise<{ ok: boolean 
   return result
 }
 
-export async function loadFallbackFeed(limit = 60): Promise<FallbackFeedResponse> {
-  return fallbackApiJson<FallbackFeedResponse>(`/v1/data/feed?limit=${encodeURIComponent(String(limit))}`)
+export async function loadFallbackFeed(limit = 60, options: {
+  mode?: 'discover' | 'following'
+  offset?: number
+} = {}): Promise<FallbackFeedResponse> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (options.mode) params.set('mode', options.mode)
+  if (options.offset) params.set('offset', String(options.offset))
+  return fallbackApiJson<FallbackFeedResponse>(`/v1/data/feed?${params}`)
 }
 
 export async function loadFallbackPostDetail(postId: string): Promise<FallbackPostDetailResponse> {
@@ -516,11 +530,15 @@ export async function loadFallbackRandomSession(
   )
 }
 
+export async function loadFallbackRandomSessions(): Promise<{ items: FallbackRandomSession[] }> {
+  return fallbackApiJson('/v1/data/proximity/random/sessions')
+}
+
 export async function loadFallbackRandomMessages(
   sessionId: string,
 ): Promise<{ items: FallbackRandomMessage[] }> {
   return fallbackApiJson(
-    `/v1/data/proximity/random/sessions/${encodeURIComponent(sessionId)}/messages`,
+    `/v1/data/proximity/random/sessions/${encodeURIComponent(sessionId)}/messages?markRead=${!document.hidden}`,
   )
 }
 
@@ -557,7 +575,7 @@ export async function endFallbackRandomSession(sessionId: string): Promise<{ sta
   )
 }
 
-export async function markFallbackChatRead(chatId: string): Promise<{ ok: boolean }> {
+export async function markFallbackChatRead(chatId: string): Promise<{ ok: boolean; lastReadAt?:string }> {
   return fallbackApiJson<{ ok: boolean }>(
     `/v1/data/messages/chats/${encodeURIComponent(chatId)}/read`,
     { method: 'POST', body: JSON.stringify({}) },
@@ -710,12 +728,13 @@ export async function uploadFallbackFile(
 }
 
 export async function loadFallbackVoiceRooms(): Promise<FallbackVoiceRoomsResponse> {
-  return fallbackApiJson<FallbackVoiceRoomsResponse>('/v1/data/voice/rooms')
+  return fallbackApiJson<FallbackVoiceRoomsResponse>('/v1/data/voice/rooms', { cache: 'no-store' })
 }
 
 export async function loadFallbackVoiceRoom(roomId: string): Promise<FallbackVoiceRoomResponse> {
   return fallbackApiJson<FallbackVoiceRoomResponse>(
     `/v1/data/voice/rooms/${encodeURIComponent(roomId)}`,
+    { cache: 'no-store' },
   )
 }
 
@@ -737,14 +756,17 @@ export async function joinFallbackVoiceRoom(
   )
 }
 
-export async function leaveFallbackVoiceRoom(roomId: string): Promise<{ ok: boolean }> {
-  return fallbackApiJson<{ ok: boolean }>(
+export async function leaveFallbackVoiceRoom(roomId: string, expectedAccountId?: string): Promise<{ ok: boolean }> {
+  const result = await fallbackApiJson<{ ok: boolean }>(
     `/v1/data/voice/rooms/${encodeURIComponent(roomId)}/leave`,
     {
       method: 'POST',
       body: JSON.stringify({}),
+      ...(expectedAccountId ? { expectedAccountId } : {}),
     },
   )
+  window.dispatchEvent(new Event('novvin:voice-rooms-changed'))
+  return result
 }
 
 export async function createFallbackPost(input: {

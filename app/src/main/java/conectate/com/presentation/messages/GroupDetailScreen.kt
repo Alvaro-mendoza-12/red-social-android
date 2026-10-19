@@ -107,13 +107,16 @@ fun GroupDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(group?.name ?: "Detalles del grupo") },
+                title = { Text(group?.name ?: "Detalles del grupo", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
                     }
                 },
                 actions = {
+                    if (group?.is_member == true || canManageMembers) IconButton(onClick = { viewModel.createShareLink { shareLink = it } }) {
+                        Icon(Icons.Default.Share, "Compartir enlace o QR")
+                    }
                     if (membershipPolicy?.canAddMembers == true) {
                         IconButton(onClick = { viewModel.refreshMembershipPolicy(); showAddMemberDialog = true }) {
                             Icon(Icons.Default.PersonAdd, "Agregar miembro", tint = MaterialTheme.colorScheme.onPrimary)
@@ -127,6 +130,11 @@ fun GroupDetailScreen(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
+                        if (group?.is_member == true || canManageMembers) DropdownMenuItem(
+                            text = { Text("Compartir enlace o QR") },
+                            onClick = { showMenu = false; viewModel.createShareLink { shareLink = it } },
+                            leadingIcon = { Icon(Icons.Default.Share, null) }
+                        )
                         if (canManageMembers) {
                             DropdownMenuItem(
                                 text = { Text("Editar información") },
@@ -135,14 +143,6 @@ fun GroupDetailScreen(
                                     showEditGroupDialog = true
                                 },
                                 leadingIcon = { Icon(Icons.Default.Edit, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Compartir enlace o QR") },
-                                onClick = {
-                                    showMenu = false
-                                    viewModel.createShareLink { shareLink = it }
-                                },
-                                leadingIcon = { Icon(Icons.Default.Share, null) }
                             )
                             HorizontalDivider()
 
@@ -303,6 +303,8 @@ fun GroupDetailScreen(
         CollectionShareDialog(
             title = "Compartir grupo",
             link = link,
+            navController = navController,
+            canRevoke = canManageMembers,
             onDismiss = { shareLink = null }
         )
     }

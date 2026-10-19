@@ -125,6 +125,13 @@ class PostRepository @Inject constructor(
         val counts: MutableMap<String, Int> = mutableMapOf()
     )
 
+    private data class PostReactionEntry(
+        val postId: String,
+        val userId: String,
+        val reactionType: String,
+        val reactedAt: String?
+    )
+
     private val supportedPostReactions = setOf(
         "LIKE",
         "LOVE",
@@ -594,8 +601,11 @@ class PostRepository @Inject constructor(
             val reactionTotal = reactionCounts.values.sum()
 
             post.copy(
-                likedByMe = post.likedByMe || snapshot?.myReaction != null,
-                myReaction = snapshot?.myReaction ?: post.myReaction ?: legacyReaction,
+                // post_likes is authoritative for whether the account liked
+                // this post. A stale optional reaction row must not revive
+                // a like after the canonical row was removed.
+                likedByMe = post.likedByMe,
+                myReaction = if (post.likedByMe) snapshot?.myReaction ?: post.myReaction ?: legacyReaction else null,
                 reactionCounts = reactionCounts,
                 likeCount = maxOf(post.likeCount, reactionTotal)
             )
@@ -614,43 +624,91 @@ class PostRepository @Inject constructor(
 
         if (cleanPostIds.isEmpty()) return emptyMap()
 
-        return try {
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/post_reactions") {
-                header("Authorization", "Bearer $accessToken")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("select", "post_id,user_id,reaction_type")
-                parameter("post_id", cleanPostIds.joinToString(prefix = "in.(", postfix = ")"))
-            }
-
-            if (!response.status.isSuccess()) {
-                android.util.Log.w("PostRepository", "post_reactions unavailable: ${response.status}")
+        val entries = fetchPostReactionEntries(accessToken, cleanPostIds)
+            .getOrElse { error ->
+                android.util.Log.w("PostRepository", "Failed to load post reactions", error)
                 return emptyMap()
             }
+        val snapshots = mutableMapOf<String, MutablePostReactionSnapshot>()
+        entries.forEach { entry ->
+            val snapshot = snapshots.getOrPut(entry.postId) { MutablePostReactionSnapshot() }
+            snapshot.counts[entry.reactionType] = (snapshot.counts[entry.reactionType] ?: 0) + 1
+            if (currentUserId != null && entry.userId.equals(currentUserId, ignoreCase = true)) {
+                snapshot.myReaction = entry.reactionType
+            }
+        }
 
-            val rows: List<JsonObject> = response.body()
-            val snapshots = mutableMapOf<String, MutablePostReactionSnapshot>()
-            rows.forEach { row ->
-                val postId = row["post_id"]?.jsonPrimitive?.contentOrNull ?: return@forEach
-                val userId = row["user_id"]?.jsonPrimitive?.contentOrNull
-                val reaction = normalizePostReaction(row["reaction_type"]?.jsonPrimitive?.contentOrNull)
-                    ?: return@forEach
+        return snapshots.mapValues { (_, snapshot) ->
+            PostReactionSnapshot(
+                myReaction = snapshot.myReaction,
+                counts = snapshot.counts.toMap()
+            )
+        }
+    }
 
-                val snapshot = snapshots.getOrPut(postId) { MutablePostReactionSnapshot() }
-                snapshot.counts[reaction] = (snapshot.counts[reaction] ?: 0) + 1
-                if (currentUserId != null && userId == currentUserId) {
-                    snapshot.myReaction = reaction
+    private suspend fun fetchPostReactionEntries(
+        accessToken: String,
+        postIds: List<String>
+    ): Result<List<PostReactionEntry>> {
+        return try {
+            suspend fun fetchRows(table: String, select: String): Pair<Boolean, List<JsonObject>> {
+                val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/$table") {
+                    header("Authorization", "Bearer $accessToken")
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    parameter("select", select)
+                    parameter("post_id", postIds.joinToString(prefix = "in.(", postfix = ")"))
+                    parameter("limit", "10000")
                 }
+                if (!response.status.isSuccess()) {
+                    android.util.Log.w("PostRepository", "$table unavailable: ${response.status}")
+                    return false to emptyList()
+                }
+                return true to response.body<List<JsonObject>>()
             }
 
-            snapshots.mapValues { (_, snapshot) ->
-                PostReactionSnapshot(
-                    myReaction = snapshot.myReaction,
-                    counts = snapshot.counts.toMap()
+            val (likesReadable, likeRows) = fetchRows("post_likes", "post_id,user_id,created_at")
+            val (detailsReadable, detailedRows) = fetchRows(
+                "post_reactions",
+                "post_id,user_id,reaction_type,created_at,updated_at"
+            )
+            if (!likesReadable && !detailsReadable) {
+                return Result.failure(Exception("No se pudieron leer las reacciones de la publicación."))
+            }
+
+            val byPostAndUser = linkedMapOf<Pair<String, String>, PostReactionEntry>()
+            likeRows.forEach { row ->
+                val postId = row["post_id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                val userId = row["user_id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                if (postId.isBlank() || userId.isBlank()) return@forEach
+                byPostAndUser[postId.lowercase() to userId.lowercase()] = PostReactionEntry(
+                    postId = postId,
+                    userId = userId,
+                    reactionType = "LIKE",
+                    reactedAt = row["created_at"]?.jsonPrimitive?.contentOrNull
                 )
             }
-        } catch (e: Exception) {
-            android.util.Log.w("PostRepository", "Failed to load post reactions", e)
-            emptyMap()
+            detailedRows.forEach { row ->
+                val postId = row["post_id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                val userId = row["user_id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                val reaction = normalizePostReaction(row["reaction_type"]?.jsonPrimitive?.contentOrNull)
+                    ?: return@forEach
+                if (postId.isBlank() || userId.isBlank()) return@forEach
+                val key = postId.lowercase() to userId.lowercase()
+                // post_likes is the durable cross-client source of truth. If
+                // that table can be read, only active likes may contribute;
+                // otherwise old detail rows could revive a removed reaction.
+                if (likesReadable && key !in byPostAndUser) return@forEach
+                byPostAndUser[key] = PostReactionEntry(
+                    postId = postId,
+                    userId = userId,
+                    reactionType = reaction,
+                    reactedAt = row["updated_at"]?.jsonPrimitive?.contentOrNull
+                        ?: row["created_at"]?.jsonPrimitive?.contentOrNull
+                )
+            }
+            Result.success(byPostAndUser.values.toList())
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -920,7 +978,11 @@ class PostRepository @Inject constructor(
                     Result.success(Unit)
                 }
 
-                if (detailedResult.isFailure && legacyResult.isFailure) {
+                // post_likes is the cross-client source of truth used by the
+                // web feed and older Android clients. A missing optional
+                // post_reactions table must not make an unlike look saved
+                // when the canonical delete failed.
+                if (legacyResult.isFailure) {
                     return Result.failure(
                         legacyResult.exceptionOrNull()
                             ?: detailedResult.exceptionOrNull()
@@ -940,7 +1002,9 @@ class PostRepository @Inject constructor(
                     Result.success(Unit)
                 }
 
-                if (detailedResult.isFailure && legacyResult.isFailure) {
+                // Do not report success based only on post_reactions: that
+                // table is optional and is not read by the web Social feed.
+                if (legacyResult.isFailure) {
                     return Result.failure(
                         legacyResult.exceptionOrNull()
                             ?: detailedResult.exceptionOrNull()
@@ -987,10 +1051,69 @@ class PostRepository @Inject constructor(
                     .loadPostReactions(accessToken, postId, reactionType)
                     .map { it.items }
             }
-            Result.failure(Exception("La lista de reacciones no está disponible en este servidor."))
+
+            val normalizedType = normalizePostReaction(reactionType)
+            val entries = fetchPostReactionEntries(accessToken, listOf(postId.trim()))
+                .getOrElse { return Result.failure(it) }
+                .filter { normalizedType == null || it.reactionType == normalizedType }
+                .sortedByDescending { it.reactedAt.orEmpty() }
+                .take(200)
+            if (entries.isEmpty()) return Result.success(emptyList())
+
+            val profileIds = entries.map { it.userId }.distinct()
+            val profilesById = fetchReactionProfiles(accessToken, profileIds)
+            Result.success(entries.map { entry ->
+                val profile = profilesById[entry.userId.lowercase()]
+                val name = sequenceOf(
+                    profile?.get("display_name")?.jsonPrimitive?.contentOrNull,
+                    profile?.get("full_name")?.jsonPrimitive?.contentOrNull,
+                    profile?.get("username")?.jsonPrimitive?.contentOrNull,
+                ).mapNotNull { it?.trim()?.takeIf(String::isNotBlank) }.firstOrNull() ?: "Usuario"
+                PostReactionUser(
+                    userId = entry.userId,
+                    userName = name,
+                    userAvatarUrl = UbuntuStorageUrl.rewrite(
+                        profile?.get("avatar_url")?.jsonPrimitive?.contentOrNull
+                    ),
+                    isVerified = profile?.get("is_verified")?.jsonPrimitive?.booleanOrNull ?: false,
+                    reactionType = entry.reactionType,
+                    reactedAt = entry.reactedAt
+                )
+            })
         } catch (error: Exception) {
             Result.failure(error)
         }
+    }
+
+    private suspend fun fetchReactionProfiles(
+        accessToken: String,
+        userIds: List<String>
+    ): Map<String, JsonObject> {
+        val cleanIds = userIds.map(String::trim).filter(String::isNotBlank).distinct()
+        if (cleanIds.isEmpty()) return emptyMap()
+
+        suspend fun fetch(select: String): List<JsonObject> {
+            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
+                header("Authorization", "Bearer $accessToken")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("select", select)
+                parameter("id", cleanIds.joinToString(prefix = "in.(", postfix = ")"))
+                parameter("limit", cleanIds.size.toString())
+            }
+            if (!response.status.isSuccess()) return emptyList()
+            return response.body<List<JsonObject>>()
+        }
+
+        return runCatching {
+            val fullRows = fetch("id,display_name,full_name,username,avatar_url,is_verified")
+            val rows = if (fullRows.isNotEmpty()) fullRows else fetch("id,username,avatar_url,is_verified")
+            rows.mapNotNull { row ->
+                val id = row["id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+                    ?: row["user_id"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+                    ?: return@mapNotNull null
+                id to row
+            }.toMap()
+        }.getOrDefault(emptyMap())
     }
 
     private suspend fun upsertPostReactionRow(

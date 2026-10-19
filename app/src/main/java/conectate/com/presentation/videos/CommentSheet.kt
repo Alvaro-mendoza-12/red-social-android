@@ -676,7 +676,7 @@ fun VideoCommentItem(
                      .horizontalScroll(rememberScrollState())
              ) {
                  Text(
-                    text = comment.created_at.take(10), // You might want a relative time formatter here (e.g. "2h")
+                    text = conectate.com.util.localCommentDateLabel(comment.created_at),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                  )

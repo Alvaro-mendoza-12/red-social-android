@@ -1,9 +1,9 @@
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
-import {acknowledgeInboxPreview,applyInboxUnreadSnapshot,confirmInboxConversationRead,inboxActivityEvent,inboxUnreadCount,latestInboxMessage,markInboxConversationRead,useInboxUnreadCounts,type InboxActivity} from '../../core/inboxActivity'
+import {acknowledgeInboxPreview,applyInboxUnreadSnapshot,confirmInboxConversationRead,currentInboxUnreadCount,hasUnrepresentedInboxUnread,inboxActivityEvent,latestInboxMessage,markInboxConversationRead,useInboxUnreadCounts,type InboxActivity} from '../../core/inboxActivity'
 import { readConversationDraft, useDraftRevision } from '../../core/conversationDrafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Search, MessageSquarePlus, MoreVertical, Phone, Plus } from 'lucide-react'
+import { Search, MessageSquarePlus, MoreVertical, Phone, Plus, Users } from 'lucide-react'
 import { openNovvinMenu } from '../../ui/novvin/navigation'
 import { StatusView } from '../../components/StatusView'
 import { SafeAvatar } from '../../components/SafeAvatar'
@@ -18,6 +18,7 @@ import {
   loadFallbackMessagesInbox,
   markFallbackChatRead,
   saveFallbackChatPreferences,
+  searchFallbackProfiles,
 } from '../../core/fallbackData'
 import {
   avatarMediaTypeSource,
@@ -32,6 +33,8 @@ import {
   resolveSupabasePublicUrl,
 } from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
+import { isStandaloneVoiceRoom } from '../../core/voiceDirectory'
+import { useVoiceDirectoryUpdates } from '../../core/useVoiceDirectoryUpdates'
 import {
   friendlyError,
   isMissingTableError,
@@ -59,6 +62,9 @@ type ConversationItem = {
   avatarMediaType?: string
   profileId: string | null
   unreadCount: number
+  unreadMessageIds?: string[]
+  participantCount?: number
+  maxParticipants?: number
   isPinned: boolean
   isMuted: boolean
   isArchived: boolean
@@ -266,11 +272,10 @@ async function searchUsersGlobally(
   currentUserId: string,
   existingProfileIds: Set<string>,
 ): Promise<DiscoverUserItem[]> {
-  if (!supabase) return []
   const query = sanitizeSearchInput(rawQuery).toLowerCase()
   if (!query) return []
 
-  const rowsByTable = await Promise.all([
+  const rowsByTable = isFallbackAuthConfigured ? [(await searchFallbackProfiles(query, 25)).items] : !supabase ? [] : await Promise.all([
     searchProfilesInTable('profiles', query),
     searchProfilesInTable('profiles_public', query),
   ])
@@ -372,7 +377,7 @@ async function loadCollection(
     .limit(40)
   if (error) return []
 
-  return ((data ?? []) as GenericRow[]).map((row) => {
+  return ((data ?? []) as GenericRow[]).filter(row => kind !== 'voice' || isStandaloneVoiceRoom(row)).map((row) => {
     const id = textOf(row, ['id'], crypto.randomUUID())
     const openPath =
       table === 'groups'
@@ -380,7 +385,7 @@ async function loadCollection(
         : table === 'communities'
           ? `/app/messages/community/${id}`
           : table === 'voice_rooms'
-            ? '/app/voice'
+            ? `/app/voice/${encodeURIComponent(id)}`
             : undefined
 
     return {
@@ -534,13 +539,14 @@ async function loadRoomCollectionByMembership(options: {
   return sortByUpdatedAt(mapped)
 }
 
-function withInboxActivity(accountId:string,items:ConversationItem[],requestedAt=Infinity):ConversationItem[]{
+function withInboxActivity(accountId:string,items:ConversationItem[]):ConversationItem[]{
  return sortByUpdatedAt(items.map(item=>{
   if(item.kind==='voice')return item
   const latest=latestInboxMessage(accountId,item.kind,item.id),at=latest?textOf(latest,['created_at','createdAt'],''):''
   const next=latest&&toMillis(at)>=toMillis(item.updatedAt)?{...item,subtitle:previewFromMessage(latest),updatedAt:at}:item
-  if(latest&&item.subtitle===previewFromMessage(latest))acknowledgeInboxPreview(accountId,item.kind,item.id,item.updatedAt)
-  return {...next,unreadCount:inboxUnreadCount(accountId,item.kind,next,requestedAt)}
+  // The preview may be our optimistic send. Read state must use the server snapshot's
+  // timestamp, otherwise that newer outgoing timestamp revives a stale unread count.
+  return {...next,unreadCount:currentInboxUnreadCount(accountId,item.kind,item)}
  }))
 }
 
@@ -588,7 +594,7 @@ export function MessagesPage() {
   )
 
   const inboxCacheKey = useMemo(
-    () => `messages:${user?.id ?? 'anon'}:${activeTab}`,
+    () => `messages:${user?.id ?? 'anon'}:${activeTab}${activeTab === 'voice' ? ':standalone-v2' : ''}`,
     [activeTab, user?.id],
   )
 
@@ -603,14 +609,15 @@ export function MessagesPage() {
     return next
   }, [items])
 
+  const projectedItems = withInboxActivity(user?.id || '', items)
   const filteredItems = useMemo(() => {
     const base = normalizedSearch
-      ? items.filter((item) => {
+      ? projectedItems.filter((item) => {
           const haystack =
             `${item.title} ${item.subtitle} ${item.folders.join(' ')} ${item.id}`.toLowerCase()
           return haystack.includes(normalizedSearch)
         })
-      : items
+      : projectedItems
 
     if (activeTab !== 'chats') return base
 
@@ -620,7 +627,7 @@ export function MessagesPage() {
       if (showFavoritesOnly && !item.isFavorite) return false
       return true
     })
-  }, [activeTab, items, normalizedSearch, showArchived, showFavoritesOnly, showUnreadOnly])
+  }, [activeTab, projectedItems, normalizedSearch, showArchived, showFavoritesOnly, showUnreadOnly])
 
   const showGlobalSearchResults = activeTab === 'chats' && normalizedSearch.length >= 2
   const showNoResultsState =
@@ -638,7 +645,7 @@ export function MessagesPage() {
   }, [activeTab])
 
   useEffect(() => {
-    if (!user || activeTab !== 'chats' || isFallbackSession) {
+    if (!user || activeTab !== 'chats') {
       setDiscoverUsers([])
       setDiscoverLoading(false)
       setDiscoverError(null)
@@ -725,7 +732,13 @@ export function MessagesPage() {
       }
       const sequence=++inboxLoadSequence.current
       const requestedAt=Date.now()
-      const commitItems=(next:ConversationItem[])=>{if(sequence!==inboxLoadSequence.current)return;const current=withInboxActivity(user.id,next,requestedAt);if(activeTab!=='voice')applyInboxUnreadSnapshot(user.id,activeTab==='chats'?'chat':activeTab==='groups'?'group':'community',current,requestedAt);setItems(current);writeCachedValue(inboxCacheKey,current)}
+      const commitItems=(next:ConversationItem[])=>{
+        if(sequence!==inboxLoadSequence.current)return
+        if(activeTab!=='voice')applyInboxUnreadSnapshot(user.id,activeTab==='chats'?'chat':activeTab==='groups'?'group':'community',next,requestedAt)
+        next.forEach(item=>{if(item.kind!=='voice')acknowledgeInboxPreview(user.id,item.kind,item.id,item.updatedAt)})
+        const current=withInboxActivity(user.id,next)
+        setItems(current);writeCachedValue(inboxCacheKey,current)
+      }
       try {
         if (isFallbackSession) {
           const response = await loadFallbackMessagesInbox(activeTab)
@@ -953,6 +966,7 @@ export function MessagesPage() {
   useEffect(() => {
     const cached = readCachedValue<ConversationItem[]>(inboxCacheKey, 1000 * 60 * 60 * 8)
     if (cached && cached.length > 0) {
+      if(user&&activeTab!=='voice')applyInboxUnreadSnapshot(user.id,activeTab==='chats'?'chat':activeTab==='groups'?'group':'community',cached,0)
       setItems(withInboxActivity(user?.id||'',cached.map(normalizeConversationAvatar)))
       setLoading(false)
       void loadCurrentTab({ silent: true })
@@ -960,13 +974,26 @@ export function MessagesPage() {
     }
     void loadCurrentTab({ silent: false })
     return()=>{inboxLoadSequence.current+=1}
-  }, [inboxCacheKey, loadCurrentTab, user?.id])
+  }, [activeTab, inboxCacheKey, loadCurrentTab, user])
+
+  useVoiceDirectoryUpdates(() => void loadCurrentTab({ silent: true }), activeTab === 'voice' && isFallbackSession)
 
   useEffect(() => {
     const reload = () => void loadCurrentTab({ silent: true })
     window.addEventListener('novvin:conversation-preferences-changed', reload)
     return () => window.removeEventListener('novvin:conversation-preferences-changed', reload)
   }, [loadCurrentTab])
+
+  useEffect(() => {
+    if (!user || loading || activeTab === 'voice') return
+    if (inboxCounts[activeTab] === 0 && (activeTab !== 'chats' || inboxCounts.archivedChats === 0)) return
+    const scope = activeTab === 'chats' ? 'chat' : activeTab === 'groups' ? 'group' : 'community'
+    if (!hasUnrepresentedInboxUnread(user.id, scope, items.map(item => item.id))) return
+    // A newer shell response may know about a conversation absent from an older
+    // list response. Fetch it rather than leaving a badge with no row to open.
+    const timer = setTimeout(() => void loadCurrentTab({ silent: true }), 120)
+    return () => clearTimeout(timer)
+  }, [activeTab, inboxCounts, items, loading, loadCurrentTab, user])
 
   useEffect(()=>{
     let timer:ReturnType<typeof setTimeout>|undefined
@@ -1267,7 +1294,7 @@ export function MessagesPage() {
       <div className="conversation-copy">
         <div className="row-between">
           <h3>{item.title} {item.kind === 'chat' && item.profileId ? <ProfileStatusBadges profileId={item.profileId}/> : null}</h3>
-          <small className="timestamp">{inboxTime(item.updatedAt)}</small>
+          {item.kind === 'voice' ? <small className="voice-inbox-presence" aria-label={`${Math.max(0, item.participantCount || 0)} participantes conectados`}><Users size={14} aria-hidden="true"/>{Math.max(0, item.participantCount || 0)} conectados</small> : <small className="timestamp">{inboxTime(item.updatedAt)}</small>}
         </div>
         <p className={item.kind!=='voice'&&readConversationDraft(user?.id,item.kind,item.id)?'conversation-draft':undefined}>{item.kind!=='voice'&&readConversationDraft(user?.id,item.kind,item.id)?`Borrador: ${readConversationDraft(user?.id,item.kind,item.id)}`:item.subtitle}</p>
       </div>
@@ -1398,6 +1425,7 @@ export function MessagesPage() {
       <header className="messages-inbox-head">
         <h1>Novvin</h1>
         <div className="row-actions messages-head-actions"><Link className="icon-btn" to="/app/assistant" aria-label="Asistente de Novvin" title="Asistente de Novvin">✦</Link>
+          <Link className="icon-btn" to="/app/search" aria-label="Buscar personas" title="Buscar personas"><Search size={21}/></Link>
           <Link className="icon-btn" to="/app/calls" aria-label="Llamadas" title="Llamadas">
             <Phone size={21} />
           </Link>
@@ -1492,7 +1520,7 @@ export function MessagesPage() {
               aria-pressed={showArchived}
               onClick={() => { setShowArchived(current => !current); setShowUnreadOnly(false); setShowFavoritesOnly(false) }}
             >
-              Archivados
+              Archivados{inboxCounts.archivedChats > 0 ? <span className="inbox-tab-count" aria-label={`${inboxCounts.archivedChats} conversaciones archivadas sin leer`}>{inboxCounts.archivedChats > 99 ? '99+' : inboxCounts.archivedChats}</span> : null}
             </button>
           </div>
         </div>

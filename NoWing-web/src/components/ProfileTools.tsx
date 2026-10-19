@@ -5,6 +5,8 @@ import { buildProfileQrPayload } from '../core/socialLinks'
 import { formatDateTime, friendlyError } from '../core/utils'
 import { QrCodeTile } from './QrCodeTile'
 import { SafeAvatar } from './SafeAvatar'
+import { subscribeUbuntuRealtime } from '../core/ubuntuRealtime'
+import { useAuth } from '../core/auth/AuthProvider'
 export function ProfileTools(props: { profileId: string; name: string; showButtons?: boolean }) {
   return <ProfileToolsContent key={props.profileId} {...props} />
 }
@@ -17,6 +19,7 @@ function ProfileToolsContent({
   name: string
   showButtons?: boolean
 }) {
+  const { user } = useAuth()
   const [mode, setMode] = useState<'qr' | 'visits' | null>(null),
     [items, setItems] = useState<ProfileVisit[]>([]),
     [enabled, setEnabled] = useState(true),
@@ -43,6 +46,14 @@ function ProfileToolsContent({
       active = false
     }
   }, [mode, profileId, attempt])
+  useEffect(() => {
+    if (mode !== 'visits' || !user?.id) return
+    const refresh = () => { if (!document.hidden) setAttempt(value => value + 1) }
+    const stop = subscribeUbuntuRealtime({ channel: `user:${user.id}`, onEvent: event => { if (event.payload.event === 'profile_views_changed') refresh() } })
+    const timer = setInterval(refresh, 15000)
+    window.addEventListener('focus', refresh)
+    return () => { stop(); clearInterval(timer); window.removeEventListener('focus', refresh) }
+  }, [mode, user?.id])
   useEffect(() => {
     const visits = () => { setLoading(true); setError(''); setItems([]); setMode('visits') },
       qr = () => setMode('qr')

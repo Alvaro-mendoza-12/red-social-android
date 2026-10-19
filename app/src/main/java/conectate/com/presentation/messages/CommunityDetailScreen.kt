@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -67,6 +68,7 @@ fun CommunityDetailScreen(
     val membershipError by viewModel.membershipError.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showMenu by remember { mutableStateOf(false) }
+    var shareLink by remember(communityId) { mutableStateOf<String?>(null) }
     var showAddMemberDialog by remember { mutableStateOf(false) }
     val searchResults by viewModel.searchResults.collectAsState()
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -108,19 +110,27 @@ fun CommunityDetailScreen(
         }
     }
 
+    shareLink?.let { link -> CollectionShareDialog(
+        title = "Compartir comunidad", link = link, navController = navController,
+        canRevoke = canManageMembers, onDismiss = { shareLink = null }
+    ) }
+
     Scaffold(
         snackbarHost = {
             conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
         },
         topBar = {
             TopAppBar(
-                title = { Text(community?.name ?: "Detalles de la comunidad") },
+                title = { Text(community?.name ?: "Detalles de la comunidad", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
                     }
                 },
                 actions = {
+                    if (isMember) IconButton(onClick = { viewModel.createShareLink { shareLink = it } }) {
+                        Icon(Icons.Default.Share, "Compartir enlace o QR")
+                    }
                     if (membershipPolicy?.canAddMembers == true) IconButton(onClick = {
                         viewModel.refreshMembershipPolicy(); showAddMemberDialog = true
                     }) { Icon(Icons.Default.PersonAdd, "Añadir persona") }
@@ -131,6 +141,11 @@ fun CommunityDetailScreen(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
+                        if (isMember) DropdownMenuItem(
+                            text = { Text("Compartir enlace o QR") },
+                            onClick = { showMenu = false; viewModel.createShareLink { shareLink = it } },
+                            leadingIcon = { Icon(Icons.Default.Share, null) }
+                        )
                         if (canManageMembers) {
                             DropdownMenuItem(
                                 text = { Text("Vista como rol") },
@@ -419,6 +434,7 @@ fun CommunityDetailScreen(
                             userImage = member.userImage,
                             role = memberRole,
                             isCurrentUser = member.user_id.trim().lowercase() == normalizedCurrentUserId,
+                            canAssignRole = amICreator,
                             canManageMember = canManageMembers &&
                                 member.user_id.trim().lowercase() != normalizedCurrentUserId &&
                                 member.user_id.trim().lowercase() != normalizedCreatorId,
@@ -998,7 +1014,7 @@ fun EditCommunityDialog(
     var description by remember { mutableStateOf(community.description ?: "") }
     var isPublic by remember { mutableStateOf(community.is_public) }
     var onlyAdminsCanTalk by remember { mutableStateOf(community.only_admins_can_talk) }
-    var dailyMessageLimit by remember { mutableStateOf(community.daily_message_limit.toString()) }
+    var weeklyMessageLimit by remember { mutableStateOf(community.weekly_message_limit.toString()) }
     var selectedImageBytes by remember { mutableStateOf<ByteArray?>(null) }
     var imageToCrop by remember { mutableStateOf<android.net.Uri?>(null) }
     
@@ -1031,9 +1047,11 @@ fun EditCommunityDialog(
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nombre") })
                 OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Descripción") })
                 OutlinedTextField(
-                    value = dailyMessageLimit,
-                    onValueChange = { dailyMessageLimit = it.filter { char -> char.isDigit() } },
-                    label = { Text("Límite diario de mensajes") },
+                    value = weeklyMessageLimit,
+                    onValueChange = { weeklyMessageLimit = it.filter { char -> char.isDigit() }.take(5) },
+                    label = { Text("Mensajes por integrante a la semana") },
+                    enabled = !onlyAdminsCanTalk,
+                    supportingText = { Text("0: sin límite. Se renueva los lunes a las 00:00 UTC. Administradores exentos.") },
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                     )
@@ -1052,7 +1070,10 @@ fun EditCommunityDialog(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text("Solo admins pueden hablar")
-                    Switch(checked = onlyAdminsCanTalk, onCheckedChange = { onlyAdminsCanTalk = it })
+                    Switch(checked = onlyAdminsCanTalk, onCheckedChange = {
+                        onlyAdminsCanTalk = it
+                        if (!it && weeklyMessageLimit.toIntOrNull() == 0) weeklyMessageLimit = "10"
+                    })
                 }
                 Button(onClick = { launcher.launch("image/*") }) {
                     Text("Cambiar Foto")
@@ -1061,7 +1082,7 @@ fun EditCommunityDialog(
         },
         confirmButton = {
             Button(onClick = {
-                val limit = dailyMessageLimit.toIntOrNull() ?: 0
+                val limit = (weeklyMessageLimit.toIntOrNull() ?: 0).coerceIn(0, 10000)
                 onConfirm(name, description, selectedImageBytes, isPublic, onlyAdminsCanTalk, limit)
             }) {
                 Text("Guardar")
@@ -1081,6 +1102,7 @@ fun CommunityMemberItem(
     role: String,
     isCurrentUser: Boolean,
     canManageMember: Boolean,
+    canAssignRole: Boolean = canManageMember,
     onRoleChange: (String) -> Unit,
     onRemove: () -> Unit,
     navController: NavController
@@ -1126,6 +1148,7 @@ fun CommunityMemberItem(
                 }
                 DropdownMenu(expanded = showOptions, onDismissRequest = { showOptions = false }) {
                     val normalizedRole = normalizedCommunityRole(role)
+                    if (canAssignRole) {
                     if (normalizedRole != "admin") {
                         DropdownMenuItem(
                             text = { Text("Asignar Administrador") },
@@ -1143,6 +1166,7 @@ fun CommunityMemberItem(
                             text = { Text("Asignar Miembro") },
                             onClick = { showOptions = false; onRoleChange("member") }
                         )
+                    }
                     }
                     DropdownMenuItem(
                         text = { Text("Expulsar miembro") },

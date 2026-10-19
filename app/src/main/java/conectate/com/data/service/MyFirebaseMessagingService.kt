@@ -97,6 +97,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     @Inject lateinit var notificationGroupDao: conectate.com.data.local.dao.GroupDao
     @Inject lateinit var notificationCommunityDao: conectate.com.data.local.dao.CommunityDao
+    @Inject lateinit var conversationReadReceiver: conectate.com.data.repository.message.ConversationReadReceiver
 
     private val serviceScope = newSafeScope("FirebaseMessagingService", Dispatchers.IO)
     private val callCancellationGuard by lazy { CallCancellationGuard(this) }
@@ -188,6 +189,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 "Extraction: chatId=$chatId, groupId=$groupId, communityId=$communityId, isGroup=$isGroup, isCommunity=$isCommunity"
             )
 
+            if (type == "conversation_read") {
+                val event = conectate.com.util.conversationReadEvent(data) ?: return
+                if (event.accountId != authService.getCurrentUserId()?.trim()?.lowercase() &&
+                    accountSessionRepository.accounts.value.none { it.user_id?.trim()?.lowercase() == event.accountId }) return
+                runBlocking(Dispatchers.IO) { conversationReadReceiver.apply(event) }
+                serviceScope.launch { multiAccountInboxRepository.refreshInactiveAccounts() }
+                return
+            }
             // Deletions are data-only control events, processed before hints, repository inserts and alerts.
             if (type.trim().equals("message_deleted", true)) {
                 val event = conectate.com.util.deletedMessageEvent(data) ?: return
@@ -211,8 +220,31 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val incomingIdentity = conectate.com.util.DeletedMessageIdentity.create(
                 effectiveAccountTarget?.userId, if (isCommunity) "community" else if (isGroup) "group" else "chat", chatId, messageId)
             if (incomingIdentity != null && conectate.com.util.DeletedMessageStore(this).isSuppressed(incomingIdentity)) return
+            if (conectate.com.util.shouldRecordUnreadPush(type,messageId,senderId,effectiveAccountTarget?.userId) &&
+                conectate.com.util.ConversationReadStore(this).isRead(effectiveAccountTarget?.userId,
+                    if (isCommunity) "community" else if (isGroup) "group" else "chat",chatId,messageId,data["created_at"])) return
 
-            if (!isTargetingActiveAccount && !chatId.isNullOrBlank()) {
+            if (type == "message_reaction") {
+                val scopeType = if (isCommunity) "community" else if (isGroup) "group" else "chat"
+                val conversationId = chatId?.trim()?.takeIf { it.isNotBlank() } ?: return
+                if (!appSettingsPreferences.messageNotificationsEnabled.value) return
+                if (isTargetingActiveAccount && (messageSessionStateStore.isActiveConversationVisible(scopeType, conversationId) ||
+                    ConversationNotificationPrefs(this).isMuted(scopeType, conversationId, authService.getCurrentUserId()))) return
+                if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+                MessageNotificationFactory.postReaction(this, MessageNotificationPayload(
+                    channelId = if (scopeType == "chat") getString(R.string.chat_notification_channel_id) else getString(R.string.group_notification_channel_id),
+                    channelName = "Reacciones a mensajes", channelDescription = "Avisos de reacciones recibidas",
+                    conversationId = conversationId, targetType = scopeType, conversationTitle = data["conversation_title"] ?: "Conversación",
+                    senderName = senderName, messageBody = data["body"] ?: content,
+                    notificationId = ("reaction:$conversationId:$senderId").hashCode(), senderId = senderId, messageId = messageId,
+                    notificationAccountTarget = effectiveAccountTarget, isGroupConversation = scopeType != "chat", allowInlineActions = false,
+                    channelContextId = data["channel_id"]
+                ))
+                return
+            }
+
+            if (!isTargetingActiveAccount && !chatId.isNullOrBlank() &&
+                conectate.com.util.shouldRecordUnreadPush(type, messageId, senderId, effectiveAccountTarget?.userId)) {
                 val pendingTargetType = when {
                     isCommunity -> "community"
                     isGroup -> "group"
@@ -539,6 +571,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 val groupName = conectate.com.util.ConversationNotificationIdentity.title(targetType, suppliedName, cachedConversation?.first)
                 sendGroupNotification(
                     title = groupName,
+                    createdAt = data["created_at"],
                     messageBody = conectate.com.util.mentionNotificationPreview(displayContent, data["mentioned"] == "true"),
                     chatId = chatId ?: "group_default",
                     senderId = senderId,
@@ -549,6 +582,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     senderAvatar = data["sender_avatar"],
                     isGroup = isGroup,
                     isCommunity = isCommunity,
+                    isMention = data["mentioned"] == "true",
                     messageId = messageId,
                     notificationAccountTarget = effectiveAccountTarget,
                     accountLabel = targetAccountLabel,
@@ -560,6 +594,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     return
                 }
                 sendChatNotification(
+                    createdAt = data["created_at"],
                     title = senderName,
                     messageBody = displayContent,
                     chatId = chatId,
@@ -686,6 +721,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     @OptIn(ExperimentalFoundationApi::class)
     private fun sendChatNotification(
+        createdAt: String? = null,
         title: String,
         messageBody: String,
         chatId: String?,
@@ -729,13 +765,15 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 largeIcon = avatarBitmap,
                 isGroupConversation = false,
                 notificationAccountTarget = notificationAccountTarget?.copy(displayName = accountLabel ?: notificationAccountTarget.displayName),
-                allowInlineActions = allowInlineActions
+                allowInlineActions = allowInlineActions,
+                createdAt = createdAt
             )
         )
     }
 
     @OptIn(ExperimentalFoundationApi::class)
     private fun sendGroupNotification(
+        createdAt: String? = null,
         title: String,
         messageBody: String,
         chatId: String,
@@ -750,7 +788,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         messageId: String?,
         notificationAccountTarget: NotificationAccountTarget?,
         accountLabel: String?,
-        respectMutePreferences: Boolean
+        respectMutePreferences: Boolean,
+        isMention: Boolean = false
     ) {
         var channelId = getString(R.string.group_notification_channel_id)
         var targetType = when {
@@ -759,7 +798,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             else -> "chat"
         }
         var conversationId = chatId.trim().lowercase()
-        if (respectMutePreferences && ConversationNotificationPrefs(this).isMuted(targetType = targetType, conversationId = conversationId, accountId = authService.getCurrentUserId())) {
+        if (respectMutePreferences && !isMention && ConversationNotificationPrefs(this).isMuted(targetType = targetType, conversationId = conversationId, accountId = authService.getCurrentUserId())) {
             android.util.Log.d(TAG, "$targetType $conversationId muted via notification prefs. Notification skipped.")
             return
         }
@@ -768,7 +807,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         if (respectMutePreferences && (
                 notificationAccountTarget?.matches(authService.getCurrentUserId(), authService.getCurrentUserEmail()) == false ||
                 messageSessionStateStore.isActiveConversationVisible(targetType, conversationId) ||
-                ConversationNotificationPrefs(this).isMuted(targetType, conversationId, authService.getCurrentUserId())
+                (!isMention && ConversationNotificationPrefs(this).isMuted(targetType, conversationId, authService.getCurrentUserId()))
             )) return
         MessageNotificationFactory.post(
             context = this,
@@ -789,7 +828,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 notificationAccountTarget = notificationAccountTarget?.copy(displayName = accountLabel ?: notificationAccountTarget.displayName),
                 allowInlineActions = respectMutePreferences,
                 conversationIcon = roomBitmap,
-                channelContextId = channelContextId
+                channelContextId = channelContextId,
+                createdAt = createdAt
             )
         )
     }

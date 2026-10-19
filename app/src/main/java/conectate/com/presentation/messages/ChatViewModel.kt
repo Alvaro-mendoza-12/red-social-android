@@ -1253,8 +1253,9 @@ class ChatViewModel @Inject constructor(
     fun sendLocationMessage(latitude: String, longitude: String, label: String?) {
         val lat = latitude.trim()
         val lon = longitude.trim()
-        if (lat.isBlank() || lon.isBlank()) {
-            conectate.com.presentation.common.AppFeedbackBus.showError("Completa latitud y longitud")
+        if (lat.toDoubleOrNull()?.let { it.isFinite() && it in -90.0..90.0 } != true ||
+            lon.toDoubleOrNull()?.let { it.isFinite() && it in -180.0..180.0 } != true) {
+            conectate.com.presentation.common.AppFeedbackBus.showError("Revisa las coordenadas de la ubicación")
             return
         }
         val marker = label?.trim().orEmpty()

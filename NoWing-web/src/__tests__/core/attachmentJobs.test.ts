@@ -3,6 +3,16 @@ import { retainAttachmentOwner, useAttachmentDraft, useAttachmentPreparation } f
 
 beforeEach(() => retainAttachmentOwner(''))
 
+test('cancelled preparation cannot restore attachments after the preview was closed',async()=>{
+ let finish!:(files:File[])=>void
+ const pending=new Promise<File[]>(resolve=>{finish=resolve}),first=mount()
+ act(()=>first.result.current.preparation.start(()=>pending))
+ act(()=>first.result.current.preparation.cancel())
+ await act(async()=>{finish([new File(['data'],'cancelled.png')]);await pending})
+ expect(first.result.current.draft).toHaveLength(0)
+ expect(first.result.current.preparation.preparing).toBe(false)
+})
+
 function mount(room = 'first') {
   return renderHook(() => {
     const [draft, setDraft] = useAttachmentDraft<{ previewUrl: string; file: File }>('viewer', 'chat', room)

@@ -7,6 +7,8 @@ import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { searchFallbackProfiles, submitFallbackUserReport } from '../../core/fallbackData'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
+import { Flag, Search, X } from 'lucide-react'
+import './searchPage.css'
 
 type ProfileCard = {
   id: string
@@ -18,7 +20,7 @@ type ProfileCard = {
 
 function mapProfile(row: GenericRow): ProfileCard {
   return {
-    id: textOf(row, ['id'], crypto.randomUUID()),
+    id: textOf(row, ['id', 'profileId'], ''),
     name: textOf(row, ['displayName', 'display_name', 'full_name'], 'Usuario'),
     username: textOf(row, ['username'], ''),
     bio: textOf(row, ['bio'], ''),
@@ -35,6 +37,8 @@ export function SearchPage() {
   const [reportReasonById, setReportReasonById] = useState<Record<string, string>>({})
   const [reportDetailsById, setReportDetailsById] = useState<Record<string, string>>({})
   const [reportingById, setReportingById] = useState<Record<string, boolean>>({})
+  const [reportOpenId, setReportOpenId] = useState<string | null>(null)
+  const [reportStatus, setReportStatus] = useState('')
   const useFallback = shouldUseUbuntuBackend(isFallbackSession)
 
   useEffect(() => {
@@ -43,12 +47,12 @@ export function SearchPage() {
         setLoading(true)
         setError(null)
         try {
-          const response = await searchFallbackProfiles('', 120)
-          setItems(response.items.map(mapProfile))
+          const response = await searchFallbackProfiles(query, 40)
+          if (!cancelled) setItems(response.items.map(mapProfile).filter(profile => profile.id))
         } catch (caught) {
-          setError(friendlyError(caught, 'No se pudo cargar perfiles desde Ubuntu'))
+          if (!cancelled) setError(friendlyError(caught, 'No se pudo cargar perfiles desde Ubuntu'))
         } finally {
-          setLoading(false)
+          if (!cancelled) setLoading(false)
         }
         return
       }
@@ -64,25 +68,28 @@ export function SearchPage() {
       try {
         const { data, error: queryError } = await supabase.from('profiles').select('*').limit(120)
         if (queryError) throw queryError
-        setItems(((data ?? []) as GenericRow[]).map(mapProfile))
+        if (!cancelled) setItems(((data ?? []) as GenericRow[]).map(mapProfile).filter(profile => profile.id))
       } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo cargar perfiles'))
+        if (!cancelled) setError(friendlyError(caught, 'No se pudo cargar perfiles'))
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
-    void loadProfiles()
-  }, [useFallback])
+    let cancelled = false
+    const timer = setTimeout(() => void loadProfiles(), 240)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [useFallback, query])
 
   const filtered = useMemo(() => {
-    const clean = query.trim().toLowerCase()
+    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    const clean = normalize(query.trim())
     if (!clean) return items
     return items.filter((profile) => {
       return (
-        profile.name.toLowerCase().includes(clean) ||
-        profile.username.toLowerCase().includes(clean) ||
-        profile.bio.toLowerCase().includes(clean)
+        normalize(profile.name).includes(clean) ||
+        normalize(profile.username).includes(clean) ||
+        normalize(profile.bio).includes(clean)
       )
     })
   }, [items, query])
@@ -100,6 +107,7 @@ export function SearchPage() {
       return
     }
     setReportingById((current) => ({ ...current, [profile.id]: true }))
+    setReportStatus('')
     setError(null)
     try {
       const reporterName = (user.email ?? 'Usuario').split('@')[0]
@@ -112,6 +120,8 @@ export function SearchPage() {
         })
         setReportReasonById((current) => ({ ...current, [profile.id]: '' }))
         setReportDetailsById((current) => ({ ...current, [profile.id]: '' }))
+        setReportOpenId(null)
+        setReportStatus('Reporte enviado. Gracias por ayudarnos a cuidar la comunidad.')
         return
       }
 
@@ -165,6 +175,8 @@ export function SearchPage() {
 
       setReportReasonById((current) => ({ ...current, [profile.id]: '' }))
       setReportDetailsById((current) => ({ ...current, [profile.id]: '' }))
+      setReportOpenId(null)
+      setReportStatus('Reporte enviado. Gracias por ayudarnos a cuidar la comunidad.')
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo enviar el reporte'))
     } finally {
@@ -172,50 +184,52 @@ export function SearchPage() {
     }
   }
 
-  if (loading) return <StatusView title="Cargando búsqueda" description="Obteniendo perfiles..." />
-  if (error) return <StatusView title="Búsqueda no disponible" description={error} />
-
   return (
-    <section className="section-stack">
+    <section className="section-stack user-search-page">
       <header className="section-header">
         <h2>Buscar usuarios</h2>
-        <p>Versión web de búsqueda social.</p>
+        <p>Encuentra personas por nombre o usuario.</p>
       </header>
 
-      <input
+      <label className="user-search-input"><Search size={19} aria-hidden="true"/><input
         className="text-input"
+        aria-label="Buscar personas"
         placeholder="Buscar por nombre, usuario o bio"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-      />
+      /></label>
 
-      {filtered.length === 0 ? (
+      {error ? <p role="alert">{error}</p> : null}
+      {reportStatus ? <p role="status">{reportStatus}</p> : null}
+      {loading ? <p role="status">Buscando personas…</p> : null}
+      {!loading && !error && filtered.length === 0 ? (
         <StatusView title="Sin resultados" description="Prueba otro término de búsqueda." />
       ) : (
-        <div className="list-stack">
+        <div className="user-search-results">
           {filtered.map((profile) => (
-            <article className="surface-card" key={profile.id}>
-              <div className="profile-search-identity">
+            <article className="user-search-card" key={profile.id}>
                 <Link to={`/app/profile/${profile.id}`} aria-label={`Ver perfil de ${profile.name}`}>
                   <SafeAvatar url={profile.avatarUrl} name={profile.name || profile.id} size="md" />
                 </Link>
-                <div>
+                <div className="user-search-identity">
                   <Link className="inline-link" to={`/app/profile/${profile.id}`}>
                     <h3>{profile.name}</h3>
                   </Link>
                   <span>{profile.username ? `@${profile.username}` : '@usuario'}</span>
+                  {profile.bio ? <p>{profile.bio}</p> : null}
                 </div>
-              </div>
-              <p>{profile.bio || 'Sin biografía'}</p>
-              <div className="row-actions">
+              <div className="user-search-actions">
                 <Link className="ghost-btn" to={`/app/profile/${profile.id}`}>
                   Ver perfil
                 </Link>
+                {user?.id !== profile.id ? <button className="icon-btn" type="button" aria-label={`Reportar a ${profile.name}`} title="Reportar" aria-expanded={reportOpenId === profile.id} onClick={() => { setReportOpenId(current => current === profile.id ? null : profile.id); setError(null) }}>{reportOpenId === profile.id ? <X size={18}/> : <Flag size={17}/>}</button> : null}
               </div>
-              {user?.id !== profile.id ? (
-                <div className="composer">
+              {reportOpenId === profile.id && user?.id !== profile.id ? (
+                <div className="user-search-report" role="region" aria-label={`Reportar a ${profile.name}`}>
+                  <p>Cuéntanos por qué quieres reportar este perfil.</p>
                   <select
                     className="text-input tiny-input"
+                    aria-label="Motivo del reporte"
                     value={reportReasonById[profile.id] ?? ''}
                     onChange={(event) =>
                       setReportReasonById((current) => ({
@@ -233,6 +247,8 @@ export function SearchPage() {
                   </select>
                   <input
                     className="text-input"
+                    aria-label="Detalles del reporte"
+                    maxLength={500}
                     placeholder="Detalle (opcional)"
                     value={reportDetailsById[profile.id] ?? ''}
                     onChange={(event) =>

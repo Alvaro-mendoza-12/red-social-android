@@ -1,0 +1,11 @@
+.post-comment-composer { display: flex; align-items: center; gap: 10px; width: 100%; }
+.post-comment-composer .text-input { flex: 1 1 auto; min-width: 0; }
+.post-comment-composer .primary-btn { flex: 0 0 auto; width: auto; min-height: 44px; padding: 10px 18px; white-space: nowrap; word-break: normal; }
+.post-comment-card { padding: 16px; min-width: 0; }
+.post-comment-heading { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.post-comment-heading .identity-link { min-width: 0; max-width: 100%; gap: 10px; }
+.post-comment-heading .identity-link strong { overflow-wrap: anywhere; }
+.post-comment-heading > small { font-size: 12px; color: var(--secondary-text); }
+.post-comment-card p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.post-comment-card audio { display: block; width: min(100%,360px); margin-top: 12px; }
+@media(max-width:480px) { .post-comment-composer { gap: 6px; } .post-comment-composer .primary-btn { padding: 10px 12px; } }

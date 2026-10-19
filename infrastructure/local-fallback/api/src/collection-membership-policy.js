@@ -70,7 +70,19 @@ function collectionMembershipStateFromSnapshot(snapshot,viewerIds) {
   const ownEffective=(ownLocal.length?ownLocal.filter(row=>!removed(row)):own)
     .sort((a,b)=>(time(b.joined_at || b.created_at)||0)-(time(a.joined_at || a.created_at)||0))[0]
   const member=Boolean(room && !removed(room) && !denied && (creator || ownEffective))
-  const joinedAt=ownEffective?.joined_at || ownEffective?.created_at || null
+  let joinedAt=ownEffective?.joined_at || ownEffective?.created_at || null
+  // Older metadata updates shadowed imported memberships with a fresh NOW().
+  // A real departure/rejoin always has an archive or an explicit epoch grant.
+  // Repair only a continuous imported membership, never an actual rejoin.
+  if(member && ownLocal.length && !grants.rows.some(row=>ids.includes(id(row.user_id))) &&
+    !archives.rows.some(row=>ids.includes(id(row.user_id))) &&
+    !oldMembers.some(row=>ids.includes(userId(row)) && removed(row))) {
+    const original=oldMembers.filter(row=>ids.includes(userId(row)) && !removed(row))
+      .map(row=>row.joined_at || row.created_at).filter(value=>Number.isFinite(time(value)))
+      .sort((a,b)=>time(a)-time(b))[0]
+    if(original && Number.isFinite(time(joinedAt)) && time(original)<time(joinedAt)) joinedAt=original
+  }
+  if(Number.isFinite(time(joinedAt))) joinedAt=new Date(joinedAt).toISOString()
   const grant=grants.rows.find(row=>ids.includes(id(row.user_id)) && time(row.joined_at)===time(joinedAt))
   const archive=archives.rows.filter(row=>ids.includes(id(row.user_id)))
     .sort((a,b)=>time(b.departed_at)-time(a.departed_at))[0]
@@ -181,6 +193,7 @@ async function addCollectionMember(db,{kind,roomId,actor,target,body={},allowInv
   if(!['member','moderator','admin'].includes(role)) throw fail('ROLE_INVALID',400)
   const explicitRole=body.role!=null
   if((role!=='member' || (explicitRole && targetState.member && !self)) && !state.canManage) throw fail('ROLE_CHANGE_DENIED')
+  if(kind==='community' && explicitRole && !self && !state.creator) throw fail('COMMUNITY_OWNER_ROLE_REQUIRED')
   if(targetState.creator && explicitRole && !self) throw fail('CREATOR_ROLE_IMMUTABLE')
   if(targetState.member) {
     if(body.historyFrom!=null || body.historyUntil!=null) throw fail('MEMBER_ALREADY_JOINED',409)
@@ -190,7 +203,7 @@ async function addCollectionMember(db,{kind,roomId,actor,target,body={},allowInv
         VALUES($1,$2,$3,$4,$5,FALSE) ON CONFLICT(room_kind,room_id,user_id) DO UPDATE SET role=EXCLUDED.role`,
         [kind,roomId,targetId,role,targetState.history.joinedAt])
     }
-    return {ok:true,added:false,historyAccess:targetState.history}
+    return {ok:true,added:false,rolesChanged:explicitRole && !self,historyAccess:targetState.history}
   }
   const clock=await db.query('SELECT clock_timestamp() AS at')
   const joinedAt=new Date(clock.rows[0].at).toISOString()
@@ -228,7 +241,7 @@ function registerCollectionMembershipRoutes(app,{pool,authRequired,getCurrentUse
       const result=await handler(db,user,kind,roomId,req)
       await db.query('COMMIT');invalidate()
       res.json(result)
-      if(result.eventId) await onChanged({user,kind,roomId,targetUserId:result.targetUserId,eventId:result.eventId,added:result.added===true,removed:result.removed===true}).catch(()=>{})
+      if(result.eventId || result.rolesChanged) await onChanged({user,kind,roomId,targetUserId:result.targetUserId,eventId:result.eventId,added:result.added===true,removed:result.removed===true}).catch(()=>{})
     } catch(error) {
       if(db) await db.query('ROLLBACK').catch(()=>{})
       if(error.status) res.status(error.status).json({error:error.message});else next(error)
@@ -240,7 +253,7 @@ function registerCollectionMembershipRoutes(app,{pool,authRequired,getCurrentUse
       if(!user) return res.status(404).json({error:'USER_NOT_FOUND'})
       const state=await loadCollectionMembershipState(pool,kindOf(req),req.params.roomId,aliases(user))
       if(!state.member) return res.status(403).json({error:'ROOM_ACCESS_DENIED'})
-      res.json({membersCanAdd:state.membersCanAdd,canAddMembers:state.canAddMembers,canManagePolicy:state.canManage,historyAccess:state.history})
+      res.json({membersCanAdd:state.membersCanAdd,canAddMembers:state.canAddMembers,canManagePolicy:state.canManage,canAssignRoles:state.creator,onlyAdminsCanTalk:yes(state.room.only_admins_can_talk),weeklyMessageLimit:Number(state.room.weekly_message_limit)||0,historyAccess:state.history})
     }catch(error){next(error)}
   })
   app.patch(paths.map(p=>p+'/membership-policy'),authRequired,transact(async(db,user,kind,roomId,req)=>{
@@ -285,10 +298,10 @@ function registerCollectionMembershipRoutes(app,{pool,authRequired,getCurrentUse
           VALUES($1,$2,$3,$4,$5,$6,$7,FALSE)`,[kind,roomId,successor.user_id,successor.history.joinedAt || successor.joined_at || departedAt,
           successor.history.historyFrom,successor.history.historyUntil,preferred(user)])
         const room=targetState.room
-        await db.query(`INSERT INTO fallback_collection_rooms(id,room_kind,name,image,description,category,is_public,creator_id,only_admins_can_talk,daily_message_limit,created_at)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO UPDATE SET creator_id=EXCLUDED.creator_id,updated_at=NOW()`,
+        await db.query(`INSERT INTO fallback_collection_rooms(id,room_kind,name,image,description,category,is_public,creator_id,only_admins_can_talk,daily_message_limit,weekly_message_limit,created_at)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(id) DO UPDATE SET creator_id=EXCLUDED.creator_id,updated_at=NOW()`,
           [roomId,kind,room.name || room.title || 'Grupo',room.image || room.avatar_url || null,room.description || null,room.category || null,
-           room.is_public==null?kind==='community':yes(room.is_public),userId(successor),yes(room.only_admins_can_talk),Number(room.daily_message_limit)||0,room.created_at || departedAt])
+           room.is_public==null?kind==='community':yes(room.is_public),userId(successor),yes(room.only_admins_can_talk),Number(room.daily_message_limit)||0,Number(room.weekly_message_limit)||0,room.created_at || departedAt])
         await db.query(`INSERT INTO fallback_collection_members(room_kind,room_id,user_id,role,joined_at,is_deleted)
           VALUES($1,$2,$3,'owner',$4,FALSE) ON CONFLICT(room_kind,room_id,user_id) DO UPDATE SET role='owner'`,
           [kind,roomId,userId(successor),successor.joined_at || departedAt])
@@ -315,31 +328,39 @@ function registerCollectionMembershipRoutes(app,{pool,authRequired,getCurrentUse
     const result=await addCollectionMember(db,{kind,roomId,actor:user,target,body:req.body})
     return {...result,targetUserId:preferred(target)}
   }))
-  app.post('/v1/data/messages/groups/:roomId/invites',authRequired,transact(async(db,user,kind,roomId,req)=>{
+  app.post(paths.map(p=>p+'/invites'),authRequired,transact(async(db,user,kind,roomId,req)=>{
     const state=await loadCollectionMembershipState(db,kind,roomId,aliases(user))
-    if(!state.canAddMembers) throw fail('GROUP_INVITE_CREATE_DENIED')
+    if(!state.member) throw fail('GROUP_INVITE_CREATE_DENIED')
     const hours=Math.max(1,Math.min(Math.trunc(Number(req.body?.expiresInHours)||72),168))
     const maxUses=Math.max(1,Math.min(Math.trunc(Number(req.body?.maxUses)||100),500))
     const token=crypto.randomBytes(32).toString('base64url')
     const result=await db.query(`INSERT INTO fallback_collection_invites(room_kind,room_id,token_hash,created_by,expires_at,max_uses)
-      VALUES('group',$1,$2,$3,NOW()+($4::text||' hours')::interval,$5) RETURNING id::text,expires_at`,
-      [roomId,crypto.createHash('sha256').update(token).digest('hex'),preferred(user),String(hours),maxUses])
+      VALUES($6,$1,$2,$3,NOW()+($4::text||' hours')::interval,$5) RETURNING id::text,expires_at`,
+      [roomId,crypto.createHash('sha256').update(token).digest('hex'),preferred(user),String(hours),maxUses,kind])
     return {token,roomId,maxUses,inviteId:result.rows[0].id,expiresAt:result.rows[0].expires_at}
   }))
-  app.post('/v1/data/messages/groups/:roomId/join-invite',authRequired,transact(async(db,user,kind,roomId,req)=>{
+  app.post(paths.map(p=>p+'/invites/revoke'),authRequired,transact(async(db,user,kind,roomId)=>{
+    const state=await loadCollectionMembershipState(db,kind,roomId,aliases(user))
+    if(!state.canManage) throw fail('GROUP_INVITE_CREATE_DENIED')
+    await db.query('UPDATE fallback_collection_invites SET revoked_at=NOW() WHERE room_kind=$1 AND lower(room_id)=$2 AND revoked_at IS NULL',[kind,roomId])
+    return {ok:true}
+  }))
+  app.post(paths.map(p=>p+'/join-invite'),authRequired,transact(async(db,user,kind,roomId,req)=>{
     const token=String(req.body?.token||'').trim()
     if(token.length<32 || token.length>200) throw fail('GROUP_INVITE_INVALID',400)
-    const invite=await db.query(`SELECT * FROM fallback_collection_invites WHERE room_kind='group' AND lower(room_id)=$1
+    const existingMember=await loadCollectionMembershipState(db,kind,roomId,aliases(user))
+    if(existingMember.member) return {ok:true,added:false,roomId,targetUserId:preferred(user),historyAccess:existingMember.history}
+    const invite=await db.query(`SELECT * FROM fallback_collection_invites WHERE room_kind=$3 AND lower(room_id)=$1
       AND token_hash=$2 AND revoked_at IS NULL AND expires_at>NOW() AND use_count<max_uses FOR UPDATE`,
-      [roomId,crypto.createHash('sha256').update(token).digest('hex')])
+      [roomId,crypto.createHash('sha256').update(token).digest('hex'),kind])
     if(!invite.rows[0]) throw fail('GROUP_INVITE_EXPIRED_OR_USED',410)
     const inviter=await findUser(db,invite.rows[0].created_by)
     const state=await loadCollectionMembershipState(db,kind,roomId,aliases(inviter))
-    if(!state.canAddMembers) throw fail('GROUP_INVITE_CREATE_DENIED')
+    if(!state.member) throw fail('GROUP_INVITE_CREATE_DENIED')
     const result=await addCollectionMember(db,{kind,roomId,actor:inviter,target:user,allowInvite:true})
     if(result.added) await db.query('UPDATE fallback_collection_invites SET use_count=use_count+1 WHERE id=$1',[invite.rows[0].id])
     return {...result,roomId,targetUserId:preferred(user)}
   }))
 }
-module.exports={SYSTEM_MEMBERSHIP,ensureCollectionMembershipTables,loadCollectionMembershipState,collectionMessageRecipients,
+module.exports={SYSTEM_MEMBERSHIP,ensureCollectionMembershipTables,loadCollectionMembershipState,collectionMembershipStateFromSnapshot,collectionMessageRecipients,
   collectionHistoryAllows,freezeCollectionHistory,parseHistoryGrant,addCollectionMember,registerCollectionMembershipRoutes,lockRoom}

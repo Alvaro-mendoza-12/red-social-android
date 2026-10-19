@@ -104,6 +104,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.draw.blur
 import coil.compose.rememberAsyncImagePainter
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -2657,21 +2658,52 @@ private fun FacebookMomentRail(
                             .fillMaxWidth()
                             .height(94.dp)
                             .align(Alignment.TopCenter)
-                            .background(MaterialTheme.colorScheme.surface)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
                     ) {
                         val avatarUrl = currentUser?.avatar_url
                         if (!avatarUrl.isNullOrBlank() && currentUser?.isProfileAvatarVideo == true) {
                             LoopingVideoPreview(
-                                url = avatarUrl,
+                                url = UbuntuMedia.resolveUrl(avatarUrl) ?: avatarUrl,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
                             )
+                            CircularProfileImage(
+                                ownerId = currentUser.id,
+                                imageUrl = avatarUrl,
+                                size = 58.dp,
+                                mediaType = currentUser.avatar_media_type,
+                                fallbackName = currentUser.displayName,
+                                showBorder = false,
+                                openMomentOnClick = false,
+                                showMomentRing = false,
+                            )
+                        } else if (avatarUrl.isNullOrBlank()) {
+                            StoryCreatorAvatarFallback(
+                                ownerId = currentUser?.id,
+                                avatarUrl = null,
+                                displayName = currentUser?.displayName ?: "Novvin",
+                            )
                         } else {
-                            AsyncImage(
-                                model = avatarUrl ?: conectate.com.R.mipmap.ic_launcher,
+                            SubcomposeAsyncImage(
+                                model = UbuntuMedia.resolveUrl(avatarUrl) ?: avatarUrl,
                                 contentDescription = "Crear momento",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
+                                loading = {
+                                    StoryCreatorAvatarFallback(
+                                        ownerId = currentUser?.id,
+                                        avatarUrl = avatarUrl,
+                                        displayName = currentUser?.displayName ?: "Novvin",
+                                    )
+                                },
+                                error = {
+                                    StoryCreatorAvatarFallback(
+                                        ownerId = currentUser?.id,
+                                        avatarUrl = avatarUrl,
+                                        displayName = currentUser?.displayName ?: "Novvin",
+                                    )
+                                },
                             )
                         }
                     }
@@ -2763,6 +2795,37 @@ private fun FacebookMomentRail(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StoryCreatorAvatarFallback(
+    ownerId: String?,
+    avatarUrl: String?,
+    displayName: String,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        MaterialTheme.colorScheme.surface,
+                    ),
+                ),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProfileImage(
+            ownerId = ownerId,
+            imageUrl = avatarUrl,
+            size = 58.dp,
+            fallbackName = displayName,
+            showBorder = false,
+            openMomentOnClick = false,
+            showMomentRing = false,
+        )
     }
 }
 

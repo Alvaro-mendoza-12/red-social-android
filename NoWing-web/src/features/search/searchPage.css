@@ -1,0 +1,27 @@
+.user-search-page { width: min(100%, 1040px); min-width: 0; margin-inline: auto; }
+.user-search-page .section-header h2 { margin-block: 0 6px; }
+.user-search-page .section-header p { margin: 0; color: var(--muted, #a6a6b0); font-size: .875rem; }
+.user-search-input { display: flex; align-items: center; gap: 10px; border: 1px solid var(--divider, #38383e); border-radius: 14px; padding-inline: 14px; min-width: 0; }
+.user-search-input > svg { flex-shrink: 0; color: var(--muted, #a6a6b0); }
+.user-search-input .text-input { flex: 1; min-width: 0; border: 0; background: transparent; padding-inline: 0; box-shadow: none; }
+.user-search-input:focus-within { outline: 2px solid var(--accent, #20b9ae); outline-offset: 2px; }
+.user-search-results { display: grid; gap: 8px; min-width: 0; }
+.user-search-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--divider, #29292f); background: var(--surface, #151519); min-width: 0; }
+.user-search-identity { min-width: 0; }
+.user-search-identity a { color: inherit; text-decoration: none; }
+.user-search-identity h3 { font-size: .95rem; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
+.user-search-identity > span { display: block; color: var(--muted, #a6a6b0); font-size: .8rem; overflow-wrap: anywhere; }
+.user-search-identity p { margin: 5px 0 0; font-size: .85rem; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.user-search-actions { display: flex; align-items: center; gap: 6px; }
+.user-search-actions .ghost-btn { white-space: nowrap; padding: 9px 13px; font-size: .82rem; }
+.user-search-actions .icon-btn { flex-shrink: 0; width: 38px; height: 38px; }
+.user-search-report { grid-column: 1 / -1; border-top: 1px solid var(--divider, #38383e); padding-top: 12px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 10px; min-width: 0; }
+.user-search-report p { grid-column: 1 / -1; font-size: .85rem; margin: 0; }
+.user-search-report .text-input { min-width: 0; width: 100%; box-sizing: border-box; }
+.user-search-report button { white-space: nowrap; overflow-wrap: normal; }
+@media (max-width: 560px) {
+ .user-search-card { gap: 10px; padding: 12px; grid-template-columns: auto minmax(0, 1fr); }
+ .user-search-actions { grid-column: 2; justify-content: flex-start; }
+ .user-search-report { grid-template-columns: minmax(0, 1fr); }
+ .user-search-report button { justify-self: start; }
+}

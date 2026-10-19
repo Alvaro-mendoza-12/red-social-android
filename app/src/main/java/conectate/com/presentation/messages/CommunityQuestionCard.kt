@@ -21,6 +21,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import androidx.compose.runtime.saveable.rememberSaveable
 
 @EntryPoint @InstallIn(SingletonComponent::class)
 interface CommunityEngagementEntryPoint { fun repository(): CommunityEngagementRepository }
@@ -33,6 +34,7 @@ fun limitedQuestionAnswer(text: String, maxLength: Int): String {
     return if(count<=maxLength)text else text.substring(0,text.offsetByCodePoints(0,maxLength))
 }
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun CommunityQuestionCard(kind: String, roomId: String, content: String, accountId: String?, reactions: Map<String,List<String>> = emptyMap(), onReact: () -> Unit = {}, onReaction: (String) -> Unit = {}, onLongClick: () -> Unit = {}) {
     val reference=remember(content){runCatching{JSONObject(content)}.getOrNull()}
     val id=reference?.optString("questionId").orEmpty()
@@ -41,21 +43,24 @@ fun CommunityQuestionCard(kind: String, roomId: String, content: String, account
         val repository=rememberCommunityEngagementRepository();val scope=rememberCoroutineScope();val lifecycle=LocalLifecycleOwner.current
         var question by remember {mutableStateOf<CommunityQuestion?>(null)};var error by remember {mutableStateOf<String?>(null)}
         var open by remember {mutableStateOf(false)};var respond by remember {mutableStateOf(false)};var busy by remember {mutableStateOf(false)};var rotation by remember {mutableIntStateOf((0..100000).random())}
+        var paused by rememberSaveable(id) { mutableStateOf(false) }
+        val animationsEnabled = android.animation.ValueAnimator.areAnimatorsEnabled()
+        val lifecycleState by lifecycle.lifecycle.currentStateFlow.collectAsState()
+        val cloudSpace = (64 * androidx.compose.ui.platform.LocalDensity.current.fontScale + 48).dp
         suspend fun refresh() { repository.question(kind,roomId,id).onSuccess{fresh->
             val old=question
             question=if(old!=null && old.answers.size>50)fresh.copy(answers=(fresh.answers+old.answers).distinctBy{it.id},nextOffset=old.nextOffset)else fresh
             error=null
         }.onFailure{error="No se pudieron cargar las respuestas. Inténtalo de nuevo."} }
         LaunchedEffect(kind,roomId,id,accountId){lifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED){while(true){refresh();delay(15000)}}}
-        LaunchedEffect(id){lifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED){while(true){delay(6500);rotation++}}}
+        LaunchedEffect(id, paused, animationsEnabled){if (!paused && animationsEnabled) lifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED){while(true){delay(9000);rotation++}}}
         val answers=question?.answers.orEmpty()
-        val sample=remember(answers,rotation){answers.shuffled().take(3)}
-        val transition=rememberInfiniteTransition(label="Respuestas flotantes")
-        val floatY by transition.animateFloat(-3f,3f,infiniteRepeatable(tween(2600),RepeatMode.Reverse),label="Flotar")
+        val sample=remember(answers,rotation){answers.sortedBy { it.id }.shuffled(kotlin.random.Random(rotation)).take(3)}
         val prompt=question?.prompt ?: reference?.optString("prompt").orEmpty()
         Column(Modifier.widthIn(max=360.dp).fillMaxWidth().padding(vertical=8.dp)) {
-            Box(Modifier.fillMaxWidth().combinedClickable(onClick={respond=false;open=true},onLongClick=onLongClick)) {
-                Surface(color=MaterialTheme.colorScheme.primaryContainer,shape=MaterialTheme.shapes.large,modifier=Modifier.fillMaxWidth().padding(top=if(sample.isEmpty())0.dp else 45.dp,bottom=if(sample.size<3)0.dp else 42.dp)) {
+            BoxWithConstraints(Modifier.fillMaxWidth().combinedClickable(onClick={respond=false;open=true},onLongClick=onLongClick)) {
+                val cloudWidth = ((maxWidth - 24.dp) / 2).coerceAtMost(150.dp)
+                Surface(color=MaterialTheme.colorScheme.primaryContainer,shape=MaterialTheme.shapes.large,modifier=Modifier.fillMaxWidth().padding(top=if(sample.isEmpty())0.dp else cloudSpace,bottom=if(sample.size<3)0.dp else cloudSpace)) {
                     Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                         Text("Pregunta a la comunidad",style=MaterialTheme.typography.labelMedium)
                         Text(prompt,style=MaterialTheme.typography.titleLarge)
@@ -63,14 +68,15 @@ fun CommunityQuestionCard(kind: String, roomId: String, content: String, account
                     }
                 }
                 sample.forEachIndexed { index, answer ->
-                    Surface(shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.secondaryContainer,shadowElevation=2.dp,modifier=Modifier.align(if(index==0)Alignment.TopStart else if(index==1)Alignment.TopEnd else Alignment.BottomCenter).offset(y=(if(index==1)-floatY else floatY).dp).widthIn(max=150.dp).padding(horizontal=4.dp)) {
-                        Text(answer.content,Modifier.padding(horizontal=12.dp,vertical=8.dp),maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall)
-                    }
+                    CloudAnswerBubble(answer.content, index, moving = !paused && animationsEnabled && !open && lifecycleState == Lifecycle.State.RESUMED,
+                        modifier = Modifier.align(if(index==0)Alignment.TopStart else if(index==1)Alignment.TopEnd else Alignment.BottomCenter).widthIn(min=64.dp,max=cloudWidth).padding(horizontal=4.dp),
+                        onClick = { respond=false;open=true })
                 }
             }
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically) {
+            FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                 TextButton(onClick={respond=true;open=true},enabled=question?.canRespond==true&&question?.closed==false){Text("Responder")}
                 TextButton(onClick=onReact){Text("♡ Reaccionar")}
+                if (sample.isNotEmpty()) TextButton(onClick = { paused = !paused }) { Text(if (paused) "Animar nubes" else "Pausar nubes", style = MaterialTheme.typography.labelSmall) }
             }
             if(reactions.isNotEmpty())Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){reactions.entries.take(6).forEach{(emoji,users)->FilterChip(selected=accountId in users,onClick={onReaction(emoji)},label={Text("$emoji ${users.size}")})}}
             if(error!=null&&!open)TextButton(onClick={scope.launch{refresh()}}){Text("Reintentar respuestas")}

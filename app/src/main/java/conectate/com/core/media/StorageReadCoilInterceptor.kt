@@ -29,7 +29,9 @@ internal class StorageReadCoilInterceptor(
         } else null
         val request = original.newBuilder()
             .data(cached ?: original.data)
-            .memoryCachePolicy(CachePolicy.DISABLED)
+            .memoryCachePolicy(if (offlineAllowed) CachePolicy.ENABLED else CachePolicy.DISABLED)
+            .memoryCacheKey(if (offlineAllowed) StorageReadSession.scopedCacheKey(source,
+                original.memoryCacheKey?.key ?: source) else null)
             .diskCachePolicy(CachePolicy.DISABLED)
             // Remove an old account's preview before EngineInterceptor accesses placeholders.
             .placeholderMemoryCacheKey(null as String?)

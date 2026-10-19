@@ -105,6 +105,7 @@ fun ChatScreen(
         }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val openCollectionInvitation = rememberCollectionInvitationOpener(navController)
 
     DisposableEffect(lifecycleOwner) {
         viewModel.onScreenVisibilityChanged(
@@ -161,6 +162,9 @@ fun ChatScreen(
     val transfers by conectate.com.core.messaging.MessageUploadProgress.transfers.collectAsState()
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMessages by viewModel.selectedMessages.collectAsState()
+    var highlightedId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(highlightedId) { if (highlightedId != null) { kotlinx.coroutines.delay(1400); highlightedId = null } }
+    androidx.activity.compose.BackHandler(isSelectionMode) { viewModel.toggleSelectionMode() }
     val isBlockedByMe by viewModel.isBlockedByMe.collectAsState()
     val isBlockedByOther by viewModel.isBlockedByOther.collectAsState()
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -218,18 +222,14 @@ fun ChatScreen(
     val universalForwardCoordinator = LocalUniversalForwardCoordinator.current
 
     fun sendCurrentLocation() {
-        val location = getBestLastKnownLocation(context)
-        if (location == null) {
-            scope.launch {
-                snackbarHostState.showSnackbar("No se pudo obtener tu ubicación actual.")
+        scope.launch {
+            val location = getBestCurrentLocation(context)
+            if (location == null) {
+                snackbarHostState.showSnackbar("No se pudo obtener tu ubicación. Revisa el permiso y activa la ubicación del dispositivo.")
+                return@launch
             }
-            return
+            viewModel.sendLocationMessage(latitude = formatCoordinate(location.latitude), longitude = formatCoordinate(location.longitude), label = "Ubicación actual")
         }
-        viewModel.sendLocationMessage(
-            latitude = formatCoordinate(location.latitude),
-            longitude = formatCoordinate(location.longitude),
-            label = "Ubicación actual"
-        )
     }
     
     val showNicknameDialog by viewModel.showNicknameDialog.collectAsState()
@@ -912,21 +912,18 @@ fun ChatScreen(
         },
         topBar = {
              if (isSelectionMode) {
-                TopAppBar(
-                    title = { Text("${selectedMessages.size} seleccionados") },
-                    navigationIcon = {
-                        IconButton(onClick = { viewModel.toggleSelectionMode() }) {
-                            Icon(Icons.Default.Close, "Cerrar selección")
+                MessageSelectionToolbar(selectedMessages.size,
+                    onCancel = { viewModel.toggleSelectionMode() },
+                    onDelete = { showBulkDeleteDialog = true },
+                    onForward = {
+                        val selected = messages.filter { it.id in selectedMessages && !it.deleted_for_all }
+                        if (universalForwardCoordinator != null) {
+                            universalForwardCoordinator.open(candidates = selected.map { it.toForwardMessagePayload() }, initiallySelectedIds = selected.map { it.id }.toSet())
+                            viewModel.toggleSelectionMode()
                         }
                     },
-                    actions = {
-                        IconButton(onClick = { showBulkDeleteDialog = true }) {
-                            Icon(Icons.Default.Delete, "Eliminar varios", tint = MaterialTheme.colorScheme.error)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                    onSave = { selectedMessages.forEach { markersViewModel.toggleSaved(it) }; viewModel.toggleSelectionMode() },
+                    onMore = { messages.firstOrNull { it.id in selectedMessages }?.let(viewModel::onMessageLongClick) },
                 )
              } else {
                  val successState = chatState as? ChatUiState.Success
@@ -1192,7 +1189,8 @@ fun ChatScreen(
                                 key = { _, item -> item.id },
                                 contentType = { _, item -> item.content_type }
                             ) { index, message ->
-                                val mediaGroup = remember(state.messages, message.id) {
+                                val mediaGroup = remember(state.messages, message.id, isSelectionMode, highlightedId) {
+                                    if (isSelectionMode || highlightedId != null) listOf(message) else
                                     conectate.com.presentation.components.mediaGridClusterAt(
                                         messages = state.messages,
                                         index = index
@@ -1206,6 +1204,7 @@ fun ChatScreen(
                                         DateSeparator(label = formatDateSeparatorLabel(message.created_at))
                                     }
                                     conectate.com.presentation.components.MediaGridMessageBubble(
+                                        onLongClick = { viewModel.toggleMessageSelection(it.id) },
                                         messages = mediaGroup,
                                         isFromCurrentUser = message.sender_id == currentUserId,
                                         onClick = { selectedMessage ->
@@ -1228,6 +1227,8 @@ fun ChatScreen(
                                     val isSelected = selectedMessages.contains(message.id)
                                     MessageBubble(
                                         message = message,
+                                        replyMessage = message.reply_to_id?.let { id -> messages.firstOrNull { it.id == id } },
+                                        selectionMode = isSelectionMode,
                                         replySenderName = message.reply_to?.let { quoted ->
                                             if (quoted.sender_id != currentUserId) {
                                                 currentNickname ?: state.otherUser?.displayName ?: state.otherUser?.username
@@ -1236,10 +1237,8 @@ fun ChatScreen(
                                         uploadProgress = transfers[conectate.com.core.messaging.MessageUploadProgress.key(currentUserId, message.id)],
                                         onRetrySend = { viewModel.retryMessage(message) },
                                         isFromCurrentUser = message.sender_id == currentUserId,
-                                    isSelected = isSelected,
-                                    onLongClick = {
-                                        viewModel.onMessageLongClick(message)
-                                    },
+                                    isSelected = isSelected || message.id == highlightedId,
+                                    onLongClick = { viewModel.toggleMessageSelection(message.id) },
                                     onClick = { url ->
                                         if (isSelectionMode) {
                                             viewModel.toggleMessageSelection(message.id)
@@ -1281,6 +1280,7 @@ fun ChatScreen(
                                             }
                                             if (originalIndex >= 0) {
                                                 listState.animateScrollToItem(originalIndex)
+                                                highlightedId = originalMessageId
                                             } else {
                                                 snackbarHostState.showSnackbar(
                                                     "El mensaje original ya no está disponible."
@@ -1298,6 +1298,7 @@ fun ChatScreen(
                                     onSenderClick = { userId ->
                                         navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
                                     },
+                                    onCollectionInvitationClick = { openCollectionInvitation(it) },
                                     isAudioActive = currentPlayingAudioId == message.id,
                                     isPlaying = currentPlayingAudioId == message.id && isAudioPlaying,
                                     progress = if (currentPlayingAudioId == message.id) audioProgress else 0f,
@@ -1323,7 +1324,9 @@ fun ChatScreen(
                                     },
                                     onUrlClick = { url ->
                                         val postId = conectate.com.presentation.components.postIdFromSharedLink(url)
-                                        if (postId != null) {
+                                        if (openCollectionInvitation(url)) {
+                                            // The shared invitation host shows a preview before joining.
+                                        } else if (postId != null) {
                                             navController.navigate(conectate.com.presentation.navigation.Screen.PostDetail.createRoute(postId))
                                         } else {
                                             conectate.com.data.model.videoIdFromSharedLink(url)?.let { videoId ->
@@ -1679,17 +1682,31 @@ fun ChatScreen(
                         }
                     } else {
                         // STANDARD INPUT
+                        val spelling = conectate.com.presentation.components.rememberChatSpellCheckState(messageText)
+                        var spellingDraft by conectate.com.presentation.components.rememberChatSpellingDraft(messageText)
                         Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                     // Input Field with mobile keyboard support
+                    Column(Modifier.weight(1f)) {
+                    conectate.com.presentation.components.ChatSpellingSuggestions(
+                        state = spelling,
+                        selection = spellingDraft.selection,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        onReplace = { issue, replacement ->
+                            val corrected = spelling.replace(messageText, issue, replacement)
+                            spellingDraft = androidx.compose.ui.text.input.TextFieldValue(corrected,
+                                androidx.compose.ui.text.TextRange(issue.start + replacement.length))
+                            viewModel.updateMessageText(corrected)
+                        }
+                    )
                     TextField(
-                        value = messageText,
-                        visualTransformation = conectate.com.presentation.components.rememberChatSpellCheck(messageText),
-                        onValueChange = { viewModel.updateMessageText(it) },
+                        value = spellingDraft,
+                        visualTransformation = spelling.visualTransformation,
+                        onValueChange = { spellingDraft = it; viewModel.updateMessageText(it.text) },
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .padding(horizontal = 4.dp)
                             .focusRequester(stickerKeyboardPanel.inputFocusRequester)
                             .onFocusChanged { if (it.isFocused) stickerKeyboardPanel.onInputFocused() },
@@ -1746,6 +1763,7 @@ fun ChatScreen(
                              }
                         }
                     )
+                    }
                     
                     Spacer(modifier = Modifier.width(4.dp))
                     

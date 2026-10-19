@@ -57,11 +57,26 @@ for(const [route,file,label] of publicRoutes){
   if(route!=='/'){const breadcrumb=nodes.find(item=>item['@type']==='BreadcrumbList');assert.equal(breadcrumb.itemListElement.at(-1).name,label);assert.equal(breadcrumb.itemListElement.at(-1).item,url)}
   const raw=/<script type="application\/ld\+json">(.*?)<\/script>/.exec(html)[1],hash=createHash('sha256').update(raw).digest('base64')
   for(const file of ['vercel.json','../vercel.json']){
-   const deployment=JSON.parse(fs.readFileSync(path.join(root,file),'utf8')),csp=deployment.headers[0].headers.find(header=>header.key==='Content-Security-Policy').value
+   const deployment=JSON.parse(fs.readFileSync(path.join(root,file),'utf8'))
+   const csp=deployment.headers.find(rule=>rule.source==='/(.*)')?.headers.find(header=>header.key==='Content-Security-Policy')?.value
+   assert.ok(csp,'Global Content-Security-Policy is required in '+file)
    assert.ok(csp.includes("'sha256-"+hash+"'"));assert.doesNotMatch(csp,/script-src[^;]*'unsafe-inline'/)
   }
  })
 }
+
+test('group and community invitations remain private without displacing global security headers',()=>{
+ for(const file of ['vercel.json','../vercel.json']){
+  const deployment=JSON.parse(fs.readFileSync(path.join(root,file),'utf8'))
+  const headers=deployment.headers.find(rule=>rule.source==='/(group|community)/:path*')?.headers
+  assert.ok(headers,'Invitation headers are required in '+file)
+  assert.equal(headers.find(header=>header.key==='Cache-Control')?.value,'no-store')
+  assert.equal(headers.find(header=>header.key==='X-Robots-Tag')?.value,'noindex, nofollow, noarchive')
+  const global=deployment.headers.find(rule=>rule.source==='/(.*)')?.headers
+  assert.equal(global?.find(header=>header.key==='X-Content-Type-Options')?.value,'nosniff')
+  assert.ok(global?.find(header=>header.key==='Content-Security-Policy')?.value)
+ }
+})
 test('each public title and description is unique',()=>{
  const pages=publicRoutes.map(([,file])=>graph(read(file)).find(item=>item['@type']==='WebPage'))
  assert.equal(new Set(pages.map(page=>page.name)).size,publicRoutes.length)

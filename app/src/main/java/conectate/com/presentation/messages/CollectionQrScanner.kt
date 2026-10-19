@@ -31,6 +31,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,7 +58,31 @@ fun CollectionQrScannerButton(
     viewModel: CollectionQrViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val uiState by viewModel.uiState.collectAsState()
+    val scope = rememberCoroutineScope()
+    var scanMenu by remember { mutableStateOf(false) }
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching {
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+                require(bounds.outWidth > 0 && bounds.outHeight > 0)
+                var sample = 1
+                while (bounds.outWidth / sample > 1800 || bounds.outHeight / sample > 1800) sample *= 2
+                val bitmap = context.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }) }
+                    ?: kotlin.error("Imagen no disponible")
+                try {
+                    val pixels = IntArray(bitmap.width * bitmap.height)
+                    bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                    val source = com.google.zxing.RGBLuminanceSource(bitmap.width, bitmap.height, pixels)
+                    com.google.zxing.MultiFormatReader().decode(com.google.zxing.BinaryBitmap(com.google.zxing.common.HybridBinarizer(source)), mapOf(
+                        com.google.zxing.DecodeHintType.POSSIBLE_FORMATS to listOf(com.google.zxing.BarcodeFormat.QR_CODE),
+                        com.google.zxing.DecodeHintType.TRY_HARDER to true
+                    )).text
+                } finally { bitmap.recycle() }
+            } }
+            result.onSuccess(viewModel::inspect).onFailure { viewModel.showImageScanError() }
+        }
+    }
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         result.contents?.trim()?.takeIf { it.isNotBlank() }?.let(viewModel::inspect)
     }
@@ -78,20 +106,8 @@ fun CollectionQrScannerButton(
         }
     }
 
-    uiState.joinedTarget?.let { target ->
-        LaunchedEffect(target) {
-            val route = if (target.kind == "group") {
-                Screen.GroupDetail.createRoute(target.roomId)
-            } else {
-                Screen.CommunityDetail.createRoute(target.roomId)
-            }
-            viewModel.consumeNavigation()
-            navController.navigate(route)
-        }
-    }
-
     OutlinedIconButton(
-        onClick = ::startScan,
+        onClick = { scanMenu = true },
         modifier = modifier.size(52.dp),
         shape = CircleShape
     ) {
@@ -101,6 +117,32 @@ fun CollectionQrScannerButton(
         )
     }
 
+    if (scanMenu) AlertDialog(onDismissRequest = { scanMenu = false }, title = { Text("Leer invitación QR") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = { scanMenu = false; startScan() }, modifier = Modifier.fillMaxWidth()) { Text("Usar cámara") }
+            OutlinedButton(onClick = { scanMenu = false; galleryLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Elegir imagen de la galería") }
+        } }, confirmButton = { TextButton(onClick = { scanMenu = false }) { Text("Cancelar") } }
+    )
+
+    CollectionInvitationHost(navController, viewModel)
+}
+
+@Composable
+fun rememberCollectionInvitationOpener(navController: NavController): (String) -> Boolean {
+    val viewModel: CollectionQrViewModel = hiltViewModel()
+    CollectionInvitationHost(navController, viewModel)
+    return remember(viewModel) { { url ->
+        if (CollectionQrParser.parse(url).isSuccess) { viewModel.inspect(url); true } else false
+    } }
+}
+
+@Composable
+private fun CollectionInvitationHost(navController: NavController, viewModel: CollectionQrViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    uiState.joinedTarget?.let { target -> LaunchedEffect(target) {
+        val route = if (target.kind == "group") Screen.GroupDetail.createRoute(target.roomId) else Screen.CommunityDetail.createRoute(target.roomId)
+        viewModel.consumeNavigation(); navController.navigate(route)
+    } }
     when {
         uiState.preview != null -> CollectionPreviewDialog(
             state = uiState,

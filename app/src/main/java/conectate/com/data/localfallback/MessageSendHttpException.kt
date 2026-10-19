@@ -6,7 +6,9 @@ internal class MessageSendHttpException(
     val errorCode: String,
     cause: Exception,
 ) : Exception(cause.message, cause) {
-    val isRetryable: Boolean get() = isRetryableMessageHttpStatus(statusCode)
+    val isRetryable: Boolean get() = errorCode !in setOf(
+        "COMMUNITY_WEEKLY_MESSAGE_LIMIT_REACHED", "COMMUNITY_DAILY_MESSAGE_LIMIT_REACHED"
+    ) && isRetryableMessageHttpStatus(statusCode)
 }
 
 internal fun isRetryableMessageHttpStatus(statusCode: Int): Boolean =

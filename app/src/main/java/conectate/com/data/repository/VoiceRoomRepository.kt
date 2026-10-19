@@ -41,6 +41,8 @@ import javax.inject.Singleton
 import io.socket.client.IO
 import io.socket.client.Manager
 import io.socket.client.Socket
+import io.socket.client.Ack
+import kotlin.coroutines.resume
 import org.json.JSONObject
 import org.json.JSONArray
 import org.webrtc.VideoTrack
@@ -326,6 +328,8 @@ class VoiceRoomRepository @Inject constructor(
 
     private val _incomingMessages = MutableSharedFlow<conectate.com.presentation.voicerooms.ChatMessage>()
     val incomingMessages = _incomingMessages.asSharedFlow()
+    private val _deletedRoomMessages = MutableSharedFlow<Triple<String,String,String>>(extraBufferCapacity = 64)
+    val deletedRoomMessages = _deletedRoomMessages.asSharedFlow()
 
     private val _incomingReactions = MutableSharedFlow<conectate.com.presentation.voicerooms.ReactionEvent>(
         extraBufferCapacity = 64,
@@ -1874,7 +1878,9 @@ class VoiceRoomRepository @Inject constructor(
             }
 
             socket?.on("chat-message") { args ->
+                 if(!isCurrentAttempt())return@on
                  var data = extractJsonPayload(args) ?: return@on
+                 if (!data.optString("roomId").equals(roomId, true)) return@on
                  var userIdPayload = data.optString("userId").trim()
                  val userNamePayload = data.optString("userName").trim()
                  val textPayload = data.optString("text").trim()
@@ -1884,9 +1890,19 @@ class VoiceRoomRepository @Inject constructor(
                     userId = userIdPayload,
                     userName = userNamePayload.ifBlank { "Usuario" },
                     text = textPayload,
-                    timestamp = data.optLong("timestamp", System.currentTimeMillis())
+                    timestamp = data.optLong("timestamp", System.currentTimeMillis()),
+                    imageData = data.optString("imageData").takeIf { conectate.com.presentation.voicerooms.RoomChatPhoto.bytes(it) != null },
+                    expiresAt = data.optLong("expiresAt",System.currentTimeMillis()+conectate.com.presentation.voicerooms.ROOM_CHAT_TTL_MS).coerceAtMost(System.currentTimeMillis()+conectate.com.presentation.voicerooms.ROOM_CHAT_TTL_MS),
+                    roomId=roomId
                 )
                 scope.launch { _incomingMessages.emit(msg) }
+            }
+            socket?.on("chat-message-deleted") { args ->
+                if(!isCurrentAttempt())return@on
+                val data=extractJsonPayload(args)?:return@on
+                if(!data.optString("roomId").equals(roomId,true))return@on
+                val id=data.optString("id");val author=data.optString("userId")
+                if(id.isNotBlank()&&author.isNotBlank())scope.launch { _deletedRoomMessages.emit(Triple(roomId,author,id)) }
             }
 
             socket?.on("reaction") { args ->
@@ -2788,16 +2804,45 @@ class VoiceRoomRepository @Inject constructor(
 
 
 
-    suspend fun sendMessage(message: conectate.com.presentation.voicerooms.ChatMessage) = withContext(Dispatchers.IO) {
+    private suspend fun roomChatAcknowledgement(event: String, payload: JSONObject): Result<JSONObject> = withContext(Dispatchers.IO) {
+        val currentSocket=socket;val owner=authService.getCurrentUserId();val roomId=activeRoomId
+        if(currentSocket?.connected()!=true || _connectionState.value !in setOf(VoiceConnectionState.CONNECTED,VoiceConnectionState.RECOVERING_AUDIO))
+            return@withContext Result.failure(IllegalStateException("Espera a que conecte la sala."))
+        val result=try { withTimeoutOrNull(8000L) {
+            suspendCancellableCoroutine<Result<JSONObject>> { continuation ->
+                val finished=java.util.concurrent.atomic.AtomicBoolean(false)
+                currentSocket.emit(event,payload,Ack { args ->
+                    if(!finished.compareAndSet(false,true)||!continuation.isActive)return@Ack
+                    val reply=runCatching { args.firstOrNull() as? JSONObject ?: JSONObject(args.firstOrNull()?.toString().orEmpty()) }.getOrNull()
+                    val valid=socket===currentSocket && activeRoomId==roomId && authService.getCurrentUserId()==owner
+                    continuation.resume(if(valid&&reply?.optBoolean("ok")==true)Result.success(reply) else Result.failure(IllegalStateException("No se pudo confirmar la operación. Vuelve a intentarlo.")))
+                })
+            }
+        }
+        } catch(error: CancellationException) { throw error }
+        catch(error: Exception) { return@withContext Result.failure(IllegalStateException("No se pudo confirmar la operación. Vuelve a intentarlo.",error)) }
+        result?:Result.failure(IllegalStateException("No se pudo confirmar la operación. Vuelve a intentarlo."))
+    }
+
+    suspend fun sendMessage(message: conectate.com.presentation.voicerooms.ChatMessage): Result<conectate.com.presentation.voicerooms.ChatMessage> = withContext(Dispatchers.IO) {
         val roomId = getCurrentRoomId()
-        emitOrQueueRoomSocketEvent(roomId, "chat-message") {
+        if(message.userId!=authService.getCurrentUserId() || roomId.isNullOrBlank())return@withContext Result.failure(IllegalStateException("La cuenta o la sala cambió."))
+        val payload=JSONObject().apply {
             put("roomId", (roomId ?: "") as String)
             put("userId", message.userId as String)
             put("userName", message.userName.ifBlank { _currentParticipants.value.firstOrNull { it.id == message.userId }?.name ?: "Participante" })
             put("text", message.text.take(2000))
             put("id", message.id)
             put("timestamp", message.timestamp)
+            message.imageData?.let { put("imageData", it) }
         }
+        roomChatAcknowledgement("chat-message",payload).map { reply -> message.copy(timestamp=reply.optLong("timestamp",message.timestamp),expiresAt=reply.optLong("expiresAt",message.expiresAt),delivery=conectate.com.presentation.voicerooms.RoomChatDelivery.SENT) }
+    }
+
+    suspend fun deleteRoomMessage(message: conectate.com.presentation.voicerooms.ChatMessage): Result<Unit> {
+        val roomId=getCurrentRoomId();val user=authService.getCurrentUserId()
+        if(roomId.isNullOrBlank() || message.userId!=user)return Result.failure(IllegalStateException("No puedes eliminar este mensaje."))
+        return roomChatAcknowledgement("chat-message-delete",JSONObject().put("roomId",roomId).put("userId",user).put("id",message.id)).map { Unit }
     }
 
 

@@ -5,6 +5,9 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MessageSendHttpExceptionTest {
+    @Test fun weeklyQuotaIsNotAnAutomaticTransportRetry() {
+        assertFalse(MessageSendHttpException(429, "COMMUNITY_WEEKLY_MESSAGE_LIMIT_REACHED", Exception("Cupo agotado")).isRetryable)
+    }
     private val transportHints = listOf("timeout", "connection", "network", "502", "503", "504")
 
     @Test fun pendingFriendRequestKeepsItsConflictStatusAndStopsAutomaticRetries() {

@@ -1,4 +1,13 @@
+import { MovableVoicePanel } from '../../components/MovableVoicePanel'
+import { ReactionCloud } from '../../components/ReactionCloud'
+import { useReactionBursts } from '../../components/useReactionBursts'
 import { RoomVideo } from './RoomVideo'
+import { RoomChatPhoto } from './RoomChatPhoto'
+import { roomSocketReady } from './voiceMembership'
+import { RoomReactionMenu } from '../../components/RoomReactionMenu'
+import { MessageText } from '../../components/MessageText'
+import { boundedRoomChat, firstRoomClipboardImage, prepareRoomImage, validRoomImage, roomChatTtlMs } from './roomChatImage'
+import { ImagePlus, X, MoreHorizontal, Trash2 } from 'lucide-react'
 import { claimInteractiveMediaSession, releaseInteractiveMediaSession, useInteractiveMediaSession } from '../../core/interactiveMediaSession'
 import { MediaSessionConflict } from '../../components/MediaSessionConflict'
 import { mediaPeerIsInitiator } from '../../core/mediaPeerRole'
@@ -40,6 +49,7 @@ import { getRuntimeBackendUrl } from '../../core/runtimeBackend'
 import { buildSignalingAffinity } from '../../core/signalingAffinity'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import WebRTCManager from './WebRTCManager'
+import toast from 'react-hot-toast'
 import {
   normalizeSignalingParticipant,
   normalizeSignalingParticipants,
@@ -101,10 +111,15 @@ type MutePayload = {
   isMuted: boolean
 }
 
-type RoomChatMessage = { roomId: string; userId: string; userName: string; text: string; id: string; timestamp: number }
+type RoomChatMessage = { roomId: string; userId: string; userName: string; text: string; id: string; timestamp: number; imageData?: string; expiresAt?: number; delivery?: 'sending' | 'sent' | 'failed' }
+type RoomChatAck = { ok: boolean; error?: string; timestamp?: number; expiresAt?: number; id?: string }
+
+type RoomReaction = { roomId?: string; userId: string; emoji: string; reactionId: string; timestamp: number }
 
 type ServerEvents = {
+  reaction: (payload: RoomReaction) => void
   'chat-message': (payload: Partial<RoomChatMessage>) => void
+  'chat-message-deleted': (payload: { roomId: string; userId: string; id: string }) => void
   'media-status': (payload: { roomId?: string; userId: string; isCameraSharing: boolean; isScreenSharing: boolean }) => void
   connect: () => void
   disconnect: (reason: string) => void
@@ -123,7 +138,9 @@ type ServerEvents = {
 }
 
 type ClientEvents = {
-  'chat-message': (payload: RoomChatMessage) => void
+  reaction: (payload: RoomReaction) => void
+  'chat-message': (payload: RoomChatMessage, acknowledge: (result: RoomChatAck) => void) => void
+  'chat-message-delete': (payload: { roomId: string; userId: string; id: string }, acknowledge: (result: RoomChatAck) => void) => void
   'media-status': (payload: { roomId: string; userId: string; isCameraSharing: boolean; isScreenSharing: boolean }) => void
   'join-room': (payload: { roomId: string; userId: string; name: string; avatarUrl: string; isMuted?: boolean }) => void
   offer: (payload: { target: string; offer: RTCSessionDescriptionInit; userId: string; name: string }) => void
@@ -145,14 +162,6 @@ function readSignalingUrl(): string {
   const configured = String(import.meta.env.VITE_SIGNALING_URL ?? '').trim()
   const fallbackApi = getRuntimeBackendUrl()
   return configured || fallbackApi
-}
-
-function readJoinedRoomFromStorage(accountId?: string): string | null {
-  if (typeof window === 'undefined') return null
-  window.localStorage.removeItem('conectate-web-voice-joined-room')
-  const value = window.localStorage.getItem(joinedRoomStorageKey(accountId))
-  const clean = (value ?? '').trim()
-  return clean.length > 0 ? clean : null
 }
 
 function writeJoinedRoomToStorage(accountId: string | undefined, roomId: string | null) {
@@ -276,6 +285,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const useUbuntuVoice = shouldUseUbuntuBackend(isFallbackSession)
   const params = useParams<{ roomId: string }>()
   const roomId = roomIdOverride || params.roomId
+  const { items: voiceReactionItems, add: addVoiceReaction } = useReactionBursts(roomId || 'voice')
   const activeMedia = useInteractiveMediaSession()
   const mediaKey = `voice:${user?.id}:${roomId}`
   const conflict = activeMedia && user && activeMedia.accountId === user.id && activeMedia.key !== mediaKey ? activeMedia : null
@@ -311,7 +321,16 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const [chatMessages, setChatMessages] = useState<RoomChatMessage[]>([])
   const [chatDraft, setChatDraft] = useState('')
   const [chatOpen, setChatOpen] = useState(true)
+  const [chatPhoto, setChatPhoto] = useState(''), [photoBusy, setPhotoBusy] = useState(false), [photoError, setPhotoError] = useState('')
+  const photoOperation = useRef(0)
+  const photoInput = useRef<HTMLInputElement>(null), photoRoom = useRef('')
+  photoRoom.current = `${user?.id}:${roomId}`
+  useEffect(() => { photoOperation.current++; setChatPhoto(''); setPhotoError(''); setPhotoBusy(false) }, [roomId, user?.id])
   const [chatUnread, setChatUnread] = useState(0)
+  const receivedChatIds = useRef(new Set<string>())
+  const deletedChatIds = useRef(new Set<string>())
+  const confirmedDeletedChatIds = useRef(new Set<string>())
+  const unreadChatIds = useRef(new Set<string>())
   const chatVisibleRef = useRef(true)
   const chatEndRef = useRef<HTMLDivElement | null>(null)
   const participantsRef = useRef(participants)
@@ -321,6 +340,9 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const audioOperationRef = useRef(0)
 
   const socketRef = useRef<VoiceSocket | null>(null)
+  const acceptedSocketRef = useRef('')
+  const [signalingReady, setSignalingReady] = useState(false)
+  const lastPhotoSentRef = useRef(0)
   const webrtcManagerRef = useRef<WebRTCManager | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -346,11 +368,20 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const connectedPeerCount = Object.values(peerStates).filter((state) => state === 'connected').length
   const connectionQuality = connectedPeerCount > 0 ? 'Audio conectado' : isJoined ? (remoteParticipants.length ? 'Conectando audio…' : 'En la sala') : 'Sin conectar'
 
-  useEffect(() => { setChatMessages([]); setChatDraft(''); setChatUnread(0) }, [roomId, user?.id])
+  useEffect(() => { receivedChatIds.current.clear(); deletedChatIds.current.clear(); confirmedDeletedChatIds.current.clear(); unreadChatIds.current.clear(); setChatMessages([]); setChatDraft(''); setChatUnread(0) }, [roomId, user?.id])
   useEffect(() => {
-    if (!chatOpen || minimized) return
-    setChatUnread(0)
-    chatEndRef.current?.scrollIntoView?.({ block: 'nearest' })
+    const timer = setInterval(() => setChatMessages(current => { const next = boundedRoomChat(current); return next.length === current.length ? current : next }), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  useEffect(() => {
+    if (chatOpen && !minimized) {
+      unreadChatIds.current.clear()
+      chatEndRef.current?.scrollIntoView?.({ block: 'nearest' })
+    } else {
+      const existing = new Set(chatMessages.map(message => `${message.userId}:${message.id}`))
+      for (const id of unreadChatIds.current) if (!existing.has(id)) unreadChatIds.current.delete(id)
+    }
+    setChatUnread(unreadChatIds.current.size)
   }, [chatOpen, minimized, chatMessages])
 
   useEffect(() => {
@@ -372,6 +403,8 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
 
   const stopSignaling = useCallback(() => {
     roomCues.suspend()
+    acceptedSocketRef.current = ''
+    setSignalingReady(false)
     const socket = socketRef.current
     if (socket) {
       socket.removeAllListeners()
@@ -400,8 +433,8 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   }, [stopSignaling, stopSpeakingDetection])
 
   const emitMuteState = useCallback((nextMuted: boolean) => {
-    if (!socketRef.current || !room || !user) return
-    socketRef.current.emit('mute-state', {
+    if (!roomSocketReady(socketRef.current, acceptedSocketRef.current) || !room || !user) return
+    socketRef.current?.emit('mute-state', {
       roomId: room.id,
       userId: user.id,
       isMuted: nextMuted,
@@ -409,8 +442,8 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   }, [room, user])
 
   const emitSpeakingState = useCallback((nextSpeaking: boolean) => {
-    if (!socketRef.current || !room || !user) return
-    socketRef.current.emit('speaking-status', {
+    if (!roomSocketReady(socketRef.current, acceptedSocketRef.current) || !room || !user) return
+    socketRef.current?.emit('speaking-status', {
       roomId: room.id,
       userId: user.id,
       isSpeaking: nextSpeaking,
@@ -793,8 +826,25 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       reconnectionDelay: 700,
       timeout: 12000,
     })
+    let roomJoinPending = false
+    const requestRoomMembership = () => {
+      if (!socket.connected || roomJoinPending || !joinedRef.current || socketRef.current !== socket) return
+      roomJoinPending = true
+      acceptedSocketRef.current = ''
+      setSignalingReady(false)
+      socket.emit('join-room', { roomId: room.id, userId: user.id, name: displayName, avatarUrl, isMuted: mutedRef.current })
+    }
 
     socketRef.current = socket
+    socket.on('chat-message-deleted', payload => {
+      if (payload.roomId !== room.id || !payload.id || !payload.userId) return
+      const key = `${payload.userId}:${payload.id}`
+      deletedChatIds.current.add(key)
+      confirmedDeletedChatIds.current.add(key)
+      while (deletedChatIds.current.size > 1000) deletedChatIds.current.delete(deletedChatIds.current.values().next().value!)
+      while (confirmedDeletedChatIds.current.size > 1000) confirmedDeletedChatIds.current.delete(confirmedDeletedChatIds.current.values().next().value!)
+      setChatMessages(current => current.filter(message => `${message.userId}:${message.id}` !== key))
+    })
     socket.on('chat-message', payload => {
       if (payload.roomId !== room.id || !payload.userId || typeof payload.text !== 'string' || !payload.text.trim()) return
       const participant = participantsRef.current.find(item => item.userId === payload.userId)
@@ -803,11 +853,20 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         userName: participant?.userName || (typeof payload.userName === 'string' ? payload.userName.slice(0, 100) : 'Participante'),
         text: payload.text.slice(0, 2000), id: String(payload.id || crypto.randomUUID()).slice(0, 160),
         timestamp: typeof payload.timestamp === 'number' && Number.isFinite(payload.timestamp) ? payload.timestamp : Date.now(),
+        expiresAt: typeof payload.expiresAt === 'number' && Number.isFinite(payload.expiresAt) ? Math.min(payload.expiresAt, Date.now() + roomChatTtlMs) : Date.now() + roomChatTtlMs,
+        delivery: 'sent',
+        ...(validRoomImage(payload.imageData) ? { imageData: payload.imageData } : {}),
       }
-      setChatMessages(current => current.some(item => item.userId === message.userId && item.id === message.id) ? current : [...current.slice(-199), message])
-      if (!chatVisibleRef.current) setChatUnread(current => current + 1)
+      const deliveryId = `${message.userId}:${message.id}`
+      if (deletedChatIds.current.has(deliveryId)) return
+      const known = receivedChatIds.current.has(deliveryId)
+      receivedChatIds.current.add(deliveryId)
+      if (receivedChatIds.current.size > 400) receivedChatIds.current.delete(receivedChatIds.current.values().next().value!)
+      setChatMessages(current => boundedRoomChat([...current,message]))
+      if (!known && !chatVisibleRef.current && payload.userId.toLowerCase() !== user.id.toLowerCase()) unreadChatIds.current.add(deliveryId)
     })
     manager.onIceCandidate((target, candidate) => {
+      if (!roomSocketReady(socket, acceptedSocketRef.current)) return
       socket.emit('ice-candidate', {
         target,
         candidate,
@@ -816,6 +875,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       })
     })
     manager.onOfferNeeded((target, offer) => {
+      if (!roomSocketReady(socket, acceptedSocketRef.current)) return
       socket.emit('offer', {
         target,
         offer,
@@ -831,14 +891,11 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     })
 
     socket.on('connect', () => {
+      acceptedSocketRef.current = ''
+      setSignalingReady(false)
       setConnectionLabel('Señalización conectada')
-      socket.emit('join-room', {
-        roomId: room.id,
-        userId: user.id,
-        name: displayName,
-        avatarUrl,
-        isMuted: mutedRef.current,
-      })
+      roomJoinPending = false
+      requestRoomMembership()
     })
 
     socket.on('connect_error', (socketError) => {
@@ -847,16 +904,31 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     })
 
     socket.on('disconnect', () => {
+      roomJoinPending = false
+      acceptedSocketRef.current = ''
+      setSignalingReady(false)
       roomCues.suspend()
       setConnectionLabel('Reconectando voz')
     })
 
     socket.on('auth-error', (payload) => {
+      if (String(payload.error || '').includes('not joined to requested room')) {
+        acceptedSocketRef.current = ''
+        setSignalingReady(false)
+        requestRoomMembership()
+        setConnectionLabel('Sincronizando acceso a la sala')
+        return
+      }
       setJoinError(payload.error || 'La señalización de voz rechazó la sesión')
     })
 
     socket.on('room-joined', (payload) => {
       if (payload.roomId && payload.roomId !== room.id) return
+      if (socketRef.current !== socket || !joinedRef.current) return
+      roomJoinPending = false
+      acceptedSocketRef.current = socket.id || ''
+      setSignalingReady(true)
+      setJoinError(null)
       void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))
       roomCues.connect(mutedRef.current)
       socket.emit('media-status', { roomId: room.id, userId: user.id, isCameraSharing: visualSourceRef.current === 'camera', isScreenSharing: visualSourceRef.current === 'screen' })
@@ -871,6 +943,9 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
 
     socket.on('room-join-error', (payload) => {
       if (payload.roomId && payload.roomId !== room.id) return
+      roomJoinPending = false
+      acceptedSocketRef.current = ''
+      setSignalingReady(false)
       setConnectionLabel('Acceso rechazado')
       setJoinError(payload.error || 'El servidor rechazó el acceso a esta sala de voz')
       socket.disconnect()
@@ -935,7 +1010,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
             manager.createPeerConnection(payload.sender, shouldOfferToPeer(payload.sender, payload.userId))
           }
           const answer = await manager.createAnswer(payload.sender, payload.offer)
-          if (!answer) return
+          if (!answer || !roomSocketReady(socket, acceptedSocketRef.current)) return
           socket.emit('answer', {
             target: payload.sender,
             answer,
@@ -985,6 +1060,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         ),
       )
     })
+    socket.on('reaction', payload => { if ((!payload.roomId || payload.roomId === room.id) && payload.userId && payload.emoji) addVoiceReaction({ id: payload.reactionId || `${payload.userId}-${payload.timestamp}`, emoji: payload.emoji }) })
     socket.on('media-status', payload => {
       if (payload.roomId && payload.roomId !== room.id) return
       setRemoteVisualSources(current => ({ ...current, [payload.userId]: payload.isScreenSharing ? 'screen' : payload.isCameraSharing ? 'camera' : 'none' }))
@@ -994,6 +1070,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   }, [
     avatarUrl,
     configureIceServers,
+    addVoiceReaction,
     displayName,
     drainIceCandidates,
     queueOrAddIceCandidate,
@@ -1152,6 +1229,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     isJoining,
     isMuted,
     loadParticipants,
+    mediaKey,
     room,
     startLocalAudio,
     stopLocalMedia,
@@ -1163,58 +1241,33 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   ])
 
   const leaveRoom = useCallback(async (keepPage = false) => {
-    if (!user || !room || isLeaving) {
-      navigate('/app/voice')
-      return
-    }
-
+    if (isLeaving) return
     setIsLeaving(true)
     setJoinError(null)
-    // Leave is immediate locally even if the presence cleanup needs the network.
     joinedRef.current = false
     setIsJoined(false)
-    writeJoinedRoomToStorage(user.id, null)
+    writeJoinedRoomToStorage(user?.id, null)
     stopLocalMedia()
     releaseInteractiveMediaSession(mediaKey)
+    roomCues.leave()
+    onExit?.()
+    if (!keepPage) navigate('/app/voice', { replace: true })
+    if (!user || !room) { setIsLeaving(false); return }
     try {
       if (useUbuntuVoice) {
-        await leaveFallbackVoiceRoom(room.id)
-        roomCues.leave()
-        setIsJoined(false)
-        joinedRef.current = false
-        writeJoinedRoomToStorage(user.id, null)
-        stopLocalMedia()
-        await loadParticipants(room.id, { silent: true })
-        onExit?.()
-        if (!keepPage) navigate('/app/voice')
-        return
+        await leaveFallbackVoiceRoom(room.id, user.id)
+      } else {
+        if (!supabase) throw new Error('Supabase no está configurado.')
+        const { data, error: deleteError } = await supabase.from('voice_room_participants')
+          .delete().eq('room_id', room.id).eq('user_id', user.id).select('id')
+        if (deleteError && !isMissingTableError(deleteError)) throw deleteError
+        if ((data?.length ?? 0) > 0) await syncParticipantCounter(room.id, -1)
+        window.dispatchEvent(new Event('novvin:voice-rooms-changed'))
       }
-
-      if (!supabase) throw new Error('Supabase no está configurado.')
-
-      const { data, error: deleteError } = await supabase
-        .from('voice_room_participants')
-        .delete()
-        .eq('room_id', room.id)
-        .eq('user_id', user.id)
-        .select('id')
-
-      if (deleteError && !isMissingTableError(deleteError)) throw deleteError
-      if ((data?.length ?? 0) > 0) await syncParticipantCounter(room.id, -1)
-      roomCues.leave()
-      setIsJoined(false)
-      joinedRef.current = false
-      writeJoinedRoomToStorage(user.id, null)
-      stopLocalMedia()
-      await loadParticipants(room.id, { silent: true })
-      onExit?.()
-      if (!keepPage) navigate('/app/voice')
-    } catch (caught) {
-      setJoinError(friendlyError(caught, 'No se pudo salir de la sala'))
-    } finally {
-      setIsLeaving(false)
-    }
-  }, [isLeaving, loadParticipants, navigate, onExit, room, roomCues, stopLocalMedia, syncParticipantCounter, useUbuntuVoice, user])
+    } catch {
+      toast.error('Saliste de la sala. No se pudo confirmar la salida en el servidor; la conexión ya está cerrada.')
+    } finally { setIsLeaving(false) }
+  }, [isLeaving, mediaKey, navigate, onExit, room, roomCues, stopLocalMedia, syncParticipantCounter, useUbuntuVoice, user])
   closeMediaRef.current = () => leaveRoom(true)
 
   const toggleMute = useCallback(async () => {
@@ -1273,7 +1326,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     visualTrackRef.current?.stop(); visualTrackRef.current = null
     visualSourceRef.current = 'none'
     setVisualSource('none'); setLocalVideo(null)
-    if (room && user) socketRef.current?.emit('media-status', { roomId: room.id, userId: user.id, isCameraSharing: false, isScreenSharing: false })
+    if (room && user && roomSocketReady(socketRef.current, acceptedSocketRef.current)) socketRef.current?.emit('media-status', { roomId: room.id, userId: user.id, isCameraSharing: false, isScreenSharing: false })
     try { await webrtcManagerRef.current?.removeOutgoingTrack('video') }
     catch { if (joinedRef.current) setJoinError('No se pudo detener el envío de video. Vuelve a conectar a la sala.') }
   }
@@ -1291,7 +1344,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       if (!joinedRef.current || operation !== visualOperationRef.current) { capture.getTracks().forEach(value => value.stop()); return }
       visualTrackRef.current = track; setLocalVideo(new MediaStream([track])); setVisualSource(source)
       visualSourceRef.current = source
-      if (room && user) socketRef.current?.emit('media-status', { roomId: room.id, userId: user.id, isCameraSharing: source === 'camera', isScreenSharing: source === 'screen' })
+      if (room && user && roomSocketReady(socketRef.current, acceptedSocketRef.current)) socketRef.current?.emit('media-status', { roomId: room.id, userId: user.id, isCameraSharing: source === 'camera', isScreenSharing: source === 'screen' })
       track.onended = () => { if (visualTrackRef.current?.id === track.id) void stopVisual() }
     } catch(error) {
       if (source === 'camera' || !(error instanceof DOMException && error.name === 'NotAllowedError')) setJoinError('No se pudo activar la cámara o pantalla. Revisa los permisos del navegador.')
@@ -1343,12 +1396,13 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   }, [loadParticipants, room?.id])
 
   useEffect(() => {
-    if (!room || !user || autoJoinAttemptedRef.current || isJoined) return
-    const storedRoomId = readJoinedRoomFromStorage(user.id)
-    if (storedRoomId && storedRoomId !== room.id && !explicitJoin) return
+    if (!room || !user || !explicitJoin || autoJoinAttemptedRef.current || isJoined) return
     autoJoinAttemptedRef.current = true
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('join')
+    navigate({ search: nextParams.toString() }, { replace: true })
     void joinRoom()
-  }, [explicitJoin, isJoined, joinRoom, room, user])
+  }, [explicitJoin, isJoined, joinRoom, navigate, room, searchParams, user])
 
   useEffect(() => {
     const client = supabase
@@ -1385,10 +1439,77 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   }, [loadParticipants, room?.id, useUbuntuVoice])
 
   useEffect(() => {
+    const operations = photoOperation
     return () => {
+      operations.current++
       stopLocalMedia()
     }
   }, [stopLocalMedia])
+
+  function dispatchRoomMessage(message: RoomChatMessage) {
+    const socket = socketRef.current, owner = photoRoom.current
+    if (!roomSocketReady(socket, acceptedSocketRef.current)) { setPhotoError('Espera a que conecte la sala para enviar.'); return false }
+    setPhotoError('')
+    setChatMessages(current => boundedRoomChat([...current, { ...message, delivery: 'sending' }]))
+    socket!.timeout(8000).emit('chat-message', message, (error, result) => {
+      if (owner !== photoRoom.current || deletedChatIds.current.has(`${message.userId}:${message.id}`)) return
+      setChatMessages(current => current.map(item => item.id !== message.id || item.userId !== message.userId ? item : error || !result?.ok ? item.delivery === 'sent' ? item : { ...item, delivery: 'failed' } : { ...item, delivery: 'sent', timestamp: result.timestamp || item.timestamp, expiresAt: result.expiresAt || item.expiresAt }))
+      if (error || !result?.ok) setPhotoError('No se pudo confirmar el envío. Puedes reintentar sin duplicarlo.')
+    })
+    return true
+  }
+
+  function removeRoomMessage(message: RoomChatMessage) {
+    const socket = socketRef.current, owner = photoRoom.current
+    if (!user || message.userId !== user.id || !roomSocketReady(socket, acceptedSocketRef.current)) { setPhotoError('Conecta la sala para eliminar el mensaje.'); return }
+    const key = `${message.userId}:${message.id}`
+    deletedChatIds.current.add(key)
+    setChatMessages(current => current.filter(item => `${item.userId}:${item.id}` !== key))
+    socket!.timeout(8000).emit('chat-message-delete', { roomId: message.roomId, userId: user.id, id: message.id }, (error, result) => {
+      if (owner !== photoRoom.current) return
+      if ((error || !result?.ok) && !confirmedDeletedChatIds.current.has(key)) {
+        deletedChatIds.current.delete(key)
+        setChatMessages(current => boundedRoomChat([...current, message]).sort((a,b) => a.timestamp - b.timestamp))
+        setPhotoError('No se pudo confirmar el borrado. Vuelve a intentarlo.')
+      }
+    })
+  }
+
+  function sendRoomMessage(text: string, imageData = '', clearDraft = false) {
+    const socket = socketRef.current
+    if (!room || !user || !isJoined || !roomSocketReady(socket, acceptedSocketRef.current)) {
+      setPhotoError('Espera a que termine de conectar la sala para enviar.')
+      return false
+    }
+    if (!text.trim() && !imageData) return false
+    if (imageData && Date.now() - lastPhotoSentRef.current < 2000) {
+      setPhotoError('Espera dos segundos entre fotos y vuelve a enviar.')
+      return false
+    }
+    const message: RoomChatMessage = { roomId: room.id, userId: user.id, userName: displayName, text: text.trim() || '📷 Foto', id: crypto.randomUUID(), timestamp: Date.now(), expiresAt: Date.now() + roomChatTtlMs, ...(imageData ? { imageData } : {}) }
+    if (!dispatchRoomMessage(message)) return false
+    receivedChatIds.current.add(`${message.userId}:${message.id}`)
+    if (receivedChatIds.current.size > 400) receivedChatIds.current.delete(receivedChatIds.current.values().next().value!)
+    if (imageData) lastPhotoSentRef.current = Date.now()
+    if (clearDraft) { setChatDraft(''); setChatPhoto('') }
+    setPhotoError('')
+    return true
+  }
+
+  async function prepareChatPhoto(file: File) {
+    if (photoBusy || !isJoined) return
+    const owner = photoRoom.current, operation = ++photoOperation.current
+    setPhotoBusy(true); setPhotoError('')
+    try {
+      const value = await prepareRoomImage(file)
+      if (owner !== photoRoom.current || operation !== photoOperation.current) return
+      setChatPhoto(value)
+    } catch (caught) {
+      if (owner === photoRoom.current && operation === photoOperation.current) setPhotoError(friendlyError(caught, 'No se pudo preparar la foto.'))
+    } finally {
+      if (owner === photoRoom.current && operation === photoOperation.current) setPhotoBusy(false)
+    }
+  }
 
   if (conflict) return minimized ? null : <MediaSessionConflict session={conflict}/>
   if (loading) {
@@ -1404,13 +1525,13 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   }
 
   return (
-    <section className={`voice-room-stage${minimized ? ' voice-room-minimized' : ''}${cinemaMode ? ' voice-room-cinema' : ''}`}>
-      {minimized && isJoined ? <aside className="voice-floating-controls" aria-label="Sala de voz activa">
+    <section className={`voice-room-stage${minimized ? ' voice-room-minimized' : ''}${cinemaMode ? ' voice-room-cinema' : ''}${chatOpen ? ' voice-chat-open' : ''}`}>
+      {minimized && isJoined ? <MovableVoicePanel accountId={user?.id||''}>
         <button type="button" className="voice-floating-title" onClick={() => navigate(`/app/voice/${room.id}`)}><Radio size={18}/><span><strong>{room.title}</strong><small>{connectionQuality}</small></span></button>
         <button type="button" className="icon-btn" aria-label={isMuted ? 'Activar micrófono en sala' : 'Silenciar micrófono en sala'} aria-pressed={isMuted} onClick={() => void toggleMute()}>{isMuted ? <MicOff/> : <Mic/>}</button>
-        <button type="button" className="icon-btn" aria-label="Volver a sala de voz" onClick={() => navigate(`/app/voice/${room.id}`)}><Headphones/></button>
+        <button type="button" className={isDeafened?'icon-btn voice-panel-muted':'icon-btn'} aria-pressed={isDeafened} aria-label={isDeafened?'Escuchar sala':'Silenciar audio de sala'} onClick={toggleDeafen}>{isDeafened?<span className="voice-headphones-muted"><Headphones/></span>:<Headphones/>}</button>
         <button type="button" className="icon-btn danger" aria-label="Salir de sala de voz" disabled={isLeaving} onClick={() => void leaveRoom()}><PhoneOff/></button>
-      </aside> : null}
+      </MovableVoicePanel> : null}
       <header className="voice-room-stage-header">
         <div className="voice-room-heading">
           <Link className="voice-back-link" to="/app/voice">
@@ -1445,6 +1566,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         </article>
       ) : null}
 
+      <ReactionCloud items={voiceReactionItems} room/>
       <div className="voice-room-console">
         <main className="voice-room-speaker-panel">
           <div className="voice-panel-header">
@@ -1540,21 +1662,29 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
             {chatOpen ? <>
               <div className="voice-chat-messages" role="log" aria-label="Mensajes de la sala" aria-live="polite">
                 {!chatMessages.length ? <p className="voice-room-subtle">Los mensajes de esta sesión aparecen aquí al entrar en la sala.</p> : null}
-                {chatMessages.map(message => <article key={`${message.userId}:${message.id}`} className={message.userId === user?.id ? 'own' : ''}><header><strong>{message.userId === user?.id ? 'Tú' : message.userName}</strong><time>{new Date(message.timestamp).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}</time></header><p>{message.text}</p></article>)}
+                {chatMessages.map(message => <article key={`${message.userId}:${message.id}`} className={message.userId === user?.id ? 'own' : ''}><header><strong>{message.userId === user?.id ? 'Tú' : message.userName}</strong><time>{new Date(message.timestamp).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}</time>{message.userId === user?.id ? <details className="voice-message-menu"><summary aria-label="Opciones del mensaje"><MoreHorizontal size={17}/></summary><button type="button" disabled={!signalingReady} onClick={() => removeRoomMessage(message)}><Trash2 size={15}/>Eliminar para todos</button></details> : null}</header>{message.imageData ? <RoomChatPhoto source={message.imageData} author={message.userName} active={!minimized && chatOpen} /> : null}<MessageText text={message.text}/>{message.delivery === 'sending' ? <small role="status">Enviando…</small> : message.delivery === 'failed' ? <button type="button" className="voice-message-retry" onClick={() => dispatchRoomMessage(message)}>Reintentar envío</button> : null}</article>)}
                 <div ref={chatEndRef}/>
               </div>
               <form className="voice-chat-composer" onSubmit={event => {
                 event.preventDefault()
-                const socket = socketRef.current, text = chatDraft.trim()
-                if (!text || !user || !isJoined || !socket?.connected) return
-                const message: RoomChatMessage = { roomId: room.id, userId: user.id, userName: displayName, text, id: crypto.randomUUID(), timestamp: Date.now() }
-                socket.emit('chat-message', message)
-                setChatMessages(current => [...current.slice(-199), message])
-                setChatDraft('')
+                if (!photoBusy) sendRoomMessage(chatDraft, chatPhoto, true)
+              }} onPaste={event => {
+                const file = firstRoomClipboardImage(event.clipboardData.items)
+                if (!file) return
+                event.preventDefault()
+                void prepareChatPhoto(file)
               }}>
-                <input aria-label="Mensaje para la sala" placeholder={isJoined ? 'Escribe un mensaje…' : 'Únete para escribir'} spellCheck lang="es" maxLength={2000} value={chatDraft} disabled={!isJoined} onChange={event => setChatDraft(event.target.value)}/>
-                <button type="submit" aria-label="Enviar mensaje a la sala" disabled={!isJoined || !socketRef.current?.connected || !chatDraft.trim()}><Send size={18}/></button>
+                <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={event => {
+                  const file = event.target.files?.[0]; event.target.value = ''; if (file) void prepareChatPhoto(file)
+                }} />
+                {chatPhoto ? <div className="voice-photo-draft"><img src={chatPhoto} alt="Foto lista para enviar" /><button type="button" aria-label="Cancelar foto" onClick={() => { photoOperation.current++; setChatPhoto(''); setPhotoError('') }}><X size={18}/></button></div> : null}
+                <button type="button" title="Añadir foto" aria-label="Añadir foto a la sala" disabled={!isJoined || !signalingReady || photoBusy} onClick={() => photoInput.current?.click()}><ImagePlus size={18}/></button>
+                <input aria-label="Mensaje para la sala" placeholder={isJoined ? signalingReady ? 'Escribe un mensaje…' : 'Conectando chat…' : 'Únete para escribir'} spellCheck lang="es" maxLength={2000} value={chatDraft} disabled={!isJoined || !signalingReady} onChange={event => setChatDraft(event.target.value)}/>
+                <button type="submit" aria-label="Enviar mensaje a la sala" disabled={!isJoined || !signalingReady || photoBusy || (!chatDraft.trim() && !chatPhoto)}><Send size={18}/></button>
               </form>
+              {photoBusy ? <div className="voice-photo-preparing" role="status"><small>Preparando foto…</small><button type="button" onClick={() => { photoOperation.current++; setPhotoBusy(false); setChatPhoto('') }}>Cancelar</button></div> : null}
+              {photoError ? <p role="alert">{photoError}</p> : null}
+              <small className="voice-chat-retention">Chat temporal: los mensajes y las fotos desaparecen a los 90 minutos.</small>
             </> : null}
           </section>
           <section className="voice-side-section">
@@ -1603,8 +1733,9 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       </div>
         <footer className={`voice-room-controls${isJoined ? ' joined' : ''}`} aria-label="Controles de sala">
           <button className="voice-control-btn" type="button" onClick={() => setCinemaMode(value => !value)} aria-pressed={cinemaMode} aria-label={cinemaMode ? 'Salir del modo cine' : 'Activar modo cine'} title={cinemaMode ? 'Salir del modo cine' : 'Modo cine'}>{cinemaMode ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}Modo cine</button>
-          <button className="voice-control-btn" type="button" aria-label="Mostrar chat de la sala" aria-expanded={chatOpen} onClick={() => { setChatOpen(value => !value); window.setTimeout(() => document.querySelector('.voice-chat-section')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0) }}><MessageCircle size={18}/>Chat{chatUnread ? ` (${chatUnread})` : ''}</button>
+          <button className="voice-control-btn" type="button" title={chatOpen ? 'Ocultar chat' : 'Mostrar chat'} aria-label={chatOpen ? 'Ocultar chat de la sala' : 'Mostrar chat de la sala'} aria-expanded={chatOpen} onClick={() => { setChatOpen(value => !value); window.setTimeout(() => document.querySelector('.voice-chat-section')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0) }}><MessageCircle size={18}/>Chat{chatUnread ? ` (${chatUnread})` : ''}</button>
           <button className="voice-control-btn" type="button" onClick={() => void openDeviceSettings()} aria-label="Ajustes de audio y video" aria-expanded={showDeviceSettings}><Settings size={18} />Ajustes</button>
+          {isJoined ? <RoomReactionMenu onReaction={emoji => { if (!room || !user || !roomSocketReady(socketRef.current, acceptedSocketRef.current)) return; const reactionId = crypto.randomUUID(); addVoiceReaction({ id: reactionId, emoji }); socketRef.current?.emit('reaction', { roomId: room.id, userId: user.id, emoji, reactionId, timestamp: Date.now() }) }} /> : null}
           {!isJoined ? (
             <button className="voice-control-btn primary" type="button" onClick={() => void joinRoom()} disabled={isJoining}>
               <Headphones aria-hidden="true" size={18} />
@@ -1617,6 +1748,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
                 type="button"
                 onClick={() => void toggleMute()}
                 aria-pressed={isMuted}
+                aria-label={isMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
                 title={isMuted ? 'Activar micrófono' : 'Silenciar micrófono'}
               >
                 {isMuted ? <MicOff aria-hidden="true" size={18} /> : <Mic aria-hidden="true" size={18} />}
@@ -1627,6 +1759,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
                 type="button"
                 onClick={toggleDeafen}
                 aria-pressed={isDeafened}
+                aria-label={isDeafened ? 'Escuchar sala' : 'Silenciar audio de sala'}
                 title={isDeafened ? 'Escuchar sala' : 'Silenciar audio de sala'}
               >
                 {isDeafened ? <VolumeX aria-hidden="true" size={18} /> : <Volume2 aria-hidden="true" size={18} />}

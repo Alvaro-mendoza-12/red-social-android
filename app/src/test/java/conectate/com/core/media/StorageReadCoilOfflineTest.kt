@@ -41,6 +41,8 @@ class StorageReadCoilOfflineTest {
         assertTrue(result is SuccessResult)
         assertEquals("file:/private/account-a/sticker.media", chain.sent?.data)
         assertEquals(CachePolicy.DISABLED, chain.sent?.diskCachePolicy)
+        assertEquals(CachePolicy.ENABLED, chain.sent?.memoryCachePolicy)
+        assertTrue(chain.sent?.memoryCacheKey?.key?.startsWith("storage-read-v1:") == true)
     }
 
     @Test fun `successful first image requests a retained offline copy`() = runBlocking {

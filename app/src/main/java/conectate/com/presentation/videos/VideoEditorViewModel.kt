@@ -1367,9 +1367,21 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
     }
 
     fun applyFilter(@Suppress("UNUSED_PARAMETER") context: Context, clipId: Long, filterType: FilterType) {
+        if (_isExporting.value) return
         lutImportJob?.cancel()
         _timeline.value = _timeline.value.updateClip(clipId) { it.copy(filterType = filterType, customLutId = null, customLutTitle = null) }
         syncSelectedClipPreview()
+        _editorHint.value = if (filterType == FilterType.NONE) "Sin filtro. Se conservan los ajustes manuales de color." else "Filtro aplicado al fragmento seleccionado y a su exportación."
+    }
+
+    fun resetClipColor(clipId: Long) {
+        if (_isExporting.value) return
+        lutImportJob?.cancel()
+        _timeline.value = _timeline.value.updateClip(clipId) { clip ->
+            clip.withOriginalColor()
+        }
+        syncSelectedClipPreview()
+        _editorHint.value = "Color original restaurado. Se conservaron el recorte, los textos y el audio."
     }
 
     private suspend fun loadImportedLuts(context: Context, timeline: EditorTimeline) = withContext(Dispatchers.IO) {
@@ -1526,6 +1538,10 @@ data class EditorClip(
 }
 
 enum class TrackType { VIDEO, AUDIO, TEXT, STICKER }
+internal fun EditorClip.withOriginalColor(): EditorClip = copy(
+    brightness = 0f, contrast = 1f, saturation = 1f,
+    filterType = FilterType.NONE, customLutId = null, customLutTitle = null
+)
 enum class ClipType { VIDEO, AUDIO, TEXT, STICKER }
 
 enum class FilterType {

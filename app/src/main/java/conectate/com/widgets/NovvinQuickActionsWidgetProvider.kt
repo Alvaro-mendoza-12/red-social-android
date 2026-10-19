@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.widget.RemoteViews
 import conectate.com.MainActivity
 import conectate.com.R
@@ -17,13 +18,21 @@ class NovvinQuickActionsWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         appWidgetIds.forEach { appWidgetId ->
-            val views = RemoteViews(context.packageName, R.layout.widget_novvin_quick_actions)
+            val compact = appWidgetManager.getAppWidgetOptions(appWidgetId)
+                .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 132) < 120
+            val views = RemoteViews(context.packageName, if (compact)
+                R.layout.widget_novvin_quick_actions_compact else R.layout.widget_novvin_quick_actions)
             views.setOnClickPendingIntent(R.id.widget_root, open(context, "social", 10))
             views.setOnClickPendingIntent(R.id.widget_videos, open(context, "videos", 11))
             views.setOnClickPendingIntent(R.id.widget_moments, open(context, "create-moment", 12))
             views.setOnClickPendingIntent(R.id.widget_messages, open(context, "messages", 13))
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
+    }
+
+    override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager,
+        appWidgetId: Int, newOptions: Bundle) {
+        onUpdate(context, manager, intArrayOf(appWidgetId))
     }
 
     private fun open(context: Context, destination: String, requestCode: Int): PendingIntent {

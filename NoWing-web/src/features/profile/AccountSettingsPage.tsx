@@ -3,6 +3,7 @@ import { StreamingImage } from '../../components/StreamingMedia'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
+import { PROFILE_EFFECT_CHOICES, ProfileCoverEffect } from '../../components/ProfileCoverEffect'
 import { Link } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
@@ -78,6 +79,8 @@ type SettingsModel = {
   bio: string
   avatarUrl: string
   coverUrl: string
+  profileEffect: string
+  profileTheme: string
   interestsText: string
   hobbiesText: string
   linkedGamesText: string
@@ -156,6 +159,8 @@ export function AccountSettingsPage() {
     bio: '',
     avatarUrl: '',
     coverUrl: '',
+    profileEffect: 'none',
+    profileTheme: 'conectate',
     interestsText: '',
     hobbiesText: '',
     linkedGamesText: '',
@@ -216,6 +221,8 @@ export function AccountSettingsPage() {
             textOf(metadata, ['avatar_url'], ''),
           ),
           coverUrl: textOf(profile, ['cover_url', 'coverUrl', 'banner_url'], ''),
+          profileEffect: textOf(profile, ['profile_effect', 'profileEffect'], 'none'),
+          profileTheme: textOf(profile, ['profile_theme', 'profileTheme'], 'conectate'),
           interestsText: csvFromArray(profile.interests),
           hobbiesText: csvFromArray(profile.hobbies),
           linkedGamesText: csvFromArray(profile.linked_games),
@@ -282,6 +289,8 @@ export function AccountSettingsPage() {
         bio: textOf(row, ['bio'], ''),
         avatarUrl: textOf(row, ['avatar_url', 'photo_url', 'profile_image'], ''),
         coverUrl: textOf(row, ['cover_url', 'banner_url'], ''),
+        profileEffect: textOf(row, ['profile_effect'], 'none'),
+        profileTheme: textOf(row, ['profile_theme'], 'conectate'),
         interestsText: csvFromArray(row.interests),
         hobbiesText: csvFromArray(row.hobbies),
         linkedGamesText: csvFromArray(row.linked_games),
@@ -326,6 +335,8 @@ export function AccountSettingsPage() {
           bio: model.bio.trim() || null,
           avatarUrl: model.avatarUrl.trim() || null,
           coverUrl: model.coverUrl.trim() || null,
+          profileEffect: model.profileEffect,
+          profileTheme: model.profileTheme,
           username: model.username.trim() || null,
           interests: csvToArray(model.interestsText),
           hobbies: csvToArray(model.hobbiesText),
@@ -354,6 +365,8 @@ export function AccountSettingsPage() {
           bio: textOf(profile, ['bio'], current.bio),
           avatarUrl: textOf(profile, ['avatar_url', 'avatarUrl'], current.avatarUrl),
           coverUrl: textOf(profile, ['cover_url', 'coverUrl'], current.coverUrl),
+          profileEffect: textOf(profile, ['profile_effect', 'profileEffect'], current.profileEffect),
+          profileTheme: textOf(profile, ['profile_theme', 'profileTheme'], current.profileTheme),
         }))
         setInfo('Perfil actualizado.')
       } catch (caught) {
@@ -374,6 +387,8 @@ export function AccountSettingsPage() {
         bio: model.bio.trim() || null,
         avatar_url: model.avatarUrl.trim() || null,
         cover_url: model.coverUrl.trim() || null,
+        profile_effect: model.profileEffect,
+        profile_theme: model.profileTheme,
         interests: csvToArray(model.interestsText),
         hobbies: csvToArray(model.hobbiesText),
         linked_games: csvToArray(model.linkedGamesText),
@@ -596,7 +611,7 @@ export function AccountSettingsPage() {
           </div>
           <div className="composer settings-stack">
             <div className="settings-profile-preview">
-              {model.coverUrl.trim() ? <StreamingImage className="settings-profile-cover" src={model.coverUrl.trim()} alt="Portada de tu perfil" /> : <div className="settings-profile-cover" />}
+              {model.coverUrl.trim() ? <StreamingImage className="settings-profile-cover" src={model.coverUrl.trim()} alt="Portada de tu perfil" /> : <div className="settings-profile-cover"><ProfileCoverEffect effect={model.profileEffect} theme={model.profileTheme} /></div>}
               <div className="settings-profile-avatar">
                 {model.avatarUrl.trim() ? (
                   <SafeAvatar url={model.avatarUrl.trim()} name={model.displayName || 'Tu perfil'} />
@@ -613,6 +628,16 @@ export function AccountSettingsPage() {
                 </span>
               </div>
             </div>
+
+            <details className="settings-appearance-tools"><summary>Personalizar portada</summary>
+              <p>Elige una foto o un fondo animado. Los efectos se muestran en tu perfil cuando no hay foto de portada.</p>
+              <label>Efecto <select className="text-input" value={model.profileEffect} onChange={event => setModel(current => ({ ...current, profileEffect: event.target.value }))}>{PROFILE_EFFECT_CHOICES.map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>
+              <label>Color del fondo <select className="text-input" value={model.profileTheme} onChange={event => setModel(current => ({ ...current, profileTheme: event.target.value }))}>
+                {Object.entries({ conectate: 'Novvin', oceano: 'Océano', jade: 'Jade', solar: 'Solar', sakura: 'Sakura', cobalto: 'Cobalto', bosque: 'Bosque', aurora: 'Aurora', grafito: 'Grafito', rubi: 'Rubí', ciruela: 'Ciruela', artico: 'Ártico', neon: 'Neón', terracota: 'Terracota', tinta: 'Tinta', laguna: 'Laguna', citrico: 'Cítrico', orquidea: 'Orquídea', carmesi: 'Carmesí', prisma: 'Prisma', melon: 'Melón', acero: 'Acero', selva: 'Selva', noche: 'Noche' }).map(([id, label]) => <option value={id} key={id}>{label}</option>)}
+              </select></label>
+              {model.coverUrl ? <button className="ghost-btn" type="button" onClick={() => setModel(current => ({ ...current, coverUrl: '' }))}>Usar fondo en lugar de foto</button> : null}
+              <p className="muted-line">Los cambios se aplican al guardar el perfil. La animación se puede pausar y respeta el movimiento reducido del dispositivo.</p>
+            </details>
 
             <div className="settings-form-grid">
               <label className="settings-field"><span>Nombre visible</span><input

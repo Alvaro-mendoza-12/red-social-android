@@ -1,3 +1,4 @@
+import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { birthdayLabel } from '../../core/birthdayCard'
 import { ProfilePostPreview } from '../../components/ProfilePostPreview'
 import { StreamingImage, StreamingVideo, StreamingAudio } from '../../components/StreamingMedia'
@@ -44,6 +45,8 @@ type ProfileData = {
   avatarMediaType: string
   coverUrl: string
   profileWelcome: string
+  profileEffect: string
+  profileTheme: string
   interests: string[]
   hobbies: string[]
   linkedGames: string[]
@@ -108,6 +111,8 @@ function mapProfile(
     avatarMediaType: avatarMediaTypeSource(row, avatarSource, fallbackAvatarMediaType),
     coverUrl: resolveSupabasePublicUrl('covers', profileCoverSource(row)),
     profileWelcome: textOf(row, ['profile_welcome', 'profileWelcome'], ''),
+    profileEffect: textOf(row, ['profile_effect', 'profileEffect'], 'none'),
+    profileTheme: textOf(row, ['profile_theme', 'profileTheme'], 'conectate'),
     interests: stringArrayFrom(row.interests),
     hobbies: stringArrayFrom(row.hobbies),
     linkedGames: stringArrayFrom(row.linked_games ?? row.linkedGames),
@@ -171,6 +176,18 @@ export function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [shareStatus, setShareStatus] = useState('')
+
+  useEffect(() => {
+    if (!isFallbackSession || !user) return
+    let active = true
+    const refreshCounts = () => { if (!document.hidden) void loadFallbackProfileMe().then(response => {
+      if (active) setStats(current => ({ ...current, followers: Number(response.stats.followers || 0), following: Number(response.stats.following || 0) }))
+    }).catch(() => {}) }
+    const unsubscribe = subscribeUbuntuRealtime({ channel: `profile-counts:${user.id}`, onEvent: refreshCounts })
+    const timer = window.setInterval(refreshCounts, 30000)
+    window.addEventListener('focus', refreshCounts)
+    return () => { active = false; unsubscribe(); window.clearInterval(timer); window.removeEventListener('focus', refreshCounts) }
+  }, [isFallbackSession, user])
 
   const metadataName = String(
     user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? '',
@@ -314,6 +331,8 @@ export function ProfilePage() {
         avatarUrl={profile?.avatarUrl || ''}
         avatarMediaType={profile?.avatarMediaType}
         coverUrl={profile?.coverUrl || ''}
+        profileEffect={profile?.profileEffect}
+        profileTheme={profile?.profileTheme}
         frame={profile?.profileFrame}
         identity={profile?.identity || profileIdentity(metadataRow)}
         followers={stats.followers}

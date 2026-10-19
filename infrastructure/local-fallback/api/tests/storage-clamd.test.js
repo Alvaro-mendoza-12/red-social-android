@@ -11,7 +11,7 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex')
 const at = Date.UTC(2026, 9, 7, 12)
 const version = 'ClamAV 1.4.6/28150/Wed Oct 7 11:00:00 2026 COMMANDS: INSTREAM VERSIONCOMMANDS PING'
 const config = ['StreamMaxLength 500M','MaxFileSize 500M','MaxScanSize 1000M','MaxThreads 2','MaxQueue 4','AlertExceedsMax yes','AlertEncrypted yes','ScanArchive yes','ScanPE yes','ScanOLE2 yes','MaxScanTime 600000'].join('\n')
-function fixture(mode = 'clean') {
+function fixture(mode = 'clean', currentTime = at) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 's-')), file = path.join(root,'inert.txt'), policyFile = path.join(root,'policy.json'), configFile = path.join(root,'clamd.conf')
   const bytes = Buffer.alloc(192 * 1024, 'A'); fs.writeFileSync(file,bytes); fs.writeFileSync(configFile,config)
   const policy = Buffer.from(JSON.stringify({ schema:1,timezone:'UTC',maxFileBytes:500*1024*1024,streamMaxBytes:500*1024*1024,maxScanBytes:1000*1024*1024,alertExceedsMax:true,alertEncrypted:true,maxThreads:2,maxQueue:4,scanArchive:true,scanPE:true,scanOLE2:true,configSha256:hash(Buffer.from(config)) }))
@@ -44,13 +44,23 @@ function fixture(mode = 'clean') {
     }
     sockets.push(socket);queueMicrotask(()=>socket.emit('connect'));return socket
   }
-  const scanner=createStorageClamd({host:'inert.invalid',connect,now:()=>at,timeoutMs:mode==='timeout'?20:1000,attestationFile:policyFile,policySha256:hash(policy),daemonConfigFile:configFile})
+  const scanner=createStorageClamd({host:'inert.invalid',connect,now:()=>currentTime,timeoutMs:mode==='timeout'?20:1000,attestationFile:policyFile,policySha256:hash(policy),daemonConfigFile:configFile})
   return {root,file,bytes,policyFile,configFile,scanner,sockets,stats:()=>({framedBytes,frames}),cleanup(){assert.ok(root.startsWith(path.resolve(os.tmpdir())+path.sep+'s-'));fs.rmSync(root,{recursive:true,force:true})}}
 }
 test('fresh signatures and required commands are mandatory',()=>{
   assert.equal(parseDaemonVersion(version,at,24*60*60*1000).signatureVersion,'28150')
   assert.throws(()=>parseDaemonVersion(version.replace('Wed Oct 7','Mon Oct 5'),at,24*60*60*1000),/SIGNATURES_STALE/)
   assert.throws(()=>parseDaemonVersion(version.replace(' INSTREAM',''),at,24*60*60*1000),/COMMANDS_UNVERIFIED/)
+})
+test('default readiness accepts signatures through 48 hours and rejects older signatures', async t => {
+  const published = Date.UTC(2026, 9, 7, 11)
+  for (const age of [25, 47.9, 48, 48.001, 72]) await t.test(String(age), async () => {
+    const f = fixture('clean', published + age * 3600000)
+    try {
+      if (age <= 48) assert.equal((await f.scanner.readiness()).signatureVersion, '28150')
+      else await assert.rejects(f.scanner.readiness(), error => error.code === 'STORAGE_SCAN_SIGNATURES_STALE')
+    } finally { f.cleanup() }
+  })
 })
 test('streaming protocol sends all framed bytes with digest, including backpressure',async t=>{
   for(const mode of ['clean','backpressure'])await t.test(mode,async()=>{

@@ -10,6 +10,8 @@ const { registerSafeSocketEvent, validateSocketPayload } = require('./socket-eve
 const { authorizeCallJoin } = require('./call-join-policy');
 const { updateLiveGuestMediaState } = require('./live-guest-media-state');
 const { liveReactionPolicy } = require('./live-reaction-policy');
+const { roomChatMessage, createRoomChatLedger } = require('./room-chat-policy');
+const { createRoomChatTransport } = require('./room-chat-transport');
 
 const callPermissionCache = new WeakMap();
 async function refreshCallPermission(socket, force = false) {
@@ -1022,6 +1024,12 @@ function emitLiveModerationState(liveId, session) {
 // room_id -> Map(socket_id -> { userId, name, avatarUrl, isCameraSharing,
 // isScreenSharing, captionsEnabled })
 const rooms = new Map();
+const roomChatLedger = createRoomChatLedger();
+const broadcastRoomChat = createRoomChatTransport(io, roomChatLedger, () => distributedAdapterRuntime.getStatus().connected);
+const roomChatExpiry = setInterval(() => {
+    for (const expired of roomChatLedger.expire()) broadcastRoomChat('chat-message-deleted', expired);
+}, 15000);
+roomChatExpiry.unref?.();
 const voiceRoomCleanupTimers = new Map();
 const voiceCaptionTranscripts = new Map();
 const VOICE_CAPTION_MAX_TEXT_LENGTH = 500;
@@ -1314,11 +1322,38 @@ io.on('connection', (socket) => {
     });
     // --------------------------
 
-    safeSocketOn(socket, 'chat-message', (data) => {
+    safeSocketOn(socket, 'chat-message', (data, acknowledge) => {
+        const respond = value => { if (typeof acknowledge === 'function') acknowledge(value); };
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'chat-message');
         const userId = requireSocketUser(socket, data.userId);
-        if (!roomId || !userId) return;
-        socket.to(roomId).emit('chat-message', { ...data, userId });
+        if (!roomId || !userId) { respond({ ok: false, error: 'ROOM_CHAT_NOT_JOINED' }); return; }
+        const message = roomChatMessage(data, roomId, userId, rooms.get(roomId)?.get(socket.id)?.name);
+        if (!message) { respond({ ok: false, error: 'ROOM_CHAT_INVALID_MESSAGE' }); return; }
+        if (message.imageData && !roomChatLedger.has(roomId, message.id)) {
+            const now = Date.now();
+            if (socket.data.lastRoomPhotoAt && now - socket.data.lastRoomPhotoAt < 2000) {
+                socket.emit('signal-error', { event: 'chat-message', error: 'PHOTO_RATE_LIMIT' }); respond({ ok: false, error: 'PHOTO_RATE_LIMIT' }); return;
+            }
+        }
+        const accepted = roomChatLedger.accept(message);
+        if (!accepted.ok) { respond(accepted); return; }
+        if (!accepted.duplicate) {
+            if (message.imageData) socket.data.lastRoomPhotoAt = Date.now();
+            broadcastRoomChat('chat-message', { ...message, timestamp: accepted.timestamp, expiresAt: accepted.expiresAt });
+        }
+        respond(accepted);
+    });
+
+    safeSocketOn(socket, 'chat-message-delete', (data, acknowledge) => {
+        const respond = value => { if (typeof acknowledge === 'function') acknowledge(value); };
+        const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'chat-message-delete');
+        const userId = requireSocketUser(socket, data.userId);
+        if (!roomId || !userId) { respond({ ok: false, error: 'ROOM_CHAT_NOT_JOINED' }); return; }
+        const id = typeof data.id === 'string' && /^[\w-]{1,160}$/.test(data.id) ? data.id : '';
+        if (!id) { respond({ ok: false, error: 'ROOM_CHAT_INVALID_MESSAGE' }); return; }
+        const result = roomChatLedger.remove(roomId, userId, id);
+        if (result.ok && !result.absent) broadcastRoomChat('chat-message-deleted', result);
+        respond(result);
     });
 
     safeSocketOn(socket, 'reaction', (data) => {

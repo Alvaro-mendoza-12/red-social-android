@@ -426,6 +426,8 @@ fun MessageBubble(
     onSwipeReply: (Message) -> Unit = {},
     onReplyClick: (String) -> Unit = {},
     onSenderClick: (String) -> Unit = {},
+    onMentionClick: ((String) -> Unit)? = null,
+    onCollectionInvitationClick: ((String) -> Unit)? = null,
     currentUserId: String? = null,
     onReactionClick: (String) -> Unit = {},
     onOpenContactChat: (ChatContactPayload) -> Unit = {},
@@ -433,6 +435,8 @@ fun MessageBubble(
     uploadProgress: Float? = null,
     onRetrySend: (() -> Unit)? = null,
     replySenderName: String? = null,
+    replyMessage: Message? = null,
+    selectionMode: Boolean = false,
 ) {
     val context = LocalContext.current
     var showDocument by remember(message.id, message.media_url) { mutableStateOf(false) }
@@ -480,6 +484,7 @@ fun MessageBubble(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .messageSelectionTap(selectionMode) { onClick(null) }
             .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
             .padding(horizontal = 8.dp, vertical = 1.dp)
             .offset { IntOffset(x = (offsetX / 3f).roundToInt(), y = 0) }
@@ -522,6 +527,7 @@ fun MessageBubble(
                 .combinedClickable(
                     onClick = { 
                         when {
+                            selectionMode -> onClick(null)
                             message.isAudio -> onPlayAudio(message)
                             isStickerMessage -> onLongClick()
                             message.content_type in listOf("document", "file") && !message.deleted_for_all -> showDocument = true
@@ -599,7 +605,9 @@ fun MessageBubble(
                 }
                 
                 // Quote Section
-                message.reply_to?.let { quoted ->
+                (message.reply_to ?: replyMessage ?: message.reply_to_id?.takeIf(String::isNotBlank)?.let {
+                    Message(id = it, content = "Mensaje anterior", sender_name = "Respuesta")
+                })?.let { quoted ->
                     Row(
                         modifier = Modifier
                             .padding(top = 4.dp, bottom = 4.dp)
@@ -746,12 +754,14 @@ fun MessageBubble(
                             if (videoReference.caption.isNotBlank()) Text(videoReference.caption,
                                 color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                 style = MaterialTheme.typography.bodyMedium)
-                        } else LinkText(
+                        } else ExpandableMessageText(
                             text = message.content,
                             backgroundColor = backgroundColor,
                             color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                             fontSize = 15.sp,
-                            onUrlClick = onUrlClick
+                            onUrlClick = onUrlClick,
+                            onMentionClick = onMentionClick,
+                            onCollectionInvitationClick = onCollectionInvitationClick
                         )
                     }
                     "image", "gif" -> {

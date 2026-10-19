@@ -129,11 +129,20 @@ async function ensureDirectMessageRequestPolicy(pool) {
         INSERT INTO fallback_message_requests(chat_id,sender_id,recipient_id,status)
           VALUES(NEW.chat_id::uuid,state->>'senderId',actor,'accepted')
           ON CONFLICT(chat_id) DO UPDATE SET status='accepted',updated_at=NOW();
+        INSERT INTO fallback_friends(sender_id,receiver_id,status)
+          VALUES(state->>'senderId',actor,'accepted')
+          ON CONFLICT(sender_id,receiver_id) DO UPDATE SET status='accepted';
       ELSIF state->>'status'='new' THEN
         SELECT fallback_request_identity(p) INTO other FROM fallback_chats,unnest(participants) p
           WHERE id::text=lower(NEW.chat_id::text) AND fallback_request_identity(p)<>actor LIMIT 1;
         INSERT INTO fallback_message_requests(chat_id,sender_id,recipient_id,status,first_message_id)
           VALUES(NEW.chat_id::uuid,actor,other,'pending',NEW.id::text);
+        IF NOT EXISTS(SELECT 1 FROM fallback_friends WHERE status='accepted' AND
+          ((fallback_request_identity(sender_id)=actor AND fallback_request_identity(receiver_id)=other)
+          OR (fallback_request_identity(sender_id)=other AND fallback_request_identity(receiver_id)=actor))) THEN
+          INSERT INTO fallback_friends(sender_id,receiver_id,status) VALUES(actor,other,'pending')
+            ON CONFLICT(sender_id,receiver_id) DO NOTHING;
+        END IF;
       ELSE
         -- Once a pending conversation becomes trusted, it remains accepted.
         UPDATE fallback_message_requests SET status='accepted',updated_at=NOW()
@@ -152,7 +161,7 @@ function introPolicyError(error) {
 }
 
 // Preserve delivery of already persisted legacy friendship events. The new
-// introduction guard creates no friendship and its alert is the first message.
+// introduction guard creates the pending friendship; its alert is the first message.
 async function publishAutomaticFriendRequest(pool, { senderId, chatId, messageId } = {}, publish) {
   if (!senderId || !chatId || !messageId) return 0
   const { rows } = await pool.query(
@@ -225,6 +234,10 @@ function registerDirectMessageRequestRoutes(app, { pool, authRequired, getCurren
       const status=action==='accept'?'accepted':'rejected'
       await client.query(`INSERT INTO fallback_message_requests(chat_id,sender_id,recipient_id,status)
         VALUES($1::uuid,$2,$3,$4) ON CONFLICT(chat_id) DO UPDATE SET status=EXCLUDED.status,updated_at=NOW()`,[chatId,state.senderId,actor,status])
+      if(status==='accepted') await client.query(`INSERT INTO fallback_friends(sender_id,receiver_id,status) VALUES($1,$2,'accepted')
+        ON CONFLICT(sender_id,receiver_id) DO UPDATE SET status='accepted'`,[state.senderId,actor])
+      else await client.query(`UPDATE fallback_friends SET status='rejected' WHERE status='pending'
+        AND fallback_request_identity(sender_id)=$1 AND fallback_request_identity(receiver_id)=$2`,[state.senderId,actor])
       await client.query('COMMIT')
       res.json({status:status==='accepted'?'open':'rejected'})
     }catch(error){if(client)await client.query('ROLLBACK').catch(()=>{});next(error)}finally{client?.release()}

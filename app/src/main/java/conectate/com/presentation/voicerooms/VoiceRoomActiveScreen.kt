@@ -1821,11 +1821,26 @@ fun ChatBottomSheet(
     viewModel: VoiceRoomActiveViewModel
 ) {
     val messages by viewModel.messages.collectAsState()
+    val chatError by viewModel.chatError.collectAsState()
     val clipboard = LocalClipboard.current
     val clipboardScope = rememberCoroutineScope()
     val context = LocalContext.current
     var text by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<ChatMessage?>(null) }
+    var photo by remember { mutableStateOf<String?>(null) }
+    var photoBusy by remember { mutableStateOf(false) }
+    var photoError by remember { mutableStateOf<String?>(null) }
+    var photoGeneration by remember { mutableIntStateOf(0) }
+    LaunchedEffect(messages) { if(replyTo!=null&&messages.none { it.id==replyTo?.id&&it.userId==replyTo?.userId })replyTo=null }
+    DisposableEffect(viewModel) { viewModel.setChatVisible(true); onDispose { viewModel.setChatVisible(false) } }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) clipboardScope.launch {
+            val generation=++photoGeneration
+            photoBusy = true; photoError = null
+            runCatching { RoomChatPhoto.prepare(context, uri) }.onSuccess { if(generation==photoGeneration)photo = it }.onFailure { if(generation==photoGeneration)photoError = it.message ?: "No se pudo preparar la foto." }
+            if(generation==photoGeneration)photoBusy = false
+        }
+    }
     
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1833,7 +1848,7 @@ fun ChatBottomSheet(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxHeight(0.6f)
+                .fillMaxHeight(0.8f)
                 .padding(16.dp)
         ) {
             Text("Mensajes en sala", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -1847,6 +1862,8 @@ fun ChatBottomSheet(
                         message = msg, 
                         isMe = msg.userId == viewModel.getCurrentUserId(),
                         onReply = { replyTo = msg },
+                        onDelete = { viewModel.deleteMessage(msg) },
+                        onRetry = { viewModel.retryMessage(msg) },
                         onCopy = { body ->
                             clipboardScope.launch {
                                 clipboard.setClipEntry(
@@ -1881,11 +1898,19 @@ fun ChatBottomSheet(
                 }
             }
             
+            if (photoBusy) Row(verticalAlignment=Alignment.CenterVertically) { Text("Preparando foto…",Modifier.weight(1f),style=MaterialTheme.typography.bodySmall);TextButton(onClick={photoGeneration++;photoBusy=false;photo=null}){Text("Cancelar")} }
+            photoError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            chatError?.let { Text(it, color = MaterialTheme.colorScheme.error, style=MaterialTheme.typography.bodySmall) }
+            photo?.let { value -> Row(verticalAlignment = Alignment.CenterVertically) {
+                coil.compose.AsyncImage(model = remember(value) { RoomChatPhoto.bytes(value) }, contentDescription = "Foto lista para enviar", modifier = Modifier.size(72.dp))
+                TextButton(onClick = { photoGeneration++;photo = null }) { Text("Cancelar foto") }
+            } }
             Row(
                 modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                IconButton(onClick = { photoPicker.launch("image/*") }, enabled = !photoBusy) { Icon(Icons.Default.AddPhotoAlternate, contentDescription = "Añadir foto a la sala") }
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
@@ -1895,7 +1920,7 @@ fun ChatBottomSheet(
                 )
                 IconButton(
                     onClick = {
-                        if (text.isNotBlank()) {
+                        if (text.isNotBlank() || photo != null) {
                             val replyText = replyTo?.text ?: ""
                             // Clean up previous reply header if exists (Look for the "Respondiendo a" pattern)
                             // We assume the real message starts after the last double newline, OR we strip specifically.
@@ -1909,17 +1934,19 @@ fun ChatBottomSheet(
                             }
                             
                             val msgText = if (replyTo != null) "↪ Respondiendo a ${replyTo!!.userName}:\n$actualContent\n\n$text" else text
-                            viewModel.sendMessage(msgText)
+                            viewModel.sendMessage(msgText, photo)
                             text = ""
+                            photo = null
                             replyTo = null
                         }
                     },
-                    enabled = text.isNotBlank(),
+                    enabled = !photoBusy && (text.isNotBlank() || photo != null),
                     colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
                 }
             }
+            Text("Chat temporal · Los mensajes y fotos desaparecen a los 90 minutos",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -1929,7 +1956,9 @@ fun ChatBubble(
     message: ChatMessage,
     isMe: Boolean,
     onReply: () -> Unit,
-    onCopy: (String) -> Unit
+    onCopy: (String) -> Unit,
+    onDelete: () -> Unit = {},
+    onRetry: () -> Unit = {}
 ) {
     val links = remember(message.text) {
         Regex("https?://\\S+", RegexOption.IGNORE_CASE).findAll(message.text)
@@ -1940,6 +1969,8 @@ fun ChatBubble(
             .toList()
     }
     var openedLink by remember(message.id) { mutableStateOf<String?>(null) }
+    var photoExpanded by remember(message.id) { mutableStateOf(false) }
+    var menuOpen by remember(message.id) { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1964,10 +1995,18 @@ fun ChatBubble(
             )
         ) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                if(isMe) Box(Modifier.align(Alignment.End)) {
+                    IconButton(onClick={menuOpen=true},modifier=Modifier.size(30.dp)){Icon(Icons.Default.MoreVert,contentDescription="Opciones del mensaje",modifier=Modifier.size(18.dp))}
+                    DropdownMenu(expanded=menuOpen,onDismissRequest={menuOpen=false}){DropdownMenuItem(text={Text("Eliminar para todos")},onClick={menuOpen=false;onDelete()},leadingIcon={Icon(Icons.Default.Delete,contentDescription=null)})}
+                }
+                message.imageData?.let { data ->
+                    coil.compose.AsyncImage(model = remember(data) { RoomChatPhoto.bytes(data) }, contentDescription = "Ampliar foto de la sala", modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).clickable{photoExpanded=true}, contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+                }
                 SelectionContainer {
-                    Text(
+                    conectate.com.presentation.components.LinkText(
                         text = message.text,
-                        color = if (isMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (isMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        backgroundColor = if (isMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
                     )
                 }
                 links.forEach { link ->
@@ -1975,7 +2014,15 @@ fun ChatBubble(
                         Text("Abrir enlace en Novvin: ${Uri.parse(link).host.orEmpty()}")
                     }
                 }
+                if(message.delivery==RoomChatDelivery.SENDING)Text("Enviando…",style=MaterialTheme.typography.labelSmall)
+                if(message.delivery==RoomChatDelivery.FAILED)TextButton(onClick=onRetry){Text("Reintentar envío")}
             }
+        }
+    }
+    if(photoExpanded&&message.imageData!=null)androidx.compose.ui.window.Dialog(onDismissRequest={photoExpanded=false},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            coil.compose.AsyncImage(model=remember(message.imageData){RoomChatPhoto.bytes(message.imageData)},contentDescription="Foto de la sala",modifier=Modifier.fillMaxSize(),contentScale=androidx.compose.ui.layout.ContentScale.Fit)
+            IconButton(onClick={photoExpanded=false},modifier=Modifier.align(Alignment.TopEnd).statusBarsPadding()){Icon(Icons.Default.Close,contentDescription="Cerrar foto",tint=Color.White)}
         }
     }
     openedLink?.let { link ->

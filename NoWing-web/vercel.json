@@ -6,6 +6,19 @@
   "outputDirectory": "dist",
   "headers": [
     {
+      "source": "/(group|community)/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {
@@ -70,6 +83,10 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex, nofollow, noarchive"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
         }
       ]
     },
@@ -79,6 +96,10 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
         }
       ]
     },
@@ -88,6 +109,10 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex, follow"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
         }
       ]
     },
@@ -97,6 +122,10 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex, follow"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
         }
       ]
     },
@@ -171,9 +200,35 @@
           "value": "public, max-age=3600"
         }
       ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
+        }
+      ]
     }
   ],
   "rewrites": [
+    {
+      "source": "/group/:path*",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/community/:path*",
+      "destination": "/app-shell.html"
+    },
     {
       "destination": "/index.html",
       "source": "/"

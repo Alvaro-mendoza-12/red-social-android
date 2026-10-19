@@ -5,6 +5,7 @@ import { friendlyError } from '../core/utils'
 import './communityQuestion.css'
 import { questionReference } from '../core/communityQuestion'
 import { HelpCircle } from 'lucide-react'
+import { CommunityQuestionClouds } from './CommunityQuestionClouds'
 function mergePage(old:Question|null,fresh:Question):Question { if(!old || old.answers.length<=50 || fresh.total<old.total)return fresh;return {...fresh,answers:[...fresh.answers,...old.answers.filter(a=>!fresh.answers.some(n=>n.id===a.id))],nextOffset:old.nextOffset} }
 type Scope='group'|'community'
 type Answer={id:string;userId:string;name:string;username:string;content:string;createdAt:string;likes:number;dislikes:number;myVote:number}
@@ -17,19 +18,23 @@ export function CommunityQuestion({scope,roomId,content}:{scope:Scope;roomId:str
 function QuestionBody({scope,roomId,reference}:{scope:Scope;roomId:string;reference:NonNullable<ReturnType<typeof questionReference>>}) {
   const endpoint=base(scope,roomId)+'/'+reference.questionId
   const card=useRef<HTMLElement>(null),visible=useRef(true),dialogOpen=useRef(false)
+  const [motionChoice,setMotionChoice]=useState<'auto'|'on'|'off'>('auto'),[reducedMotion,setReducedMotion]=useState(false)
+  const paused=motionChoice==='off'||(motionChoice==='auto'&&reducedMotion)
+  const motionPaused=useRef(false)
+  useEffect(()=>{const media=window.matchMedia?.('(prefers-reduced-motion: reduce)');if(!media)return;const change=()=>setReducedMotion(media.matches);change();media.addEventListener('change',change);return()=>media.removeEventListener('change',change)},[])
+  useEffect(()=>{motionPaused.current=paused},[paused])
   const [question,setQuestion]=useState<Question|null>(null),[open,setOpen]=useState<'answer'|'list'|null>(null),[draft,setDraft]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[rotation,setRotation]=useState(()=>Math.floor(Math.random()*100000))
   const load=useCallback(async()=>{const result=await fallbackApiJson<Question>(endpoint);setQuestion(old=>mergePage(old,result));return result},[endpoint])
   useEffect(()=>{dialogOpen.current=Boolean(open)},[open])
   useEffect(()=>{if(!card.current||typeof IntersectionObserver==='undefined')return;const observer=new IntersectionObserver(([entry])=>{visible.current=entry.isIntersecting},{rootMargin:'100px'});observer.observe(card.current);return()=>observer.disconnect()},[])
-  useEffect(()=>{let active=true;const refresh=()=>{if(document.hidden||(!visible.current&&!dialogOpen.current))return;void fallbackApiJson<Question>(endpoint).then(value=>{if(active){setQuestion(old=>mergePage(old,value));setError('')}}).catch(()=>{if(active)setError('No se pudieron cargar las respuestas.')})};refresh();const timer=setInterval(refresh,15000),rotate=setInterval(()=>{if(!document.hidden&&visible.current)setRotation(value=>value+1+Math.floor(Math.random()*7))},6000);return()=>{active=false;clearInterval(timer);clearInterval(rotate)}},[endpoint])
+  useEffect(()=>{let active=true;const refresh=()=>{if(document.hidden||(!visible.current&&!dialogOpen.current))return;void fallbackApiJson<Question>(endpoint).then(value=>{if(active){setQuestion(old=>mergePage(old,value));setError('')}}).catch(()=>{if(active)setError('No se pudieron cargar las respuestas.')})};refresh();const timer=setInterval(refresh,15000),rotate=setInterval(()=>{if(!document.hidden&&visible.current&&!dialogOpen.current&&!motionPaused.current)setRotation(value=>value+1+Math.floor(Math.random()*7))},9000);return()=>{active=false;clearInterval(timer);clearInterval(rotate)}},[endpoint])
   function openAnswer(){setDraft(value=>value || question?.myAnswer?.content || '');setOpen('answer')}
   async function act(path:string,body:object){setBusy(true);setError('');try{await fallbackApiJson(endpoint+path,{method:'POST',body:JSON.stringify(body)});await load();return true}catch(caught){setError(friendlyError(caught,'No se pudo guardar. Comprueba el límite de caracteres y tu acceso.'));return false}finally{setBusy(false)}}
   const answers=question?.answers
-  const floating=useMemo(()=>{const values=[...(answers || [])];for(let i=values.length-1;i>0;i--){const j=(Math.floor(Math.random()*(i+1))+rotation)%(i+1);[values[i],values[j]]=[values[j],values[i]]}return values.slice(0,3)},[answers,rotation])
-  return <section ref={card} className="community-question" aria-label="Pregunta de la comunidad">
-    <button className="question-prompt" type="button" onClick={()=>setOpen('list')}><small>Pregunta</small><strong>{question?.prompt || reference.prompt}</strong><span>{question?.total ?? 0} respuestas · Ver todas</span></button>
-    <div className="question-floating">{floating.map((answer,index)=><button type="button" className={`floating-answer slot-${(index+rotation)%3}`} key={answer.id} onClick={()=>setOpen('list')} aria-label={`Ver respuesta de ${answer.name}: ${answer.content}`}>{answer.content}</button>)}</div>
-    <div className="question-card-actions"><button type="button" className="mini-action-btn" disabled={!question?.canRespond||question.closed} onClick={openAnswer}>Responder</button></div>
+  const floating=useMemo(()=>{const values=[...(answers || [])].sort((a,b)=>a.id.localeCompare(b.id));let seed=rotation>>>0;for(let i=values.length-1;i>0;i--){seed=(Math.imul(seed,1664525)+1013904223)>>>0;const j=seed%(i+1);[values[i],values[j]]=[values[j],values[i]]}return values.slice(0,3)},[answers,rotation])
+  return <section ref={card} className="community-question" data-has-answers={floating.length>0} data-motion-paused={paused||Boolean(open)} data-motion-forced={motionChoice==='on'} aria-label="Pregunta de la comunidad">
+    <CommunityQuestionClouds prompt={question?.prompt||reference.prompt} total={question?.total??0} answers={floating} rotation={rotation} onOpen={()=>setOpen('list')}/>
+    <div className="question-card-actions"><button type="button" className="mini-action-btn" disabled={!question?.canRespond||question.closed} onClick={openAnswer}>Responder</button>{floating.length?<button type="button" className="mini-action-btn" aria-pressed={paused} onClick={()=>setMotionChoice(paused?'on':'off')}>{paused?'Animar nubes':'Pausar nubes'}</button>:null}</div>
     {error&&!open?<p className="error-text" role="status">{error}<button type="button" className="mini-action-btn" onClick={()=>void load().then(()=>setError('')).catch(()=>{})}>Reintentar</button></p>:null}
     {open?<div className="app-dialog-backdrop" onMouseDown={()=>setOpen(null)}><section className="surface-card question-dialog" role="dialog" aria-modal="true" aria-label="Respuestas de la pregunta" onMouseDown={event=>event.stopPropagation()} onKeyDown={event=>{if(event.key==='Escape')setOpen(null)}}>
       <header className="row-between"><h2>{question?.prompt || reference.prompt}</h2><button className="icon-btn" aria-label="Cerrar respuestas" onClick={()=>setOpen(null)}>×</button></header>

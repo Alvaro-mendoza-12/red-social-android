@@ -30,6 +30,7 @@ object MediaImageRequestFactory {
         val cacheKey = UbuntuStorageUrl.stableCacheKey(data)
         return ImageRequest.Builder(context)
             .data(data)
+            .setParameter(OFFLINE_CHAT_IMAGE, true)
             .size(AVATAR_PREVIEW_WIDTH, AVATAR_PREVIEW_WIDTH)
             .memoryCacheKey(cacheKey)
             .diskCacheKey(cacheKey)

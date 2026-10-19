@@ -1,10 +1,14 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { publicInfoPage } from './publicInfoPages'
+import { useAuth } from '../../core/auth/AuthProvider'
+import { useInboxUnreadMessageTotal } from '../../core/inboxActivity'
 
 const base = 'https://red-social-android.vercel.app'
 export function PageMetadata() {
   const { pathname } = useLocation()
+  const { user } = useAuth()
+  const unread = useInboxUnreadMessageTotal(user?.id || '')
   useEffect(() => {
     const info = publicInfoPage(pathname)
     const title =
@@ -23,7 +27,7 @@ export function PageMetadata() {
                   : pathname.startsWith('/app/profile')
                     ? 'Perfil · Novvin'
                     : 'Novvin Web'
-    document.title = title
+    document.title = `${user && pathname.startsWith('/app') && unread > 0 ? `(${unread > 999 ? '999+' : unread}) ` : ''}${title}`
     let robots = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]')
     if (!robots) {
       robots = document.createElement('meta')
@@ -35,6 +39,6 @@ export function PageMetadata() {
     if (description) description.content = info?.description || 'Descubre Novvin: mensajes, videos, momentos y comunidades. Conecta desde tu móvil o computadora con Novvin Web.'
     const canonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]')
     if (canonical) canonical.href = pathname === '/' ? base + '/' : base + pathname
-  }, [pathname])
+  }, [pathname, unread, user])
   return null
 }

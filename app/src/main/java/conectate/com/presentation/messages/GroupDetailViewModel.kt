@@ -295,7 +295,7 @@ class GroupDetailViewModel @Inject constructor(
         viewModelScope.launch {
             groupRepository.createGroupInvite(id).fold(
                 onSuccess = { token ->
-                    onReady("https://conectate.com/group/$id?invite=${android.net.Uri.encode(token)}")
+                      onReady("https://red-social-android.vercel.app/group/$id?invite=${android.net.Uri.encode(token)}")
                 },
                 onFailure = { error ->
                     _actionMessage.value = error.message ?: "No se pudo crear el enlace"
