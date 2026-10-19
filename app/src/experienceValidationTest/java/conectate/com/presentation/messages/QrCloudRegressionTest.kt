@@ -20,6 +20,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.core.app.ActivityScenario
+import conectate.com.presentation.auth.PortraitQrCaptureActivity
 import conectate.com.presentation.navigation.Screen
 import org.junit.Assert.*
 import org.junit.Rule
@@ -123,6 +125,22 @@ class QrCloudRegressionTest {
             compose.onNodeWithText("Primaria:ON").assertIsDisplayed()
         } finally {
             preferences.edit().apply { keys.forEach { remove(it) } }.commit()
+        }
+    }
+
+    @Test fun cameraTorchUsesTheInitializedScannerWithoutSearchingTheWindowTree() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        org.junit.Assume.assumeTrue(context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_FLASH))
+        ActivityScenario.launch<PortraitQrCaptureActivity>(android.content.Intent(context, PortraitQrCaptureActivity::class.java)).use { scenario ->
+            scenario.onActivity { activity ->
+                val button = activity.window.decorView.findViewWithTag<android.widget.Button>("qr-torch-toggle")
+                assertNotNull(button)
+                button.performClick()
+                assertEquals("Apagar linterna", button.text.toString())
+                button.performClick()
+                assertEquals("Encender linterna", button.text.toString())
+                assertFalse(activity.isFinishing)
+            }
         }
     }
 }

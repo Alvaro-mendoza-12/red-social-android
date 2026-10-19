@@ -1,20 +1,31 @@
 package conectate.com.presentation.auth
 
 import com.journeyapps.barcodescanner.CaptureActivity
+import com.journeyapps.barcodescanner.DecoratedBarcodeView
 
 class PortraitQrCaptureActivity : CaptureActivity() {
+    private var scanner: DecoratedBarcodeView? = null
+
+    override fun initializeContent(): DecoratedBarcodeView = super.initializeContent().also { scanner = it }
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         if (!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_FLASH)) return
         var enabled = false
         val button = android.widget.Button(this).apply {
+            tag = "qr-torch-toggle"
             text = "Encender linterna"
             setOnClickListener {
-                val scanner = (findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0) as? android.view.ViewGroup)
-                    ?.let { root -> findScanner(root) } ?: return@setOnClickListener
-                enabled = !enabled
-                if (enabled) scanner.setTorchOn() else scanner.setTorchOff()
-                text = if (enabled) "Apagar linterna" else "Encender linterna"
+                val activeScanner = scanner ?: return@setOnClickListener
+                if (isFinishing || isDestroyed) return@setOnClickListener
+                try {
+                    val next = !enabled
+                    if (next) activeScanner.setTorchOn() else activeScanner.setTorchOff()
+                    enabled = next
+                    text = if (enabled) "Apagar linterna" else "Encender linterna"
+                } catch (_: RuntimeException) {
+                    android.widget.Toast.makeText(this@PortraitQrCaptureActivity, "La linterna no está disponible. Puedes seguir escaneando.", android.widget.Toast.LENGTH_SHORT).show()
+                }
             }
         }
         val density = resources.displayMetrics.density
@@ -24,9 +35,8 @@ class PortraitQrCaptureActivity : CaptureActivity() {
         ).apply { bottomMargin = (48 * density).toInt() })
     }
 
-    private fun findScanner(view: android.view.View): com.journeyapps.barcodescanner.DecoratedBarcodeView? {
-        if (view is com.journeyapps.barcodescanner.DecoratedBarcodeView) return view
-        if (view is android.view.ViewGroup) for (index in 0 until view.childCount) findScanner(view.getChildAt(index))?.let { return it }
-        return null
+    override fun onDestroy() {
+        scanner = null
+        super.onDestroy()
     }
 }
