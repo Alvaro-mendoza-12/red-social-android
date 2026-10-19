@@ -209,7 +209,8 @@ fun HomeScreen(
         ) {
             composable(Screen.Messages.route) {
                 ConversationsScreen(
-                    navController = navController,
+                    // Inbox actions open destinations in the application's root graph.
+                    navController = mainNavController,
                     sharedStickerUri = sharedUri.takeIf { startTab == Screen.Messages.route },
                     onNavigateToChat = { userId ->
                         mainNavController.navigate(Screen.Chat.createRoute(userId))

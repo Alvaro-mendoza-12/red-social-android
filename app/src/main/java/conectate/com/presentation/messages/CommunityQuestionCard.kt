@@ -21,7 +21,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.MotionDurationScale
 
 @EntryPoint @InstallIn(SingletonComponent::class)
 interface CommunityEngagementEntryPoint { fun repository(): CommunityEngagementRepository }
@@ -43,8 +43,9 @@ fun CommunityQuestionCard(kind: String, roomId: String, content: String, account
         val repository=rememberCommunityEngagementRepository();val scope=rememberCoroutineScope();val lifecycle=LocalLifecycleOwner.current
         var question by remember {mutableStateOf<CommunityQuestion?>(null)};var error by remember {mutableStateOf<String?>(null)}
         var open by remember {mutableStateOf(false)};var respond by remember {mutableStateOf(false)};var busy by remember {mutableStateOf(false)};var rotation by remember {mutableIntStateOf((0..100000).random())}
-        var paused by rememberSaveable(id) { mutableStateOf(false) }
-        val animationsEnabled = android.animation.ValueAnimator.areAnimatorsEnabled()
+        val (motionChoice, setMotionChoice) = rememberQuestionCloudMotion(accountId)
+        val systemMotionScale = rememberCoroutineScope().coroutineContext[MotionDurationScale]
+        val motionRequested = cloudMotionRequested(motionChoice, (systemMotionScale?.scaleFactor ?: 1f) > 0f)
         val lifecycleState by lifecycle.lifecycle.currentStateFlow.collectAsState()
         val cloudSpace = (64 * androidx.compose.ui.platform.LocalDensity.current.fontScale + 48).dp
         suspend fun refresh() { repository.question(kind,roomId,id).onSuccess{fresh->
@@ -53,14 +54,14 @@ fun CommunityQuestionCard(kind: String, roomId: String, content: String, account
             error=null
         }.onFailure{error="No se pudieron cargar las respuestas. Inténtalo de nuevo."} }
         LaunchedEffect(kind,roomId,id,accountId){lifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED){while(true){refresh();delay(15000)}}}
-        LaunchedEffect(id, paused, animationsEnabled){if (!paused && animationsEnabled) lifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED){while(true){delay(9000);rotation++}}}
+        LaunchedEffect(id, motionRequested, open){if (motionRequested && !open) lifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED){while(true){delay(12000);rotation++}}}
         val answers=question?.answers.orEmpty()
         val sample=remember(answers,rotation){answers.sortedBy { it.id }.shuffled(kotlin.random.Random(rotation)).take(3)}
         val prompt=question?.prompt ?: reference?.optString("prompt").orEmpty()
         Column(Modifier.widthIn(max=360.dp).fillMaxWidth().padding(vertical=8.dp)) {
             BoxWithConstraints(Modifier.fillMaxWidth().combinedClickable(onClick={respond=false;open=true},onLongClick=onLongClick)) {
-                val cloudWidth = ((maxWidth - 24.dp) / 2).coerceAtMost(150.dp)
-                Surface(color=MaterialTheme.colorScheme.primaryContainer,shape=MaterialTheme.shapes.large,modifier=Modifier.fillMaxWidth().padding(top=if(sample.isEmpty())0.dp else cloudSpace,bottom=if(sample.size<3)0.dp else cloudSpace)) {
+                val cloudWidth = ((maxWidth - 80.dp) / 2).coerceAtLeast(64.dp).coerceAtMost(140.dp)
+                Surface(color=MaterialTheme.colorScheme.primaryContainer,shape=MaterialTheme.shapes.large,modifier=Modifier.fillMaxWidth().padding(top=if(sample.isEmpty())0.dp else cloudSpace,bottom=if(sample.size<2)0.dp else cloudSpace)) {
                     Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                         Text("Pregunta a la comunidad",style=MaterialTheme.typography.labelMedium)
                         Text(prompt,style=MaterialTheme.typography.titleLarge)
@@ -68,15 +69,22 @@ fun CommunityQuestionCard(kind: String, roomId: String, content: String, account
                     }
                 }
                 sample.forEachIndexed { index, answer ->
-                    CloudAnswerBubble(answer.content, index, moving = !paused && animationsEnabled && !open && lifecycleState == Lifecycle.State.RESUMED,
-                        modifier = Modifier.align(if(index==0)Alignment.TopStart else if(index==1)Alignment.TopEnd else Alignment.BottomCenter).widthIn(min=64.dp,max=cloudWidth).padding(horizontal=4.dp),
+                    val alignment = when {
+                        sample.size == 1 -> Alignment.TopCenter
+                        sample.size == 2 && index == 1 -> Alignment.BottomEnd
+                        index == 0 -> Alignment.TopStart
+                        index == 1 -> Alignment.TopEnd
+                        else -> Alignment.BottomCenter
+                    }
+                    CloudAnswerBubble(answer.content, index, moving = shouldMoveQuestionClouds(motionRequested, lifecycleState == Lifecycle.State.RESUMED, open),
+                        modifier = Modifier.align(alignment).padding(horizontal=18.dp).widthIn(min=64.dp,max=cloudWidth),
                         onClick = { respond=false;open=true })
                 }
             }
             FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                 TextButton(onClick={respond=true;open=true},enabled=question?.canRespond==true&&question?.closed==false){Text("Responder")}
                 TextButton(onClick=onReact){Text("♡ Reaccionar")}
-                if (sample.isNotEmpty()) TextButton(onClick = { paused = !paused }) { Text(if (paused) "Animar nubes" else "Pausar nubes", style = MaterialTheme.typography.labelSmall) }
+                if (sample.isNotEmpty()) TextButton(onClick = { setMotionChoice(if (motionRequested) CloudMotionChoice.OFF else CloudMotionChoice.ON) }) { Text(if (motionRequested) "Pausar nubes" else "Animar nubes", style = MaterialTheme.typography.labelSmall) }
             }
             if(reactions.isNotEmpty())Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){reactions.entries.take(6).forEach{(emoji,users)->FilterChip(selected=accountId in users,onClick={onReaction(emoji)},label={Text("$emoji ${users.size}")})}}
             if(error!=null&&!open)TextButton(onClick={scope.launch{refresh()}}){Text("Reintentar respuestas")}

@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import conectate.com.presentation.navigation.Screen
 import conectate.com.R
+import kotlinx.coroutines.launch
 
 // Colors now resolved via MaterialTheme.colorScheme for light/dark compatibility
 
@@ -94,6 +95,7 @@ fun ConversationsScreen(
     } else null
     val stickerImportMessage = importViewModel?.actionMessage?.collectAsState()?.value
     val snackbarHostState = remember { SnackbarHostState() }
+    val navigationScope = rememberCoroutineScope()
     var stickerImportHandled by rememberSaveable(sharedStickerUri) { mutableStateOf(false) }
 
     LaunchedEffect(sharedStickerUri) {
@@ -173,12 +175,11 @@ fun ConversationsScreen(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(
-                                onClick = { navController.navigate(Screen.WebLoginScanner.createRoute()) { launchSingleTop = true } },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.QrCodeScanner, contentDescription = "Vincular Novvin Web", tint = colorScheme.onSurfaceVariant)
-                            }
+                            MessageWebScannerButton(navController = navController, onError = {
+                                navigationScope.launch {
+                                    snackbarHostState.showSnackbar("No se pudo abrir el escáner. Vuelve a intentarlo.")
+                                }
+                            })
                             IconButton(
                                 onClick = onNavigateToSearch,
                                 modifier = Modifier.size(36.dp)

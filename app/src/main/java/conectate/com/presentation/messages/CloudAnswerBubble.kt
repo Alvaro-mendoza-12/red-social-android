@@ -1,6 +1,5 @@
 package conectate.com.presentation.messages
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -9,8 +8,6 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.text.style.TextOverflow
-import kotlin.math.cos
-import kotlin.math.sin
 
 /** Rounded lobes are part of the shape, so the answer remains readable at larger font sizes. */
 internal object AnswerCloudShape : Shape {
@@ -31,15 +28,12 @@ internal object AnswerCloudShape : Shape {
 
 @Composable
 internal fun CloudAnswerBubble(text: String, slot: Int, moving: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val phase = if (moving) {
-        val transition = rememberInfiniteTransition(label = "Nube de respuesta")
-        val value by transition.animateFloat(0f, (Math.PI * 2).toFloat(), infiniteRepeatable(tween(6000 + slot * 700, easing = LinearEasing)), label = "Recorrido suave")
-        value + slot * 2.1f
-    } else 0f
+    val phase = rememberQuestionCloudPhase(slot, moving)
+    val drift = questionCloudDrift(phase, slot)
     Surface(
         onClick = onClick, shape = AnswerCloudShape, color = Color.White, contentColor = Color(0xFF20252C),
         shadowElevation = 2.dp,
-        modifier = modifier.offset(x = (if (moving) cos(phase) * 10 else 0f).dp, y = (if (moving) sin(phase) * 10 else 0f).dp).heightIn(min = 58.dp)
+        modifier = modifier.offset(x = drift.x.dp, y = drift.y.dp).heightIn(min = 58.dp)
     ) {
         Box(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 14.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
             Text(text, maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
