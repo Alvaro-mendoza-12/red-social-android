@@ -682,10 +682,10 @@ export function LoginPage() {
                     title="QR no disponible"
                     description={error ? <span role="alert">{error}</span> : 'No pudimos conectar con Novvin. Puedes volver a intentarlo en unos momentos.'}
                     action={<>
-                      {error?.includes('red local') ? <p className="auth-network-help">Abre los permisos junto a la dirección de esta página, permite «Red local» y pulsa Reintentar QR. Este permiso es distinto del acceso a la cámara.</p> : null}
                       <button className="primary-btn" type="button" disabled={creatingQr || consumingQr} onClick={() => {
                         setQrPairing(null); setQrRefreshKey(current => current + 1)
                       }}>Reintentar QR</button>
+                      {error?.includes('red local') ? <p className="auth-network-help">Abre los permisos junto a la dirección de esta página, permite «Red local» y pulsa Reintentar QR. Este permiso es distinto del acceso a la cámara.</p> : null}
                     </>}
                   />
                 )}

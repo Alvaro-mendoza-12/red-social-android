@@ -156,7 +156,7 @@
   white-space: normal;
 }
 .auth-qr-hero .auth-network-help {
-  margin: 0 0 14px;
+  margin: 14px 0 0;
   font-size: .85rem;
   line-height: 1.6;
   text-align: start;
