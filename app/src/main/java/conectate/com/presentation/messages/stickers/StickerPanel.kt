@@ -46,17 +46,18 @@ fun StickerPanel(
     onStickerSelected: (StickerItem) -> Unit,
     snackbarHostState: SnackbarHostState? = null,
     modifier: Modifier = Modifier,
-    viewModel: StickerPickerViewModel = hiltViewModel()
+    viewModel: StickerPickerViewModel? = null
 ) {
     if (!visible) return
+    val model = viewModel ?: hiltViewModel<StickerPickerViewModel>()
 
-    val query by viewModel.query.collectAsState()
-    val results by viewModel.searchResults.collectAsState()
-    val favorites by viewModel.favoriteItems.collectAsState()
-    val recents by viewModel.recentItems.collectAsState()
-    val packs by viewModel.packs.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val actionMessage by viewModel.actionMessage.collectAsState()
+    val query by model.query.collectAsState()
+    val results by model.searchResults.collectAsState()
+    val favorites by model.favoriteItems.collectAsState()
+    val recents by model.recentItems.collectAsState()
+    val packs by model.packs.collectAsState()
+    val isLoading by model.isLoading.collectAsState()
+    val actionMessage by model.actionMessage.collectAsState()
 
     var selectedTab by remember { mutableStateOf(StickerPanelTab.RECENT) }
     var selectedPackId by remember { mutableStateOf<String?>(null) }
@@ -79,7 +80,7 @@ fun StickerPanel(
         val msg = actionMessage?.trim().orEmpty()
         if (msg.isNotBlank()) {
             snackbarHostState?.showSnackbar(msg)
-            viewModel.clearActionMessage()
+            model.clearActionMessage()
         }
     }
 
@@ -121,7 +122,7 @@ fun StickerPanel(
             if (searchExpanded) {
                 OutlinedTextField(
                     value = query,
-                    onValueChange = { viewModel.updateQuery(it) },
+                    onValueChange = { model.updateQuery(it) },
                     label = { Text("Buscar sticker") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -151,10 +152,10 @@ fun StickerPanel(
 
             StickerGrid(
                 stickers = tabItems,
-                isFavorite = { sticker -> viewModel.isFavorite(sticker) },
-                onFavoriteChange = { sticker, favorite -> viewModel.setFavorite(sticker, favorite) },
+                isFavorite = { sticker -> model.isFavorite(sticker) },
+                onFavoriteChange = { sticker, favorite -> model.setFavorite(sticker, favorite) },
                 onStickerClick = { sticker ->
-                    viewModel.recordStickerSelection(sticker)
+                    model.recordStickerSelection(sticker)
                     onStickerSelected(sticker)
                 },
                 onCreateClick = { imagePickerLauncher.launch("image/*") },
@@ -171,14 +172,14 @@ fun StickerPanel(
             onDismiss = { pendingEditorUri = null },
             isSaving = isLoading,
             onSave = { pngBytes, title ->
-                viewModel.createStickerFromEditedBytes(
+                model.createStickerFromEditedBytes(
                     imageBytes = pngBytes,
                     preferredPackId = selectedPackId,
                     title = title
                 ) { created ->
                     pendingEditorUri = null
                     if (created != null) {
-                        viewModel.recordStickerSelection(created)
+                        model.recordStickerSelection(created)
                         onStickerSelected(created)
                     }
                 }

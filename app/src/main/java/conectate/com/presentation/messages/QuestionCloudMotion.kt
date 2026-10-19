@@ -40,8 +40,8 @@ internal fun rememberQuestionCloudMotion(accountId: String?): Pair<CloudMotionCh
 
 /** An explicit local opt-in works even when Android's global animator scale is zero. */
 @Composable
-internal fun rememberQuestionCloudPhase(slot: Int, moving: Boolean): Float {
-    var phase by remember(slot) { mutableFloatStateOf(0f) }
+internal fun rememberQuestionCloudPhase(slot: Int, moving: Boolean): State<Float> {
+    val phase = remember(slot) { mutableFloatStateOf(0f) }
     LaunchedEffect(slot, moving) {
         if (!moving) return@LaunchedEffect
         val period = (7000L + slot * 900L) * 1_000_000L
@@ -50,7 +50,7 @@ internal fun rememberQuestionCloudPhase(slot: Int, moving: Boolean): Float {
             withFrameNanos { now ->
                 val delta = (now - previous).coerceIn(0L, 64_000_000L)
                 previous = now
-                phase = (phase + delta.toFloat() / period) % 1f
+                phase.floatValue = (phase.floatValue + delta.toFloat() / period) % 1f
             }
         }
     }

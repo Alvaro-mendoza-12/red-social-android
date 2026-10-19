@@ -138,7 +138,8 @@ class StickerRepository @Inject constructor(
         _recentStickerIds.value = localRecents
         publishFavoriteMediaKeys()
 
-        persistAll(localCatalog, localPacks, localFavs, localDownloads, localRecents)
+        // Opening the library only reads a snapshot. Persist individual changes
+        // when they happen instead of re-encoding every saved item at startup.
         remoteFavoriteScope.launch {
             authService.currentSession.map { authService.getCurrentUserId().orEmpty() }
                 .distinctUntilChanged().collectLatest { ownerId -> switchAccount(ownerId) }
@@ -177,11 +178,14 @@ class StickerRepository @Inject constructor(
             json.decodeFromString<Map<String, Int>>(prefs.getString(KEY_STICKER_USAGE, "{}") ?: "{}")
         }.getOrDefault(emptyMap())
         publishFavoriteMediaKeys()
-        persistAll(items, packs, _favorites.value, _downloadedPacks.value, _recentStickerIds.value)
     }
 
     suspend fun bootstrap() {
-        switchAccount(authService.getCurrentUserId().orEmpty())
+        // Account switching reads and decodes local preferences. Keep that work off
+        // the UI thread when the picker is opened for the first time.
+        withContext(Dispatchers.IO) {
+            switchAccount(authService.getCurrentUserId().orEmpty())
+        }
         // Local content is usable while the optional catalog refresh is in flight.
         identityRequests.trySend(Unit)
         enqueueFavoriteSync(_favorites.value + favoriteDecisions.keys)
@@ -903,20 +907,6 @@ class StickerRepository @Inject constructor(
             StickerItem(id = "emoji_robot", title = "Robot", tags = listOf("robot", "fun"), source = "local"),
             StickerItem(id = "emoji_star", title = "Estrella", tags = listOf("star", "highlight"), source = "local")
         )
-    }
-
-    private fun persistAll(
-        items: List<StickerItem>,
-        packs: List<StickerPack>,
-        favorites: Set<String>,
-        downloadedPacks: Set<String>,
-        recentStickerIds: List<String>
-    ) {
-        persistItems(items)
-        persistPacks(packs)
-        persistFavorites(favorites)
-        persistDownloadedPacks(downloadedPacks)
-        persistRecentStickerIds(recentStickerIds)
     }
 
     private fun persistItems(items: List<StickerItem>) {

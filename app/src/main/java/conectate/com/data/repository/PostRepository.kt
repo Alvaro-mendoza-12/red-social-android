@@ -54,7 +54,6 @@ import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.query.filter.*
-import java.io.File
 
 sealed interface PostMutationEvent {
     val postId: String
@@ -1547,98 +1546,6 @@ class PostRepository @Inject constructor(
         }
     }
 
-    suspend fun addAudioComment(postId: String, audioFile: File): Result<Unit> {
-        if (!audioFile.isFile || audioFile.length() <= 0L) {
-            return Result.failure(Exception("El audio está vacío o no se puede leer"))
-        }
-        val userId = authService.getCurrentUserId()?.trim()?.lowercase()
-            ?: return Result.failure(Exception("No user"))
-        val fileName = "$userId/comment_${UUID.randomUUID()}.m4a"
-        var remoteKey: String? = null
-        var metadataPersisted = false
-
-        return try {
-            val uploadResult = storageService.uploadFileFromUri(
-                bucketName = "post-comments-media",
-                fileName = fileName,
-                sourceUri = Uri.fromFile(audioFile),
-                sizeBytes = audioFile.length(),
-                contentType = "audio/mp4",
-                allowOverwrite = false,
-                onProgress = {}
-            )
-            if (uploadResult.isFailure) {
-                return Result.failure(uploadResult.exceptionOrNull() ?: Exception("Upload failed"))
-            }
-
-            val uploadedKey = uploadResult.getOrThrow().Key ?: fileName
-            remoteKey = uploadedKey
-            val publicUrl = UbuntuStorageUrl.rewrite(
-                storageService.getPublicUrl("post-comments-media", uploadedKey)
-            ).orEmpty()
-            if (publicUrl.isBlank()) return Result.failure(Exception("No se pudo generar la URL del audio"))
-
-            val accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            if (supabaseConfig.isLocalFallbackPrimary) {
-                val result = localFallbackApiClient.addPostComment(
-                    accessToken = accessToken,
-                    postId = postId,
-                    content = "[Audio]",
-                    mediaUrl = publicUrl,
-                    mediaType = "audio"
-                ).map { Unit }
-                metadataPersisted = result.isSuccess
-                return result
-            }
-
-            val queryParams = mapOf(
-                "post_id" to postId,
-                "user_id" to userId,
-                "content" to "[Audio]",
-                "media_url" to publicUrl,
-                "content_type" to "audio"
-            )
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/post_comments") {
-                header("Authorization", "Bearer $accessToken")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                header("Prefer", "return=representation")
-                setBody(queryParams)
-            }
-
-            if (response.status.isSuccess()) {
-                metadataPersisted = true
-                runCatching {
-                    getPostById(postId).onSuccess { post ->
-                        notificationRepository.sendNotification(
-                            recipientId = post.userId,
-                            type = "comment_post",
-                            targetId = postId,
-                            content = "Envió un audio"
-                        )
-                    }
-                }.onFailure { error ->
-                    android.util.Log.w("PostRepository", "No se pudo notificar el comentario de audio", error)
-                }
-                Result.success(Unit)
-            } else {
-                val errorBody = response.body<String>()
-                if (errorBody.contains("undefined column")) {
-                    val fallback = addComment(postId, "[Audio]$publicUrl").map { Unit }
-                    metadataPersisted = fallback.isSuccess
-                    fallback
-                } else {
-                    Result.failure(Exception("Error adding audio comment: ${response.status}"))
-                }
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        } finally {
-            if (!metadataPersisted) {
-                remoteKey?.let { cleanupUploadedPostObjects(listOf("post-comments-media" to it)) }
-            }
-        }
-    }
 
     suspend fun getPostComments(postId: String, limit: Int = 50): Flow<List<conectate.com.data.model.Comment>> = flow {
         try {

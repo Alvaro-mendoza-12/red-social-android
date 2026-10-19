@@ -35,7 +35,6 @@ class PostDetailViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val authService: conectate.com.data.supabase.AuthService,
     private val shareRepository: conectate.com.data.repository.ShareRepository,
-    private val voiceMessageManager: conectate.com.presentation.messages.VoiceMessageManager,
     @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
@@ -46,12 +45,6 @@ class PostDetailViewModel @Inject constructor(
     internal val reactionUsersState = reactionLoader.state
     fun loadPostReactions(postId: String, type: String? = null) = reactionLoader.load(postId, type)
     fun clearPostReactions() = reactionLoader.clear()
-
-    // Voice Manager State Expose
-    val voiceState = voiceMessageManager.state
-    val recordingDuration = voiceMessageManager.duration
-    val voicePlaybackProgress = voiceMessageManager.playbackProgress
-    val voicePlaybackDurationLabel = voiceMessageManager.playbackDurationLabel
 
     private var loadJob: Job? = null
     private var commentsJob: Job? = null
@@ -436,48 +429,6 @@ class PostDetailViewModel @Inject constructor(
         }
     }
     
-    // Voice Message Recording - delegated to VoiceMessageManager
-    fun startRecording() = voiceMessageManager.startRecording()
-    fun pauseRecording() = voiceMessageManager.pauseRecording()
-    fun resumeRecording() = voiceMessageManager.resumeRecording()
-    fun resumeRecordingFromReview() = voiceMessageManager.resumeRecordingFromReview()
-    fun cancelRecording() = voiceMessageManager.cancelRecording()
-    
-    fun stopRecording(sendDirectly: Boolean) {
-        if (sendDirectly) {
-            voiceMessageManager.stopRecording()
-            sendCurrentRecording()
-        } else {
-            voiceMessageManager.stopRecording()
-        }
-    }
-    
-    fun sendCurrentRecording() {
-        val postId = _uiState.value.post?.id ?: return
-        viewModelScope.launch {
-            val file = voiceMessageManager.getRecordedFile()
-            if (file != null && file.exists()) {
-                postRepository.addAudioComment(postId, file)
-                    .onSuccess {
-                        voiceMessageManager.clearRecording()
-                        _uiState.value.post?.let { currentPost ->
-                            _uiState.value = _uiState.value.copy(
-                                post = currentPost.copy(commentCount = currentPost.commentCount + 1)
-                            )
-                        }
-                        loadComments(postId)
-                        refreshPostSnapshot(postId)
-                    }
-            }
-        }
-    }
-    
-    // Preview playback controls
-    fun playDraftPreview() = voiceMessageManager.playPreview()
-    fun pauseDraftPreview() = voiceMessageManager.pausePreview()
-    fun seekDraftPreview(progress: Float) = voiceMessageManager.seekPreview(progress)
-    fun voiceMessageManagerIsPreviewPlaying(): Boolean = voiceMessageManager.isPreviewPlaying()
-
     private fun extractActiveMentionQuery(text: String): String? {
         val atIndex = text.lastIndexOf('@')
         if (atIndex < 0 || atIndex == text.lastIndex) return null

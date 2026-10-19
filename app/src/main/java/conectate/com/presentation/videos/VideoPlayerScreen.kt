@@ -31,11 +31,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import android.Manifest
-import android.content.pm.PackageManager
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -71,7 +66,6 @@ import conectate.com.presentation.video.VideoPlaybackRecoveryRunner
 import conectate.com.presentation.video.VideoHistoryViewModel
 import conectate.com.presentation.video.decideVideoPlaybackRecovery
 import conectate.com.data.localfallback.RuntimeBackendEndpoint
-import conectate.com.util.AudioRecorder
 import conectate.com.util.UbuntuMedia
 import conectate.com.util.VideoCache
 import conectate.com.util.VideoPerformanceProfiles
@@ -107,7 +101,6 @@ class VideoPlayerViewModel @Inject constructor(
     private val videoRepository: VideoRepository,
     private val authRepository: AuthRepository,
     private val userRepository: UserRepository,
-    private val voiceMessageManager: conectate.com.presentation.messages.VoiceMessageManager,
     private val shareRepository: ShareRepository,
     appSettingsPreferences: AppSettingsPreferences,
 ) : ViewModel() {
@@ -148,12 +141,6 @@ class VideoPlayerViewModel @Inject constructor(
     private val _shareCount = MutableStateFlow(0)
     val shareCount: StateFlow<Int> = _shareCount.asStateFlow()
 
-    // Voice Manager State Expose
-    val voiceState = voiceMessageManager.state
-    val recordingDuration = voiceMessageManager.duration
-    val voicePlaybackProgress = voiceMessageManager.playbackProgress
-    val voicePlaybackDurationLabel = voiceMessageManager.playbackDurationLabel
-    val isDraftPlaying = voiceMessageManager.isDraftPlaying
 
     private var progressJob: Job? = null
     private var commentsSubscriptionJob: Job? = null
@@ -487,45 +474,6 @@ class VideoPlayerViewModel @Inject constructor(
     }
 
 
-    // Voice Message Recording - delegated to VoiceMessageManager
-    fun startRecording() = voiceMessageManager.startRecording()
-    fun pauseRecording() = voiceMessageManager.pauseRecording()
-    fun resumeRecording() = voiceMessageManager.resumeRecording()
-    fun resumeRecordingFromReview() = voiceMessageManager.resumeRecordingFromReview()
-    fun cancelRecording() = voiceMessageManager.cancelRecording()
-    
-    fun stopRecording(sendDirectly: Boolean) {
-        if (sendDirectly) {
-            // Quick send
-            voiceMessageManager.stopRecording()
-            sendCurrentRecording()
-        } else {
-            // Go to review mode
-            voiceMessageManager.stopRecording()
-        }
-    }
-    
-    fun sendCurrentRecording() {
-        viewModelScope.launch {
-            val file = voiceMessageManager.getRecordedFile()
-            if (file != null && file.exists()) {
-                videoRepository.sendAudioComment(videoId, file)
-                    .onSuccess {
-                        voiceMessageManager.clearRecording()
-                        refreshCommentsAfterWrite()
-                    }
-                    .onFailure { error ->
-                        AppFeedbackBus.showError(error.toUserFacingMessage("No se pudo enviar el audio. Puedes reintentarlo."))
-                    }
-            }
-        }
-    }
-    
-    // Preview playback controls
-    fun playDraftPreview() = voiceMessageManager.playPreview()
-    fun pauseDraftPreview() = voiceMessageManager.pausePreview()
-    fun seekDraftPreview(fraction: Float) = voiceMessageManager.seekPreview(fraction)
-
     fun deleteComment(comment: VideoComment) {
         val currentState = _uiState.value as? VideoPlayerUiState.Success ?: return
         val previousComments = currentState.comments
@@ -762,13 +710,6 @@ fun VideoPlayerScreen(
     val reportActionMessage by viewModel.reportActionMessage.collectAsState()
     val currentPlayingCommentId by viewModel.currentPlayingCommentId.collectAsState()
     val audioProgress by viewModel.audioProgress.collectAsState()
-    
-    // Voice Manager States
-    val voiceState by viewModel.voiceState.collectAsState()
-    val recordingDuration by viewModel.recordingDuration.collectAsState()
-    val voicePlaybackProgress by viewModel.voicePlaybackProgress.collectAsState()
-    val voicePlaybackDurationLabel by viewModel.voicePlaybackDurationLabel.collectAsState()
-    val isDraftPlaying by viewModel.isDraftPlaying.collectAsState()
     
     // Real-time states
     val isLiked by viewModel.isLiked.collectAsState()
@@ -1025,14 +966,6 @@ fun VideoPlayerScreen(
                 isActuallyPlaying = false,
                 elapsedRealtimeMs = android.os.SystemClock.elapsedRealtime()
             )
-        }
-    }
-
-    val recordPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            viewModel.startRecording()
         }
     }
 
@@ -1573,230 +1506,87 @@ fun VideoPlayerScreen(
 
                         // FIXED: Comment input at the bottom
                         Surface(tonalElevation = 3.dp) {
-                            if (voiceState != conectate.com.presentation.messages.VoiceState.IDLE) {
-                                // --- RECORDING / REVIEW UI ---
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp)
-                                        .height(64.dp)
-                                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                                        .padding(horizontal = 8.dp)
-                                ) {
-                                    // Cancel / Delete
-                                    IconButton(onClick = { viewModel.cancelRecording() }) {
-                                        Icon(Icons.Default.Delete, "Cancelar", tint = MaterialTheme.colorScheme.error)
-                                    }
-                                    
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    
-                                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                                        when (voiceState) {
-                                            conectate.com.presentation.messages.VoiceState.RECORDING -> {
-                                                val minutes = recordingDuration / 1000 / 60
-                                                val seconds = (recordingDuration / 1000) % 60
-                                                val timeString = String.format(
-                                                    androidx.compose.ui.platform.LocalLocale.current.platformLocale,
-                                                    "%02d:%02d",
-                                                    minutes,
-                                                    seconds,
-                                                )
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text(
-                                                        "Grabando... $timeString", 
-                                                        color = MaterialTheme.colorScheme.error,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                            }
-                                            conectate.com.presentation.messages.VoiceState.PAUSED -> {
-                                                Text(
-                                                    "Pausado", 
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                            conectate.com.presentation.messages.VoiceState.REVIEWING -> {
-                                                // Review Player
-                                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                                    IconButton(onClick = { 
-                                                        if (isDraftPlaying) viewModel.pauseDraftPreview() 
-                                                        else viewModel.playDraftPreview()
-                                                    }) {
-                                                        Icon(
-                                                            if (isDraftPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, 
-                                                            "Reproducir",
-                                                            tint = MaterialTheme.colorScheme.primary
-                                                        )
-                                                    }
-                                                    
-                                                    Slider(
-                                                        value = voicePlaybackProgress,
-                                                        onValueChange = { viewModel.seekDraftPreview(it) },
-                                                        modifier = Modifier.weight(1f)
-                                                    )
-                                                    
-                                                    Text(
-                                                        voicePlaybackDurationLabel,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        modifier = Modifier.padding(start = 8.dp)
-                                                    )
-                                                }
-                                            }
-                                            else -> {}
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                androidx.compose.animation.AnimatedVisibility(visible = replyingTo != null) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Respondiendo a @${replyingTo?.userName ?: "Usuario"}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        IconButton(onClick = { viewModel.cancelReply() }, modifier = Modifier.size(24.dp)) {
+                                            Icon(Icons.Default.Close, contentDescription = "Cancelar respuesta")
                                         }
-                                    }
-                                    
-                                    // Actions
-                                    when (voiceState) {
-                                        conectate.com.presentation.messages.VoiceState.RECORDING -> {
-                                            IconButton(onClick = { viewModel.pauseRecording() }) {
-                                                Icon(Icons.Default.Pause, "Pausar", tint = MaterialTheme.colorScheme.primary)
-                                            }
-                                            IconButton(
-                                                onClick = { viewModel.stopRecording(true) }
-                                            ) {
-                                                Icon(Icons.AutoMirrored.Filled.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
-                                            }
-                                        }
-                                        conectate.com.presentation.messages.VoiceState.PAUSED -> {
-                                            IconButton(onClick = { viewModel.resumeRecording() }) {
-                                                Icon(Icons.Default.Mic, "Reanudar", tint = MaterialTheme.colorScheme.primary)
-                                            }
-                                            IconButton(onClick = { viewModel.stopRecording(false) }) {
-                                                Icon(Icons.Default.Stop, "Revisar", tint = MaterialTheme.colorScheme.secondary)
-                                            }
-                                        }
-                                        conectate.com.presentation.messages.VoiceState.REVIEWING -> {
-                                            IconButton(
-                                                onClick = { viewModel.resumeRecordingFromReview() }
-                                            ) {
-                                                Icon(Icons.Default.Mic, "Reanudar", tint = MaterialTheme.colorScheme.primary)
-                                            }
-                                            IconButton(
-                                                onClick = { viewModel.sendCurrentRecording() }
-                                            ) {
-                                                Icon(Icons.AutoMirrored.Filled.Send, "Enviar", tint = MaterialTheme.colorScheme.primary)
-                                            }
-                                        }
-                                        else -> {}
                                     }
                                 }
-                            } else {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    androidx.compose.animation.AnimatedVisibility(visible = replyingTo != null) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(
-                                                text = "Respondiendo a @${replyingTo?.userName ?: "Usuario"}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            IconButton(onClick = { viewModel.cancelReply() }, modifier = Modifier.size(20.dp)) {
-                                                Icon(Icons.Default.Close, contentDescription = "Cancelar respuesta")
-                                            }
-                                        }
-                                    }
 
-                                    if (mentionSuggestions.isNotEmpty()) {
-                                        Surface(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 8.dp),
-                                            shape = RoundedCornerShape(12.dp),
-                                            tonalElevation = 2.dp
+                                if (mentionSuggestions.isNotEmpty()) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        tonalElevation = 2.dp
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.heightIn(max = 180.dp)
+                                                .verticalScroll(rememberScrollState()).padding(vertical = 6.dp)
                                         ) {
-                                            Column(modifier = Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
-                                                mentionSuggestions.forEach { user ->
-                                                    val username = conectate.com.data.model.profilePublicHandle(user)
-                                                    Row(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .clickable {
-                                                                viewModel.updateCommentText(
-                                                                    replaceActiveMention(commentText, username)
-                                                                )
-                                                                viewModel.clearMentionSuggestions()
-                                                            }
-                                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        CircularProfileImage(ownerId = user.id, 
-                                                            imageUrl = user.avatar_url ?: "",
-                                                            size = 26.dp,
-                                                            fallbackName = user.displayName
-                                                        )
-                                                        Spacer(modifier = Modifier.width(8.dp))
-                                                        Text("@$username", fontWeight = FontWeight.SemiBold)
-                                                    }
+                                            mentionSuggestions.forEach { user ->
+                                                val username = conectate.com.data.model.profilePublicHandle(user)
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().clickable {
+                                                        viewModel.updateCommentText(replaceActiveMention(commentText, username))
+                                                        viewModel.clearMentionSuggestions()
+                                                    }.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    CircularProfileImage(
+                                                        ownerId = user.id,
+                                                        imageUrl = user.avatar_url ?: "",
+                                                        size = 26.dp,
+                                                        fallbackName = user.displayName
+                                                    )
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text("@$username", fontWeight = FontWeight.SemiBold)
                                                 }
                                             }
                                         }
                                     }
+                                }
 
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(8.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.Bottom
-                                    ) {
-                                        IconButton(onClick = { showStickerPanel = true }) {
-                                            Icon(Icons.Default.EmojiEmotions, contentDescription = "Sticker")
-                                        }
-                                        OutlinedTextField(
-                                            value = commentText,
-                                            onValueChange = { viewModel.updateCommentText(it) },
-                                            modifier = Modifier.weight(1f),
-                                            placeholder = {
-                                                Text(if (replyingTo != null) "Escribe una respuesta..." else "Escribe un comentario...")
-                                            },
-                                            maxLines = 3,
-                                            visualTransformation = conectate.com.presentation.components.mentionInputTransformation,
-                                            shape = CircleShape
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.Bottom
+                                ) {
+                                    IconButton(onClick = { showStickerPanel = true }) {
+                                        Icon(Icons.Default.EmojiEmotions, contentDescription = "Emojis y stickers")
+                                    }
+                                    OutlinedTextField(
+                                        value = commentText,
+                                        onValueChange = { viewModel.updateCommentText(it) },
+                                        modifier = Modifier.weight(1f),
+                                        placeholder = {
+                                            Text(if (replyingTo != null) "Escribe una respuesta..." else "Escribe un comentario...")
+                                        },
+                                        maxLines = 3,
+                                        visualTransformation = conectate.com.presentation.components.mentionInputTransformation,
+                                        shape = CircleShape
+                                    )
+                                    IconButton(
+                                        onClick = { viewModel.postComment() },
+                                        enabled = commentText.isNotBlank() && !commentPosting,
+                                        colors = IconButtonDefaults.iconButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
                                         )
-
-                                        if (commentText.isEmpty()) {
-                                            // Mic Button
-                                            IconButton(
-                                                onClick = {
-                                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                                        viewModel.startRecording()
-                                                    } else {
-                                                        recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                                    }
-                                                },
-                                                colors = IconButtonDefaults.iconButtonColors(
-                                                    containerColor = MaterialTheme.colorScheme.primary,
-                                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                                )
-                                            ) {
-                                                Icon(Icons.Default.Mic, contentDescription = "Grabar")
-                                            }
-                                        } else {
-                                            IconButton(
-                                                onClick = { viewModel.postComment() },
-                                                enabled = commentText.isNotBlank() && !commentPosting,
-                                                colors = IconButtonDefaults.iconButtonColors(
-                                                    containerColor = MaterialTheme.colorScheme.primary,
-                                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                                )
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.AutoMirrored.Filled.Send,
-                                                    contentDescription = "Enviar"
-                                                )
-                                            }
-                                        }
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar comentario")
                                     }
                                 }
                             }
@@ -1836,15 +1626,20 @@ fun VideoPlayerScreen(
         }
     }
 
-    conectate.com.presentation.messages.stickers.StickerPanel(
-        visible = showStickerPanel,
-        onDismiss = { showStickerPanel = false },
-        onStickerSelected = { sticker ->
-            showStickerPanel = false
-            val url = sticker.media_url.orEmpty()
-            if (url.isNotBlank()) viewModel.addStickerComment(url, sticker.title.ifBlank { "Sticker" })
-        }
-    )
+    if (showStickerPanel) {
+        conectate.com.presentation.messages.StickerPickerDialog(
+            onDismiss = { showStickerPanel = false },
+            onEmojiSelected = { emoji ->
+                viewModel.updateCommentText(commentText + emoji)
+                showStickerPanel = false
+            },
+            onStickerSelected = { sticker ->
+                showStickerPanel = false
+                val url = sticker.media_url.orEmpty()
+                if (url.isNotBlank()) viewModel.addStickerComment(url, sticker.title.ifBlank { "Sticker" })
+            }
+        )
+    }
 }
 
 // Local CommentItem removed, using VideoCommentItem from CommentSheet.kt

@@ -144,7 +144,7 @@ async function run() {
 
   const rollbackOwner = '11111111-1111-4111-8111-111111111111'
   const rollbackObject = `${rollbackOwner}/rollback.wav`
-  const rollbackPath = objectFilePath('video-comments-media', rollbackObject)
+  const rollbackPath = objectFilePath('group-audio', rollbackObject)
   const rollbackWav = Buffer.from('524946462400000057415645666d74201000000001000100401f0000401f0000010008006461746100000000', 'hex')
   const originalAudio = Buffer.concat([rollbackWav, Buffer.from('original')])
   const replacementAudio = Buffer.concat([rollbackWav, Buffer.from('replacement')])
@@ -160,7 +160,7 @@ async function run() {
   }
   await expectRejected(
     upsertStoredObject(rollbackPool, request, {
-      bucket: 'video-comments-media',
+      bucket: 'group-audio',
       objectPath: rollbackObject,
       ownerId: rollbackOwner,
       buffer: replacementAudio,
@@ -175,7 +175,7 @@ async function run() {
     [],
   )
   const ownerlessObject = `${rollbackOwner}/ownerless.wav`
-  const ownerlessPath = objectFilePath('video-comments-media', ownerlessObject)
+  const ownerlessPath = objectFilePath('group-audio', ownerlessObject)
   let ownerlessQueries = 0
   await expectRejected(
     upsertStoredObject({
@@ -184,7 +184,7 @@ async function run() {
         return { rows: [{ owner_id: null }] }
       },
     }, request, {
-      bucket: 'video-comments-media',
+      bucket: 'group-audio',
       objectPath: ownerlessObject,
       ownerId: rollbackOwner,
       buffer: replacementAudio,
@@ -331,33 +331,14 @@ async function run() {
     'image/png',
   )
   const wav = Buffer.from('524946462400000057415645666d74201000000001000100401f0000401f0000010008006461746100000000', 'hex')
-  assert.equal(
-    (await validateUpload({
-      bucket: 'post-comments-media',
-      objectPath: 'comments/user/voice.wav',
-      buffer: wav,
-      contentType: 'audio/wav',
-    })).contentType,
-    'audio/wav',
-  )
-  assert.equal(
-    (await validateUpload({
-      bucket: 'video-comments-media',
-      objectPath: 'comments/user/voice.wav',
-      buffer: wav,
-      contentType: 'audio/wav',
-    })).contentType,
-    'audio/wav',
-  )
-  await expectRejected(
-    validateUpload({
-      bucket: 'post-comments-media',
-      objectPath: 'comments/user/image.png',
-      buffer: png,
-      contentType: 'image/png',
-    }),
-    'UNSUPPORTED_OR_MISMATCHED_MEDIA_TYPE',
-  )
+  for (const bucket of ['post-comments-media', 'video-comments-media']) {
+    await expectRejected(validateUpload({ bucket, objectPath: 'comments/user/voice.wav',
+      buffer: wav, contentType: 'audio/wav' }), 'UNSUPPORTED_OR_MISMATCHED_MEDIA_TYPE')
+    assert.equal((await validateUpload({ bucket, objectPath: 'comments/user/sticker.png',
+      buffer: png, contentType: 'image/png' })).contentType, 'image/png')
+    assert.equal((await validateUpload({ bucket, objectPath: 'comments/user/sticker.gif',
+      buffer: gif, contentType: 'image/gif' })).contentType, 'image/gif')
+  }
   await expectRejected(
     validateUpload({
       bucket: 'report-evidence',

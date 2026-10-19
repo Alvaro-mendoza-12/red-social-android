@@ -1489,8 +1489,22 @@ async function canonicalDirectChatParticipants(pool, participants) {
   return canonical
 }
 
+function rejectCommentAudio(tableName, row) {
+  if (['post_comments', 'video_comments'].includes(tableName) &&
+      [row.media_type, row.content_type].some(type => /^audio(?:\/|$)/i.test(String(type || '').trim()))) {
+    throw httpError('COMMENT_AUDIO_DISABLED', 400)
+  }
+}
+
+function rejectCommentAudioPatch(tableName, current, patch) {
+  if (['media_type', 'content_type', 'media_url', 'audio_url', 'file_url'].some(field => Object.hasOwn(patch, field))) {
+    rejectCommentAudio(tableName, { ...current, ...patch })
+  }
+}
+
 async function prepareInsertRow(pool, tableName, identity, source) {
   let row = compactRow(source)
+  rejectCommentAudio(tableName, row)
   if (tableName === 'notifications' && isServerManagedNotification(row)) {
     throw httpError('SERVER_MANAGED_NOTIFICATION', 403)
   }
@@ -2195,14 +2209,16 @@ async function recallCompatMessage(pool, tableName, identity, auth, current) {
 }
 
 async function handlePatch(pool, tableName, auth, query, body) {
+  const patch = compactRow(body || {})
+  rejectCommentAudio(tableName, patch)
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   const currentRows = await readTableRows(pool, tableName, query, auth)
-  const patch = compactRow(body || {})
   const targets = currentRows.length > 0 ? currentRows : []
 
   const rows = []
   for (const current of targets) {
+    rejectCommentAudioPatch(tableName, current, patch)
     if (!(await authorizeMutation(pool, tableName, identity, current, patch, 'patch'))) {
       throw httpError('ROW_MUTATION_FORBIDDEN')
     }
@@ -6193,6 +6209,8 @@ module.exports = {
     liveGiftLimitsConfiguration,
     parsePollOptions,
     prepareInsertRow,
+    handlePatch,
+    rejectCommentAudioPatch,
     canonicalDirectChatParticipants,
     purgeImportedIdentityRows,
     purgeCompatIdentityRows,

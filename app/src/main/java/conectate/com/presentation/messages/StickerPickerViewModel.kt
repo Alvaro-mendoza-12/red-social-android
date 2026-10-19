@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import javax.inject.Inject
 
 @HiltViewModel
@@ -43,6 +45,7 @@ class StickerPickerViewModel @Inject constructor(
 
     private val _actionMessage = MutableStateFlow<String?>(null)
     val actionMessage: StateFlow<String?> = _actionMessage.asStateFlow()
+    private var queryJob: Job? = null
 
     init {
         refreshAll()
@@ -75,8 +78,11 @@ class StickerPickerViewModel @Inject constructor(
 
     fun updateQuery(value: String) {
         _query.value = value
-        viewModelScope.launch {
-            _searchResults.value = stickerRepository.search(value)
+        queryJob?.cancel()
+        queryJob = viewModelScope.launch {
+            delay(180)
+            val results = stickerRepository.search(value)
+            if (_query.value == value) _searchResults.value = results
         }
     }
 

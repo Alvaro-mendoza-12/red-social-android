@@ -4092,6 +4092,13 @@ function buildPostReactionState(rows, identity) {
   return { counts, totals, mine, items }
 }
 
+function postsWithCurrentProfileAvatar(posts, profile) {
+  // These rows already belong to this profile. Historical author snapshots can
+  // point to an avatar that was replaced or removed and is no longer readable.
+  const avatar = profileAvatar(profile)
+  return posts.map((row) => ({ ...row, user_profile_image: avatar }))
+}
+
 function enrichPost(
   row,
   profilesById,
@@ -7120,7 +7127,7 @@ function registerDataRoutes(app, {
       res.vary('Authorization')
       res.json({
         profile: mergedProfile,
-        posts: myPosts,
+        posts: postsWithCurrentProfileAvatar(myPosts, mergedProfile),
         reports: myReports,
         stats: {
           posts: ownedPosts.length,
@@ -9055,6 +9062,9 @@ function registerDataRoutes(app, {
       const parentId = cleanText(req.body?.parentId || req.body?.parent_id, 120) || null
       const mediaUrl = cleanText(req.body?.mediaUrl || req.body?.media_url, 700) || null
       const mediaType = cleanText(req.body?.mediaType || req.body?.media_type, 80) || null
+      if (/^audio(?:\/|$)/i.test(mediaType || '')) {
+        return res.status(400).json({ error: 'COMMENT_AUDIO_DISABLED' })
+      }
       if (!postId || (!content && !mediaUrl)) {
         return res.status(400).json({ error: 'POST_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
       }
@@ -13270,7 +13280,10 @@ function registerDataRoutes(app, {
       const identity = userIdentity(user)
       const cleanId = normalizeId(req.params.videoId)
       const submittedContent = String(req.body?.content || '').trim()
-      const contentType = String(req.body?.contentType || req.body?.content_type || 'text').trim() || 'text'
+      const contentType = String(req.body?.contentType || req.body?.content_type || 'text').trim().toLowerCase() || 'text'
+      if (/^audio(?:\/|$)/.test(contentType)) {
+        return res.status(400).json({ error: 'COMMENT_AUDIO_DISABLED' })
+      }
       const moderation = contentType === 'text'
         ? moderatePublicComment(submittedContent)
         : { verdict: 'allow', text: submittedContent, flags: [] }
@@ -13290,7 +13303,7 @@ function registerDataRoutes(app, {
       if (!(await visibleVideoForIdentity(pool, cleanId, identity))) {
         return res.status(404).json({ error: 'VIDEO_NOT_FOUND' })
       }
-      if (!new Set(['text', 'audio', 'sticker']).has(contentType)) {
+      if (!new Set(['text', 'sticker']).has(contentType)) {
         return res.status(400).json({ error: 'VIDEO_COMMENT_CONTENT_TYPE_INVALID' })
       }
       if (!(await currentUserMayReferenceMessageMedia(pool, user, identity, {
@@ -14908,6 +14921,7 @@ module.exports = {
   sameStorageObjectReference,
   storageObjectExists,
   profileForViewer,
+  postsWithCurrentProfileAvatar,
   profileVisibleToViewer,
   processBirthdayNotifications,
   processDueCommunityEventReminders,

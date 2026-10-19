@@ -65,6 +65,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -73,11 +75,39 @@ import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import conectate.com.data.model.StickerItem
 
+private val pickerEmojis = listOf(
+    "😀" to "sonrisa feliz", "😃" to "alegre", "😄" to "risa feliz", "😁" to "sonriendo",
+    "😆" to "riendo", "😅" to "risa nerviosa", "😂" to "lágrimas de risa", "🤣" to "carcajada",
+    "😊" to "sonrisa amable", "🥰" to "cariño amor", "😍" to "enamorado", "😘" to "beso",
+    "😎" to "gafas genial", "🤔" to "pensando", "🥹" to "emoción", "😢" to "triste",
+    "😭" to "llorar", "😡" to "enojado", "😴" to "dormir", "🙃" to "al revés",
+    "😉" to "guiño", "😮" to "sorpresa", "🥳" to "fiesta", "🤩" to "estrellas",
+    "👍" to "me gusta pulgar arriba", "👎" to "pulgar abajo", "👏" to "aplausos", "🙌" to "celebrar",
+    "🙏" to "gracias por favor", "👋" to "hola adiós", "✌️" to "paz", "🤝" to "acuerdo amigos",
+    "💪" to "fuerza", "🫶" to "manos corazón", "🤞" to "suerte", "👌" to "perfecto",
+    "❤️" to "amor corazón rojo", "💜" to "corazón morado", "💙" to "corazón azul", "💚" to "corazón verde",
+    "💛" to "corazón amarillo", "🖤" to "corazón negro", "🤍" to "corazón blanco", "💕" to "corazones",
+    "🔥" to "fuego", "✨" to "brillos", "🎉" to "celebración", "🎵" to "música",
+    "🎮" to "juegos", "⚽" to "fútbol", "🏆" to "trofeo", "🌸" to "flor",
+    "🌞" to "sol", "🌙" to "luna noche", "⭐" to "estrella", "☕" to "café",
+    "🍕" to "pizza", "🐱" to "gato", "🐶" to "perro", "🌈" to "arcoíris"
+)
+
+internal fun searchablePickerEmojis(query: String): List<Pair<String, String>> {
+    fun normalize(value: String) = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "").lowercase(java.util.Locale.ROOT)
+    val search = normalize(query.trim())
+    return if (search.isEmpty()) pickerEmojis else pickerEmojis.filter { (emoji, description) ->
+        emoji.contains(query.trim()) || normalize(description).contains(search)
+    }
+}
+
 @Composable
 fun StickerPickerDialog(
     onDismiss: () -> Unit,
     onStickerSelected: (StickerItem) -> Unit,
-    viewModel: StickerPickerViewModel = hiltViewModel()
+    viewModel: StickerPickerViewModel = hiltViewModel(),
+    onEmojiSelected: ((String) -> Unit)? = null
 ) {
     val query by viewModel.query.collectAsState()
     val results by viewModel.searchResults.collectAsState()
@@ -87,7 +117,9 @@ fun StickerPickerDialog(
     val isLoading by viewModel.isLoading.collectAsState()
     val actionMessage by viewModel.actionMessage.collectAsState()
 
-    var selectedTab by remember { mutableStateOf(0) }
+    // Comments can use offline emojis immediately; other callers open the catalog
+    // rather than a Favorites tab that may be empty on first use.
+    var selectedTab by remember { mutableStateOf(if (onEmojiSelected != null) 3 else 2) }
     var newPackName by remember { mutableStateOf("") }
     var selectedPackId by remember { mutableStateOf<String?>(null) }
     val imagePickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
@@ -114,7 +146,7 @@ fun StickerPickerDialog(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    "Stickers",
+                    if (onEmojiSelected != null) "Emojis y stickers" else "Stickers",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 12.dp)
@@ -123,7 +155,7 @@ fun StickerPickerDialog(
                 OutlinedTextField(
                     value = query,
                     onValueChange = { viewModel.updateQuery(it) },
-                    placeholder = { Text("Buscar sticker...") },
+                    placeholder = { Text(if (selectedTab == 3) "Buscar emoji..." else "Buscar sticker...") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -138,6 +170,9 @@ fun StickerPickerDialog(
                     Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Favoritos") })
                     Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Packs") })
                     Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Catálogo") })
+                    if (onEmojiSelected != null) {
+                        Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }, text = { Text("Emojis") })
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -186,9 +221,27 @@ fun StickerPickerDialog(
                             }
                         }
                         else -> results
-                    }
+                    }.filter { !it.media_url.isNullOrBlank() }
 
-                    if (isLoading) {
+                    if (selectedTab == 3 && onEmojiSelected != null) {
+                        val emojis = remember(query) { searchablePickerEmojis(query) }
+                        if (emojis.isEmpty()) {
+                            Text("No hay emojis que coincidan", modifier = Modifier.align(Alignment.Center))
+                        } else {
+                            LazyVerticalGrid(
+                                columns = GridCells.Adaptive(52.dp),
+                                contentPadding = PaddingValues(4.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(emojis, key = { it.first }) { (emoji, description) ->
+                                    TextButton(onClick = { onEmojiSelected(emoji) }, modifier = Modifier.size(52.dp)) {
+                                        Text(emoji, style = MaterialTheme.typography.headlineMedium,
+                                            modifier = Modifier.semantics { contentDescription = description })
+                                    }
+                                }
+                            }
+                        }
+                    } else if (isLoading) {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     } else if (currentItems.isEmpty()) {
                         Text(

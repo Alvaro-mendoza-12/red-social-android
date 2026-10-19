@@ -64,46 +64,6 @@ async function uploadOwnedImage(token, bucket, label) {
   return payload
 }
 
-function createWaveBytes() {
-  const sampleData = Buffer.alloc(800, 0)
-  const bytes = Buffer.alloc(44 + sampleData.length)
-  bytes.write('RIFF', 0)
-  bytes.writeUInt32LE(bytes.length - 8, 4)
-  bytes.write('WAVE', 8)
-  bytes.write('fmt ', 12)
-  bytes.writeUInt32LE(16, 16)
-  bytes.writeUInt16LE(1, 20)
-  bytes.writeUInt16LE(1, 22)
-  bytes.writeUInt32LE(8000, 24)
-  bytes.writeUInt32LE(8000, 28)
-  bytes.writeUInt16LE(1, 32)
-  bytes.writeUInt16LE(8, 34)
-  bytes.write('data', 36)
-  bytes.writeUInt32LE(sampleData.length, 40)
-  sampleData.copy(bytes, 44)
-  return bytes
-}
-
-async function uploadOwnedAudio(token, bucket, label) {
-  const bytes = createWaveBytes()
-  const objectPath = `social-module/${runId}-${label}.wav`
-  const response = await fetch(`${apiUrl}/storage/v1/object/${bucket}/${encodedObjectPath(objectPath)}`, {
-    method: 'PUT',
-    headers: {
-      authorization: `Bearer ${token}`,
-      'content-type': 'audio/wav',
-      'content-length': String(bytes.length),
-    },
-    body: bytes,
-  })
-  const text = await response.text()
-  const payload = text ? JSON.parse(text) : {}
-  assert.equal(response.status, 200, `PUT ${bucket}: ${response.status} ${text}`)
-  assert.ok(payload.path)
-  assert.ok(payload.publicUrl)
-  return payload
-}
-
 async function deleteOwnedImage(token, bucket, storedObject) {
   await request(`/v1/storage/objects/${bucket}/${encodedObjectPath(storedObject.path)}`, {
     token,
@@ -114,7 +74,7 @@ async function deleteOwnedImage(token, bucket, storedObject) {
 async function main() {
   const owner = await register('owner')
   const viewer = await register('viewer')
-  const commentMedia = await uploadOwnedAudio(viewer.token, 'post-comments-media', 'comment')
+  const commentMedia = await uploadOwnedImage(viewer.token, 'post-comments-media', 'comment')
   const momentMedia = await uploadOwnedImage(owner.token, 'moment-media', 'moment')
 
   const firstPost = await request('/v1/data/feed/posts', {
@@ -139,23 +99,30 @@ async function main() {
     method: 'POST',
     expected: 403,
     body: {
-      content: '[Audio falso]',
-      mediaUrl: `${apiUrl}/storage/v1/object/public/post-comments-media/test-${runId}.wav`,
-      mediaType: 'audio',
+      content: '[Sticker ajeno]',
+      mediaUrl: `${apiUrl}/storage/v1/object/public/post-comments-media/test-${runId}.png`,
+      mediaType: 'sticker',
     },
   })
-  const audioComment = await request(`/v1/data/feed/posts/${secondPost.post.id}/comments`, {
+  const rejectedAudio = await request(`/v1/data/feed/posts/${secondPost.post.id}/comments`, {
+    token: viewer.token,
+    method: 'POST',
+    expected: 400,
+    body: { content: '[Audio]', mediaUrl: commentMedia.publicUrl, mediaType: 'audio' },
+  })
+  assert.equal(rejectedAudio.error, 'COMMENT_AUDIO_DISABLED')
+  const stickerComment = await request(`/v1/data/feed/posts/${secondPost.post.id}/comments`, {
     token: viewer.token,
     method: 'POST',
     expected: 201,
     body: {
-      content: '[Audio]',
+      content: '[Sticker]',
       mediaUrl: commentMedia.publicUrl,
-      mediaType: 'audio',
+      mediaType: 'sticker',
     },
   })
-  const commentId = audioComment.comment.id
-  assert.equal(audioComment.comment.media_type, 'audio')
+  const commentId = stickerComment.comment.id
+  assert.equal(stickerComment.comment.media_type, 'sticker')
   await request(`/v1/data/feed/comments/${commentId}`, {
     token: viewer.token,
     method: 'PATCH',

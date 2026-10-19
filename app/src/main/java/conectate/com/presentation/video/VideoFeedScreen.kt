@@ -321,15 +321,10 @@ fun VideoFeedScreen(
     val reportActionMessage by viewModel.reportActionMessage.collectAsState()
     val algorithmActionMessage by viewModel.algorithmActionMessage.collectAsState()
     val algorithmUndoOffer by viewModel.algorithmUndoOffer.collectAsState()
-    val voiceState by viewModel.voiceState.collectAsState()
     val followedUsers by viewModel.followedUsers.collectAsState()
     val videoDownloadsInProgress by viewModel.videoDownloadsInProgress.collectAsState()
-    val isDraftPlaying by viewModel.isDraftPlaying.collectAsState()
-    val draftProgress by viewModel.draftProgress.collectAsState()
-    val draftDuration by viewModel.draftDuration.collectAsState()
     val currentPlayingCommentId by viewModel.currentPlayingCommentId.collectAsState()
     val audioProgress by viewModel.audioProgress.collectAsState()
-    val recordingDuration by viewModel.recordingDuration.collectAsState()
     val soundVideos by viewModel.soundVideos.collectAsState()
     val isSoundVideosLoading by viewModel.isSoundVideosLoading.collectAsState()
     val soundVideosError by viewModel.soundVideosError.collectAsState()
@@ -1242,19 +1237,6 @@ fun VideoFeedScreen(
             mentionSuggestions = mentionSuggestions,
             onCommentDraftChanged = { viewModel.onCommentDraftChanged(it) },
             onClearMentionSuggestions = { viewModel.clearMentionSuggestions() },
-            voiceState = voiceState,
-            recordingDuration = recordingDuration,
-            onStartRecording = { viewModel.startRecording() },
-            onPauseRecording = { viewModel.pauseRecording() },
-            onResumeRecording = { viewModel.resumeRecording() },
-            onStopRecording = { shouldSend -> viewModel.stopRecording(videoIdForComments, shouldSend) },
-            onCancelRecording = { viewModel.cancelRecording() },
-            isDraftPlaying = isDraftPlaying,
-            draftProgress = draftProgress,
-            draftDuration = draftDuration,
-            onPlayDraft = { viewModel.playDraft() },
-            onPauseDraft = { viewModel.pauseDraft() },
-            onSeekDraft = { viewModel.seekDraft(it) },
             onPlayAudio = { viewModel.playCommentAudio(it) },
             currentPlayingCommentId = currentPlayingCommentId,
             audioProgress = audioProgress,

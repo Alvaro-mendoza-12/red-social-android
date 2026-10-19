@@ -710,7 +710,7 @@ class VideoRepository @Inject constructor(
             if (failOnError) throw e
             if (!hasFallbackEmission) emit(emptyList())
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     suspend fun uploadVideo(
         title: String,
@@ -2107,56 +2107,6 @@ class VideoRepository @Inject constructor(
         }
     }
 
-    suspend fun sendAudioComment(videoId: String, audioFile: java.io.File): Result<Unit> {
-        if (!audioFile.isFile || audioFile.length() <= 0L) {
-            return Result.failure(Exception("El audio está vacío o no se puede leer"))
-        }
-        android.util.Log.d("VideoRepository", "sendAudioComment called for videoId=$videoId, file=${audioFile.name}")
-        authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-        val filename = "comment_${UUID.randomUUID()}.m4a"
-        var remoteKey: String? = null
-        var metadataPersisted = false
-
-        return try {
-            val uploadResult = storageService.uploadFileFromUri(
-                bucketName = "video-comments-media",
-                fileName = filename,
-                sourceUri = Uri.fromFile(audioFile),
-                sizeBytes = audioFile.length(),
-                contentType = "audio/mp4",
-                allowOverwrite = false,
-                onProgress = {}
-            )
-            if (uploadResult.isFailure) {
-                val error = uploadResult.exceptionOrNull() ?: Exception("Upload failed")
-                android.util.Log.e("VideoRepository", "Audio upload failed: ${error.message}", error)
-                return Result.failure(error)
-            }
-
-            val uploadedKey = uploadResult.getOrThrow().Key ?: filename
-            remoteKey = uploadedKey
-            val publicUrl = UbuntuStorageUrl.rewrite(
-                storageService.getPublicUrl("video-comments-media", uploadedKey)
-            ).orEmpty()
-            if (publicUrl.isBlank()) return Result.failure(Exception("No se pudo generar la URL del audio"))
-
-            val result = addComment(
-                videoId = videoId,
-                content = "[Audio]",
-                contentType = "audio",
-                mediaUrl = publicUrl
-            ).map { Unit }
-            metadataPersisted = result.isSuccess
-            result
-        } catch (e: Exception) {
-            android.util.Log.e("VideoRepository", "Exception in sendAudioComment", e)
-            Result.failure(e)
-        } finally {
-            if (!metadataPersisted) {
-                remoteKey?.let { cleanupUploadedObjects(listOf("video-comments-media" to it)) }
-            }
-        }
-    }
 
     suspend fun getCommentAudioUrl(pathOrUrl: String): String {
         return if (pathOrUrl.startsWith("http")) {

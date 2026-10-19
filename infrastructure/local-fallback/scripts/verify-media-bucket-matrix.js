@@ -21,6 +21,8 @@ const imageBuckets = [
   'thumbnails',
   'challenges',
   'report-evidence',
+  'video-comments-media',
+  'post-comments-media',
 ]
 
 const videoBuckets = [
@@ -43,8 +45,6 @@ const audioBuckets = [
   'groups',
   'communities',
   'challenges',
-  'video-comments-media',
-  'post-comments-media',
   'group-audio',
   'profile-audio',
 ]

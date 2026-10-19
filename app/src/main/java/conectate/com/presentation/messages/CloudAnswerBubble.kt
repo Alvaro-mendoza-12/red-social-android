@@ -29,11 +29,16 @@ internal object AnswerCloudShape : Shape {
 @Composable
 internal fun CloudAnswerBubble(text: String, slot: Int, moving: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val phase = rememberQuestionCloudPhase(slot, moving)
-    val drift = questionCloudDrift(phase, slot)
     Surface(
         onClick = onClick, shape = AnswerCloudShape, color = Color.White, contentColor = Color(0xFF20252C),
         shadowElevation = 2.dp,
-        modifier = modifier.offset(x = drift.x.dp, y = drift.y.dp).heightIn(min = 58.dp)
+        modifier = modifier.graphicsLayer {
+            // Read per-frame state in the rendering layer. The text and cloud
+            // shape do not need to be recomposed and measured while drifting.
+            val drift = questionCloudDrift(phase.value, slot)
+            translationX = drift.x.dp.toPx()
+            translationY = drift.y.dp.toPx()
+        }.heightIn(min = 58.dp)
     ) {
         Box(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 14.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
             Text(text, maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)

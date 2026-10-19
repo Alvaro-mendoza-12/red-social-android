@@ -17,8 +17,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import android.media.MediaPlayer
-import conectate.com.util.AudioRecorder
-import java.io.File
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
 import android.net.Uri
@@ -58,7 +56,6 @@ data class VideoAlgorithmUndoOffer(
 class VideoFeedViewModel @Inject constructor(
     private val videoRepository: VideoRepository,
     private val postRepository: PostRepository,
-    private val voiceMessageManager: conectate.com.presentation.messages.VoiceMessageManager, // Injected
     private val authService: AuthService,
     val userRepository: conectate.com.data.repository.UserRepository,
     private val shareRepository: conectate.com.data.repository.ShareRepository,
@@ -281,15 +278,6 @@ class VideoFeedViewModel @Inject constructor(
     val algorithmUndoOffer: StateFlow<VideoAlgorithmUndoOffer?> = _algorithmUndoOffer.asStateFlow()
     private val activeAlgorithmBlocks = mutableSetOf<VideoFeedbackBlock>()
     private val reportRequestsInFlight = mutableSetOf<String>()
-
-    // Audio Comment State (Delegated to VoiceMessageManager)
-    val voiceState = voiceMessageManager.state
-    val recordingDuration = voiceMessageManager.duration
-    
-    // Draft Preview State
-    val isDraftPlaying = voiceMessageManager.isDraftPlaying
-    val draftProgress = voiceMessageManager.playbackProgress
-    val draftDuration = voiceMessageManager.playbackDurationLabel
 
     private val _currentPlayingCommentId = MutableStateFlow<String?>(null)
     val currentPlayingCommentId: StateFlow<String?> = _currentPlayingCommentId.asStateFlow()
@@ -1425,7 +1413,6 @@ class VideoFeedViewModel @Inject constructor(
         cancelReply()
         clearMentionSuggestions()
         stopAudio()
-        voiceMessageManager.reset() // Reset recording/preview on close
     }
     
     private fun fetchComments(videoId: String) {
@@ -1790,77 +1777,6 @@ class VideoFeedViewModel @Inject constructor(
         return mergeLatestVideoComments(current, listOf(comment))
     }
 
-    // Audio Comment Actions
-    fun startRecording() {
-        voiceMessageManager.startRecording()
-    }
-    
-    fun pauseRecording() {
-        voiceMessageManager.pauseRecording()
-    }
-    
-    fun resumeRecording() {
-        val state = voiceState.value
-        if (state == conectate.com.presentation.messages.VoiceState.PAUSED) {
-            voiceMessageManager.resumeRecording()
-        } else if (state == conectate.com.presentation.messages.VoiceState.REVIEWING) {
-            voiceMessageManager.resumeRecordingFromReview()
-        }
-    }
-    
-    fun cancelRecording() {
-        voiceMessageManager.cancelRecording()
-    }
-    
-    fun playDraft() {
-        voiceMessageManager.playPreview()
-    }
-    
-    fun pauseDraft() {
-        voiceMessageManager.pausePreview()
-    }
-    
-    fun seekDraft(fraction: Float) {
-        voiceMessageManager.seekPreview(fraction)
-    }
-
-    fun stopRecording(videoId: String, shouldSend: Boolean) {
-        if (!shouldSend) {
-            // Stop and Review
-            voiceMessageManager.stopRecordingForReview()
-        } else {
-            viewModelScope.launch {
-                val currentState = voiceState.value
-                var fileToSend: File? = null
-                var duration = 0L
-
-                if (currentState == conectate.com.presentation.messages.VoiceState.RECORDING || currentState == conectate.com.presentation.messages.VoiceState.PAUSED) {
-                    val pair = voiceMessageManager.stopAndGetFile()
-                    fileToSend = pair.first
-                    duration = pair.second
-                } else if (currentState == conectate.com.presentation.messages.VoiceState.REVIEWING) {
-                    fileToSend = voiceMessageManager.getRecordedFile()
-                    duration = recordingDuration.value
-                    voiceMessageManager.reset()
-                }
-
-                if (fileToSend != null && duration > 800) {
-                    videoRepository.sendAudioComment(videoId, fileToSend)
-                        .onSuccess {
-                            reloadVideo(videoId)
-                            refreshCommentsAfterWrite(videoId)
-                            cancelReply()
-                        }
-                        .onFailure { error ->
-                            android.util.Log.e("VideoFeedVM", "Error sending audio comment", error)
-                        }
-                } else {
-                    voiceMessageManager.reset()
-                }
-            }
-        }
-    }
-
     private var audioPrepareJob: Job? = null
     private var audioDelivery: conectate.com.util.NativeAudioDelivery? = null
     private var audioAttempt = 0L
@@ -2008,7 +1924,6 @@ class VideoFeedViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         stopAudio()
-        voiceMessageManager.reset() // Clean up
     }
 
     private fun extractActiveMentionQuery(text: String): String? {

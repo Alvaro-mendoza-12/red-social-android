@@ -504,6 +504,8 @@ function allowedTypesForBucket(bucket) {
   const allowed = new Set()
   if (['avatars', 'thumbnails', 'report-evidence'].includes(bucket)) imageTypes.forEach((type) => allowed.add(type))
   if (bucket === 'report-evidence') allowed.delete('image/gif')
+
+  if (['video-comments-media', 'post-comments-media'].includes(bucket)) imageTypes.forEach((type) => allowed.add(type))
   if (bucket === 'avatars') allowed.add('video/mp4')
   if (['post-media', 'moment-media'].includes(bucket)) {
     imageTypes.forEach((type) => allowed.add(type))
@@ -511,7 +513,7 @@ function allowedTypesForBucket(bucket) {
     allowed.add('video/mp4')
   }
   if (bucket === 'videos' || bucket === 'live-replays') allowed.add('video/mp4')
-  if (['video-comments-media', 'post-comments-media', 'group-audio', 'profile-audio', 'community-music'].includes(bucket)) {
+  if (['group-audio', 'profile-audio', 'community-music'].includes(bucket)) {
     audioTypes.forEach((type) => allowed.add(type))
   }
   if (messagingBuckets.has(bucket) || bucket === 'challenges') {
