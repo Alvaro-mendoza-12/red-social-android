@@ -680,7 +680,13 @@ export function LoginPage() {
                 ) : (
                   <StatusView
                     title="QR no disponible"
-                    description="No pudimos conectar con Novvin. Puedes volver a intentarlo en unos momentos."
+                    description={error ? <span role="alert">{error}</span> : 'No pudimos conectar con Novvin. Puedes volver a intentarlo en unos momentos.'}
+                    action={<>
+                      {error?.includes('red local') ? <p className="auth-network-help">Abre los permisos junto a la dirección de esta página, permite «Red local» y pulsa Reintentar QR. Este permiso es distinto del acceso a la cámara.</p> : null}
+                      <button className="primary-btn" type="button" disabled={creatingQr || consumingQr} onClick={() => {
+                        setQrPairing(null); setQrRefreshKey(current => current + 1)
+                      }}>Reintentar QR</button>
+                    </>}
                   />
                 )}
               </div>
@@ -701,7 +707,7 @@ export function LoginPage() {
                         ? 'Esperando el escaneo desde tu teléfono.'
                         : 'No se pudo generar el código.'}
               </p>
-              <div className="auth-inline-actions">
+              {qrPairing || creatingQr ? <div className="auth-inline-actions">
                 <button
                   className="ghost-btn"
                   type="button"
@@ -713,11 +719,11 @@ export function LoginPage() {
                 >
                   {creatingQr ? 'Generando...' : qrPairing ? 'Generar otro QR' : 'Reintentar QR'}
                 </button>
-              </div>
+              </div> : null}
             </div>
           ) : null}
 
-          {error ? <p className="error-text" role="alert">{error}</p> : null}
+          {error && (mode !== 'qr' || qrPairing?.qrUrl) ? <p className="error-text" role="alert">{error}</p> : null}
           {info ? <p>{info}</p> : null}
 
           <p className="auth-foot">

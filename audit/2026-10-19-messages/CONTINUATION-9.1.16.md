@@ -20,3 +20,11 @@ La cámara es la compartida por chats, grupos y comunidades. Continúa entregand
 - [Android: VideoRecordEvent.Finalize](https://developer.android.com/reference/androidx/camera/video/VideoRecordEvent.Finalize): finalización y errores al cerrar la cámara por ciclo de vida.
 
 Los resultados de pruebas, despliegue, instalación y sincronización se registrarán en `artifacts/release-9.1.16/`. No se declara certificación ISO/IEEE ni ausencia absoluta de fallos.
+
+## Reporte posterior de QR de acceso no disponible
+
+Durante esta revisión, la creación directa de un QR devolvió HTTP 200, estado pendiente y caducidad; salud y preparación del servidor también respondieron 200. En el navegador controlado, con permiso de red local permitido, el QR se mostró y tres peticiones de vinculación respondieron 200 sin errores de red. Al denegar ese permiso solo en un contexto de prueba aislado se reprodujo «QR no disponible». Esto demuestra una causa posible, sin atribuir todavía el incidente concreto del usuario a ese permiso.
+
+La explicación específica ya existía, pero quedaba debajo de las instrucciones y fuera de la parte visible de la captura. Se mueve el aviso y un único botón Reintentar QR al panel principal. Si la conexión fue bloqueada por el navegador, se explica cómo revisar el permiso del sitio y se distingue del permiso de cámara. No se relajan las políticas del navegador, el certificado ni la aprobación desde el teléfono. La causa exacta en el navegador del usuario queda pendiente de su respuesta; no se declara una caída del servidor sin evidencia.
+
+Referencia: [Chrome: acceso a red local](https://developer.chrome.com/blog/local-network-access?hl=es-419). Los permisos de prueba se cambian únicamente en un contexto aislado que se cierra al terminar.

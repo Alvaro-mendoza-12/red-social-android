@@ -151,6 +151,16 @@
   min-height: 200px;
   padding: 16px;
 }
+.auth-qr-hero .status-card .primary-btn {
+  min-height: 44px;
+  white-space: normal;
+}
+.auth-qr-hero .auth-network-help {
+  margin: 0 0 14px;
+  font-size: .85rem;
+  line-height: 1.6;
+  text-align: start;
+}
 .auth-qr-instructions {
   font-size: 0.85rem;
   display: grid;

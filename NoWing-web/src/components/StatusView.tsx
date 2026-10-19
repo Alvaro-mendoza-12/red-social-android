@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 type StatusViewProps = {
   title: string
-  description: string
+  description: ReactNode
   action?: ReactNode
 }
 

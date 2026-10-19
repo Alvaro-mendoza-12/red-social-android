@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { LoginPage } from '../../pages/auth/LoginPage'
 import { persistFallbackSession } from '../../core/auth/fallbackAuth'
-import { consumeApprovedWebLoginPairing, createWebLoginPairing, readWebLoginPairingStatus } from '../../core/auth/webLoginPairing'
+import { consumeApprovedWebLoginPairing, createWebLoginPairing, readWebLoginPairingStatus, toPairingError } from '../../core/auth/webLoginPairing'
 
 jest.mock('../../core/supabase', () => ({ supabase: null }))
 jest.mock('../../core/auth/sessionBootstrap', () => ({ signInWithResolvedEmail: jest.fn() }))
@@ -11,7 +11,7 @@ jest.mock('../../core/auth/fallbackAuth', () => ({ isFallbackAuthConfigured: tru
 jest.mock('../../core/webPreferences', () => ({ useWebPreferences: () => [{}] }))
 jest.mock('../../components/QrCodeTile', () => ({ QrCodeTile: () => <div data-testid="pairing-qr">QR</div> }))
 jest.mock('../../components/StreamingMedia', () => ({ StreamingImage: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} /> }))
-jest.mock('../../core/auth/webLoginPairing', () => ({ createWebLoginPairing: jest.fn(), readWebLoginPairingStatus: jest.fn(), consumeApprovedWebLoginPairing: jest.fn(), toPairingError: (_: unknown, fallback: string) => fallback }))
+jest.mock('../../core/auth/webLoginPairing', () => ({ createWebLoginPairing: jest.fn(), readWebLoginPairingStatus: jest.fn(), consumeApprovedWebLoginPairing: jest.fn(), toPairingError: jest.fn((_: unknown, fallback: string) => fallback) }))
 const create = createWebLoginPairing as jest.Mock
 const status = readWebLoginPairingStatus as jest.Mock
 const consume = consumeApprovedWebLoginPairing as jest.Mock
@@ -27,6 +27,20 @@ beforeEach(() => {
   create.mockResolvedValue(pairing)
   status.mockResolvedValue({ ...pairing, status: 'approved' })
   consume.mockResolvedValue({ ...pairing, status: 'consumed', accessToken: 'synthetic-test-value' })
+  ;(toPairingError as jest.Mock).mockImplementation((_:unknown,fallback:string)=>fallback)
+})
+
+test('a blocked browser permission is explained next to a single retry control',async()=>{
+ const message='El navegador bloqueó la conexión con Novvin. Permite el acceso a la red local en los permisos de este sitio y vuelve a intentarlo.'
+ ;(toPairingError as jest.Mock).mockReturnValue(message)
+ create.mockRejectedValue(new Error('permission denied'))
+ const view=open()
+ await screen.findByText('QR no disponible')
+ expect(screen.getByRole('alert')).toHaveTextContent(message)
+ expect(screen.getByText(/Este permiso es distinto del acceso a la cámara/)).toBeVisible()
+ expect(screen.getAllByRole('button',{name:'Reintentar QR'})).toHaveLength(1)
+ expect(view.container.querySelector('.auth-qr-hero')).toContainElement(screen.getByRole('button',{name:'Reintentar QR'}))
+ expect(consume).not.toHaveBeenCalled();expect(persisted).not.toHaveBeenCalled()
 })
 
 test('consumes the mobile approval once and navigates after its request completes', async () => {
