@@ -24,6 +24,16 @@ Pruebas unitarias de ruta, error recuperable, elección de movimiento y límites
 
 Se agrega una quinta prueba física para encender y apagar la linterna sobre el lector inicializado.
 
+## Cámara de adjuntos: ampliación solicitada
+
+El control anterior no informaba el estado de flash, empezaba en automático y solo mantenía luz continua en video. La activación devuelve un `ListenableFuture`: capturar únicamente excepciones inmediatas omitía los errores asíncronos. No se comprobaba si la cámara actual tenía unidad de flash.
+
+La cámara compartida por chat, grupo y comunidad ahora diferencia apagado, encendido visible y automático de fotografía; observa el estado real de la linterna y espera el resultado de activación antes de permitir la captura. La cámara sin unidad de flash lo indica y desactiva el control. Cambiar de lente o modo restablece el estado seguro; salir libera la cámara. Se agregó reintento de cámara y protección de fallos al crear la URI de una captura. Los resultados siguen yendo al editor local, sin envío automático.
+
+Se preparan pruebas físicas del resultado de activación y estado de linterna confirmado por CameraX, foto JPEG local, cambio foto/video/frontal/trasera y salida a galería sin capturar. Estas pruebas no equivalen a una medición fotométrica del LED, una matriz de todos los modelos de cámara ni todos los permisos posibles. El registro distinguirá qué se comprobó y qué falta.
+
+Referencias: [CameraController y resultado asíncrono de enableTorch](https://developer.android.com/reference/androidx/camera/view/CameraController), [opciones de flash de CameraX](https://developer.android.com/media/camera/camerax/take-photo/options).
+
 La compilación firmada 9.1.14 se interrumpió tras el reporte: no se presenta como una entrega cerrada. La sincronización anterior sigue documentada y no sustituye estas correcciones físicas.
 
 ## Referencias consultadas

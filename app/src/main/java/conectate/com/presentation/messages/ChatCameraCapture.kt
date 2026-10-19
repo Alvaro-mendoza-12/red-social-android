@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.TorchState
 import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.Quality
@@ -45,6 +46,10 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 internal const val CHAT_CAMERA_MAX_DURATION_MS = 60_000L
 internal const val CHAT_CAMERA_MAX_BYTES = 100L * 1024 * 1024
@@ -74,6 +79,11 @@ internal fun ChatCameraCapture(
     var front by remember { mutableStateOf(false) }
     var flash by remember { mutableIntStateOf(ImageCapture.FLASH_MODE_OFF) }
     var streaming by remember { mutableStateOf(false) }
+    var hasFlash by remember { mutableStateOf(false) }
+    var torchOn by remember { mutableStateOf(false) }
+    var flashPending by remember { mutableStateOf(false) }
+    var canSwitchCamera by remember { mutableStateOf(false) }
+    var retryCamera by remember { mutableIntStateOf(0) }
     var capturing by remember { mutableStateOf(false) }
     var recording by remember { mutableStateOf<Recording?>(null) }
     var recordingDuration by remember { mutableLongStateOf(0L) }
@@ -98,7 +108,11 @@ internal fun ChatCameraCapture(
             file.delete()
             return
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val uri = runCatching { FileProvider.getUriForFile(context, "${context.packageName}.provider", file) }.getOrElse {
+            file.delete()
+            if (active.get()) error = "No se pudo abrir la captura. Inténtalo de nuevo."
+            return
+        }
         capturedCallback(OutgoingMessageMedia(uri, type), duration)
     }
     fun startRecording() {
@@ -155,8 +169,10 @@ internal fun ChatCameraCapture(
             cameraPermission.launch(Manifest.permission.CAMERA)
         }
     }
-    DisposableEffect(controller, lifecycleOwner, cameraAllowed, video, front) {
+    DisposableEffect(controller, lifecycleOwner, cameraAllowed, video, front, retryCamera) {
         streaming = false
+        hasFlash = false
+        canSwitchCamera = false
         if (cameraAllowed) {
             runCatching {
                 controller.cameraSelector = if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
@@ -164,19 +180,54 @@ internal fun ChatCameraCapture(
                 controller.bindToLifecycle(lifecycleOwner)
             }.onFailure { error = "La cámara no está disponible. Cierra otras apps que la estén usando e inténtalo otra vez." }
         }
-        val observer = Observer<PreviewView.StreamState> { streaming = it == PreviewView.StreamState.STREAMING }
+        val observer = Observer<PreviewView.StreamState> {
+            streaming = it == PreviewView.StreamState.STREAMING
+            if (streaming) {
+                hasFlash = controller.cameraInfo?.hasFlashUnit() == true
+                canSwitchCamera = runCatching {
+                    controller.hasCamera(if (front) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA)
+                }.getOrDefault(false)
+            }
+        }
+        val torchObserver = Observer<Int> { torchOn = it == TorchState.ON }
         preview.previewStreamState.observe(lifecycleOwner, observer)
+        controller.torchState.observe(lifecycleOwner, torchObserver)
         onDispose {
             preview.previewStreamState.removeObserver(observer)
-            controller.unbind()
+            controller.torchState.removeObserver(torchObserver)
+            runCatching { controller.unbind() }
         }
     }
-    LaunchedEffect(flash, video, streaming, front) {
-        if (streaming) {
-            runCatching {
-                controller.imageCaptureFlashMode = flash
-                controller.enableTorch(video && !front && flash == ImageCapture.FLASH_MODE_ON)
-            }.onFailure { error = "Esta cámara no permite activar el flash." }
+    LaunchedEffect(flash, video, streaming, front, hasFlash) {
+        if (!streaming || !active.get()) return@LaunchedEffect
+        flashPending = true
+        try {
+            controller.imageCaptureFlashMode = if (hasFlash && !video && flash == ImageCapture.FLASH_MODE_AUTO) {
+                ImageCapture.FLASH_MODE_AUTO
+            } else ImageCapture.FLASH_MODE_OFF
+            if (hasFlash) {
+                // ON provides visible illumination for photos as well as video. AUTO flashes only at capture.
+                val change = controller.enableTorch(chatCameraUsesTorch(flash, hasFlash))
+                suspendCancellableCoroutine<Unit> { continuation ->
+                    change.addListener({
+                        try {
+                            change.get()
+                            if (continuation.isActive) continuation.resume(Unit)
+                        } catch (failure: Exception) {
+                            if (continuation.isActive) continuation.resumeWithException(failure)
+                        }
+                    }, executor)
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            if (active.get()) {
+                flash = ImageCapture.FLASH_MODE_OFF
+                error = "No se pudo activar el flash. Puedes tomar la foto sin flash o volver a intentarlo."
+            }
+        } finally {
+            flashPending = false
         }
     }
     DisposableEffect(lifecycleOwner) {
@@ -212,20 +263,21 @@ internal fun ChatCameraCapture(
                 IconButton(onClick = { close() }, enabled = !capturing) {
                     Icon(Icons.Default.Close, "Cerrar cámara", tint = Color.White)
                 }
-                IconButton(onClick = {
-                    flash = if (video) {
-                        if (flash == ImageCapture.FLASH_MODE_OFF) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
-                    } else when (flash) {
-                        ImageCapture.FLASH_MODE_OFF -> ImageCapture.FLASH_MODE_AUTO
-                        ImageCapture.FLASH_MODE_AUTO -> ImageCapture.FLASH_MODE_ON
-                        else -> ImageCapture.FLASH_MODE_OFF
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val flashLabel = chatCameraFlashLabel(flash, hasFlash, torchOn, flashPending)
+                    IconButton(onClick = {
+                        error = null
+                        flash = nextChatCameraFlash(flash, video)
+                    }, enabled = streaming && hasFlash && !capturing && !flashPending,
+                        modifier = Modifier.semantics { stateDescription = flashLabel }) {
+                        Icon(when (flash) {
+                            ImageCapture.FLASH_MODE_AUTO -> Icons.Default.FlashAuto
+                            ImageCapture.FLASH_MODE_ON -> Icons.Default.FlashOn
+                            else -> Icons.Default.FlashOff
+                        }, "Flash", tint = if (hasFlash) Color.White else Color.Gray)
                     }
-                }, enabled = streaming && !front && !capturing) {
-                    Icon(when (flash) {
-                        ImageCapture.FLASH_MODE_AUTO -> Icons.Default.FlashAuto
-                        ImageCapture.FLASH_MODE_ON -> Icons.Default.FlashOn
-                        else -> Icons.Default.FlashOff
-                    }, "Flash", tint = Color.White)
+                    Text(flashLabel, color = Color.White, style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.background(Color.Black.copy(alpha = .65f)).padding(4.dp))
                 }
             }
             Spacer(Modifier.weight(1f))
@@ -237,6 +289,10 @@ internal fun ChatCameraCapture(
                 modifier = Modifier.align(Alignment.CenterHorizontally), color = Color.White,
             )
             error?.let { Text(it, color = Color.White, modifier = Modifier.fillMaxWidth().background(Color.Black.copy(alpha = .8f)).padding(12.dp)) }
+            if (cameraAllowed && !streaming && error != null) TextButton(
+                onClick = { error = null; retryCamera++ }, enabled = !busy,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) { Text("Reintentar cámara", color = Color.White) }
             if (recording != null) Text(
                 if (recordingDuration == 0L) "Preparando video…" else "%02d:%02d".format(recordingDuration / 60_000, recordingDuration / 1_000 % 60),
                 color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally).background(Color.Red).padding(8.dp).semantics {
@@ -279,12 +335,12 @@ internal fun ChatCameraCapture(
                                 error = "No se pudo tomar la foto. Inténtalo otra vez."
                             }
                         }
-                    }, enabled = streaming && !capturing,
+                    }, enabled = streaming && !capturing && !flashPending,
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = if (recording != null) Color.Red else Color.White, contentColor = Color.Black),
                     modifier = Modifier.size(80.dp).border(3.dp, Color.White, CircleShape).padding(6.dp),
                 ) { Icon(if (recording != null) Icons.Default.Stop else if (video) Icons.Default.Videocam else Icons.Default.CameraAlt,
                     if (recording != null) "Detener grabación" else if (video) "Grabar video" else "Tomar foto", Modifier.size(32.dp)) }
-                IconButton(onClick = { error = null; front = !front }, enabled = streaming && !busy) {
+                IconButton(onClick = { error = null; flash = ImageCapture.FLASH_MODE_OFF; front = !front }, enabled = streaming && canSwitchCamera && !busy && !flashPending) {
                     Icon(Icons.Default.Cameraswitch, "Cambiar cámara", tint = Color.White)
                 }
             }
