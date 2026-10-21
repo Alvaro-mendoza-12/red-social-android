@@ -32,3 +32,17 @@ test('Enter cannot submit while files are still preparing',()=>{
  expect(onSend).not.toHaveBeenCalled()
  expect(screen.getByRole('button',{name:'Enviar 1 adjuntos'})).toBeDisabled()
 })
+
+test('original animated files stay untouched until the user explicitly sends',()=>{
+ const original=new File(['GIF89a-original-animation'],'sticker.gif',{type:'image/gif'})
+ const item={...make('animation'),file:original,contentType:'sticker' as const,previewUrl:'blob:original-gif'}
+ const onSend=jest.fn(event=>event.preventDefault())
+ render(<ChatAttachmentPreview items={[item]} draft="" busy={false} preparing={false} status="" onCaption={jest.fn()} onRemove={jest.fn()} onClose={jest.fn()} onAdd={jest.fn()} onEdit={jest.fn()} onToggleSticker={jest.fn()} onSend={onSend}/>)
+ expect(screen.getByRole('img',{name:'sticker.gif'})).toHaveAttribute('src','blob:original-gif')
+ expect(item.file).toBe(original)
+ expect(screen.queryByText(/Si el sticker se ve fijo/)).toBeNull()
+ expect(onSend).not.toHaveBeenCalled()
+ fireEvent.click(screen.getByRole('button',{name:'Enviar 1 adjuntos'}))
+ expect(onSend).toHaveBeenCalledTimes(1)
+ expect(item.file).toBe(original)
+})

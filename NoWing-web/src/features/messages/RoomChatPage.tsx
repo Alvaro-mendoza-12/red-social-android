@@ -2,7 +2,7 @@ import { ContactMessageCard } from '../../components/ContactMessageCard'
 import { messageLocationUrl } from '../../core/messageLocation'
 import { ForwardMessagesDialog } from '../../components/ForwardMessagesDialog'
 import { copyChatMessage } from '../../core/media/copyChatMessage'
-import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, normalizeClipboardFiles, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage } from '../../core/chatClipboard'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
@@ -335,7 +335,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
   const discardRecordingRef = useRef(false)
   const preparationOwnerRef = useRef('')
-  preparationOwnerRef.current = `${user?.id}/${cleanRoomId}`
+  preparationOwnerRef.current = `${user?.id}/${scope}/${cleanRoomId}`
   const [showMessageSearch, setShowMessageSearch] = useState(false)
   const [messageSearchQuery, setMessageSearchQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -598,17 +598,18 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       const files = clipboardFilesFrom(event.clipboardData)
       if (!files.length && !clipboardMayContainImage(event.clipboardData)) return
       const stickerHint = clipboardHasStickerHint(event.clipboardData)
+      const pasteOwner = preparationOwnerRef.current
       event.preventDefault()
       void (async () => {
-        const pastedFiles = files.length
-          ? await normalizeClipboardFiles(files)
-          : await readClipboardImages(event.clipboardData, navigator.clipboard)
+        const pastedFiles = await readClipboardImages(event.clipboardData, navigator.clipboard)
+        if (pasteOwner !== preparationOwnerRef.current) return
         if (!pastedFiles.length) {
-          setError('WhatsApp no entregó la imagen al portapapeles. Usa «Copiar imagen» en el sticker y vuelve a pegarlo.')
+          setError('No recibimos la imagen de este pegado. Vuelve a copiarla o adjunta el archivo original GIF o WebP para conservar el movimiento.')
           return
         }
         for (const file of pastedFiles) {
           const sticker = pastedAsSticker(file, showStickers) || await isCopiedStickerImage(file, stickerHint)
+          if (pasteOwner !== preparationOwnerRef.current) return
           queueAttachmentFiles([file], true, sticker)
         }
       })()

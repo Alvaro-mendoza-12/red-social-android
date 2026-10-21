@@ -1,5 +1,7 @@
 const MAX_INLINE_CLIPBOARD_IMAGE_BYTES = 20 * 1024 * 1024
 const SUPPORTED_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const originalImage = (file: File) => /^image\/(gif|webp)$/.test(file.type)
+const clipboardMime = (type: string) => type.toLowerCase().replace(/^web /, '')
 
 function normalizeImageFile(file: File): File | null {
   const extensionMime = /\.webp$/i.test(file.name) ? 'image/webp'
@@ -80,9 +82,14 @@ export function clipboardFilesFrom(data: DataTransfer | null): File[] {
   }
   if (files.length) return uniqueFiles(files.map(file => normalizeImageFile(file) ?? file))
 
+  return inlineClipboardFiles(data)
+}
+
+function inlineClipboardFiles(data: DataTransfer): File[] {
   const inline: File[] = []
-  for (const mime of SUPPORTED_IMAGE_MIMES) {
-    const payload = data.getData?.(mime) || ''
+  for (const type of new Set([...SUPPORTED_IMAGE_MIMES, ...Array.from(data.types || [])])) {
+    if (!SUPPORTED_IMAGE_MIMES.has(clipboardMime(type))) continue
+    const payload = data.getData?.(type) || ''
     if (payload.startsWith('data:image/')) {
       const file = fileFromDataUrl(payload, inline.length)
       if (file) inline.push(file)
@@ -96,48 +103,76 @@ export function clipboardFilesFrom(data: DataTransfer | null): File[] {
 export function clipboardMayContainImage(data: DataTransfer | null): boolean {
   if (!data) return false
   const types = Array.from(data.types || []).map(type => type.toLowerCase())
-  if (types.some(type => type === 'files' || type.startsWith('image/') || type.includes('sticker'))) return true
+  if (types.some(type => type === 'files' || clipboardMime(type).startsWith('image/') || type.includes('sticker'))) return true
   return types.includes('text/html') && /<img\b/i.test(data.getData?.('text/html') || '')
 }
 
 /**
- * Some desktop apps expose clipboard images only through the async Clipboard
- * API. Try it only after a user paste and only when the paste advertised image
- * or HTML data, so ordinary text paste never reads the system clipboard.
+ * Capture event data before awaiting anything: browsers can invalidate the
+ * DataTransfer after the paste handler. Async formats are alternate versions
+ * of this paste only if their item contains the same bytes or HTML. Never
+ * replace the current paste with an unrelated, later system clipboard image.
  */
 export async function readClipboardImages(data: DataTransfer | null, clipboard: Pick<Clipboard, 'read'> | undefined): Promise<File[]> {
   const direct = clipboardFilesFrom(data)
-  // Copy-image may supply a PNG preview beside the original animated WebP/GIF.
-  // Prefer original clipboard bytes when a sticker hint is present, with the
-  // event payload as a fallback if read() is unsupported or permission is denied.
-  const mayRead = clipboardMayContainImage(data)
+  const html = data?.getData?.('text/html') || ''
   const stickerHint = clipboardHasStickerHint(data)
+  const singleImage = direct.length === 0 || direct.length === 1 && Boolean(normalizeImageFile(direct[0]))
+  // Files and rich HTML can represent the same image in different formats.
+  // Keep an embedded original instead of its single-frame clipboard preview.
+  const inline = data && singleImage && !direct.some(originalImage)
+    ? inlineClipboardFiles(data).filter(originalImage) : []
+  if (inline.length) return normalizeClipboardFiles(inline)
+  const mayRead = clipboardMayContainImage(data) && singleImage && !direct.some(originalImage) &&
+    (Boolean(html.match(/<img\b/i)) || stickerHint || Array.from(data?.types || []).some(type => /^web image\//i.test(type)))
+  // Start while user activation is still available; never re-read DataTransfer
+  // after normalization/permissions have yielded to another browser event.
+  let pending: Promise<ClipboardItem[] | null> | undefined
+  if (mayRead && clipboard?.read && (direct.length || html)) {
+    try { pending = clipboard.read().catch(() => null) } catch { /* unavailable */ }
+  }
   const normalized = await normalizeClipboardFiles(direct)
-  if (normalized.some(file => /image\/(gif|webp)/.test(file.type)) ||
-      (normalized.length && !stickerHint) || !mayRead || !clipboard?.read) return normalized
-  try {
-    const items = await clipboard.read()
-    const files: File[] = []
-    for (const item of items) {
-      const types = [...item.types].sort((a, b) =>
-        Number(/^image\/(gif|webp)$/i.test(b)) - Number(/^image\/(gif|webp)$/i.test(a)))
-      for (const type of types) {
-        if (SUPPORTED_IMAGE_MIMES.has(type.toLowerCase())) {
+  if (normalized.some(originalImage) || !pending) return normalized
+  for (const item of await pending || []) {
+    if (!await matchesPasteItem(item, normalized, html)) continue
+    const types = [...item.types].filter(type => SUPPORTED_IMAGE_MIMES.has(clipboardMime(type)))
+      .sort((a, b) => Number(/^image\/(gif|webp)$/.test(clipboardMime(b))) - Number(/^image\/(gif|webp)$/.test(clipboardMime(a))))
+    for (const type of types) {
+      const mime = clipboardMime(type)
+      // A PNG-only read adds nothing to the event's preview.
+      if (normalized.length && !/^image\/(gif|webp)$/.test(mime)) continue
+      try {
           const blob = await item.getType(type)
           if (blob.size && blob.size <= MAX_INLINE_CLIPBOARD_IMAGE_BYTES) {
-            const extension = type.toLowerCase().split('/')[1].replace('jpeg', 'jpg')
-            files.push(new File([blob], `clipboard-image.${extension}`, { type: type.toLowerCase() }))
-            break
+            const extension = mime.split('/')[1].replace('jpeg', 'jpg')
+            return normalizeClipboardFiles([new File([blob], `clipboard-image.${extension}`, { type: mime })])
           }
-        } else if (type.toLowerCase() === 'text/html') {
-          files.push(...inlineImagesFromHtml(await (await item.getType(type)).text()))
-        }
-      }
+      } catch { /* one unsupported representation must not lose the paste */ }
     }
-    return files.length ? normalizeClipboardFiles(uniqueFiles(files)) : normalized
-  } catch {
-    return normalized
   }
+  return normalized
+}
+
+async function matchesPasteItem(item: ClipboardItem, files: File[], html: string): Promise<boolean> {
+  if (html && item.types.includes('text/html')) {
+    try {
+      const content = await item.getType('text/html')
+      if (content.size <= MAX_INLINE_CLIPBOARD_IMAGE_BYTES && await content.text() === html) return true
+    } catch { /* try comparing the image instead */ }
+  }
+  for (const file of files) {
+    if (!SUPPORTED_IMAGE_MIMES.has(file.type) || file.size > MAX_INLINE_CLIPBOARD_IMAGE_BYTES) continue
+    const type = item.types.find(type => clipboardMime(type) === file.type)
+    if (!type) continue
+    try {
+      const blob = await item.getType(type)
+      if (blob.size !== file.size) continue
+      const [left, right] = await Promise.all([file.arrayBuffer(), blob.arrayBuffer()])
+      const bytes = new Uint8Array(right)
+      if (new Uint8Array(left).every((value, index) => value === bytes[index])) return true
+    } catch { /* unsupported/read permission revoked */ }
+  }
+  return false
 }
 
 export function isStickerImage(file: File): boolean {

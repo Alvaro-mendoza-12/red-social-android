@@ -1,14 +1,22 @@
 import { normalizeClipboardFiles, clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, pastedAsSticker, canPasteIntoChat, isStickerImage, isCopiedStickerImage } from '../../core/chatClipboard'
 
+beforeAll(() => {
+ for (const [method, read] of [['arrayBuffer', 'readAsArrayBuffer'], ['text', 'readAsText']] as const) {
+  Object.defineProperty(Blob.prototype, method, {configurable:true,value:function(this: Blob) {
+   return new Promise((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader[read](this)})
+  }})
+ }
+})
+
 test('prefers original animated sticker bytes over a clipboard PNG preview', async () => {
  const png = new File(['preview'], 'image.png', {type:'image/png'})
  const data = {files:[png],items:[],types:['Files','text/html'],getData:()=>'<img alt="Sticker">'} as unknown as DataTransfer
- const getType = jest.fn(async (type:string)=>new Blob([type==='image/webp'?'RIFF0000WEBPanimated':'png'],{type}))
+ const getType = jest.fn(async (type:string)=>new Blob([type==='image/webp'?'RIFF0000WEBPanimated':'preview'],{type}))
  const clipboard = {read:async()=>[{types:['image/png','image/webp'],getType}]} as unknown as Clipboard
  const files = await readClipboardImages(data,clipboard)
  expect(files).toHaveLength(1)
  expect(files[0].type).toBe('image/webp')
- expect(getType).toHaveBeenCalledTimes(1)
+ expect(getType).toHaveBeenCalledTimes(2)
  expect(getType).toHaveBeenCalledWith('image/webp')
  expect(files[0].size).toBe(20)
 })
@@ -41,17 +49,80 @@ test('extracts only embedded image bytes from rich clipboard HTML', () => {
   const remote = { ...data, getData: (type: string) => type === 'text/html' ? '<img src="https://example.com/sticker.webp">' : '' } as unknown as DataTransfer
   expect(clipboardFilesFrom(remote)).toEqual([])
 })
-test('uses async image clipboard data only when paste advertises image content', async () => {
+test('does not import an unidentifiable async image from an older system clipboard', async () => {
   const getType = jest.fn(async () => new Blob(['sticker'], { type: 'image/webp' }))
   const clipboard = { read: async () => [{ types: ['image/webp'], getType }] } as unknown as Clipboard
   const data = { files: [], items: [], types: ['image/webp'], getData: () => '' } as unknown as DataTransfer
   const files = await readClipboardImages(data, clipboard)
-  expect(getType).toHaveBeenCalledWith('image/webp')
-  expect(files).toHaveLength(1)
-  expect(files[0]).toMatchObject({ type: 'image/webp', name: 'clipboard-image.webp' })
+  expect(getType).not.toHaveBeenCalled()
+  expect(files).toEqual([])
   const textOnly = { files: [], items: [], types: ['text/plain'], getData: () => 'hola' } as unknown as DataTransfer
   expect(clipboardMayContainImage(textOnly)).toBe(false)
   expect(await readClipboardImages(textOnly, clipboard)).toEqual([])
+})
+
+test('keeps the event image when the asynchronous clipboard changed after paste', async () => {
+ const png=new File(['current'],'image.png',{type:'image/png'})
+ const data={files:[png],items:[],types:['Files','text/html'],getData:()=>'<img alt="Sticker">'} as unknown as DataTransfer
+ const read=jest.fn(async()=>[{types:['image/png','web image/gif'],getType:async(type:string)=>new Blob([type==='image/png'?'previous':'GIF89a-old'],{type})}])
+ expect(await readClipboardImages(data,{read} as unknown as Clipboard)).toEqual([png])
+ expect(read).toHaveBeenCalledTimes(1)
+})
+
+test('HTML-only sticker paste never recovers an unrelated previous photograph', async () => {
+ const data={files:[],items:[],types:['text/html'],getData:(type:string)=>type==='text/html'?'<img alt="Sticker" src="blob:https://web.whatsapp.com/new">':''} as unknown as DataTransfer
+ const getType=jest.fn(async()=>new Blob(['old photo'],{type:'image/png'}))
+ expect(await readClipboardImages(data,{read:async()=>[{types:['image/png'],getType}]} as unknown as Clipboard)).toEqual([])
+ expect(getType).not.toHaveBeenCalled()
+})
+
+test('keeps an original GIF embedded beside the same paste event PNG', async () => {
+ const png=new File(['preview'],'image.png',{type:'image/png'})
+ const gif='R0lGODlh'
+ const data={files:[png],items:[],types:['Files','text/html'],getData:(type:string)=>type==='text/html'?`<img alt="sticker" src="data:image/gif;base64,${gif}">`:''} as unknown as DataTransfer
+ const read=jest.fn()
+ const files=await readClipboardImages(data,{read} as unknown as Clipboard)
+ expect(files).toHaveLength(1)
+ expect(files[0].type).toBe('image/gif')
+ expect(await files[0].text()).toBe('GIF89a')
+ expect(read).not.toHaveBeenCalled()
+})
+
+test('reads custom WebP representations only from the item matching the current PNG', async () => {
+ const png=new File(['preview'],'image.png',{type:'image/png'})
+ const data={files:[png],items:[],types:['Files','text/html'],getData:()=>'<img alt="Sticker">'} as unknown as DataTransfer
+ const getType=jest.fn(async(type:string)=>new Blob([type==='image/png'?'preview':'RIFF0000WEBPanimation'],{type}))
+ const files=await readClipboardImages(data,{read:async()=>[{types:['image/png','web image/webp'],getType}]} as unknown as Clipboard)
+ expect(files[0].type).toBe('image/webp')
+ expect(getType).toHaveBeenCalledWith('web image/webp')
+ expect(await files[0].text()).toBe('RIFF0000WEBPanimation')
+})
+
+test('captures HTML and starts async read before yielding from the paste handler', async () => {
+ let active=true
+ const html='<img alt="Sticker" src="blob:https://web.whatsapp.com/current">'
+ const data={files:[],items:[],types:['text/html'],getData:(type:string)=>active&&type==='text/html'?html:''} as unknown as DataTransfer
+ const read=jest.fn(async()=>{expect(active).toBe(true);return [{types:['text/html','web image/gif'],getType:async(type:string)=>new Blob([type==='text/html'?html:'GIF89a-animation'],{type})}]})
+ const pending=readClipboardImages(data,{read} as unknown as Clipboard)
+ active=false
+ const files=await pending
+ expect(files[0].type).toBe('image/gif')
+})
+
+test('one unsupported original representation does not discard the matching fallback', async () => {
+ const png=new File(['preview'],'image.png',{type:'image/png'})
+ const data={files:[png],items:[],types:['Files','text/html'],getData:()=>'<img alt="Sticker">'} as unknown as DataTransfer
+ const getType=async(type:string)=>{if(type==='image/gif')throw Error('unsupported');return new Blob([type==='image/png'?'preview':'RIFF0000WEBPanimation'],{type})}
+ const files=await readClipboardImages(data,{read:async()=>[{types:['image/png','image/gif','web image/webp'],getType}]} as unknown as Clipboard)
+ expect(files[0].type).toBe('image/webp')
+})
+
+test('keeps multiple event files together without replacing them with one async image', async () => {
+ const files=[new File(['first'],'one.png',{type:'image/png'}),new File(['second'],'two.png',{type:'image/png'})]
+ const data={files,items:[],types:['Files','text/html'],getData:()=>'<img alt="Sticker">'} as unknown as DataTransfer
+ const read=jest.fn()
+ expect(await readClipboardImages(data,{read} as unknown as Clipboard)).toEqual(files)
+ expect(read).not.toHaveBeenCalled()
 })
 test('recognizes sticker formats and explicit tray intent, leaving ordinary photos alone', () => {
   for (const mime of ['image/webp','image/gif']) expect(pastedAsSticker(new File(['a'],'sticker',{type:mime}),false)).toBe(true)
