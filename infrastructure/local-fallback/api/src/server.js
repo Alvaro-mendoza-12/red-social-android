@@ -70,6 +70,7 @@ const {
 } = require('./scheduled-message-jobs')
 const { processDueNotificationDigests } = require('./notification-digest-routes')
 const { createRequestObservabilityMiddleware, safeErrorLogDetails } = require('./request-observability')
+const { publicApiError } = require('./public-api-error')
 const { receiveRecoveryEvidence, ensureRecoveryEvidenceSchema, persistRecoveryEvidence, registerRecoveryEvidenceDownload } = require('./recovery-evidence')
 const { createPasswordResetMailer } = require('./password-reset-mailer')
 const { createPasswordMailOutbox, ensurePasswordMailOutboxSchema } = require('./password-reset-mail-outbox')
@@ -3793,15 +3794,8 @@ app.use((error, _req, res, _next) => {
       fallbackMessage: 'Unexpected request error',
     }),
   })
-  const status = Number(error?.status || error?.statusCode || 500)
-  const safeStatus = status >= 400 && status <= 599 ? status : 500
-  const explicitlySafeCode = error?.expose === true && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(error?.code || ''))
-    ? String(error.code)
-    : null
-  const publicCode = explicitlySafeCode || (safeStatus < 500
-    ? String(error?.message || 'REQUEST_REJECTED').replace(/[^A-Z0-9_]/gi, '_').slice(0, 80)
-    : 'INTERNAL_ERROR')
-  res.status(safeStatus).json({ error: publicCode, requestId: _req.requestId })
+  const publicError = publicApiError(error)
+  res.status(publicError.status).json({ error: publicError.code, requestId: _req.requestId })
 })
 
 if (process.env.ROUTE_CHECK_ONLY === '1') {
