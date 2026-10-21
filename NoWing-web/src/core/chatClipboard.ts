@@ -8,7 +8,8 @@ function normalizeImageFile(file: File): File | null {
     : /\.gif$/i.test(file.name) ? 'image/gif'
       : /\.jpe?g$/i.test(file.name) ? 'image/jpeg'
         : /\.png$/i.test(file.name) ? 'image/png' : ''
-  const type = SUPPORTED_IMAGE_MIMES.has(file.type.toLowerCase()) ? file.type.toLowerCase() : extensionMime
+  const reportedType = (file.type || '').toLowerCase()
+  const type = SUPPORTED_IMAGE_MIMES.has(reportedType) ? reportedType : extensionMime
   if (!type) return null
   return type === file.type ? file : new File([file], file.name || `sticker.${type.split('/')[1]}`, { type, lastModified: file.lastModified })
 }
@@ -105,6 +106,11 @@ export function clipboardMayContainImage(data: DataTransfer | null): boolean {
   const types = Array.from(data.types || []).map(type => type.toLowerCase())
   if (types.some(type => type === 'files' || clipboardMime(type).startsWith('image/') || type.includes('sticker'))) return true
   return types.includes('text/html') && /<img\b/i.test(data.getData?.('text/html') || '')
+}
+
+/** Windows virtual-file copies can reach the browser without any usable data. */
+export function isEmptyClipboardPaste(data: DataTransfer | null): boolean {
+  return Boolean(data && !data.types?.length && !data.files?.length && !data.items?.length)
 }
 
 /**

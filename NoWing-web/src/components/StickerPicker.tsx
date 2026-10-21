@@ -99,7 +99,7 @@ export function StickerPicker({ onSelect, onImport, onClose, onEmoji }: {
   return <section className="stickers-tray" aria-label="Stickers">
     <div className="row-between">
       <input className="text-input" type="search" placeholder="Buscar stickers…" aria-label="Buscar stickers" value={query} onChange={event => setQuery(event.target.value)} />
-      <label className="ghost-btn file-pick-btn" role="button" tabIndex={0} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.querySelector<HTMLInputElement>('input')?.click() } }}>Importar<input type="file" hidden accept="image/png,image/webp,image/gif,image/jpeg,.png,.webp,.gif,.jpg,.jpeg" onChange={event => { onImport(event.currentTarget.files?.[0] ?? null); event.currentTarget.value = '' }} /></label>
+      <label className="ghost-btn file-pick-btn" role="button" tabIndex={0} title="Importar un sticker, también si el archivo no tiene extensión" onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.querySelector<HTMLInputElement>('input')?.click() } }}>Importar<input type="file" hidden onChange={event => { onImport(event.currentTarget.files?.[0] ?? null); event.currentTarget.value = '' }} /></label>
       {onEmoji ? <button className="ghost-btn" type="button" onClick={() => setEmojiMode(true)}>Emojis</button> : null}
       <button className="icon-btn-sm" type="button" onClick={onClose} aria-label="Cerrar stickers">✕</button>
     </div>

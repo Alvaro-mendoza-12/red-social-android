@@ -1,5 +1,6 @@
 import { Zip, ZipDeflate, ZipPassThrough } from 'fflate'
 import { validateMessageVideo } from './messageVideoPolicy'
+import { normalizeClipboardFiles } from './chatClipboard'
 
 class AttachmentPreparationError extends Error {}
 export function attachmentPreparationError(error: unknown) { return error instanceof AttachmentPreparationError ? error.message : 'No se pudieron preparar los archivos. Inténtalo de nuevo.' }
@@ -119,8 +120,12 @@ export async function prepareAttachmentFiles(files: File[], onProgress?: Prepara
   if(files.some(file=>file.webkitRelativePath)) return prepareSelectedFolder(files,onProgress)
   if (files.length > MAX_FILES) throw new AttachmentPreparationError('Selecciona hasta 5000 archivos sueltos o adjunta la carpeta completa para dividirla en ZIPs.')
   const prepared: File[] = []
-  for (const file of files) {
-    if (file.size > MAX_MESSAGE_UPLOAD_BYTES) throw new AttachmentPreparationError('El archivo supera los 500 MB permitidos. Selecciona uno más pequeño.')
+  for (const source of files) {
+    if (source.size > MAX_MESSAGE_UPLOAD_BYTES) throw new AttachmentPreparationError('El archivo supera los 500 MB permitidos. Selecciona uno más pequeño.')
+    // WhatsApp for Windows can export an animated WebP without an extension
+    // or MIME. Recognize the bytes before deciding to ZIP an unknown file.
+    const file = (!source.type || source.type === 'application/octet-stream' || source.type.startsWith('image/'))
+      ? (await normalizeClipboardFiles([source]))[0] : source
     if ((/^(image|audio)\//.test(file.type) || /\.(jpe?g|png|webp|gif|mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i.test(file.name)) && file.size > 60 * 1024 * 1024) throw new AttachmentPreparationError('La imagen o el audio supera los 60 MB permitidos por mensaje.')
     if ((file.type || '').startsWith('video/') || /\.(mp4|webm)$/i.test(file.name)) {
       try { await validateMessageVideo(file) } catch (error) { throw new AttachmentPreparationError((error as Error).message) }

@@ -9,6 +9,35 @@ const read=file=>fs.readFileSync(path.join(root,'dist',file),'utf8')
 const graph=html=>JSON.parse(/<script type="application\/ld\+json">(.*?)<\/script>/.exec(html)[1])['@graph']
 const config=JSON.parse(fs.readFileSync(path.join(root,'vercel.json'),'utf8'))
 
+test('feature illustrations have visible alternatives and discoverable public image URLs',()=>{
+ const html=read('funciones.html'),page=graph(html).find(item=>item['@type']==='WebPage')
+ const images=['/novvin-logo.png','/images/promotion-messages.svg','/images/promotion-videos.svg','/images/promotion-social.svg']
+ assert.equal(page.image.length,images.length)
+ for(const src of images){
+  assert.ok(html.includes('src="'+src+'"'))
+  assert.ok(fs.existsSync(path.join(root,'dist',src)))
+  assert.ok(page.image.some(image=>image.contentUrl===site+src&&image.caption&&image.width>0&&image.height>0))
+  assert.ok(read('sitemap.xml').includes('<image:loc>'+site+src+'</image:loc>'))
+ }
+ assert.match(html,/<figcaption>/)
+})
+
+test('spelling queries are explained visibly without keyword stuffing or false organization aliases',()=>{
+ const html=read('encontrar-novvin.html')
+ for(const spelling of ['Novin','Novyn','Novvyn','Ovin','Vvvin']) assert.ok(html.includes(spelling))
+ assert.doesNotMatch(html,/name="keywords"/)
+ assert.equal(graph(html).find(item=>item['@type']==='Organization').name,'Novvin')
+ assert.deepEqual(graph(html).find(item=>item['@type']==='WebSite').alternateName,['Novvin Web',new URL(site).hostname])
+})
+
+test('Google ownership proof is a public verification document and the new help pages contain useful guidance',()=>{
+ assert.equal(read('google0c9297c9ccb7a521.html').trim(),'google-site-verification: google0c9297c9ccb7a521.html')
+ assert.match(read('stickers-animados.html'),/GIF|WebP/)
+ assert.match(read('stickers-animados.html'),/no puede leer al pegar/)
+ assert.match(read('privacidad-y-seguridad.html'),/permisos|contraseña/)
+ assert.doesNotMatch(read('privacidad-y-seguridad.html'),/certificad[oa] ISO|seguridad garantizada|cifrado de extremo a extremo/)
+})
+
 test('home is readable without JavaScript and provides real access links',()=>{
  const html=read('index.html')
  assert.match(html,/<h1>Novvin/)

@@ -41,12 +41,12 @@ export const publicInfoPages = {
     ],
   },
   '/ayuda/encontrar-novvin': {
-    title: '¿Buscabas Novvyn? Encuentra Novvin Web en tu navegador',
-    description: '¿Escribiste Novvyn con y? Encuentra Novvin Web en Google, Brave Search, Bing o DuckDuckGo. Comprueba la dirección, guarda un favorito y entra con tu cuenta.',
+    title: 'Cómo encontrar Novvin: red social, app y acceso web',
+    description: 'Encuentra Novvin, la red social con mensajes, videos y comunidades. ¿Buscabas Novin, Novyn o Novvyn? Comprueba el nombre y abre el acceso web oficial.',
     heading: 'Vuelve a Novvin desde tu navegador.',
     sections: [
       { heading: 'La dirección de Novvin Web', body: 'Escribe https://red-social-android.vercel.app/ en la barra de direcciones para abrir esta web directamente. Después puedes entrar con tu cuenta o explorar videos públicos. Guarda la página en los favoritos de tu navegador para volver sin hacer otra búsqueda.' },
-      { heading: 'Busca el nombre Novvin', body: 'El nombre se escribe Novvin: N-O-V-V-I-N. Puedes buscar «Novvin Web» o «Novvin red social» en Google, Bing, Brave Search o DuckDuckGo. Los resultados y su orden pueden variar según el buscador, la región y el momento; comprueba la dirección antes de entrar.' },
+      { heading: 'Busca el nombre Novvin', body: 'El nombre se escribe Novvin: N-O-V-V-I-N. Puedes buscar «Novvin Web», «Novvin red social», «Novvin mensajes» o «Novvin para Android» en Google, Bing, Brave Search o DuckDuckGo. Si llegaste buscando Novin, Novyn, Novvyn, Ovin o Vvvin, comprueba que la página identifique la aplicación como Novvin. Los resultados y su orden pueden variar según el buscador, la región y el momento; comprueba la dirección antes de entrar.' },
       { heading: 'Chrome, Brave, Edge, Opera y DuckDuckGo', body: 'El navegador abre la web; el buscador encuentra páginas. Chrome, Brave, Edge, Opera y el navegador DuckDuckGo pueden utilizar distintos servicios de búsqueda según su configuración. Para entrar sin depender del orden de los resultados, utiliza la dirección completa o tu favorito.' },
       { heading: 'Si escribiste Novvyn con «y»', body: 'Si buscabas nuestra aplicación como Novvyn, Noving, Nowing o NoWin, el nombre de esta red social es Novvin. Una escritura parecida también puede corresponder a otra empresa; utiliza el nombre completo Novvin Web y comprueba que el enlace conduce a esta dirección.' },
       { heading: 'Si llegaste desde X u otra aplicación', body: 'Un enlace compartido puede abrirse dentro de otra aplicación. Si tienes dificultades para vincular la cuenta, descargar un archivo o dar permiso de cámara y micrófono, utiliza la opción de abrir el enlace en tu navegador habitual y vuelve a Novvin desde allí.' },
@@ -245,7 +245,51 @@ export const publicInfoPages = {
         }
     ]
 },
+  '/funciones': {
+    title: 'Funciones de Novvin: mensajes, videos y redes sociales en una app',
+    description: 'Conoce las funciones de Novvin con imágenes: chats con stickers y archivos, publicaciones, videos, grupos, comunidades y salas de voz para Android y web.',
+    heading: 'Conoce las funciones de la red social Novvin.',
+    sections: [
+      { heading: 'Mensajería para conversar y compartir archivos', body: 'En Mensajes puedes conversar, compartir imágenes, videos, audios, documentos y stickers. La vista previa permite revisar los adjuntos antes de enviarlos. Los grupos y las comunidades añaden permisos para organizar la conversación entre sus integrantes.' },
+      { heading: 'Videos y publicaciones sociales', body: 'Videos permite descubrir contenido vertical y seguir a sus creadores. Social reúne publicaciones y comentarios; Momentos permite compartir historias. La visibilidad del contenido depende de la cuenta y de las opciones de cada publicación.' },
+      { heading: 'Espacios para reunir a tu gente', body: 'Las salas de voz permiten conversar en tiempo real. Los controles de micrófono, audio, cámara y pantalla dependen de los permisos del dispositivo. Los grupos y las comunidades conservan su propia conversación escrita y sus permisos de administración.' },
+      { heading: 'Android y navegador con la misma cuenta', body: 'La aplicación Android y Novvin Web permiten acceder con la misma cuenta. La web se adapta al espacio disponible para mostrar la lista de conversaciones y el chat. La sincronización necesita conexión; el contenido disponible sin internet depende de lo que ya se haya guardado en ese dispositivo.' },
+    ],
+  },
+  '/ayuda/stickers-animados': {
+    title: 'Cómo enviar stickers animados en Novvin Web: GIF y WebP',
+    description: 'Aprende a pegar o importar stickers en Novvin Web y conservar su movimiento. Qué revisar si WhatsApp para Windows copia un archivo que el navegador no recibe.',
+    heading: 'Comparte stickers conservando su movimiento.',
+    sections: [
+      { heading: 'Pega y comprueba la vista previa', body: 'Abre una conversación en Novvin Web y pega el contenido copiado. Cuando el navegador entrega una imagen, aparece una vista previa para revisarla, quitarla o enviarla. Un original GIF o WebP conserva sus fotogramas; comprueba que se mueva en la vista previa antes de enviarlo.' },
+      { heading: 'Si se pega una imagen fija', body: 'Al copiar desde otra aplicación, el navegador puede recibir únicamente una imagen fija. Ese archivo no contiene los fotogramas del sticker original. Usa Importar en el selector de stickers o adjunta el archivo GIF o WebP original para conservar el movimiento.' },
+      { heading: 'Si WhatsApp para Windows no entrega ningún archivo', body: 'Algunos stickers se copian como archivos de Windows que el navegador no puede leer al pegar. Novvin avisa cuando el pegado llega vacío. Guarda el sticker original desde la aplicación de origen o arrástralo como archivo hacia el chat; también puedes usar Adjuntar o Importar para seleccionarlo.' },
+      { heading: 'Archivos que no tienen extensión', body: 'Si WhatsApp guarda un archivo con un nombre como «WhatsApp Sticker» y sin extensión, Novvin comprueba su formato al importarlo. Un WebP válido conserva su movimiento; no se convierte en una fotografía ni en un ZIP por el nombre del archivo.' },
+      { heading: 'Stickers de otras aplicaciones', body: 'Puedes importar imágenes compatibles de otras aplicaciones cuando tengas el archivo. Copiar un enlace a una publicación no copia el sticker; si solo tienes un enlace, compártelo como enlace o utiliza la opción de guardar el archivo que ofrezca su aplicación de origen.' },
+    ],
+  },
+  '/ayuda/privacidad-y-seguridad': {
+    title: 'Privacidad y seguridad en Novvin: cuenta, permisos y sesiones',
+    description: 'Consulta los controles de privacidad de Novvin: acceso a la cuenta, vinculación web, permisos de cámara y micrófono, contenido público y dispositivos compartidos.',
+    heading: 'Cuida tu cuenta y el contenido que compartes.',
+    sections: [
+      { heading: 'Protege el acceso a tu cuenta', body: 'Usa una contraseña que no compartas con otros servicios. Los códigos de recuperación sirven para verificar el acceso; no los compartas. Revisa la dirección de la web antes de introducir tus datos y cierra la sesión al terminar en una computadora compartida.' },
+      { heading: 'Vincula únicamente tu propio navegador', body: 'El QR de acceso vincula la cuenta del teléfono con el navegador que lo muestra. Escanea solo el código de una pantalla que estés utilizando y en la que confíes. Si un código vence, solicita otro desde la página de inicio de sesión.' },
+      { heading: 'Revisa cámara, micrófono y ubicación', body: 'El teléfono y el navegador controlan los permisos de cámara, micrófono y ubicación. Puedes revisarlos desde sus ajustes. Antes de participar en una llamada o una sala de voz, comprueba el estado del micrófono y del audio.' },
+      { heading: 'Contenido público y conversaciones', body: 'La entrada como invitado permite explorar contenido público. Antes de compartir un archivo, una publicación o un perfil, revisa quién podrá verlo. Los grupos y comunidades tienen permisos propios; comprueba sus participantes y administradores antes de compartir información personal.' },
+      { heading: 'Datos guardados en el dispositivo', body: 'La aplicación puede guardar contenido para que lo vuelvas a abrir con más rapidez. Si utilizas un dispositivo compartido, protege su acceso y cierra la sesión cuando termines. El modo sin conexión depende de los archivos que ya estén disponibles en ese dispositivo.' },
+    ],
+  },
 } as const
+
+export const publicIllustrations: Record<string, Array<{src: string; alt: string; caption: string; width: number; height: number}>> = {
+  '/funciones': [
+    {src:'/novvin-logo.png',alt:'Logo de Novvin, red social para Android y navegador',caption:'La marca de Novvin para reconocer la aplicación y su acceso web.',width:512,height:512},
+    {src:'/images/promotion-messages.svg',alt:'Ilustración de los mensajes y chats de Novvin',caption:'Mensajes: conversaciones, stickers y archivos para compartir con tu gente.',width:500,height:500},
+    {src:'/images/promotion-videos.svg',alt:'Ilustración de la sección de videos de Novvin',caption:'Videos: descubre y comparte contenido con tu cuenta de Novvin.',width:500,height:500},
+    {src:'/images/promotion-social.svg',alt:'Ilustración de las publicaciones sociales de Novvin',caption:'Social: publicaciones y momentos para compartir con otras personas.',width:500,height:500},
+  ],
+}
 
 export function publicInfoPage(path: string) {
   return publicInfoPages[path as keyof typeof publicInfoPages]
