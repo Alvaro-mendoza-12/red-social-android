@@ -127,6 +127,8 @@ class GroupChatViewModel @Inject constructor(
 
     private val _audioDurationLabel = MutableStateFlow("0:00")
     val audioDurationLabel: StateFlow<String> = _audioDurationLabel.asStateFlow()
+    private val _audioDurations = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val audioDurations: StateFlow<Map<String, Long>> = _audioDurations.asStateFlow()
 
     private val _myRole = MutableStateFlow<String?>(null)
     val myRole: StateFlow<String?> = _myRole.asStateFlow()
@@ -1185,6 +1187,11 @@ class GroupChatViewModel @Inject constructor(
                 prepared = delivery
                 if (attempt != audioAttempt || !_isScreenActive.value) { delivery.close(); return@launch }
                 delivery.requireCurrent()
+                messageRepository.localAudioDurationMs(delivery.source)?.let { total ->
+                    if (attempt == audioAttempt) _audioDurations.value = (_audioDurations.value + (id to total)).entries.toList().takeLast(256).associate { it.toPair() }
+                }
+                if (attempt != audioAttempt || !_isScreenActive.value) { delivery.close(); return@launch }
+                delivery.requireCurrent()
                 audioDelivery = delivery
                 val player = android.media.MediaPlayer()
                 mediaPlayer = player
@@ -1196,6 +1203,7 @@ class GroupChatViewModel @Inject constructor(
                     try {
                         delivery.requireCurrent()
                         if (!_isScreenActive.value) { stopAudio(); return@setOnPreparedListener }
+                        if (ready.duration > 0) _audioDurations.value = (_audioDurations.value + (id to ready.duration.toLong())).entries.toList().takeLast(256).associate { it.toPair() }
                         applyAudioPlaybackSpeed(ready); ready.start()
                         _isAudioPlaying.value = true; startProgressTracker()
                     } catch (_: Exception) { stopAudio() }
@@ -1222,7 +1230,7 @@ class GroupChatViewModel @Inject constructor(
                 catch (_: Exception) { stopAudio(); break }
                 mediaPlayer?.let {
                     if (it.isPlaying) {
-                        _audioProgress.value = it.currentPosition.toFloat() / it.duration.toFloat()
+                        _audioProgress.value = conectate.com.util.audioPlaybackProgress(it.currentPosition.toLong(), it.duration.toLong())
                         _audioDurationLabel.value = formatDuration(it.currentPosition.toLong())
                     }
                 }
@@ -1234,7 +1242,7 @@ class GroupChatViewModel @Inject constructor(
     fun seekAudio(fraction: Float) {
         val player = mediaPlayer ?: return
         if (_currentPlayingAudioId.value == null || player.duration <= 0) return
-        val safeFraction = fraction.coerceIn(0f, 1f)
+        val safeFraction = conectate.com.util.finiteAudioProgress(fraction)
         player.seekTo((player.duration * safeFraction).toInt())
         _audioProgress.value = safeFraction
         _audioDurationLabel.value = formatDuration(player.currentPosition.toLong())

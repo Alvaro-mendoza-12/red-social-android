@@ -4727,7 +4727,7 @@ function enrichPostComment(row, profilesById, identity = null) {
   }
 }
 
-async function loadPostDetailPayload(pool, user, rawPostId) {
+async function loadPostDetailPayload(pool, user, rawPostId, { includeComments = true } = {}) {
   const postId = normalizeId(rawPostId)
   if (!postId) return null
 
@@ -4739,8 +4739,8 @@ async function loadPostDetailPayload(pool, user, rawPostId) {
       importedRowsByFieldValues(pool, 'post_likes', ['post_id', 'postId'], [postId], 50_000),
       importedRowsByFieldValues(pool, 'post_reactions', ['post_id', 'postId'], [postId], 50_000),
       localPostReactions(pool, [postId], 50_000),
-      importedRowsByFieldValues(pool, 'post_comments', ['post_id', 'postId'], [postId], 50_000),
-      localPostComments(pool, [postId], 50_000),
+      includeComments ? importedRowsByFieldValues(pool, 'post_comments', ['post_id', 'postId'], [postId], 50_000) : [],
+      includeComments ? localPostComments(pool, [postId], 50_000) : [],
       importedRowsByFieldValues(pool, 'shares', ['post_id', 'postId'], [postId], 50_000),
       localPostShares(pool, [postId], 50_000),
       importedRowsByFieldValues(pool, 'follows', ['follower_id', 'user_id'], identity.values, 20_000),
@@ -9447,7 +9447,8 @@ function registerDataRoutes(app, {
 
       const postId = normalizeId(req.params.postId)
       if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
-      const existing = await loadPostDetailPayload(pool, user, postId)
+      // Validate access without hydrating every comment/profile/reaction in the thread.
+      const existing = await loadPostDetailPayload(pool, user, postId, { includeComments: false })
       if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
 
       const identity = userIdentity(user)
@@ -9476,7 +9477,11 @@ function registerDataRoutes(app, {
       if (postOwnerId) {
         void publishRealtimeEvent(`user:${postOwnerId}`, { ...feedEvent, scope: 'social' })
       }
-      await createLocalNotificationBestEffort(pool, {
+      // The reaction is durable before acknowledging it; notification delivery is best effort.
+      const minimal = req.query?.response === 'minimal'
+      const payload = minimal ? null : await loadPostDetailPayload(pool, user, postId)
+      res.json(minimal ? { ok: true } : { ok: true, post: payload?.post || existing.post })
+      void createLocalNotificationBestEffort(pool, {
         recipientId: normalizeId(textOf(existing.post, ['user_id', 'owner_id', 'author_id', 'creator_id'], '')),
         actorId: identity.displayUserId,
         actorName: user.display_name || user.email || 'Usuario',
@@ -9488,8 +9493,6 @@ function registerDataRoutes(app, {
         extraData: { post_id: postId, reaction_type: reactionType },
       })
 
-      const payload = await loadPostDetailPayload(pool, user, postId)
-      res.json({ ok: true, post: payload?.post || existing.post })
     } catch (error) {
       next(error)
     }
@@ -9503,7 +9506,7 @@ function registerDataRoutes(app, {
       const postId = normalizeId(req.params.postId)
       if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
       const identity = userIdentity(user)
-      const existing = await loadPostDetailPayload(pool, user, postId)
+      const existing = await loadPostDetailPayload(pool, user, postId, { includeComments: false })
       for (const userId of identity.ids) {
         await pool.query(
           `INSERT INTO fallback_post_reactions(post_id, user_id, reaction_type, created_at, updated_at, is_deleted)
@@ -9524,8 +9527,9 @@ function registerDataRoutes(app, {
           void publishRealtimeEvent(`user:${postOwnerId}`, { ...feedEvent, scope: 'social' })
         }
       }
-      const payload = postId ? await loadPostDetailPayload(pool, user, postId) : null
-      res.json({ ok: true, post: payload?.post || null })
+      const minimal = req.query?.response === 'minimal'
+      const payload = !minimal && postId ? await loadPostDetailPayload(pool, user, postId) : null
+      res.json(minimal ? { ok: true } : { ok: true, post: payload?.post || null })
     } catch (error) {
       next(error)
     }

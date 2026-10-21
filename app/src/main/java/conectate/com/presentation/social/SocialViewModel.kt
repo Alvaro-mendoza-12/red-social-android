@@ -20,6 +20,8 @@ import conectate.com.data.localfallback.SavedLibraryResponse
 import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.presentation.common.toUserFacingMessage
+import conectate.com.presentation.posts.PostReactionWriter
+import conectate.com.presentation.posts.copyReactionFrom
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -142,7 +144,11 @@ class SocialViewModel @Inject constructor(
     val savedLibraryLoading: StateFlow<Boolean> = _savedLibraryLoading.asStateFlow()
     private val _savedLibraryMessage = MutableStateFlow<String?>(null)
     val savedLibraryMessage: StateFlow<String?> = _savedLibraryMessage.asStateFlow()
-    private val likeRequestsInFlight = mutableSetOf<String>()
+    private val reactionWriter = PostReactionWriter(viewModelScope, authService::getCurrentUserId,
+        { id -> _posts.value.firstOrNull { it.id == id } },
+        postRepository::setPostReaction, postRepository::getPostById,
+        { fresh -> _posts.value = _posts.value.map { if (it.id == fresh.id) it.copyReactionFrom(fresh) else it } },
+        { conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo guardar la reacción. Inténtalo nuevamente.") })
     private val postReactionRefreshesInFlight = mutableSetOf<String>()
     private val shareRequestsInFlight = mutableSetOf<String>()
     private var postsJob: Job? = null
@@ -215,16 +221,13 @@ class SocialViewModel @Inject constructor(
                         return@collect
                     }
                     val generation = accountGeneration
+                    val readVersion = reactionWriter.readVersion()
                     try {
                         postRepository.getPostById(postId).onSuccess { fresh ->
                             if (generation != accountGeneration) return@onSuccess
+                            val reconciled = reactionWriter.reconcile(fresh, readVersion)
                             _posts.value = _posts.value.map { current ->
-                                if (current.id != postId) current else current.copy(
-                                    likedByMe = fresh.likedByMe,
-                                    myReaction = fresh.myReaction,
-                                    reactionCounts = fresh.reactionCounts,
-                                    likeCount = fresh.likeCount
-                                )
+                                if (current.id != postId) current else current.copyReactionFrom(reconciled)
                             }
                         }
                     } finally {
@@ -279,7 +282,7 @@ class SocialViewModel @Inject constructor(
         _savedLibrary.value = SavedLibraryResponse()
         _isRefreshing.value = true
         _isUserRefreshing.value = false
-        likeRequestsInFlight.clear()
+        reactionWriter.clear()
         postReactionRefreshesInFlight.clear()
         shareRequestsInFlight.clear()
         if (accountId.isNullOrBlank()) {
@@ -500,6 +503,7 @@ class SocialViewModel @Inject constructor(
         _isRefreshing.value = true
         _isUserRefreshing.value = userInitiated
         postsJob = viewModelScope.launch {
+            val reactionReadVersion = reactionWriter.readVersion()
             val startedAt = System.currentTimeMillis()
             val uiWatchdog = launch {
                 delay(SOCIAL_FEED_UI_WATCHDOG_MS)
@@ -528,7 +532,7 @@ class SocialViewModel @Inject constructor(
                     postRepository.getCachedGlobalPosts(selectedMode.apiValue)
                 } else emptyList()
                 if (cachedPosts.isNotEmpty() && generation == postsGeneration) {
-                    val visibleCachedPosts = prioritizePreviousVisit(applyFeedControls(cachedPosts))
+                    val visibleCachedPosts = prioritizePreviousVisit(applyFeedControls(cachedPosts.map { reactionWriter.reconcile(it, -1L) }))
                     if (visibleCachedPosts.isNotEmpty()) {
                         _posts.value = if (selectedMode == SocialFeedMode.DISCOVER) {
                             orderSocialDiscoveryForSession(visibleCachedPosts, authService.getCurrentUserId(), refreshSeed, previousDiscoveryFirstId, previousVisitSeenIds)
@@ -560,7 +564,7 @@ class SocialViewModel @Inject constructor(
                             authoritativeExplanationsEnabled = authoritativePage.explanationsEnabled
                             authoritativeExplanations.putAll(authoritativePage.explanationsByCandidateId)
                             val ordered = orderSocialDiscoveryForSession(visiblePosts, authService.getCurrentUserId(), refreshSeed, previousDiscoveryFirstId, previousVisitSeenIds)
-                            _posts.value = reconcileSocialFeed(_posts.value, ordered, preserveVisibleOrder = true)
+                            _posts.value = reconcileSocialFeed(_posts.value, ordered.map { reactionWriter.reconcile(it, reactionReadVersion) }, preserveVisibleOrder = true)
                             recordFeedLoaded(startedAt, visiblePosts.size, "authoritative", generation)
                             refreshVisibleAuthors(generation)
                             return@launch
@@ -586,7 +590,7 @@ class SocialViewModel @Inject constructor(
                     // Keep cached content on a failed request, but honor an
                     // authoritative empty result (e.g. removed/private posts).
                     if (ranked.isEmpty() && postRepository.globalFeedError.value != null) return@run
-                    _posts.value = reconcileSocialFeed(_posts.value, ranked, preserveVisibleOrder = true)
+                    _posts.value = reconcileSocialFeed(_posts.value, ranked.map { reactionWriter.reconcile(it, reactionReadVersion) }, preserveVisibleOrder = true)
                     recordFeedLoaded(startedAt, ranked.size, selectedMode.apiValue, generation)
                     refreshVisibleAuthors(generation)
                 }
@@ -616,6 +620,7 @@ class SocialViewModel @Inject constructor(
         _isLoadingMorePosts.value = true
         _loadMorePostsError.value = null
         morePostsJob = viewModelScope.launch {
+            val reactionReadVersion = reactionWriter.readVersion()
             try {
                 val items = if (authoritativeFeedActive) {
                     val requested = requireNotNull(cursor)
@@ -637,7 +642,7 @@ class SocialViewModel @Inject constructor(
                     _authoritativeHasMore.value = publicFeedNextOffset != null
                     page.items
                 }
-                _posts.value = (_posts.value + prioritizePreviousVisit(applyFeedControls(items))).distinctBy { it.id }
+                _posts.value = (_posts.value + prioritizePreviousVisit(applyFeedControls(items.map { reactionWriter.reconcile(it, reactionReadVersion) }))).distinctBy { it.id }
                 refreshVisibleAuthors(generation)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -970,67 +975,17 @@ class SocialViewModel @Inject constructor(
     }
 
     fun toggleLike(post: Post) {
-        val oldReaction = post.myReaction ?: if (post.likedByMe) "LIKE" else null
-        setReaction(post, if (oldReaction == null) "LIKE" else null)
+        val current = _posts.value.firstOrNull { it.id == post.id } ?: return
+        setReaction(current, if (current.myReaction != null || current.likedByMe) null else "LIKE")
     }
 
     fun setReaction(post: Post, reactionType: String?) {
-        if (!likeRequestsInFlight.add(post.id)) return
-        viewModelScope.launch {
-            val oldReaction = post.myReaction ?: if (post.likedByMe) "LIKE" else null
-            val requestedReaction = reactionType?.trim()?.uppercase()?.takeIf(String::isNotBlank)
-            val newReaction = requestedReaction?.takeUnless { it == oldReaction }
-            val oldCounts = post.reactionCounts.toMutableMap().also { counts ->
-                if (counts.isEmpty() && post.likeCount > 0) counts["LIKE"] = post.likeCount
-            }
-            try {
-                val newCounts = oldCounts.toMutableMap()
-                oldReaction?.let { old ->
-                    newCounts[old] = ((newCounts[old] ?: 0) - 1).coerceAtLeast(0)
-                    if (newCounts[old] == 0) newCounts.remove(old)
-                }
-                newReaction?.let { selected ->
-                    newCounts[selected] = (newCounts[selected] ?: 0) + 1
-                }
-                val newLikeCount = newCounts.values.sum()
-                _posts.value = _posts.value.map {
-                    if (it.id == post.id) {
-                        it.copy(
-                            likedByMe = newReaction != null,
-                            likeCount = newLikeCount,
-                            myReaction = newReaction,
-                            reactionCounts = newCounts
-                        )
-                    } else {
-                        it
-                    }
-                }
-                feedSignalTracker.recordInteraction(
-                    post = post,
-                    action = if (newReaction == null) FeedInteractionAction.UNLIKE else FeedInteractionAction.LIKE
-                )
-
-                val result = postRepository.setPostReaction(
-                    postId = post.id,
-                    reactionType = newReaction,
-                    wasReacted = oldReaction != null
-                )
-                if (result.isFailure) {
-                    _posts.value = _posts.value.map {
-                        if (it.id == post.id) post else it
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("SocialViewModel", "Error updating reaction", e)
-                _posts.value = _posts.value.map {
-                    if (it.id == post.id) post else it
-                }
-            } finally {
-                likeRequestsInFlight.remove(post.id)
-            }
-        }
+        val current = _posts.value.firstOrNull { it.id == post.id } ?: return
+        reactionWriter.set(current.id, reactionType)
+        val selected = _posts.value.firstOrNull { it.id == post.id } ?: return
+        feedSignalTracker.recordInteraction(current,
+            if (selected.likedByMe) FeedInteractionAction.LIKE else FeedInteractionAction.UNLIKE)
     }
-
     fun loadPostReactions(postId: String, reactionType: String? = null) {
         viewModelScope.launch {
             _reactionsLoading.value = true

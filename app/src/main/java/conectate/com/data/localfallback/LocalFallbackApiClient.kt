@@ -3308,10 +3308,12 @@ class LocalFallbackApiClient @Inject constructor(
             val response = if (reactionType.isNullOrBlank()) {
                 supabaseConfig.httpClient.delete("$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/reaction") {
                     localHeaders(accessToken)
+                    parameter("response", "minimal")
                 }
             } else {
                 supabaseConfig.httpClient.post("$baseUrl/v1/data/feed/posts/${urlEncode(postId)}/reaction") {
                     localHeaders(accessToken)
+                    parameter("response", "minimal")
                     contentType(ContentType.Application.Json)
                     setBody(LocalFallbackReactionRequest(reactionType))
                 }

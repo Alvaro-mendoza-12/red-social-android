@@ -213,6 +213,8 @@ class ChatViewModel @Inject constructor(
     val audioDuration: StateFlow<Int> = _audioDuration.asStateFlow()
     private val _audioDurationLabel = MutableStateFlow("0:00")
     val audioDurationLabel: StateFlow<String> = _audioDurationLabel.asStateFlow()
+    private val _audioDurations = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val audioDurations: StateFlow<Map<String, Long>> = _audioDurations.asStateFlow()
 
     // Nickname & Clear Chat state
     private val _showNicknameDialog = MutableStateFlow(false)
@@ -1681,6 +1683,10 @@ class ChatViewModel @Inject constructor(
             try {
                 val source = resolveAudioPlaybackSource(url)
                 if (generation != audioPlaybackGeneration) return@launch
+                conectate.com.util.localAudioDurationMs(context, source)?.let { total ->
+                    if (generation == audioPlaybackGeneration) _audioDurations.value = (_audioDurations.value + (id to total)).entries.toList().takeLast(256).associate { it.toPair() }
+                }
+                if (generation != audioPlaybackGeneration) return@launch
                 playResolvedAudioSource(source, id)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1713,6 +1719,7 @@ class ChatViewModel @Inject constructor(
                 setOnPreparedListener {
                     _currentPlayingAudioId.value = id
                     _audioDuration.value = duration
+                    if (duration > 0) _audioDurations.value = (_audioDurations.value + (id to duration.toLong())).entries.toList().takeLast(256).associate { it.toPair() }
                     applyAudioPlaybackSpeed(this)
                     start()
                     _isAudioPlaying.value = true

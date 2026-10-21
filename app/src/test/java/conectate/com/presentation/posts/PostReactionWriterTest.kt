@@ -29,12 +29,49 @@ class PostReactionWriterTest {
             {throw IllegalStateException()},{post=it},{fail()})
         writer.set("p","LIKE");runCurrent();assertTrue(post.likedByMe);assertEquals(3,post.likeCount)
     }
-    @Test fun rapidDoubleTapDoesNotSubmitTwoWrites() = runTest {
+    @Test fun rapidChangesBeforeTheFirstWriteAreCoalesced() = runTest {
         var post=original;var writes=0;val wait=CompletableDeferred<Result<Unit>>()
         val writer=PostReactionWriter(backgroundScope,{"account"},{post},{_,_,_->writes++;wait.await()},
             {Result.failure(Exception())},{post=it},{fail()})
-        writer.set("p","LIKE");writer.set("p",null);runCurrent();assertEquals(1,writes)
-        wait.complete(Result.success(Unit));runCurrent();writer.set("p",null);runCurrent();assertEquals(2,writes)
+        writer.set("p","LIKE");writer.set("p",null);runCurrent();assertEquals(0,writes)
+        assertFalse(post.likedByMe)
+    }
+    @Test fun aSecondTapDuringASlowWriteIsImmediateAndEventuallyStored() = runTest {
+        var post=original;val writes=mutableListOf<String?>();val wait=CompletableDeferred<Result<Unit>>()
+        val writer=PostReactionWriter(backgroundScope,{"account"},{post},{_,type,_->writes+=type;if(writes.size==1)wait.await() else Result.success(Unit)},
+            {Result.failure(Exception())},{post=it},{fail()})
+        writer.set("p","LIKE");runCurrent();writer.set("p",null)
+        assertFalse(post.likedByMe);assertEquals(2,post.likeCount)
+        wait.complete(Result.success(Unit));runCurrent()
+        assertEquals(listOf("LIKE",null),writes);assertFalse(post.likedByMe)
+    }
+    @Test fun anOldFeedReadCannotUndoANewlyAcknowledgedReaction() = runTest {
+        var post=original
+        val writer=PostReactionWriter(backgroundScope,{"account"},{post},{_,_,_->Result.success(Unit)},
+            {Result.failure(Exception())},{post=it},{fail()})
+        val read=writer.readVersion()
+        writer.set("p","LIKE");runCurrent()
+        assertTrue(writer.reconcile(original,read).likedByMe)
+        // A genuinely newer server read may include a change from another device.
+        assertFalse(writer.reconcile(original,writer.readVersion()).likedByMe)
+    }
+    @Test fun backgroundReadsKeepOtherPeopleCountsWhileProtectingThePendingChoice() = runTest {
+        var post=original;val wait=CompletableDeferred<Result<Unit>>()
+        val writer=PostReactionWriter(backgroundScope,{"account"},{post},{_,_,_->wait.await()},
+            {Result.failure(Exception())},{post=it},{fail()})
+        writer.set("p","LOVE");runCurrent()
+        val remote=original.copy(likeCount=8,reactionCounts=mapOf("LIKE" to 8))
+        val merged=writer.reconcile(remote,writer.readVersion())
+        assertEquals(9,merged.likeCount);assertEquals("LOVE",merged.myReaction)
+        writer.clear()
+    }
+    @Test fun aFailedWriteDoesNotUndoConcurrentContentChanges() = runTest {
+        var post=original;val wait=CompletableDeferred<Result<Unit>>()
+        val writer=PostReactionWriter(backgroundScope,{"account"},{post},{_,_,_->wait.await()},
+            {Result.failure(Exception())},{post=it},{})
+        writer.set("p","LOVE");runCurrent();post=post.copy(content="edited while saving")
+        wait.complete(Result.failure(Exception()));runCurrent()
+        assertEquals("edited while saving",post.content);assertFalse(post.likedByMe)
     }
     @Test fun lateSuccessCannotPublishIntoAnotherAccount() = runTest {
         var post=original;var owner="first";var reads=0;val wait=CompletableDeferred<Result<Unit>>()

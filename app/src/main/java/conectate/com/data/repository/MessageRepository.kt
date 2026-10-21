@@ -4644,6 +4644,13 @@ class MessageRepository @Inject constructor(
         catch (error: Throwable) { delivery.close(); throw error }
     }
 
+    internal suspend fun localAudioDurationMs(source: String): Long? {
+        val identity = conectate.com.core.media.StorageReadSession.snapshot()?.identity
+        val duration = conectate.com.util.localAudioDurationMs(context, source)
+        conectate.com.core.media.StorageReadSession.requireCurrent(identity)
+        return duration
+    }
+
     /** MediaPlayer's native redirect stack cannot safely transport a private JWT. */
     suspend fun getNativeAudioPlayableUrl(path: String): Result<String> = runCatching {
         val identity = conectate.com.core.media.StorageReadSession.snapshot()?.identity

@@ -214,6 +214,7 @@ fun ChatScreen(
     val isAudioPlaying by viewModel.isAudioPlaying.collectAsState()
     val audioProgress by viewModel.audioProgress.collectAsState()
     val audioDurationLabel by viewModel.audioDurationLabel.collectAsState()
+    val audioDurations by viewModel.audioDurations.collectAsState()
     val audioPlaybackSpeed by viewModel.audioPlaybackSpeed.collectAsState()
     
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -1301,6 +1302,7 @@ fun ChatScreen(
                                     },
                                     onCollectionInvitationClick = { openCollectionInvitation(it) },
                                     isAudioActive = currentPlayingAudioId == message.id,
+                                    totalAudioDurationMs = audioDurations[message.id],
                                     isPlaying = currentPlayingAudioId == message.id && isAudioPlaying,
                                     progress = if (currentPlayingAudioId == message.id) audioProgress else 0f,
                                     duration = if (currentPlayingAudioId == message.id) audioDurationLabel else message.content,

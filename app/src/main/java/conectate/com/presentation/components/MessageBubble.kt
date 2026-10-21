@@ -413,6 +413,7 @@ fun MessageBubble(
     isAudioActive: Boolean = false,
     progress: Float = 0f,
     duration: String = "0:00",
+    totalAudioDurationMs: Long? = null,
     playbackSpeed: Float = 1f,
     onSeekAudio: (Message, Float) -> Unit = { _, _ -> },
     onChangeAudioSpeed: (Message) -> Unit = {},
@@ -853,6 +854,24 @@ fun MessageBubble(
                     }
 
                     "audio" -> {
+                        var localDuration by remember(message.id, message.media_url, message.content) {
+                            mutableStateOf(conectate.com.util.audioDurationMillis(message.content))
+                        }
+                        LaunchedEffect(message.id, resolvedUrl, totalAudioDurationMs) {
+                            if (totalAudioDurationMs != null && totalAudioDurationMs > 0) {
+                                localDuration = totalAudioDurationMs
+                            } else if (localDuration == null) {
+                                localDuration = conectate.com.util.localAudioDurationMs(context, resolvedUrl)
+                                // The existing offline prefetch may complete after this row first appears.
+                                // Re-resolve a few times; the metadata reader itself never downloads media.
+                                for (waitMs in listOf(500L, 1500L, 3000L)) {
+                                    if (localDuration != null || message.media_url.isNullOrBlank()) break
+                                    delay(waitMs)
+                                    val cachedSource = onResolveUrl(message.media_url)
+                                    localDuration = conectate.com.util.localAudioDurationMs(context, cachedSource)
+                                }
+                            }
+                        }
                         Column(
                             modifier = Modifier
                                 .width(232.dp)
@@ -911,7 +930,7 @@ fun MessageBubble(
                             }
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Text(
-                                    text = if (isAudioActive && duration != "0:00") duration else "0:00",
+                                    text = conectate.com.util.audioBubbleTimeLabel(isAudioActive, duration, localDuration),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                 )

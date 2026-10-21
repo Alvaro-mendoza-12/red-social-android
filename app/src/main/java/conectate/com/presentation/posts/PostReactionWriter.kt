@@ -3,10 +3,11 @@ package conectate.com.presentation.posts
 import conectate.com.data.model.Post
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** Serializes each post's reaction and fences late reads/writes to the active account. */
+/** Main-thread state: immediate feedback, serialized writes, and account-fenced reconciliation. */
 internal class PostReactionWriter(
     private val scope: CoroutineScope,
     private val account: () -> String?,
@@ -16,35 +17,92 @@ internal class PostReactionWriter(
     private val publish: (Post) -> Unit,
     private val failed: () -> Unit,
 ) {
-    private val pending = mutableMapOf<String, Job>()
+    private data class Edit(var confirmed: Post, var desired: String?, var stamp: Long)
+    private val jobs = mutableMapOf<String, Job>()
+    private val edits = linkedMapOf<String, Edit>()
     private var revision = 0L
-    fun clear() { revision++; pending.values.toList().forEach { it.cancel() }; pending.clear() }
+    private var epoch = 0L
+    fun clear() {
+        epoch++; revision++
+        jobs.values.toList().forEach { it.cancel() }
+        jobs.clear(); edits.clear()
+    }
+
+    /** Capture before starting a remote read, never after receiving its response. */
+    fun readVersion(): Long = revision
+
+    fun reconcile(fresh: Post, readVersion: Long): Post {
+        val edit = edits[fresh.id] ?: return fresh
+        if (fresh.id !in jobs && readVersion >= edit.stamp) {
+            edits.remove(fresh.id)
+            return fresh
+        }
+        return fresh.withReaction(edit.desired)
+    }
+
     fun set(id: String, requested: String?) {
         val owner = account() ?: return
         val before = current(id) ?: return
-        if (id.isBlank() || pending.containsKey(id)) return
+        if (id.isBlank()) return
         val normalized = requested?.trim()?.uppercase()?.takeIf { it in TYPES }
         if (requested != null && normalized == null) return
         val old = before.myReaction ?: if (before.likedByMe) "LIKE" else null
         val selected = normalized?.takeUnless { it == old }
-        val version = revision
+        val edit = edits[id]?.takeIf { id in jobs }
+            ?: Edit(before, selected, ++revision).also { edits[id] = it }
+        edit.desired = selected
+        edit.stamp = ++revision
         publish(before.withReaction(selected))
-        val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
-            fun isCurrent() = version == revision && owner == account()
+        if (id in jobs) return // The running writer sends the latest choice next.
+        val version = epoch
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            fun isCurrent() = version == epoch && owner == account()
             try {
-                write(id, selected, old != null).getOrThrow()
-                if (!isCurrent()) return@launch
-                // A failed refresh does not undo an already persisted reaction.
-                val fresh = try { refresh(id).getOrNull() }
-                    catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) { null }
-                if (isCurrent() && fresh?.id == id) publish(fresh)
+                while (isCurrent()) {
+                    while (edit.confirmed.reaction() != edit.desired) {
+                        val target = edit.desired
+                        write(id, target, edit.confirmed.reaction() != null).getOrThrow()
+                        if (!isCurrent()) return@launch
+                        edit.confirmed = edit.confirmed.withReaction(target)
+                        edit.stamp = ++revision
+                    }
+                    // An optional read cannot turn a saved reaction into a failed write.
+                    val fresh = try { refresh(id).getOrNull() }
+                        catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { null }
+                    if (!isCurrent()) return@launch
+                    if (fresh?.id == id) {
+                        edit.confirmed = fresh.withReaction(edit.confirmed.reaction())
+                        publish(fresh.withReaction(edit.desired))
+                    }
+                    if (edit.confirmed.reaction() == edit.desired) break
+                }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (isCurrent()) { publish(before); failed() } }
-            finally { if (version == revision) pending.remove(id) }
+            catch (_: Exception) {
+                if (isCurrent()) {
+                    edit.desired = edit.confirmed.reaction()
+                    current(id)?.let { publish(it.copyReactionFrom(edit.confirmed)) }
+                    failed()
+                }
+            } finally {
+                if (version == epoch) {
+                    jobs.remove(id)
+                    edit.stamp = ++revision
+                    if (!isCurrent()) edits.remove(id)
+                    while (edits.size > 256) {
+                        val oldest = edits.keys.firstOrNull { it !in jobs } ?: break
+                        edits.remove(oldest)
+                    }
+                }
+            }
         }
-        pending[id] = job
+        jobs[id] = job
         job.start()
     }
+    private fun Post.reaction() = myReaction ?: if (likedByMe) "LIKE" else null
     private companion object { val TYPES = setOf("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY", "CARE", "FIRE") }
 }
+
+internal fun Post.copyReactionFrom(source: Post): Post = copy(likedByMe = source.likedByMe,
+    myReaction = source.myReaction, likeCount = source.likeCount, reactionCounts = source.reactionCounts)
+    .also { it.isSensitive = isSensitive }

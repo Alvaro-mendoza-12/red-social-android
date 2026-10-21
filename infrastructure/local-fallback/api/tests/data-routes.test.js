@@ -173,6 +173,23 @@ const postDetailSource = dataRoutesSource.slice(
 )
 assert.doesNotMatch(postDetailSource, /importedRows\(pool,\s*'(?:profiles|posts|post_likes|post_reactions|post_comments|shares|follows)'/)
 assert.doesNotMatch(postDetailSource, /\b(?:localPosts|combinedFollows)\(pool/)
+assert.match(postDetailSource, /includeComments\s*=\s*true/, 'normal detail responses keep comments and counts')
+assert.match(postDetailSource, /includeComments \? importedRowsByFieldValues\(pool, 'post_comments'/)
+assert.match(postDetailSource, /includeComments \? localPostComments\(pool/)
+const postReactionWriteSource = dataRoutesSource.slice(
+  dataRoutesSource.indexOf("app.post('/v1/data/feed/posts/:postId/reaction'"),
+  dataRoutesSource.indexOf("app.post('/v1/data/feed/posts/:postId/share'"),
+)
+assert.equal((postReactionWriteSource.match(/includeComments: false/g) || []).length, 2,
+  'both reaction writes avoid loading the comment thread during access validation')
+assert.doesNotMatch(postReactionWriteSource, /await createLocalNotificationBestEffort/,
+  'a committed like must not wait for notification delivery')
+assert.equal((postReactionWriteSource.match(/req.query\?\.response === 'minimal'/g) || []).length, 2,
+  'Android may acknowledge both writes without loading a full post a second time')
+assert.ok(postReactionWriteSource.indexOf('INSERT INTO fallback_post_reactions') < postReactionWriteSource.indexOf('res.json'),
+  'reactions are acknowledged only after their database writes')
+assert.ok(postReactionWriteSource.indexOf('res.json') < postReactionWriteSource.indexOf('void createLocalNotificationBestEffort'),
+  'best effort notifications start after the response')
 const ownProfileRouteSource = dataRoutesSource.slice(
   dataRoutesSource.indexOf("app.get('/v1/data/profile/me'"),
   dataRoutesSource.indexOf("app.patch('/v1/data/profile/me'"),
