@@ -47,9 +47,9 @@ class AnonymousConversationLayoutTest {
         compose.setContent { CompactViewport { Conversation() } }
         compose.onNode(hasSetTextAction()).assertIsDisplayed().assertHeightIsAtLeast(56.dp)
         compose.onNodeWithText("Último mensaje").assertIsDisplayed()
+        saveScreen("compact")
         compose.onNodeWithContentDescription("Adjuntar").performClick()
         listOf("Audio", "Sticker", "Foto").forEach { compose.onNodeWithText(it).assertIsDisplayed() }
-        saveScreen("compact")
     }
 
     @Test fun largeTextDoesNotCollapseTheComposerOrSendTwice() {
