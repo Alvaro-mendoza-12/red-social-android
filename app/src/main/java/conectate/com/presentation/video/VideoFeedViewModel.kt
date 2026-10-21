@@ -1825,7 +1825,7 @@ class VideoFeedViewModel @Inject constructor(
                 catch (_: Exception) { stopAudio(); break }
                 val current = mediaPlayer?.currentPosition ?: 0
                 val total = mediaPlayer?.duration ?: 1
-                _audioProgress.value = current.toFloat() / total.toFloat()
+                _audioProgress.value = conectate.com.util.audioPlaybackProgress(current.toLong(), total.toLong())
                 delay(100)
             }
         }

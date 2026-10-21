@@ -568,7 +568,7 @@ class VideoPlayerViewModel @Inject constructor(
             while (mediaPlayer?.isPlaying == true) {
                 try { audioDelivery?.requireCurrent() }
                 catch (_: Exception) { stopAudio(); break }
-                val progress = mediaPlayer?.let { it.currentPosition.toFloat() / it.duration } ?: 0f
+                val progress = mediaPlayer?.let { conectate.com.util.audioPlaybackProgress(it.currentPosition.toLong(), it.duration.toLong()) } ?: 0f
                 _audioProgress.value = progress
                 delay(50)
             }

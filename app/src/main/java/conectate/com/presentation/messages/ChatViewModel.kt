@@ -1754,8 +1754,8 @@ class ChatViewModel @Inject constructor(
             while (isActive) {
                 mediaPlayer?.let {
                     if (it.isPlaying) {
-                        val progress = it.currentPosition.toFloat() / it.duration.toFloat()
-                        _audioProgress.value = progress
+                        _audioProgress.value = conectate.com.util.audioPlaybackProgress(it.currentPosition.toLong(), it.duration.toLong())
+                        _audioDuration.value = it.duration.coerceAtLeast(0)
                         _audioDurationLabel.value = formatDuration(it.currentPosition.toLong())
                     }
                 }
@@ -1767,7 +1767,7 @@ class ChatViewModel @Inject constructor(
     fun seekAudio(fraction: Float) {
         val player = mediaPlayer ?: return
         if (_currentPlayingAudioId.value == null || player.duration <= 0) return
-        val safeFraction = fraction.coerceIn(0f, 1f)
+        val safeFraction = conectate.com.util.finiteAudioProgress(fraction)
         player.seekTo((player.duration * safeFraction).toInt())
         _audioProgress.value = safeFraction
         _audioDurationLabel.value = formatDuration(player.currentPosition.toLong())
