@@ -97,11 +97,14 @@ export function PublicHome() {
             </p>
           </details>
           <details open>
-            <summary>¿Buscabas Novvyn, Noving, Nowing o NoWin?</summary>
+            <summary>¿Cómo encuentro el acceso oficial a Novvin?</summary>
             <p>
-              Si buscabas nuestra red social escribiendo Novvyn con «y», Noving, Nowing o NoWin,
-              el nombre es <strong>Novvin</strong>: N-O-V-V-I-N. Desde esta página puedes
-              <a href="/login"> iniciar sesión</a> o <a href="/novvin-web">conocer Novvin Web</a>.
+              Entra a tus mensajes, descubre videos y participa en grupos y comunidades desde
+              Android o tu navegador. Puedes <a href="/login">iniciar sesión</a>,
+              <a href="/descargar"> descargar la app</a> o <a href="/funciones">conocer sus funciones</a>.
+              <span data-nosnippet="true"> Si llegaste escribiendo Novvyn, Noving, Nowing o NoWin,
+                el nombre de la red social es <strong>Novvin</strong>: N-O-V-V-I-N.
+                Consulta <a href="/ayuda/encontrar-novvin">cómo encontrar Novvin</a>.</span>
             </p>
           </details>
         </section>

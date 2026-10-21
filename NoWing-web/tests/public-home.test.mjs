@@ -24,7 +24,7 @@ test('feature illustrations have visible alternatives and discoverable public im
 
 test('spelling queries are explained visibly without keyword stuffing or false organization aliases',()=>{
  const html=read('encontrar-novvin.html')
- for(const spelling of ['Novin','Novyn','Novvyn','Ovin','Vvvin']) assert.ok(html.includes(spelling))
+ for(const spelling of ['Novin','Novyn','Novvyn','Ovin','Vvvin','NoWi','Nowi']) assert.ok(html.includes(spelling))
  assert.doesNotMatch(html,/name="keywords"/)
  assert.equal(graph(html).find(item=>item['@type']==='Organization').name,'Novvin')
  assert.deepEqual(graph(html).find(item=>item['@type']==='WebSite').alternateName,['Novvin Web',new URL(site).hostname])
@@ -51,6 +51,18 @@ test('the public home loads no application scripts or preload bundles',()=>{
  const stylesheet=/<link rel="stylesheet" href="\/([^"]+)"/.exec(html)[1]
  assert.ok(fs.statSync(path.join(root,'dist',stylesheet)).size<15000)
  assert.doesNotMatch(read(stylesheet),/@import|fonts\.googleapis/)
+})
+
+test('home describes the product while spelling help stays visible and out of Google snippets',()=>{
+ const html=read('index.html')
+ const spelling=/<span data-nosnippet="true">([\s\S]*?)<\/span>/.exec(html)?.[1]
+ assert.ok(spelling?.includes('N-O-V-V-I-N'))
+ assert.ok(spelling?.includes('href="/ayuda/encontrar-novvin"'))
+ const eligible=html.replace(/<span data-nosnippet="true">[\s\S]*?<\/span>/g,'')
+ assert.match(eligible,/Novvin es una red social con mensajes, videos, momentos y comunidades/)
+ assert.match(eligible,/href="\/funciones"/)
+ assert.doesNotMatch(eligible,/N-O-V-V-I-N/)
+ assert.doesNotMatch(html,/<(?:main|div)[^>]+data-nosnippet/)
 })
 test('private shell is noindex, contains no public page and retains its application entry',()=>{
  const html=read('app-shell.html')
@@ -125,9 +137,9 @@ test('site name signals consistently prefer Novvin and offer the site hostname a
 
 test('the brand spelling explanation is visible without opening a disclosure or executing JavaScript',()=>{
  const html=read('index.html')
- assert.match(html,/<details open=""><summary>¿Buscabas Novvyn, Noving, Nowing o NoWin\?<\/summary>/)
- assert.match(html,/Novvyn con «y»/)
- assert.match(html,/href="\/novvin-web">conocer Novvin Web/)
+ assert.match(html,/<details open=""><summary>¿Cómo encuentro el acceso oficial a Novvin\?<\/summary>/)
+ assert.match(html,/Si llegaste escribiendo Novvyn/)
+ assert.match(html,/href="\/ayuda\/encontrar-novvin">cómo encontrar Novvin/)
 })
 
 test('the web guide explains Novvyn as a spelling query without changing the real brand',()=>{
