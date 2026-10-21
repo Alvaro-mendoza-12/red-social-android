@@ -184,7 +184,7 @@ class VideoRepository @Inject constructor(
         ignoreUnknownKeys = true
         isLenient = true
     }
-    private val localFeedCache by lazy(LazyThreadSafetyMode.NONE) {
+    private val localFeedCache by lazy {
         context.getSharedPreferences("video_feed_metadata_cache", Context.MODE_PRIVATE)
     }
     private val _videoFeedEvents = MutableSharedFlow<VideoFeedRealtimeEvent>(extraBufferCapacity = 64)
@@ -224,8 +224,8 @@ class VideoRepository @Inject constructor(
         return "$scope:$accountId"
     }
 
-    private fun readLocalFeed(scope: String): List<Video> = runCatching {
-        localFeedCache.getString(accountScopedFeedKey(scope), null)
+    private fun readLocalFeed(scope: String, ownerId: String? = authService.getCurrentUserId()): List<Video> = runCatching {
+        localFeedCache.getString(accountScopedFeedKey(scope, ownerId), null)
             ?.let { cacheJson.decodeFromString<List<Video>>(it) }
             ?.map { it.normalizedStorageUrls() }
             .orEmpty()
@@ -255,11 +255,13 @@ class VideoRepository @Inject constructor(
     }
 
     /** Returns the last public catalog without waiting for the network. */
-    fun getCachedPublicVideos(feedSessionId: String? = null): List<Video> {
-        val stored = readLocalFeed("public")
-        if (stored.size <= 1) return stored
-        val sessionSeed = authService.getCurrentUserId().orEmpty() + ":" + feedSessionId.orEmpty()
-        return stored.sortedByDescending { stableAccountVideoOrder(sessionSeed, it.id) }
+    suspend fun getCachedPublicVideos(feedSessionId: String? = null): List<Video> {
+        return conectate.com.core.cache.readLocalAccountSnapshot(authService::getCurrentUserId) { owner ->
+            val stored = readLocalFeed("public", owner)
+            val sessionSeed = owner.orEmpty() + ":" + feedSessionId.orEmpty()
+            if (stored.size <= 1) stored
+            else stored.sortedByDescending { stableAccountVideoOrder(sessionSeed, it.id) }
+        }.orEmpty()
     }
 
     private fun shouldUseUbuntuBackend(): Boolean =
