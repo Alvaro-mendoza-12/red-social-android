@@ -748,7 +748,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         const pastedFiles = await readClipboardImages(event.clipboardData, navigator.clipboard)
         if (pasteOwner !== preparationOwnerRef.current) return
         if (!pastedFiles.length) {
-          setError('WhatsApp no entregó la imagen al portapapeles. Usa «Copiar imagen» en el sticker y vuelve a pegarlo.')
+          setError('No recibimos la imagen de este pegado. Vuelve a copiarla o adjunta el archivo original GIF o WebP para conservar el movimiento.')
           return
         }
         for (const file of pastedFiles) {
