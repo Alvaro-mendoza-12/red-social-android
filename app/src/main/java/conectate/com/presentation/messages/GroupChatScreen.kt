@@ -109,6 +109,7 @@ fun GroupChatScreen(
     val isAudioPlaying by viewModel.isAudioPlaying.collectAsState()
     val audioProgress by viewModel.audioProgress.collectAsState()
     val audioDurationLabel by viewModel.audioDurationLabel.collectAsState()
+    val audioDurations by viewModel.audioDurations.collectAsState()
     val audioPlaybackSpeed by viewModel.audioPlaybackSpeed.collectAsState()
     val selectedMessage by viewModel.selectedMessage.collectAsState()
     var selectedIds by remember(groupId, currentUserId) { mutableStateOf<Set<String>>(emptySet()) }
@@ -573,6 +574,7 @@ fun GroupChatScreen(
                                         isVerified = memberProfile?.is_verified ?: false,
                                         userBadges = memberProfile?.badges ?: emptyList(),
                                         isAudioActive = currentPlayingAudioId == msg.id,
+                                        totalAudioDurationMs = audioDurations[msg.id],
                                         isPlaying = currentPlayingAudioId == msg.id && isAudioPlaying,
                                         progress = if (currentPlayingAudioId == msg.id) audioProgress else 0f,
                                         duration = if (currentPlayingAudioId == msg.id) audioDurationLabel else (msg.content.ifBlank { "0:00" }),

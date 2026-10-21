@@ -23,4 +23,21 @@ class AudioProgressRenderingTest {
         compose.onNodeWithText("recording_123.webm").assertDoesNotExist()
         compose.onNodeWithText("Audio").assertIsDisplayed()
     }
+    @Test fun idleRecordingShowsItsDurationWithoutStartingPlayback() {
+        compose.setContent { MaterialTheme {
+            MessageBubble(Message(id="duration",content="0:37",content_type="audio"),isFromCurrentUser=false)
+        } }
+        compose.onNodeWithText("0:37").assertIsDisplayed()
+        compose.onNodeWithText("0:00").assertDoesNotExist()
+    }
+    @Test fun playbackShowsElapsedAndTotalThenKeepsTotalWhenStopped() {
+        val active=androidx.compose.runtime.mutableStateOf(true)
+        compose.setContent { MaterialTheme {
+            MessageBubble(Message(id="duration",content="voice.webm",content_type="audio"),
+                isFromCurrentUser=false,isAudioActive=active.value,duration="0:08",totalAudioDurationMs=37_000)
+        } }
+        compose.onNodeWithText("0:08 / 0:37").assertIsDisplayed()
+        compose.runOnIdle { active.value=false }
+        compose.onNodeWithText("0:37").assertIsDisplayed()
+    }
 }

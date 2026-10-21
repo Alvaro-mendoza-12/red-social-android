@@ -962,7 +962,7 @@ class PostRepository @Inject constructor(
             var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
             val normalizedReaction = normalizePostReaction(reactionType)
 
-            if (supabaseConfig.isLocalFallbackPrimary) {
+            if (usesLocalFallbackBackend()) {
                 val result = localFallbackApiClient.setPostReaction(accessToken, postId, normalizedReaction)
                 if (result.isSuccess) {
                     invalidateGlobalPostCache()
