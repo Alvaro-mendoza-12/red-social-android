@@ -12,6 +12,7 @@ import java.io.IOException
 internal class StorageReadCoilInterceptor(
     private val cachedImage: suspend (String, StorageReadIdentity) -> String? = { _, _ -> null },
     private val retainImage: (String, StorageReadIdentity) -> Unit = { _, _ -> },
+    private val retainPreview: (String, StorageReadIdentity, android.graphics.drawable.Drawable) -> Unit = { _, _, _ -> },
 ) : Interceptor {
     override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
         val original = chain.request
@@ -41,7 +42,9 @@ internal class StorageReadCoilInterceptor(
             StorageReadSession.requireCurrent(identity)
             val result = chain.proceed(request)
             StorageReadSession.requireCurrent(identity)
-            if (offlineAllowed && cached == null && result is SuccessResult) {
+            val speculative = original.parameters.value<Boolean>(MediaImageRequestFactory.PREFETCH_CHAT_IMAGE) == true
+            if (offlineAllowed && !speculative && result is SuccessResult) {
+                if (cached == null) runCatching { retainPreview(source, checkNotNull(identity), result.drawable) }
                 runCatching { retainImage(source, checkNotNull(identity)) }
             }
             result

@@ -33,7 +33,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
     private val messageRepository: conectate.com.data.repository.MessageRepository,
 ) : ViewModel() {
     private companion object {
-        const val REACTION_VISIBLE_MS = 5_400L
+        const val REACTION_VISIBLE_MS = 6_000L
         const val LOCAL_ECHO_WINDOW_MS = 3_000L
     }
 

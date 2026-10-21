@@ -114,7 +114,7 @@ fun LinkText(
                 appendUnlinked(value.substring(position))
             }
 
-            for (link in findWebTextLinks(text)) {
+            for (link in findMessageTextLinks(text)) {
                 val start = link.start
                 val end = link.end
 

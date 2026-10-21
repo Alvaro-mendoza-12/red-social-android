@@ -226,6 +226,7 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
                 add(conectate.com.core.media.StorageReadCoilInterceptor(
                     cachedImage = { source, identity -> chatImages.get().cachedChatImage(source, identity) },
                     retainImage = { source, identity -> chatImages.get().retainLoadedChatImage(source, identity) },
+                    retainPreview = { source, identity, drawable -> chatImages.get().retainLoadedChatPreview(source, identity, drawable) },
                 ))
                 add(coil.decode.VideoFrameDecoder.Factory())
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

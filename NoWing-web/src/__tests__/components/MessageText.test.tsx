@@ -2,6 +2,13 @@ import {fireEvent,render,screen} from '@testing-library/react'
 import {MessageText} from '../../components/MessageText'
 import {MemoryRouter} from 'react-router-dom'
 
+test('email and bare addresses are clickable without losing balanced URL punctuation',()=>{
+ render(<MessageText text="Correo hola+app@example.org, www.example.com y (https://example.org/Test_(one))."/>)
+ expect(screen.getByRole('link',{name:'hola+app@example.org'})).toHaveAttribute('href','mailto:hola+app@example.org')
+ expect(screen.getByRole('link',{name:'www.example.com'})).toHaveAttribute('href','https://www.example.com')
+ expect(screen.getByRole('link',{name:'https://example.org/Test_(one)'})).toHaveAttribute('href','https://example.org/Test_(one)')
+})
+
 test('long messages expand and collapse while keeping full link targets',()=>{
  const text='Texto largo '.repeat(90)+'https://example.org/full-target'
  const {container,rerender}=render(<MessageText text={text}/>)

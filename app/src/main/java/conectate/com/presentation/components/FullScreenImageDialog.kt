@@ -384,7 +384,15 @@ fun FullScreenImageDialog(
                         }
                     }
 
-                    if (isResolving) {
+                    if (!isVideoMediaType(item.type) && !secureContent) {
+                        // Mount the saved preview immediately. Keep its request and
+                        // zoom state stable when the resolver finds an offline original.
+                        MediaViewerItem(
+                            item = item,
+                            isActive = pagerState.currentPage == page,
+                            imageSource = if (isResolving) null else resolvedUrl ?: item.url
+                        )
+                    } else if (isResolving) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = Color.White)
                         }
@@ -498,7 +506,8 @@ fun FullScreenImageDialog(
 private fun MediaViewerItem(
     item: MediaItem,
     isActive: Boolean,
-    secureContent: Boolean = false
+    secureContent: Boolean = false,
+    imageSource: String? = item.url
 ) {
     Box(
         modifier = Modifier
@@ -510,7 +519,7 @@ private fun MediaViewerItem(
         if (isVideoMediaType(item.type)) {
             VideoViewerItem(item = item, isActive = isActive, secureContent = secureContent)
         } else {
-            ZoomableImageViewer(item = item, secureContent = secureContent)
+            ZoomableImageViewer(item = item, secureContent = secureContent, imageSource = imageSource)
         }
     }
 }
@@ -519,17 +528,18 @@ private fun MediaViewerItem(
 internal fun ZoomableImageViewer(
     item: MediaItem,
     allowDurableProfileFallback: Boolean = false,
-    secureContent: Boolean = false
+    secureContent: Boolean = false,
+    imageSource: String? = item.url
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var requestRevision by remember(item.id, item.url) { mutableIntStateOf(0) }
-    val imageRequest = remember(context, item.url, requestRevision, secureContent) {
+    val imageRequest = remember(context, item.url, imageSource, requestRevision, secureContent) {
         if (secureContent) coil.request.ImageRequest.Builder(context).data(item.url)
             .size(MediaImageRequestFactory.MAX_FULLSCREEN_IMAGE_DIMENSION_PX, MediaImageRequestFactory.MAX_FULLSCREEN_IMAGE_DIMENSION_PX)
             .memoryCachePolicy(coil.request.CachePolicy.DISABLED).diskCachePolicy(coil.request.CachePolicy.DISABLED)
             .networkCachePolicy(coil.request.CachePolicy.DISABLED).crossfade(false).build()
-        else MediaImageRequestFactory.fullScreen(context, item.url)?.newBuilder()
+        else imageSource?.let { MediaImageRequestFactory.fullScreen(context, it) }?.newBuilder()
             ?.setParameter("fullscreen_retry", requestRevision)?.build()
     }
     val previewRequest = remember(context, item.url, secureContent) {
@@ -701,7 +711,7 @@ internal fun ZoomableImageViewer(
             }
         )
 
-        AsyncImage(
+        if (imageRequest != null) AsyncImage(
             model = imageRequest,
             contentDescription = if (item.type.equals("gif", ignoreCase = true)) {
                 "GIF a pantalla completa"

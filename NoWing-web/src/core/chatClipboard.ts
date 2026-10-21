@@ -107,26 +107,36 @@ export function clipboardMayContainImage(data: DataTransfer | null): boolean {
  */
 export async function readClipboardImages(data: DataTransfer | null, clipboard: Pick<Clipboard, 'read'> | undefined): Promise<File[]> {
   const direct = clipboardFilesFrom(data)
-  if (direct.length || !clipboardMayContainImage(data) || !clipboard?.read) return normalizeClipboardFiles(direct)
+  // Copy-image may supply a PNG preview beside the original animated WebP/GIF.
+  // Prefer original clipboard bytes when a sticker hint is present, with the
+  // event payload as a fallback if read() is unsupported or permission is denied.
+  const mayRead = clipboardMayContainImage(data)
+  const stickerHint = clipboardHasStickerHint(data)
+  const normalized = await normalizeClipboardFiles(direct)
+  if (normalized.some(file => /image\/(gif|webp)/.test(file.type)) ||
+      (normalized.length && !stickerHint) || !mayRead || !clipboard?.read) return normalized
   try {
     const items = await clipboard.read()
     const files: File[] = []
     for (const item of items) {
-      for (const type of item.types) {
+      const types = [...item.types].sort((a, b) =>
+        Number(/^image\/(gif|webp)$/i.test(b)) - Number(/^image\/(gif|webp)$/i.test(a)))
+      for (const type of types) {
         if (SUPPORTED_IMAGE_MIMES.has(type.toLowerCase())) {
           const blob = await item.getType(type)
           if (blob.size && blob.size <= MAX_INLINE_CLIPBOARD_IMAGE_BYTES) {
             const extension = type.toLowerCase().split('/')[1].replace('jpeg', 'jpg')
             files.push(new File([blob], `clipboard-image.${extension}`, { type: type.toLowerCase() }))
+            break
           }
         } else if (type.toLowerCase() === 'text/html') {
           files.push(...inlineImagesFromHtml(await (await item.getType(type)).text()))
         }
       }
     }
-    return uniqueFiles(files)
+    return files.length ? normalizeClipboardFiles(uniqueFiles(files)) : normalized
   } catch {
-    return []
+    return normalized
   }
 }
 

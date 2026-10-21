@@ -56,6 +56,7 @@ import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.MessageSendHttpException
 import conectate.com.data.localfallback.isRetryableMessageHttpStatus
 import conectate.com.data.repository.message.executeMessageSend
+import conectate.com.data.repository.message.distinctHistoryAccess
 import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.local.entity.ChatEntity
@@ -156,6 +157,7 @@ class MessageRepository @Inject constructor(
     }
 
     private val scope = newSafeScope("MessageRepository", Dispatchers.IO)
+    private val mediaPrefetchSlots = kotlinx.coroutines.sync.Semaphore(2)
     private var json = Json { 
         ignoreUnknownKeys = true 
         coerceInputValues = true
@@ -1982,30 +1984,39 @@ class MessageRepository @Inject constructor(
         val cleanId = chatId.trim().lowercase()
         return accountScopedChatFlow(
             accounts = authService.observeSession().map { it?.user?.id },
-            chats = chatDao.getChatByIdFlow(cleanId).map { it?.toDomain() },
+            // Delivery/read timestamps update this row frequently. Only a change in
+            // access should replace the history subscription; metadata has its own flow.
+            chats = chatDao.getChatByIdFlow(cleanId).map { it?.toDomain() }.distinctHistoryAccess(),
             currentAccount = ::currentSessionUserId,
             empty = emptyList()
         ) { _, accountId -> getMessagesForAccountFlow(cleanId, accountId) }
+            .flowOn(Dispatchers.IO)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun getMessagesForAccountFlow(cleanId: String, accountId: String): Flow<List<Message>> {
-        return _userChats.flatMapLatest { chats ->
-            var currentChat = chats.find { it.chat.id.trim().lowercase() == cleanId }
+        data class HistorySource(val siblings: Set<String>, val clearedAt: String?)
+        return _userChats.map { chats ->
+            val currentDetails = chats.find { it.chat.id.trim().lowercase() == cleanId }
+            var currentChat = currentDetails?.chat
+            var clearedAt = currentDetails?.clearedAt
             
             // Fallback to Room if memory is syncing
             if (currentChat == null) {
                 try {
                     var local = chatDao.getChatById(cleanId)
-                    if (local != null) currentChat = local.toDomainWithDetails()
+                    if (local != null) {
+                        currentChat = local.toDomain()
+                        clearedAt = local.cleared_at
+                    }
                 } catch(e: Exception) { /* ignore */ }
             }
             
-            if (currentChat?.chat?.isAccessibleTo(accountId) != true || currentSessionUserId() != accountId) {
-                return@flatMapLatest flowOf(emptyList())
+            if (currentChat?.isAccessibleTo(accountId) != true || currentSessionUserId() != accountId) {
+                return@map null
             }
-            var participants = currentChat?.chat?.participants?.map { it.trim().lowercase() }?.sorted() ?: emptyList()
-            var isGroup = currentChat?.chat?.is_group == true
+            val participants = currentChat.participants.map { it.trim().lowercase() }.sorted()
+            val isGroup = currentChat.is_group
             
             // 1. Identify Sibling IDs
             val siblingIds = if (participants.size == 2 && !isGroup) {
@@ -2017,6 +2028,11 @@ class MessageRepository @Inject constructor(
                 setOf(cleanId)
             }
             
+            HistorySource(siblingIds, clearedAt)
+        }.distinctUntilChanged().flatMapLatest { source ->
+            if (source == null) return@flatMapLatest flowOf(emptyList())
+            val siblingIds = source.siblings
+            // Inbox previews and unrelated chats must not resubscribe every history row.
             // 2. Combine Room Flow AND Memory State for EACH sibling
             val flows = siblingIds.map { id ->
                 val roomFlow = messageDao.getMessagesFlow(id)
@@ -2050,7 +2066,7 @@ class MessageRepository @Inject constructor(
                 }
                 
                 // Filter by clearedAt if exists
-                var clearedAt = currentChat?.clearedAt
+                val clearedAt = source.clearedAt
                 if (clearedAt != null) {
                     visibleForUser.filter { (it.created_at ?: "") > clearedAt }
                 } else visibleForUser
@@ -2298,24 +2314,31 @@ class MessageRepository @Inject constructor(
     }
 
     private fun prefetchChatMedia(candidates: Iterable<ChatMediaPrefetchCandidate>, isAllowed: (String) -> Boolean) {
+        if (!automaticMediaAllowed()) return
         val recent = candidates.toList()
         val typeByUrl = recent.associate { it.mediaUrl?.trim() to it.contentType }
         selectRecentChatMediaForPrefetch(recent, maxItems = 24).asReversed()
             .sortedBy { if (typeByUrl[it] in setOf("image", "sticker", "gif")) 0 else 1 }.forEach { mediaPath ->
             if (!isAllowed(mediaPath)) return@forEach
             scope.launch {
+              mediaPrefetchSlots.acquire()
+              try {
                 if (!isAllowed(mediaPath)) return@launch
                 val image = when (typeByUrl[mediaPath]) {
                     "sticker", "gif" -> conectate.com.core.media.MediaImageRequestFactory.animated(context, mediaPath)
                     "image" -> conectate.com.core.media.MediaImageRequestFactory.preview(context, mediaPath)
                     else -> null
                 }
-                if (image != null) coil.Coil.imageLoader(context).enqueue(image)
+                if (image != null) coil.Coil.imageLoader(context).execute(image.newBuilder()
+                    .setParameter(conectate.com.core.media.MediaImageRequestFactory.PREFETCH_CHAT_IMAGE, true).build())
                 mediaResolver.getPlayableUrl(
                     path = mediaPath,
                     allowOfflineMediaCache = true,
                     isPrefetch = true
                 )
+              } finally {
+                mediaPrefetchSlots.release()
+              }
             }
         }
     }
@@ -2374,7 +2397,8 @@ class MessageRepository @Inject constructor(
         // 2. Robust Sorting (Ascending for Chat Screen)
         // CRITICAL: We want 'sending' messages at the end.
         // And null dates (broken ones) at the beginning (1970).
-        return byId.map { deletedMessageStore.redact(it, currentSessionUserId()) }.sortedWith(compareBy<Message> { 
+        val redactionAccount = currentSessionUserId()
+        return byId.map { deletedMessageStore.redact(it, redactionAccount) }.sortedWith(compareBy<Message> {
             when {
                 it.status == "sending" -> "9999-12-31T23:59:59Z"
                 it.created_at.isNullOrBlank() -> "1970-01-01T00:00:00Z"
@@ -4565,7 +4589,14 @@ class MessageRepository @Inject constructor(
     internal suspend fun cachedChatImage(source: String, identity: conectate.com.core.media.StorageReadIdentity): String? {
         conectate.com.core.media.StorageReadSession.requireCurrent(identity)
         if (currentSessionUserId() != identity.accountId.trim().lowercase()) return null
-        return offlineMediaCache.resolveCachedUri(source, retain = true).also {
+        // The retained original also serves its preview variant offline. Thumbnail
+        // parameters intentionally have different cache keys, so try both explicitly.
+        val original = UbuntuStorageUrl.originalObjectUrl(source)
+        val cached = offlineMediaCache.resolveCachedUri(source)
+            ?: original?.takeIf { it != source }?.let {
+                offlineMediaCache.resolveCachedUri(it)
+            }
+        return cached.also {
             conectate.com.core.media.StorageReadSession.requireCurrent(identity)
         }
     }
@@ -4576,6 +4607,29 @@ class MessageRepository @Inject constructor(
             if (conectate.com.core.media.StorageReadSession.snapshot()?.identity != identity ||
                 currentSessionUserId() != identity.accountId.trim().lowercase()) return@launch
             mediaResolver.getPlayableUrl(original, allowOfflineMediaCache = true)
+        }
+    }
+
+    internal fun retainLoadedChatPreview(
+        source: String,
+        identity: conectate.com.core.media.StorageReadIdentity,
+        drawable: android.graphics.drawable.Drawable
+    ) {
+        val original = UbuntuStorageUrl.originalObjectUrl(source) ?: return
+        // Flatten only transformed previews; retain original animated WebP/GIF bytes.
+        if (UbuntuStorageUrl.stableCacheKey(source) == UbuntuStorageUrl.stableCacheKey(original)) return
+        val bitmap = (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: return
+        if (bitmap.width > 1920 || bitmap.height > 1920) return
+        scope.launch {
+            if (conectate.com.core.media.StorageReadSession.snapshot()?.identity != identity ||
+                currentSessionUserId() != identity.accountId.trim().lowercase()) return@launch
+            if (offlineMediaCache.resolveCachedUri(source, retain = true) != null) return@launch
+            val bytes = java.io.ByteArrayOutputStream().use { output ->
+                if (!bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)) return@launch
+                output.toByteArray()
+            }
+            if (conectate.com.core.media.StorageReadSession.snapshot()?.identity != identity) return@launch
+            offlineMediaCache.storeLoadedPreview(source, bytes, identity.accountId)
         }
     }
 

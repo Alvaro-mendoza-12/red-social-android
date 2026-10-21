@@ -23,6 +23,8 @@ class ConversationDraftComposerTest {
         assertEquals("restaurado", composer.text.value)
         composer.updateText("pendiente")
         val failed = composer.beginSend()!!
+        assertEquals("", composer.text.value)
+        assertEquals("pendiente", stored) // Survives process death before local acceptance.
         composer.finished(failed)
         assertEquals("pendiente", stored)
         val queued = composer.beginSend()!!

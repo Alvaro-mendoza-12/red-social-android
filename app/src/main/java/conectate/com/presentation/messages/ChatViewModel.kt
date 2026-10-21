@@ -630,8 +630,7 @@ class ChatViewModel @Inject constructor(
                 val otherUser = base.otherUser
                 val currentUser = base.currentUser
 
-                val sorted = messages.sortedBy { it.sortKey }
-                
+                // The repository already reconciles and orders history off the main thread.
                 val enrichedChat = (chatMeta ?: initialChat).copy(
                     is_group = group?.is_member != null || initialChat.is_group
                 )
@@ -639,7 +638,7 @@ class ChatViewModel @Inject constructor(
                 val isMember = if (enrichedChat.is_group) (group?.is_member ?: false) else true
                 
                 ChatUiState.Success(
-                    messages = sorted,
+                    messages = messages,
                     otherUser = otherUser,
                     currentUser = currentUser,
                     chat = enrichedChat,

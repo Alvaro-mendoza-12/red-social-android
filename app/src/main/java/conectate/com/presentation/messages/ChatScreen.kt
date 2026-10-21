@@ -180,6 +180,7 @@ fun ChatScreen(
     var selectedForwardUsers by remember { mutableStateOf<Set<String>>(emptySet()) }
     
     val currentUserId = viewModel.getCurrentUserId() ?: ""
+    val currentUserEmail = remember(currentUserId) { viewModel.getCurrentUserEmail() }
     LaunchedEffect(currentUserId) { markersViewModel.refresh() }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -1310,7 +1311,7 @@ fun ChatScreen(
                                     senderEmail = if (message.sender_id != currentUserId) {
                                         state.otherUser?.email 
                                     } else {
-                                        viewModel.getCurrentUserEmail()
+                                        state.currentUser?.email ?: currentUserEmail
                                     },
                                     isVerified = if (message.sender_id == currentUserId) {
                                         state.currentUser?.is_verified ?: false

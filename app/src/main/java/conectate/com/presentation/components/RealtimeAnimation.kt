@@ -1,6 +1,7 @@
 package conectate.com.presentation.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -21,10 +22,21 @@ fun rememberRealtimeProgress(
     running: Boolean = true,
     repeat: Boolean = false,
 ): Float {
-    var progress by remember(key) { mutableFloatStateOf(0f) }
+    return rememberRealtimeProgressState(key, durationMillis, running, repeat).value
+}
+
+/** Consumers can read progress during drawing instead of recomposing on every frame. */
+@Composable
+fun rememberRealtimeProgressState(
+    key: Any?,
+    durationMillis: Long,
+    running: Boolean = true,
+    repeat: Boolean = false,
+): State<Float> {
+    val progress = remember(key) { mutableFloatStateOf(0f) }
 
     LaunchedEffect(key, durationMillis, running, repeat) {
-        progress = 0f
+        progress.floatValue = 0f
         if (!running) return@LaunchedEffect
 
         val safeDurationNanos = durationMillis.coerceAtLeast(1L) * 1_000_000L
@@ -32,13 +44,13 @@ fun rememberRealtimeProgress(
         do {
             withFrameNanos { frameTime ->
                 val elapsed = (frameTime - startedAt).coerceAtLeast(0L)
-                progress = if (repeat) {
+                progress.floatValue = if (repeat) {
                     (elapsed % safeDurationNanos).toFloat() / safeDurationNanos.toFloat()
                 } else {
                     (elapsed.toFloat() / safeDurationNanos.toFloat()).coerceIn(0f, 1f)
                 }
             }
-        } while (repeat || progress < 1f)
+        } while (repeat || progress.floatValue < 1f)
     }
 
     return progress

@@ -18,6 +18,20 @@ import org.junit.Test
 
 class ChatMediaOfflineCacheTest {
 
+    @Test fun `loaded previews persist without a network request and reject another account`() = runBlocking {
+        withTemporaryDirectory { root ->
+            val source = "https://cdn.example.test/chat-media/photo.jpg?width=1080"
+            val first = cache(root, accountId = "first")
+            val bytes = byteArrayOf(1, 2, 3, 4)
+            assertTrue(first.storeLoadedPreview(source, bytes, "first"))
+            val file = File(java.net.URI(requireNotNull(first.resolveCachedUri(source))))
+            assertTrue(bytes.contentEquals(file.readBytes()))
+            val second = cache(root, accountId = "second")
+            assertTrue(!second.storeLoadedPreview(source, bytes, "first"))
+            assertNull(second.resolveCachedUri(source))
+        }
+    }
+
     @Test
     fun `opened image is available through a durable account scoped file URI`() = runBlocking {
         withTemporaryDirectory { root ->
