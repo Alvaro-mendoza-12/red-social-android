@@ -99,7 +99,7 @@ class PostRepository @Inject constructor(
     // The feed must remain useful when the API is slow or temporarily offline.
     // Keep metadata account-scoped so one signed-in account never sees another
     // account's personalized state on the same device.
-    private val localFeedCache by lazy(LazyThreadSafetyMode.NONE) {
+    private val localFeedCache by lazy {
         context.getSharedPreferences("social_feed_metadata_cache", Context.MODE_PRIVATE)
     }
     private val _mutationEvents = MutableSharedFlow<PostMutationEvent>(extraBufferCapacity = 32)
@@ -148,8 +148,8 @@ class PostRepository @Inject constructor(
         return "$mode:$accountId"
     }
 
-    private fun readLocalFeed(mode: String): List<Post> = runCatching {
-        localFeedCache.getString(localFeedKey(mode), null)
+    private fun readLocalFeed(mode: String, ownerId: String? = authService.getCurrentUserId()): List<Post> = runCatching {
+        localFeedCache.getString(localFeedKey(mode, ownerId), null)
             ?.let { cacheJson.decodeFromString<List<Post>>(it) }
             .orEmpty()
     }.getOrDefault(emptyList())
@@ -166,10 +166,12 @@ class PostRepository @Inject constructor(
     }
 
     /** Returns the last usable feed snapshot without touching the network. */
-    fun getCachedGlobalPosts(mode: String = "discover"): List<Post> {
+    suspend fun getCachedGlobalPosts(mode: String = "discover"): List<Post> {
         val normalizedMode = mode.trim().lowercase().takeIf { it in setOf("discover", "following") }
             ?: "discover"
-        return readLocalFeed(normalizedMode)
+        return conectate.com.core.cache.readLocalAccountSnapshot(authService::getCurrentUserId) { owner ->
+            readLocalFeed(normalizedMode, owner)
+        }.orEmpty()
     }
 
     suspend fun searchPublicContent(
