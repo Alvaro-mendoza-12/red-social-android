@@ -56,7 +56,7 @@ internal fun AnonymousConversation(
     val audioPicker = rememberInAppDocumentPicker { uri -> uri?.let { onSendMedia(it, "audio") } }
     val listState = rememberLazyListState()
     LaunchedEffect(session.id, messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+        if (messages.isNotEmpty()) listState.animateScrollToItem(0)
     }
     val unlockStatus = when {
         session.messageCount >= 12 -> "Chat normal desbloqueado"
@@ -135,11 +135,12 @@ internal fun AnonymousConversation(
         HorizontalDivider()
         LazyColumn(
             state = listState,
+            reverseLayout = true,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(messages, key = { it.id.ifBlank { it.clientMessageId } }) { message -> AnonymousMessageBubble(message) }
+            items(messages.asReversed(), key = { it.id.ifBlank { it.clientMessageId } }) { message -> AnonymousMessageBubble(message) }
         }
         Surface(tonalElevation = 2.dp) {
             Row(

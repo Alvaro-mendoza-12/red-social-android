@@ -75,9 +75,9 @@ class RaffleWheelUiTest {
         val submitted = AtomicReference<List<String>?>()
         val manual = AtomicReference<List<String>?>()
         compose.setContent { MaterialTheme {
-            CreateRaffleForm(RafflesUiState(members = members, totalMembers = 2, membersComplete = true, canManage = false, canCreate = true)) { name, _, selected, manuals, start ->
+            CreateRaffleForm(RafflesUiState(members = members, totalMembers = 2, membersComplete = true, canManage = false, canCreate = true), onCreate = { name, _, selected, manuals, start ->
                 assertEquals("Equipos QA", name); assertFalse(start); submitted.set(selected); manual.set(manuals)
-            }
+            })
         } }
         compose.onNodeWithText("Nombre del sorteo").performTextInput("Equipos QA")
         androidx.test.espresso.Espresso.closeSoftKeyboard()

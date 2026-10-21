@@ -13,6 +13,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
@@ -60,7 +62,7 @@ class AnonymousConversationLayoutTest {
         compose.onNodeWithContentDescription("Enviar").performClick()
         assertEquals("Hola", sent)
         assertEquals(1, sends)
-        compose.onNode(hasSetTextAction()).assertTextEquals("")
+        compose.onNode(hasSetTextAction()).assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
         compose.onNodeWithContentDescription("Enviar").assertIsNotEnabled()
         saveScreen("large-text")
     }
