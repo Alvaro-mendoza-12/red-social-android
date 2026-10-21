@@ -168,6 +168,11 @@
                 android:resource="@xml/novvin_quick_actions_widget_info" />
         </receiver>
 
+        <receiver android:name=".widgets.NovvinMinimalActionsWidgetProvider" android:label="@string/widget_minimal_actions_title" android:exported="true" android:permission="android.permission.BIND_APPWIDGET">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/novvin_minimal_actions_widget_info" />
+        </receiver>
+
         <receiver android:name=".widgets.NovvinChatWidgetProvider" android:label="@string/widget_chat_title" android:exported="true" android:permission="android.permission.BIND_APPWIDGET">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/novvin_chat_widget_info" />

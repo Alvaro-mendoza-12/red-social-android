@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_destination_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="8dp" android:background="@drawable/widget_novvin_background">
+    <ImageView android:id="@+id/widget_destination_icon" android:layout_width="48dp" android:layout_height="48dp"
+        android:layout_gravity="center" android:padding="12dp" android:contentDescription="@null"
+        android:src="@drawable/widget_icon_messages" />
+</FrameLayout>
