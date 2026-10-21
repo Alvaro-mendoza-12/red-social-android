@@ -3,6 +3,17 @@ import {ChatAttachmentPreview,type AttachmentDraft} from '../../components/ChatA
 jest.mock('../../components/SpellingSuggestions',()=>({SpellingSuggestions:()=>null}))
 jest.mock('../../components/StreamingMedia',()=>({StreamingImage:(props:object)=><img {...props}/>,StreamingVideo:(props:object)=><video {...props}/>}))
 const make=(id:string):AttachmentDraft=>({id,file:new File(['image'],id+'.png',{type:'image/png'}),contentType:'image',previewUrl:'blob:'+id,caption:''})
+
+test('compact icon controls retain accessible names when their text is hidden',()=>{
+ const onEdit=jest.fn(),onToggleSticker=jest.fn()
+ const {container}=render(<ChatAttachmentPreview items={[make('compact')]} draft="" busy={false} preparing={false} status="" onCaption={jest.fn()} onRemove={jest.fn()} onClose={jest.fn()} onAdd={jest.fn()} onEdit={onEdit} onToggleSticker={onToggleSticker} onSend={jest.fn()}/>)
+ container.querySelectorAll<HTMLElement>('nav button span').forEach(label=>{label.style.display='none'})
+ fireEvent.click(screen.getByRole('button',{name:'Editar'}))
+ fireEvent.click(screen.getByRole('button',{name:'Enviar como sticker'}))
+ expect(onEdit).toHaveBeenCalledWith('compact')
+ expect(onToggleSticker).toHaveBeenCalledWith('compact')
+ container.querySelectorAll('nav svg').forEach(icon=>expect(icon).toHaveAttribute('aria-hidden','true'))
+})
 test('preview selection, adding and removing files never sends automatically',()=>{
  const onSend=jest.fn(event=>event.preventDefault()),onRemove=jest.fn(),onEdit=jest.fn(),onToggleSticker=jest.fn(),onClose=jest.fn()
  const props={items:[make('first')],draft:'',busy:false,preparing:false,status:'',onCaption:jest.fn(),onRemove,onClose,onAdd:jest.fn(),onEdit,onToggleSticker,onSend}
