@@ -1,13 +1,12 @@
 package conectate.com.widgets
 
-import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.util.SizeF
 import android.widget.RemoteViews
-import conectate.com.MainActivity
 import conectate.com.R
 
 abstract class NovvinDestinationWidgetProvider : AppWidgetProvider() {
@@ -18,24 +17,23 @@ abstract class NovvinDestinationWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         ids.forEach { widgetId ->
-            val views = RemoteViews(context.packageName, R.layout.widget_novvin_destination)
-            views.setTextViewText(R.id.widget_destination_title, context.getString(titleRes))
-            views.setTextViewText(R.id.widget_destination_subtitle, context.getString(subtitleRes))
-            views.setImageViewResource(R.id.widget_destination_icon, iconRes)
-            views.setOnClickPendingIntent(R.id.widget_destination_root, openDestination(context, widgetId))
+            fun render(layout: DestinationWidgetLayout) = destinationWidgetViews(context, layout,
+                destination, titleRes, subtitleRes, iconRes, widgetId)
+            val options = manager.getAppWidgetOptions(widgetId)
+            val views = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) RemoteViews(mapOf(
+                SizeF(64f, 64f) to render(DestinationWidgetLayout.ICON),
+                SizeF(170f, 64f) to render(DestinationWidgetLayout.ROW),
+                SizeF(170f, 132f) to render(DestinationWidgetLayout.CARD),
+            )) else render(destinationWidgetLayout(
+                options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 170),
+                options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 64)))
             manager.updateAppWidget(widgetId, views)
         }
     }
 
-    private fun openDestination(context: Context, requestCode: Int): PendingIntent {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("conectate://$destination"), context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        return PendingIntent.getActivity(
-            context,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+    override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager,
+        appWidgetId: Int, newOptions: Bundle) {
+        onUpdate(context, manager, intArrayOf(appWidgetId))
     }
 }
 
