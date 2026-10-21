@@ -18,9 +18,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -66,6 +65,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -92,7 +92,6 @@ import conectate.com.presentation.common.AppFeedbackBus
 import conectate.com.presentation.messages.getBestCurrentLocation
 import conectate.com.presentation.messages.hasLocationPermission
 import conectate.com.presentation.messages.isDeviceLocationEnabled
-import conectate.com.presentation.messages.StickerPickerDialog
 import conectate.com.presentation.navigation.Screen
 import coil.compose.AsyncImage
 import conectate.com.presentation.components.FullScreenImageDialog
@@ -121,7 +120,7 @@ fun ProximityScreen(
     val normalChatPeerBySession by viewModel.normalChatPeerBySession.collectAsState()
     val bottleInboxStatus by viewModel.bottleInboxStatus.collectAsState()
 
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var radiusSlider by remember(radiusKm) { mutableFloatStateOf(radiusKm.toFloat()) }
     var localError by remember { mutableStateOf<String?>(null) }
     var pendingLocationRequest by remember { mutableStateOf(false) }
@@ -198,32 +197,37 @@ fun ProximityScreen(
         }
     }
 
+    val conversationOpen = selectedTab == 1 && session != null
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Conectar") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
+            if (!conversationOpen) {
+                TopAppBar(
+                    title = { Text("Conectar") },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            PrimaryTabRow(selectedTabIndex = selectedTab) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("Radar") },
-                    icon = { Icon(Icons.Default.MyLocation, contentDescription = null) }
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text("Botella al mar") },
-                    icon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) }
-                )
+        Column(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+            if (!conversationOpen) {
+                PrimaryTabRow(selectedTabIndex = selectedTab) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("Radar") },
+                        icon = { Icon(Icons.Default.MyLocation, contentDescription = null) }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("Botella al mar") },
+                        icon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) }
+                    )
+                }
             }
             if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
 
@@ -865,196 +869,6 @@ private fun AnonymousSessionRow(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AnonymousConversation(
-    session: AnonymousChatSession,
-    messages: List<AnonymousChatMessage>,
-    onSend: (String) -> Unit,
-    onSendSticker: (String?, String) -> Unit,
-    onSendMedia: (android.net.Uri, String) -> Unit,
-    onEnd: () -> Unit,
-    onBack: () -> Unit,
-    normalChatPeerId: String?,
-    onOpenProfile: (String) -> Unit,
-    onOpenNormalChat: (String) -> Unit,
-) {
-    var draft by remember { mutableStateOf("") }
-    var showStickerPicker by remember { mutableStateOf(false) }
-    val imagePicker = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
-        uri?.let { onSendMedia(it, "image") }
-    }
-    val audioPicker = conectate.com.presentation.documents.rememberInAppDocumentPicker() { uri ->
-        uri?.let { onSendMedia(it, "audio") }
-    }
-    val listState = rememberLazyListState()
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
-    }
-    if (showStickerPicker) {
-        StickerPickerDialog(
-            onDismiss = { showStickerPicker = false },
-            onStickerSelected = { sticker ->
-                onSendSticker(sticker.media_url, sticker.title.ifBlank { "Sticker" })
-                showStickerPicker = false
-            }
-        )
-    }
-    var confirmEnd by remember(session.id) { mutableStateOf(false) }
-    if (confirmEnd) AlertDialog(
-        onDismissRequest = { confirmEnd = false },
-        title = { Text("¿Terminar esta conversación?") },
-        text = { Text("Se cerrará para ambos. Para conservarla y volver después, usa la flecha de volver.") },
-        confirmButton = { TextButton(onClick = { confirmEnd = false; onEnd() }) { Text("Terminar") } },
-        dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Conservar chat") } },
-    )
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver a chats anónimos")
-            }
-            if (session.peer.avatarUrl != null) {
-                CircularProfileImage(ownerId = session.peer.userId, imageUrl = session.peer.avatarUrl, size = 44.dp, showBorder = true)
-            } else {
-                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                    Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.padding(10.dp))
-                }
-            }
-            Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(session.peer.displayName, fontWeight = FontWeight.Bold)
-                Text(
-                    "Confianza: ${session.friendshipPercent}% · Identidad: ${session.peerRevealLevel}/3",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            IconButton(onClick = { confirmEnd = true }) {
-                Icon(Icons.Default.Cancel, contentDescription = "Finalizar chat")
-            }
-        }
-        LinearProgressIndicator(
-            progress = { session.friendshipPercent / 100f },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-        )
-            Text(
-                when {
-                session.messageCount >= 12 -> "Chat normal desbloqueado"
-                anonymousMediaUnlocked(session.messageCount, "image") -> "Fotos desbloqueadas · falta compartir el perfil"
-                anonymousMediaUnlocked(session.messageCount, "sticker") -> "Stickers desbloqueados · faltan fotos"
-                anonymousMediaUnlocked(session.messageCount, "audio") -> "Audios desbloqueados · faltan stickers y fotos"
-                else -> "Sigan conversando y compartiendo identidad para desbloquear opciones"
-            },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        if (session.peer.interests.isNotEmpty() || session.peer.hobbies.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                (session.peer.interests + session.peer.hobbies).take(3).forEach { item ->
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ) {
-                        Text(
-                            text = item,
-                            maxLines = 1,
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        )
-                    }
-                }
-            }
-        }
-        session.peer.userId?.let { userId ->
-            OutlinedButton(
-                onClick = { onOpenProfile(userId) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("Ver perfil compartido")
-            }
-        }
-        normalChatPeerId?.let { userId ->
-            Button(
-                onClick = { onOpenNormalChat(userId) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                Text("Continuar en chats")
-            }
-        }
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(messages, key = { it.id.ifBlank { it.clientMessageId } }) { message ->
-                AnonymousMessageBubble(message)
-            }
-        }
-        if (anonymousMediaUnlocked(session.messageCount, "audio")) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                AssistChip(
-                    onClick = { audioPicker.launch("audio/*") },
-                    leadingIcon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
-                    label = { Text("Audio") }
-                )
-                if (anonymousMediaUnlocked(session.messageCount, "sticker")) {
-                    AssistChip(
-                        onClick = { showStickerPicker = true },
-                        leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null) },
-                        label = { Text("Sticker") }
-                    )
-                }
-                if (anonymousMediaUnlocked(session.messageCount, "image")) {
-                    AssistChip(
-                        onClick = { imagePicker.launch("image/*") },
-                        leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
-                        label = { Text("Foto") }
-                    )
-                }
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(10.dp),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it.take(1000) },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Mensaje") },
-                maxLines = 4
-            )
-            Spacer(Modifier.width(8.dp))
-            IconButton(
-                enabled = draft.isNotBlank(),
-                onClick = {
-                    val content = draft.trim()
-                    draft = ""
-                    onSend(content)
-                }
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
             }
         }
     }
