@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
@@ -22,6 +23,7 @@ import conectate.com.data.localfallback.AnonymousChatMessage
 import conectate.com.data.localfallback.AnonymousChatSession
 import conectate.com.data.localfallback.AnonymousPeer
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -70,6 +72,20 @@ class AnonymousConversationLayoutTest {
         compose.onNodeWithText("Confianza: 100% · Identidad: 3/3").assertIsDisplayed()
         compose.onNodeWithText("Ver perfil compartido").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Continuar en chats").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun realKeyboardResizesTheConversationWithoutFlatteningTheInput() {
+        val keyboardBottom = AtomicInteger(0)
+        compose.setContent { MaterialTheme {
+            val bottom = WindowInsets.ime.getBottom(LocalDensity.current)
+            SideEffect { keyboardBottom.set(bottom) }
+            Conversation()
+        } }
+        compose.onNode(hasSetTextAction()).performClick()
+        compose.waitUntil(20_000) { keyboardBottom.get() > 0 }
+        compose.onNode(hasSetTextAction()).assertIsDisplayed().assertHeightIsAtLeast(56.dp)
+        compose.onNodeWithText("Último mensaje").assertIsDisplayed()
+        saveScreen("keyboard-open")
     }
 
     @Composable private fun CompactViewport(fontScale: Float = 1f, content: @Composable () -> Unit) {
