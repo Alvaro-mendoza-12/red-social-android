@@ -9,6 +9,20 @@ internal data class WebTextLink(val start: Int, val end: Int, val url: String)
 
 private val webTextPattern: Pattern = Pattern.compile(Patterns.WEB_URL.pattern(), Pattern.CASE_INSENSITIVE)
 
+/** Email spans are separate from web addresses so their domains are never linked twice. */
+internal fun findMessageTextLinks(text: String): List<WebTextLink> {
+    val web = findWebTextLinks(text)
+    val emails = buildList {
+        val matcher = Patterns.EMAIL_ADDRESS.matcher(text)
+        while (matcher.find()) {
+            if (web.none { matcher.start() < it.end && matcher.end() > it.start }) {
+                add(WebTextLink(matcher.start(), matcher.end(), "mailto:${matcher.group()}"))
+            }
+        }
+    }
+    return (emails + web).sortedBy { it.start }
+}
+
 /** Keeps sentence punctuation outside the link and normalizes bare web addresses. */
 internal fun findWebTextLinks(text: String): List<WebTextLink> {
     val matcher = webTextPattern.matcher(text)

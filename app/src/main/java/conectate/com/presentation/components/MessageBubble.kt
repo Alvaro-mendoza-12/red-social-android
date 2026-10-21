@@ -700,13 +700,14 @@ fun MessageBubble(
                     LaunchedEffect(mediaRequestFailed, mediaRequestAttempt) {
                         if (mediaRequestFailed && mediaRequestAttempt == 0) { kotlinx.coroutines.delay(350); mediaRequestAttempt++ }
                     }
+                    val previewSource = MediaImageRequestFactory.chatPreviewSource(message.media_url, resolvedUrl)
                     val mediaPreviewRequest = remember(
                         mediaRequestAttempt,
-                        resolvedUrl,
+                        previewSource,
                         message.media_url,
                         message.content_type
                     ) {
-                        val source = resolvedUrl ?: message.media_url
+                        val source = previewSource
                         if (message.content_type == "sticker" || message.content_type == "gif") {
                             MediaImageRequestFactory.animated(context, source)
                         } else {
@@ -817,7 +818,7 @@ fun MessageBubble(
                         ) {
                         if (!message.media_url.isNullOrBlank()) {
                                 StickerArtwork(
-                                    url = resolvedUrl ?: message.media_url,
+                                    url = previewSource,
                                     thumbnailUrl = message.thumbnail_url,
                                     description = "Sticker",
                                     modifier = Modifier.fillMaxSize(),

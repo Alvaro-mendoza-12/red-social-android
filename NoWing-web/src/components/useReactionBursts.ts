@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 export type ReactionParticle = { id: string; emoji: string }
+export const REACTION_FLIGHT_MS = 5_800
 export function useReactionBursts(scope: string) {
   const [state, setState] = useState<{ scope: string; items: ReactionParticle[] }>({ scope, items: [] })
   const timers = useRef(new Set<number>()), seen = useRef(new Set<string>())
@@ -15,7 +16,7 @@ export function useReactionBursts(scope: string) {
     const timer = window.setTimeout(() => {
       setState(current => current.scope === scope ? { scope, items: current.items.filter(value => value.id !== item.id) } : current)
       timers.current.delete(timer)
-    }, 3100)
+    }, REACTION_FLIGHT_MS + 150)
     timers.current.add(timer)
   }, [scope])
   return useMemo(() => ({ items: state.scope === scope ? state.items : [], add }), [state, scope, add])

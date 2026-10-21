@@ -190,7 +190,7 @@ private fun MessageMediaClusterTile(
 
         value = onResolveUrl(rawUrl) ?: rawUrl
     }
-    val imageUrl = UbuntuStorageUrl.rewrite(resolvedUrl ?: message.media_url)
+    val imageUrl = MediaImageRequestFactory.chatPreviewSource(message.media_url, resolvedUrl)
     val imageRequest = androidx.compose.runtime.remember(context, imageUrl) {
         MediaImageRequestFactory.preview(context, imageUrl)
     }

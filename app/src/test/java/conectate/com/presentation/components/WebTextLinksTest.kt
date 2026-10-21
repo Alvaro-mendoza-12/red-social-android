@@ -10,6 +10,11 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class WebTextLinksTest {
+    @Test fun emailsAreClickableWithoutSplittingWebUrlsContainingEmails() {
+        val links = findMessageTextLinks("Escribe a hola+app@example.org o visita https://example.org/user@example.net")
+        assertEquals(listOf("mailto:hola+app@example.org", "https://example.org/user@example.net"), links.map { it.url })
+    }
+
     @Test fun recognizesMultipleLinksAndAddsHttpsToBareDomains() {
         val text = "Mira https://example.org/a?q=1 y www.example.com o example.net."
         val links = findWebTextLinks(text)

@@ -1,3 +1,4 @@
 .message-rich-text .message-text-collapsed{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:8;line-clamp:8;overflow:hidden;max-height:13em}
 .message-rich-text .message-text-more{display:block;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;font-size:.82rem;padding:6px 0;cursor:pointer;text-decoration:underline;text-underline-offset:3px;min-height:32px}
 .message-rich-text .message-text-more:focus-visible{outline:2px solid var(--accent,#16c9cf);outline-offset:2px;border-radius:4px}
+.message-rich-text p a{color:var(--message-link-color,#60a5fa);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}

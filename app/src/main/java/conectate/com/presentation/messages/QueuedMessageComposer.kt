@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Keeps the draft until durable local storage accepts it, independently of HTTP delivery.
+ * Clears the visible input at submission, keeping the stored draft until local acceptance.
  * All calls, including the repository's onQueued callback, must run on the main thread.
  */
 @MainThread
@@ -77,6 +77,12 @@ internal class QueuedMessageComposer<Reply> {
     fun beginSend(forcedContent: String? = null): Submission<Reply>? {
         val content = forcedContent ?: text.value
         if (content.isBlank() || enqueuing != null) return null
+        if (forcedContent == null) {
+            // Do not wait for validation, translation or disk before clearing the input.
+            // Keep the persisted draft until queued(), so process death cannot lose it.
+            textRevision++
+            mutableText.value = ""
+        }
         return Submission(
             content, reply.value, textRevision, replyRevision, forcedContent == null
         ).also { enqueuing = it }
@@ -90,14 +96,16 @@ internal class QueuedMessageComposer<Reply> {
         if (replyRevision == submission.replyRevision) updateReply(null)
     }
 
-    /** A pre-queue failure leaves the draft intact. A delivery result never rewrites it. */
+    /** Restore a rejected submission only if the user has not started a newer draft. */
     fun finished(submission: Submission<Reply>) {
-        if (enqueuing === submission) enqueuing = null
+        if (enqueuing !== submission) return
+        enqueuing = null
+        if (submission.consumesDraft && textRevision == submission.textRevision) updateText(submission.text)
     }
 
     /** Detach pending callbacks when changing account, conversation or channel. */
     fun invalidatePendingSend() {
-        enqueuing = null
+        enqueuing?.let(::finished)
         textRevision++
         replyRevision++
     }

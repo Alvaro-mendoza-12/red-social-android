@@ -21,11 +21,17 @@ import kotlin.math.sin
 /** A luminous beat, a launch ring and independent sparkles; never changes the reaction count. */
 @Composable
 fun AnimatedReactionArt(emoji: String, progress: Float, seed: Int, modifier: Modifier = Modifier) {
+    AnimatedReactionArt(emoji, { progress }, seed, modifier)
+}
+
+@Composable
+fun AnimatedReactionArt(emoji: String, progress: () -> Float, seed: Int, modifier: Modifier = Modifier) {
     val heart = emoji in setOf("❤️", "❤", "heart", "like")
     val colors = listOf(Color(0xFFFF4E91), Color(0xFFA679FF), Color(0xFFFF6E77), Color(0xFFEF73C2))
     val color = colors[(seed and Int.MAX_VALUE) % colors.size]
     Box(modifier, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
+            val progress = progress()
             val c = center; val u = size.minDimension
             val ring = (progress / .26f).coerceIn(0f, 1f)
             if (ring < 1f) drawCircle(color.copy(alpha = (1-ring)*.65f), u*(.12f+ring*.47f), c, style = Stroke(u*.025f))
@@ -45,6 +51,7 @@ fun AnimatedReactionArt(emoji: String, progress: Float, seed: Int, modifier: Mod
             }
         }
         if (!heart) Text(emoji, fontSize = 31.sp, modifier = Modifier.graphicsLayer {
+            val progress = progress()
             rotationZ = sin(progress*PI.toFloat()*if(emoji=="👏") 16 else 5)*if(emoji=="👏") 9f else 5f
             scaleX = 1f + sin(progress*PI.toFloat()*6)*.055f;scaleY=1f-sin(progress*PI.toFloat()*6)*.035f
         })

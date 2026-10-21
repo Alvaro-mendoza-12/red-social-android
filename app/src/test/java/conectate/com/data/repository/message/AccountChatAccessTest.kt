@@ -17,6 +17,31 @@ import org.junit.Test
 class AccountChatAccessTest {
     private fun chat(owner: String = "a", id: String = "chat") = Chat(id = id, participants = listOf(owner, "person"))
 
+    @Test fun `preview and read changes do not restart history but membership still does`() = runTest {
+        val accounts = MutableStateFlow<String?>("a")
+        val chats = MutableStateFlow<Chat?>(chat())
+        var subscriptions = 0
+        val visible = mutableListOf<List<String>>()
+        val job = launch {
+            accountScopedChatFlow(accounts, chats.distinctHistoryAccess(), { accounts.value }, emptyList<String>()) { _, _ ->
+                subscriptions++
+                flowOf(listOf("saved-message"))
+            }.collect { visible += it }
+        }
+        runCurrent()
+        chats.value = chat().copy(last_message_at = "2026-10-20T12:00:00Z")
+        runCurrent()
+        assertEquals(1, subscriptions)
+        assertEquals(listOf("saved-message"), visible.last())
+        chats.value = chat("other")
+        runCurrent()
+        assertTrue(visible.last().isEmpty())
+        chats.value = chat()
+        runCurrent()
+        assertEquals(2, subscriptions)
+        job.cancel()
+    }
+
     @Test fun `known account chat opens without touching network`() = runTest {
         var remoteCalls = 0
         val reader = AccountChatReader({ chat(" A ") }, { null }, { remoteCalls++; Result.failure(Exception("offline")) })

@@ -326,7 +326,7 @@ fun MediaGridItem(
             ?.takeIf(String::isNotBlank)
             ?: rawUrl
     }
-    val displayUrl = UbuntuStorageUrl.rewrite(resolvedUrl)
+    val displayUrl = MediaImageRequestFactory.chatPreviewSource(rawUrl, resolvedUrl)
     var requestAttempt by remember(displayUrl) { mutableIntStateOf(0) }
     var requestFailed by remember(displayUrl, requestAttempt) { mutableStateOf(false) }
     val imageRequest = remember(context, displayUrl, requestAttempt) {

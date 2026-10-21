@@ -1,5 +1,25 @@
 import { normalizeClipboardFiles, clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, pastedAsSticker, canPasteIntoChat, isStickerImage, isCopiedStickerImage } from '../../core/chatClipboard'
 
+test('prefers original animated sticker bytes over a clipboard PNG preview', async () => {
+ const png = new File(['preview'], 'image.png', {type:'image/png'})
+ const data = {files:[png],items:[],types:['Files','text/html'],getData:()=>'<img alt="Sticker">'} as unknown as DataTransfer
+ const getType = jest.fn(async (type:string)=>new Blob([type==='image/webp'?'RIFF0000WEBPanimated':'png'],{type}))
+ const clipboard = {read:async()=>[{types:['image/png','image/webp'],getType}]} as unknown as Clipboard
+ const files = await readClipboardImages(data,clipboard)
+ expect(files).toHaveLength(1)
+ expect(files[0].type).toBe('image/webp')
+ expect(getType).toHaveBeenCalledTimes(1)
+ expect(getType).toHaveBeenCalledWith('image/webp')
+ expect(files[0].size).toBe(20)
+})
+
+test('a denied clipboard permission keeps the paste-event image available', async () => {
+ const png = new File(['preview'],'image.png',{type:'image/png'})
+ const data = {files:[png],items:[],types:['Files','text/html'],getData:()=>'<img alt="Sticker">'} as unknown as DataTransfer
+ const clipboard = {read:async()=>{throw new Error('denied')}} as unknown as Clipboard
+ expect(await readClipboardImages(data,clipboard)).toEqual([png])
+})
+
 test('accepts file data and items-only clipboard payloads without duplicates', () => {
   const file = new File(['sticker'], 'sticker.webp', { type: 'image/webp' })
   const data = { files: [file], items: [{ kind: 'file', getAsFile: () => file }] } as unknown as DataTransfer

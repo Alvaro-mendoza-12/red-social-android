@@ -1,4 +1,5 @@
 import { ReactionCloud } from '../../components/ReactionCloud'
+import { REACTION_FLIGHT_MS } from '../../components/useReactionBursts'
 import { useLiveSfu } from './useLiveSfu'
 import { claimInteractiveMediaSession, releaseInteractiveMediaSession, useInteractiveMediaSession } from '../../core/interactiveMediaSession'
 import { MediaSessionConflict } from '../../components/MediaSessionConflict'
@@ -591,7 +592,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
         socket.on('reaction', (payload) => {
           const reaction = { id: payload.reactionId || crypto.randomUUID(), emoji: liveReactionEmoji(payload) }
           setReactions((current) => current.some(item => item.id === reaction.id) ? current : [...current.slice(-23), reaction])
-          window.setTimeout(() => setReactions((current) => current.filter((item) => item.id !== reaction.id)), 3000)
+          window.setTimeout(() => setReactions((current) => current.filter((item) => item.id !== reaction.id)), REACTION_FLIGHT_MS + 150)
         })
         socket.on('offer', (payload) => {
           if (sfuAvailable || !payload.sender || !payload.offer) return
@@ -689,7 +690,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
     if (!socketRef.current?.connected) return
     const id = crypto.randomUUID()
     setReactions(current => [...current.slice(-23), {id, emoji}])
-    window.setTimeout(() => setReactions(current => current.filter(item => item.id !== id)), 3000)
+    window.setTimeout(() => setReactions(current => current.filter(item => item.id !== id)), REACTION_FLIGHT_MS + 150)
     socketRef.current.emit('send-reaction', { liveId: cleanLiveId, emoji, userId: user.id, reactionId: id })
   }
 

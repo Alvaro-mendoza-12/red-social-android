@@ -82,6 +82,19 @@ class StorageReadCoilOfflineTest {
         assertEquals(CachePolicy.DISABLED, chain.sent?.diskCachePolicy)
     }
 
+    @Test fun `speculative thumbnails cannot become permanently retained images`() = runBlocking {
+        install()
+        var retained = false
+        val interceptor = StorageReadCoilInterceptor(
+            retainImage = { _, _ -> retained = true },
+            retainPreview = { _, _, _ -> retained = true }
+        )
+        val request = requireNotNull(MediaImageRequestFactory.preview(context, source)).newBuilder()
+            .setParameter(MediaImageRequestFactory.PREFETCH_CHAT_IMAGE, true).build()
+        assertTrue(interceptor.intercept(Chain(request)) is SuccessResult)
+        assertFalse(retained)
+    }
+
     private class Chain(override val request: ImageRequest) : Interceptor.Chain {
         var sent: ImageRequest? = null
         override val size = Size.ORIGINAL

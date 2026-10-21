@@ -30,7 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
 import conectate.com.presentation.components.CircularProfileImage
-import conectate.com.presentation.components.rememberRealtimeProgress
+import conectate.com.presentation.components.rememberRealtimeProgressState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -709,7 +709,7 @@ fun VoiceRoomActiveScreen(
             val activeReactions by viewModel.activeReactions.collectAsState()
             Box(Modifier.fillMaxSize().padding(bottom = 12.dp), contentAlignment = Alignment.BottomCenter) {
                 activeReactions.forEach { reaction ->
-                    FloatingReaction(reaction)
+                    key(reaction.id) { FloatingReaction(reaction) }
                 }
             }
         }
@@ -2066,29 +2066,29 @@ fun ReactionPicker(
 
 @Composable
 fun FloatingReaction(reaction: ReactionEvent) {
-    val progress = rememberRealtimeProgress(
+    val progress = rememberRealtimeProgressState(
         key = reaction.id,
-        durationMillis = 5_000L
+        durationMillis = 5_800L
     )
-    val offsetY = -205f * progress
-    val opacity = if (progress < 0.68f) {
-        1f
-    } else {
-        ((1f - progress) / 0.32f).coerceIn(0f, 1f)
-    }
-    val scale = 0.94f + (0.10f * progress)
-
-    Box(
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val rise = with(density) { 360.dp.toPx() }
+    val drift = with(density) { 22.dp.toPx() }
+    val seed = reaction.id.hashCode() and Int.MAX_VALUE
+    conectate.com.presentation.components.AnimatedReactionArt(
+        emoji = reaction.emoji,
+        progress = { progress.value },
+        seed = seed,
         modifier = Modifier
-            .offset(y = offsetY.dp)
-            .graphicsLayer(
-                alpha = opacity,
-                scaleX = scale,
-                scaleY = scale
-            )
-    ) {
-        Text(reaction.emoji, style = MaterialTheme.typography.headlineLarge)
-    }
+            .size(48.dp)
+            .graphicsLayer {
+                val frame = progress.value
+                translationY = -rise * frame
+                translationX = kotlin.math.sin(frame * kotlin.math.PI.toFloat() * 2 + seed % 6) * drift
+                alpha = ((1f - frame) / .2f).coerceIn(0f, 1f)
+                scaleX = .94f + frame * .1f
+                scaleY = scaleX
+            }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

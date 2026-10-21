@@ -51,7 +51,7 @@ class QueuedMessageComposerTest {
             }
         }
         runCurrent()
-        assertEquals("Primero", composer.text.value)
+        assertEquals("", composer.text.value)
         assertNull(composer.beginSend()) // Repeated tap while saving cannot duplicate it.
 
         localSave.complete(Unit)
@@ -65,7 +65,7 @@ class QueuedMessageComposerTest {
         val second = requireNotNull(composer.beginSend())
         server.complete(Unit)
         runCurrent()
-        assertEquals("Segundo", composer.text.value)
+        assertEquals("", composer.text.value)
         assertEquals("otra respuesta", composer.reply.value)
         assertNull(composer.beginSend()) // First completion must not unlock the second save.
         composer.queued(second)
@@ -151,7 +151,7 @@ class QueuedMessageComposerTest {
         val current = requireNotNull(composer.beginSend())
         composer.queued(old)
         composer.finished(old)
-        assertEquals("Cuenta B", composer.text.value)
+        assertEquals("", composer.text.value)
         assertNull(composer.beginSend())
         composer.queued(current)
         assertEquals("", composer.text.value)

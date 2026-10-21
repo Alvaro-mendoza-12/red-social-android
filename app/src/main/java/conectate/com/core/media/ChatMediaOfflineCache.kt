@@ -172,6 +172,22 @@ internal class ChatMediaOfflineCache(
         }
     }
 
+    /** Reuses the decoded static thumbnail, without downloading it a second time. */
+    suspend fun storeLoadedPreview(source: String, bytes: ByteArray, expectedAccountId: String): Boolean = withContext(Dispatchers.IO) {
+        if (bytes.isEmpty() || bytes.size > 8 * 1024 * 1024) return@withContext false
+        val accountId = normalizedAccountId() ?: return@withContext false
+        if (accountId != expectedAccountId.trim().lowercase()) return@withContext false
+        val sourceKey = canonicalSourceKey(source) ?: return@withContext false
+        val work = synchronized(fileLock) {
+            DownloadWork(accountId, sourceKey, accountEpochs[accountId] ?: 0L, retain = true)
+        }
+        writeMutex.withLock {
+            bytes.inputStream().use { input ->
+                storeInput(work, "image/png", bytes.size.toLong(), input).isSuccess
+            }
+        }
+    }
+
     private suspend fun downloadAndStore(work: DownloadWork, remoteUrl: String) {
         downloadSlots.withPermit {
             synchronized(fileLock) {

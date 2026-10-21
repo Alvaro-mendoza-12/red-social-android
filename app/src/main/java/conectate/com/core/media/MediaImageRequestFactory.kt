@@ -7,10 +7,18 @@ import conectate.com.data.localfallback.UbuntuStorageUrl
 
 object MediaImageRequestFactory {
     internal const val OFFLINE_CHAT_IMAGE = "novvin_offline_chat_image"
+    internal const val PREFETCH_CHAT_IMAGE = "novvin_prefetch_chat_image"
     const val DEFAULT_PREVIEW_WIDTH = 1080
     const val AVATAR_PREVIEW_WIDTH = 384
     const val AVATAR_PREVIEW_QUALITY = 84
     const val MAX_FULLSCREEN_IMAGE_DIMENSION_PX = 4096
+
+    /** The image interceptor resolves account-local copies without changing the UI model. */
+    fun chatPreviewSource(source: String?, resolvedSource: String?): String? {
+        val original = UbuntuStorageUrl.rewrite(source)
+        return if (StorageReadSession.isStorageRequest(original)) original
+        else UbuntuStorageUrl.rewrite(resolvedSource ?: source)
+    }
 
     fun avatarUrl(url: String?): String? {
         val original = UbuntuStorageUrl.originalObjectUrl(url)
@@ -58,6 +66,7 @@ object MediaImageRequestFactory {
         return ImageRequest.Builder(context)
             .data(data)
             .setParameter(OFFLINE_CHAT_IMAGE, true)
+            .size(DEFAULT_PREVIEW_WIDTH, DEFAULT_PREVIEW_WIDTH)
             .memoryCacheKey(cacheKey)
             .diskCacheKey(cacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)

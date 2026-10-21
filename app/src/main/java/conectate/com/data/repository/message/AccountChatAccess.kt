@@ -16,6 +16,13 @@ internal fun Chat.isAccessibleTo(accountId: String?): Boolean {
     return participants.any { it.trim().lowercase() == account }
 }
 
+/** A preview/read timestamp update cannot restart the complete message history. */
+internal fun Flow<Chat?>.distinctHistoryAccess(): Flow<Chat?> = distinctUntilChanged { previous, next ->
+    previous?.id == next?.id && previous?.is_group == next?.is_group &&
+        previous?.participants?.map { it.trim().lowercase() }?.sorted() ==
+        next?.participants?.map { it.trim().lowercase() }?.sorted()
+}
+
 /** Read-through cache with the same account/ID checks for Room, memory and transport. */
 internal class AccountChatReader(
     private val local: suspend (String) -> Chat?,

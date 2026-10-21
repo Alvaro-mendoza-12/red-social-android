@@ -3,7 +3,7 @@ import { DirectMessageRequestNotice } from '../../components/DirectMessageReques
 import { messageLocationUrl } from '../../core/messageLocation'
 import { ForwardMessagesDialog } from '../../components/ForwardMessagesDialog'
 import { copyChatMessage } from '../../core/media/copyChatMessage'
-import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, normalizeClipboardFiles, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage } from '../../core/chatClipboard'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
@@ -17,6 +17,7 @@ import { MessageText } from '../../components/MessageText'
 import { MessageReplyPreview } from '../../components/MessageReplyPreview'
 import { ChatProfilePanel } from '../../components/ChatProfilePanel'
 import { droppedAttachments, prepareAttachmentFiles } from '../../core/attachmentPreparation'
+import { attachmentKind } from '../../core/attachmentKind'
 import { useAttachmentDraft, useAttachmentPreparation } from '../../core/attachmentJobs'
 import { chatGallery } from '../../core/chatGallery'
 import { MediaViewer } from '../../components/MediaViewer'
@@ -168,21 +169,6 @@ function inferContentType(file: File): 'image' | 'video' | 'audio' | 'file' {
   return 'file'
 }
 
-type MessageMediaKind = 'image' | 'video' | 'audio' | 'pdf' | 'file'
-
-function extensionFromUrl(url: string): string {
-  try {
-    const parsed = new URL(url, window.location.origin)
-    const cleanPath = parsed.pathname.toLowerCase()
-    const dotIndex = cleanPath.lastIndexOf('.')
-    return dotIndex >= 0 ? cleanPath.slice(dotIndex + 1) : ''
-  } catch {
-    const cleanPath = url.split('?')[0]?.toLowerCase() ?? ''
-    const dotIndex = cleanPath.lastIndexOf('.')
-    return dotIndex >= 0 ? cleanPath.slice(dotIndex + 1) : ''
-  }
-}
-
 function fileNameFromUrl(url: string, fallback = 'Archivo'): string {
   try {
     const parsed = new URL(url, window.location.origin)
@@ -193,22 +179,6 @@ function fileNameFromUrl(url: string, fallback = 'Archivo'): string {
     try { return decodeURIComponent(rawName).replace(/^\d+_\d+_/, '').replace(/_/g, ' ') }
     catch { return rawName.replace(/_/g, ' ') }
   }
-}
-
-function mediaKindFor(contentType: string, url: string): MessageMediaKind {
-  const type = contentType.toLowerCase()
-  const extension = extensionFromUrl(url)
-  if (type === 'image' || type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(extension)) {
-    return 'image'
-  }
-  if (type === 'video' || type.startsWith('video/') || ['mp4', 'webm', 'mov', 'm4v'].includes(extension)) {
-    return 'video'
-  }
-  if (type === 'audio' || type.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'webm'].includes(extension)) {
-    return 'audio'
-  }
-  if (type === 'application/pdf' || extension === 'pdf') return 'pdf'
-  return 'file'
 }
 
 function contentLooksLikeAttachmentName(content: string): boolean {
@@ -350,7 +320,7 @@ function mediaSizeOf(row: GenericRow): number {
 
 function ChatMessageMedia({ message, onImageOpen }: { message: ChatMessage; onImageOpen: () => void }) {
   if (!message.mediaUrl) return null
-  return <ChatAttachmentMedia url={message.mediaUrl} kind={mediaKindFor(message.contentType, message.mediaUrl)} inlineDownload={false} title={message.content.trim() || fileNameFromUrl(message.mediaUrl)} size={message.mediaSize} onImageOpen={onImageOpen} />
+  return <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} inlineDownload={false} title={message.content.trim() || fileNameFromUrl(message.mediaUrl)} size={message.mediaSize} onImageOpen={onImageOpen} />
 }
 
 function dayKeyOf(value: string): string {
@@ -449,6 +419,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useConversationDraft(user?.id, 'chat', chatId.trim().toLowerCase())
   const draftRevisionRef = useRef(0)
+  const [submittedText, setSubmittedText] = useState<{owner:string; revision:number; value:string}|null>(null)
   const sendInFlightRef = useRef(false)
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -552,7 +523,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   const gallery = chatGallery(messages, user?.id || '')
   const openGallery = (message: { id: string }) => { const index = gallery.findIndex(item => item.id === message.id); if (index >= 0) setGalleryIndex(index) }
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
-  const composerText = editingMessageId ? editingDraft : draft
+  const visibleDraft = submittedText?.owner === preparationOwnerRef.current &&
+    submittedText.revision === draftRevisionRef.current && submittedText.value === draft ? '' : draft
+  const composerText = editingMessageId ? editingDraft : visibleDraft
   const deviceId = useMemo(() => {
     const storageKey = 'conectate-web-device-id'
     const fallbackId = () => {
@@ -769,17 +742,18 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       const files = clipboardFilesFrom(event.clipboardData)
       if (!files.length && !clipboardMayContainImage(event.clipboardData)) return
       const stickerHint = clipboardHasStickerHint(event.clipboardData)
+      const pasteOwner = preparationOwnerRef.current
       event.preventDefault()
       void (async () => {
-        const pastedFiles = files.length
-          ? await normalizeClipboardFiles(files)
-          : await readClipboardImages(event.clipboardData, navigator.clipboard)
+        const pastedFiles = await readClipboardImages(event.clipboardData, navigator.clipboard)
+        if (pasteOwner !== preparationOwnerRef.current) return
         if (!pastedFiles.length) {
           setError('WhatsApp no entregó la imagen al portapapeles. Usa «Copiar imagen» en el sticker y vuelve a pegarlo.')
           return
         }
         for (const file of pastedFiles) {
           const sticker = pastedAsSticker(file, showStickers) || await isCopiedStickerImage(file, stickerHint)
+          if (pasteOwner !== preparationOwnerRef.current) return
           queueAttachmentFiles([file], true, sticker)
         }
       })()
@@ -1429,9 +1403,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     const draftRevisionAtSend = draftRevisionRef.current
     const sendingTextOnly = !editingMessageId && pendingAttachments.length === 0
     const sendOwner = preparationOwnerRef.current
+    const submissionMask = sendingTextOnly ? {owner:sendOwner, revision:draftRevisionAtSend, value:submittedDraft} : null
     sendInFlightRef.current = true
     setError(null)
     setSending(true)
+    // Hide the input immediately, but keep its durable draft until local acceptance.
+    if (submissionMask) setSubmittedText(submissionMask)
     try {
       if (editingMessageId) {
         if (useUbuntu) {
@@ -1471,15 +1448,14 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         setDraft((current) => current === submittedDraft ? '' : current)
       } else {
         await sendMessage({ content: text, replyToId })
+        if (sendOwner !== preparationOwnerRef.current) return
         if (draftRevisionRef.current === draftRevisionAtSend) setDraft(current => current === submittedDraft ? '' : current)
-        setReplyToId(null)
+        setReplyToId(current => current === replyToId ? null : current)
       }
     } catch (caught) {
-      if (sendingTextOnly && draftRevisionRef.current === draftRevisionAtSend) {
-        setDraft(submittedDraft)
-      }
       if (sendOwner === preparationOwnerRef.current) setError(friendlyError(caught, editingMessageId ? 'No se pudo guardar la corrección. Tu texto sigue aquí para volver a intentarlo.' : 'No se pudo enviar el mensaje'))
     } finally {
+      setSubmittedText(current => current === submissionMask ? null : current)
       sendInFlightRef.current = false
       setSending(false)
     }
@@ -2404,7 +2380,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
 
       {showStickers ? <StickerPicker onEmoji={emoji => { draftRevisionRef.current += 1; setDraft(current => current + emoji) }} onSelect={item => void sendSticker(item)} onImport={file => void importSticker(file)} onClose={() => setShowStickers(false)} /> : null}
 
-      {!pendingAttachments.length ? <SpellingSuggestions text={editingMessageId ? editingDraft : draft} caret={spellingCaret} onReplace={(text,caret)=>{draftRevisionRef.current += 1;if(editingMessageId)setEditingDraft(text);else setDraft(text);setSpellingCaret(caret);requestAnimationFrame(()=>{const input=document.querySelector<HTMLInputElement>('.chat-composer .chat-input-field');input?.focus();input?.setSelectionRange(caret,caret)})}}/> : null}
+      {!pendingAttachments.length ? <SpellingSuggestions text={composerText} caret={spellingCaret} onReplace={(text,caret)=>{draftRevisionRef.current += 1;if(editingMessageId)setEditingDraft(text);else setDraft(text);setSpellingCaret(caret);requestAnimationFrame(()=>{const input=document.querySelector<HTMLInputElement>('.chat-composer .chat-input-field');input?.focus();input?.setSelectionRange(caret,caret)})}}/> : null}
       {error ? <div className="chat-composer-error" role="alert"><span>{error}</span><button className="mini-action-btn" type="button" onClick={() => setError(null)}>Cerrar</button></div> : null}
       {preparingAttachments ? <p className="attachment-preparing" role="status">{preparationStatus}</p> : null}
       {isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
