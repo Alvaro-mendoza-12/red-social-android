@@ -2394,17 +2394,10 @@ class MessageRepository @Inject constructor(
             )
         }
         
-        // 2. Robust Sorting (Ascending for Chat Screen)
-        // CRITICAL: We want 'sending' messages at the end.
-        // And null dates (broken ones) at the beginning (1970).
+        // Keep the pending section in send order; a shared maximum date
+        // sorted pending stickers by random UUID and made them exchange places.
         val redactionAccount = currentSessionUserId()
-        return byId.map { deletedMessageStore.redact(it, redactionAccount) }.sortedWith(compareBy<Message> {
-            when {
-                it.status == "sending" -> "9999-12-31T23:59:59Z"
-                it.created_at.isNullOrBlank() -> "1970-01-01T00:00:00Z"
-                else -> it.created_at.replace(" ", "T")
-            }
-        }.thenBy { it.id })
+        return conectate.com.core.messaging.orderMessageTimeline(byId.map { deletedMessageStore.redact(it, redactionAccount) })
     }
 
     private fun messagePayloadScore(message: Message): Int {
