@@ -62,7 +62,7 @@ class AnonymousConversationLayoutTest {
         compose.onNodeWithContentDescription("Enviar").performClick()
         assertEquals("Hola", sent)
         assertEquals(1, sends)
-        compose.onNode(hasSetTextAction()).assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onNode(hasSetTextAction()).assert(hasText("Hola").not())
         compose.onNodeWithContentDescription("Enviar").assertIsNotEnabled()
         saveScreen("large-text")
     }

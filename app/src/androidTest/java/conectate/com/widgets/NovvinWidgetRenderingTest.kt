@@ -45,7 +45,7 @@ class NovvinWidgetRenderingTest {
                 val view = render(large, destinationWidgetViews(large,layout,"messages",R.string.widget_chat_title,
                     R.string.widget_chat_subtitle,R.drawable.widget_icon_messages,301),width,height,"destination-$layout-large")
                 assertTrue(view.hasOnClickListeners())
-                assertTrue(view.contentDescription.toString().contains("Mensajes"))
+                assertEquals(large.getString(R.string.widget_chat_title) + " · Novvin",view.contentDescription.toString())
                 if (layout != DestinationWidgetLayout.ICON) assertEquals(View.GONE,view.findViewById<View>(R.id.widget_destination_subtitle).visibility)
             }
         }

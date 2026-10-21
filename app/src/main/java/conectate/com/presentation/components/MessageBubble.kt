@@ -170,7 +170,7 @@ private fun AudioWaveform(
     ) {
         repeat(18) { index ->
             val normalizedIndex = index / 17f
-            val played = normalizedIndex <= progress.coerceIn(0f, 1f)
+            val played = normalizedIndex <= conectate.com.util.finiteAudioProgress(progress)
             val animatedStep = if (active) (index * 5 + frame * 3) % 11 else (index * 7) % 9
             val barHeight = (7 + animatedStep * 1.35f).dp
             Box(
@@ -885,7 +885,7 @@ fun MessageBubble(
                                         modifier = Modifier.fillMaxWidth().height(26.dp),
                                     )
                                     Slider(
-                                        value = if (isAudioActive) progress.coerceIn(0f, 1f) else 0f,
+                                        value = if (isAudioActive) conectate.com.util.finiteAudioProgress(progress) else 0f,
                                         onValueChange = { value -> onSeekAudio(message, value) },
                                         enabled = isAudioActive,
                                         modifier = Modifier.fillMaxSize().semantics { contentDescription = "Posición del audio" },
@@ -917,7 +917,7 @@ fun MessageBubble(
                                 )
                                 Spacer(Modifier.weight(1f))
                                 Text(
-                                    text = message.content.ifBlank { "Audio" },
+                                    text = conectate.com.util.audioMessageCaption(message.content),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
                                     maxLines = 1,
