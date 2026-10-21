@@ -2394,8 +2394,8 @@ class MessageRepository @Inject constructor(
             )
         }
         
-        // Keep the pending section in send order; a shared maximum date
-        // sorted pending stickers by random UUID and made them exchange places.
+        // Keep creation order through uploads and acknowledgements. Grouping by
+        // delivery state makes a faster second upload jump before the first.
         val redactionAccount = currentSessionUserId()
         return conectate.com.core.messaging.orderMessageTimeline(byId.map { deletedMessageStore.redact(it, redactionAccount) })
     }
