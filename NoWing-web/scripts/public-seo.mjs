@@ -16,16 +16,20 @@ export const publicRoutes = [
   ["/juegos", "juegos.html", "Juegos"],
   ["/asistente", "asistente.html", "Asistente"],
   ["/ayuda", "ayuda.html", "Ayuda"],
+  ['/funciones', 'funciones.html', 'Funciones de Novvin'],
+  ['/ayuda/stickers-animados', 'stickers-animados.html', 'Stickers animados'],
+  ['/ayuda/privacidad-y-seguridad', 'privacidad-y-seguridad.html', 'Privacidad y seguridad'],
 ]
 
 // Describe the real brand and visible page; no invented reviews, contact data,
 // keyword lists, unsupported search actions, or promised search-result features.
-export function structuredData(route, title, description, label) {
+export function structuredData(route, title, description, label, images = []) {
   const home = site + '/', url = route === '/' ? home : site + route
   const organization = { '@type': 'Organization', '@id': home + '#organization', name: 'Novvin', alternateName: 'Novvin Web', url: home, logo: { '@type': 'ImageObject', url: site + '/novvin-logo.png', width: 512, height: 512 } }
   const website = { '@type': 'WebSite', '@id': home + '#website', name: 'Novvin', alternateName: ['Novvin Web', new URL(site).hostname], url: home, inLanguage: 'es', publisher: { '@id': organization['@id'] } }
   const page = { '@type': 'WebPage', '@id': url + '#webpage', url, name: title, description, inLanguage: 'es', isPartOf: { '@id': website['@id'] }, publisher: { '@id': organization['@id'] }, primaryImageOfPage: { '@type': 'ImageObject', url: site + '/novvin-share.png', width: 1200, height: 630 } }
   const graph = [organization, website, page]
+  if (images.length) page.image = images.map(image => ({ '@type': 'ImageObject', url: site + image.src, contentUrl: site + image.src, name: image.alt, caption: image.caption, width: image.width, height: image.height }))
   // These entities describe the same Android app and browser access shown on
   // the page. Installation links identify the actual app, without invented ratings.
   if (['/', '/que-es-novvin', '/novvin-web', '/descargar', '/ayuda/preguntas-frecuentes'].includes(route)) {

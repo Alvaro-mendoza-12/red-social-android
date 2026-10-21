@@ -46,7 +46,7 @@ for (const [route, file, label] of publicRoutes) {
     page = page.replace(new RegExp(`(<meta (?:name|property)="${key}" content=")[^"]*(")`), (_, before, after) => before + escape(value) + after)
   }
   page = page.replace(/(<link rel="canonical" href=")[^"]*(")/, (_, before, after) => before + url + after).replace(/(<meta property="og:url" content=")[^"]*(")/, (_, before, after) => before + url + after)
-  const data = structuredData(route, info.title, info.description, label)
+  const data = structuredData(route, info.title, info.description, label, infoData.publicIllustrations[route] || [])
   const hash = createHash('sha256').update(data).digest('base64')
   metadata.push({ route, file, url, title: info.title, description: info.description, schemaHash: hash })
   page = page.replace('</head>', `<meta name="robots" content="index, follow, max-image-preview:large" /><script type="application/ld+json">${data}</script></head>`)

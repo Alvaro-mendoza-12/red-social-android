@@ -4,6 +4,14 @@ jest.mock('../../core/messageVideoPolicy',()=>({validateMessageVideo:jest.fn(asy
 const file=(name:string,text:string)=>new File([new TextEncoder().encode(text)],name)
 beforeAll(()=>{Object.defineProperty(Blob.prototype,'arrayBuffer',{configurable:true,value:function(){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsArrayBuffer(this)})}})})
 const bytes=(blob:Blob)=>new Promise<Uint8Array>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(new Uint8Array(reader.result as ArrayBuffer));reader.onerror=reject;reader.readAsArrayBuffer(blob)})
+
+test('imports a Windows WhatsApp sticker without extension as original WebP instead of ZIP',async()=>{
+ const original=new File(['RIFF0000WEBPVP8XANIMANMF-original'],'WhatsApp Sticker 2026-10-21 at 7.43.17 AM',{type:''})
+ const [prepared]=await prepareAttachmentFiles([original])
+ expect(prepared.type).toBe('image/webp')
+ expect(prepared.name).toBe(original.name+'.webp')
+ expect(await bytes(prepared)).toEqual(await bytes(original))
+})
 test('retains folder paths, file contents and empty directories',async()=>{const packed=await compressFiles([{path:'Fotos/',file:null},{path:'Fotos/vacía/',file:null},{path:'Fotos/nota.txt',file:file('nota.txt','Hola Novvin')}],'Fotos');const result=unzipSync(await bytes(packed));expect(packed.name).toBe('Fotos.zip');expect(Object.keys(result)).toEqual(['Fotos/','Fotos/vacía/','Fotos/nota.txt']);expect(strFromU8(result['Fotos/nota.txt'])).toBe('Hola Novvin')})
 test.each(['../private.txt','carpeta/../../private.txt','/private.txt','carpeta/./private.txt','carpeta/evil\\file.txt'])('rejects unsafe archive path %s',async path=>{await expect(compressFiles([{path,file:file('a','a')}],'a')).rejects.toThrow()})
 test('rejects duplicate archive paths',async()=>{await expect(compressFiles([{path:'a',file:file('a','1')},{path:'a',file:file('a','2')}],'a')).rejects.toThrow('mismo nombre')})

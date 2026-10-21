@@ -8,8 +8,14 @@
     {
       "source": "/(group|community)/:path*",
       "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
-        { "key": "Cache-Control", "value": "no-store" }
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
       ]
     },
     {
@@ -49,7 +55,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'sha256-YJRbB3pB2KsZCca0vx7usbtHLG8wBUvddFZUhW9brdA=' 'sha256-TGJmF1gcQyO9IW8GWRwtkwUFsl7XxeJ/jz+HFBduFrk=' 'sha256-4EUzlmM5WJuP+/dqHu9vcRat/BDwLWInPEraN+NuosY=' 'sha256-WPTzSjvEVO+drNi0jhlmgFvZV8tI4+qw9dmTW3xRaIY=' 'sha256-6NVhZw+KPgikBQvFUBqq48bYmKUO+G6X0oXQoxxM63A=' 'sha256-rrR+ELQpxLuHY6eQckALKXVFDWBOqAa81uZgxp7EGTU=' 'sha256-4I13pTZ17ICdlLawFNcXoVOw7UD34DUFxX7PV2Njp3w=' 'sha256-3q2egFrJ4DHTNx8yD+b0+Z70THV/GeUQkFejsSx0RHo=' 'sha256-w9d7GF0IcbECb8m9Xt9clInQj34z/ejPJAvklhq6Yz8=' 'sha256-DhV6+CV0VqQNkEwCdpp94JNfBwV0joPHeAmd64jMFkg=' 'sha256-P4MF/LoXS+lSIYaSGxqjjPyYijBHeIFV3qQYdzWu6hs=' 'sha256-seaggYt7ga277SlVC3KdG/xdF1Z2hanIhwo8qUpquIE=' 'sha256-YPjrBa8a7zUTBBbYzxavGYj2K8QM+hzvWM3f+aqrbwI=' 'sha256-74BDx7OOHaNpn6CZ5Geh/ymWph+UDcE00g/eOtAKE30=' 'sha256-KmvhSTriuLrw3gKxbFNGola2ZWl4PeJE3tWLGUxtfcw=' 'sha256-7rKunVQq4VCCsqyV58TyFgOAPNcprldPwmTA5Pg8HWk='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; worker-src 'self' blob:; manifest-src 'self'; frame-src 'self' blob:;"
+          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'sha256-YJRbB3pB2KsZCca0vx7usbtHLG8wBUvddFZUhW9brdA=' 'sha256-TGJmF1gcQyO9IW8GWRwtkwUFsl7XxeJ/jz+HFBduFrk=' 'sha256-4EUzlmM5WJuP+/dqHu9vcRat/BDwLWInPEraN+NuosY=' 'sha256-WPTzSjvEVO+drNi0jhlmgFvZV8tI4+qw9dmTW3xRaIY=' 'sha256-6NVhZw+KPgikBQvFUBqq48bYmKUO+G6X0oXQoxxM63A=' 'sha256-rrR+ELQpxLuHY6eQckALKXVFDWBOqAa81uZgxp7EGTU=' 'sha256-4I13pTZ17ICdlLawFNcXoVOw7UD34DUFxX7PV2Njp3w=' 'sha256-3q2egFrJ4DHTNx8yD+b0+Z70THV/GeUQkFejsSx0RHo=' 'sha256-w9d7GF0IcbECb8m9Xt9clInQj34z/ejPJAvklhq6Yz8=' 'sha256-XAcfmwvcDwwcz8C2AzohKb7m5Fjt5+da0CSFu/t1b4A=' 'sha256-P4MF/LoXS+lSIYaSGxqjjPyYijBHeIFV3qQYdzWu6hs=' 'sha256-seaggYt7ga277SlVC3KdG/xdF1Z2hanIhwo8qUpquIE=' 'sha256-YPjrBa8a7zUTBBbYzxavGYj2K8QM+hzvWM3f+aqrbwI=' 'sha256-74BDx7OOHaNpn6CZ5Geh/ymWph+UDcE00g/eOtAKE30=' 'sha256-KmvhSTriuLrw3gKxbFNGola2ZWl4PeJE3tWLGUxtfcw=' 'sha256-7rKunVQq4VCCsqyV58TyFgOAPNcprldPwmTA5Pg8HWk=' 'sha256-A8MXmkQhNzklU6Xa6G5SiOjVRPDXMKOLC5+JauFHjnE=' 'sha256-Ga5n3yKwauxmDL6HikKdWhlDQYsv1/aICTwi+e00CXI=' 'sha256-Ifp9Z+dnZVJAtOV7NibyT+zCu0g4l2bHWccsNlzpG1c='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; worker-src 'self' blob:; manifest-src 'self'; frame-src 'self' blob:;"
         }
       ]
     },
@@ -181,8 +187,14 @@
     }
   ],
   "rewrites": [
-    { "source": "/group/:path*", "destination": "/app-shell.html" },
-    { "source": "/community/:path*", "destination": "/app-shell.html" },
+    {
+      "source": "/group/:path*",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/community/:path*",
+      "destination": "/app-shell.html"
+    },
     {
       "destination": "/index.html",
       "source": "/"
@@ -278,6 +290,18 @@
     {
       "source": "/chat/:path*",
       "destination": "/app-shell.html"
+    },
+    {
+      "source": "/funciones",
+      "destination": "/funciones.html"
+    },
+    {
+      "source": "/ayuda/stickers-animados",
+      "destination": "/stickers-animados.html"
+    },
+    {
+      "source": "/ayuda/privacidad-y-seguridad",
+      "destination": "/privacidad-y-seguridad.html"
     }
   ],
   "redirects": [
@@ -359,6 +383,21 @@
     {
       "source": "/preguntas-frecuentes.html",
       "destination": "/ayuda/preguntas-frecuentes",
+      "permanent": true
+    },
+    {
+      "source": "/funciones.html",
+      "destination": "/funciones",
+      "permanent": true
+    },
+    {
+      "source": "/stickers-animados.html",
+      "destination": "/ayuda/stickers-animados",
+      "permanent": true
+    },
+    {
+      "source": "/privacidad-y-seguridad.html",
+      "destination": "/ayuda/privacidad-y-seguridad",
       "permanent": true
     }
   ]

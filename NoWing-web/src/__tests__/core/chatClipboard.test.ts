@@ -1,4 +1,4 @@
-import { normalizeClipboardFiles, clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, pastedAsSticker, canPasteIntoChat, isStickerImage, isCopiedStickerImage } from '../../core/chatClipboard'
+import { normalizeClipboardFiles, clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, pastedAsSticker, canPasteIntoChat, isStickerImage, isCopiedStickerImage, isEmptyClipboardPaste } from '../../core/chatClipboard'
 
 beforeAll(() => {
  for (const [method, read] of [['arrayBuffer', 'readAsArrayBuffer'], ['text', 'readAsText']] as const) {
@@ -178,4 +178,11 @@ test('recognizes extensionless WhatsApp sticker files from their bytes', async (
 test('does not rename an ordinary document with an unknown type', async () => {
   const document = new File(['text'], 'notas', { type: 'application/octet-stream' })
   expect(await normalizeClipboardFiles([document])).toEqual([document])
+})
+
+test('identifies Windows virtual-file paste without mistaking text or real files for empty data',()=>{
+ expect(isEmptyClipboardPaste({types:[],files:[],items:[]} as unknown as DataTransfer)).toBe(true)
+ expect(isEmptyClipboardPaste({types:['text/plain'],files:[],items:[]} as unknown as DataTransfer)).toBe(false)
+ expect(isEmptyClipboardPaste({types:[],files:[new File(['gif'],'sticker')],items:[]} as unknown as DataTransfer)).toBe(false)
+ expect(isEmptyClipboardPaste(null)).toBe(false)
 })

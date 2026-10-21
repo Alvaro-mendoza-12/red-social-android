@@ -3,7 +3,7 @@ import { DirectMessageRequestNotice } from '../../components/DirectMessageReques
 import { messageLocationUrl } from '../../core/messageLocation'
 import { ForwardMessagesDialog } from '../../components/ForwardMessagesDialog'
 import { copyChatMessage } from '../../core/media/copyChatMessage'
-import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isEmptyClipboardPaste, normalizeClipboardFiles, isStickerImage } from '../../core/chatClipboard'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
@@ -740,7 +740,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     const paste = (event: ClipboardEvent) => {
       if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
       const files = clipboardFilesFrom(event.clipboardData)
-      if (!files.length && !clipboardMayContainImage(event.clipboardData)) return
+      if (!files.length && !clipboardMayContainImage(event.clipboardData) && !isEmptyClipboardPaste(event.clipboardData)) return
       const stickerHint = clipboardHasStickerHint(event.clipboardData)
       const pasteOwner = preparationOwnerRef.current
       event.preventDefault()
@@ -748,7 +748,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         const pastedFiles = await readClipboardImages(event.clipboardData, navigator.clipboard)
         if (pasteOwner !== preparationOwnerRef.current) return
         if (!pastedFiles.length) {
-          setError('No recibimos la imagen de este pegado. Vuelve a copiarla o adjunta el archivo original GIF o WebP para conservar el movimiento.')
+          setError('El navegador no entregó la imagen o el archivo copiado. Si viene de WhatsApp para Windows, usa Adjuntar o Importar con el archivo original del sticker; conservaremos su movimiento.')
           return
         }
         for (const file of pastedFiles) {
@@ -1822,9 +1822,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL para usar mensajes con Ubuntu." />
   }
 
-  async function importSticker(file: File | null) {
-    if (!file || !user || !cleanChatId) return
-    if (!file.type.startsWith('image/')) {
+  async function importSticker(source: File | null) {
+    if (!source || !user || !cleanChatId) return
+    const owner = preparationOwnerRef.current
+    const [file] = await normalizeClipboardFiles([source])
+    if (owner !== preparationOwnerRef.current) return
+    if (!isStickerImage(file)) {
       setError('El sticker debe ser una imagen PNG, WEBP, GIF, JPG o JPEG.')
       return
     }

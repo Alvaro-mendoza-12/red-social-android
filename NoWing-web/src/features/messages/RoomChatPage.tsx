@@ -2,7 +2,7 @@ import { ContactMessageCard } from '../../components/ContactMessageCard'
 import { messageLocationUrl } from '../../core/messageLocation'
 import { ForwardMessagesDialog } from '../../components/ForwardMessagesDialog'
 import { copyChatMessage } from '../../core/media/copyChatMessage'
-import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage } from '../../core/chatClipboard'
+import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isEmptyClipboardPaste, normalizeClipboardFiles, isStickerImage } from '../../core/chatClipboard'
 import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
@@ -596,7 +596,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     const paste = (event: ClipboardEvent) => {
       if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
       const files = clipboardFilesFrom(event.clipboardData)
-      if (!files.length && !clipboardMayContainImage(event.clipboardData)) return
+      if (!files.length && !clipboardMayContainImage(event.clipboardData) && !isEmptyClipboardPaste(event.clipboardData)) return
       const stickerHint = clipboardHasStickerHint(event.clipboardData)
       const pasteOwner = preparationOwnerRef.current
       event.preventDefault()
@@ -604,7 +604,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         const pastedFiles = await readClipboardImages(event.clipboardData, navigator.clipboard)
         if (pasteOwner !== preparationOwnerRef.current) return
         if (!pastedFiles.length) {
-          setError('No recibimos la imagen de este pegado. Vuelve a copiarla o adjunta el archivo original GIF o WebP para conservar el movimiento.')
+          setError('El navegador no entregó la imagen o el archivo copiado. Si viene de WhatsApp para Windows, usa Adjuntar o Importar con el archivo original del sticker; conservaremos su movimiento.')
           return
         }
         for (const file of pastedFiles) {
@@ -1283,9 +1283,12 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     }
   }
 
-  async function importRoomSticker(file: File | null) {
-    if (!file || !user || !cleanRoomId) return
-    if (!file.type.startsWith('image/')) {
+  async function importRoomSticker(source: File | null) {
+    if (!source || !user || !cleanRoomId) return
+    const owner = preparationOwnerRef.current
+    const [file] = await normalizeClipboardFiles([source])
+    if (owner !== preparationOwnerRef.current) return
+    if (!isStickerImage(file)) {
       setError('El sticker debe ser una imagen PNG, WEBP, GIF, JPG o JPEG.')
       return
     }
