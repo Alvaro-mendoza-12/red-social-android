@@ -17,7 +17,7 @@ import org.junit.runner.RunWith
 class DeviceOutboxReadOnlyTest {
     @Test fun inspectOutboxWithoutChangingUserData() {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
-        assumeTrue(instrumentation.arguments.getString("runOutboxDiagnostics")=="true")
+        assumeTrue(InstrumentationRegistry.getArguments().getString("runOutboxDiagnostics")=="true")
         val context=instrumentation.targetContext
         val manager=context.getSystemService(ConnectivityManager::class.java)
         val caps=manager.getNetworkCapabilities(manager.activeNetwork)
