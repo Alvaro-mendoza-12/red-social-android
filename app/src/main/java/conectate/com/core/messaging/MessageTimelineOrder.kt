@@ -2,9 +2,8 @@ package conectate.com.core.messaging
 
 import conectate.com.data.model.Message
 
-/** Pending items stay together, ordered by creation time rather than random UUIDs. */
+/** Delivery/upload changes must not reorder messages with the same creation time. */
 internal fun orderMessageTimeline(messages: List<Message>): List<Message> = messages.sortedWith(
-    compareBy<Message> { if (it.status == "sending") 1 else 0 }
-        .thenBy { it.timestampMillis }
+    compareBy<Message> { it.timestampMillis }
         .thenBy { it.id }
 )
