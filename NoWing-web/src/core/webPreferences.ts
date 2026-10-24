@@ -60,14 +60,25 @@ export function readWebPreferences(): WebPreferences {
 export function writeWebPreferences(nextPreferences: WebPreferences) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(storageKey, JSON.stringify(nextPreferences))
+  applyWebPreferences(nextPreferences)
   window.dispatchEvent(new Event(changeEventName))
+}
+
+export function applyWebPreferences(preferences = readWebPreferences()) {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  for (const name of Array.from(root.classList)) {
+    if (/^(theme-|accent-|text-scale-)/.test(name)) root.classList.remove(name)
+  }
+  root.classList.add(`theme-${preferences.themeMode}`, `accent-${preferences.accentTheme}`, `text-scale-${preferences.textScale}`)
 }
 
 export function useWebPreferences() {
   const [preferences, setPreferences] = useState<WebPreferences>(() => readWebPreferences())
 
   useEffect(() => {
-    const sync = () => setPreferences(readWebPreferences())
+    applyWebPreferences()
+    const sync = () => { const next = readWebPreferences(); applyWebPreferences(next); setPreferences(next) }
     window.addEventListener(changeEventName, sync)
     window.addEventListener('storage', sync)
     return () => {

@@ -1,9 +1,22 @@
 import {
   normalizeSignalingParticipant,
   normalizeSignalingParticipants,
+  updateRemoteVoiceState,
+  voiceBoolean,
 } from '../../../features/voice/voiceSignalingProtocol'
 
 describe('voice signaling protocol compatibility', () => {
+  it('does not mistake string false, absence or silence for a muted microphone', () => {
+    expect(voiceBoolean('false')).toBe(false)
+    expect(voiceBoolean(undefined)).toBeUndefined()
+    expect(updateRemoteVoiceState({ isMuted: true, isSpeaking: false }, { isSpeaking: true })).toEqual({ isMuted: false, isSpeaking: true })
+    expect(updateRemoteVoiceState({ isMuted: false, isSpeaking: true }, { isSpeaking: false })).toEqual({ isMuted: false, isSpeaking: false })
+  })
+  it('an explicit mute immediately clears the speaking ring and partial offers preserve state', () => {
+    expect(updateRemoteVoiceState({ isMuted: false, isSpeaking: true }, { isMuted: true })).toEqual({ isMuted: true, isSpeaking: false })
+    expect(updateRemoteVoiceState({ isMuted: false, isSpeaking: true }, {})).toEqual({ isMuted: false, isSpeaking: true })
+    expect(updateRemoteVoiceState({ isMuted: null, isSpeaking: false }, {})).toEqual({ isMuted: null, isSpeaking: false })
+  })
   it('normalizes the object payload emitted by the shared signaling server', () => {
     expect(normalizeSignalingParticipant({
       socketId: 'web-1',

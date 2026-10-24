@@ -3,6 +3,7 @@ import {
   isExplicitlyTrustedBackend,
   verifyBackendDiscoveryEnvelope,
 } from './backendTrust'
+import { recordMessagingClock } from './messagingClock'
 
 const storageKey = 'conectate:runtime-backend-url:v2'
 const legacyStorageKey = 'conectate:runtime-backend-url'
@@ -163,18 +164,21 @@ async function restoreStoredCandidate(): Promise<TrustedCandidate | null> {
 
 async function probeBackend(url: string): Promise<boolean> {
   try {
+    const started = performance.now()
     const response = await fetch(`${url}/ready`, {
       cache: 'no-store',
       headers: { 'ngrok-skip-browser-warning': 'true' },
       signal: AbortSignal.timeout(5_000),
     })
     if (!response.ok) return false
-    const payload = (await response.json()) as { ok?: boolean; capabilities?: unknown }
+    const payload = (await response.json()) as { ok?: boolean; capabilities?: unknown; databaseTime?: string }
     if (payload.ok !== true || !Array.isArray(payload.capabilities)) return false
     const advertised = new Set(
       payload.capabilities.map((value) => String(value ?? '').trim()).filter(Boolean),
     )
-    return [...requiredCapabilities].every((capability) => advertised.has(capability))
+    const compatible = [...requiredCapabilities].every((capability) => advertised.has(capability))
+    if (compatible) recordMessagingClock(url, payload.databaseTime, started, performance.now())
+    return compatible
   } catch {
     return false
   }

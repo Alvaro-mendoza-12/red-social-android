@@ -13,3 +13,7 @@
 @keyframes cover-twinkle{0%,100%{opacity:.2;transform:scale(.7)}50%{opacity:.9;transform:scale(1.1)}}@keyframes cover-fall{from{transform:translate(0,-10px) rotate(0)}to{transform:translate(-15px,300px) rotate(100deg)}}@keyframes cover-wave{0%,100%{transform:translateY(-5px)}50%{transform:translateY(5px)}}@keyframes cover-orbit{to{transform:rotate(360deg)}}@keyframes cover-beat{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
 @media(prefers-reduced-motion:reduce){.profile-cover-effect span{animation:none!important}.profile-cover-effect[data-effect=rain] span,.profile-cover-effect[data-effect=confetti] span{top:var(--y)}.cover-motion-toggle{display:none}}
 @keyframes cover-rain{from{transform:translate(0,-10px) rotate(16deg)}to{transform:translate(-30px,300px) rotate(16deg)}}
+.mobile-profile-cover { position: relative; }
+.profile-cover-effect-overlay { position: absolute; inset: 0; min-height: 0; background: transparent; pointer-events: none; }
+.profile-cover-effect-overlay .cover-motion-toggle { pointer-events: auto; }
+.novvin-profile-main-header .mobile-profile-avatar { box-shadow: 0 0 0 2px var(--profile-accent); }

@@ -1,11 +1,14 @@
+import { MessageTimestamp } from '../../components/MessageTimestamp'
 import { ContactMessageCard } from '../../components/ContactMessageCard'
 import { DirectMessageRequestNotice } from '../../components/DirectMessageRequestNotice'
 import { messageLocationUrl } from '../../core/messageLocation'
+import { shouldReplyToMessageDoubleClick } from '../../core/chatMessageGestures'
+import { readCachedValue } from '../../core/localCache'
 import { ForwardMessagesDialog } from '../../components/ForwardMessagesDialog'
 import { copyChatMessage } from '../../core/media/copyChatMessage'
 import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isEmptyClipboardPaste, normalizeClipboardFiles, isStickerImage } from '../../core/chatClipboard'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
-import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
+import { newerMessage, mergeMessageSnapshot, mergeOlderMessagePage, mergeLatestMessagePage } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
 import { BirthdayComposer, BirthdayLetter } from '../../components/BirthdayLetter'
@@ -30,6 +33,7 @@ import { chatMediaAlbums } from '../../core/chatMediaAlbums'
 import { ChatMediaAlbum } from '../../components/ChatMediaAlbum'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { conversationWindow } from '../../core/conversationWindow'
+import { captureConversationViewportAnchor, restoreConversationViewportAnchor } from '../../core/conversationViewport'
 import { sharedVideoReference } from '../../core/sharedVideoReference'
 import { SharedVideoCard } from '../../components/SharedVideoCard'
 import { cancelPendingWebMessage, retryPendingWebMessage } from '../../core/webOutbox'
@@ -43,7 +47,7 @@ import {
   type DragEvent,
   type FormEvent,
 } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ChatOptionsMenu } from '../../components/ChatOptionsMenu'
 import { MediaDownloadButton } from '../../components/MediaDownloadButton'
 import { StatusView } from '../../components/StatusView'
@@ -51,6 +55,8 @@ import {
   deleteFallbackChatMessage,
   editFallbackChatMessage,
   loadFallbackChat,
+  loadFallbackHistoryPage,
+  fallbackHistoryAllows,
   markFallbackChatRead,
   sendFallbackChatMessage,
   toggleFallbackChatReaction,
@@ -65,6 +71,7 @@ import {
   resolveSupabasePublicUrl,
 } from '../../core/supabase'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
+import { useConversationRecovery } from './useConversationRecovery'
 import {
   formatDateTime,
   friendlyError,
@@ -128,6 +135,8 @@ type ChatSettings = {
   targetLang: string
 }
 
+const CONVERSATION_PAGE_SIZE = 80
+
 type ScheduledJob = {
   id: string
   content: string
@@ -139,6 +148,8 @@ type ScheduledJob = {
 type OtherParticipantState = {
   id: string
   name: string
+  publicName?: string
+  nickname?: string
   avatarUrl: string
   lastReadAt: string
 }
@@ -318,9 +329,9 @@ function mediaSizeOf(row: GenericRow): number {
   return Number.isFinite(candidate) && candidate > 0 ? candidate : 0
 }
 
-function ChatMessageMedia({ message, onImageOpen }: { message: ChatMessage; onImageOpen: () => void }) {
+function ChatMessageMedia({ message, onImageOpen, overlay }: { message: ChatMessage; onImageOpen: () => void; overlay?: import('react').ReactNode }) {
   if (!message.mediaUrl) return null
-  return <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} inlineDownload={false} title={message.content.trim() || fileNameFromUrl(message.mediaUrl)} size={message.mediaSize} onImageOpen={onImageOpen} />
+  return <ChatAttachmentMedia url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} inlineDownload={false} title={message.content.trim() || fileNameFromUrl(message.mediaUrl)} size={message.mediaSize} onImageOpen={onImageOpen} overlay={overlay} />
 }
 
 function dayKeyOf(value: string): string {
@@ -408,15 +419,34 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const { chatId: routeChatId = '' } = useParams()
+  const location = useLocation()
+  const chatId = chatIdOverride ?? routeChatId
+  const notificationParticipant = useMemo(() => {
+    const routeIdentity = chatId.trim().toLowerCase() === routeChatId.trim().toLowerCase()
+      ? (location.state as { notificationParticipant?: { id?: unknown; name?: unknown; avatarUrl?: unknown } } | null)?.notificationParticipant : undefined
+    const cachedInbox = user?.id ? readCachedValue<Array<{ id: string; profileId: string | null; title: string; avatarUrl: string }>>(`messages:${user.id}:chats`, 8 * 60 * 60 * 1000) : null
+    const cached = Array.isArray(cachedInbox) ? cachedInbox.find(item => item.id === chatId.trim().toLowerCase() && item.profileId && item.profileId !== user?.id) : undefined
+    if (cached && cached.title?.trim() && !['usuario', 'alguien', 'novvin'].includes(cached.title.trim().toLowerCase())) {
+      return { id: cached.profileId!, name: cached.title.trim(), avatarUrl: cached.avatarUrl || '', lastReadAt: '' }
+    }
+    return routeIdentity && typeof routeIdentity.id === 'string' && routeIdentity.id &&
+      routeIdentity.id !== user?.id && typeof routeIdentity.name === 'string' && routeIdentity.name.trim() &&
+      !['usuario', 'alguien', 'novvin'].includes(routeIdentity.name.trim().toLowerCase())
+      ? { id: routeIdentity.id, name: routeIdentity.name.trim(), publicName: routeIdentity.name.trim(), avatarUrl: typeof routeIdentity.avatarUrl === 'string' ? routeIdentity.avatarUrl : '', lastReadAt: '' }
+      : null
+  }, [chatId, routeChatId, location.state, user?.id])
   const [birthdayParams, setBirthdayParams] = useSearchParams()
   const showBirthday = birthdayParams.get('birthdayGreeting') === '1'
   const closeBirthday = () => { const next = new URLSearchParams(birthdayParams); next.delete('birthdayGreeting'); setBirthdayParams(next, { replace: true }) }
-  const chatId = chatIdOverride ?? routeChatId
   const [loading, setLoading] = useState(true)
+  const [hasOlderMessages, setHasOlderMessages] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [title, setTitle] = useState('Chat')
+  const [title, setTitle] = useState(notificationParticipant?.name || 'Chat')
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const messagesSnapshotRef = useRef(messages)
+  messagesSnapshotRef.current = messages
   const [draft, setDraft] = useConversationDraft(user?.id, 'chat', chatId.trim().toLowerCase())
   const draftRevisionRef = useRef(0)
   const [submittedText, setSubmittedText] = useState<{owner:string; revision:number; value:string}|null>(null)
@@ -428,7 +458,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   const [pendingAttachments, setPendingAttachments] = useAttachmentDraft<PendingAttachment>(user?.id || '', 'chat', chatId.trim().toLowerCase())
   const [imageEditorFile, setImageEditorFile] = useState<File | null>(null)
   const [spellingCaret, setSpellingCaret] = useState<number|undefined>()
-  const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
+  const [galleryMessageId, setGalleryMessageId] = useState<string | null>(null)
   const [profilePanelOpen, setProfilePanelOpen] = useState(false)
   const discardRecordingRef = useRef(false)
   const preparationOwnerRef = useRef('')
@@ -467,7 +497,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   const [consumedViewOnce, setConsumedViewOnce] = useState<Record<string, true>>({})
   const [viewOnceLease, setViewOnceLease] = useState<ViewOnceLease | null>(null)
   const viewOncePending = useRef(false)
-  const [otherParticipant, setOtherParticipant] = useState<OtherParticipantState | null>(null)
+  const [otherParticipant, setOtherParticipant] = useState<OtherParticipantState | null>(notificationParticipant)
+  const [nicknameDialogOpen, setNicknameDialogOpen] = useState(false)
+  const [nicknameDraft, setNicknameDraft] = useState('')
+  const [savingNickname, setSavingNickname] = useState(false)
+  const otherParticipantRef = useRef<OtherParticipantState | null>(notificationParticipant)
   const [settings, setSettings] = useState<ChatSettings>({
     isMuted: false,
     isPinned: false,
@@ -479,7 +513,19 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   const [savingSettings, setSavingSettings] = useState(false)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const threadRef = useRef<HTMLElement | null>(null)
+  const loadingOlderMessagesRef = useRef(false)
+  const historyCursorRef = useRef<string | null>(null)
+  const expandedHistoryRef = useRef(false)
+  const historyGenerationRef = useRef(0)
+  const loadOlderMessagesRef = useRef<() => void>(() => {})
   const messageSearchInputRef = useRef<HTMLInputElement | null>(null)
+  const composerInputRef = useRef<HTMLInputElement | null>(null)
+  const beginReply = useCallback((messageId: string) => {
+    setEditingMessageId(null)
+    setEditingDraft('')
+    setReplyToId(messageId)
+    composerInputRef.current?.focus({ preventScroll: true })
+  }, [])
   const shouldStickToBottomRef = useRef(true)
   const forceScrollToBottomRef = useRef(true)
   const pendingInitialBottomSnapRef = useRef(true)
@@ -489,6 +535,23 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   const loadSequenceRef = useRef(0)
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
+  useEffect(() => { otherParticipantRef.current = otherParticipant }, [otherParticipant])
+  useEffect(() => {
+    loadSequenceRef.current += 1
+    historyGenerationRef.current += 1
+    loadingOlderMessagesRef.current = false
+    historyCursorRef.current = null
+    expandedHistoryRef.current = false
+    setHasOlderMessages(false)
+    setLoadingOlderMessages(false)
+    setPollStatesById({})
+    setConsumedViewOnce({})
+  }, [cleanChatId, user?.id])
+  useEffect(() => {
+    setTitle(notificationParticipant?.name || 'Chat')
+    setOtherParticipant(notificationParticipant)
+    setNicknameDialogOpen(false)
+  }, [cleanChatId, notificationParticipant])
   useEffect(() => { setSelectedMessageIds(new Set()); setSelectingMessages(false); setShowQuickShare(false); setShowAdvancedTools(false) }, [cleanChatId])
   preparationOwnerRef.current = `${user?.id}/${cleanChatId}`
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
@@ -516,12 +579,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       return haystack.includes(normalizedMessageSearch)
     })
   }, [messages, normalizedMessageSearch])
-  const [historyWindowSize, setHistoryWindowSize] = useState(80)
-  useEffect(() => setHistoryWindowSize(80), [cleanChatId])
-  const renderedMessages = conversationWindow(filteredMessages, historyWindowSize, Boolean(normalizedMessageSearch))
-  const albums = chatMediaAlbums(renderedMessages, user?.id || '')
-  const gallery = chatGallery(messages, user?.id || '')
-  const openGallery = (message: { id: string }) => { const index = gallery.findIndex(item => item.id === message.id); if (index >= 0) setGalleryIndex(index) }
+  const [historyWindowSize, setHistoryWindowSize] = useState(CONVERSATION_PAGE_SIZE)
+  useEffect(() => setHistoryWindowSize(CONVERSATION_PAGE_SIZE), [cleanChatId])
+  const renderedMessages = useMemo(() => conversationWindow(filteredMessages, historyWindowSize, Boolean(normalizedMessageSearch)), [filteredMessages, historyWindowSize, normalizedMessageSearch])
+  const albums = useMemo(() => chatMediaAlbums(renderedMessages, user?.id || ''), [renderedMessages, user?.id])
+  const gallery = useMemo(() => chatGallery(messages, user?.id || ''), [messages, user?.id])
+  const galleryIndex = galleryMessageId ? gallery.findIndex(item => item.id === galleryMessageId) : null
+  const openGallery = (message: { id: string }) => setGalleryMessageId(message.id)
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
   const visibleDraft = submittedText?.owner === preparationOwnerRef.current &&
     submittedText.revision === draftRevisionRef.current && submittedText.value === draft ? '' : draft
@@ -585,7 +649,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     const isNearBottom = distanceToBottom < 120
     shouldStickToBottomRef.current = isNearBottom
     setShowScrollToBottom(!isNearBottom && messages.length > 0)
-  }, [messages.length])
+    if (thread.scrollTop < 96 && hasOlderMessages && !loadingOlderMessagesRef.current) {
+      loadOlderMessagesRef.current()
+    }
+  }, [hasOlderMessages, messages.length])
   const keepLatestMessageVisible = useCallback(() => {
     if (shouldStickToBottomRef.current) scrollThreadToBottom('auto')
   }, [scrollThreadToBottom])
@@ -704,7 +771,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   }, [setPendingAttachments])
 
   useEffect(() => {
-    setImageEditorFile(null); setGalleryIndex(null)
+    setImageEditorFile(null); setGalleryMessageId(null)
     discardRecordingRef.current = true
     const recorder = audioRecorderRef.current
     if (recorder) { recorder.onstop = null; if (recorder.state !== 'inactive') recorder.stop(); audioRecorderRef.current = null }
@@ -740,7 +807,21 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     const paste = (event: ClipboardEvent) => {
       if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
       const files = clipboardFilesFrom(event.clipboardData)
-      if (!files.length && !clipboardMayContainImage(event.clipboardData) && !isEmptyClipboardPaste(event.clipboardData)) return
+      const hasAttachments = files.length > 0 || clipboardMayContainImage(event.clipboardData) || isEmptyClipboardPaste(event.clipboardData)
+      const text = event.clipboardData?.getData('text/plain') || ''
+      const textField = event.target instanceof Element ? event.target.closest('input,textarea,[contenteditable="true"]') : null
+      // Let the browser insert ordinary text into the active field so its native
+      // selection, composition and undo history are preserved.
+      if (!hasAttachments && (textField || !text)) return
+      if (text && (!textField || textField === composerInputRef.current)) {
+        const input = composerInputRef.current
+        const start = textField ? input?.selectionStart : null
+        const end = textField ? input?.selectionEnd : null
+        draftRevisionRef.current += 1
+        setDraft(current => current.slice(0, start ?? current.length) + text + current.slice(end ?? current.length))
+        if (!hasAttachments) input?.focus({ preventScroll: true })
+      }
+      if (!hasAttachments) { event.preventDefault(); return }
       const stickerHint = clipboardHasStickerHint(event.clipboardData)
       const pasteOwner = preparationOwnerRef.current
       event.preventDefault()
@@ -760,7 +841,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     }
     window.addEventListener('paste', paste)
     return () => window.removeEventListener('paste', paste)
-  }, [editingMessageId, queueAttachmentFiles, showStickers])
+  }, [editingMessageId, queueAttachmentFiles, showStickers, setDraft])
 
   useEffect(() => {
     return () => {
@@ -785,7 +866,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       new Set(rows.map((message) => message.pollId).filter((pollId): pollId is string => Boolean(pollId))),
     )
     if (pollIds.length === 0) {
-      setPollStatesById({})
       return
     }
 
@@ -797,7 +877,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       }),
     )
 
-    setPollStatesById(Object.fromEntries(entries))
+    setPollStatesById(current => ({ ...current, ...Object.fromEntries(entries) }))
   }, [useUbuntu])
 
   const refreshPollState = useCallback(async (pollId: string) => {
@@ -837,7 +917,6 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       if (!supabase || !user) return
       const ids = rows.filter((message) => isViewOnceType(message.contentType)).map((message) => message.id)
       if (ids.length === 0) {
-        setConsumedViewOnce({})
         return
       }
       const { data, error: consumeError } = await supabase
@@ -855,7 +934,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         if (messageId) acc[messageId] = true
         return acc
       }, {})
-      setConsumedViewOnce(consumed)
+      setConsumedViewOnce(current => ({ ...current, ...consumed }))
     },
     [user],
   )
@@ -1009,6 +1088,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
 
   const loadChat = useCallback(async (options?: { silent?: boolean }) => {
     const loadSequence = ++loadSequenceRef.current
+    const idsAtRequestStart = new Set(messagesSnapshotRef.current.map(message => message.id))
     const isStaleLoad = () => loadSequenceRef.current !== loadSequence
     if (!user || !cleanChatId) {
       if (!isStaleLoad()) {
@@ -1021,12 +1101,37 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     setLoadError(null)
     try {
       if (useUbuntu) {
-        const response = await loadFallbackChat(cleanChatId)
+        const response = await loadFallbackChat(cleanChatId, options?.silent ? undefined : cached => {
+          if (isStaleLoad()) return
+          for (const message of cached.messages) idsAtRequestStart.add(String(message.id))
+          const cachedNickname = textOf(cached.chat ?? {}, ['nickname'], '').trim()
+          const cachedPublicName = cached.otherParticipant?.name || ''
+          const cachedName = cachedNickname || cachedPublicName || cached.title || 'Chat privado'
+          const previous = cached.otherParticipant && otherParticipantRef.current?.id === cached.otherParticipant.id ? otherParticipantRef.current : null
+          setTitle(cachedName)
+          setOtherParticipant(cached.otherParticipant ? { ...cached.otherParticipant, name: cachedName, avatarUrl: cached.otherParticipant.avatarUrl || previous?.avatarUrl || '', publicName: cachedPublicName || undefined, nickname: cachedNickname || undefined } : null)
+          setMessages(current => mergeMessageSnapshot(current, cached.messages.map(mapMessage)))
+          historyCursorRef.current = cached.historyPage?.nextCursor || null
+          setHasOlderMessages(Boolean(cached.historyPage?.hasMore))
+          if (cached.settings) setSettings(cached.settings)
+          setLoading(false)
+        }, CONVERSATION_PAGE_SIZE)
         if (isStaleLoad()) return
-        setTitle(response.title || 'Chat privado')
-        setOtherParticipant(response.otherParticipant)
+        const responseNickname = textOf(response.chat ?? {}, ['nickname'], '').trim()
+        const responsePublicName = response.otherParticipant?.name || ''
+        const responseName = responseNickname || responsePublicName || response.title || 'Chat privado'
+        const previous = response.otherParticipant && otherParticipantRef.current?.id === response.otherParticipant.id ? otherParticipantRef.current : null
+        setTitle(responseName)
+        setOtherParticipant(response.otherParticipant ? { ...response.otherParticipant, name: responseName, avatarUrl: response.otherParticipant.avatarUrl || previous?.avatarUrl || '', publicName: responsePublicName || undefined, nickname: responseNickname || undefined } : null)
         const mappedMessages = response.messages.map(mapMessage)
-        setMessages(current => mergeMessageSnapshot(current, mappedMessages))
+        if (!expandedHistoryRef.current) {
+          historyCursorRef.current = response.historyPage?.nextCursor || null
+          setHasOlderMessages(Boolean(response.historyPage?.hasMore))
+        }
+        setMessages(current => options?.silent || expandedHistoryRef.current
+          ? mergeLatestMessagePage(current, mappedMessages, Boolean(response.historyPage?.hasMore), idsAtRequestStart)
+              .filter(message => ['pending', 'failed'].includes(message.status) || fallbackHistoryAllows(response, message.createdAt))
+          : mergeMessageSnapshot(current, mappedMessages))
         setSettings(response.settings)
         setScheduledJobs([])
         await loadPollStates(mappedMessages)
@@ -1065,7 +1170,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         : []
       const otherId = participants.find((participantId) => participantId !== user.id)
       if (otherId) {
-        const [{ data: profileRows }, { data: participantRows, error: participantError }] =
+        const [{ data: profileRows }, { data: participantRows, error: participantError }, nicknameResult] =
           await Promise.all([
             supabase.from('profiles').select('*').eq('id', otherId).limit(1),
             supabase
@@ -1074,20 +1179,29 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
               .eq('chat_id', cleanChatId)
               .eq('user_id', otherId)
               .limit(1),
+            Promise.resolve().then(() => supabase!.from('nicknames').select('nickname')
+              .eq('user_id', user.id).eq('target_user_id', otherId).limit(1))
+              .then(result => result.error && isMissingTableError(result.error) ? { data: [], error: null } : result)
+              .catch(() => ({ data: [], error: null })),
           ])
         if (participantError && !isMissingTableError(participantError)) {
           throw participantError
         }
         const profile = ((profileRows ?? []) as GenericRow[])[0]
-        const displayName = textOf(profile ?? {}, ['displayName', 'display_name', 'username'], 'Chat privado')
+        const previous = otherParticipantRef.current?.id === otherId ? otherParticipantRef.current : null
+        const publicName = textOf(profile ?? {}, ['displayName', 'display_name', 'username'], notificationParticipant?.id === otherId ? notificationParticipant.name : previous?.publicName || previous?.name || 'Chat privado')
+        const nickname = textOf(((nicknameResult.data ?? []) as GenericRow[])[0] ?? {}, ['nickname'], '').trim()
+        const displayName = nickname || publicName
         const rawAvatarUrl = textOf(profile ?? {}, ['avatar_url', 'photo_url', 'profile_image'], '')
-        const avatarUrl = resolveSupabasePublicUrl('avatars', rawAvatarUrl)
+        const avatarUrl = resolveSupabasePublicUrl('avatars', rawAvatarUrl) || previous?.avatarUrl || (notificationParticipant?.id === otherId ? notificationParticipant.avatarUrl : '')
         const participant = ((participantRows ?? []) as GenericRow[])[0]
         if (!isStaleLoad()) {
           setTitle(displayName)
           setOtherParticipant({
             id: otherId,
             name: displayName,
+            publicName,
+            nickname: nickname || undefined,
             avatarUrl,
             lastReadAt: textOf(participant ?? {}, ['last_read_at'], ''),
           })
@@ -1103,13 +1217,18 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         .from('messages')
         .select('*')
         .eq('chat_id', cleanChatId)
-        .order('created_at', { ascending: true })
-        .limit(500)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(CONVERSATION_PAGE_SIZE)
       if (msgError) throw msgError
 
-      const mappedMessages = ((messageRows ?? []) as GenericRow[]).map(mapMessage)
+      const newestFirst = (messageRows ?? []) as GenericRow[]
+      const mappedMessages = newestFirst.map(mapMessage).reverse()
       if (isStaleLoad()) return
-      setMessages(current => mergeMessageSnapshot(current, mappedMessages))
+      if (!options?.silent || !expandedHistoryRef.current) setHasOlderMessages(newestFirst.length === CONVERSATION_PAGE_SIZE)
+      setMessages(current => options?.silent
+        ? mergeLatestMessagePage(current, mappedMessages, newestFirst.length === CONVERSATION_PAGE_SIZE, idsAtRequestStart)
+        : mergeMessageSnapshot(current, mappedMessages))
       await Promise.all([
         loadPollStates(mappedMessages),
         loadConsumedViewOnce(mappedMessages),
@@ -1117,6 +1236,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       ])
     } catch (caught) {
       if (!isStaleLoad()) {
+        if ([401, 403, 404].includes(Number((caught as { status?: number })?.status))) setMessages([])
         setLoadError(friendlyError(caught, 'No se pudo cargar la conversación'))
       }
     } finally {
@@ -1124,11 +1244,93 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         setLoading(false)
       }
     }
-  }, [cleanChatId, loadConsumedViewOnce, loadPollStates, markAsDeliveredAndRead, useUbuntu, user])
+  }, [cleanChatId, loadConsumedViewOnce, loadPollStates, markAsDeliveredAndRead, notificationParticipant, useUbuntu, user])
+
+  const loadOlderMessages = useCallback(async () => {
+    if ((!useUbuntu && !supabase) || !cleanChatId || loadingOlderMessagesRef.current) return
+    const oldest = messages[0]
+    if (!oldest?.createdAt || !hasOlderMessages) return
+    const cursorDate = new Date(oldest.createdAt)
+    if (Number.isNaN(cursorDate.getTime())) return
+
+    const requestChatId = cleanChatId
+    const requestLoadSequence = historyGenerationRef.current
+    const thread = threadRef.current
+    if (!thread) return
+    loadingOlderMessagesRef.current = true
+    expandedHistoryRef.current = true
+    setError(null)
+    setLoadingOlderMessages(true)
+    shouldStickToBottomRef.current = false
+    try {
+      let olderPage: ChatMessage[]
+      if (useUbuntu) {
+        const cursor = historyCursorRef.current
+        if (!cursor) return
+        const response = await loadFallbackHistoryPage('chat', requestChatId, cursor, CONVERSATION_PAGE_SIZE)
+        if (requestLoadSequence !== historyGenerationRef.current) return
+        olderPage = response.messages.map(mapMessage)
+        historyCursorRef.current = response.historyPage?.nextCursor || null
+        setHasOlderMessages(Boolean(response.historyPage?.hasMore))
+      } else {
+      const cursorTimestamp = oldest.createdAt
+      const cursorId = oldest.id
+      const safeId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursorId)
+        ? cursorId
+        : ''
+      let query = supabase!.from('messages').select('*').eq('chat_id', requestChatId)
+      query = safeId
+        ? query.or(`created_at.lt.${cursorTimestamp},and(created_at.eq.${cursorTimestamp},id.lt.${safeId})`)
+        : query.lt('created_at', cursorTimestamp)
+      const { data, error: pageError } = await query
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(CONVERSATION_PAGE_SIZE)
+      if (pageError) throw pageError
+      if (requestLoadSequence !== historyGenerationRef.current) return
+
+      const descendingRows = (data ?? []) as GenericRow[]
+      olderPage = descendingRows.map(mapMessage).reverse()
+      setHasOlderMessages(descendingRows.length === CONVERSATION_PAGE_SIZE)
+      }
+      expandedHistoryRef.current = true
+      if (olderPage.length === 0) return
+
+      const viewportAnchor = captureConversationViewportAnchor(thread)
+      setMessages(current => mergeOlderMessagePage(current, olderPage))
+      setHistoryWindowSize(size => size + olderPage.length)
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        if (requestLoadSequence === historyGenerationRef.current && threadRef.current === thread) {
+          restoreConversationViewportAnchor(thread, viewportAnchor)
+        }
+      }))
+      await Promise.all([loadPollStates(olderPage), loadConsumedViewOnce(olderPage)])
+    } catch (caught) {
+      if (requestLoadSequence === historyGenerationRef.current) {
+        setError(friendlyError(caught, 'No se pudieron cargar mensajes anteriores'))
+      }
+    } finally {
+      if (requestLoadSequence === historyGenerationRef.current) {
+        loadingOlderMessagesRef.current = false
+        setLoadingOlderMessages(false)
+      }
+    }
+  }, [cleanChatId, hasOlderMessages, loadConsumedViewOnce, loadPollStates, messages, useUbuntu])
+  loadOlderMessagesRef.current = () => { void loadOlderMessages() }
+
+  // Search and the media gallery retain access to the entire authorized history.
+  // Ordinary chat entry only hydrates its recent page.
+  useEffect(() => {
+    if ((showMessageSearch || galleryMessageId || replyJumpId && !messageById.has(replyJumpId)) && hasOlderMessages && !loadingOlderMessages && !error) {
+      loadOlderMessagesRef.current()
+    }
+  }, [showMessageSearch, galleryMessageId, replyJumpId, messageById, hasOlderMessages, loadingOlderMessages, error])
 
   useEffect(() => {
     void loadChat()
   }, [loadChat])
+
+  useConversationRecovery(Boolean(useUbuntu && user && cleanChatId), () => loadChat({ silent: true }))
 
   useEffect(() => {
     forceScrollToBottomRef.current = true
@@ -1784,6 +1986,41 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     }
   }
 
+  async function saveChatNickname() {
+    if (!user || !otherParticipant || savingNickname) return
+    const nickname = nicknameDraft.trim().slice(0, 120)
+    setSavingNickname(true)
+    setError(null)
+    try {
+      if (useUbuntu) {
+        if (nickname) {
+          await fallbackApiJson(`/v1/data/messages/nicknames/${encodeURIComponent(otherParticipant.id)}`, {
+            method: 'PUT', body: JSON.stringify({ nickname }),
+          })
+        } else {
+          await fallbackApiJson(`/v1/data/messages/nicknames/${encodeURIComponent(otherParticipant.id)}`, { method: 'DELETE' })
+        }
+      } else {
+        if (!supabase) return
+        const result = nickname
+          ? await supabase.from('nicknames').upsert({ user_id: user.id, target_user_id: otherParticipant.id, nickname }, { onConflict: 'user_id,target_user_id' })
+          : await supabase.from('nicknames').delete().eq('user_id', user.id).eq('target_user_id', otherParticipant.id)
+        if (result.error) throw result.error
+      }
+      const nextName = nickname || otherParticipant.publicName || otherParticipant.name
+      setOtherParticipant(current => current?.id === otherParticipant.id
+        ? { ...current, name: nextName, nickname: nickname || undefined }
+        : current)
+      setTitle(nextName)
+      setNicknameDialogOpen(false)
+      window.dispatchEvent(new Event('novvin:conversation-preferences-changed'))
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo guardar el apodo privado'))
+    } finally {
+      setSavingNickname(false)
+    }
+  }
+
   async function saveTranslationSettings() {
     if (useUbuntu) return
     if (!supabase || !user || !cleanChatId || savingSettings) return
@@ -1888,7 +2125,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
     }
   }
 
-  if (loading) {
+  if (loading && !otherParticipant) {
     return <StatusView title="Cargando conversacion" description="Espera un momento..." />
   }
 
@@ -2029,7 +2266,18 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
 
       {showQuickShare ? <ChatOptionsMenu pinned={settings.isPinned} muted={settings.isMuted} favorite={settings.isFavorite} archived={settings.isArchived} busy={savingSettings}
         onPreference={patch => void saveChatPreferences(patch)} onInfo={() => setProfilePanelOpen(true)} onSearch={() => setShowMessageSearch(true)}
-        onSelect={() => setSelectingMessages(true)} onAdvanced={() => setShowAdvancedTools(true)} onLeave={() => onCloseChat?onCloseChat():navigate('/app/messages')} onClose={() => setShowQuickShare(false)} /> : null}
+        onSelect={() => setSelectingMessages(true)} onAdvanced={() => setShowAdvancedTools(true)} onLeave={() => onCloseChat?onCloseChat():navigate('/app/messages')} onClose={() => setShowQuickShare(false)}
+        onNickname={otherParticipant ? () => { setNicknameDraft(otherParticipant.nickname || ''); setNicknameDialogOpen(true) } : undefined} /> : null}
+      {nicknameDialogOpen && otherParticipant ? (
+        <div className="chat-tools-overlay chat-advanced-options fade-in" role="dialog" aria-modal="true" aria-label="Apodo privado" onKeyDown={event => { if (event.key === 'Escape') setNicknameDialogOpen(false) }}>
+          <article className="surface-card section-stack shadow-lg">
+            <div className="row-between"><h3>Apodo privado</h3><button type="button" className="icon-btn-sm" aria-label="Cerrar apodo privado" onClick={() => setNicknameDialogOpen(false)}>✕</button></div>
+            <p className="muted-line">Solo tú verás este apodo. Déjalo vacío para volver al nombre del perfil.</p>
+            <input autoFocus className="text-input" maxLength={120} value={nicknameDraft} onChange={event => setNicknameDraft(event.target.value)} placeholder={otherParticipant.publicName || otherParticipant.name} aria-label="Apodo" />
+            <div className="row-actions"><button type="button" className="ghost-btn" disabled={savingNickname} onClick={() => setNicknameDialogOpen(false)}>Cancelar</button><button type="button" className="primary-btn" disabled={savingNickname} onClick={() => void saveChatNickname()}>{savingNickname ? 'Guardando…' : 'Guardar apodo'}</button></div>
+          </article>
+        </div>
+      ) : null}
       {showAdvancedTools ? (
         <div className="chat-tools-overlay chat-advanced-options fade-in" role="dialog" aria-label="Más opciones del chat" onKeyDown={event => { if(event.key === 'Escape') setShowAdvancedTools(false) }}>
           <article className="surface-card section-stack shadow-lg">
@@ -2124,13 +2372,15 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       <div className="chat-thread-shell" inert={pendingAttachments.length > 0}>
         {useUbuntu && user ? <DirectMessageRequestNotice key={`${user.id}:${cleanChatId}`} accountId={user.id} chatId={cleanChatId} revision={messages.length}/> : null}
         <section className="chat-thread" ref={threadRef} onContextMenu={event => { if(event.target === event.currentTarget) { event.preventDefault(); setShowQuickShare(true) } }} onScroll={handleThreadScroll} onLoadCapture={keepLatestMessageVisible} onLoadedMetadataCapture={keepLatestMessageVisible}>
-          {renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
+          {hasOlderMessages ? <button type="button" className="ghost-btn" disabled={loadingOlderMessages} onClick={() => loadOlderMessagesRef.current()}>
+            {loadingOlderMessages ? 'Cargando mensajes…' : 'Ver mensajes anteriores'}
+          </button> : renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
             const thread = threadRef.current, height = thread?.scrollHeight || 0, top = thread?.scrollTop || 0
             shouldStickToBottomRef.current = false
             setHistoryWindowSize(size => size + 80)
             window.requestAnimationFrame(() => { if (thread) thread.scrollTop = top + thread.scrollHeight - height })
           }}>Ver mensajes anteriores</button> : null}
-          {filteredMessages.length === 0 && normalizedMessageSearch ? (
+          {loading && filteredMessages.length === 0 ? <div className="chat-search-empty" role="status">Cargando mensajes…</div> : filteredMessages.length === 0 && normalizedMessageSearch ? (
             <div className="chat-search-empty">
               <small className="muted-line">No hay mensajes para ese filtro.</small>
             </div>
@@ -2147,7 +2397,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
           const mine = message.senderId === user?.id
           const album = albums.get(message.id)
           if (album && !selectingMessages && !replyJumpId && album.leader !== message.id) return null
-          if (album && !selectingMessages && !replyJumpId) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} deliveryState={item => mineDeliveryState(item, toMillis(item.createdAt) > 0 && toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(item.createdAt))} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteMessageForMe(item)} onDeleteForAll={item => void deleteMessageForAll(item)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
+          if (album && !selectingMessages && !replyJumpId) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} deliveryState={item => mineDeliveryState(item, toMillis(item.createdAt) > 0 && toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(item.createdAt))} onReply={item => beginReply(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteMessageForMe(item)} onDeleteForAll={item => void deleteMessageForAll(item)} onReact={(item, emoji) => void toggleReaction(item.id, emoji || '👍')} /></Fragment>
 
           const replied = message.replyToId ? messageById.get(message.replyToId) : null
           const pollRows =
@@ -2166,6 +2416,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
             (emoji) => reactionCount(message.reactions, emoji) > 0,
           )
 
+          const inlinePhoto = Boolean(message.mediaUrl && !message.deletedForAll && !['sticker', 'location', 'contact', 'birthday_card', 'poll', 'raffle', 'question'].includes(message.contentType) && !isViewOnceType(message.contentType) && attachmentKind(message.contentType, message.mediaUrl) === 'image')
+          const photoTimestamp = inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={() => void retryPendingWebMessage(message.id)}/> : undefined
           return (
             <Fragment key={message.id}>
               {showDaySeparator ? (
@@ -2173,7 +2425,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                   <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
-              <article id={`message-${message.id}`} className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${selectingMessages ? ' message-selectable' : ''}${selectedMessageIds.has(message.id) ? ' message-selected' : ''}${message.contentType === 'text' && !message.mediaUrl && !replied && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`} >
+              <article id={`message-${message.id}`} onDoubleClick={event => { if (shouldReplyToMessageDoubleClick(event.target, selectingMessages)) beginReply(message.id) }} title="Doble clic para responder" className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${inlinePhoto ? ' image-bubble' : ''}${selectingMessages ? ' message-selectable' : ''}${selectedMessageIds.has(message.id) ? ' message-selected' : ''}${message.contentType === 'text' && !message.mediaUrl && !replied && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`} >
                 {selectingMessages ? <label className="message-select-control"><input type="checkbox" aria-label={`Seleccionar mensaje de ${mine ? 'ti' : title} a las ${new Date(message.createdAt).toLocaleTimeString('es')}`} checked={selectedMessageIds.has(message.id)} onChange={() => toggleSelectedMessage(message.id)} /></label> : null}
                 {message.isForwarded ? <small>Reenviado</small> : null}
                 {message.replyToId ? <MessageReplyPreview onJump={setReplyJumpId} message={replied || { id: message.replyToId, content: 'Mensaje anterior', contentType: 'text', mediaUrl: null, deletedForAll: false }} name={replied?.senderId === user?.id ? 'Tú' : title}/> : null}
@@ -2221,7 +2473,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                     ) : (
                       <>
                         {message.mediaUrl && message.contentType !== 'sticker' && !isViewOnceType(message.contentType) ? (
-                          <ChatMessageMedia message={message} onImageOpen={() => openGallery(message)} />
+                          <ChatMessageMedia message={message} onImageOpen={() => openGallery(message)} overlay={photoTimestamp} />
                         ) : null}
                         {showMessageText ? (
                           <MessageText text={message.content} className={message.mediaUrl ? 'message-caption' : undefined}/>
@@ -2229,7 +2481,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                       </>
                     )}
                     {message.mediaUrl && message.contentType === 'sticker' ? (
-                      <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => setReplyToId(message.id)} onForward={() => void sendForwardedMessage(message)} />
+                      <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => beginReply(message.id)} onForward={() => void sendForwardedMessage(message)} />
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
                       consumed ? (
@@ -2259,12 +2511,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                 ) : null}
 
                 {!message.deletedForAll ? (
-                  <MessageOptionsMenu mine={mine}>
+                  <MessageOptionsMenu mine={mine} onReact={emoji => void toggleReaction(message.id, emoji)}>
                     <button className="mini-action-btn" type="button" onClick={() => { setSelectingMessages(true); setSelectedMessageIds(new Set([message.id])) }}>Seleccionar mensaje</button>
                     <button className="mini-action-btn" type="button" onClick={() => void copyChatMessage(message.content, message.mediaUrl, message.contentType).catch(() => setError('No se pudo copiar. Permite el acceso al portapapeles o descarga la imagen.'))}>Copiar</button>
                     {message.mediaUrl && !['location', 'contact'].includes(message.contentType) && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={fileNameFromUrl(message.mediaUrl)} /> : null}
                     <MessageReactionBar onReact={emoji=>void toggleReaction(message.id,emoji)}/>
-                    <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
+                    <button className="mini-action-btn" type="button" onClick={() => beginReply(message.id)}>
                       Responder
                     </button>
                     <button className="mini-action-btn" type="button" onClick={() => void sendForwardedMessage(message)}>
@@ -2296,53 +2548,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                 ) : null}
 
                 {mine && message.status==='failed' && message.deliveryError ? <p className="message-delivery-error" role="status">{message.deliveryError}</p> : null}
-                {mine && message.status==='pending' ? <OutboxTransferStatus id={message.id}/> : null}
-                <small className="message-meta">
-                      {new Date(message.createdAt).toLocaleTimeString("es", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                      {message.isEdited ? " · editado" : ""}
-                      {mine ? (
-                        <span
-                          className={`message-status ${deliveryState}`}
-                          aria-label={
-                            deliveryState === "pending"
-                              ? "Pendiente"
-                              : deliveryState === "failed"
-                                ? "Error al enviar"
-                                : deliveryState === "read"
-                                  ? "Leído"
-                                  : deliveryState === "delivered"
-                                    ? "Entregado"
-                                    : "Enviado"
-                          }
-                          title={
-                            readByOther
-                              ? `Leído por ${otherParticipant?.name || "contacto"}`
-                              : undefined
-                          }
-                        >
-                          {deliveryState === "pending" ? (
-                            "◷"
-                          ) : deliveryState === "failed" ? (
-                            <button
-                              className="mini-action-btn"
-                              type="button"
-                              onClick={() =>
-                                void retryPendingWebMessage(message.id)
-                              }
-                            >
-                              Reintentar
-                            </button>
-                          ) : deliveryState === "sent" ? (
-                            "✓"
-                          ) : (
-                            "✓✓"
-                          )}
-                        </span>
-                      ) : null}
-                    </small>
+                {mine && message.status==='pending' && message.mediaUrl ? <OutboxTransferStatus id={message.id}/> : null}
+                {!inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={() => void retryPendingWebMessage(message.id)}/> : null}
               </article>
             </Fragment>
           )
@@ -2388,7 +2595,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
       {preparingAttachments ? <p className="attachment-preparing" role="status">{preparationStatus}</p> : null}
       {isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
       {imageEditorFile ? <ChatImageEditor asSticker={pendingAttachments.some(item => item.file === imageEditorFile && item.contentType === 'sticker')} file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
-      {galleryIndex !== null && gallery[galleryIndex] ? <MediaViewer items={gallery} initialIndex={galleryIndex} onClose={() => setGalleryIndex(null)} /> : null}
+      {galleryIndex !== null && gallery[galleryIndex] ? <MediaViewer items={gallery} initialIndex={galleryIndex} onClose={() => setGalleryMessageId(null)} /> : null}
       {pendingAttachments.length > 0 ? <ChatAttachmentPreview items={pendingAttachments} draft={draft} busy={sending || uploading} preparing={preparingAttachments} status={preparationStatus}
         onClose={() => { cancelPreparation(); clearPendingAttachments() }} onRemove={removePendingAttachment} onAdd={handleAttachFile} onSend={handleSend}
         onCaption={(id, caption) => { updatePendingAttachmentCaption(id, caption); if (pendingAttachments[0]?.id === id) setDraft(caption) }}
@@ -2423,6 +2630,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
         </label><FolderAttachmentPicker onFiles={handleAttachFile}/></div></details>
 
         <input
+          ref={composerInputRef}
           className="text-input chat-input-field"
           onSelect={event=>setSpellingCaret(event.currentTarget.selectionStart ?? undefined)}
           lang="es" spellCheck={true} autoCorrect="on" autoCapitalize="sentences"
@@ -2455,7 +2663,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
           )}
         </button>
 
-        <button className="primary-btn circle-btn" type="submit" aria-label={editingMessageId ? 'Guardar corrección' : 'Enviar mensaje'} disabled={sending || uploading || preparingAttachments}>
+        <button className="primary-btn circle-btn" type="submit" aria-label={editingMessageId ? 'Guardar corrección' : 'Enviar mensaje'} disabled={loading || sending || uploading || preparingAttachments}>
           {sending || uploading ? (
             '...'
           ) : (

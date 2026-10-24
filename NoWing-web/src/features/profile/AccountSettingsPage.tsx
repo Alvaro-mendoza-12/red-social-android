@@ -1,10 +1,12 @@
+import { updateFallbackSessionProfile } from '../../core/auth/fallbackAuth'
 import './accountSettings.css'
 import { StreamingImage } from '../../components/StreamingMedia'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
-import { PROFILE_EFFECT_CHOICES, ProfileCoverEffect } from '../../components/ProfileCoverEffect'
-import { Link } from 'react-router-dom'
+import { ProfileCoverEffect } from '../../components/ProfileCoverEffect'
+import { ProfileAppearanceControls } from '../../components/ProfileAppearanceControls'
+import { Link, useLocation } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
@@ -81,6 +83,7 @@ type SettingsModel = {
   coverUrl: string
   profileEffect: string
   profileTheme: string
+  profileWelcome: string
   interestsText: string
   hobbiesText: string
   linkedGamesText: string
@@ -150,6 +153,7 @@ function isMissingColumnError(error: unknown): boolean {
 }
 
 export function AccountSettingsPage() {
+  const location = useLocation()
   const [activeSection, setActiveSection] = useState('perfil')
   const { user, isFallbackSession } = useAuth()
   const [webPreferences, updateWebPreferences] = useWebPreferences()
@@ -161,6 +165,7 @@ export function AccountSettingsPage() {
     coverUrl: '',
     profileEffect: 'none',
     profileTheme: 'conectate',
+    profileWelcome: '',
     interestsText: '',
     hobbiesText: '',
     linkedGamesText: '',
@@ -223,6 +228,7 @@ export function AccountSettingsPage() {
           coverUrl: textOf(profile, ['cover_url', 'coverUrl', 'banner_url'], ''),
           profileEffect: textOf(profile, ['profile_effect', 'profileEffect'], 'none'),
           profileTheme: textOf(profile, ['profile_theme', 'profileTheme'], 'conectate'),
+          profileWelcome: textOf(profile, ['profile_welcome', 'profileWelcome'], ''),
           interestsText: csvFromArray(profile.interests),
           hobbiesText: csvFromArray(profile.hobbies),
           linkedGamesText: csvFromArray(profile.linked_games),
@@ -291,6 +297,7 @@ export function AccountSettingsPage() {
         coverUrl: textOf(row, ['cover_url', 'banner_url'], ''),
         profileEffect: textOf(row, ['profile_effect'], 'none'),
         profileTheme: textOf(row, ['profile_theme'], 'conectate'),
+        profileWelcome: textOf(row, ['profile_welcome', 'profileWelcome'], ''),
         interestsText: csvFromArray(row.interests),
         hobbiesText: csvFromArray(row.hobbies),
         linkedGamesText: csvFromArray(row.linked_games),
@@ -323,6 +330,10 @@ export function AccountSettingsPage() {
     void loadSettings()
   }, [loadSettings])
 
+  useEffect(() => {
+    if (!loading && location.hash === '#personalizar-perfil') document.getElementById('personalizar-perfil')?.scrollIntoView?.({ block: 'start' })
+  }, [loading, location.hash])
+
   async function saveProfileBasics() {
     if (isFallbackSession) {
       if (savingProfile) return
@@ -337,6 +348,7 @@ export function AccountSettingsPage() {
           coverUrl: model.coverUrl.trim() || null,
           profileEffect: model.profileEffect,
           profileTheme: model.profileTheme,
+          profileWelcome: model.profileWelcome.trim(),
           username: model.username.trim() || null,
           interests: csvToArray(model.interestsText),
           hobbies: csvToArray(model.hobbiesText),
@@ -367,7 +379,13 @@ export function AccountSettingsPage() {
           coverUrl: textOf(profile, ['cover_url', 'coverUrl'], current.coverUrl),
           profileEffect: textOf(profile, ['profile_effect', 'profileEffect'], current.profileEffect),
           profileTheme: textOf(profile, ['profile_theme', 'profileTheme'], current.profileTheme),
+          profileWelcome: textOf(profile, ['profile_welcome', 'profileWelcome'], current.profileWelcome),
         }))
+        if (user?.id) updateFallbackSessionProfile(user.id, {
+          displayName: textOf(profile, ['display_name', 'displayName'], model.displayName.trim()),
+          username: textOf(profile, ['username'], model.username.trim()),
+          avatarUrl: Object.hasOwn(profile, 'avatar_url') ? profile.avatar_url as string | null : model.avatarUrl.trim() || null,
+        })
         setInfo('Perfil actualizado.')
       } catch (caught) {
         setError(friendlyError(caught, 'No se pudo guardar perfil local'))
@@ -389,6 +407,7 @@ export function AccountSettingsPage() {
         cover_url: model.coverUrl.trim() || null,
         profile_effect: model.profileEffect,
         profile_theme: model.profileTheme,
+        profile_welcome: model.profileWelcome.trim(),
         interests: csvToArray(model.interestsText),
         hobbies: csvToArray(model.hobbiesText),
         linked_games: csvToArray(model.linkedGamesText),
@@ -421,9 +440,7 @@ export function AccountSettingsPage() {
           .update(legacyPayload)
           .eq('id', user.id)
         if (legacyError) throw legacyError
-        setInfo(
-          'Perfil actualizado.',
-        )
+        setInfo('Perfil básico actualizado. El servidor necesita habilitar las columnas de personalización para guardar el color y la animación.')
         return
       }
       setInfo('Perfil actualizado.')
@@ -611,7 +628,7 @@ export function AccountSettingsPage() {
           </div>
           <div className="composer settings-stack">
             <div className="settings-profile-preview">
-              {model.coverUrl.trim() ? <StreamingImage className="settings-profile-cover" src={model.coverUrl.trim()} alt="Portada de tu perfil" /> : <div className="settings-profile-cover"><ProfileCoverEffect effect={model.profileEffect} theme={model.profileTheme} /></div>}
+              {model.coverUrl.trim() ? <div className="settings-profile-cover" style={{ position: 'relative' }}><StreamingImage className="settings-profile-cover" src={model.coverUrl.trim()} alt="Portada de tu perfil" />{model.profileEffect !== 'none' ? <ProfileCoverEffect effect={model.profileEffect} theme={model.profileTheme} overlay/> : null}</div> : <div className="settings-profile-cover"><ProfileCoverEffect effect={model.profileEffect} theme={model.profileTheme} /></div>}
               <div className="settings-profile-avatar">
                 {model.avatarUrl.trim() ? (
                   <SafeAvatar url={model.avatarUrl.trim()} name={model.displayName || 'Tu perfil'} />
@@ -629,15 +646,15 @@ export function AccountSettingsPage() {
               </div>
             </div>
 
-            <details className="settings-appearance-tools"><summary>Personalizar portada</summary>
+            <section id="personalizar-perfil" className="settings-appearance-tools" aria-label="Personalizar perfil">
+              <h4>Personalizar perfil</h4>
               <p>Elige una foto o un fondo animado. Los efectos se muestran en tu perfil cuando no hay foto de portada.</p>
-              <label>Efecto <select className="text-input" value={model.profileEffect} onChange={event => setModel(current => ({ ...current, profileEffect: event.target.value }))}>{PROFILE_EFFECT_CHOICES.map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>
-              <label>Color del fondo <select className="text-input" value={model.profileTheme} onChange={event => setModel(current => ({ ...current, profileTheme: event.target.value }))}>
-                {Object.entries({ conectate: 'Novvin', oceano: 'Océano', jade: 'Jade', solar: 'Solar', sakura: 'Sakura', cobalto: 'Cobalto', bosque: 'Bosque', aurora: 'Aurora', grafito: 'Grafito', rubi: 'Rubí', ciruela: 'Ciruela', artico: 'Ártico', neon: 'Neón', terracota: 'Terracota', tinta: 'Tinta', laguna: 'Laguna', citrico: 'Cítrico', orquidea: 'Orquídea', carmesi: 'Carmesí', prisma: 'Prisma', melon: 'Melón', acero: 'Acero', selva: 'Selva', noche: 'Noche' }).map(([id, label]) => <option value={id} key={id}>{label}</option>)}
-              </select></label>
+              <ProfileAppearanceControls theme={model.profileTheme} effect={model.profileEffect} onTheme={profileTheme => setModel(current => ({ ...current, profileTheme }))} onEffect={profileEffect => setModel(current => ({ ...current, profileEffect }))} />
+              <label>Mensaje de bienvenida <input className="text-input" maxLength={120} value={model.profileWelcome} onChange={event => setModel(current => ({ ...current, profileWelcome: event.target.value }))} placeholder="Una frase para quienes visitan tu perfil" /></label>
               {model.coverUrl ? <button className="ghost-btn" type="button" onClick={() => setModel(current => ({ ...current, coverUrl: '' }))}>Usar fondo en lugar de foto</button> : null}
-              <p className="muted-line">Los cambios se aplican al guardar el perfil. La animación se puede pausar y respeta el movimiento reducido del dispositivo.</p>
-            </details>
+              <p className="muted-line">La vista previa cambia al elegir. Guarda para mostrarlo también en el móvil.</p>
+              <button className="primary-btn" type="button" disabled={savingProfile || uploadingAsset !== null} onClick={() => void saveProfileBasics()}>{savingProfile ? 'Guardando…' : 'Guardar personalización'}</button>
+            </section>
 
             <div className="settings-form-grid">
               <label className="settings-field"><span>Nombre visible</span><input

@@ -1,3 +1,4 @@
+import { directConversationHasActivity } from '../../core/directConversationActivity'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import {acknowledgeInboxPreview,applyInboxUnreadSnapshot,confirmInboxConversationRead,currentInboxUnreadCount,hasUnrepresentedInboxUnread,inboxActivityEvent,latestInboxMessage,markInboxConversationRead,useInboxUnreadCounts,type InboxActivity} from '../../core/inboxActivity'
 import { readConversationDraft, useDraftRevision } from '../../core/conversationDrafts'
@@ -845,16 +846,18 @@ export function MessagesPage() {
           const profileById = await fetchProfileMapByIds(Array.from(otherByChat.values()))
 
           const unreadByChat = new Map<string, number>()
+          const chatsWithMessages = new Set<string>()
           if (chatIds.length > 0) {
             const { data: unreadRows, error: unreadError } = await supabase
               .from('messages')
               .select('chat_id,sender_id,created_at,read_at,status')
               .in('chat_id', chatIds)
-              .neq('sender_id', user.id)
             if (unreadError) throw unreadError
             ;((unreadRows ?? []) as GenericRow[]).forEach((row) => {
               const chatId = textOf(row, ['chat_id'], '')
               if (!chatId) return
+              chatsWithMessages.add(chatId)
+              if (normalizeId(textOf(row, ['sender_id'], '')) === cleanCurrentUserId) return
               const participant = participantByChat.get(chatId)
               const lastReadAtMillis = Math.max(
                 toMillis(participant?.lastReadAt ?? ''),
@@ -874,7 +877,7 @@ export function MessagesPage() {
             })
           }
 
-          const mapped = chatRows.map((row) => {
+          const mapped = chatRows.filter(row => directConversationHasActivity(row, chatsWithMessages.has(textOf(row, ['id'], '')))).map((row) => {
             const id = textOf(row, ['id'], crypto.randomUUID())
             const isGroup = Boolean(row.is_group)
             const other = otherByChat.get(id) ?? null

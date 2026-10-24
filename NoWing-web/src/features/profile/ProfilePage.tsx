@@ -367,7 +367,7 @@ export function ProfilePage() {
             Mi QR
           </button>
         </div>
-        <Link className="ghost-btn profile-customize" to="/app/settings">
+        <Link className="ghost-btn profile-customize" to="/app/settings#personalizar-perfil">
           <Palette size={20} />
           Personalizar perfil
         </Link>

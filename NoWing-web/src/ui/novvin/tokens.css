@@ -26,15 +26,15 @@
 .theme-light {
   color-scheme: light;
   --background: #fff;
-  --surface: #f7f7f8;
-  --surface-raised: #eeeef1;
+  --surface: #f3f5f9;
+  --surface-raised: #e5eaf2;
   --surface-container: #e3e3e8;
   --foreground: #202124;
   --secondary-text: #5f6368;
-  --muted: #74777c;
+  --muted: #626872;
   --primary: #202124;
   --on-primary: #fff;
-  --outline: #d4d4da;
+  --outline: #aeb5c1;
   --divider: #e8e8ed;
   --danger: #ba1a1a;
   --brand-cyan: #087d91;
@@ -44,15 +44,15 @@
   .theme-system {
     color-scheme: light;
     --background: #fff;
-    --surface: #f7f7f8;
-    --surface-raised: #eeeef1;
+    --surface: #f3f5f9;
+    --surface-raised: #e5eaf2;
     --surface-container: #e3e3e8;
     --foreground: #202124;
     --secondary-text: #5f6368;
-    --muted: #74777c;
+    --muted: #626872;
     --primary: #202124;
     --on-primary: #fff;
-    --outline: #d4d4da;
+    --outline: #aeb5c1;
     --divider: #e8e8ed;
     --danger: #ba1a1a;
     --brand-cyan: #087d91;
@@ -106,4 +106,32 @@
   --brand-1: var(--primary);
   --brand-2: var(--primary);
   --ok: #81c995;
+}
+
+/* Shared by page content, menus and portals. Each accent has a light and dark ink. */
+.accent-conectate { --accent-light: #2168b5; --accent-dark: #9bcaff; }
+.accent-ocean { --accent-light: #006a9f; --accent-dark: #8acfff; }
+.accent-violet { --accent-light: #7043b7; --accent-dark: #cbb5ff; }
+.accent-emerald { --accent-light: #176b45; --accent-dark: #91d5ac; }
+.accent-midnight { --accent-light: #414da8; --accent-dark: #bac3ff; }
+.accent-ruby { --accent-light: #a32751; --accent-dark: #ffb1bf; }
+.accent-cyan { --accent-light: #006b78; --accent-dark: #85d4df; }
+.accent-amber { --accent-light: #765900; --accent-dark: #e7c568; }
+.accent-graphite { --accent-light: #485b70; --accent-dark: #bfccd9; }
+:is(.accent-conectate,.accent-ocean,.accent-violet,.accent-emerald,.accent-midnight,.accent-ruby,.accent-cyan,.accent-amber,.accent-graphite) {
+  --primary: light-dark(var(--accent-light), var(--accent-dark));
+  --on-primary: light-dark(#fff, #102237);
+  --accent: var(--primary);
+  --brand-cyan: var(--primary);
+  --brand-violet: var(--primary);
+  --surface: light-dark(color-mix(in srgb, var(--accent-light) 3%, #fff), color-mix(in srgb, var(--accent-dark) 3%, #13161c));
+  --surface-raised: light-dark(color-mix(in srgb, var(--accent-light) 9%, #fff), color-mix(in srgb, var(--accent-dark) 9%, #19212c));
+  --surface-container: light-dark(color-mix(in srgb, var(--accent-light) 15%, #fff), color-mix(in srgb, var(--accent-dark) 15%, #202735));
+  --sent-bubble: light-dark(color-mix(in srgb, var(--accent-light) 16%, #fff), color-mix(in srgb, var(--accent-dark) 28%, #10253c));
+  --sent-foreground: light-dark(#132f4a, #f2f7ff);
+  --sent-secondary: light-dark(#3b526b, #d1dfef);
+  --read-receipt: light-dark(#075b98, #87dcff);
+  --text: var(--foreground);
+  --text-muted: var(--secondary-text);
+  --border: var(--outline);
 }

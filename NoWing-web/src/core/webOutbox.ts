@@ -8,6 +8,8 @@ import { MAX_MESSAGE_UPLOAD_BYTES } from './attachmentPreparation'
 import {setOutboxProgress,clearOutboxProgress} from './outboxProgress'
 import { outboxDeliveryLane } from './outboxDeliveryPolicy'
 import type { GenericRow } from './utils'
+import { messagingNowIso } from './messagingClock'
+import { getRuntimeBackendUrl } from './runtimeBackend'
 
 type Scope = 'chat' | 'group' | 'community'
 type Payload = { id?: string; content: string; contentType?: string; mediaUrl?: string | null; [key: string]: unknown }
@@ -145,7 +147,7 @@ export async function editPendingWebMessage(scope: Scope, room: string, id: stri
     const key = roomKey(owner, scope, room) + '/' + outboxDeliveryLane(item)
     if (!navigator.locks && (sendQueue.has(key) || fileQueue.has(key))) throw new Error('El mensaje se está enviando. Espera un momento y vuelve a guardar la corrección.')
     if (item.payload.contentType && item.payload.contentType !== 'text') throw new Error('Solo puedes editar mensajes de texto.')
-    item.payload = { ...item.payload, content }; item.updatedAt = new Date().toISOString()
+    item.payload = { ...item.payload, content }; item.updatedAt = messagingNowIso(getRuntimeBackendUrl())
     await put('messages', item); requireOwner(owner)
     const message = await optimistic(item)
     notifyInboxMessage(item.senderId || owner, scope, room, message); changed(owner)
@@ -207,7 +209,7 @@ async function deliver(item: Pending) {
 export async function sendDurableWebMessage(scope: Scope, room: string, payload: Payload) {
   const owner = outboxOwner(); requireOwner(owner)
   const senderId = fallbackSessionToUser(readFallbackSession())?.id || owner
-  const item: Pending = { id: payload.id || crypto.randomUUID(), owner, senderId, scope, room, payload, createdAt: new Date().toISOString(), state: 'pending', attempts: 0, retryAt: 0 }
+  const item: Pending = { id: payload.id || crypto.randomUUID(), owner, senderId, scope, room, payload, createdAt: messagingNowIso(getRuntimeBackendUrl()), state: 'pending', attempts: 0, retryAt: 0 }
   await put('messages', item); requireOwner(owner); changed(owner)
   // Flush through the same durable path for both connected and disconnected sends.
   const message = await optimistic(item)

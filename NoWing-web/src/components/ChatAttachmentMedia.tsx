@@ -3,12 +3,13 @@ import { MediaViewer } from './MediaViewer'
 import { downloadMedia } from '../core/media/downloadMedia'
 import { MediaDownloadButton } from './MediaDownloadButton'
 import { StreamingVideo, StreamingAudio } from './StreamingMedia'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { rewriteRuntimeStorageUrl, runtimeStoragePreviewUrl } from '../core/runtimeBackend'
 import { prepareStorageReadAccessToken, trustedStorageBackend } from '../core/media/storageReadClient'
 import {
   readBoundedStorageBlob, STORAGE_PREVIEW_MAX_BYTES, STORAGE_SHORT_MEDIA_MAX_BYTES,
 } from '../core/media/boundedStorageRead'
+import { cachedStorageImagePreview, readCachedStorageImage } from '../core/media/imagePreviewCache'
 import {
   getStorageReadIdentity, onStorageReadInvalidated, requireStorageReadIdentity,
   subscribeStorageReadIdentity, type StorageReadIdentity,
@@ -33,7 +34,7 @@ function attachmentName(url: string, fallback: string) {
 }
 
 function acceptsInline(kind: ChatAttachmentKind, mime: string): boolean {
-  if (kind === 'image') return /^image\/(png|jpeg|webp|gif|avif|bmp)$/.test(mime)
+  if (kind === 'image') return /^image\/(png|apng|jpeg|webp|gif|avif|bmp)$/.test(mime)
   if (kind === 'audio' || kind === 'video') return mime.startsWith(`${kind}/`)
   if (kind === 'pdf') return mime === 'application/pdf'
   return true
@@ -41,9 +42,9 @@ function acceptsInline(kind: ChatAttachmentKind, mime: string): boolean {
 
 
 export function ChatAttachmentMedia({
-  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen, preserveAnimation = false, allowRetry = true, inlineDownload = true,
+  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen, preserveAnimation = false, allowRetry = true, inlineDownload = true, overlay,
 }: {
-  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void; preserveAnimation?: boolean; allowRetry?: boolean; inlineDownload?: boolean
+  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void; preserveAnimation?: boolean; allowRetry?: boolean; inlineDownload?: boolean; overlay?: ReactNode
 }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const rewritten = rewriteRuntimeStorageUrl(url)
@@ -65,15 +66,16 @@ export function ChatAttachmentMedia({
     if (!target || typeof IntersectionObserver === 'undefined') { setVisible(true); return }
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) { setVisible(true); observer.disconnect() }
-    }, { rootMargin: '250px' })
+    }, { rootMargin: preserveAnimation ? '48px' : '250px' })
     observer.observe(target)
     return () => observer.disconnect()
-  }, [])
+  }, [preserveAnimation])
 
   useEffect(() => {
     if (!ownStorage || !visible || !identity.accountId || kind === 'video' || kind === 'audio' || ((kind === 'file' || kind === 'pdf') && !readRequested)) return
     let active = true
     let objectUrl = ''
+    let contentionRetry: ReturnType<typeof setTimeout> | undefined
     const controller = new AbortController()
     const clearDeliveredMedia = () => {
       controller.abort()
@@ -91,7 +93,8 @@ export function ChatAttachmentMedia({
     if (size > maxBytes) {
       setFailure({ source, identity, code: 'MEDIA_TOO_LARGE' })
     } else {
-      void readBoundedStorageBlob({
+      const read = kind === 'image' ? (options: Parameters<typeof readBoundedStorageBlob>[0]) => readCachedStorageImage(options, attempt > 0) : readBoundedStorageBlob
+      void read({
         url: source, backendBase, identity, maxBytes, signal: controller.signal,
         getAccessToken: () => prepareStorageReadAccessToken(identity),
       }).then((blob) => {
@@ -100,21 +103,29 @@ export function ChatAttachmentMedia({
         if (!acceptsInline(kind, blob.type)) throw new Error('MEDIA_UNSUPPORTED_TYPE')
         // Unknown documents are downloads; never open arbitrary HTML/SVG in an app-origin Blob tab.
         const safeBlob = kind === 'file' ? new Blob([blob], { type: 'application/octet-stream' }) : blob
-        objectUrl = URL.createObjectURL(safeBlob)
+        const cached = kind === 'image' ? cachedStorageImagePreview(source, identity, maxBytes) : undefined
+        objectUrl = cached ? '' : URL.createObjectURL(safeBlob)
         requireStorageReadIdentity(identity)
         if (!active || controller.signal.aborted) { clearDeliveredMedia(); return }
-        setPreview({ source, identity, url: objectUrl, mime: blob.type, size: blob.size })
+        setPreview(cached || { source, identity, url: objectUrl, mime: blob.type, size: blob.size })
       }).catch((error: unknown) => {
         if (!active || controller.signal.aborted) return
+        // A full bounded read queue is temporary contention, especially in the
+        // sticker grid. Do not display a permanent broken-file card for it.
+        if (error instanceof Error && error.message === 'MEDIA_READ_QUEUE_FULL' && attempt < 6) {
+          contentionRetry = setTimeout(() => { if (active) setAttempt(value => value + 1) }, Math.min(1200, 250 * (attempt + 1)))
+          return
+        }
         const code = error instanceof Error && error.message === 'MEDIA_TOO_LARGE' ? 'MEDIA_TOO_LARGE' : 'MEDIA_UNAVAILABLE'
         setFailure({ source, identity, code })
       })
     }
-    return () => { active = false; removeInvalidator(); clearDeliveredMedia() }
+    return () => { active = false; clearTimeout(contentionRetry); removeInvalidator(); clearDeliveredMedia() }
   }, [backendBase, identity, kind, maxBytes, ownStorage, size, source, visible, attempt, readRequested])
 
   useEffect(()=>onStorageReadInvalidated(()=>{setViewerOpen(false);setReadRequested(false);container.current?.querySelectorAll('img').forEach(image=>image.removeAttribute('src'))}),[])
-  const ready = preview?.source === source && preview.identity === identity ? preview : null
+  const ready = preview?.source === source && preview.identity === identity ? preview
+    : kind === 'image' && ownStorage && identity.accountId ? cachedStorageImagePreview(source, identity, maxBytes) : null
   const currentFailure = failure?.source === source && failure.identity === identity ? failure : null
   const playbackUrl = isOwnedOutboxPreview(source,identity) ? source : ownStorage ? ready?.url ?? '' : safeExternalUrl(source)
   const retry = () => { setFailure(null); setPreview(null); setAttempt((value) => value + 1) }
@@ -149,7 +160,7 @@ export function ChatAttachmentMedia({
     content = <div className="chat-file-card chat-file-card-loading" role="status"><span><strong>Preparando archivo</strong><small>{title}</small></span></div>
   } else if (kind === 'image') {
     const image = <img className={imageClassName} src={playbackUrl} alt={title} loading="lazy" decoding="async" onError={decodingFailed} />
-    content = imageLink ? <button type="button" className="chat-media-card" aria-label={`Ampliar ${title}`} onClick={()=>onImageOpen ? onImageOpen() : setViewerOpen(true)}>{image}</button> : image
+    content = <div className="chat-image-preview">{imageLink ? <button type="button" className="chat-media-card" aria-label={`Ampliar ${title}`} onClick={()=>onImageOpen ? onImageOpen() : setViewerOpen(true)}>{image}</button> : image}{overlay ? <div className="chat-media-overlay">{overlay}</div> : null}</div>
   } else if (kind === 'pdf') {
     content = <div className="chat-file-card"><strong>{title}</strong></div>
   } else {

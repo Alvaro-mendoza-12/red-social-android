@@ -7,7 +7,7 @@ import { textOf, type GenericRow } from '../core/utils'
 export function MessageReactionNotice() {
   const { user, isFallbackSession } = useAuth()
   const accountId = user?.id
-  const [notice, setNotice] = useState<{ account: string; title: string; content: string; path: string } | null>(null)
+  const [notice, setNotice] = useState<{ account: string; title: string; content: string; path: string; participant?: { id: string; name: string; avatarUrl: string } } | null>(null)
   useEffect(() => {
     if (!accountId || !isFallbackSession) return
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -22,7 +22,11 @@ export function MessageReactionNotice() {
       const extra = (event.payload.extraData || {}) as GenericRow
       const messageId = textOf(extra, ['message_id'], '')
       const path = `/app/messages/${kind === 'chat' ? '' : kind + '/'}${encodeURIComponent(target)}` + (/^[0-9a-f-]{36}$/i.test(messageId) ? `?focusMessageId=${encodeURIComponent(messageId)}` : '')
-      setNotice({ account: accountId, title: textOf(row, ['actor_name'], 'Alguien'), content: textOf(row, ['content'], 'Reaccionó a tu mensaje'), path })
+      const actorId = textOf(row, ['actor_id'], '')
+      const actorName = textOf(row, ['actor_name'], '')
+      const actorAvatar = textOf(row, ['actor_avatar_url', 'sender_avatar_url'], '')
+      setNotice({ account: accountId, title: actorName || 'Alguien', content: textOf(row, ['content'], 'Reaccionó a tu mensaje'), path,
+        participant: actorId && actorName && !['usuario', 'alguien', 'novvin'].includes(actorName.toLowerCase()) ? { id: actorId, name: actorName, avatarUrl: actorAvatar } : undefined })
       clearTimeout(timer); timer = setTimeout(() => setNotice(null), 8000)
     } })
     return () => { stop(); clearTimeout(timer) }
@@ -30,7 +34,7 @@ export function MessageReactionNotice() {
   if (!notice || notice.account !== user?.id) return null
   return <aside className="message-reaction-notice" aria-label="Reacción recibida">
     <div role="status"><strong>{notice.title}</strong><p>{notice.content}</p></div>
-    <Link to={notice.path} onClick={() => setNotice(null)}>Ver mensaje</Link>
+    <Link to={notice.path} state={notice.participant ? { notificationParticipant: notice.participant } : undefined} onClick={() => setNotice(null)}>Ver mensaje</Link>
     <button className="icon-btn" type="button" aria-label="Cerrar aviso de reacción" onClick={() => setNotice(null)}>×</button>
   </aside>
 }

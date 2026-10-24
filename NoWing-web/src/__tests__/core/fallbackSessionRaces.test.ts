@@ -19,6 +19,19 @@ test('metadata refresh from the same account keeps the in-memory token and avoid
   expect(auth.readFallbackSession()?.user.id).toBe('owner');expect(changed).not.toHaveBeenCalled();stop()
 })
 
+test('saving profile presentation updates the current account without replacing tokens or crossing accounts', () => {
+  auth.persistFallbackSession(session('owner'))
+  const before = auth.readFallbackSession()!
+  auth.updateFallbackSessionProfile('other', { avatarUrl: 'https://media.invalid/wrong.png' })
+  expect(auth.readFallbackSession()?.user.avatarUrl).toBeUndefined()
+  auth.updateFallbackSessionProfile('owner', { displayName: 'Nombre nuevo', avatarUrl: 'https://media.invalid/new.gif' })
+  const after = auth.readFallbackSession()!
+  expect(after.accessToken).toBe(before.accessToken)
+  expect(after.savedAt).toBe(before.savedAt)
+  expect(auth.fallbackSessionToUser(after)?.user_metadata).toMatchObject({ display_name: 'Nombre nuevo', avatar_url: 'https://media.invalid/new.gif' })
+  expect(localStorage.getItem('conectate:fallback-session')).not.toContain(token)
+})
+
 test.each([null,'invalid',JSON.stringify({user:{id:'other',email:'other@example.invalid'}})])('logout or changed metadata immediately invalidates the old account: %s',newValue=>{
   auth.persistFallbackSession(session('owner'));const changed=jest.fn(),stop=auth.onFallbackAuthChanged(changed)
   if(newValue===null)localStorage.removeItem('conectate:fallback-session');else localStorage.setItem('conectate:fallback-session',newValue)

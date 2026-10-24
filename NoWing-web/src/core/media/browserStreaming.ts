@@ -2,7 +2,7 @@ import { prepareStorageReadAccessToken, trustedStorageBackend } from './storageR
 import { getStorageReadIdentity, onStorageReadInvalidated, requireStorageReadIdentity, type StorageReadIdentity } from './storageReadSession'
 import { rewriteRuntimeStorageUrl } from '../runtimeBackend'
 
-type Registered = { id: string; source: string; identity: StorageReadIdentity; downloadName?: string }
+type Registered = { id: string; source: string; identity: StorageReadIdentity; downloadName?: string; registeredOn?: ServiceWorker; registration?: Promise<void> }
 const records = new Map<string, Registered>()
 let boot: Promise<ServiceWorkerRegistration> | undefined
 const recoveries = new Set<() => void>()
@@ -48,6 +48,7 @@ async function register(record: Registered, retry = true): Promise<void> {
     throw error
   }
   requireStorageReadIdentity(record.identity)
+  record.registeredOn = target
 }
 export async function browserStreamingSource(raw: string, identity = getStorageReadIdentity(), options: { downloadName?: string } = {}) {
   const source = rewriteRuntimeStorageUrl(raw)
@@ -60,8 +61,28 @@ export async function browserStreamingSource(raw: string, identity = getStorageR
   const key = `${identity.generation}/${source}/${downloadName || ''}`
   let record = records.get(key)
   if (!record) { record = { id: crypto.randomUUID(), source, identity, downloadName }; records.set(key, record) }
-  await register(record)
+  // Avatars are mounted again when changing inbox tabs. Reuse their registered
+  // handle and share concurrent registrations instead of asking for credentials
+  // and a worker round trip on every render.
+  if (!record.registeredOn || record.registeredOn !== navigator.serviceWorker?.controller) {
+    if (!record.registration) {
+      const pending = register(record)
+      record.registration = pending
+      void pending.finally(() => { if (record!.registration === pending) record!.registration = undefined }).catch(() => {})
+    }
+    await record.registration
+  }
+  requireStorageReadIdentity(identity)
   return `/__novvin_media/${record.id}`
+}
+/** A remount can render an already authorized handle on its first paint. */
+export function cachedBrowserStreamingSource(raw: string, identity = getStorageReadIdentity()): string | undefined {
+  if (!identity.accountId || identity !== getStorageReadIdentity()) return undefined
+  const source = rewriteRuntimeStorageUrl(raw)
+  const record = records.get(`${identity.generation}/${source}/`)
+  const target = navigator.serviceWorker?.controller
+  return record?.registeredOn && record.registeredOn === target && target?.state !== 'redundant'
+    ? `/__novvin_media/${record.id}` : undefined
 }
 export function warmBrowserStreaming() { void worker().catch(() => {}) }
 onStorageReadInvalidated(() => {

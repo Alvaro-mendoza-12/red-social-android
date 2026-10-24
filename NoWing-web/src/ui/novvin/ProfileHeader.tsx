@@ -4,7 +4,8 @@ import { ProfileMediaButton } from '../../components/ProfileMediaButton'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { StreamingImage } from '../../components/StreamingMedia'
 import type { ProfileIdentity } from './profileIdentity'
-import { ProfileCoverEffect } from '../../components/ProfileCoverEffect'
+import { ProfileCoverEffect, profileThemeColor } from '../../components/ProfileCoverEffect'
+import type { CSSProperties } from 'react'
 
 export function VerifiedMark() {
   return (
@@ -48,9 +49,9 @@ export function ProfileHeader({
   return (
     <>
       <div className="mobile-profile-cover">
-        {coverUrl ? <ProfileMediaButton url={coverUrl} name={`portada de ${name}`}><StreamingImage src={coverUrl} alt={`Portada de ${name}`} /></ProfileMediaButton> : <ProfileCoverEffect effect={profileEffect} theme={profileTheme} />}
+        {coverUrl ? <><ProfileMediaButton url={coverUrl} name={`portada de ${name}`}><StreamingImage src={coverUrl} alt={`Portada de ${name}`} /></ProfileMediaButton>{profileEffect && profileEffect !== 'none' ? <ProfileCoverEffect effect={profileEffect} theme={profileTheme} overlay/> : null}</> : <ProfileCoverEffect effect={profileEffect} theme={profileTheme} />}
       </div>
-      <div className="mobile-profile-main novvin-profile-main-header">
+      <div className="mobile-profile-main novvin-profile-main-header" style={{ '--profile-accent': profileThemeColor(profileTheme) } as CSSProperties}>
         <div className="novvin-profile-header">
           <div className={`profile-avatar-frame profile-avatar-frame--${frame || 'none'}`}>
             <ProfileMediaButton url={avatarUrl} mediaType={avatarMediaType} name={`foto de ${name}`}><SafeAvatar

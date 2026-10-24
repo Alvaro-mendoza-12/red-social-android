@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, useSyncExternalStore, type AudioHTMLAttributes, type ImgHTMLAttributes, type VideoHTMLAttributes } from 'react'
-import { browserStreamingSource, subscribeBrowserStreamingRecovery } from '../core/media/browserStreaming'
+import { browserStreamingSource, cachedBrowserStreamingSource, subscribeBrowserStreamingRecovery } from '../core/media/browserStreaming'
 import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../core/media/storageReadSession'
 import { trustedStorageBackend } from '../core/media/storageReadClient'
 import { rewriteRuntimeStorageUrl } from '../core/runtimeBackend'
@@ -47,7 +47,7 @@ function useSource(raw?: string) {
   }, [source, protectedSource, identity])
   const retry = useCallback(() => retryRef.current(), [])
   const loaded = useCallback(() => loadedRef.current(), [])
-  return { url: !protectedSource ? source || undefined : ready?.source === source && ready.identity === identity ? ready.url : undefined, unavailable: unavailable?.source === source && unavailable.identity === identity, retry, loaded }
+  return { url: !protectedSource ? source || undefined : ready?.source === source && ready.identity === identity ? ready.url : cachedBrowserStreamingSource(source, identity), unavailable: unavailable?.source === source && unavailable.identity === identity, retry, loaded }
 }
 export const StreamingImage = forwardRef<HTMLImageElement, ImgHTMLAttributes<HTMLImageElement>>(function StreamingImage({ src, onError, onLoad, ...props }, ref) {
   const source = useSource(src)
