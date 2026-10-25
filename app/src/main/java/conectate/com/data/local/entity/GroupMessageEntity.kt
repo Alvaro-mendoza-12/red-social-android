@@ -23,6 +23,7 @@ import kotlinx.serialization.json.Json
     indices = [
         Index(value = ["group_id"]),
         Index(value = ["created_at"]),
+        Index(value = ["group_id", "created_at", "id"]),
         Index(value = ["is_synced", "pending_action"]),
         Index(value = ["poll_id"]),
         Index(value = ["is_forwarded"])

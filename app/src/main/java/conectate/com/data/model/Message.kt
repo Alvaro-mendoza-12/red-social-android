@@ -6,6 +6,27 @@ import java.time.LocalDateTime
 import java.util.UUID
 import kotlin.math.abs
 
+/** A single timestamp policy for timeline ordering and the visible message clock. */
+internal fun parseMessageInstant(raw: String): java.time.Instant? {
+    val normalized = raw.trim().replace(" ", "T")
+    val offsetStart = maxOf(normalized.lastIndexOf('+'), normalized.lastIndexOf('-'))
+    val hasOffset = normalized.indexOf('T').let { it >= 0 && offsetStart > it }
+    // PostgreSQL can emit +00/-05; ISO also accepts compact +0000/-0500.
+    // Never append Z to an existing negative offset.
+    val cleaned = when {
+        hasOffset && normalized.length - offsetStart == 3 -> "$normalized:00"
+        hasOffset && normalized.length - offsetStart == 5 &&
+            normalized.substring(offsetStart + 1).all(Char::isDigit) ->
+            normalized.dropLast(2) + ":" + normalized.takeLast(2)
+        else -> normalized
+    }
+    return runCatching { java.time.Instant.parse(cleaned) }.getOrNull()
+        ?: runCatching { java.time.OffsetDateTime.parse(cleaned).toInstant() }.getOrNull()
+        // Legacy zone-less database dates were stored in UTC.
+        ?: runCatching { LocalDateTime.parse(cleaned).toInstant(java.time.ZoneOffset.UTC) }.getOrNull()
+        ?: cleaned.toLongOrNull()?.let(java.time.Instant::ofEpochMilli)
+}
+
 @Serializable
 data class Message(
     val id: String = UUID.randomUUID().toString(),
@@ -37,41 +58,28 @@ data class Message(
     val safeCreatedAt: String
         get() = (created_at ?: "").replace(" ", "T")
 
+    // Timeline sorting and media grouping read this value repeatedly. Message
+    // fields are immutable, so a copy gets its own cache and wire JSON is unchanged.
+    @kotlinx.serialization.Transient
+    @Volatile
+    private var cachedTimestampMillis: Long? = null
+
     val timestampMillis: Long
         get() {
-            return try {
+            cachedTimestampMillis?.let { return it }
+            val parsed = try {
                 if (created_at == null) {
                     // STABLE FALLBACK: Use a deterministic time based on ID to avoid jumps
                     val hash = id.hashCode().toLong()
                     0L + abs(hash % 1000000) 
                 } else {
-                    // Robust parsing for various Postgres/ISO formats
-                    val cleaned = created_at.trim()
-                        .replace(" ", "T") // Normalize space to T
-                        .let { if (!it.contains("Z") && !it.contains("+") && it.length > 10) "${it}Z" else it } 
-                    
-                    try {
-                        java.time.Instant.parse(cleaned).toEpochMilli()
-                    } catch (e1: Exception) {
-                        try {
-                            java.time.OffsetDateTime.parse(cleaned).toInstant().toEpochMilli()
-                        } catch (e2: Exception) {
-                            try {
-                                LocalDateTime.parse(cleaned.substringBefore("Z"))
-                                    .toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
-                            } catch (e3: Exception) {
-                                try {
-                                    cleaned.toLong()
-                                } catch (e4: Exception) {
-                                    0L // Epoch 0 is better than "now" for consistency
-                                }
-                            }
-                        }
-                    }
+                    parseMessageInstant(created_at)?.toEpochMilli() ?: 0L
                 }
             } catch (e: Exception) {
                 0L
             }
+            cachedTimestampMillis = parsed
+            return parsed
         }
 
     /**

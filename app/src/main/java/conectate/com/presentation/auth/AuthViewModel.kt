@@ -154,7 +154,7 @@ class AuthViewModel @Inject constructor(
             if (!authRepository.isUserLoggedIn || authRepository.getCurrentUserId() == null) {
                 return@launch
             }
-            authRepository.enforceCurrentSessionIsActive()
+            authEntryOperation { authRepository.enforceCurrentSessionIsActive() }
                 .onFailure { throwable ->
                     _authState.value = when (throwable) {
                         is AccountSuspendedException -> suspendedState(throwable)
@@ -179,9 +179,9 @@ class AuthViewModel @Inject constructor(
         _authState.value = AuthState.Loading
         viewModelScope.launch {
 
-            var result = authRepository.signUpWithEmail(
+            val result = authEntryOperation { authRepository.signUpWithEmail(
                 email, password, name, username, country, gender, birthDate, imageUri, acceptedPrivacyPolicy
-            )
+            ) }
 
             _authState.value = result.fold(
                 onSuccess = { 
@@ -201,11 +201,11 @@ class AuthViewModel @Inject constructor(
 
 
     fun signInWithEmail(email: String, password: String, secondFactorCode: String? = null) {
+        if (_authState.value is AuthState.Loading) return
+        _appealMessage.value = null
+        _authState.value = AuthState.Loading
         viewModelScope.launch {
-            _appealMessage.value = null
-            _authState.value = AuthState.Loading
-            
-            var result = authRepository.signInWithEmail(email, password, secondFactorCode)
+            val result = authEntryOperation { authRepository.signInWithEmail(email, password, secondFactorCode) }
             _authState.value = result.fold(
                 onSuccess = {
                     guestModeApi.clear()

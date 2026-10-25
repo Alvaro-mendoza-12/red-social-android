@@ -324,6 +324,16 @@ function persistFallbackSessionMetadata(session: FallbackSession) {
   storage()?.setItem(storageKey, JSON.stringify(persisted))
 }
 
+/** Refresh profile presentation without replacing credentials or changing media ownership. */
+export function updateFallbackSessionProfile(accountId: string, patch: Pick<Partial<FallbackUser>, 'displayName' | 'username' | 'avatarUrl'>) {
+  const session = readFallbackSession()
+  if (!session || ![session.user.id, session.user.supabaseUserId].includes(accountId)) return
+  activeFallbackSession = { ...session, user: { ...session.user, ...patch } }
+  sessionRevision += 1
+  try { persistFallbackSessionMetadata(activeFallbackSession) } catch { /* The confirmed server profile and current tab remain valid if storage is full. */ }
+  notifyFallbackAuthChanged()
+}
+
 function initializeStoredFallbackSession() {
   if (storageInitialized) return
   storageInitialized = true

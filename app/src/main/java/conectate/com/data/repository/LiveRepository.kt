@@ -1346,7 +1346,7 @@ class LiveRepository @Inject constructor(
             // No signaling, publication or session is started before both complete.
             val (loadedStream, mediaReady) = coroutineScope {
                 val media = async {
-                    val useSfu = usesUbuntuPersistence() && getLiveCollaborationCapabilities().getOrNull()?.sfuAvailable == true
+                    val useSfu = usesUbuntuPersistence() && liveViewerUsesSfu(getLiveCollaborationCapabilities())
                     (if (useSfu) true else initializeWebRTC(userId = currentUserId)).also { ready ->
                         if (ready) {
                             webRTCManager?.setAudioEnabled(false)

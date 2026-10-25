@@ -1,9 +1,11 @@
+import { MessageTimestamp } from '../../components/MessageTimestamp'
 import { ContactMessageCard } from '../../components/ContactMessageCard'
 import { messageLocationUrl } from '../../core/messageLocation'
+import { shouldReplyToMessageDoubleClick } from '../../core/chatMessageGestures'
 import { ForwardMessagesDialog } from '../../components/ForwardMessagesDialog'
 import { copyChatMessage } from '../../core/media/copyChatMessage'
 import { clipboardFilesFrom, clipboardMayContainImage, clipboardHasStickerHint, readClipboardImages, canPasteIntoChat, pastedAsSticker, isCopiedStickerImage, isEmptyClipboardPaste, normalizeClipboardFiles, isStickerImage } from '../../core/chatClipboard'
-import { newerMessage, mergeMessageSnapshot } from '../../core/conversationMessageMerge'
+import { newerMessage, mergeMessageSnapshot, mergeOlderMessagePage, mergeLatestMessagePage } from '../../core/conversationMessageMerge'
 import {MessageOptionsMenu,MessageReactionBar} from '../../components/MessageOptionsMenu'
 import {confirmInboxConversationRead,markInboxConversationRead} from '../../core/inboxActivity'
 import { CommunityRaffles } from '../../components/CommunityRaffles'
@@ -28,12 +30,14 @@ import { chatMediaAlbums } from '../../core/chatMediaAlbums'
 import { ChatMediaAlbum } from '../../components/ChatMediaAlbum'
 import { backendRpc } from '../../core/backendRpc'
 import { conversationWindow } from '../../core/conversationWindow'
+import { captureConversationViewportAnchor, restoreConversationViewportAnchor } from '../../core/conversationViewport'
 import { sharedVideoReference } from '../../core/sharedVideoReference'
 import { SharedVideoCard } from '../../components/SharedVideoCard'
 import { retryPendingWebMessage } from '../../core/webOutbox'
 import { MentionSuggestions } from '../../components/MentionSuggestions'
 import { insertMention, type MentionCandidate } from '../../core/mentionSuggestions'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
+import { useConversationRecovery } from './useConversationRecovery'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -47,6 +51,8 @@ import {
   deleteFallbackRoomMessage,
   editFallbackRoomMessage,
   loadFallbackRoomChat,
+  loadFallbackHistoryPage,
+  fallbackHistoryAllows,
   sendFallbackRoomMessage,
   uploadFallbackFile,
 } from '../../core/fallbackData'
@@ -80,6 +86,8 @@ type RoomMessage = {
   deliveredAt: string
   readAt: string
 }
+
+const CONVERSATION_PAGE_SIZE = 80
 
 type PollState = {
   pollId: string
@@ -303,6 +311,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const canPublish = publicationAllowed && (!adminsOnly || isRoomAdmin)
   const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([])
   const [messages, setMessages] = useState<RoomMessage[]>([])
+  const messagesSnapshotRef = useRef(messages)
+  messagesSnapshotRef.current = messages
+  const [hasOlderMessages, setHasOlderMessages] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [draft, setDraft] = useConversationDraft(user?.id, scope, cleanRoomId)
   const draftRevisionRef = useRef(0)
   const sendInFlightRef = useRef(false)
@@ -313,6 +325,13 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState('')
+  const composerInputRef = useRef<HTMLInputElement | null>(null)
+  const beginReply = useCallback((messageId: string) => {
+    setEditingMessageId(null)
+    setEditingDraft('')
+    setReplyToId(messageId)
+    composerInputRef.current?.focus({ preventScroll: true })
+  }, [])
   const [pollQuestion, setPollQuestion] = useState('')
   const [pollOptions, setPollOptions] = useState('Si\nNo')
   const [showPollComposer, setShowPollComposer] = useState(false)
@@ -332,7 +351,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const [pendingAttachments, setPendingAttachments] = useAttachmentDraft<PendingAttachment>(user?.id || '', scope, cleanRoomId)
   const [imageEditorFile, setImageEditorFile] = useState<File | null>(null)
   const [spellingCaret, setSpellingCaret] = useState<number|undefined>()
-  const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
+  const [galleryMessageId, setGalleryMessageId] = useState<string | null>(null)
   const discardRecordingRef = useRef(false)
   const preparationOwnerRef = useRef('')
   preparationOwnerRef.current = `${user?.id}/${scope}/${cleanRoomId}`
@@ -350,12 +369,13 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       return haystack.includes(normalizedMessageSearch)
     })
   }, [messages, normalizedMessageSearch])
-  const [historyWindowSize, setHistoryWindowSize] = useState(80)
-  useEffect(() => setHistoryWindowSize(80), [cleanRoomId])
-  const renderedMessages = conversationWindow(filteredMessages, historyWindowSize, Boolean(normalizedMessageSearch))
-  const albums = chatMediaAlbums(renderedMessages, user?.id || '')
-  const gallery = chatGallery(messages, user?.id || '')
-  const openGallery = (message: { id: string }) => { const index = gallery.findIndex(item => item.id === message.id); if (index >= 0) setGalleryIndex(index) }
+  const [historyWindowSize, setHistoryWindowSize] = useState(CONVERSATION_PAGE_SIZE)
+  useEffect(() => setHistoryWindowSize(CONVERSATION_PAGE_SIZE), [cleanRoomId])
+  const renderedMessages = useMemo(() => conversationWindow(filteredMessages, historyWindowSize, Boolean(normalizedMessageSearch)), [filteredMessages, historyWindowSize, normalizedMessageSearch])
+  const albums = useMemo(() => chatMediaAlbums(renderedMessages, user?.id || ''), [renderedMessages, user?.id])
+  const gallery = useMemo(() => chatGallery(messages, user?.id || ''), [messages, user?.id])
+  const galleryIndex = galleryMessageId ? gallery.findIndex(item => item.id === galleryMessageId) : null
+  const openGallery = (message: { id: string }) => setGalleryMessageId(message.id)
   const messageById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages])
   useEffect(() => {
     if (!replyJumpId) return
@@ -375,6 +395,11 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
 
   const replyToMessage = replyToId ? messageById.get(replyToId) ?? null : null
   const threadRef = useRef<HTMLElement | null>(null)
+  const loadingOlderMessagesRef = useRef(false)
+  const historyCursorRef = useRef<string | null>(null)
+  const expandedHistoryRef = useRef(false)
+  const historyGenerationRef = useRef(0)
+  const loadOlderMessagesRef = useRef<() => void>(() => {})
   const messageSearchInputRef = useRef<HTMLInputElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
   const forceScrollToBottomRef = useRef(true)
@@ -383,6 +408,17 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const audioStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const loadSequenceRef = useRef(0)
+  useEffect(() => {
+    loadSequenceRef.current += 1
+    historyGenerationRef.current += 1
+    loadingOlderMessagesRef.current = false
+    historyCursorRef.current = null
+    expandedHistoryRef.current = false
+    setHasOlderMessages(false)
+    setLoadingOlderMessages(false)
+    setPollStatesById({})
+    setConsumedViewOnce({})
+  }, [cleanRoomId, scope, user?.id])
   const deviceId = useMemo(() => {
     const storageKey = 'conectate-web-device-id'
     const fallbackId = () => {
@@ -448,7 +484,10 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     const isNearBottom = distanceToBottom < 120
     shouldStickToBottomRef.current = isNearBottom
     setShowScrollToBottom(!isNearBottom && messages.length > 0)
-  }, [messages.length])
+    if (thread.scrollTop < 96 && hasOlderMessages && !loadingOlderMessagesRef.current) {
+      loadOlderMessagesRef.current()
+    }
+  }, [hasOlderMessages, messages.length])
 
   const queueAttachmentFiles = useCallback((input: FileList | File[] | null, pasted = false, stickerIntent = false) => {
     if (!input || input.length === 0) return
@@ -560,7 +599,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   }, [setPendingAttachments])
 
   useEffect(() => {
-    setImageEditorFile(null); setGalleryIndex(null)
+    setImageEditorFile(null); setGalleryMessageId(null)
     discardRecordingRef.current = true
     const recorder = audioRecorderRef.current
     if (recorder) { recorder.onstop = null; if (recorder.state !== 'inactive') recorder.stop(); audioRecorderRef.current = null }
@@ -596,7 +635,19 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     const paste = (event: ClipboardEvent) => {
       if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
       const files = clipboardFilesFrom(event.clipboardData)
-      if (!files.length && !clipboardMayContainImage(event.clipboardData) && !isEmptyClipboardPaste(event.clipboardData)) return
+      const hasAttachments = files.length > 0 || clipboardMayContainImage(event.clipboardData) || isEmptyClipboardPaste(event.clipboardData)
+      const text = event.clipboardData?.getData('text/plain') || ''
+      const textField = event.target instanceof Element ? event.target.closest('input,textarea,[contenteditable="true"]') : null
+      if (!hasAttachments && (textField || !text)) return
+      if (text && (!textField || textField === composerInputRef.current)) {
+        const input = composerInputRef.current
+        const start = textField ? input?.selectionStart : null
+        const end = textField ? input?.selectionEnd : null
+        draftRevisionRef.current += 1
+        setDraft(current => current.slice(0, start ?? current.length) + text + current.slice(end ?? current.length))
+        if (!hasAttachments) input?.focus({ preventScroll: true })
+      }
+      if (!hasAttachments) { event.preventDefault(); return }
       const stickerHint = clipboardHasStickerHint(event.clipboardData)
       const pasteOwner = preparationOwnerRef.current
       event.preventDefault()
@@ -616,7 +667,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     }
     window.addEventListener('paste', paste)
     return () => window.removeEventListener('paste', paste)
-  }, [editingMessageId, queueAttachmentFiles, showStickers])
+  }, [editingMessageId, queueAttachmentFiles, showStickers, setDraft])
 
   useEffect(() => {
     return () => {
@@ -641,7 +692,6 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       new Set(rows.map((message) => message.pollId).filter((pollId): pollId is string => Boolean(pollId))),
     )
     if (pollIds.length === 0) {
-      setPollStatesById({})
       return
     }
     const entries = await Promise.all(
@@ -651,7 +701,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         return [pollId, ((data ?? []) as GenericRow[]).map(mapPollState)] as const
       }),
     )
-    setPollStatesById(Object.fromEntries(entries))
+    setPollStatesById(current => ({ ...current, ...Object.fromEntries(entries) }))
   }, [useUbuntu])
 
   const refreshPollState = useCallback(async (pollId: string) => {
@@ -698,7 +748,6 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       if (!supabase || !user) return
       const ids = rows.filter((message) => isViewOnceType(message.contentType)).map((message) => message.id)
       if (ids.length === 0) {
-        setConsumedViewOnce({})
         return
       }
       const { data, error: consumeError } = await supabase
@@ -716,7 +765,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         if (messageId) acc[messageId] = true
         return acc
       }, {})
-      setConsumedViewOnce(consumed)
+      setConsumedViewOnce(current => ({ ...current, ...consumed }))
     },
     [config.scopeType, useUbuntu, user],
   )
@@ -730,6 +779,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
 
   const loadRoom = useCallback(async (options?: { silent?: boolean }) => {
     const loadSequence = ++loadSequenceRef.current
+    const idsAtRequestStart = new Set(messagesSnapshotRef.current.map(message => message.id))
     const isStaleLoad = () => loadSequenceRef.current !== loadSequence
     if (!user || !cleanRoomId) {
       if (!isStaleLoad()) {
@@ -741,7 +791,17 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     setLoadError(null)
     try {
       if (useUbuntu) {
-        const response = await loadFallbackRoomChat(scope, cleanRoomId)
+        const response = await loadFallbackRoomChat(scope, cleanRoomId, options?.silent ? undefined : cached => {
+          if (isStaleLoad()) return
+          for (const message of cached.messages) idsAtRequestStart.add(String(message.id))
+          setTitle(cached.title || (scope === 'group' ? 'Grupo' : 'Comunidad'))
+          setRoomAvatar(resolveSupabasePublicUrl(scope === 'group' ? 'groups' : 'communities', conversationAvatarSource(cached.room || cached.chat || {})))
+          setParticipants(cached.participants || [])
+          setMessages(current => mergeMessageSnapshot(current, cached.messages.map(mapRoomMessage)))
+          historyCursorRef.current = cached.historyPage?.nextCursor || null
+          setHasOlderMessages(Boolean(cached.historyPage?.hasMore))
+          setLoading(false)
+        }, CONVERSATION_PAGE_SIZE)
         if (isStaleLoad()) return
         setIsMember(response.historyAccess?.isMember !== false)
         setAdminsOnly(Boolean(response.room?.only_admins_can_talk))
@@ -751,7 +811,14 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         setRoomAvatar(resolveSupabasePublicUrl(scope === 'group' ? 'groups' : 'communities',conversationAvatarSource(response.room || response.chat || {})))
         setTitle(response.title || (scope === 'group' ? 'Grupo' : 'Comunidad'))
         const mappedMessages = (response.messages ?? []).map(mapRoomMessage)
-        setMessages(current => mergeMessageSnapshot(current, mappedMessages))
+        if (!expandedHistoryRef.current) {
+          historyCursorRef.current = response.historyPage?.nextCursor || null
+          setHasOlderMessages(Boolean(response.historyPage?.hasMore))
+        }
+        setMessages(current => options?.silent || expandedHistoryRef.current
+          ? mergeLatestMessagePage(current, mappedMessages, Boolean(response.historyPage?.hasMore), idsAtRequestStart)
+              .filter(message => ['pending', 'failed'].includes(message.status) || fallbackHistoryAllows(response, message.createdAt))
+          : mergeMessageSnapshot(current, mappedMessages))
         await loadPollStates(mappedMessages)
         if (!isStaleLoad() && response.historyAccess?.isMember !== false && navigator.onLine && document.visibilityState === 'visible') void markAsRead().catch(() => {})
         setConsumedViewOnce({})
@@ -788,15 +855,21 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         .from(config.messageTable)
         .select('*')
         .eq(config.roomForeignKey, cleanRoomId)
-        .order('created_at', { ascending: true })
-        .limit(600)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(CONVERSATION_PAGE_SIZE)
       if (msgError) throw msgError
 
-      const mappedMessages = ((messageRows ?? []) as GenericRow[]).map(mapRoomMessage)
+      const newestFirst = (messageRows ?? []) as GenericRow[]
+      const mappedMessages = newestFirst.map(mapRoomMessage).reverse()
       if (isStaleLoad()) return
-      setMessages(current => mergeMessageSnapshot(current, mappedMessages))
+      if (!options?.silent || !expandedHistoryRef.current) setHasOlderMessages(newestFirst.length === CONVERSATION_PAGE_SIZE)
+      setMessages(current => options?.silent
+        ? mergeLatestMessagePage(current, mappedMessages, newestFirst.length === CONVERSATION_PAGE_SIZE, idsAtRequestStart)
+        : mergeMessageSnapshot(current, mappedMessages))
       await Promise.all([loadPollStates(mappedMessages), loadConsumedViewOnce(mappedMessages), markAsRead()])
     } catch (caught) {
+      if (!isStaleLoad() && [401, 403, 404].includes(Number((caught as { status?: number })?.status))) setMessages([])
       if (!isStaleLoad() && !options?.silent) {
         setLoadError(friendlyError(caught, 'No se pudo cargar la sala'))
       }
@@ -818,9 +891,89 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
     user,
   ])
 
+  const loadOlderMessages = useCallback(async () => {
+    if ((!useUbuntu && !supabase) || !cleanRoomId || loadingOlderMessagesRef.current) return
+    const oldest = messages[0]
+    if (!oldest?.createdAt || !hasOlderMessages) return
+    const cursorDate = new Date(oldest.createdAt)
+    if (Number.isNaN(cursorDate.getTime())) return
+
+    const requestRoomId = cleanRoomId
+    const requestScope = scope
+    const requestLoadSequence = historyGenerationRef.current
+    const thread = threadRef.current
+    if (!thread) return
+    loadingOlderMessagesRef.current = true
+    expandedHistoryRef.current = true
+    setError(null)
+    setLoadingOlderMessages(true)
+    shouldStickToBottomRef.current = false
+    try {
+      let olderPage: RoomMessage[]
+      if (useUbuntu) {
+        const cursor = historyCursorRef.current
+        if (!cursor) return
+        const response = await loadFallbackHistoryPage(requestScope, requestRoomId, cursor, CONVERSATION_PAGE_SIZE)
+        if (requestLoadSequence !== historyGenerationRef.current) return
+        olderPage = response.messages.map(mapRoomMessage)
+        historyCursorRef.current = response.historyPage?.nextCursor || null
+        setHasOlderMessages(Boolean(response.historyPage?.hasMore))
+      } else {
+      const cursorTimestamp = oldest.createdAt
+      const cursorId = oldest.id
+      const safeId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursorId)
+        ? cursorId
+        : ''
+      let query = supabase!.from(config.messageTable).select('*').eq(config.roomForeignKey, requestRoomId)
+      query = safeId
+        ? query.or(`created_at.lt.${cursorTimestamp},and(created_at.eq.${cursorTimestamp},id.lt.${safeId})`)
+        : query.lt('created_at', cursorTimestamp)
+      const { data, error: pageError } = await query
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(CONVERSATION_PAGE_SIZE)
+      if (pageError) throw pageError
+      if (requestLoadSequence !== historyGenerationRef.current) return
+
+      const descendingRows = (data ?? []) as GenericRow[]
+      olderPage = descendingRows.map(mapRoomMessage).reverse()
+      setHasOlderMessages(descendingRows.length === CONVERSATION_PAGE_SIZE)
+      }
+      if (olderPage.length === 0) return
+
+      const viewportAnchor = captureConversationViewportAnchor(thread)
+      setMessages(current => mergeOlderMessagePage(current, olderPage))
+      setHistoryWindowSize(size => size + olderPage.length)
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        if (requestLoadSequence === historyGenerationRef.current && threadRef.current === thread) {
+          restoreConversationViewportAnchor(thread, viewportAnchor)
+        }
+      }))
+      await Promise.all([loadPollStates(olderPage), loadConsumedViewOnce(olderPage)])
+    } catch (caught) {
+      if (requestLoadSequence === historyGenerationRef.current) {
+        setError(friendlyError(caught, 'No se pudieron cargar mensajes anteriores'))
+      }
+    } finally {
+      if (requestLoadSequence === historyGenerationRef.current) {
+        loadingOlderMessagesRef.current = false
+        setLoadingOlderMessages(false)
+      }
+    }
+  }, [cleanRoomId, config.messageTable, config.roomForeignKey, hasOlderMessages, loadConsumedViewOnce, loadPollStates, messages, scope, useUbuntu])
+  loadOlderMessagesRef.current = () => { void loadOlderMessages() }
+
+  useEffect(() => {
+    if ((showMessageSearch || galleryMessageId || replyJumpId && !messageById.has(replyJumpId)) && hasOlderMessages && !loadingOlderMessages && !error) {
+      loadOlderMessagesRef.current()
+    }
+  }, [showMessageSearch, galleryMessageId, replyJumpId, messageById, hasOlderMessages, loadingOlderMessages, error])
+
   useEffect(() => {
     void loadRoom()
   }, [loadRoom])
+
+  useConversationRecovery(Boolean(useUbuntu && user && cleanRoomId && isMember), () => loadRoom({ silent: true }))
 
   useEffect(() => {
     forceScrollToBottomRef.current = true
@@ -944,10 +1097,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
         else void loadRoom({ silent: true })
       },
     })
-    const intervalId = window.setInterval(() => {
-      void loadRoom({ silent: true })
-    }, 5000)
-    return () => { unsubscribe(); window.clearInterval(intervalId) }
+    return unsubscribe
   }, [cleanRoomId, isMember, loadRoom, scope, upsertMessageInState, useUbuntu, user])
 
   useEffect(() => {
@@ -1474,7 +1624,9 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       {forwardMessages.length ? <ForwardMessagesDialog messages={forwardMessages} onClose={() => setForwardMessages([])} /> : null}
       <div className="chat-thread-shell" inert={pendingAttachments.length > 0}>
         <section className="chat-thread" ref={threadRef} onScroll={handleThreadScroll}>
-          {renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
+          {hasOlderMessages ? <button type="button" className="ghost-btn" disabled={loadingOlderMessages} onClick={() => loadOlderMessagesRef.current()}>
+            {loadingOlderMessages ? 'Cargando mensajes…' : 'Ver mensajes anteriores'}
+          </button> : renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
             const thread = threadRef.current, height = thread?.scrollHeight || 0, top = thread?.scrollTop || 0
             shouldStickToBottomRef.current = false
             setHistoryWindowSize(size => size + 80)
@@ -1496,7 +1648,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           if (deletedForMe) return null
           const album = albums.get(message.id)
           if (album && !replyJumpId && album.leader !== message.id) return null
-          if (album && !replyJumpId) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} onReply={item => setReplyToId(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteRoomMessage(item, false)} onDeleteForAll={item => void deleteRoomMessage(item, true)} onReact={item => void toggleReaction(item.id, '👍')} /></Fragment>
+          if (album && !replyJumpId) return <Fragment key={message.id}>{showDaySeparator ? <div className="chat-day-separator"><span>{formatConversationDay(message.createdAt)}</span></div> : null}<ChatMediaAlbum onPhotoOpen={openGallery} items={album.items} mine={message.senderId === user?.id} onReply={item => beginReply(item.id)} onForward={item => void sendForwardedMessage(item)} onDelete={item => void deleteRoomMessage(item, false)} onDeleteForAll={item => void deleteRoomMessage(item, true)} onReact={(item, emoji) => void toggleReaction(item.id, emoji || '👍')} /></Fragment>
           if (message.contentType === "system_membership") return <div className="room-system-notice" key={message.id}>{message.content}</div>
           const mine = message.senderId === user?.id
           const replied = message.replyToId ? messageById.get(message.replyToId) : null
@@ -1510,6 +1662,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           const activeReactions = ['👍', '❤️', '😂'].filter(
             (emoji) => reactionCount(message.reactions, emoji) > 0,
           )
+          const inlinePhoto = Boolean(message.mediaUrl && !message.deletedForAll && !['sticker', 'location', 'contact', 'birthday_card', 'poll', 'raffle', 'question'].includes(message.contentType) && !isViewOnceType(message.contentType) && attachmentKind(message.contentType, message.mediaUrl) === 'image')
+          const photoTimestamp = inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={message.status} edited={message.isEdited} onRetry={() => void retryPendingWebMessage(message.id)}/> : undefined
           return (
             <Fragment key={message.id}>
               {showDaySeparator ? (
@@ -1517,7 +1671,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
-              <article id={`message-${message.id}`} className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'question' ? ' question-bubble' : ''}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${message.contentType === 'text' && !message.mediaUrl && !replied && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`}>
+              <article id={`message-${message.id}`} onDoubleClick={event => { if (shouldReplyToMessageDoubleClick(event.target)) beginReply(message.id) }} title="Doble clic para responder" className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'question' ? ' question-bubble' : ''}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${inlinePhoto ? ' image-bubble' : ''}${message.contentType === 'text' && !message.mediaUrl && !replied && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`}>
                 {message.isForwarded ? <small>Reenviado</small> : null}
                 {message.replyToId ? <MessageReplyPreview onJump={setReplyJumpId} message={replied || { id: message.replyToId, content: 'Mensaje anterior', contentType: 'text', mediaUrl: null, deletedForAll: false }} name={replied?.senderId === user?.id ? 'Tú' : participants.find(person => person.id === replied?.senderId)?.name || 'Participante'}/> : null}
                 {message.deletedForAll ? (
@@ -1550,7 +1704,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                     {message.contentType === 'contact' ? <ContactMessageCard content={message.content} /> : message.content && message.contentType !== 'sticker' ? <MessageText text={message.content} mentions={mentionCandidates}/> : null}
                     {message.contentType === 'location' && messageLocationUrl(message.mediaUrl) ? <a className="inline-link" href={messageLocationUrl(message.mediaUrl)!} target="_blank" rel="noreferrer">📍 Abrir ubicación</a> : null}
                     {message.mediaUrl && !['location', 'contact'].includes(message.contentType) && !isViewOnceType(message.contentType) ? (
-                      message.contentType === 'sticker' ? <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => setReplyToId(message.id)} onForward={() => void sendForwardedMessage(message)} /> : <ChatAttachmentMedia inlineDownload={false} url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} onImageOpen={() => openGallery(message)} />
+                      message.contentType === 'sticker' ? <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => beginReply(message.id)} onForward={() => void sendForwardedMessage(message)} /> : <ChatAttachmentMedia inlineDownload={false} url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} onImageOpen={() => openGallery(message)} overlay={photoTimestamp} />
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
                       consumed ? (
@@ -1579,11 +1733,11 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   </div>
                 ) : null}
                 {!message.deletedForAll ? (
-                  <MessageOptionsMenu mine={mine}>
+                  <MessageOptionsMenu mine={mine} onReact={emoji => void toggleReaction(message.id, emoji)}>
                     <button className="mini-action-btn" type="button" onClick={() => void copyChatMessage(message.content, message.mediaUrl, message.contentType).catch(() => setError('No se pudo copiar. Permite el acceso al portapapeles o descarga la imagen.'))}>Copiar</button>
                     {message.mediaUrl && !['location', 'contact'].includes(message.contentType) && !message.contentType.startsWith('view_once') && !message.mediaUrl.startsWith('blob:') ? <MediaDownloadButton url={message.mediaUrl} name={message.content || 'archivo'} /> : null}
                     <MessageReactionBar onReact={emoji=>void toggleReaction(message.id,emoji)}/>
-                    <button className="mini-action-btn" type="button" onClick={() => setReplyToId(message.id)}>
+                    <button className="mini-action-btn" type="button" onClick={() => beginReply(message.id)}>
                       Responder
                     </button>
                     <button className="mini-action-btn" type="button" onClick={() => void sendForwardedMessage(message)}>
@@ -1623,11 +1777,8 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   </div>
                 ) : null}
                 {mine && message.status==='failed' && message.deliveryError ? <p className="message-delivery-error" role="status">{message.deliveryError}</p> : null}
-                {mine && message.status==='pending' ? <OutboxTransferStatus id={message.id}/> : null}
-                <small className="message-meta">
-                  {Number.isFinite(Date.parse(message.createdAt)) ? new Date(message.createdAt).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'}) : ''}{message.isEdited ? ' · editado' : ''}
-                  {mine ? <span className={`message-status ${message.status}`} aria-label={message.status==='pending'?'Pendiente':message.status==='failed'?'Error al enviar':message.status==='read'?'Leído':message.status==='delivered'?'Entregado':'Enviado'}>{message.status==='pending'?'◷':message.status==='failed'?<button type="button" className="mini-action-btn" onClick={()=>void retryPendingWebMessage(message.id)}>Reintentar</button>:message.status==='sent'?'✓':'✓✓'}</span> : null}
-                </small>
+                {mine && message.status==='pending' && message.mediaUrl ? <OutboxTransferStatus id={message.id}/> : null}
+                {!inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={message.status} edited={message.isEdited} onRetry={() => void retryPendingWebMessage(message.id)}/> : null}
               </article>
             </Fragment>
           )
@@ -1671,7 +1822,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
       {preparingAttachments ? <p className="attachment-preparing" role="status">{preparationStatus}</p> : null}
       {isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
       {imageEditorFile ? <ChatImageEditor asSticker={pendingAttachments.some(item => item.file === imageEditorFile && item.contentType === 'sticker')} file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
-      {galleryIndex !== null && gallery[galleryIndex] ? <MediaViewer items={gallery} initialIndex={galleryIndex} onClose={() => setGalleryIndex(null)} /> : null}
+      {galleryIndex !== null && gallery[galleryIndex] ? <MediaViewer items={gallery} initialIndex={galleryIndex} onClose={() => setGalleryMessageId(null)} /> : null}
       {pendingAttachments.length > 0 && isMember && canPublish ? <ChatAttachmentPreview items={pendingAttachments} draft={draft} busy={sending || uploading} preparing={preparingAttachments} status={preparationStatus}
         onClose={() => { cancelPreparation(); clearPendingAttachments() }} onRemove={removePendingAttachment} onAdd={handleAttachFile} onSend={handleSend}
         onCaption={(id, caption) => { updatePendingAttachmentCaption(id, caption); if (pendingAttachments[0]?.id === id) setDraft(caption) }}
@@ -1761,6 +1912,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
           )}
         </button>
         <input
+          ref={composerInputRef}
           className="text-input chat-input-field"
           onSelect={event=>setSpellingCaret(event.currentTarget.selectionStart ?? undefined)}
           lang="es" spellCheck={true} autoCorrect="on" autoCapitalize="sentences"

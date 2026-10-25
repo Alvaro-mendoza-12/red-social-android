@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
@@ -56,7 +57,7 @@ fun StickerGrid(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (onCreateClick != null) {
-            item(key = "create-sticker") {
+            item(key = "create-sticker", contentType = "create-sticker") {
                 Card(
                     modifier = Modifier
                         .aspectRatio(1f)
@@ -80,7 +81,18 @@ fun StickerGrid(
             }
         }
 
-        items(stickers, key = { it.id }) { sticker ->
+        if (stickers.isEmpty()) {
+            item(key = "empty-stickers", span = { GridItemSpan(maxLineSpan) }, contentType = "empty-stickers") {
+                Text(
+                    "Aún no hay stickers en esta sección.",
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        items(stickers, key = { it.id }, contentType = { "sticker" }) { sticker ->
             var menuExpanded by remember(sticker.id) { mutableStateOf(false) }
             val currentlyFavorite = isFavorite(sticker)
             Box {

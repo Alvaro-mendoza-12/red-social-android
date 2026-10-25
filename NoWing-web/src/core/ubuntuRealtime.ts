@@ -14,13 +14,18 @@ let sharedToken = ''
 const channelHandlers = new Map<string, Set<(event: UbuntuRealtimeEvent) => void>>()
 const pendingChannels = new Set<string>()
 let reconnectTimer: number | null = null
+let authenticated = false
+let connectionGeneration = 0
+const subscribedChannels = new Set<string>()
 
-export function ubuntuRealtimeConnected(): boolean { return sharedSocket?.readyState === WebSocket.OPEN }
+export function ubuntuRealtimeConnected(): boolean { return authenticated && sharedSocket?.readyState === WebSocket.OPEN }
 
 onFallbackAuthChanged(() => {
   const nextToken = readFallbackSession()?.accessToken || ''
   if (!sharedToken || nextToken === sharedToken) return
   const old = sharedSocket
+  connectionGeneration += 1
+  authenticated = false; subscribedChannels.clear()
   sharedSocket = null
   sharedToken = ''
   if (reconnectTimer) { window.clearTimeout(reconnectTimer); reconnectTimer = null }
@@ -33,9 +38,13 @@ function fallbackApiOrigin(): string {
 }
 
 subscribeRuntimeBackend(() => {
-  sharedSocket?.close()
+  const old = sharedSocket
+  connectionGeneration += 1
+  authenticated = false; subscribedChannels.clear()
   sharedSocket = null
   sharedToken = ''
+  old?.close()
+  if (channelHandlers.size) void ensureSocket()
 })
 
 export function getUbuntuRealtimeWsUrl(): string | null {
@@ -58,7 +67,7 @@ function dispatchEvent(event: UbuntuRealtimeEvent) {
 }
 
 function sendSocketMessage(payload: Record<string, unknown>) {
-  if (!sharedSocket || sharedSocket.readyState !== WebSocket.OPEN) return
+  if (!authenticated || !sharedSocket || sharedSocket.readyState !== WebSocket.OPEN) return
   sharedSocket.send(JSON.stringify(payload))
 }
 
@@ -66,7 +75,9 @@ function subscribeChannel(channel: string) {
   const clean = channel.trim()
   if (!clean) return
   pendingChannels.add(clean)
+  if (!authenticated || subscribedChannels.has(clean)) return
   sendSocketMessage({ type: 'subscribe', channel: clean })
+  subscribedChannels.add(clean)
 }
 
 function flushPendingSubscriptions() {
@@ -74,9 +85,10 @@ function flushPendingSubscriptions() {
 }
 
 async function ensureSocket() {
+  const generation = connectionGeneration
   const wsUrl = getUbuntuRealtimeWsUrl()
   const token = await ensureFallbackAccessToken().catch(() => '')
-  if (!isFallbackAuthConfigured || !wsUrl || !token) return null
+  if (!isFallbackAuthConfigured || !wsUrl || !token || !channelHandlers.size || generation !== connectionGeneration || token !== readFallbackSession()?.accessToken) return null
 
   if (sharedSocket && sharedToken === token) {
     if (sharedSocket.readyState === WebSocket.OPEN) {
@@ -87,6 +99,7 @@ async function ensureSocket() {
   }
 
   sharedSocket?.close()
+  authenticated = false; subscribedChannels.clear()
   sharedSocket = null
   sharedToken = token
 
@@ -95,6 +108,8 @@ async function ensureSocket() {
   // access logs, analytics, or browser history.
   const socket = new WebSocket(wsUrl)
   sharedSocket = socket
+  // A TCP-open socket is not ready until the server acknowledges authentication.
+  const authenticationTimer = window.setTimeout(() => { if (sharedSocket === socket && !authenticated) socket.close() }, 12000)
 
   socket.addEventListener('open', () => {
     if (sharedSocket !== socket) { socket.close(); return }
@@ -102,6 +117,7 @@ async function ensureSocket() {
   })
 
   socket.addEventListener('message', (raw) => {
+    if (sharedSocket !== socket) return
     try {
       const parsed = JSON.parse(String(raw.data || '{}')) as {
         type?: string
@@ -110,12 +126,13 @@ async function ensureSocket() {
         ts?: string
       }
       if (parsed?.type === 'connected') {
-        if (sharedSocket !== socket) return
+        authenticated = true
+        window.clearTimeout(authenticationTimer)
         flushPendingSubscriptions()
         window.dispatchEvent(new Event('novvin:realtime-ready'))
         return
       }
-      if (parsed?.type === 'event' && parsed.channel) {
+      if (authenticated && parsed?.type === 'event' && parsed.channel) {
         dispatchEvent(parsed as UbuntuRealtimeEvent)
       }
     } catch {
@@ -124,7 +141,9 @@ async function ensureSocket() {
   })
 
   socket.addEventListener('close', event => {
+    window.clearTimeout(authenticationTimer)
     if (sharedSocket !== socket) return
+    authenticated = false; subscribedChannels.clear()
     // The transport may be revoked before its channel handler is mounted.
     // Expiry and transient network failures must still be allowed to recover.
     if (webSessionTransportWasRevoked(event, token, readFallbackSession()?.accessToken)) {
@@ -168,14 +187,25 @@ export function subscribeUbuntuRealtime(input: {
     if (current && current.size === 0) {
       channelHandlers.delete(channel)
       pendingChannels.delete(channel)
+      subscribedChannels.delete(channel)
       sendSocketMessage({ type: 'unsubscribe', channel })
     }
     if (channelHandlers.size === 0) {
-      sharedSocket?.close()
+      const old = sharedSocket
+      connectionGeneration += 1
+      authenticated = false; subscribedChannels.clear()
       sharedSocket = null
       sharedToken = ''
+      if (reconnectTimer) { window.clearTimeout(reconnectTimer); reconnectTimer = null }
+      old?.close()
     }
   }
+}
+
+if (typeof window !== 'undefined') {
+  const recover = () => { if (channelHandlers.size) void ensureSocket() }
+  window.addEventListener('online', recover)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) recover() })
 }
 
 export function subscribeUbuntuRealtimeMany(input: {

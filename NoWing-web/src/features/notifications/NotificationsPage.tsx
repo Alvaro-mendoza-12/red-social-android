@@ -513,10 +513,13 @@ export function NotificationsPage() {
     setOpeningId(item.id)
     setActionMessage(null)
     try {
-      if (!item.isRead) {
-        await markAsRead(item.id, true)
-      }
-      navigate(action.path)
+      if (!item.isRead) void markAsRead(item.id, true)
+      const senderName = item.actorName.trim()
+      const notificationParticipant = item.targetType === 'chat' && item.actorId && item.actorId !== user?.id &&
+        senderName && !['usuario', 'alguien', 'novvin'].includes(senderName.toLowerCase())
+        ? { id: item.actorId, name: senderName, avatarUrl: item.actorAvatar }
+        : undefined
+      navigate(action.path, { state: notificationParticipant ? { notificationParticipant } : undefined })
     } finally {
       setOpeningId(null)
     }

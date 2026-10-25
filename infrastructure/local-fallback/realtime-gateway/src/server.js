@@ -90,6 +90,7 @@ async function resolveUserIds(token, payload) {
 function subscriptionAuthorizationUrl(channel) {
   const mappings = [
     ['profile-counts:', (id) => `/v1/data/profiles/${encodeURIComponent(id)}`],
+    ['profile-music:', (id) => `/v1/data/profiles/${encodeURIComponent(id)}/music/reactions`],
     ['chat:', (id) => `/v1/data/messages/chats/${encodeURIComponent(id)}`],
     ['random-chat:', (id) => `/v1/data/proximity/random/sessions/${encodeURIComponent(id)}`],
     ['typing-chat:', (id) => `/v1/data/messages/chats/${encodeURIComponent(id)}`],

@@ -1,10 +1,9 @@
 package conectate.com.presentation.social
 
-import conectate.com.core.media.ShareableMediaFileStore
-
 import androidx.compose.runtime.Composable
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -53,11 +52,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import conectate.com.presentation.messages.ChatCameraCapture
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.ImageCropPreset
 import conectate.com.presentation.components.SimpleImageCropDialog
 import conectate.com.presentation.components.DeviceAudioPickerDialog
-import conectate.com.presentation.components.rememberReliableBottomSafePadding
 import conectate.com.data.model.User
 import conectate.com.util.UbuntuMedia
 import java.util.Locale
@@ -83,9 +83,18 @@ fun CreateMomentScreen(
     var showDeviceMusicPicker by remember { mutableStateOf(false) }
     var pendingDeviceAudioUri by remember { mutableStateOf<Uri?>(null) }
 
-    // UI States: GALLERY, TRIMMER, EDITOR
-    var currentStep by rememberSaveable { mutableStateOf("GALLERY") }
-    var selectedMedia by remember { mutableStateOf<GalleryMedia?>(null) }
+    // The capture entry is shared with chats: camera first, with gallery one tap away.
+    var currentStep by rememberSaveable { mutableStateOf("CAMERA") }
+    var selectedMediaUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedMediaIsVideo by rememberSaveable { mutableStateOf(false) }
+    var selectedMediaDuration by rememberSaveable { mutableLongStateOf(0L) }
+    val selectedMedia = remember(selectedMediaUri, selectedMediaIsVideo, selectedMediaDuration) {
+        selectedMediaUri?.let { value -> GalleryMedia(
+            id = value.hashCode().toLong(), uri = Uri.parse(value),
+            type = if (selectedMediaIsVideo) MediaType.VIDEO else MediaType.IMAGE,
+            duration = selectedMediaDuration, dateAdded = 0L,
+        ) }
+    }
     var finalUriValue by rememberSaveable { mutableStateOf<String?>(null) }
     val finalUri = remember(finalUriValue) { finalUriValue?.let(Uri::parse) }
     var finalMediaType by rememberSaveable { mutableStateOf("image") }
@@ -109,110 +118,67 @@ fun CreateMomentScreen(
     var overlayY by remember { mutableStateOf(0.38f) }
     var musicSelection by remember { mutableStateOf<MomentMusicSelection?>(null) }
 
-    // Include partial-photo access permission on Android 14+.
+    // Gallery access is requested only when the user opens it. A denied camera
+    // permission must never prevent choosing an existing photo or video.
     val permissionsToRequest = when {
-        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> {
-            listOf(
-                android.Manifest.permission.READ_MEDIA_IMAGES,
-                android.Manifest.permission.READ_MEDIA_VIDEO,
-                android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
-                android.Manifest.permission.CAMERA
-            )
-        }
-        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU -> {
-            listOf(
-                android.Manifest.permission.READ_MEDIA_IMAGES,
-                android.Manifest.permission.READ_MEDIA_VIDEO,
-                android.Manifest.permission.CAMERA
-            )
-        }
-        else -> {
-            listOf(
-                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                android.Manifest.permission.CAMERA
-            )
-        }
+        android.os.Build.VERSION.SDK_INT >= 34 -> listOf(
+            android.Manifest.permission.READ_MEDIA_IMAGES,
+            android.Manifest.permission.READ_MEDIA_VIDEO,
+            android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+        )
+        android.os.Build.VERSION.SDK_INT >= 33 -> listOf(
+            android.Manifest.permission.READ_MEDIA_IMAGES,
+            android.Manifest.permission.READ_MEDIA_VIDEO,
+        )
+        else -> listOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
     }
-
-    val permissionsState = com.google.accompanist.permissions.rememberMultiplePermissionsState(
-        permissions = permissionsToRequest
-    )
-
-    LaunchedEffect(Unit) {
-        permissionsState.launchMultiplePermissionRequest()
-    }
-
-    LaunchedEffect(permissionsState.allPermissionsGranted) {
-        if (permissionsState.allPermissionsGranted) {
-            viewModel.loadGalleryMedia(context)
-        } else {
-             // Try to load anyway if we have some permissions, or just log
-             android.util.Log.d("CreateMoment", "Permissions not all granted: ${permissionsState.permissions.map { it.permission to it.status }}")
-        }
-    }
-
-    // Camera Launchers
-    // External camera apps may recreate this Activity. Keep the destination URI
-    // in saved state so TakePicture/CaptureVideo can still resolve their result.
-    var tempCameraUriValue by rememberSaveable { mutableStateOf<String?>(null) }
+    val permissionsState = com.google.accompanist.permissions.rememberMultiplePermissionsState(permissionsToRequest)
+    var requestedGalleryAccess by rememberSaveable { mutableStateOf(false) }
+    val hasGalleryAccess = permissionsState.permissions.any { it.status.isGranted }
     val cameraScope = rememberCoroutineScope()
-    
-    val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        val capturedUri = tempCameraUriValue?.let(Uri::parse)
-        tempCameraUriValue = null
-        if (success && capturedUri != null) {
-            // Some camera apps return before the external-cache FileProvider
-            // stream is stable. Copy it into our private cache first so the
-            // crop editor never receives a stale/half-written URI (which was
-            // causing the editor to close and return to the gallery).
-            cameraScope.launch {
-                val stableUri = withContext(Dispatchers.IO) {
-                    stabilizeCapturedCameraUri(context, capturedUri, ".jpg")
-                }
-                if (stableUri != null) {
-                    pendingMomentCropUriValue = stableUri.toString()
-                } else {
-                    android.widget.Toast.makeText(
-                        context,
-                        "No se pudo leer la foto capturada. Inténtalo otra vez.",
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
-                }
+    LaunchedEffect(currentStep, hasGalleryAccess, pendingMomentCropUriValue) {
+        if (currentStep == "GALLERY" && pendingMomentCropUriValue == null) {
+            if (!hasGalleryAccess && !requestedGalleryAccess) {
+                requestedGalleryAccess = true
+                permissionsState.launchMultiplePermissionRequest()
             }
+            if (hasGalleryAccess) viewModel.loadGalleryMedia(context)
         }
     }
-
-    val recordVideoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { success ->
-        val capturedUri = tempCameraUriValue?.let(Uri::parse)
-        tempCameraUriValue = null
-        if (success && capturedUri != null) {
-            cameraScope.launch {
-                val recordedUri = withContext(Dispatchers.IO) {
-                    stabilizeCapturedCameraUri(context, capturedUri, ".mp4")
-                }
-                if (recordedUri != null) {
-                    val recordedDuration = resolveMomentMediaDuration(context, recordedUri).coerceAtLeast(1_000L)
-                    selectedMedia = GalleryMedia(
-                        id = System.currentTimeMillis(),
-                        uri = recordedUri,
-                        type = MediaType.VIDEO,
-                        duration = recordedDuration,
-                        dateAdded = System.currentTimeMillis() / 1_000L,
-                    )
-                    currentStep = "TRIMMER"
-                } else {
-                    android.widget.Toast.makeText(
-                        context,
-                        "No se pudo leer el video capturado. Inténtalo otra vez.",
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
-                }
-            }
+    fun selectMomentMedia(media: GalleryMedia) {
+        selectedMediaUri = media.uri.toString()
+        selectedMediaIsVideo = media.type == MediaType.VIDEO
+        selectedMediaDuration = media.duration
+        if (media.type == MediaType.IMAGE) {
+            currentStep = "GALLERY"
+            pendingMomentCropUriValue = media.uri.toString()
+        } else {
+            currentStep = "TRIMMER"
         }
     }
-
-
-    var showCameraOptions by remember { mutableStateOf(false) }
+    val mediaFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) cameraScope.launch {
+            val media = withContext(Dispatchers.IO) {
+                val video = context.contentResolver.getType(uri)?.startsWith("video/") == true
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                GalleryMedia(
+                    id = uri.hashCode().toLong(), uri = uri,
+                    type = if (video) MediaType.VIDEO else MediaType.IMAGE,
+                    duration = if (video) resolveMomentMediaDuration(context, uri).coerceAtLeast(1_000L) else 0L,
+                    dateAdded = System.currentTimeMillis() / 1_000L,
+                )
+            }
+            selectMomentMedia(media)
+        }
+    }
+    BackHandler {
+        if (isUploading) return@BackHandler
+        when (currentStep) {
+            "CAMERA" -> navController.popBackStack()
+            "GALLERY" -> currentStep = "CAMERA"
+            else -> currentStep = "GALLERY"
+        }
+    }
 
     pendingMomentCropUri?.let { sourceUri ->
         SimpleImageCropDialog(
@@ -231,34 +197,6 @@ fun CreateMomentScreen(
                 finalMediaType = "image"
                 pendingMomentCropUriValue = null
                 currentStep = "EDITOR"
-            }
-        )
-    }
-
-    if (showCameraOptions) {
-        AlertDialog(
-            onDismissRequest = { showCameraOptions = false },
-            title = { Text("Cámara") },
-            text = { Text("¿Qué deseas capturar?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showCameraOptions = false
-                    val uri = createMomentCameraUri(context, ".mp4")
-                    tempCameraUriValue = uri.toString()
-                    recordVideoLauncher.launch(uri)
-                }) {
-                    Text("Grabar Video")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showCameraOptions = false
-                    val uri = createMomentCameraUri(context, ".jpg")
-                    tempCameraUriValue = uri.toString()
-                    takePictureLauncher.launch(uri)
-                }) {
-                    Text("Tomar Foto")
-                }
             }
         )
     }
@@ -321,15 +259,14 @@ fun CreateMomentScreen(
     // Main Content
     Scaffold(
         topBar = {
-            if (currentStep != "EDITOR") {
+            if (currentStep != "EDITOR" && currentStep != "CAMERA") {
                 TopAppBar(
                     title = { Text(if (currentStep == "TRIMMER") "Recortar Video" else "Nuevo Momento") },
                     navigationIcon = {
                         IconButton(
                             enabled = !isUploading,
                             onClick = {
-                                if (currentStep == "GALLERY") navController.popBackStack()
-                                else currentStep = "GALLERY"
+                                currentStep = if (currentStep == "GALLERY") "CAMERA" else "GALLERY"
                             }
                         ) {
                             Icon(Icons.Default.Close, "Cerrar")
@@ -341,25 +278,24 @@ fun CreateMomentScreen(
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
             when (currentStep) {
+                "CAMERA" -> ChatCameraCapture(
+                    onClose = { navController.popBackStack() },
+                    onGallery = { currentStep = "GALLERY" },
+                    onCaptured = { captured, durationMs ->
+                        selectMomentMedia(GalleryMedia(
+                            id = captured.uri.hashCode().toLong(), uri = captured.uri,
+                            type = if (captured.type == "video") MediaType.VIDEO else MediaType.IMAGE,
+                            duration = durationMs,
+                            dateAdded = System.currentTimeMillis() / 1_000L,
+                        ))
+                    },
+                )
                 "GALLERY" -> {
                     GalleryGridView(
                         mediaList = galleryMedia,
-                        onMediaSelected = { media ->
-                            selectedMedia = media
-                            if (media.type == MediaType.VIDEO) {
-                                currentStep = "TRIMMER"
-                            } else if (media.type == MediaType.IMAGE) {
-                                pendingMomentCropUriValue = media.uri.toString()
-                            } else {
-                                finalUriValue = media.uri.toString()
-                                finalMediaType = "video"
-                                finalMediaDurationMs = media.duration
-                                currentStep = "EDITOR"
-                            }
-                        },
-                        onCameraClick = {
-                            showCameraOptions = true
-                        }
+                        onMediaSelected = ::selectMomentMedia,
+                        onCameraClick = { currentStep = "CAMERA" },
+                        onChooseFiles = { mediaFilePicker.launch(arrayOf("image/*", "video/*")) },
                     )
                 }
                 "TRIMMER" -> {
@@ -546,8 +482,22 @@ fun CreateMomentScreen(
 fun GalleryGridView(
     mediaList: List<GalleryMedia>,
     onMediaSelected: (GalleryMedia) -> Unit,
-    onCameraClick: () -> Unit
+    onCameraClick: () -> Unit,
+    onChooseFiles: (() -> Unit)? = null,
 ) {
+    Column(Modifier.fillMaxSize()) {
+        onChooseFiles?.let { openFiles ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Fotos y videos", style = MaterialTheme.typography.titleSmall)
+                TextButton(onClick = openFiles) { Text("Elegir del dispositivo") }
+            }
+            if (mediaList.isEmpty()) Text(
+                "Puedes tomar una foto, grabar un video o elegir archivos sin dar acceso a toda tu galería.",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
     androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
         columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -570,7 +520,7 @@ fun GalleryGridView(
             }
         }
         
-        items(mediaList.size) { index ->
+        items(mediaList.size, key = { "${mediaList[it].type}-${mediaList[it].id}" }) { index ->
             val media = mediaList[index]
             Box(
                 modifier = Modifier
@@ -603,6 +553,7 @@ fun GalleryGridView(
                 }
             }
         }
+    }
     }
 }
 
@@ -799,7 +750,6 @@ internal fun MomentEditorView(
     val onRemoveMusic = actions.onRemoveMusic
     val onBack = actions.onBack
     val onPost = actions.onPost
-    val reliableBottomPadding = rememberReliableBottomSafePadding()
     var showAudienceDialog by remember { mutableStateOf(false) }
     var showPeopleDialog by remember { mutableStateOf(false) }
     var showTextDialog by remember { mutableStateOf(false) }
@@ -1023,7 +973,7 @@ internal fun MomentEditorView(
                     start = 16.dp,
                     top = 16.dp,
                     end = 16.dp,
-                    bottom = reliableBottomPadding + 4.dp
+                    bottom = 8.dp
                 )
         ) {
             // Caption
@@ -1565,43 +1515,6 @@ private fun formatDuration(millis: Long): String {
     val seconds = (millis / 1000) % 60
     val minutes = (millis / (1000 * 60)) % 60
     return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
-}
-
-private fun createMomentCameraUri(context: android.content.Context, extension: String): Uri {
-    val directory = ShareableMediaFileStore.momentCaptures(context, preferExternal = true)
-    val tmpFile = java.io.File.createTempFile("moment_camera_", extension, directory)
-    return androidx.core.content.FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.provider",
-        tmpFile
-    )
-}
-
-/**
- * Copies a camera result to an app-owned cache file before opening the editor.
- * OEM camera apps are allowed to release their temporary provider stream as
- * soon as the ActivityResult callback fires; using the copied URI avoids a
- * race that otherwise makes the crop dialog immediately dismiss itself.
- */
-private fun stabilizeCapturedCameraUri(
-    context: android.content.Context,
-    sourceUri: Uri,
-    extension: String,
-): Uri? {
-    return runCatching {
-        val targetDirectory = ShareableMediaFileStore.momentCaptures(context, preferExternal = false)
-        val target = java.io.File.createTempFile("moment_stable_", extension, targetDirectory)
-        context.contentResolver.openInputStream(sourceUri).use { input ->
-            requireNotNull(input) { "No se pudo abrir la captura" }
-            java.io.FileOutputStream(target).use { output -> input.copyTo(output) }
-        }
-        require(target.length() > 0L) { "La captura está vacía" }
-        androidx.core.content.FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            target,
-        )
-    }.getOrNull()
 }
 
 private fun resolveMomentMediaDuration(context: android.content.Context, uri: Uri): Long {

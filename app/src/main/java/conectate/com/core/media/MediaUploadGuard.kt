@@ -11,6 +11,23 @@ data class MediaValidationResult(
 @Singleton
 class MediaUploadGuard @Inject constructor() {
 
+    private val messagingBuckets = setOf("chat-media", "group-media", "community-media")
+    private val blockedMessageAttachmentExtensions = setOf(
+        "exe", "dll", "com", "scr", "msi", "bat", "cmd", "ps1", "psm1", "sh", "bash",
+        "zsh", "fish", "vbs", "vbe", "js", "mjs", "cjs", "hta", "html", "htm", "svg",
+        "wasm", "class", "so", "dylib", "elf"
+    )
+    private val blockedMessageAttachmentMimes = setOf(
+        "text/html", "application/xhtml+xml", "image/svg+xml", "text/javascript",
+        "application/javascript", "application/x-javascript", "application/wasm",
+        "application/x-msdownload", "application/x-executable", "application/x-sh",
+        "application/x-httpd-php"
+    )
+    private val signatureRequiredMessageExtensions = setOf(
+        "pdf", "zip", "doc", "docx", "docm", "xls", "xlsx", "xlsm", "xlsb", "ppt", "pptx", "pptm",
+        "odt", "ods", "odp", "epub", "rtf"
+    )
+
     private data class BucketPolicy(
         val maxBytes: Long,
         val allowedContentTypes: Set<String>,
@@ -44,6 +61,9 @@ class MediaUploadGuard @Inject constructor() {
                 "audio/webm",
                 "application/pdf",
                 "application/zip",
+                "application/vnd.ms-excel",
+                "application/msword",
+                "application/vnd.ms-powerpoint",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -53,7 +73,7 @@ class MediaUploadGuard @Inject constructor() {
             ),
             allowedExtensions = setOf(
                 "jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm",
-                "mp3", "m4a", "wav", "ogg", "pdf", "zip", "docx", "xlsx", "pptx", "txt", "csv"
+                "mp3", "m4a", "wav", "ogg", "pdf", "zip", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv"
             )
         ),
         "group-media" to BucketPolicy(
@@ -72,6 +92,9 @@ class MediaUploadGuard @Inject constructor() {
                 "audio/webm",
                 "application/pdf",
                 "application/zip",
+                "application/vnd.ms-excel",
+                "application/msword",
+                "application/vnd.ms-powerpoint",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -81,7 +104,7 @@ class MediaUploadGuard @Inject constructor() {
             ),
             allowedExtensions = setOf(
                 "jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm",
-                "mp3", "m4a", "wav", "ogg", "pdf", "zip", "docx", "xlsx", "pptx", "txt", "csv"
+                "mp3", "m4a", "wav", "ogg", "pdf", "zip", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv"
             )
         ),
         "community-media" to BucketPolicy(
@@ -100,6 +123,9 @@ class MediaUploadGuard @Inject constructor() {
                 "audio/webm",
                 "application/pdf",
                 "application/zip",
+                "application/vnd.ms-excel",
+                "application/msword",
+                "application/vnd.ms-powerpoint",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -109,7 +135,7 @@ class MediaUploadGuard @Inject constructor() {
             ),
             allowedExtensions = setOf(
                 "jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm",
-                "mp3", "m4a", "wav", "ogg", "pdf", "zip", "docx", "xlsx", "pptx", "txt", "csv"
+                "mp3", "m4a", "wav", "ogg", "pdf", "zip", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv"
             )
         ),
         "avatars" to BucketPolicy(
@@ -272,8 +298,23 @@ class MediaUploadGuard @Inject constructor() {
         if (cleanContentType.isBlank()) {
             return MediaValidationResult(false, "Missing content type")
         }
-        val canonicalType = cleanContentType.substringBefore(";")
+        val canonicalType = conectate.com.util.canonicalizeMediaContentType(cleanContentType)
+            ?: cleanContentType.substringBefore(";")
         val fileExtension = fileName.substringAfterLast('.', "").lowercase()
+        val hasSafeAttachmentExtension = fileExtension.matches(Regex("[a-z0-9]{1,16}")) &&
+            fileExtension !in blockedMessageAttachmentExtensions
+        val isSafeMessagingAttachment = bucketName in messagingBuckets && hasSafeAttachmentExtension
+        val isSafeOpaqueAttachmentMime = (
+            canonicalType.startsWith("application/") || canonicalType.startsWith("text/")
+            ) && canonicalType !in blockedMessageAttachmentMimes
+        val isZipBasedOpaqueDocument = fileExtension in setOf(
+            "zip", "odt", "ods", "odp", "epub", "pages", "numbers", "key"
+        )
+        val expectedFileMime = runCatching {
+            conectate.com.util.guessMimeTypeFromFileName(fileName)
+                ?.let { conectate.com.util.canonicalizeMediaContentType(it) }
+        }.getOrNull()
+        val isGenericMime = canonicalType in setOf("application/octet-stream", "binary/octet-stream")
 
         val policy = policies[bucketName]
         if (policy != null) {
@@ -291,8 +332,13 @@ class MediaUploadGuard @Inject constructor() {
                 canonicalType
             }
 
+            val genericDocumentMime = isSafeMessagingAttachment && (
+                isGenericMime || isSafeOpaqueAttachmentMime ||
+                    (isZipBasedOpaqueDocument && inferredType == "application/zip" &&
+                        canonicalType.startsWith("application/"))
+                )
             if (policy.allowedContentTypes.isNotEmpty() &&
-                !policy.allowedContentTypes.contains(effectiveType)
+                !policy.allowedContentTypes.contains(effectiveType) && !genericDocumentMime
             ) {
                 return MediaValidationResult(
                     allowed = false,
@@ -300,7 +346,9 @@ class MediaUploadGuard @Inject constructor() {
                 )
             }
             if (policy.allowedExtensions.isNotEmpty()) {
-                if (fileExtension.isBlank() || !policy.allowedExtensions.contains(fileExtension)) {
+                if (fileExtension.isBlank() ||
+                    (!policy.allowedExtensions.contains(fileExtension) && !isSafeMessagingAttachment)
+                ) {
                     return MediaValidationResult(
                         allowed = false,
                         reason = "Unsupported file extension .$fileExtension for $bucketName"
@@ -314,7 +362,20 @@ class MediaUploadGuard @Inject constructor() {
         }
 
         val inferredType = inferMimeType(headerBytes, fileExtension)
-        if (!inferredType.isNullOrBlank() && !isCompatibleMime(canonicalType, inferredType)) {
+        if (bucketName in messagingBuckets && fileExtension in signatureRequiredMessageExtensions &&
+            inferredType.isNullOrBlank()
+        ) {
+            return MediaValidationResult(false, "Could not verify document signature")
+        }
+        val compatibleOpaqueArchive = isSafeMessagingAttachment && isZipBasedOpaqueDocument &&
+            inferredType == "application/zip" && canonicalType.startsWith("application/")
+        val extensionSignatureMismatch = !inferredType.isNullOrBlank() &&
+            !expectedFileMime.isNullOrBlank() &&
+            !isCompatibleMime(expectedFileMime, inferredType) &&
+            !(isZipBasedOpaqueDocument && inferredType == "application/zip")
+        if (extensionSignatureMismatch || (!inferredType.isNullOrBlank() &&
+                !isCompatibleMime(canonicalType, inferredType) && !compatibleOpaqueArchive)
+        ) {
             return MediaValidationResult(
                 allowed = false,
                 reason = "File signature does not match declared content type"
@@ -365,8 +426,27 @@ class MediaUploadGuard @Inject constructor() {
                 "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                "xlsm" -> "application/vnd.ms-excel.sheet.macroenabled.12"
+                "xlsb" -> "application/vnd.ms-excel.sheet.binary.macroenabled.12"
+                "docm" -> "application/vnd.ms-word.document.macroenabled.12"
+                "pptm" -> "application/vnd.ms-powerpoint.presentation.macroenabled.12"
                 else -> "application/zip"
             }
+        }
+        if (
+            bytes.size >= 8 && bytes[0] == 0xD0.toByte() && bytes[1] == 0xCF.toByte() &&
+            bytes[2] == 0x11.toByte() && bytes[3] == 0xE0.toByte() && bytes[4] == 0xA1.toByte() &&
+            bytes[5] == 0xB1.toByte() && bytes[6] == 0x1A.toByte() && bytes[7] == 0xE1.toByte()
+        ) {
+            return when (extension) {
+                "xls" -> "application/vnd.ms-excel"
+                "doc" -> "application/msword"
+                "ppt" -> "application/vnd.ms-powerpoint"
+                else -> "application/x-ole-storage"
+            }
+        }
+        if (extension == "rtf" && bytes.size >= 5 && bytes.copyOfRange(0, 5).decodeToString() == "{\\rtf") {
+            return "application/rtf"
         }
         if (
             bytes[0] == 0x52.toByte() &&
@@ -423,14 +503,18 @@ class MediaUploadGuard @Inject constructor() {
             val brand = bytes.copyOfRange(8, 12).decodeToString().lowercase()
             return if (brand.contains("m4a")) "audio/mp4" else "video/mp4"
         }
-        if (extension == "txt" || extension == "csv") {
+        if (extension in setOf("txt", "csv", "tsv")) {
             val sample = bytes.take(512)
             val invalidControls = sample.count { value ->
                 val unsigned = value.toInt() and 0xFF
                 unsigned == 0 || unsigned < 9 || (unsigned in 14..31)
             }
             if (invalidControls <= maxOf(1, sample.size / 50)) {
-                return if (extension == "csv") "text/csv" else "text/plain"
+                return when (extension) {
+                    "csv" -> "text/csv"
+                    "tsv" -> "text/tab-separated-values"
+                    else -> "text/plain"
+                }
             }
         }
         return null

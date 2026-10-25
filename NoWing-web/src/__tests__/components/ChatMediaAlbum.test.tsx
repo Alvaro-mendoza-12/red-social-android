@@ -24,9 +24,12 @@ test('does not offer deletion for everyone for received photos', () => {
   expect(screen.queryByRole('button', { name: 'Eliminar para todos', hidden: true })).toBeNull()
 })
 
-test('an album is only marked as read when every original photo is read', () => {
-  const view = render(<ChatMediaAlbum items={items} mine deliveryState={message => message.id === '4' ? 'sent' : 'read'} {...actions()} />)
-  expect(screen.getByLabelText('Enviado')).toBeInTheDocument()
+test('each visible photo retains its own time and delivery receipt without a second footer receipt', () => {
+  const view = render(<ChatMediaAlbum items={items} mine deliveryState={message => message.id === '3' ? 'sent' : 'read'} {...actions()} />)
+  expect(screen.getAllByLabelText('Enviado')).toHaveLength(1)
+  expect(screen.getAllByLabelText('Leído')).toHaveLength(3)
+  expect(view.container.querySelectorAll('.chat-album-tile time')).toHaveLength(4)
+  expect(view.container.querySelector('.chat-album-footer .message-status')).toBeNull()
   view.rerender(<ChatMediaAlbum items={items} mine deliveryState={() => 'read'} {...actions()} />)
-  expect(screen.getByLabelText('Leído')).toBeInTheDocument()
+  expect(screen.getAllByLabelText('Leído')).toHaveLength(4)
 })

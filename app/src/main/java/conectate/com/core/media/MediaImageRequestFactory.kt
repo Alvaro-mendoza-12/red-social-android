@@ -1,17 +1,30 @@
 package conectate.com.core.media
 
 import android.content.Context
+import coil.ImageLoader
+import coil.decode.Decoder
+import coil.decode.VideoFrameDecoder
+import coil.fetch.SourceResult
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.request.Options
+import coil.request.videoFrameMillis
 import conectate.com.data.localfallback.UbuntuStorageUrl
 
 object MediaImageRequestFactory {
     internal const val OFFLINE_CHAT_IMAGE = "novvin_offline_chat_image"
     internal const val PREFETCH_CHAT_IMAGE = "novvin_prefetch_chat_image"
+    internal const val MEMORY_ONLY_PREVIEW = "novvin_memory_only_preview"
     const val DEFAULT_PREVIEW_WIDTH = 1080
     const val AVATAR_PREVIEW_WIDTH = 384
     const val AVATAR_PREVIEW_QUALITY = 84
     const val MAX_FULLSCREEN_IMAGE_DIMENSION_PX = 4096
+
+    /** Offline chat videos are named .media and arrive without a video MIME hint. */
+    private val opaqueVideoDecoder = object : Decoder.Factory {
+        override fun create(result: SourceResult, options: Options, imageLoader: ImageLoader): Decoder =
+            VideoFrameDecoder(result.source, options)
+    }
 
     /** The image interceptor resolves account-local copies without changing the UI model. */
     fun chatPreviewSource(source: String?, resolvedSource: String?): String? {
@@ -59,6 +72,29 @@ object MediaImageRequestFactory {
 
     fun previewCacheKey(url: String?): String? =
         UbuntuStorageUrl.stableCacheKey(previewUrl(url))
+
+    /** Force video decoding for opaque offline files that have no video extension/MIME. */
+    fun videoPoster(context: Context, videoUrl: String?, thumbnailUrl: String?): ImageRequest? {
+        val thumbnail = thumbnailUrl?.takeIf(String::isNotBlank)
+        val source = if (thumbnail != null) UbuntuStorageUrl.thumbnail(thumbnail, width = 720)
+            else UbuntuStorageUrl.rewrite(videoUrl)
+        if (source.isNullOrBlank()) return null
+        val key = UbuntuStorageUrl.stableCacheKey(source)?.let { "chat-video-poster:$it" }
+        return ImageRequest.Builder(context)
+            .data(source)
+            .size(720, 720)
+            .memoryCacheKey(key)
+            .diskCacheKey(key)
+            .apply {
+                if (thumbnail == null) {
+                    decoderFactory(opaqueVideoDecoder)
+                    videoFrameMillis(1_000)
+                    setParameter(MEMORY_ONLY_PREVIEW, true)
+                } else setParameter(OFFLINE_CHAT_IMAGE, true)
+            }
+            .crossfade(false)
+            .build()
+    }
 
     fun preview(context: Context, url: String?): ImageRequest? {
         val data = previewUrl(url) ?: return null

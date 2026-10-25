@@ -69,7 +69,8 @@ internal fun buildMessageMediaViewerSelection(
             MediaItem(
                 id = message.id,
                 url = requireNotNull(message.media_url),
-                type = message.content_type
+                type = message.content_type,
+                thumbnailUrl = message.thumbnail_url,
             )
         },
         initialIndex = initialIndex

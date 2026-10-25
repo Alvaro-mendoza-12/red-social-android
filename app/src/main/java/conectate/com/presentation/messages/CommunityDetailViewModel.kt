@@ -13,6 +13,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 
 @HiltViewModel
@@ -135,6 +138,9 @@ class CommunityDetailViewModel @Inject constructor(
     }
 
     private var communityId: String? = null
+    private val detailSession = CommunityDetailSession(viewModelScope)
+    private var membersLoadJob: Job? = null
+    private var featuresLoadJob: Job? = null
 
     init {
         val userId = authService.getCurrentUserId()
@@ -142,7 +148,11 @@ class CommunityDetailViewModel @Inject constructor(
     }
 
     fun loadCommunityDetails(id: String) {
+        val ticket = detailSession.open(id, authService.getCurrentUserId()) ?: return
+        membersLoadJob = null
+        featuresLoadJob = null
         communityId = id
+        _currentUserId.value = ticket.accountId
         _membershipPolicy.value = null
         refreshMembershipPolicy()
         _isLoading.value = true
@@ -158,7 +168,7 @@ class CommunityDetailViewModel @Inject constructor(
         _canManageEvents.value = false
         
         // 1. Force Sync
-        viewModelScope.launch {
+        ticket.scope.launch {
              try {
                  communityRepository.syncCommunities()
              } catch (e: Exception) {
@@ -168,8 +178,9 @@ class CommunityDetailViewModel @Inject constructor(
         }
 
         // 2. Observe Community
-        viewModelScope.launch {
+        ticket.scope.launch {
             communityRepository.getCommunityFlow(id).collect { comm ->
+                if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@collect
                 _community.value = comm
                 if (comm != null) {
                     _isLoading.value = false
@@ -179,10 +190,11 @@ class CommunityDetailViewModel @Inject constructor(
         }
         
         // 3. Observe Membership Status
-        viewModelScope.launch {
+        ticket.scope.launch {
             val userId = _currentUserId.value ?: authService.getCurrentUserId()
             if (userId != null) {
-                communityRepository.isUserMemberFlow(id, userId).collect { isMem ->
+                communityRepository.isUserMemberFlow(id, userId).distinctUntilChanged().collect { isMem ->
+                    if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@collect
                     _isMember.value = isMem
                     if (isMem) refreshCommunityFeatures(silent = true)
                 }
@@ -190,11 +202,12 @@ class CommunityDetailViewModel @Inject constructor(
         }
 
         // 4. Observe Members Reactively
-        viewModelScope.launch {
+        ticket.scope.launch {
             // Initial Load with names
             loadMembers()
             
             communityRepository.getMembersFlow(id).collect { basicMembers ->
+                if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@collect
                 val currentMap = _members.value.associateBy { it.user_id }
 
                 val enriched = basicMembers.map { basic ->
@@ -445,9 +458,12 @@ class CommunityDetailViewModel @Inject constructor(
     }
 
     private fun loadMembers() {
-        val id = communityId ?: return
-        viewModelScope.launch {
+        val ticket = detailSession.current() ?: return
+        val id = ticket.communityId
+        if (membersLoadJob?.isActive == true) return
+        membersLoadJob = ticket.scope.launch {
             val membersResult = communityRepository.getCommunityMembers(id)
+            if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@launch
             if (membersResult.isSuccess) {
                 _members.value = membersResult.getOrDefault(emptyList())
                 recomputePermissions()
@@ -461,9 +477,14 @@ class CommunityDetailViewModel @Inject constructor(
     }
 
     private fun refreshCommunityFeatures(silent: Boolean) {
-        val id = communityId ?: return
-        viewModelScope.launch {
+        val ticket = detailSession.current() ?: return
+        val id = ticket.communityId
+        if (featuresLoadJob?.isActive == true) return
+        featuresLoadJob = ticket.scope.launch {
+        coroutineScope {
+        launch {
             val profileResult = communityRepository.getCommunityMemberProfiles(id)
+            if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@launch
             if (profileResult.isSuccess) {
                 val catalog = profileResult.getOrThrow()
                 _communityProfile.value = catalog.profile
@@ -475,8 +496,9 @@ class CommunityDetailViewModel @Inject constructor(
                     ?: "No se pudo cargar tu perfil de la comunidad."
             }
         }
-        viewModelScope.launch {
+        launch {
             val eventsResult = communityRepository.getCommunityEvents(id)
+            if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@launch
             if (eventsResult.isSuccess) {
                 val catalog = eventsResult.getOrThrow()
                 _events.value = catalog.events
@@ -485,6 +507,8 @@ class CommunityDetailViewModel @Inject constructor(
                 _actionMessage.value = eventsResult.exceptionOrNull()?.message
                     ?: "No se pudieron cargar los eventos."
             }
+        }
+        }
         }
     }
 

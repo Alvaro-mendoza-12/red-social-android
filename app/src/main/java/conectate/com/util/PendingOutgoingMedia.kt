@@ -175,8 +175,10 @@ object PendingOutgoingMediaStore {
                     val resolved = resolveMediaMeta(
                         preferredMediaType = item.kind.preferredMediaType,
                         declaredMime = item.mimeType,
-                        guessedMime = guessMimeTypeFromUri(item.uri),
-                        inferredMime = inferMimeTypeFromBytes(header)
+                        guessedMime = guessMimeTypeFromFileName(item.displayName)
+                            ?: guessMimeTypeFromUri(item.uri),
+                        inferredMime = inferMimeTypeFromBytes(header),
+                        fallbackExtension = fileExtensionFromName(item.displayName) ?: "bin"
                     )
                     val declaredSize = querySize(context, item.uri)
                     require(declaredSize <= 0L || declaredSize <= MAX_BYTES) {

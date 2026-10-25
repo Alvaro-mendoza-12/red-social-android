@@ -22,8 +22,10 @@ object DatabaseMigrations {
                             LatestSchemaNormalizer.addCommunityWeeklyBudget(db)
                         }
                         56 -> LatestSchemaNormalizer.addCommunityWeeklyBudget(db)
+                        57 -> Unit
                         else -> LatestSchemaNormalizer.migrate(db)
                     }
+                    LatestSchemaNormalizer.addConversationHistoryIndexes(db)
                     LegacyMessageDeletionMigration.import(db)
                 }
             }
@@ -276,6 +278,7 @@ internal object LatestSchemaNormalizer {
         indexSql = listOf(
             "CREATE INDEX IF NOT EXISTS `index_group_messages_group_id` ON `group_messages` (`group_id`)",
             "CREATE INDEX IF NOT EXISTS `index_group_messages_created_at` ON `group_messages` (`created_at`)",
+            "CREATE INDEX IF NOT EXISTS `index_group_messages_group_id_created_at_id` ON `group_messages` (`group_id`, `created_at`, `id`)",
             "CREATE INDEX IF NOT EXISTS `index_group_messages_is_synced_pending_action` ON `group_messages` (`is_synced`, `pending_action`)",
             "CREATE INDEX IF NOT EXISTS `index_group_messages_poll_id` ON `group_messages` (`poll_id`)",
             "CREATE INDEX IF NOT EXISTS `index_group_messages_is_forwarded` ON `group_messages` (`is_forwarded`)"
@@ -359,6 +362,7 @@ internal object LatestSchemaNormalizer {
             "CREATE INDEX IF NOT EXISTS `index_community_messages_community_id` ON `community_messages` (`community_id`)",
             "CREATE INDEX IF NOT EXISTS `index_community_messages_channel_id` ON `community_messages` (`channel_id`)",
             "CREATE INDEX IF NOT EXISTS `index_community_messages_created_at` ON `community_messages` (`created_at`)",
+            "CREATE INDEX IF NOT EXISTS `index_community_messages_community_id_created_at_id` ON `community_messages` (`community_id`, `created_at`, `id`)",
             "CREATE INDEX IF NOT EXISTS `index_community_messages_is_synced_pending_action` ON `community_messages` (`is_synced`, `pending_action`)",
             "CREATE INDEX IF NOT EXISTS `index_community_messages_poll_id` ON `community_messages` (`poll_id`)",
             "CREATE INDEX IF NOT EXISTS `index_community_messages_is_forwarded` ON `community_messages` (`is_forwarded`)"
@@ -480,6 +484,11 @@ internal object LatestSchemaNormalizer {
 
     fun addCommunityWeeklyBudget(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `communities` ADD COLUMN `weekly_message_limit` INTEGER NOT NULL DEFAULT 0")
+    }
+
+    fun addConversationHistoryIndexes(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_group_messages_group_id_created_at_id` ON `group_messages` (`group_id`, `created_at`, `id`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_community_messages_community_id_created_at_id` ON `community_messages` (`community_id`, `created_at`, `id`)")
     }
 
     fun addProfileSnapshot(db: SupportSQLiteDatabase) {

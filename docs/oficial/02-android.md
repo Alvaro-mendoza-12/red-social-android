@@ -1,8 +1,16 @@
 # 02 — Aplicación Android
 
-La app Android es el cliente principal de Conéctate. Está desarrollada en Kotlin con Jetpack Compose y sigue una organización por capas, ViewModels, repositorios, servicios Android y módulos de datos.
+La app Android es el cliente principal de Novvin. Está desarrollada en Kotlin con Jetpack Compose y sigue una organización por capas, ViewModels, repositorios, servicios Android y módulos de datos.
 
-La revisión móvil más reciente está en [llamadas y adjuntos del 01/10/2026](39-movil-llamadas-y-adjuntos-2026-10-01.md): cancelación de la pantalla de contestar, estado visible al responder y protección de archivos simultáneos. Los resultados de emulador no sustituyen las comprobaciones físicas pendientes.
+La revisión móvil vigente está en la [auditoría del candidato 167 del 25/10/2026](75-cierre-movil-167-2026-10-25.md). Incluye entrada, credenciales, registro, sesión guardada, invitado, multimedia, emojis, caché, perfiles, música y límites de LIVE. Distingue las pruebas de componentes del recorrido del APK release firmado.
+
+Cambios del candidato 166 que afectan al arranque y a los medios:
+
+- El grafo de acceso/ranking/sincronización usa `CrashReporter`, con fallback local; Firebase no es un requisito para construir la pantalla inicial.
+- El corrector de texto admite resultados nulos y rangos inválidos del servicio Android sin bloquear el editor ni el borrador.
+- Invitado publica Social y Momentos independientemente y conserva las imágenes decodificadas dentro de su propia identidad; no obtiene caché privada en disco.
+- La precarga de vídeo respeta el permiso y ETag del servidor, el presupuesto de red y el cambio de cuenta. No se descarga una precarga que no pueda reutilizarse.
+- Los avatares de directos, concursos y recomendaciones usan el componente de identidad común. Las fotos/GIF y los pósteres de vídeo conservan sus rutas de renderizado correspondientes.
 
 ## Configuración de build
 
@@ -19,8 +27,8 @@ Estado observado:
 - `compileSdk`: 36
 - `minSdk`: 24
 - `targetSdk`: 36
-- `versionCode`: 117
-- `versionName`: 9.0.20 (incremento pendiente por indicación del propietario)
+- `versionCode`: 167
+- `versionName`: 9.1.27
 - Java/Kotlin target: 17
 - Runtime de Gradle soportado: JDK 17–21. JDK 22+ se rechaza antes de compilar; el target de bytecode permanece en 17.
 - Android Gradle Plugin: 8.13.2
@@ -32,7 +40,7 @@ Estado observado:
 
 El proyecto apunta a Android 16/API 36. La compilación automatizada verifica compatibilidad de código, pero no reemplaza la prueba física de edge-to-edge, gesto predictivo atrás, teclado, permisos multimedia, foreground services, rotación y ventanas grandes.
 
-La puerta local se ejecuta con `:app:qualityGateDebug`. Un release exige la clave original de subida de Play mediante `keystore.properties` o `NOVVIN_UPLOAD_*`. No existe una excepción de firma habilitada por `NOVVIN_AUDIT_BUILD`; no usar una llave efímera como sustituto de la clave original. La sesión del 30/09/2026 no dispone de la configuración original para firmar un AAB publicable.
+La puerta local se ejecuta con `:app:qualityGateDebug`. Un release exige la clave original de subida de Play mediante `keystore.properties` o `NOVVIN_UPLOAD_*`. No existe una excepción de firma habilitada por `NOVVIN_AUDIT_BUILD`; no usar una llave efímera como sustituto de la clave original. La configuración de firma se comprobó en la revisión del 24/10/2026; consultar la auditoría 74 para el resultado del artefacto concreto.
 
 ## Secrets de build
 

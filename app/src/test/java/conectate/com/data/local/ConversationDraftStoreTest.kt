@@ -21,6 +21,18 @@ class ConversationDraftStoreTest {
         ConversationDraftStore(context).write("owner", "chat", "room", "hola\nmañana")
         assertEquals("hola\nmañana", ConversationDraftStore(context).read("owner", "chat", "room"))
     }
+    @Test fun existingHashedDraftKeysStillRestoreEmojiAndCanBeClearedAfterSending() {
+        val legacyKey = "5938bab21292cf4c93497f2f24a6bfd31e19345ae74ff750d8ecb8d3ccc5430b"
+        val preferences = context.getSharedPreferences("conversation-drafts-v1", Context.MODE_PRIVATE)
+        preferences.edit().putString(legacyKey, "Hola 👩🏽‍💻 🇵🇪").commit()
+        val store = ConversationDraftStore(context)
+        assertEquals(legacyKey, ConversationDraftStore.key("OWNER", "chat", " ROOM "))
+        assertEquals("Hola 👩🏽‍💻 🇵🇪", store.read("owner", "chat", "room"))
+        repeat(20) { store.write("owner", "chat", "room", "Hola 👩🏽‍💻 🇵🇪") }
+        store.write("owner", "chat", "room", "")
+        assertFalse(preferences.contains(legacyKey))
+        assertEquals("", ConversationDraftStore(context).read("owner", "chat", "room"))
+    }
     @Test fun accountsRoomsAndKindsRemainSeparate() {
         val store = ConversationDraftStore(context)
         store.write("owner", "chat", "room", "privado")

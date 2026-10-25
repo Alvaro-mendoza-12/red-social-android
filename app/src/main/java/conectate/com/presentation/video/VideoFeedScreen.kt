@@ -259,6 +259,10 @@ fun VideoFeedScreen(
     viewModel: VideoFeedViewModel = hiltViewModel(),
     connectivityViewModel: ConnectivityViewModel = hiltViewModel(),
     initialVideoId: String? = null,
+    initialPositionMs: Long = 0L,
+    initialClipEndMs: Long = 0L,
+    focusCommentId: String? = null,
+    showBackButton: Boolean = false,
     feedRefreshToken: Long = 0L,
     onNavigateToUpload: (VideoSoundSelection?) -> Unit,
     onNavigateToSearch: () -> Unit,
@@ -316,6 +320,8 @@ fun VideoFeedScreen(
     val commentsSheetOpen by viewModel.commentsSheetOpen.collectAsState()
     val selectedVideoForComments by viewModel.selectedVideoForComments.collectAsState()
     val comments by viewModel.comments.collectAsState()
+    val commentPosting by viewModel.commentPosting.collectAsState()
+    val focusedVideoError by viewModel.focusedVideoError.collectAsState()
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsState()
     val reportedVideoIds by viewModel.reportedVideoIds.collectAsState()
     val reportActionMessage by viewModel.reportActionMessage.collectAsState()
@@ -537,11 +543,13 @@ fun VideoFeedScreen(
     ContinueRecommendedFeedAtTail(pagerState, feedEntries, forYouFeed.sessionId, isLoading, feedError,
         enabled = !isProfileFeed && !isSearchMode && selectedTab == 0 && currentVideos.isNotEmpty(),
         onContinue = viewModel::continueRecommendedFeed)
-    var initialVideoPositionApplied by rememberSaveable(initialVideoId) { mutableStateOf(false) }
+    var initialVideoPositionApplied by rememberSaveable(initialVideoId, currentUserId) { mutableStateOf(false) }
+    var entryCommentOpened by rememberSaveable(initialVideoId, focusCommentId, currentUserId) { mutableStateOf(false) }
+    var entrySeekApplied by rememberSaveable(initialVideoId, initialPositionMs, initialClipEndMs, currentUserId) { mutableStateOf(false) }
 
-    LaunchedEffect(initialVideoId, isProfileFeed) {
+    LaunchedEffect(initialVideoId, isProfileFeed, currentUserId) {
         if (!isProfileFeed) {
-            initialVideoId?.trim()?.takeIf { it.isNotBlank() }?.let(viewModel::ensureVideoInFeed)
+            if (initialVideoId != null || showBackButton) viewModel.ensureVideoInFeed(initialVideoId.orEmpty())
         }
     }
 
@@ -549,7 +557,7 @@ fun VideoFeedScreen(
         if (initialVideoPositionApplied) return@LaunchedEffect
         val targetId = initialVideoId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         val targetPage = feedEntries.indexOfFirst { entry ->
-            entry is VideoFeedVideoEntry && entry.video.id == targetId
+            entry is VideoFeedVideoEntry && entry.video.id.equals(targetId, ignoreCase = true)
         }
         if (targetPage >= 0) {
             pagerState.scrollToPage(targetPage)
@@ -599,6 +607,13 @@ fun VideoFeedScreen(
             viewModel.closeComments()
         }
         onNavigateToProfile(video.userId)
+    }
+
+    LaunchedEffect(initialVideoPositionApplied, focusCommentId) {
+        if (!initialVideoPositionApplied || entryCommentOpened || focusCommentId.isNullOrBlank()) return@LaunchedEffect
+        val video = currentVideos.firstOrNull { it.id.equals(initialVideoId, ignoreCase = true) } ?: return@LaunchedEffect
+        entryCommentOpened = true
+        switchToCommentsPanel(video)
     }
 
     // Forward = swipe right-to-left (TikTok): video -> comments -> profile -> video (loop)
@@ -732,6 +747,7 @@ fun VideoFeedScreen(
     }
     val latestPlaybackAllowed = rememberUpdatedState(
         settledVideoId != null &&
+            (!showBackButton || initialVideoPositionApplied) &&
             settledVideoIndex >= 0 &&
             !pagerState.isScrollInProgress &&
             !playbackOverlayOpen &&
@@ -888,6 +904,18 @@ fun VideoFeedScreen(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY && !entrySeekApplied &&
+                    exoPlayer.currentMediaItem?.mediaId.equals(initialVideoId, ignoreCase = true) && exoPlayer.duration > 0L) {
+                    val entryVideo = latestVideos.value.firstOrNull { it.id.equals(initialVideoId, ignoreCase = true) }
+                    if (entryVideo != null) {
+                        val entry = resolveVideoEntryPlayback(entryVideo, initialPositionMs, initialClipEndMs, exoPlayer.duration)
+                        entrySeekApplied = true
+                        reviewLoop = entry.loop
+                        exoPlayer.seekTo(entry.positionMs)
+                        if (entry.rejectedClip) conectate.com.presentation.common.AppFeedbackBus.show(
+                            "Este fragmento ya no está permitido o quedó fuera del video.")
+                    }
+                }
                 if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("FeedPlaybackAudit", "state=$playbackState requested=${exoPlayer.playWhenReady} playing=${exoPlayer.isPlaying} suppression=${exoPlayer.playbackSuppressionReason}")
                 if (playbackState == Player.STATE_READY) {
                     exhaustedPlaybackVideoId = null
@@ -1089,8 +1117,11 @@ fun VideoFeedScreen(
         settledVideoIndex,
         videoSourceSignature,
         playerPlaylistGeneration,
+        initialVideoPositionApplied,
+        showBackButton,
     ) {
         val canPlay = settledVideoId != null &&
+            (!showBackButton || initialVideoPositionApplied) &&
             settledVideoIndex >= 0 &&
             !pagerState.isScrollInProgress &&
             !playbackOverlayOpen &&
@@ -1224,6 +1255,8 @@ fun VideoFeedScreen(
     if (commentsSheetOpen && videoForComments != null) {
         val videoIdForComments = videoForComments.id  // ✅ FIXED: Extract ID first
         conectate.com.presentation.videos.CommentSheet(
+            isPosting = commentPosting,
+            focusCommentId = focusCommentId.takeIf { videoForComments.id.equals(initialVideoId, ignoreCase = true) },
             comments = comments,
             onAddComment = { content ->
                 // ✅ FIXED: No more !!
@@ -1756,7 +1789,21 @@ fun VideoFeedScreen(
             onRefresh = { if (!isRefreshing) viewModel.refreshFeed() },
         )) {
             
-            if (!isConnected && feedEntries.isEmpty()) {
+            if (showBackButton && !initialVideoPositionApplied) {
+                Column(
+                    Modifier.align(Alignment.Center).padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (focusedVideoError == null) {
+                        CircularProgressIndicator(color = Color.White)
+                        Text("Abriendo video…", color = Color.White)
+                    } else {
+                        Text(focusedVideoError.orEmpty(), color = Color.White, textAlign = TextAlign.Center)
+                        Button(onClick = { initialVideoId?.let(viewModel::ensureVideoInFeed) }) { Text("Reintentar") }
+                    }
+                }
+            } else if (!isConnected && feedEntries.isEmpty()) {
                  Box(
                      modifier = Modifier.fillMaxSize(),
                      contentAlignment = Alignment.Center
@@ -2070,10 +2117,11 @@ fun VideoFeedScreen(
             }
 
             // Top Overlay (Search / Amigos / Recomendado)
-            if (isProfileFeed) {
+            if (isProfileFeed || showBackButton) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .statusBarsPadding()
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                         .align(Alignment.TopCenter),
                     verticalAlignment = Alignment.CenterVertically
@@ -2081,12 +2129,12 @@ fun VideoFeedScreen(
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver al perfil",
+                            contentDescription = "Volver",
                             tint = Color.White
                         )
                     }
                     Text(
-                        text = "Videos del perfil",
+                        text = if (isProfileFeed) "Videos del perfil" else "Video",
                         color = Color.White,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
@@ -3251,11 +3299,11 @@ private fun VideoPeopleRecommendationPage(
                             ) {
                                 val avatar = UbuntuMedia.resolveUrl(user.safeProfileImage)
                                 if (!avatar.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = avatar,
-                                        contentDescription = "Foto de ${user.displayName}",
+                                    conectate.com.presentation.components.CircularProfileImage(
+                                        imageUrl = avatar, fallbackName = user.displayName,
+                                        size = 82.dp, mediaType = user.avatar_media_type,
+                                        openMomentOnClick = false, showMomentRing = false,
                                         modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
                                     )
                                 } else {
                                     Text(

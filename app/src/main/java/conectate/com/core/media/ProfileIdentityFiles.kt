@@ -78,10 +78,23 @@ internal class ProfileIdentityFiles(
         const val MAX_ENTRY_BYTES = 1024 * 1024
         private const val MIGRATION_DISABLED = ".legacy-migration-disabled"
         private val IMAGE_NAME = Regex("[0-9a-f]{64}\\.webp")
-        fun accountKey(accountId: String): String? = accountId.trim().lowercase(Locale.ROOT)
-            .takeIf(String::isNotBlank)?.let { digest("account:$it") }
-        private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+        private val accountKeys = object : LinkedHashMap<String, String>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 16
+        }
+        fun accountKey(accountId: String): String? {
+            val normalized = accountId.trim().lowercase(Locale.ROOT).takeIf(String::isNotBlank) ?: return null
+            return synchronized(accountKeys) { accountKeys.getOrPut(normalized) { digest("account:$normalized") } }
+        }
+        private fun digest(value: String): String {
+            val bytes = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+            val hex = "0123456789abcdef"
+            return buildString(bytes.size * 2) {
+                bytes.forEach { byte ->
+                    val value = byte.toInt() and 0xff
+                    append(hex[value ushr 4])
+                    append(hex[value and 0x0f])
+                }
+            }
+        }
     }
 }

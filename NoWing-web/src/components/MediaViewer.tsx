@@ -7,6 +7,7 @@ import { ZoomableImage } from './ZoomableImage'
 import { MediaDownloadButton } from './MediaDownloadButton'
 
 export type ViewerItem = {
+  id?: string
   url: string
   type: 'image' | 'video' | 'pdf' | 'document'
   title?: string
@@ -26,10 +27,16 @@ export function MediaViewer({
   const strip = useRef<HTMLElement>(null)
   const close = useRef(onClose)
   useEffect(() => { close.current = onClose }, [onClose])
-  const [index, setIndex] = useState(Math.max(0, Math.min(initialIndex, items.length - 1)))
-  const [failedIndex, setFailedIndex] = useState<number|null>(null)
-  const failed = failedIndex === index
+  const keyOf = (entry: ViewerItem) => entry.id || entry.url
+  const [selectedKey, setSelectedKey] = useState(() => {
+    const initial = items[Math.max(0, Math.min(initialIndex, items.length - 1))]
+    return initial ? keyOf(initial) : ''
+  })
+  const index = Math.max(0, items.findIndex(entry => keyOf(entry) === selectedKey))
+  const [failedKey, setFailedKey] = useState<string|null>(null)
   const item = items[index]
+  const failed = item && failedKey === keyOf(item)
+  const setIndex = (value: number) => { if (items[value]) setSelectedKey(keyOf(items[value])) }
   useEffect(() => {
     strip.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({block:'nearest',inline:'center'})
   }, [index])
@@ -54,7 +61,7 @@ export function MediaViewer({
     }
   }, [])
   if (!item) return null
-  const move = (delta: number) => setIndex((value) => Math.max(0, Math.min(items.length - 1, value + delta)))
+  const move = (delta: number) => setIndex(Math.max(0, Math.min(items.length - 1, index + delta)))
   return (
     <dialog
       ref={dialog}
@@ -110,10 +117,10 @@ export function MediaViewer({
             autoPlay
             playsInline
             preload="metadata"
-            onError={() => setFailedIndex(index)}
+            onError={() => setFailedKey(keyOf(item))}
           />
         ) : (
-          <ZoomableImage key={`${index}:${item.url}`} src={item.url} title={item.title || 'Imagen ampliada'} onError={() => setFailedIndex(index)} />
+          <ZoomableImage key={keyOf(item)} src={item.url} title={item.title || 'Imagen ampliada'} onError={() => setFailedKey(keyOf(item))} />
         )}
       </div>
       {items.length>1?<nav ref={strip} className="media-viewer-filmstrip" aria-label="Archivos de la conversación">{items.map((entry,i)=><button type="button" key={`${entry.url}-${i}`} aria-label={`Ver archivo ${i+1}`} aria-current={i===index?'true':undefined} onClick={()=>setIndex(i)}>{entry.type==='image'?<StreamingImage src={entry.url} alt="" loading="lazy"/>:entry.type==='video'&&Math.abs(i-index)<=4?<StreamingVideo src={entry.url} muted preload="metadata" playsInline/>:<Film size={24}/>}<small>{i+1}</small></button>)}</nav>:null}

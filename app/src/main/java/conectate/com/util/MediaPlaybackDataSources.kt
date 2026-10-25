@@ -52,6 +52,24 @@ object MediaPlaybackDataSources {
     /** Native audio caches must use the same public DNS and pooled TLS policy. */
     internal fun networkClient(): OkHttpClient = mediaHttpClient
 
+    /** Speculative HEAD/Range requests cannot occupy a loader past their budget. */
+    internal fun boundedPrefetchClient(timeoutMs: Long): OkHttpClient {
+        val budget = timeoutMs.coerceIn(1L, 10_000L)
+        return mediaHttpClient.newBuilder()
+            .callTimeout(budget, TimeUnit.MILLISECONDS)
+            .connectTimeout(budget, TimeUnit.MILLISECONDS)
+            .readTimeout(budget, TimeUnit.MILLISECONDS)
+            .writeTimeout(budget, TimeUnit.MILLISECONDS)
+            .build()
+    }
+
+    internal fun prefetchFactory(context: Context, timeoutMs: Long): DataSource.Factory {
+        val http = OkHttpDataSource.Factory(boundedPrefetchClient(timeoutMs))
+            .setUserAgent(userAgent())
+            .setDefaultRequestProperties(UbuntuStorageUrl.publicRequestHeaders)
+        return DefaultDataSource.Factory(context.applicationContext, StorageReadHttpDataSource.Factory(http))
+    }
+
     fun httpFactory(includeStorageHeaders: Boolean = true): HttpDataSource.Factory {
         val factory = OkHttpDataSource.Factory(mediaHttpClient)
             .setUserAgent(userAgent())

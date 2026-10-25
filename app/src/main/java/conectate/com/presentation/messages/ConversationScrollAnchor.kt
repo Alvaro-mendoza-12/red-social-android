@@ -4,10 +4,18 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+internal fun <T> initialConversationScrollIndex(
+    messages: List<T>,
+    focusMessageId: String?,
+    messageId: (T) -> String,
+): Int = if (focusMessageId.isNullOrBlank()) messages.lastIndex
+    else messages.indexOfFirst { messageId(it).equals(focusMessageId, ignoreCase = true) }
 
 /** Keep the latest message above the composer as the keyboard/panel changes size. */
 @Composable
@@ -24,24 +32,44 @@ internal fun <T> ConversationScrollAnchor(
     var previousLastId by remember(conversationKey) { mutableStateOf<String?>(null) }
     var followingLatest by remember(conversationKey) { mutableStateOf(true) }
     var focusResolved by remember(conversationKey, focusMessageId) { mutableStateOf(focusMessageId.isNullOrBlank()) }
+    var initialPositionRequested by remember(conversationKey, focusMessageId) { mutableStateOf(false) }
     val scrollMutex = remember(conversationKey) { Mutex() }
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val currentlyDragging by rememberUpdatedState(dragging)
-    val canScrollForward = listState.canScrollForward
 
-    LaunchedEffect(dragging, canScrollForward, listState.isScrollInProgress) {
-        if (dragging || (listState.isScrollInProgress && !scrollMutex.isLocked)) {
-            followingLatest = !canScrollForward
+    // Request the first position before LazyColumn measures this new message set.
+    // This prevents briefly drawing the oldest message and then visibly jumping.
+    SideEffect {
+        if (!initialPositionRequested && messages.isNotEmpty()) {
+            val initialIndex = initialConversationScrollIndex(messages, focusMessageId, messageId)
+            if (initialIndex >= 0) {
+                listState.requestScrollToItem(initialIndex)
+                initialPositionRequested = true
+            }
         }
+    }
+
+    LaunchedEffect(conversationKey, listState) {
+        // Observe scrolling outside composition. A fling should not restart the
+        // anchor's effects or recompose this scope on every layout update.
+        snapshotFlow { Triple(currentlyDragging, listState.isScrollInProgress, listState.canScrollForward) }
+            .distinctUntilChanged()
+            .collect { (dragged, scrolling, canScrollForward) ->
+                if (dragged || (scrolling && !scrollMutex.isLocked)) followingLatest = !canScrollForward
+            }
     }
 
     suspend fun scrollToLatest() = scrollMutex.withLock {
         // Wait for the list to measure the new message/viewport before anchoring it.
         withFrameNanos { }
+        // A keyboard resize or new message must not cancel an active native
+        // drag/fling through scrollToItem's higher-priority scroll mutation.
+        if (currentlyDragging || listState.isScrollInProgress) return@withLock
         val lastIndex = latestMessages.lastIndex
         if (lastIndex < 0) return@withLock
         listState.scrollToItem(lastIndex)
         withFrameNanos { }
+        if (currentlyDragging || listState.isScrollInProgress) return@withLock
         val tail = listState.layoutInfo.visibleItemsInfo.lastOrNull()
         listState.scrollBy((tail?.size ?: 0).toFloat())
     }
@@ -67,20 +95,17 @@ internal fun <T> ConversationScrollAnchor(
     }
 
     LaunchedEffect(conversationKey, listState) {
-        var previousViewport = -1
-        var previousCount = -1
-        snapshotFlow {
-            val layout = listState.layoutInfo
-            Triple(layout.viewportSize.height, layout.totalItemsCount,
-                layout.visibleItemsInfo.lastOrNull()?.let { it.key to it.size })
-        }.distinctUntilChanged().collect { (viewport, count, tail) ->
-            val viewportChanged = viewport != previousViewport
-            val countChanged = count != previousCount
-            previousViewport = viewport
-            previousCount = count
-            val tailIsLatest = tail?.first == latestMessages.lastOrNull()?.let(messageId)
-            if ((viewportChanged || countChanged || tailIsLatest) && followingLatest &&
-                focusResolved && !currentlyDragging && latestMessages.isNotEmpty()) scrollToLatest()
+        var previousViewport: Int? = null
+        snapshotFlow { listState.layoutInfo.viewportSize.height }
+            .distinctUntilChanged()
+            // imePadding changes the viewport several times during keyboard animation.
+            // Re-anchor once after it settles instead of issuing a scroll per frame.
+            .collectLatest { viewport ->
+                delay(120)
+                val changed = previousViewport != null && viewport != previousViewport
+                previousViewport = viewport
+                if (changed && followingLatest && focusResolved && !currentlyDragging && !listState.isScrollInProgress &&
+                    latestMessages.isNotEmpty()) scrollToLatest()
         }
     }
 }

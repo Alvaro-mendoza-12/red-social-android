@@ -243,6 +243,41 @@ async function run() {
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   )
 
+  const legacyXls = Buffer.from('d0cf11e0a1b11ae100000000', 'hex')
+  assert.equal(inferContentType(legacyXls, 'report.xls'), 'application/vnd.ms-excel')
+  assert.equal(
+    (await validateUpload({
+      bucket: 'chat-media',
+      objectPath: 'user/report.xls',
+      buffer: legacyXls,
+      contentType: 'application/octet-stream',
+    })).contentType,
+    'application/vnd.ms-excel',
+  )
+  await expectRejected(
+    validateUpload({ bucket: 'chat-media', objectPath: 'user/bad.xls', buffer: Buffer.from('010203040506', 'hex'), contentType: 'application/vnd.ms-excel' }),
+    'UNSUPPORTED_OR_MISMATCHED_MEDIA_TYPE',
+  )
+  const modernXls = Buffer.from('504b030414000000000000000000', 'hex')
+  assert.equal(
+    (await validateUpload({
+      bucket: 'group-media',
+      objectPath: 'group/report.xlsx',
+      buffer: modernXls,
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })).contentType,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  )
+  const opaqueFile = Buffer.from('010203040506', 'hex')
+  assert.equal(
+    (await validateUpload({ bucket: 'chat-media', objectPath: 'user/design.psd', buffer: opaqueFile, contentType: 'application/octet-stream' })).contentType,
+    'application/octet-stream',
+  )
+  await expectRejected(
+    validateUpload({ bucket: 'chat-media', objectPath: 'user/page.html', buffer: opaqueFile, contentType: 'application/octet-stream' }),
+    'UNSUPPORTED_OR_MISMATCHED_MEDIA_TYPE',
+  )
+
   const m4a = Buffer.from('00000018667479704d34412000000000', 'hex')
   assert.equal(
     (await validateUpload({

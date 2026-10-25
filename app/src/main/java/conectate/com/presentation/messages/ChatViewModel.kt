@@ -98,6 +98,7 @@ class ChatViewModel @Inject constructor(
     val chatState: StateFlow<ChatUiState> = _chatState.asStateFlow()
     private val _isScreenActive = MutableStateFlow(false)
     private val _visibleMessageIds = MutableStateFlow<Set<String>>(emptySet())
+    private val visibleMessageLookup = VisibleMessageLookup<Message>(Message::id)
     private val _chatBackgroundSettings = MutableStateFlow(ChatBackgroundSettings())
     val chatBackgroundSettings: StateFlow<ChatBackgroundSettings> = _chatBackgroundSettings.asStateFlow()
     private val _typingParticipants = MutableStateFlow<List<TypingParticipant>>(emptyList())
@@ -315,7 +316,10 @@ class ChatViewModel @Inject constructor(
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private var mediaPlayer: android.media.MediaPlayer? = null
+    private var mediaPlayer: conectate.com.util.MessageAudioPlayer? = null
+    private var audioPrepareJob: Job? = null
+    private var audioMetadataJob: Job? = null
+    private var audioDelivery: conectate.com.util.NativeAudioDelivery? = null
     private val audioPlaybackCache by lazy { ChatAudioPlaybackCache(File(context.cacheDir, "audio_messages")) }
     private var audioPlaybackGeneration = 0L
     private var progressJob: Job? = null
@@ -601,6 +605,11 @@ class ChatViewModel @Inject constructor(
             val chatMetadataFlow = messageRepository.getChatFlow(cleanId).onStart { emit(null as conectate.com.data.model.Chat?) }
 
             val messagesFlow = messageRepository.getMessagesFlow(cleanId)
+            // Presence changes are rendered by the chat header's own lifecycle-aware
+            // collector. Do not rebuild the whole conversation state for each heartbeat.
+            val otherUserPresentationFlow = _otherUserMetadata.distinctUntilChanged { old, new ->
+                old?.copy(is_online = false, lastSeen = null) == new?.copy(is_online = false, lastSeen = null)
+            }
             data class ChatBaseState(
                 val group: conectate.com.data.local.entity.GroupEntity?,
                 val chatMeta: conectate.com.data.model.Chat?,
@@ -613,7 +622,7 @@ class ChatViewModel @Inject constructor(
                 groupMetadataFlow,
                 chatMetadataFlow,
                 messagesFlow,
-                _otherUserMetadata,
+                otherUserPresentationFlow,
                 _currentUserMetadata
             ) { group, chatMeta, messages, otherUser, currentUser ->
                 ChatBaseState(
@@ -1586,32 +1595,54 @@ class ChatViewModel @Inject constructor(
         if (_currentPlayingAudioId.value == cid) {
             // Already playing or paused this one
             mediaPlayer?.let {
+                if (!it.isPrepared) return
                 if (it.isPlaying) {
                     it.pause()
                     _isAudioPlaying.value = false
                 } else {
-                    applyAudioPlaybackSpeed(it)
-                    it.start()
-                    _isAudioPlaying.value = true
-                    startProgressTracker()
+                    if (it.start(_audioPlaybackSpeed.value)) {
+                        _isAudioPlaying.value = true
+                        startProgressTracker()
+                    }
                 }
                 return
             }
+            // Repeated taps cancel a pending download rather than starting another one.
+            stopAudio()
+            return
         }
 
         // Play new audio
         stopAudio()
         val generation = audioPlaybackGeneration
-        viewModelScope.launch {
+        _currentPlayingAudioId.value = cid
+        audioPrepareJob = viewModelScope.launch {
+            var prepared: conectate.com.util.NativeAudioDelivery? = null
             try {
-                val playableUrl = getPlayableUrl(url) ?: return@launch
+                val delivery = messageRepository.prepareNativeAudio(url)
+                prepared = delivery
+                if (generation != audioPlaybackGeneration || !_isScreenActive.value) { delivery.close(); return@launch }
+                delivery.requireCurrent()
+                audioDelivery = delivery
+                playResolvedAudioSource(delivery.source, cid, generation)
                 if (generation != audioPlaybackGeneration) return@launch
-                playUrl(playableUrl, cid)
+                audioMetadataJob = viewModelScope.launch {
+                    try {
+                        messageRepository.localAudioDurationMs(delivery.source)?.let { total ->
+                            if (generation == audioPlaybackGeneration) _audioDurations.value = (_audioDurations.value + (cid to total)).entries.toList().takeLast(256).associate { it.toPair() }
+                        }
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { /* Duration is optional; playback owns error reporting. */ }
+                }
             } catch (cancelled: CancellationException) {
+                prepared?.close()
                 throw cancelled
             } catch (e: Exception) {
+                prepared?.close()
+                if (generation != audioPlaybackGeneration) return@launch
                 android.util.Log.e("ChatViewModel", "Error playing audio", e)
                 stopAudio()
+                conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo reproducir el audio. Inténtalo de nuevo.")
             }
         }
     }
@@ -1677,70 +1708,33 @@ class ChatViewModel @Inject constructor(
          }
     }
     
-    private fun playUrl(url: String, id: String) {
-        val generation = audioPlaybackGeneration
-        viewModelScope.launch {
-            try {
-                val source = resolveAudioPlaybackSource(url)
-                if (generation != audioPlaybackGeneration) return@launch
-                conectate.com.util.localAudioDurationMs(context, source)?.let { total ->
-                    if (generation == audioPlaybackGeneration) _audioDurations.value = (_audioDurations.value + (id to total)).entries.toList().takeLast(256).associate { it.toPair() }
+    private fun playResolvedAudioSource(source: String, id: String, generation: Long) {
+        val player = conectate.com.util.MessageAudioPlayer()
+        mediaPlayer = player
+        player.prepare(source,
+            onPrepared = { ready ->
+                if (mediaPlayer === ready && generation == audioPlaybackGeneration) {
+                    audioDelivery?.requireCurrent()
+                    if (!_isScreenActive.value) { stopAudio() }
+                    else {
+                        val total = ready.duration
+                        _audioDuration.value = total
+                        if (total > 0) _audioDurations.value = (_audioDurations.value + (id to total.toLong())).entries.toList().takeLast(256).associate { it.toPair() }
+                        if (ready.start(_audioPlaybackSpeed.value)) {
+                            _isAudioPlaying.value = true
+                            startProgressTracker()
+                        }
+                    }
                 }
-                if (generation != audioPlaybackGeneration) return@launch
-                playResolvedAudioSource(source, id)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                if (generation != audioPlaybackGeneration) return@launch
-                appMetrics.recordFailure("chat_audio_playback", error)
-                stopAudio()
-                conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo reproducir el audio. Inténtalo de nuevo.")
-            }
-        }
-    }
-
-    private suspend fun resolveAudioPlaybackSource(url: String): String = withContext(Dispatchers.IO) {
-        val cleanUrl = UbuntuMedia.resolveUrl(url) ?: url
-        if (!cleanUrl.startsWith("http", ignoreCase = true)) return@withContext cleanUrl
-
-        audioPlaybackCache.download(cleanUrl).absolutePath
-    }
-
-    private fun playResolvedAudioSource(source: String, id: String) {
-        try {
-            stopAudio()
-            mediaPlayer = android.media.MediaPlayer().apply {
-                setAudioAttributes(
-                    android.media.AudioAttributes.Builder()
-                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-                setOnPreparedListener {
-                    _currentPlayingAudioId.value = id
-                    _audioDuration.value = duration
-                    if (duration > 0) _audioDurations.value = (_audioDurations.value + (id to duration.toLong())).entries.toList().takeLast(256).associate { it.toPair() }
-                    applyAudioPlaybackSpeed(this)
-                    start()
-                    _isAudioPlaying.value = true
-                    startProgressTracker()
-                }
-                setOnCompletionListener {
-                    stopAudio()
-                }
-                setOnErrorListener { _, _, _ ->
+            },
+            onCompletion = { if (mediaPlayer === player) stopAudio() },
+            onError = { error ->
+                if (mediaPlayer === player) {
+                    appMetrics.recordFailure("chat_audio_playback", error)
                     stopAudio()
                     conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo reproducir el audio. Inténtalo de nuevo.")
-                    true
                 }
-                setDataSource(source)
-                prepareAsync()
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("ChatViewModel", "Audio message playback failed", e)
-            appMetrics.recordFailure("chat_audio_playback", e)
-            stopAudio()
-        }
+            })
     }
 
     private fun cacheAudioFromUri(mediaUrl: String, uri: Uri) {
@@ -1759,6 +1753,8 @@ class ChatViewModel @Inject constructor(
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
             while (isActive) {
+                try { audioDelivery?.requireCurrent() }
+                catch (_: Exception) { stopAudio(); break }
                 mediaPlayer?.let {
                     if (it.isPlaying) {
                         _audioProgress.value = conectate.com.util.audioPlaybackProgress(it.currentPosition.toLong(), it.duration.toLong())
@@ -1773,7 +1769,7 @@ class ChatViewModel @Inject constructor(
 
     fun seekAudio(fraction: Float) {
         val player = mediaPlayer ?: return
-        if (_currentPlayingAudioId.value == null || player.duration <= 0) return
+        if (_currentPlayingAudioId.value == null || !player.isPrepared || player.duration <= 0) return
         val safeFraction = conectate.com.util.finiteAudioProgress(fraction)
         player.seekTo((player.duration * safeFraction).toInt())
         _audioProgress.value = safeFraction
@@ -1790,13 +1786,7 @@ class ChatViewModel @Inject constructor(
         mediaPlayer?.let(::applyAudioPlaybackSpeed)
     }
 
-    private fun applyAudioPlaybackSpeed(player: android.media.MediaPlayer) {
-        runCatching {
-            player.playbackParams = player.playbackParams
-                .setSpeed(_audioPlaybackSpeed.value)
-                .setPitch(1f)
-        }
-    }
+    private fun applyAudioPlaybackSpeed(player: conectate.com.util.MessageAudioPlayer) = player.setSpeed(_audioPlaybackSpeed.value)
 
     fun retryInitializeChat() {
         if (_chatState.value !is ChatUiState.Error) return
@@ -1807,6 +1797,10 @@ class ChatViewModel @Inject constructor(
 
     private fun stopAudio() {
         audioPlaybackGeneration++
+        audioPrepareJob?.cancel()
+        audioPrepareJob = null
+        audioMetadataJob?.cancel()
+        audioMetadataJob = null
         progressJob?.cancel()
         _currentPlayingAudioId.value = null
         _isAudioPlaying.value = false
@@ -1814,6 +1808,8 @@ class ChatViewModel @Inject constructor(
         _audioDurationLabel.value = "0:00"
         mediaPlayer?.release()
         mediaPlayer = null
+        audioDelivery?.close()
+        audioDelivery = null
     }
 
     private fun formatDuration(ms: Long): String {
@@ -1823,6 +1819,7 @@ class ChatViewModel @Inject constructor(
     fun onScreenVisibilityChanged(isVisible: Boolean) {
         if (ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase()) return
         _isScreenActive.value = isVisible
+        if (!isVisible) stopAudio()
         requestPollJob?.cancel()
         if (isVisible) {
             refreshMessageRequest()
@@ -1857,10 +1854,9 @@ class ChatViewModel @Inject constructor(
         if (!_isScreenActive.value || messages.isEmpty()) return
         if (visibleMessageIds.isEmpty()) return
         val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
-        val readableVisibleIds = messages.asSequence()
+        val readableVisibleIds = visibleMessageLookup.find(messages, visibleMessageIds).asSequence()
             .filter { msg ->
                 msg.sender_id.trim().lowercase() != currentUserId &&
-                    visibleMessageIds.contains(msg.id) &&
                     UnreadPolicy.isEligibleStatusForReadTransition(msg.status)
             }
             .map { it.id.trim().lowercase() }

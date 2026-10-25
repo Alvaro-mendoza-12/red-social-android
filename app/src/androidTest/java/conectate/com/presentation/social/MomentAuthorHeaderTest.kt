@@ -30,6 +30,35 @@ class MomentAuthorHeaderTest {
         musicLicenseUrl = "https://example.invalid/license",
     )
 
+    @Test fun authorAndMusicOpenTheirOwnDestinations() {
+        var profile: String? = null
+        var attribution: String? = null
+        compose.setContent {
+            MaterialTheme {
+                MomentAuthorHeader(
+                    moment, "Ahora", { attribution = it },
+                    onOpenProfile = { profile = it },
+                )
+            }
+        }
+        compose.onNodeWithTag("moment_author_profile").assertIsEnabled().performClick()
+        compose.runOnIdle {
+            assertEquals(moment.userId, profile)
+            assertEquals(null, attribution)
+        }
+        compose.onNodeWithTag("moment_music_attribution").performClick()
+        compose.runOnIdle { assertEquals(moment.musicLicenseUrl, attribution) }
+    }
+
+    @Test fun unavailableAuthorCannotNavigateToAnEmptyProfile() {
+        compose.setContent {
+            MaterialTheme {
+                MomentAuthorHeader(moment.copy(userId = ""), "Ahora", {}, onOpenProfile = {})
+            }
+        }
+        compose.onNodeWithTag("moment_author_profile").assertIsNotEnabled()
+    }
+
     @Test fun longMusicTitleStaysBelowAuthorWithLargeFontAndRemainsClickable() {
         var opened: String? = null
         compose.setContent {

@@ -181,38 +181,85 @@ class VideoFeedViewModel @Inject constructor(
     private var profilePageRequestInFlight = false
     private val _profilePrependCount = MutableStateFlow(0)
     val profilePrependCount: StateFlow<Int> = _profilePrependCount.asStateFlow()
-    private val likedDebounceJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+    private val likeWriter = VideoLikeWriter(
+        scope = viewModelScope,
+        account = authService::getCurrentUserId,
+        current = ::findVideoById,
+        write = { id, liked -> if (liked) videoRepository.likeVideo(id) else videoRepository.unlikeVideo(id) },
+        publish = ::publishLike,
+        failed = { conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo guardar el me gusta. Inténtalo otra vez.") },
+    )
     private val shareRequestsInFlight = mutableSetOf<String>()
+    private val commentMutationsInFlight = mutableSetOf<String>()
+    private val commentsSession = VideoCommentSession(authService::getCurrentUserId)
+    private var focusedEntryVideoId = savedStateHandle.get<String>("videoId")
+        ?.trim()?.lowercase(java.util.Locale.ROOT)?.takeIf(String::isNotBlank)
     private val focusedVideoIds = mutableSetOf<String>()
+    private val _focusedVideoError = MutableStateFlow<String?>(null)
+    val focusedVideoError: StateFlow<String?> = _focusedVideoError.asStateFlow()
     private val focusedVideosById = linkedMapOf<String, Video>()
     private val displayedForYouIds = linkedSetOf<String>()
     private var previousInitialForYouOrder: List<String> = emptyList()
     private var lastOrderedForYouSessionId: String? = null
 
     fun ensureVideoInFeed(videoId: String) {
-        val cleanId = videoId.trim()
-        if (cleanId.isBlank() || _forYouVideos.value.any { it.id == cleanId }) return
+        val cleanId = videoId.trim().lowercase(java.util.Locale.ROOT)
+        if (cleanId.isBlank()) {
+            _focusedVideoError.value = "El enlace del video no es válido."
+            return
+        }
+        focusedEntryVideoId = cleanId
+        loadFocusedVideo(cleanId)
+    }
+
+    private fun loadFocusedVideo(cleanId: String, forceNetwork: Boolean = false) {
+        if (!forceNetwork && _forYouVideos.value.any { it.id.equals(cleanId, true) }) {
+            _focusedVideoError.value = null
+            return
+        }
         if (!focusedVideoIds.add(cleanId)) return
+        _focusedVideoError.value = null
         val generation = accountGeneration
         viewModelScope.launch {
-            videoRepository.getVideoById(cleanId)
-                .onSuccess { video ->
-                    if (generation != accountGeneration) return@onSuccess
-                    focusedVideosById[cleanId] = video
-                    _forYouVideos.value = mergeFocusedVideoPage(
-                        focusedVideos = focusedVideosById.values,
-                        loadedPage = _forYouVideos.value,
-                    )
-                }
-                .onFailure { focusedVideoIds.remove(cleanId) }
+            try {
+                readFocusedVideo(cleanId, read = videoRepository::getVideoById)
+                    .onSuccess { video ->
+                        if (generation != accountGeneration) return@onSuccess
+                        focusedVideosById[cleanId] = video
+                        _forYouVideos.value = mergeFocusedVideoPage(
+                            focusedVideos = focusedVideosById.values,
+                            loadedPage = _forYouVideos.value,
+                        )
+                        // Resolve the link before competing catalog/recommendation reads.
+                        // They may append afterwards without moving its requested video.
+                        if (forYouJob == null) {
+                            loadForYouVideos()
+                            scheduleSupplementalFeedContent()
+                        }
+                    }
+                    .onFailure { error ->
+                        if (generation == accountGeneration && focusedEntryVideoId == cleanId) {
+                            _focusedVideoError.value = if (error is conectate.com.core.network.ReadDeadlineExceededException) {
+                                "El video tardó demasiado en responder. Revisa tu conexión y vuelve a intentarlo."
+                            } else {
+                                "No se pudo abrir este video. Puede haber sido eliminado o no estar disponible para tu cuenta."
+                            }
+                        }
+                    }
+            } finally {
+                if (generation == accountGeneration) focusedVideoIds.remove(cleanId)
+            }
         }
     }
 
     private fun applyRealtimeFeedEvent(event: VideoFeedRealtimeEvent) {
         when (event.action) {
             "deleted" -> {
-                focusedVideoIds.remove(event.videoId)
-                focusedVideosById.remove(event.videoId)
+                if (focusedEntryVideoId.equals(event.videoId, true)) {
+                    _focusedVideoError.value = "Este video fue eliminado o dejó de estar disponible."
+                }
+                focusedVideoIds.remove(event.videoId.trim().lowercase(java.util.Locale.ROOT))
+                focusedVideosById.remove(event.videoId.trim().lowercase(java.util.Locale.ROOT))
                 _forYouVideos.value = _forYouVideos.value.filterNot { it.id.equals(event.videoId, true) }
                 _followingVideos.value = _followingVideos.value.filterNot { it.id.equals(event.videoId, true) }
                 _searchResults.value = _searchResults.value.filterNot { it.id.equals(event.videoId, true) }
@@ -259,6 +306,8 @@ class VideoFeedViewModel @Inject constructor(
     // Comments State
     private val _commentsSheetOpen = MutableStateFlow(false)
     val commentsSheetOpen: StateFlow<Boolean> = _commentsSheetOpen.asStateFlow()
+    private val _commentPosting = MutableStateFlow(false)
+    val commentPosting: StateFlow<Boolean> = _commentPosting.asStateFlow()
     
     private val _selectedVideoForComments = MutableStateFlow<Video?>(null)
     val selectedVideoForComments: StateFlow<Video?> = _selectedVideoForComments.asStateFlow()
@@ -318,6 +367,9 @@ class VideoFeedViewModel @Inject constructor(
         }
         if (isProfileFeed) {
             loadProfileVideos(checkNotNull(profileFeedOwnerId))
+        } else if (focusedEntryVideoId != null) {
+            _isLoading.value = false
+            ensureVideoInFeed(checkNotNull(focusedEntryVideoId))
         } else {
             loadForYouVideos()
             scheduleSupplementalFeedContent()
@@ -337,6 +389,7 @@ class VideoFeedViewModel @Inject constructor(
         activeAlgorithmBlocks.clear()
         _currentUserId.value = accountId
         forYouJob?.cancel()
+        forYouJob = null
         loadMoreJob?.cancel()
         loadMoreJob = null
         followedUsersJob?.cancel()
@@ -371,6 +424,7 @@ class VideoFeedViewModel @Inject constructor(
         _isSearchMode.value = false
         _isSearching.value = false
         _commentsSheetOpen.value = false
+        _commentPosting.value = false
         _selectedVideoForComments.value = null
         _comments.value = emptyList()
         _mentionSuggestions.value = emptyList()
@@ -378,11 +432,16 @@ class VideoFeedViewModel @Inject constructor(
         _audioProgress.value = 0f
         _profileVideos.value = emptyList()
         _isLoading.value = true
-        likedDebounceJobs.values.forEach { it.cancel() }
-        likedDebounceJobs.clear()
+        likeWriter.clear()
+        commentsSession.close()
         shareRequestsInFlight.clear()
+        commentMutationsInFlight.clear()
         if (isProfileFeed) {
             loadProfileVideos(checkNotNull(profileFeedOwnerId))
+        } else if (focusedEntryVideoId != null) {
+            _focusedVideoError.value = null
+            _isLoading.value = false
+            ensureVideoInFeed(checkNotNull(focusedEntryVideoId))
         } else {
             loadForYouVideos()
             scheduleSupplementalFeedContent()
@@ -443,7 +502,7 @@ class VideoFeedViewModel @Inject constructor(
                     limit = profilePageSize
                 ).onSuccess { page ->
                     if (reset) {
-                        _profileVideos.value = page
+                        _profileVideos.value = page.map(likeWriter::reconcile)
                     } else {
                         val merged = (_profileVideos.value + page).distinctBy { it.id }
                         val window = ProfileVideoFeedPaging.boundedWindow(
@@ -451,7 +510,7 @@ class VideoFeedViewModel @Inject constructor(
                             pageSize = profilePageSize,
                             dropFromStart = true
                         )
-                        _profileVideos.value = window.items
+                        _profileVideos.value = window.items.map(likeWriter::reconcile)
                         if (window.removedFromStart > 0) {
                             profileFirstOffset += window.removedFromStart
                             _profilePrependCount.value = -window.removedFromStart
@@ -503,7 +562,7 @@ class VideoFeedViewModel @Inject constructor(
                             pageSize = profilePageSize,
                             dropFromStart = false
                         )
-                        _profileVideos.value = window.items
+                        _profileVideos.value = window.items.map(likeWriter::reconcile)
                         _profilePrependCount.value = newVideos.size
                         if (window.removedFromEnd > 0) {
                             profileNextOffset = request.offset + window.items.size
@@ -625,11 +684,18 @@ class VideoFeedViewModel @Inject constructor(
     fun onFeedResumed() {
         if (!isProfileFeed && feedWasBackgrounded) {
             feedWasBackgrounded = false
+            // A direct link owns its requested anchor. Returning from a comment,
+            // profile or permission dialog must not discard that resolved object.
+            if (focusedEntryVideoId != null) return
             startNewForYouFeedSession(force = true)
         }
     }
 
     private fun startNewForYouFeedSession(force: Boolean = false) {
+        focusedEntryVideoId?.let {
+            loadFocusedVideo(it, forceNetwork = true)
+            return
+        }
         val now = android.os.SystemClock.elapsedRealtime()
         if (!force && now - feedSessionStartedAtElapsedMs < feedSessionRefreshDebounceMs) return
         feedSessionStartedAtElapsedMs = now
@@ -681,7 +747,7 @@ class VideoFeedViewModel @Inject constructor(
             try {
                 videoRepository.searchVideos(clean).onSuccess { videos ->
                     if (generation != accountGeneration || revision != searchRevision || !_isSearchMode.value) return@onSuccess
-                    _searchResults.value = videos
+                    _searchResults.value = videos.map(likeWriter::reconcile)
                     _isSearching.value = false
                 }.onFailure {
                     if (generation == accountGeneration && revision == searchRevision) {
@@ -1196,8 +1262,7 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     private fun filterActiveAlgorithmBlocks(videos: List<Video>): List<Video> =
-        if (activeAlgorithmBlocks.isEmpty()) videos
-        else videos.filterNot { video -> activeAlgorithmBlocks.any { it.matches(video) } }
+        videos.filterNot { video -> activeAlgorithmBlocks.any { it.matches(video) } }.map(likeWriter::reconcile)
 
     private fun loadFollowingVideos() {
         val generation = accountGeneration
@@ -1212,7 +1277,7 @@ class VideoFeedViewModel @Inject constructor(
                 _isLoading.value = true
                 _followingFeedError.value = null
                 videoRepository.getFollowingVideos(failOnError = true).collect { videos ->
-                    if (generation == accountGeneration) _followingVideos.value = videos
+                    if (generation == accountGeneration) _followingVideos.value = videos.map(likeWriter::reconcile)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1277,45 +1342,14 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun toggleLike(video: Video) {
-        val videoId = video.id
-        val snapshotForYou = _forYouVideos.value
-        val snapshotFollowing = _followingVideos.value
-        val snapshotSearch = _searchResults.value
-        val snapshotProfile = _profileVideos.value
+        likeWriter.toggle(video.id)
+    }
 
-        val current = findVideoById(videoId) ?: video
-        val newLikedState = !current.likedByMe
-
-        _forYouVideos.value = applyLikeState(_forYouVideos.value, videoId, newLikedState)
-        _followingVideos.value = applyLikeState(_followingVideos.value, videoId, newLikedState)
-        _searchResults.value = applyLikeState(_searchResults.value, videoId, newLikedState)
-        _profileVideos.value = applyLikeState(_profileVideos.value, videoId, newLikedState)
-
-        likedDebounceJobs[videoId]?.cancel()
-        val scheduledJob = viewModelScope.launch {
-            kotlinx.coroutines.delay(400)
-
-            val result = if (newLikedState) {
-                videoRepository.likeVideo(videoId)
-            } else {
-                videoRepository.unlikeVideo(videoId)
-            }
-
-            if (result.isFailure) {
-                android.util.Log.w(
-                    "VideoFeedVM",
-                    "Like sync failed for $videoId: ${result.exceptionOrNull()?.message}"
-                )
-                restoreVideoListsSnapshot(snapshotForYou, snapshotFollowing, snapshotSearch, snapshotProfile)
-            }
-        }
-
-        likedDebounceJobs[videoId] = scheduledJob
-        scheduledJob.invokeOnCompletion {
-            if (likedDebounceJobs[videoId] === scheduledJob) {
-                likedDebounceJobs.remove(videoId)
-            }
-        }
+    private fun publishLike(videoId: String, liked: Boolean) {
+        _forYouVideos.value = applyLikeState(_forYouVideos.value, videoId, liked)
+        _followingVideos.value = applyLikeState(_followingVideos.value, videoId, liked)
+        _searchResults.value = applyLikeState(_searchResults.value, videoId, liked)
+        _profileVideos.value = applyLikeState(_profileVideos.value, videoId, liked)
     }
 
     fun toggleShare(video: Video) {
@@ -1374,13 +1408,7 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     private fun applyLikeState(list: List<Video>, videoId: String, liked: Boolean): List<Video> {
-        return list.map { item ->
-            if (item.id != videoId) item
-            else {
-                val newCount = if (liked) item.likeCount + 1 else maxOf(0, item.likeCount - 1)
-                item.copy(likedByMe = liked, likeCount = newCount)
-            }
-        }
+        return list.map { item -> if (item.id == videoId) item.withVideoLike(liked) else item }
     }
 
     private fun applyShareState(list: List<Video>, videoId: String, shared: Boolean): List<Video> {
@@ -1400,12 +1428,14 @@ class VideoFeedViewModel @Inject constructor(
     }
     
     fun openComments(video: Video) {
+        commentsSession.open(video.id)
         _selectedVideoForComments.value = video
         _commentsSheetOpen.value = true
         fetchComments(video.id)
     }
     
     fun closeComments() {
+        commentsSession.close()
         commentsJob?.cancel()
         _commentsSheetOpen.value = false
         _selectedVideoForComments.value = null
@@ -1417,9 +1447,11 @@ class VideoFeedViewModel @Inject constructor(
     
     private fun fetchComments(videoId: String) {
         commentsJob?.cancel()
+        val request = commentsSession.capture(videoId) ?: return
         commentsJob = viewModelScope.launch {
             videoRepository.loadVideoCommentsNow(videoId)
                 .onSuccess { comments ->
+                    if (!commentsSession.isCurrent(request)) return@onSuccess
                     _comments.value = comments
                     updateCommentCount(videoId, comments.size)
                 }
@@ -1427,6 +1459,7 @@ class VideoFeedViewModel @Inject constructor(
                     android.util.Log.e("VideoFeedVM", "Failed to load comments for $videoId", error)
                 }
             videoRepository.getCommentsFlow(videoId).collect { comments ->
+                if (!commentsSession.isCurrent(request)) return@collect
                 _comments.value = comments
                 updateCommentCount(videoId, comments.size)
             }
@@ -1446,13 +1479,18 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun addComment(videoId: String, content: String) {
-         if (content.isBlank()) return
+         if (content.isBlank() || _commentPosting.value) return
+         val request = commentsSession.capture(videoId) ?: return
          val parentId = _replyingTo.value?.id
+         val generation = accountGeneration
+         _commentPosting.value = true
          
          viewModelScope.launch {
+             try {
              android.util.Log.d("VideoFeedVM", "addComment called for videoId: $videoId, parentId: $parentId")
              videoRepository.addComment(videoId, content, parentId = parentId)
                  .onSuccess { insertedComment ->
+                     if (!commentsSession.isCurrent(request)) return@onSuccess
                      android.util.Log.d("VideoFeedVM", "Comment added successfully")
                      val merged = mergeComment(_comments.value, insertedComment)
                      _comments.value = merged
@@ -1464,8 +1502,13 @@ class VideoFeedViewModel @Inject constructor(
                      reloadVideo(videoId)
                  }
                  .onFailure { e ->
+                     if (!commentsSession.isCurrent(request)) return@onFailure
                      android.util.Log.e("VideoFeedVM", "Error adding comment: ${e.message}", e)
+                     conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo enviar el comentario. Tu texto sigue disponible.")
                  }
+             } finally {
+                 if (generation == accountGeneration) _commentPosting.value = false
+             }
          }
     }
 
@@ -1536,29 +1579,41 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun deleteComment(videoId: String, comment: conectate.com.data.model.VideoComment) {
+        val request = commentsSession.capture(videoId) ?: return
+        if (!commentMutationsInFlight.add("delete:${comment.id}")) return
+        val generation = accountGeneration
         val previous = _comments.value
         val next = removeVideoCommentImmediately(previous, comment.id)
         _comments.value = next
         updateCommentCount(videoId, next.size)
         viewModelScope.launch {
+            try {
             videoRepository.deleteComment(comment.id)
                 .onSuccess {
+                    if (!commentsSession.isCurrent(request)) return@onSuccess
                     android.util.Log.d("VideoFeedVM", "Comment deleted successfully")
                     refreshCommentsAfterWrite(videoId)
                     reloadVideo(videoId)
                 }
                 .onFailure { e ->
-                    _comments.value = previous
-                    updateCommentCount(videoId, previous.size)
+                    if (!commentsSession.isCurrent(request)) return@onFailure
+                    val deletedIds = previous.map { it.id }.toSet() - next.map { it.id }.toSet()
+                    _comments.value = mergeLatestVideoComments(_comments.value, previous.filter { it.id in deletedIds })
+                    updateCommentCount(videoId, _comments.value.size)
                     android.util.Log.e("VideoFeedVM", "Error deleting comment", e)
                 }
+            } finally {
+                if (generation == accountGeneration) commentMutationsInFlight.remove("delete:${comment.id}")
+            }
         }
     }
 
     fun addStickerComment(videoId: String, stickerUrl: String, label: String) {
+        val request = commentsSession.capture(videoId) ?: return
         viewModelScope.launch {
             videoRepository.addStickerComment(videoId, stickerUrl, label)
                 .onSuccess { insertedComment ->
+                    if (!commentsSession.isCurrent(request)) return@onSuccess
                     _comments.value = mergeComment(_comments.value, insertedComment)
                     refreshCommentsAfterWrite(videoId)
                     reloadVideo(videoId)
@@ -1573,15 +1628,26 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun reactToComment(videoId: String, comment: conectate.com.data.model.VideoComment, reaction: String?) {
+        val request = commentsSession.capture(videoId) ?: return
+        if (!commentMutationsInFlight.add("reaction:${comment.id}")) return
+        val generation = accountGeneration
         val previous = _comments.value
         _comments.value = reactToVideoCommentImmediately(previous, comment.id, reaction)
         viewModelScope.launch {
+            try {
             videoRepository.setCommentReaction(comment.id, reaction)
-                .onSuccess { refreshCommentsAfterWrite(videoId) }
+                .onSuccess { if (commentsSession.isCurrent(request)) refreshCommentsAfterWrite(videoId) }
                 .onFailure {
-                    _comments.value = previous
+                    if (!commentsSession.isCurrent(request)) return@onFailure
+                    val before = previous.firstOrNull { it.id == comment.id }
+                    if (before != null) _comments.value = _comments.value.map { current ->
+                        if (current.id == before.id) current.copy(myReaction = before.myReaction, reactions = before.reactions, likes = before.likes) else current
+                    }
                     android.util.Log.e("VideoFeedVM", "Comment reaction failed", it)
                 }
+            } finally {
+                if (generation == accountGeneration) commentMutationsInFlight.remove("reaction:${comment.id}")
+            }
         }
     }
 
@@ -1591,15 +1657,26 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun editComment(videoId: String, comment: conectate.com.data.model.VideoComment, content: String) {
+        val request = commentsSession.capture(videoId) ?: return
+        if (!commentMutationsInFlight.add("edit:${comment.id}")) return
+        val generation = accountGeneration
         val previous = _comments.value
         _comments.value = editVideoCommentImmediately(previous, comment.id, content)
         viewModelScope.launch {
+            try {
             videoRepository.editComment(comment.id, content)
-                .onSuccess { refreshCommentsAfterWrite(videoId) }
+                .onSuccess { if (commentsSession.isCurrent(request)) refreshCommentsAfterWrite(videoId) }
                 .onFailure {
-                    _comments.value = previous
+                    if (!commentsSession.isCurrent(request)) return@onFailure
+                    val before = previous.firstOrNull { it.id == comment.id }
+                    if (before != null) _comments.value = _comments.value.map { current ->
+                        if (current.id == before.id) current.copy(content = before.content) else current
+                    }
                     android.util.Log.e("VideoFeedVM", "Comment edit failed", it)
                 }
+            } finally {
+                if (generation == accountGeneration) commentMutationsInFlight.remove("edit:${comment.id}")
+            }
         }
     }
 
@@ -1698,20 +1775,23 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     private fun reloadVideo(videoId: String) {
+        val generation = accountGeneration
         viewModelScope.launch {
             // Wait for DB triggers/functions to update counts
             delay(300) 
             videoRepository.getVideo(videoId).onSuccess { updatedVideo ->
+                if (generation != accountGeneration) return@onSuccess
+                val reactionVideo = likeWriter.reconcile(updatedVideo)
                 // Update lists with new video data (including counts)
                 fun updateList(list: List<Video>): List<Video> {
                     return list.map { current ->
                         if (current.id != videoId) current
                         else current.copy(
                             views = maxOf(current.views, updatedVideo.views),
-                            likeCount = updatedVideo.likeCount.coerceAtLeast(0),
+                            likeCount = reactionVideo.likeCount.coerceAtLeast(0),
                             commentCount = updatedVideo.commentCount.coerceAtLeast(0),
                             shareCount = updatedVideo.shareCount.coerceAtLeast(0),
-                            likedByMe = updatedVideo.likedByMe,
+                            likedByMe = reactionVideo.likedByMe,
                             sharedByMe = updatedVideo.sharedByMe
                         )
                     }
@@ -1745,10 +1825,12 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     private fun refreshCommentsAfterWrite(videoId: String) {
+        val request = commentsSession.capture(videoId) ?: return
         viewModelScope.launch {
             delay(250)
             videoRepository.loadVideoCommentsNow(videoId)
                 .onSuccess { comments ->
+                    if (!commentsSession.isCurrent(request)) return@onSuccess
                     _comments.value = comments
                     updateCommentCount(videoId, comments.size)
                 }

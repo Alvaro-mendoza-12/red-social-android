@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -27,12 +28,23 @@ internal fun MomentAuthorHeader(
     timestamp: String,
     onOpenMusicAttribution: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenProfile: ((String) -> Unit)? = null,
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                .testTag("moment_author_profile")
+                .clickable(
+                    enabled = onOpenProfile != null && moment.userId.isNotBlank(),
+                    role = Role.Button,
+                    onClickLabel = "Ver perfil del autor",
+                ) { onOpenProfile?.invoke(moment.userId) },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             CircularProfileImage(ownerId = moment.userId, 
                 imageUrl = moment.userAvatarUrl, size = 40.dp, showBorder = false,
                 fallbackName = moment.userDisplayName ?: moment.username,
+                openMomentOnClick = false,
             )
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {

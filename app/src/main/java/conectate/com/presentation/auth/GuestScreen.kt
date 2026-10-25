@@ -137,9 +137,10 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
         refreshJob = viewModelScope.launch {
             when (section) {
                 "videos" -> request { api.videos() }.onSuccess { _videos.value = it }
-                "social" -> request { api.posts() to api.moments() }.onSuccess {
-                    _posts.value = it.first; _moments.value = it.second
-                }
+                "social" -> loadGuestSocialSections(
+                    posts = { request { api.posts() }.onSuccess { _posts.value = it } },
+                    moments = { request { api.moments() }.onSuccess { _moments.value = it } },
+                )
             }
         }
     }
@@ -560,7 +561,7 @@ private fun guestPhotos(content: GuestContent): List<String> =
     } + listOfNotNull(content.mediaUrl)).filter { it.isNotBlank() }.distinct()
 
 @Composable
-private fun GuestVideoPlayer(url: String) {
+internal fun GuestVideoPlayer(url: String) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
@@ -573,7 +574,17 @@ private fun GuestVideoPlayer(url: String) {
         }
     }
     DisposableEffect(player, lifecycleOwner) {
+        var wasResumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        var resumeOnForeground = true
+        val requestedAt = android.os.SystemClock.elapsedRealtime()
+        var firstFrameReported = false
         val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                if (!firstFrameReported && conectate.com.BuildConfig.DEBUG) {
+                    firstFrameReported = true
+                    android.util.Log.d("GuestPlaybackAudit", "first_frame_ms=${android.os.SystemClock.elapsedRealtime() - requestedAt}")
+                }
+            }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 buffering = playbackState == Player.STATE_BUFFERING
             }
@@ -581,8 +592,19 @@ private fun GuestVideoPlayer(url: String) {
                 failed = true; buffering = false; player.pause()
             }
         }
-        val observer = LifecycleEventObserver { _, _ ->
-            if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) player.pause()
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    wasResumed = true
+                    if (resumeOnForeground && !failed) player.play()
+                }
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    if (wasResumed) resumeOnForeground = player.playWhenReady
+                    wasResumed = false
+                    player.pause()
+                }
+                else -> Unit
+            }
         }
         player.addListener(listener)
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -615,14 +637,15 @@ private fun GuestVideoPlayer(url: String) {
 }
 
 @Composable
-private fun GuestContentImage(url: String?, contentDescription: String, modifier: Modifier = Modifier) {
+internal fun GuestContentImage(url: String?, contentDescription: String, modifier: Modifier = Modifier) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var attempt by remember(url) { mutableStateOf(0) }
     val original = conectate.com.data.localfallback.UbuntuStorageUrl.originalObjectUrl(url) ?: url
     val preview = conectate.com.core.media.MediaImageRequestFactory.previewUrl(url) ?: original
     val request = remember(url, attempt) {
-        coil.request.ImageRequest.Builder(context).data(if (attempt == 0) preview else original)
-            .size(1080).crossfade(false).setParameter("guest_retry", attempt).build()
+        conectate.com.core.media.MediaImageRequestFactory.preview(context, url)?.newBuilder()
+            ?.data(if (attempt == 0) preview else original)
+            ?.size(1080)?.setParameter("guest_retry", attempt)?.build()
     }
     coil.compose.SubcomposeAsyncImage(model = request, contentDescription = contentDescription,
         modifier = modifier, contentScale = androidx.compose.ui.layout.ContentScale.Fit,

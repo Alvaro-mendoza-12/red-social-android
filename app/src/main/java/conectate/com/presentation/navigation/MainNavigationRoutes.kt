@@ -542,8 +542,9 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         val resumeMs = backStackEntry.arguments?.getLong("resumeMs") ?: 0L
         val endMs = backStackEntry.arguments?.getLong("endMs") ?: 0L
         RequireLoggedIn(isLoggedIn, navController) {
-            conectate.com.presentation.videos.VideoPlayerScreen(
+            conectate.com.presentation.video.VideoDetailFeedScreen(
                 navController = navController,
+                videoId = backStackEntry.arguments?.getString("videoId") ?: return@RequireLoggedIn,
                 focusCommentId = focusCommentId,
                 initialPositionMs = resumeMs,
                 initialClipEndMs = endMs,

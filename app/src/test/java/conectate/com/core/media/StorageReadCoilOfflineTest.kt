@@ -27,7 +27,39 @@ class StorageReadCoilOfflineTest {
     private val source get() = UbuntuStorageUrl.baseUrl.trimEnd('/') + "/storage/v1/object/public/chat-media/a/sticker.webp"
     private var credential = StorageReadCredential(StorageReadIdentity("account-a", 1), "test.jwt")
     private fun install() { StorageReadSession.install { credential } }
-    @After fun clear() { StorageReadSession.install { null } }
+    @After fun clear() { StorageReadSession.install { null }; StorageReadSession.installGuest(credentials = { null }) }
+
+    @Test fun `guest previews reuse only session scoped memory and never retain offline files`() = runBlocking {
+        credential = StorageReadCredential(StorageReadIdentity("guest_qa", 3), "guest.jwt")
+        StorageReadSession.installGuest(credentials = { credential }, active = { true })
+        var touchedDisk = false
+        val interceptor = StorageReadCoilInterceptor(
+            cachedImage = { _, _ -> touchedDisk = true; null },
+            retainImage = { _, _ -> touchedDisk = true },
+            retainPreview = { _, _, _ -> touchedDisk = true },
+        )
+        val request = requireNotNull(MediaImageRequestFactory.preview(context, source))
+        val first = Chain(request)
+        assertTrue(interceptor.intercept(first) is SuccessResult)
+        assertEquals(CachePolicy.ENABLED, first.sent?.memoryCachePolicy)
+        assertEquals(CachePolicy.DISABLED, first.sent?.diskCachePolicy)
+        val guestKey = first.sent?.memoryCacheKey
+        credential = StorageReadCredential(StorageReadIdentity("guest_other", 4), "other.jwt")
+        val second = Chain(request)
+        interceptor.intercept(second)
+        assertNotEquals(guestKey, second.sent?.memoryCacheKey)
+        assertFalse(touchedDisk)
+    }
+
+    @Test fun `a guest session change during a memory hit cannot deliver the old pixels`() = runBlocking {
+        credential = StorageReadCredential(StorageReadIdentity("guest_qa", 1), "guest.jwt")
+        StorageReadSession.installGuest(credentials = { credential }, active = { true })
+        val request = requireNotNull(MediaImageRequestFactory.preview(context, source))
+        val chain = Chain(request, afterRead = {
+            credential = StorageReadCredential(StorageReadIdentity("member", 2), "member.jwt")
+        })
+        assertTrue(StorageReadCoilInterceptor().intercept(chain) is ErrorResult)
+    }
 
     @Test fun `received sticker uses its original local bytes without a network request`() = runBlocking {
         install()
@@ -95,13 +127,32 @@ class StorageReadCoilOfflineTest {
         assertFalse(retained)
     }
 
-    private class Chain(override val request: ImageRequest) : Interceptor.Chain {
+    @Test fun `video frames use account memory without retaining bitmaps as playable videos`() = runBlocking {
+        install()
+        var usedOffline = false
+        val interceptor = StorageReadCoilInterceptor(
+            cachedImage = { _, _ -> usedOffline = true; null },
+            retainImage = { _, _ -> usedOffline = true },
+            retainPreview = { _, _, _ -> usedOffline = true },
+        )
+        val request = requireNotNull(MediaImageRequestFactory.videoPoster(context, source.replace("sticker.webp", "movie.media"), null))
+        val chain = Chain(request)
+        assertNotNull(request.decoderFactory)
+        assertTrue(interceptor.intercept(chain) is SuccessResult)
+        assertFalse(usedOffline)
+        assertEquals(CachePolicy.ENABLED, chain.sent?.memoryCachePolicy)
+        assertEquals(CachePolicy.DISABLED, chain.sent?.diskCachePolicy)
+        assertTrue(chain.sent?.memoryCacheKey?.key?.startsWith("storage-read-v1:") == true)
+    }
+
+    private class Chain(override val request: ImageRequest, val afterRead: () -> Unit = {}) : Interceptor.Chain {
         var sent: ImageRequest? = null
         override val size = Size.ORIGINAL
         override fun withRequest(request: ImageRequest): Interceptor.Chain = Chain(request)
         override fun withSize(size: Size): Interceptor.Chain = this
         override suspend fun proceed(request: ImageRequest): ImageResult {
             sent = request
+            afterRead()
             return SuccessResult(ColorDrawable(0), request, DataSource.NETWORK)
         }
     }

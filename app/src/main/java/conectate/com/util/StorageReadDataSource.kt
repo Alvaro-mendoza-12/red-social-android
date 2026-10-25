@@ -12,12 +12,14 @@ import conectate.com.core.media.StorageReadSession
 internal class StorageReadDataSource(
     private val upstream: DataSource.Factory,
     private val cached: DataSource.Factory,
+    private val requireStorageCacheAdmission: Boolean = false,
     private val admitCachedRead: ((DataSpec) -> String?)? = null,
 ) : DataSource {
     private val listeners = mutableListOf<TransferListener>()
     private var delegate: DataSource? = null
     private var guarded = false
     private var identity: StorageReadIdentity? = null
+    private var pendingBytes = ByteArray(0)
 
     override fun addTransferListener(transferListener: TransferListener) {
         listeners += transferListener
@@ -30,6 +32,9 @@ internal class StorageReadDataSource(
         if (guarded) StorageReadSession.requireCurrent(identity)
         val admittedKey = if (guarded) admitCachedRead?.invoke(dataSpec) else null
         if (guarded) StorageReadSession.requireCurrent(identity)
+        if (guarded && requireStorageCacheAdmission && admittedKey == null) {
+            throw java.io.IOException("La precarga no dispone de una caché autorizada reutilizable.")
+        }
         val selected = (if (guarded && admittedKey == null) upstream else cached).createDataSource()
         listeners.forEach(selected::addTransferListener)
         delegate = selected
@@ -40,12 +45,15 @@ internal class StorageReadDataSource(
     }
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (!guarded) return checkNotNull(delegate).read(buffer, offset, length)
-        StorageReadSession.requireCurrent(identity)
+        val expectedIdentity = identity
+        StorageReadSession.requireCurrent(expectedIdentity)
         if (offset < 0 || length < 0 || offset > buffer.size - length) throw IndexOutOfBoundsException()
         if (length == 0) return 0
-        val pending = ByteArray(minOf(length, 64 * 1024))
-        val count = checkNotNull(delegate).read(pending, 0, pending.size)
-        StorageReadSession.requireCurrent(identity)
+        val readLength = minOf(length, 64 * 1024)
+        if (pendingBytes.size < readLength) pendingBytes = ByteArray(readLength)
+        val pending = pendingBytes
+        val count = checkNotNull(delegate).read(pending, 0, readLength)
+        StorageReadSession.requireCurrent(expectedIdentity)
         if (count > 0) pending.copyInto(buffer, offset, 0, count)
         return count
     }
@@ -56,6 +64,7 @@ internal class StorageReadDataSource(
         delegate = null
         guarded = false
         identity = null
+        pendingBytes = ByteArray(0)
         closing?.close()
     }
 }

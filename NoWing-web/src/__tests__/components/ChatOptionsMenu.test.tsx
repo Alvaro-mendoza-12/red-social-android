@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { ChatOptionsMenu } from '../../components/ChatOptionsMenu'
 
 function setup(overrides = {}) {
-  const handlers = { onPreference: jest.fn(), onInfo: jest.fn(), onSearch: jest.fn(), onSelect: jest.fn(), onAdvanced: jest.fn(), onLeave: jest.fn(), onClose: jest.fn() }
+  const handlers = { onPreference: jest.fn(), onInfo: jest.fn(), onSearch: jest.fn(), onSelect: jest.fn(), onAdvanced: jest.fn(), onLeave: jest.fn(), onClose: jest.fn(), onNickname: jest.fn() }
   render(<ChatOptionsMenu pinned={false} muted={false} favorite={false} archived={false} busy={false} {...handlers} {...overrides} />)
   return handlers
 }
@@ -13,11 +13,16 @@ test('shows readable chat actions and saves the correct preference', () => {
   expect(handlers.onPreference).toHaveBeenCalledWith({ isPinned: true })
   expect(handlers.onClose).toHaveBeenCalledTimes(1)
 })
+test('opens the private nickname editor action', () => {
+  const handlers = setup()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Cambiar apodo privado' }))
+  expect(handlers.onNickname).toHaveBeenCalledTimes(1)
+})
 test('keyboard moves through the menu and Escape closes it', () => {
   const handlers = setup()
   expect(screen.getByRole('menuitem', { name: 'Información del contacto' })).toHaveFocus()
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' })
-  expect(screen.getByRole('menuitem', { name: 'Buscar mensajes' })).toHaveFocus()
+  expect(screen.getByRole('menuitem', { name: 'Cambiar apodo privado' })).toHaveFocus()
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'End' })
   expect(screen.getByRole('menuitem', { name: 'Cerrar chat' })).toHaveFocus()
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })

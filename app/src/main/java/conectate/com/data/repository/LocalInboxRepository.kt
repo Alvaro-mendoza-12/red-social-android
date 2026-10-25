@@ -12,7 +12,9 @@ import dagger.Lazy
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
@@ -32,6 +34,29 @@ internal fun LocalInboxSnapshot.forAccount(activeAccountId: String?): LocalInbox
     val owner = activeAccountId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
     return if (owner != null && owner == accountId?.trim()?.lowercase()) this else LocalInboxSnapshot()
 }
+
+/** Start on first use, then keep the local projection current across navigation. */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun observeLocalInboxSnapshots(
+    scope: CoroutineScope,
+    accounts: Flow<String?>,
+    currentAccount: () -> String?,
+    observeConversations: (String) -> Flow<List<ChatWithLastMessage>>,
+) = accounts
+    .map { it?.trim()?.lowercase()?.takeIf(String::isNotBlank) }
+    .distinctUntilChanged()
+    .flatMapLatest { account ->
+        flow {
+            emit(LocalInboxSnapshot())
+            if (account == null) return@flow
+            emitAll(observeConversations(account).map { conversations ->
+                if (currentAccount()?.trim()?.lowercase() == account) {
+                    LocalInboxSnapshot(account, conversations)
+                } else LocalInboxSnapshot()
+            })
+        }
+    }
+    .stateIn(scope, SharingStarted.Lazily, LocalInboxSnapshot())
 
 /** Shared factory keeps the startup inbox bound to notification preferences. */
 internal fun createLocalInboxReader(
@@ -56,22 +81,12 @@ class LocalInboxRepository @Inject constructor(
 ) {
     private val scope = newSafeScope("LocalInboxRepository", Dispatchers.IO)
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val snapshots = authService.currentSession
-        .map { it?.user?.id?.trim()?.lowercase()?.takeIf { id -> id.isNotBlank() } }
-        .distinctUntilChanged()
-        .flatMapLatest { account ->
-            flow {
-                // Clear the previous identity before opening or observing another account.
-                emit(LocalInboxSnapshot())
-                if (account == null) return@flow
-                val reader = createLocalInboxReader(databaseProvider.get(), authService::getCurrentUserId, context)
-                emitAll(reader.observe(flowOf(account)).map { conversations ->
-                    if (authService.getCurrentUserId()?.trim()?.lowercase() == account) {
-                        LocalInboxSnapshot(account, conversations)
-                    } else LocalInboxSnapshot()
-                })
-            }
-        }
-        .stateIn(scope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), LocalInboxSnapshot())
+    val snapshots = observeLocalInboxSnapshots(
+        scope = scope,
+        accounts = authService.currentSession.map { it?.user?.id },
+        currentAccount = authService::getCurrentUserId,
+    ) { account ->
+        val reader = createLocalInboxReader(databaseProvider.get(), authService::getCurrentUserId, context)
+        reader.observe(flowOf(account))
+    }
 }

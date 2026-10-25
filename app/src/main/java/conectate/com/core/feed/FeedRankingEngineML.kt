@@ -1,6 +1,6 @@
 package conectate.com.core.feed
 
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import conectate.com.core.crash.CrashReporter
 import conectate.com.data.model.Post
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -9,7 +9,7 @@ import kotlin.math.ln
 
 @Singleton
 class FeedRankingEngineML @Inject constructor(
-    private val crashlytics: FirebaseCrashlytics
+    private val crashlytics: CrashReporter
 ) : FeedRankingEngine {
     private val explanationEngine = DefaultFeedRankingEngine()
 
@@ -41,9 +41,9 @@ class FeedRankingEngineML @Inject constructor(
                     .map { it.first }
             )
         }.getOrElse { throwable ->
-            crashlytics.setCustomKey("component", "FeedRankingEngineML")
-            crashlytics.setCustomKey("post_count", posts.size)
-            crashlytics.recordException(throwable)
+            crashlytics.recordException(throwable, mapOf(
+                "component" to "FeedRankingEngineML", "post_count" to posts.size.toString(),
+            ))
             posts
         }
     }

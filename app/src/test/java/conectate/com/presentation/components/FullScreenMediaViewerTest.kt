@@ -222,6 +222,17 @@ class FullScreenMediaViewerTest {
     }
 
     @Test
+    fun videoPosterTravelsToTheFullScreenViewerWithoutAddingViewOnceItems() {
+        val message = Message(id = "video", content_type = "video", media_url = "file:/private/video.media",
+            thumbnail_url = "file:/private/poster.jpg")
+        val secure = Message(id = "once", content_type = "view_once_video", media_url = "file:/private/once.media",
+            thumbnail_url = "file:/private/once.jpg")
+        val selection = requireNotNull(buildMessageMediaViewerSelection(listOf(message, secure), "video", false))
+        assertEquals(1, selection.items.size)
+        assertEquals(message.thumbnail_url, selection.items.single().thumbnailUrl)
+    }
+
+    @Test
     fun clusterEligibility_acceptsGalleryMediaAndPreservesHumanCaption() {
         assertTrue(isClusterableMediaGridMessage(mediaMessage("gif", "gif", "https://cdn/gif")))
         assertTrue(isClusterableMediaGridMessage(mediaMessage("video", "video", "https://cdn/video")))

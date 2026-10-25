@@ -1,12 +1,12 @@
 import { useEffect, useRef, type ComponentType } from 'react'
-import { Archive, Bell, BellOff, Heart, Info, LogOut, Pin, Search, Settings2, SquareCheck } from 'lucide-react'
+import { Archive, Bell, BellOff, Heart, Info, LogOut, Pencil, Pin, Search, Settings2, SquareCheck } from 'lucide-react'
 
 type Item = { label: string; icon: ComponentType<{ size?: number; 'aria-hidden'?: boolean }>; action: () => void; disabled?: boolean }
 
-export function ChatOptionsMenu({ pinned, muted, favorite, archived, busy, onPreference, onInfo, onSearch, onSelect, onAdvanced, onLeave, onClose }: {
+export function ChatOptionsMenu({ pinned, muted, favorite, archived, busy, onPreference, onInfo, onSearch, onSelect, onAdvanced, onLeave, onClose, onNickname }: {
   pinned: boolean; muted: boolean; favorite: boolean; archived: boolean; busy: boolean
   onPreference: (patch: { isPinned?: boolean; isMuted?: boolean; isFavorite?: boolean; isArchived?: boolean }) => void
-  onInfo: () => void; onSearch: () => void; onSelect: () => void; onAdvanced: () => void; onLeave: () => void; onClose: () => void
+  onInfo: () => void; onSearch: () => void; onSelect: () => void; onAdvanced: () => void; onLeave: () => void; onClose: () => void; onNickname?: () => void
 }) {
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => { root.current?.querySelector<HTMLButtonElement>('button')?.focus() }, [])
@@ -17,6 +17,7 @@ export function ChatOptionsMenu({ pinned, muted, favorite, archived, busy, onPre
   }, [onClose])
   const items: Item[] = [
     { label: 'Información del contacto', icon: Info, action: onInfo },
+    ...(onNickname ? [{ label: 'Cambiar apodo privado', icon: Pencil, action: onNickname }] : []),
     { label: 'Buscar mensajes', icon: Search, action: onSearch },
     { label: 'Seleccionar mensajes', icon: SquareCheck, action: onSelect },
     { label: muted ? 'Activar notificaciones' : 'Silenciar notificaciones', icon: muted ? Bell : BellOff, action: () => onPreference({ isMuted: !muted }), disabled: busy },

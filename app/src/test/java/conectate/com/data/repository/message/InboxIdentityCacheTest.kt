@@ -3,12 +3,43 @@ package conectate.com.data.repository.message
 import conectate.com.data.local.entity.UserEntity
 import conectate.com.data.model.Chat
 import conectate.com.data.model.ChatWithLastMessage
+import conectate.com.data.local.dao.UserDao
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InboxIdentityCacheTest {
+
+    @Test fun `large inbox refresh batches reads and preserves saved photos on partial identities`() = runBlocking {
+        val saved = (1..1_205).map { user("person-$it", "Nombre $it", "https://cdn.test/$it.jpg") }
+        val data = saved.associateBy { it.id }.toMutableMap()
+        var batchReads = 0
+        var largestBatch = 0
+        val dao = object : UserDao {
+            override suspend fun insertUser(user: UserEntity) { error("Expected a batch write") }
+            override suspend fun insertUsers(users: List<UserEntity>) { users.forEach { data[it.id] = it } }
+            override suspend fun getUser(userId: String): UserEntity? = error("A refresh must not query each contact separately")
+            override suspend fun getUsers(userIds: List<String>): List<UserEntity> {
+                batchReads++
+                largestBatch = maxOf(largestBatch, userIds.size)
+                return userIds.mapNotNull(data::get)
+            }
+            override fun getUserSync(userId: String): UserEntity? = error("No blocking reads")
+            override fun getUsersFlow(userIds: List<String>): Flow<List<UserEntity>> = flowOf(userIds.mapNotNull(data::get))
+        }
+        persistInboxIdentityBatch(dao, saved.map { it.copy(full_name = "Usuario", username = "Usuario", avatar_url = null) })
+        assertEquals(2, batchReads)
+        assertTrue(largestBatch <= 800)
+        assertEquals(saved.size, data.size)
+        saved.forEach { original ->
+            assertEquals(original.avatar_url, data[original.id]?.avatar_url)
+            assertEquals(original.displayName, data[original.id]?.displayName)
+        }
+    }
 
     @Test
     fun `inbox warmup does not permanently starve contacts after the first 24`() {

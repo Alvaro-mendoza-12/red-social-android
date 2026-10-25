@@ -66,7 +66,10 @@ export type FallbackChatResponse = {
   title: string
   chat?: GenericRow
   room?: GenericRow
-  historyAccess?: { isMember: boolean; canReadHistory?: boolean }
+  historyAccess?: {
+    isMember: boolean; canReadHistory?: boolean; allHistory?: boolean; joinedAt?: string
+    historyFrom?: string; historyUntil?: string; retainedRanges?: Array<{ from: string | null; until: string }>
+  }
   participants?: Array<{ id: string; name: string; avatarUrl: string; role: string; username?: string }>
   otherParticipant: {
     id: string
@@ -75,6 +78,7 @@ export type FallbackChatResponse = {
     lastReadAt: string
   } | null
   messages: GenericRow[]
+  historyPage?: { hasMore: boolean; nextCursor: string | null }
   settings: {
     isMuted: boolean
     isPinned: boolean
@@ -83,6 +87,24 @@ export type FallbackChatResponse = {
     translateEnabled: boolean
     targetLang: string
   }
+}
+
+/** Revalidate older displayed pages when membership history or a clear boundary changes. */
+export function fallbackHistoryAllows(response: FallbackChatResponse, createdAt: string): boolean {
+  const at = Date.parse(createdAt)
+  const cleared = Date.parse(String(response.chat?.cleared_at || ''))
+  if (Number.isFinite(cleared) && at <= cleared) return false
+  const history = response.historyAccess
+  if (!history) return true
+  if (!history.isMember && !history.canReadHistory) return false
+  const retained = history.retainedRanges?.some(range =>
+    (range.from === null || at >= Date.parse(range.from)) && at <= Date.parse(range.until))
+  if (retained) return true
+  if (!history.isMember) return false
+  // Older servers did not send a time policy. Their full snapshots still replace state.
+  if (history.allHistory === undefined && !history.joinedAt) return true
+  return Boolean(history.allHistory || at >= Date.parse(history.joinedAt || '') ||
+    at >= Date.parse(history.historyFrom || '') && at <= Date.parse(history.historyUntil || ''))
 }
 
 export type FallbackVoiceRoom = GenericRow
@@ -206,6 +228,7 @@ export async function loadFallbackProfileMe(): Promise<FallbackProfileMeResponse
 export async function updateFallbackProfileMe(input: {
   profileEffect?: string
   profileTheme?: string
+    profileWelcome?: string
   displayName?: string | null
   bio?: string | null
   country?: string | null
@@ -295,6 +318,15 @@ export async function saveFallbackChatPreferences(chatId: string, patch: ChatPre
   return result
 }
 
+export async function hideFallbackChat(chatId: string) {
+  const result = await fallbackApiJson<{ ok: boolean; chatId: string; hidden: boolean }>(
+    `/v1/data/messages/chats/${encodeURIComponent(chatId)}`,
+    { method: 'DELETE' },
+  )
+  window.dispatchEvent(new Event('novvin:inbox-changed'))
+  return result
+}
+
 export async function markFallbackNotificationRead(notificationId: string): Promise<{ ok: boolean }> {
   const result = await fallbackApiJson<{ ok: boolean }>(
     `/v1/data/notifications/${encodeURIComponent(notificationId)}/read`,
@@ -378,12 +410,32 @@ export async function loadFallbackMessagesInbox(tab: string): Promise<FallbackIn
   return fallbackApiJson<FallbackInboxResponse>(`/v1/data/messages/inbox?tab=${encodeURIComponent(tab)}`)
 }
 
-async function loadDurableConversation(scope: 'chat' | 'group' | 'community', room: string, path: string): Promise<FallbackChatResponse> {
+async function loadDurableConversation(scope: 'chat' | 'group' | 'community', room: string, path: string, onCached?: (response: FallbackChatResponse) => void): Promise<FallbackChatResponse> {
   const owner = outboxOwner()
+  const network = fallbackApiJson<FallbackChatResponse>(path, { expectedAccountId: owner }).then(
+    value => ({ ok: true as const, value }), error => ({ ok: false as const, error }),
+  )
+  if (onCached) {
+    try {
+      const cached = await cachedConversation(scope, room, owner)
+      if (cached && Array.isArray(cached.messages)) {
+        const pending = await pendingConversationMessages(scope, room, owner)
+        const limit = Number(new URL(path, 'https://local.invalid').searchParams.get('limit'))
+        const rows = limit > 0 ? (cached.messages as GenericRow[]).slice(-limit) : cached.messages as GenericRow[]
+        const byId = new Map(rows.map(row => [String(row.id), row]))
+        for (const row of pending) byId.set(String(row.id), row)
+        onCached({ ...cached, messages: [...byId.values()] } as FallbackChatResponse)
+      }
+    } catch { /* A local-cache failure must not prevent the authorized network read. */ }
+  }
   let response: FallbackChatResponse
   try {
-    response = await fallbackApiJson<FallbackChatResponse>(path, { expectedAccountId: owner })
-    await cacheConversation(scope, room, response as unknown as Record<string, unknown>, owner)
+    const result = await network
+    if (!result.ok) throw result.error
+    response = result.value
+    // A quota/IDB failure must not discard a successful authorized network response.
+    try { await cacheConversation(scope, room, response as unknown as Record<string, unknown>, owner) }
+    catch { if (outboxOwner() !== owner) throw new Error('OUTBOX_ACCOUNT_CHANGED') }
   } catch (error) {
     if (!isTransientOutboxError(error)) throw error
     const cached = await cachedConversation(scope, room, owner)
@@ -396,9 +448,9 @@ async function loadDurableConversation(scope: 'chat' | 'group' | 'community', ro
   return { ...response, messages: [...byId.values()] }
 }
 
-export async function loadFallbackChat(chatId: string): Promise<FallbackChatResponse> {
+export async function loadFallbackChat(chatId: string, onCached?: (response: FallbackChatResponse) => void, pageSize?: number): Promise<FallbackChatResponse> {
   return loadDurableConversation('chat', chatId,
-    `/v1/data/messages/chats/${encodeURIComponent(chatId)}`,
+    `/v1/data/messages/chats/${encodeURIComponent(chatId)}${pageSize ? `?limit=${pageSize}` : ''}`, onCached,
   )
 }
 
@@ -592,11 +644,34 @@ export async function createFallbackDirectChat(participantId: string): Promise<{
 export async function loadFallbackRoomChat(
   scope: 'group' | 'community',
   roomId: string,
+  onCached?: (response: FallbackChatResponse) => void,
+  pageSize?: number,
 ): Promise<FallbackChatResponse> {
   const collection = scope === 'group' ? 'groups' : 'communities'
   return loadDurableConversation(scope, roomId,
-    `/v1/data/messages/${collection}/${encodeURIComponent(roomId)}`,
+    `/v1/data/messages/${collection}/${encodeURIComponent(roomId)}${pageSize ? `?limit=${pageSize}` : ''}`, onCached,
   )
+}
+
+/** Account-owned history pages remain available when the connection drops. */
+export async function loadFallbackHistoryPage(scope: 'chat' | 'group' | 'community', roomId: string, cursor: string, limit = 80): Promise<FallbackChatResponse> {
+  const owner = outboxOwner()
+  const collection = scope === 'chat' ? 'chats' : scope === 'group' ? 'groups' : 'communities'
+  const cacheKey = `${roomId}/history/${cursor}`
+  try {
+    const response = await fallbackApiJson<FallbackChatResponse>(
+      `/v1/data/messages/${collection}/${encodeURIComponent(roomId)}?limit=${limit}&before=${encodeURIComponent(cursor)}`,
+      { expectedAccountId: owner },
+    )
+    try { await cacheConversation(scope, cacheKey, response as unknown as Record<string, unknown>, owner) }
+    catch { if (outboxOwner() !== owner) throw new Error('OUTBOX_ACCOUNT_CHANGED') }
+    return response
+  } catch (error) {
+    if (!isTransientOutboxError(error)) throw error
+    const cached = await cachedConversation(scope, cacheKey, owner)
+    if (!cached) throw error
+    return cached as unknown as FallbackChatResponse
+  }
 }
 
 export async function sendFallbackChatMessage(

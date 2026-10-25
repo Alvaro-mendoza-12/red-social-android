@@ -59,3 +59,24 @@ test('an identity switch while waiting for credentials cannot register old media
   await expect(browserStreamingSource(media)).rejects.toThrow('MEDIA_SESSION_CHANGED')
   expect(container.controller.registrations).toHaveLength(0)
 })
+
+test('remounted and concurrent avatars share one registration on the same controller', async () => {
+  const {updateStorageReadIdentity} = await import('../../core/media/storageReadSession')
+  updateStorageReadIdentity('owned-account', 'fallback')
+  const {browserStreamingSource} = await import('../../core/media/browserStreaming')
+  const sources = await Promise.all([browserStreamingSource(media), browserStreamingSource(media), browserStreamingSource(media)])
+  expect(new Set(sources).size).toBe(1)
+  await browserStreamingSource(media)
+  expect(container.controller.registrations).toHaveLength(1)
+})
+
+test('an authorized avatar has a synchronous handle on remount and cannot cross accounts', async () => {
+  const { updateStorageReadIdentity } = await import('../../core/media/storageReadSession')
+  updateStorageReadIdentity('owned-account', 'fallback')
+  const { browserStreamingSource, cachedBrowserStreamingSource } = await import('../../core/media/browserStreaming')
+  expect(cachedBrowserStreamingSource(media)).toBeUndefined()
+  const source = await browserStreamingSource(media)
+  expect(cachedBrowserStreamingSource(media)).toBe(source)
+  updateStorageReadIdentity('other-account', 'fallback')
+  expect(cachedBrowserStreamingSource(media)).toBeUndefined()
+})

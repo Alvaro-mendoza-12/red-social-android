@@ -198,7 +198,8 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun loadUserProfile(userId: String?, forceNetwork: Boolean? = null) {
-        val idToLoad = userId ?: authService.getCurrentUserId()
+        val idToLoad = (userId ?: authService.getCurrentUserId())?.trim()?.lowercase()
+            ?.takeIf { it.isNotBlank() }
         if (idToLoad == null) {
             _profileState.value = ProfileUiState.Error("No user logged in")
             return
@@ -374,7 +375,12 @@ class ProfileViewModel @Inject constructor(
             if (authService.getCurrentUserId() != accountId) return@launch
             realtime.updateAccessToken(token); realtime.subscribe(channel)
             try {
-                realtime.events.filter { it.channel == channel && it.event == "profile_counts_updated" }.debounce(150).collect {
+                // The subscription acknowledgement also arrives after reconnect.
+                // Catch up events missed while this profile was not displayed,
+                // without replacing the retained profile by a loading/zero state.
+                realtime.events.filter {
+                    it.channel == channel && it.event in setOf("profile_counts_updated", "subscription_ready")
+                }.debounce(150).collect {
                     if (authService.getCurrentUserId() == accountId && !_isToggling.value) reloadProfileSilently(userId)
                 }
             } finally { realtime.unsubscribe(channel) }
@@ -987,7 +993,7 @@ class ProfileViewModel @Inject constructor(
                 if (user != null && profileReadScope.isCurrent(ticket) && profileMutationClock.isCurrent(mutation)) {
                     // Only update if we're still viewing the same user
                     val currentState = _profileState.value
-                    if (currentState is ProfileUiState.Success && currentState.user.id == userId) {
+                    if (currentState is ProfileUiState.Success && currentState.user.id.equals(user.id, ignoreCase = true)) {
                         _profileState.value = ProfileUiState.Success(user.copy(badges = currentState.user.badges))
                         refreshProfileBadges(ticket)
                         android.util.Log.d("ProfileViewModel", "reloadProfileSilently: Updated counters and badges")

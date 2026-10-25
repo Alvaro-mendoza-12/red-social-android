@@ -2,7 +2,7 @@ package conectate.com.presentation.messages.stickers
 
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,7 +27,7 @@ fun StickerButton(
     ) {
         IconButton(onClick = onClick, enabled = enabled) {
             Icon(
-                imageVector = if (showingStickers) Icons.Default.Keyboard else Icons.Default.EmojiEmotions,
+                imageVector = if (showingStickers) Icons.Default.Keyboard else Icons.Default.StickyNote2,
                 contentDescription = if (showingStickers) "Volver al teclado" else "Stickers",
                 tint = if (enabled) {
                     MaterialTheme.colorScheme.onSurfaceVariant

@@ -86,6 +86,45 @@ import conectate.com.util.VideoCache
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
+private val emojiBaseSymbolCodePoints = setOf(0x00A9, 0x00AE, 0x203C, 0x2049, 0x2122, 0x2139, 0x3030, 0x303D, 0x3297, 0x3299)
+private val emojiDecorationCodePoints = setOf(0x20, 0x09, 0x0A, 0x0D, 0x200D, 0xFE0E, 0xFE0F, 0x20E3)
+private val unicodeCombiningMarkTypes = setOf(
+    Character.NON_SPACING_MARK.toInt(),
+    Character.COMBINING_SPACING_MARK.toInt(),
+    Character.ENCLOSING_MARK.toInt(),
+)
+
+internal fun isStandaloneEmojiMessage(text: String): Boolean {
+    // Called for every text bubble: bound the work and avoid an IntArray for
+    // long messages or a new set for each code point during a fling.
+    if (text.isEmpty() || text.length > 48) return false
+    fun isEmojiBase(codePoint: Int): Boolean =
+        codePoint in 0x1F000..0x1FAFF ||
+            codePoint in 0x2600..0x27BF ||
+            codePoint in 0x2300..0x23FF ||
+            codePoint in 0x2B00..0x2BFF ||
+            codePoint in 0x1F1E6..0x1F1FF ||
+            codePoint in emojiBaseSymbolCodePoints
+    var hasEmoji = false
+    var count = 0
+    var offset = 0
+    while (offset < text.length) {
+        val codePoint = Character.codePointAt(text, offset)
+        offset += Character.charCount(codePoint)
+        val whitespace = Character.isWhitespace(codePoint)
+        if (!whitespace && ++count > 12) return false
+        val emojiBase = isEmojiBase(codePoint)
+        hasEmoji = hasEmoji || emojiBase
+        val supported = emojiBase ||
+            codePoint in 0x1F3FB..0x1F3FF ||
+            codePoint in 0xE0020..0xE007F ||
+            codePoint in emojiDecorationCodePoints ||
+            Character.getType(codePoint) in unicodeCombiningMarkTypes
+        if (!supported) return false
+    }
+    return hasEmoji
+}
+
 @Composable
 private fun ChatVideoPreview(
     url: String?,
@@ -93,53 +132,34 @@ private fun ChatVideoPreview(
     thumbnailUrl: String? = null,
 ) {
     val context = LocalContext.current
-    LaunchedEffect(url) {
-        val source = url?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        runCatching { VideoCache.preloadStart(context.applicationContext, source) }
-    }
-    val posterSource = thumbnailUrl?.takeIf(String::isNotBlank)
-    val resolvedPoster = UbuntuStorageUrl.thumbnail(posterSource, width = 720)
-        ?: url?.takeIf(String::isNotBlank)
-    val posterRequest = remember(resolvedPoster, posterSource) {
-        resolvedPoster?.let { source ->
-            ImageRequest.Builder(context)
-                .data(source)
-                .apply {
-                    if (posterSource.isNullOrBlank()) videoFrameMillis(1_000)
-                }
-                .size(720, 720)
-                .memoryCacheKey(
-                    UbuntuStorageUrl.stableCacheKey(posterSource ?: source)
-                        ?.let { "chat-video-poster:$it" }
-                )
-                .diskCacheKey(
-                    UbuntuStorageUrl.stableCacheKey(posterSource ?: source)
-                        ?.let { "chat-video-poster:$it" }
-                )
-                .diskCachePolicy(CachePolicy.ENABLED)
-                .memoryCachePolicy(CachePolicy.ENABLED)
-                .crossfade(false)
-                .build()
-        }
+    // A row must not start a second video download alongside its poster request.
+    var fallbackToVideo by remember(url, thumbnailUrl) { mutableStateOf(false) }
+    val posterRequest = remember(context, url, thumbnailUrl, fallbackToVideo) {
+        MediaImageRequestFactory.videoPoster(context, url, thumbnailUrl.takeUnless { fallbackToVideo })
     }
     SubcomposeAsyncImage(
         model = posterRequest,
         contentDescription = "Vista previa del video",
         contentScale = ContentScale.Crop,
         modifier = modifier.background(Color.Black),
+        onError = { if (!thumbnailUrl.isNullOrBlank()) fallbackToVideo = true },
         loading = {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center) {
                 CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
             }
         },
         error = {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
                 Icon(
                     imageVector = Icons.Default.VideoLibrary,
                     contentDescription = null,
                     tint = Color.White.copy(alpha = 0.72f),
                     modifier = Modifier.size(38.dp)
                 )
+                Text("Vista previa no disponible", color = Color.White.copy(alpha = 0.72f),
+                    style = MaterialTheme.typography.labelSmall)
             }
         }
     )
@@ -497,6 +517,7 @@ fun MessageBubble(
                 } else {
                     Modifier.pointerInput(message.id) {
                         detectHorizontalDragGestures(
+                            onDragCancel = { offsetX = 0f },
                             onDragEnd = {
                                 if (kotlin.math.abs(offsetX) > replyThreshold) {
                                     onSwipeReply(message)
@@ -760,7 +781,7 @@ fun MessageBubble(
                             text = message.content,
                             backgroundColor = backgroundColor,
                             color = if (isFromCurrentUser) chatAccentColors.sentContent else receivedTextColor,
-                            fontSize = 15.sp,
+                            fontSize = if (isStandaloneEmojiMessage(message.content)) 34.sp else 15.sp,
                             onUrlClick = onUrlClick,
                             onMentionClick = onMentionClick,
                             onCollectionInvitationClick = onCollectionInvitationClick
@@ -857,7 +878,7 @@ fun MessageBubble(
                         var localDuration by remember(message.id, message.media_url, message.content) {
                             mutableStateOf(conectate.com.util.audioDurationMillis(message.content))
                         }
-                        LaunchedEffect(message.id, resolvedUrl, totalAudioDurationMs) {
+                        LaunchedEffect(message.id, message.content, resolvedUrl, totalAudioDurationMs) {
                             if (totalAudioDurationMs != null && totalAudioDurationMs > 0) {
                                 localDuration = totalAudioDurationMs
                             } else if (localDuration == null) {
@@ -1240,13 +1261,16 @@ fun ChatBadgeItem(badge: conectate.com.data.model.Badge) {
     }
 }
 
-private fun formatIsoTimestamp(isoString: String): String {
+private val messageClockFormatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT)
+
+internal fun formatIsoTimestamp(
+    isoString: String,
+    zoneId: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+): String {
     return try {
-        val instant = java.time.Instant.parse(isoString)
-        val zoneId = java.time.ZoneId.systemDefault()
-        val localTime = instant.atZone(zoneId)
-        val formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
-        localTime.format(formatter)
+        val instant = conectate.com.data.model.parseMessageInstant(isoString)
+            ?: return isoString.substringAfter("T").substringBefore(".").take(5)
+        instant.atZone(zoneId).format(messageClockFormatter)
     } catch (e: Exception) {
         // Fallback to old substring method if parsing fails
         isoString.substringAfter("T").substringBefore(".").take(5)

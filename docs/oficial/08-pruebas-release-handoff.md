@@ -2,10 +2,12 @@
 
 Este documento define cómo probar, publicar y entregar el proyecto a otro equipo o IA.
 
-La evidencia vigente del 30/09/2026 está en
-[Fluidez y auditoría por módulos](33-fluidez-y-auditoria-modulos-2026-09-30.md).
-La versión se mantiene en 117 / 9.0.20. La entrega móvil completa para producción,
-las pruebas físicas finales, el AAB con firma original y la paridad web continúan abiertos.
+La evidencia vigente del 25/10/2026 está en la
+[auditoría del candidato 167](75-cierre-movil-167-2026-10-25.md).
+El candidato Android es **9.1.27 / 167**. La aceptación exige comprobar el artefacto
+release concreto desde la primera pantalla, los tres recorridos de entrada y la
+restauración de sesión; una batería aislada de componentes no basta para aprobar
+el arranque completo. El documento vigente registra los resultados y límites.
 
 ## Estados permitidos
 

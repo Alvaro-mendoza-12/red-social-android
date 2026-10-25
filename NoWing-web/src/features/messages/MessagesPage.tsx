@@ -1,9 +1,11 @@
+import { directConversationHasActivity } from '../../core/directConversationActivity'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import {acknowledgeInboxPreview,applyInboxUnreadSnapshot,confirmInboxConversationRead,currentInboxUnreadCount,hasUnrepresentedInboxUnread,inboxActivityEvent,latestInboxMessage,markInboxConversationRead,useInboxUnreadCounts,type InboxActivity} from '../../core/inboxActivity'
 import { readConversationDraft, useDraftRevision } from '../../core/conversationDrafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Search, MessageSquarePlus, MoreVertical, Phone, Plus, Users } from 'lucide-react'
+import { Search, MessageSquarePlus, MoreVertical, Phone, Plus, Trash2, Users } from 'lucide-react'
 import { openNovvinMenu } from '../../ui/novvin/navigation'
 import { StatusView } from '../../components/StatusView'
 import { SafeAvatar } from '../../components/SafeAvatar'
@@ -16,6 +18,7 @@ import {
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
 import {
   loadFallbackMessagesInbox,
+  hideFallbackChat,
   markFallbackChatRead,
   saveFallbackChatPreferences,
   searchFallbackProfiles,
@@ -589,6 +592,10 @@ export function MessagesPage() {
   const [showArchived, setShowArchived] = useState(false)
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
   const [openChatMenuId, setOpenChatMenuId] = useState<string | null>(null)
+  const [openChatMenuPosition, setOpenChatMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null)
+  const chatMenuRef = useRef<HTMLDivElement | null>(null)
+  const chatMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const [hidingChatId, setHidingChatId] = useState<string | null>(null)
   const [selectedConversation, setSelectedConversation] = useState<SelectedConversation | null>(
     null,
   )
@@ -775,27 +782,25 @@ export function MessagesPage() {
               isArchived: boolean
               isFavorite: boolean
               lastReadAt: string
+              hiddenAt: string
             }
           >()
           if (chatIds.length > 0) {
-            let participantResult: { data: unknown; error: unknown } = await supabase
-              .from('chat_participants')
-              .select('chat_id,is_muted,is_pinned,is_archived,is_favorite,last_read_at')
-              .eq('user_id', user.id)
-              .in('chat_id', chatIds)
-            if (participantResult.error && isMissingColumnError(participantResult.error)) {
+            const participantSelections = [
+              'chat_id,is_muted,is_pinned,is_archived,is_favorite,last_read_at,hidden_at',
+              'chat_id,is_muted,is_pinned,is_archived,is_favorite,last_read_at',
+              'chat_id,is_muted,is_pinned,is_archived,last_read_at,hidden_at',
+              'chat_id,is_muted,is_pinned,is_archived,last_read_at',
+              'chat_id,is_muted,is_pinned,last_read_at',
+            ]
+            let participantResult: { data: unknown; error: unknown } = { data: null, error: null }
+            for (const selection of participantSelections) {
               participantResult = await supabase
                 .from('chat_participants')
-                .select('chat_id,is_muted,is_pinned,is_archived,last_read_at')
+                .select(selection)
                 .eq('user_id', user.id)
                 .in('chat_id', chatIds)
-            }
-            if (participantResult.error && isMissingColumnError(participantResult.error)) {
-              participantResult = await supabase
-                .from('chat_participants')
-                .select('chat_id,is_muted,is_pinned,last_read_at')
-                .eq('user_id', user.id)
-                .in('chat_id', chatIds)
+              if (!participantResult.error || !isMissingColumnError(participantResult.error)) break
             }
             const { data: participantRows, error: participantError } = participantResult
             if (participantError) {
@@ -810,6 +815,7 @@ export function MessagesPage() {
                   isArchived: Boolean(row.is_archived),
                   isFavorite: Boolean(row.is_favorite),
                   lastReadAt: textOf(row, ['last_read_at'], ''),
+                  hiddenAt: textOf(row, ['hidden_at'], ''),
                 })
               })
             }
@@ -845,22 +851,29 @@ export function MessagesPage() {
           const profileById = await fetchProfileMapByIds(Array.from(otherByChat.values()))
 
           const unreadByChat = new Map<string, number>()
+          const chatsWithMessages = new Set<string>()
+          const latestMessageAtByChat = new Map<string, number>()
           if (chatIds.length > 0) {
             const { data: unreadRows, error: unreadError } = await supabase
               .from('messages')
               .select('chat_id,sender_id,created_at,read_at,status')
               .in('chat_id', chatIds)
-              .neq('sender_id', user.id)
             if (unreadError) throw unreadError
             ;((unreadRows ?? []) as GenericRow[]).forEach((row) => {
               const chatId = textOf(row, ['chat_id'], '')
               if (!chatId) return
+              chatsWithMessages.add(chatId)
+              const messageAt = toMillis(textOf(row, ['created_at'], ''))
+              if (messageAt > (latestMessageAtByChat.get(chatId) ?? 0)) {
+                latestMessageAtByChat.set(chatId, messageAt)
+              }
+              if (normalizeId(textOf(row, ['sender_id'], '')) === cleanCurrentUserId) return
               const participant = participantByChat.get(chatId)
               const lastReadAtMillis = Math.max(
                 toMillis(participant?.lastReadAt ?? ''),
                 toMillis(localReadByChat[chatId] ?? ''),
               )
-              const createdAtMillis = toMillis(textOf(row, ['created_at'], ''))
+              const createdAtMillis = messageAt
               const readAt = textOf(row, ['read_at'], '')
               const status = textOf(row, ['status'], '').toLowerCase()
               if (readAt || status === 'read' || status === 'seen') return
@@ -874,7 +887,18 @@ export function MessagesPage() {
             })
           }
 
-          const mapped = chatRows.map((row) => {
+          const mapped = chatRows.filter(row => {
+            const id = textOf(row, ['id'], '')
+            if (!directConversationHasActivity(row, chatsWithMessages.has(id))) return false
+            const participant = participantByChat.get(id)
+            const hiddenAt = toMillis(participant?.hiddenAt ?? '')
+            if (!hiddenAt) return true
+            const latestActivityAt = Math.max(
+              latestMessageAtByChat.get(id) ?? 0,
+              toMillis(textOf(row, ['last_message_at', 'updated_at', 'created_at'], '')),
+            )
+            return latestActivityAt > hiddenAt
+          }).map((row) => {
             const id = textOf(row, ['id'], crypto.randomUUID())
             const isGroup = Boolean(row.is_group)
             const other = otherByChat.get(id) ?? null
@@ -1007,6 +1031,35 @@ export function MessagesPage() {
     return()=>{clearTimeout(timer);window.removeEventListener(inboxActivityEvent,refresh);window.removeEventListener('novvin:inbox-changed',refresh);window.removeEventListener('novvin:realtime-ready',refresh)}
   },[loadCurrentTab,user?.id])
 
+  useEffect(() => {
+    if (!openChatMenuId) return
+    const closeIfOutside = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (target && (chatMenuRef.current?.contains(target) || chatMenuTriggerRef.current?.contains(target))) return
+      setOpenChatMenuId(null)
+      setOpenChatMenuPosition(null)
+    }
+    const closeOnViewportChange = () => {
+      setOpenChatMenuId(null)
+      setOpenChatMenuPosition(null)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      closeOnViewportChange()
+      chatMenuTriggerRef.current?.focus()
+    }
+    document.addEventListener('pointerdown', closeIfOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    window.addEventListener('scroll', closeOnViewportChange, true)
+    window.addEventListener('resize', closeOnViewportChange)
+    return () => {
+      document.removeEventListener('pointerdown', closeIfOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+      window.removeEventListener('scroll', closeOnViewportChange, true)
+      window.removeEventListener('resize', closeOnViewportChange)
+    }
+  }, [openChatMenuId])
+
   const updateChatPreferences = async (
     chatId: string,
     patch: Partial<Pick<ConversationItem, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>,
@@ -1087,6 +1140,37 @@ export function MessagesPage() {
     } catch (caught) {
       reportSupabaseServiceRestrictionIfPresent('messages-preferences', caught)
       setError(friendlyError(caught, 'No se pudieron actualizar preferencias'))
+    }
+  }
+
+  async function hideChatFromMyInbox(chatId: string, title: string) {
+    if (!user || hidingChatId) return
+    const confirmed = window.confirm(
+      `¿Eliminar el chat con ${title} de tu lista? Los mensajes no se borrarán para la otra persona y el chat volverá a aparecer cuando haya actividad nueva.`,
+    )
+    if (!confirmed) return
+
+    const previousItems = items
+    const nextItems = items.filter((item) => item.id !== chatId)
+    setHidingChatId(chatId)
+    setOpenChatMenuId(null)
+    setItems(nextItems)
+    writeCachedValue(inboxCacheKey, nextItems)
+    try {
+      if (isFallbackSession) {
+        await hideFallbackChat(chatId)
+      } else {
+        if (!supabase) throw new Error('El servicio de chat no está disponible.')
+        const { error: hideError } = await supabase.rpc('secure_hide_chat', { p_chat_id: chatId })
+        if (hideError) throw hideError
+        window.dispatchEvent(new Event('novvin:inbox-changed'))
+      }
+    } catch (caught) {
+      setItems(previousItems)
+      writeCachedValue(inboxCacheKey, previousItems)
+      setError(friendlyError(caught, 'No se pudo eliminar el chat de tu lista'))
+    } finally {
+      setHidingChatId(null)
     }
   }
 
@@ -1324,10 +1408,30 @@ export function MessagesPage() {
               className="icon-btn-sm more-btn"
               onClick={(e) => {
                 e.stopPropagation()
-                setOpenChatMenuId((current) => (current === item.id ? null : item.id))
+                if (openChatMenuId === item.id) {
+                  setOpenChatMenuId(null)
+                  setOpenChatMenuPosition(null)
+                  return
+                }
+                chatMenuTriggerRef.current = e.currentTarget
+                const bounds = e.currentTarget.getBoundingClientRect()
+                const width = Math.min(230, Math.max(0, window.innerWidth - 24))
+                const height = Math.min(340, Math.max(0, window.innerHeight - 24))
+                const left = Math.min(
+                  Math.max(12, bounds.right - width),
+                  Math.max(12, window.innerWidth - width - 12),
+                )
+                const below = bounds.bottom + 4
+                const top = below + height <= window.innerHeight - 12
+                  ? below
+                  : Math.max(12, bounds.top - height - 4)
+                setOpenChatMenuPosition({ top, left, width })
+                setOpenChatMenuId(item.id)
               }}
               aria-label="Opciones"
               title="Opciones"
+              aria-expanded={openChatMenuId === item.id}
+              aria-controls="conversation-chat-menu"
             >
               <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                 <circle cx="12" cy="5" r="1.8" fill="currentColor" />
@@ -1335,62 +1439,91 @@ export function MessagesPage() {
                 <circle cx="12" cy="19" r="1.8" fill="currentColor" />
               </svg>
             </button>
-            {openChatMenuId === item.id ? (
-              <div className="conversation-row-menu" onClick={(e) => e.stopPropagation()}>
+            {openChatMenuId === item.id && openChatMenuPosition && typeof document !== 'undefined' ? createPortal(
+              <div
+                ref={chatMenuRef}
+                id="conversation-chat-menu"
+                className="conversation-row-menu"
+                role="menu"
+                aria-label={`Opciones del chat con ${item.title}`}
+                style={{ top: openChatMenuPosition.top, left: openChatMenuPosition.left, width: openChatMenuPosition.width, right: 'auto' }}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <button
+                  role="menuitem"
                   type="button"
                   onClick={() => {
                     void updateChatPreferences(item.id, {
                       isPinned: !item.isPinned,
                     })
                     setOpenChatMenuId(null)
+                    setOpenChatMenuPosition(null)
                   }}
                 >
                   {item.isPinned ? 'Desfijar chat' : 'Fijar chat'}
                 </button>
                 <button
+                  role="menuitem"
                   type="button"
                   onClick={() => {
                     void updateChatPreferences(item.id, {
                       isMuted: !item.isMuted,
                     })
                     setOpenChatMenuId(null)
+                    setOpenChatMenuPosition(null)
                   }}
                 >
                   {item.isMuted ? 'Activar notificaciones' : 'Silenciar chat'}
                 </button>
                 <button
+                  role="menuitem"
                   type="button"
                   onClick={() => {
                     void updateChatPreferences(item.id, {
                       isFavorite: !item.isFavorite,
                     })
                     setOpenChatMenuId(null)
+                    setOpenChatMenuPosition(null)
                   }}
                 >
                   {item.isFavorite ? 'Quitar favorito' : 'Marcar favorito'}
                 </button>
                 <button
+                  role="menuitem"
                   type="button"
                   onClick={() => {
                     void updateChatPreferences(item.id, {
                       isArchived: !item.isArchived,
                     })
                     setOpenChatMenuId(null)
+                    setOpenChatMenuPosition(null)
                   }}
                 >
                   {item.isArchived ? 'Sacar de archivados' : 'Archivar chat'}
                 </button>
                 <button
+                  role="menuitem"
                   type="button"
                   onClick={() => {
                     void markChatAsReadBestEffort(item.id)
                     setOpenChatMenuId(null)
+                    setOpenChatMenuPosition(null)
                   }}
                 >
                   Marcar como leído
                 </button>
-              </div>
+                <button
+                  role="menuitem"
+                  type="button"
+                  className="conversation-row-menu-danger"
+                  disabled={hidingChatId === item.id}
+                  onClick={() => void hideChatFromMyInbox(item.id, item.title)}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  {hidingChatId === item.id ? 'Eliminando…' : 'Eliminar chat'}
+                </button>
+              </div>,
+              document.body,
             ) : null}
           </>
         ) : null}

@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Actualización del 25/10/2026
+
+El producto se presenta como **Novvin**, con identificador Android `conectate.com`. El candidato actual es **9.1.27 / código 167** en `main` y `feature/live-gifts`. El estado vigente de acceso, regresiones, pruebas físicas y artefactos firmados se detalla en la [auditoría 75](75-cierre-movil-167-2026-10-25.md). Las versiones, mediciones y pendientes escritos debajo corresponden a sus fechas históricas.
+
 Conéctate es una red social móvil orientada a producción y con una versión histórica
 distribuida. La rama de trabajo es `feature/live-gifts` en `D:\red social - live-gifts`.
 El backend propio en Ubuntu Server sobre una mini PC tiene un ingreso HTTPS comprobado

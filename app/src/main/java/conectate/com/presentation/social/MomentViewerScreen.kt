@@ -801,6 +801,12 @@ fun MomentViewerScreen(
             if (zoomed) zoomedMomentId = id else if (zoomedMomentId == id) zoomedMomentId = null
         },
         onClose = navController::popBackStack,
+        onOpenProfile = { authorId ->
+            paused = true
+            navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(authorId)) {
+                launchSingleTop = true
+            }
+        },
         onPrevious = {
             scope.launch { if (pagerState.currentPage > 0) pagerState.animateScrollToPage(pagerState.currentPage - 1) }
         },
@@ -918,6 +924,7 @@ private fun MomentViewerCanvas(
     onPauseChanged: (Boolean) -> Unit,
     onImageZoomChanged: (String, Boolean) -> Unit,
     onClose: () -> Unit,
+    onOpenProfile: (String) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onOpenViewers: (Moment) -> Unit,
@@ -982,7 +989,8 @@ private fun MomentViewerCanvas(
                 currentPage = pagerState.currentPage,
                 currentProgress = currentProgress,
                 videoProgressByMomentId = videoProgressByMomentId,
-                currentMoment = currentMoment
+                currentMoment = currentMoment,
+                onOpenProfile = onOpenProfile,
             )
             MomentViewerBottomActions(
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -1028,7 +1036,8 @@ private fun MomentViewerHeader(
     currentPage: Int,
     currentProgress: Float,
     videoProgressByMomentId: Map<String, Float>,
-    currentMoment: Moment
+    currentMoment: Moment,
+    onOpenProfile: (String) -> Unit,
 ) {
     val context = LocalContext.current
     Column(
@@ -1058,7 +1067,8 @@ private fun MomentViewerHeader(
                 runCatching {
                     context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(target)))
                 }
-            }
+            },
+            onOpenProfile = onOpenProfile,
         )
     }
 }

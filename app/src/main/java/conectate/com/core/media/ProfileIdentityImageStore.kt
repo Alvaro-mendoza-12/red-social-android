@@ -3,8 +3,11 @@ package conectate.com.core.media
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.util.Log
+import android.util.LruCache
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.scale
 import coil.Coil
@@ -45,11 +48,21 @@ object ProfileIdentityImageStore {
     private const val MAX_TOTAL_BYTES = 24L * 1024L * 1024L
     private const val IMAGE_QUALITY = 84
     internal const val MAX_IMAGE_DIMENSION = 512
+    private const val MAX_PREVIEW_DIMENSION = 256
     private const val WARM_TIMEOUT_MILLIS = 6_000L
     private val writeMutex = Mutex()
     private val warmSemaphore = Semaphore(3)
     private val warmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val warmingKeys = ConcurrentHashMap.newKeySet<String>()
+    private val cachedIdentityFiles = ConcurrentHashMap<String, File>()
+    private val retainingKeys = ConcurrentHashMap.newKeySet<String>()
+    private val identityMemoryLock = Any()
+    // Keep decoded pixels ready for the first frame after navigation. Eviction
+    // drops only our reference: Compose may still be displaying the bitmap.
+    private val cachedIdentityPreviews = object : LruCache<String, Bitmap>(12 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
+    }
+    private val previewMutex = Mutex()
     private val writeFence = ProfileIdentityWriteFence()
 
     fun generation(accountId: String?): Long = writeFence.capture(accountId)
@@ -63,10 +76,147 @@ object ProfileIdentityImageStore {
     suspend fun clear(context: Context, accountId: String, expectedAccountKey: String): Boolean = withContext(Dispatchers.IO) {
         try { writeMutex.withLock {
             if (ProfileIdentityFiles.accountKey(accountId) != expectedAccountKey) return@withLock false
-            writeFence.invalidate(accountId)
-            ProfileIdentityFiles(root(context)).clear(accountId, expectedAccountKey)
+            synchronized(identityMemoryLock) { writeFence.invalidate(accountId) }
+            ProfileIdentityFiles(root(context)).clear(accountId, expectedAccountKey).also { cleared ->
+                if (cleared) {
+                    val prefix = "${expectedAccountKey}:"
+                    synchronized(identityMemoryLock) {
+                        cachedIdentityFiles.keys.removeIf { it.startsWith(prefix) }
+                        cachedIdentityPreviews.snapshot().keys.filter { it.startsWith(prefix) }
+                            .forEach(cachedIdentityPreviews::remove)
+                    }
+                }
+            }
         } } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { false }
+    }
+
+    /** Returns an already-known private avatar file without waiting for disk lookup. */
+    fun peek(sourceUrl: String?, accountId: String? = null): File? {
+        val key = sourceKey(sourceUrl) ?: return null
+        val memoryKey = memoryKey(accountId, key) ?: return null
+        return cachedIdentityFiles[memoryKey]
+    }
+
+    /** Memory only; safe to use during composition without decoding or disk I/O. */
+    fun peekPreview(sourceUrl: String?, accountId: String? = null): Bitmap? {
+        val key = sourceKey(sourceUrl)?.let { memoryKey(accountId, it) } ?: return null
+        return cachedIdentityPreviews.get(key)?.takeUnless(Bitmap::isRecycled)
+    }
+
+    /**
+     * Called from the image-success callback on Main. BitmapDrawable pixels are
+     * already decoded; only animated/custom drawables need a bounded snapshot.
+     * The queued write owns neither the drawable nor a UI callback and outlives
+     * the composable that originally displayed this avatar.
+     */
+    fun retainDrawable(
+        context: Context,
+        sourceUrl: String?,
+        drawable: Drawable,
+        accountId: String? = null,
+        expectedGeneration: Long = generation(accountId),
+    ): Bitmap? = retain(context, sourceUrl, accountId, expectedGeneration) {
+        identityDrawableBitmap(drawable)
+    }
+
+    private fun identityDrawableBitmap(drawable: Drawable): Bitmap =
+        if (drawable is BitmapDrawable) drawable.bitmap else {
+            val dimensions = profileIdentityPreviewDimensions(drawable.intrinsicWidth, drawable.intrinsicHeight)
+            drawable.toBitmap(dimensions.first, dimensions.second)
+        }
+
+    /** Keeps a captured video frame without making the UI wait for durable I/O. */
+    fun retainBitmap(
+        context: Context,
+        sourceUrl: String?,
+        bitmap: Bitmap,
+        accountId: String? = null,
+        expectedGeneration: Long = generation(accountId),
+    ): Bitmap? = retain(context, sourceUrl, accountId, expectedGeneration) { bitmap }
+
+    private inline fun retain(
+        context: Context,
+        sourceUrl: String?,
+        accountId: String?,
+        expectedGeneration: Long,
+        snapshot: () -> Bitmap,
+    ): Bitmap? {
+        val sourceKey = sourceKey(sourceUrl) ?: return null
+        val key = memoryKey(accountId, sourceKey) ?: return null
+        if (!writeFence.isCurrent(accountId, expectedGeneration)) return null
+        peekPreview(sourceUrl, accountId)?.let { return it }
+        val workKey = "$key:$expectedGeneration"
+        if (!retainingKeys.add(workKey)) return peekPreview(sourceUrl, accountId)
+        try {
+            val bitmap = snapshot().takeUnless(Bitmap::isRecycled) ?: run {
+                retainingKeys.remove(workKey)
+                return null
+            }
+            if (!publishPreview(key, bitmap, accountId, expectedGeneration)) {
+                retainingKeys.remove(workKey)
+                return null
+            }
+            val appContext = context.applicationContext
+            warmScope.launch {
+                try {
+                    save(appContext, sourceUrl, bitmap, accountId, expectedGeneration)
+                } finally {
+                    retainingKeys.remove(workKey)
+                }
+            }
+            return bitmap
+        } catch (_: Exception) {
+            retainingKeys.remove(workKey)
+            // Persisting a fallback must never fail the visible image or animation.
+            return null
+        }
+    }
+
+    private fun publishPreview(key: String, bitmap: Bitmap, accountId: String?, expectedGeneration: Long): Boolean =
+        synchronized(identityMemoryLock) {
+            if (!writeFence.isCurrent(accountId, expectedGeneration)) false
+            else { cachedIdentityPreviews.put(key, bitmap); true }
+        }
+
+    /** Runs off Main, making our bounded copy independent from Coil's pixels. */
+    private fun cacheBitmapPreview(bitmap: Bitmap, sourceKey: String, accountId: String?, expectedGeneration: Long) {
+        val key = memoryKey(accountId, sourceKey) ?: return
+        val existing = cachedIdentityPreviews.get(key)
+        if (existing != null && existing !== bitmap && !existing.isRecycled &&
+            maxOf(existing.width, existing.height) <= MAX_PREVIEW_DIMENSION
+        ) return
+        val dimensions = profileIdentityPreviewDimensions(bitmap.width, bitmap.height)
+        val preview = if (dimensions.first == bitmap.width && dimensions.second == bitmap.height) {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: return
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE) {
+            val software = bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: return
+            try { software.scale(dimensions.first, dimensions.second, true) }
+            finally { software.recycle() }
+        } else bitmap.scale(dimensions.first, dimensions.second, true)
+        // Never recycle a published bitmap: an older Compose frame may own it.
+        publishPreview(key, preview, accountId, expectedGeneration)
+    }
+
+    private suspend fun cachePreview(file: File, sourceKey: String, accountId: String?, expectedGeneration: Long) {
+        previewMutex.withLock {
+            val key = memoryKey(accountId, sourceKey) ?: return@withLock
+            if (!writeFence.isCurrent(accountId, expectedGeneration) || cachedIdentityPreviews.get(key) != null) return@withLock
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withLock
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 512) sample *= 2
+            val decoded = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
+                ?: return@withLock
+            val ratio = minOf(1f, MAX_PREVIEW_DIMENSION.toFloat() / maxOf(decoded.width, decoded.height))
+            val preview = if (ratio < 1f) decoded.scale(
+                (decoded.width * ratio).toInt().coerceAtLeast(1),
+                (decoded.height * ratio).toInt().coerceAtLeast(1), true,
+            ) else decoded
+            if (preview !== decoded) decoded.recycle()
+            if (!publishPreview(key, preview, accountId, expectedGeneration)) preview.recycle()
+        }
     }
 
     suspend fun find(context: Context, sourceUrl: String?, accountId: String? = null, expectedGeneration: Long = generation(accountId)): File? =
@@ -75,7 +225,12 @@ object ProfileIdentityImageStore {
             if (!writeFence.isCurrent(accountId, expectedGeneration)) return@withContext null
             val key = sourceKey(sourceUrl) ?: return@withContext null
             val files = ProfileIdentityFiles(root(context))
-            files.find(accountId, key)?.let { return@withContext it }
+            files.find(accountId, key)?.let {
+                memoryKey(accountId, key)?.let { cacheKey -> cachedIdentityFiles[cacheKey] = it }
+                cachePreview(it, key, accountId, expectedGeneration)
+                return@withContext it
+            }
+            memoryKey(accountId, key)?.let(cachedIdentityFiles::remove)
             if (accountId.isNullOrBlank()) return@withContext null
             if (!files.canMigrateLegacy(accountId)) return@withContext null
             // Upgrade only the exact legacy URL requested for this account, never
@@ -125,14 +280,19 @@ object ProfileIdentityImageStore {
                             if (!writeFence.isCurrent(accountId, expectedGeneration)) return@withPermit
                             if (find(appContext, sourceUrl, accountId, expectedGeneration) != null) return@withPermit
                             withTimeoutOrNull(WARM_TIMEOUT_MILLIS) {
-                                val baseRequest = MediaImageRequestFactory.avatar(appContext, sourceUrl)
+                                val baseRequest = profileAvatarImageRequest(appContext, sourceUrl, null)
                                     ?: return@withTimeoutOrNull
                                 val online = runCatching { NetworkConnectivityObserver(appContext).isNetworkAvailable() }.getOrDefault(false)
                                 val request = if (online) baseRequest else baseRequest.newBuilder()
                                     .networkCachePolicy(CachePolicy.DISABLED).build()
                                 val result = Coil.imageLoader(appContext).execute(request)
                                 if (result is SuccessResult) {
-                                    save(appContext, sourceUrl, result.drawable.toBitmap(), accountId, expectedGeneration)
+                                    val bitmap = if (result.drawable is BitmapDrawable) {
+                                        (result.drawable as BitmapDrawable).bitmap
+                                    } else withContext(Dispatchers.Main.immediate) {
+                                        identityDrawableBitmap(result.drawable)
+                                    }
+                                    save(appContext, sourceUrl, bitmap, accountId, expectedGeneration)
                                 }
                             }
                         }
@@ -160,8 +320,13 @@ object ProfileIdentityImageStore {
                 val files = ProfileIdentityFiles(directory)
                 val target = files.imageFile(accountId, key) ?: return@withLock null
                 if (bitmap.isRecycled) return@withLock null
+                // Pixel continuity must not wait for encoding, fsync, or a second
+                // decode. The input itself can still belong to Coil or the UI.
+                cacheBitmapPreview(bitmap, key, accountId, expectedGeneration)
                 val dimensions = profileIdentityDimensions(bitmap.width, bitmap.height)
                 if (existingImageIsAtLeast(target, dimensions.first, dimensions.second)) {
+                    memoryKey(accountId, key)?.let { cachedIdentityFiles[it] = target }
+                    cachePreview(target, key, accountId, expectedGeneration)
                     touch(target)
                     return@withLock target
                 }
@@ -183,6 +348,8 @@ object ProfileIdentityImageStore {
                     }
                     currentCoroutineContext().ensureActive()
                     files.write(accountId, key, bytes)?.also {
+                        memoryKey(accountId, key)?.let { cacheKey -> cachedIdentityFiles[cacheKey] = it }
+                        cachePreview(it, key, accountId, expectedGeneration)
                         touch(it)
                         if (accountId == null) prune(directory)
                     }
@@ -246,6 +413,12 @@ object ProfileIdentityImageStore {
         ?.let(UbuntuStorageUrl::stableCacheKey)
         ?.takeIf(String::isNotBlank)
 
+    private fun memoryKey(accountId: String?, sourceKey: String): String? {
+        if (accountId == null) return "anonymous:$sourceKey"
+        val accountKey = ProfileIdentityFiles.accountKey(accountId) ?: return null
+        return "$accountKey:$sourceKey"
+    }
+
     @Suppress("DEPRECATION")
     private fun profileCompressFormat(): Bitmap.CompressFormat =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -254,6 +427,12 @@ object ProfileIdentityImageStore {
             Bitmap.CompressFormat.WEBP
         }
 
+}
+
+internal fun profileIdentityPreviewDimensions(width: Int, height: Int): Pair<Int, Int> {
+    val maximum = maxOf(width, height, 1)
+    val scale = minOf(1.0, 256.0 / maximum)
+    return (width * scale).toInt().coerceAtLeast(1) to (height * scale).toInt().coerceAtLeast(1)
 }
 
 internal fun profileIdentityDimensions(width: Int, height: Int): Pair<Int, Int> {

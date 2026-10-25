@@ -151,6 +151,64 @@ class MediaUploadGuardTest {
     }
 
     @Test
+    fun `accepts legacy and modern Excel attachments shared with generic MIME`() {
+        val legacyExcel = byteArrayOf(
+            0xD0.toByte(), 0xCF.toByte(), 0x11, 0xE0.toByte(),
+            0xA1.toByte(), 0xB1.toByte(), 0x1A, 0xE1.toByte(), 0x00, 0x00, 0x00, 0x00
+        )
+        assertTrue(
+            guard.validate(
+                "chat-media",
+                "chat/report.xls",
+                legacyExcel,
+                "application/octet-stream"
+            ).allowed
+        )
+
+        val modernExcel = byteArrayOf(
+            0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00
+        )
+        assertTrue(
+            guard.validate(
+                "chat-media",
+                "chat/report.xlsx",
+                modernExcel,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ).allowed
+        )
+        assertFalse(
+            guard.validate(
+                "chat-media",
+                "chat/report.xls",
+                modernExcel,
+                "application/vnd.ms-excel"
+            ).allowed
+        )
+    }
+
+    @Test
+    fun `accepts unknown binary attachments while blocking active web files`() {
+        val unknownBinary = byteArrayOf(0x01, 0x02, 0x03, 0x04, 0x05, 0x06)
+        assertTrue(
+            guard.validate(
+                "chat-media",
+                "chat/design.psd",
+                unknownBinary,
+                "application/octet-stream"
+            ).allowed
+        )
+        assertFalse(
+            guard.validate(
+                "chat-media",
+                "chat/page.html",
+                unknownBinary,
+                "application/octet-stream"
+            ).allowed
+        )
+    }
+
+    @Test
     fun `accepts m4a signature for group audio`() {
         val header = byteArrayOf(
             0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,

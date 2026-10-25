@@ -101,7 +101,8 @@ import kotlin.math.abs
 data class MediaItem(
     val id: String,
     val url: String,
-    val type: String
+    val type: String,
+    val thumbnailUrl: String? = null,
 )
 
 internal const val MIN_MEDIA_ZOOM = 1f
@@ -841,7 +842,6 @@ private fun VideoViewerItem(
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         when (playbackState) {
                             Player.STATE_READY -> {
-                                isVideoReady = true
                                 isBuffering = false
                             }
 
@@ -850,6 +850,8 @@ private fun VideoViewerItem(
                             else -> Unit
                         }
                     }
+
+                    override fun onRenderedFirstFrame() { isVideoReady = true }
 
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e(
@@ -902,6 +904,16 @@ private fun VideoViewerItem(
             update = { playerView -> playerView.player = exoPlayer },
             modifier = Modifier.fillMaxSize()
         )
+
+        if (!secureContent && !isVideoReady) {
+            val poster = remember(context, item.url, item.thumbnailUrl) {
+                MediaImageRequestFactory.videoPoster(context, item.url, item.thumbnailUrl)
+            }
+            if (poster != null) {
+                AsyncImage(model = poster, contentDescription = "Portada del video",
+                    contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().testTag("video_loading_poster"))
+            }
+        }
 
         if ((isBuffering || !isVideoReady) && errorMessage == null) {
             CircularProgressIndicator(color = Color.White)

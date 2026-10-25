@@ -234,7 +234,7 @@ internal fun ProfileDetailsSections(user: conectate.com.data.model.User) {
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
-                        CommentAudioPlayer(audioUrl = url, modifier = Modifier.fillMaxWidth())
+                        ProfileMusicSection(user)
                     }
                 } else if (section == "games" && user.linked_games.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

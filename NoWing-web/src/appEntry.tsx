@@ -4,6 +4,9 @@ import './index.css'
 import App from './App.tsx'
 import { AppErrorBoundary } from './components/AppErrorBoundary.tsx'
 import { initializeRuntimeBackend } from './core/runtimeBackend.ts'
+import { applyWebPreferences } from './core/webPreferences.ts'
+
+applyWebPreferences()
 
 const root = createRoot(document.getElementById('root')!)
 let appRendered = false

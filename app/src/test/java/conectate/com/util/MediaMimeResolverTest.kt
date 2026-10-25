@@ -31,4 +31,35 @@ class MediaMimeResolverTest {
         val header = byteArrayOf(0, 0, 0, 24, 102, 116, 121, 112, 77, 52, 65, 32)
         assertEquals("audio/mp4", inferMimeTypeFromBytes(header))
     }
+
+    @Test fun genericSharedMimeUsesTheOriginalExcelFileName() {
+        val meta = resolveMediaMeta(
+            preferredMediaType = "document",
+            declaredMime = "application/octet-stream",
+            guessedMime = guessMimeTypeFromFileName("Research results.xls"),
+            inferredMime = null,
+            fallbackExtension = "xls"
+        )
+        assertEquals("application/vnd.ms-excel", meta.mimeType)
+        assertEquals(".xls", meta.extensionWithDot)
+    }
+
+    @Test fun filenameMimeResolverRecognizesModernExcel() {
+        assertEquals(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            guessMimeTypeFromFileName("Research results.xlsx")
+        )
+    }
+
+    @Test fun unknownImageLikeDocumentMimeIsStoredAsOpaqueFile() {
+        val meta = resolveMediaMeta(
+            preferredMediaType = "document",
+            declaredMime = "image/vnd.adobe.photoshop",
+            guessedMime = "image/vnd.adobe.photoshop",
+            inferredMime = null,
+            fallbackExtension = "psd"
+        )
+        assertEquals("application/octet-stream", meta.mimeType)
+        assertEquals(".psd", meta.extensionWithDot)
+    }
 }

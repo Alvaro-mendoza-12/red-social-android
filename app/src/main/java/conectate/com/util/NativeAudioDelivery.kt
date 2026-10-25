@@ -32,7 +32,7 @@ internal class NativeAudioDelivery private constructor(
             }
             try {
                 StorageReadDownloads.downloadToFile(resolved, destination, 100L * 1024 * 1024,
-                    allowedMimeTypes = { it.startsWith("audio/") || it in setOf("video/mp4", "application/octet-stream") })
+                    allowedMimeTypes = ::isAudioDeliveryContentType)
                 currentCoroutineContext().ensureActive()
                 StorageReadSession.requireCurrent(identity)
                 return NativeAudioDelivery(destination.absolutePath, identity, destination)

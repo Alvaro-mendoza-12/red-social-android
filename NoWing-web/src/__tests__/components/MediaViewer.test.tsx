@@ -62,3 +62,14 @@ test('Escape closes only the viewer, preserving its parent contact panel',()=>{
  fireEvent.keyDown(screen.getByRole('dialog',{name:'Visor multimedia'}),{key:'Escape'})
  expect(close).toHaveBeenCalledTimes(1);expect(parent).not.toHaveBeenCalled()
 })
+
+test('prepending older history keeps the selected image and its zoom instead of switching files', () => {
+  const current = { id: 'current', url: 'https://media.test/current.png', type: 'image' as const, title: 'Actual' }
+  const { rerender } = render(<MediaViewer items={[current]} onClose={() => {}} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Ampliar', exact: true }))
+  const image = screen.getByAltText('Actual')
+  rerender(<MediaViewer items={[{ id: 'old', url: 'https://media.test/old.png', type: 'image', title: 'Anterior' }, current]} initialIndex={1} onClose={() => {}} />)
+  expect(screen.getByAltText('Actual')).toBe(image)
+  expect(image.style.transform).toContain('scale(1.5)')
+  expect(screen.getByRole('button', { name: 'Ver archivo 2' })).toHaveAttribute('aria-current', 'true')
+})

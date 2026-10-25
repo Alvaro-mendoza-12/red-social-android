@@ -36,6 +36,19 @@ test('receipt lookup is bound to viewer aliases room and kind', async () => {
   assert.equal((await loadCollectionReceipts(pool, 'community', a, ['room'])).size, 1)
 })
 
+test('paged history only loads receipts for its messages and an empty page does not query', async () => {
+  let calls = 0
+  const pool = { query: async (sql, params) => {
+    calls++
+    assert.match(sql, /lower\(message_id::text\) = ANY\(\$4::text\[\]\)/)
+    assert.deepEqual(params, ['group', ['a'], ['room'], [message.id]])
+    return { rows: [] }
+  } }
+  await loadCollectionReceipts(pool, 'group', a, ['room'], [message.id])
+  await loadCollectionReceipts(pool, 'group', a, ['room'], [])
+  assert.equal(calls, 1)
+})
+
 test('visible writes are idempotent per reader and never advance the whole conversation cursor', async () => {
   const pool = { query: async (sql, params) => {
     if (sql.includes('to_regclass') || sql.includes('fallback_compat_rows') || sql.includes('fallback_collection_chat_history') || sql.includes('fallback_collection_policies') || sql.includes('fallback_collection_history_grants')) return {rows:[]}

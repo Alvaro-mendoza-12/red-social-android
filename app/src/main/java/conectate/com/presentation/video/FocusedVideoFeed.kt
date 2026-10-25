@@ -6,4 +6,4 @@ import conectate.com.data.model.Video
 internal fun mergeFocusedVideoPage(
     focusedVideos: Collection<Video>,
     loadedPage: List<Video>,
-): List<Video> = (focusedVideos + loadedPage).distinctBy { it.id }
+): List<Video> = (focusedVideos + loadedPage).distinctBy { it.id.trim().lowercase(java.util.Locale.ROOT) }

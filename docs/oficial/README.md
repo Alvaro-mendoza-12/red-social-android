@@ -1,9 +1,11 @@
-# NoWi — Documentación oficial del proyecto
+# Novvin — Documentación oficial del proyecto
 
 Fecha base: 2026-08-24
-Última actualización de la fuente canónica: 2026-10-02 (Bogotá; cada evidencia indica su fecha y alcance)
+Última actualización de la fuente canónica: 2026-10-25 (Bogotá; cada evidencia indica su fecha y alcance)
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
+
+Revisión actual: [75 — Auditoría móvil y candidato 167](75-cierre-movil-167-2026-10-25.md). El candidato es **9.1.27 / 167**. Esta revisión sustituye las cifras de versión y el estado de validación de las revisiones históricas; no atribuye una prueba de componentes a todo el APK de producción.
 
 Este directorio reúne la documentación de NoWi (identificador técnico e histórico: Conéctate/Novvin). Está escrito para que un equipo de desarrollo, una IA de programación o una persona nueva entienda el sistema sin adivinar ni asumir resultados no verificados. Cada documento indica su fecha y alcance: las evidencias recientes de conectividad, Videos, Social, perfiles, borrado, programados, bandeja e integridad de reintentos están en los documentos 16–21, junto al handoff 08. Una prueba nueva de un módulo no certifica toda la aplicación.
 
@@ -72,6 +74,24 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 59. [Permisos al contestar llamadas — 2026-10-02](54-permisos-al-contestar-llamadas-2026-10-02.md)
 60. [Salas privadas y media entre emuladores — 2026-10-03](55-salas-privadas-y-media-emuladores-2026-10-03.md)
 61. [Entrada a salas sin peticiones repetidas — 2026-10-03](56-admision-salas-sin-peticiones-repetidas-2026-10-03.md)
+62. [LIVE: controles e invitados — 2026-10-03](57-live-controles-e-invitados-2026-10-03.md)
+63. [Encuestas: transacción y actualizaciones — 2026-10-03](58-encuestas-transaccion-y-actualizaciones-2026-10-03.md)
+64. [Registro de visitas autenticadas — 2026-10-03](59-registro-de-visitas-autenticadas-2026-10-03.md)
+65. [Encuestas, audio, Momentos, avisos y perfil — 2026-10-03](60-encuestas-audio-momentos-avisos-y-perfil-2026-10-03.md)
+66. [Perfil, arranque y consultas visibles — 2026-10-03](61-perfil-arranque-y-consultas-visibles-2026-10-03.md)
+67. [Social, Momentos y avisos — 2026-10-03](63-social-momentos-y-avisos-2026-10-03.md)
+68. [Validación Moto G04 — 2026-10-03](64-validacion-moto-g04-2026-10-03.md)
+69. [Rechazo de llamadas y arranque — 2026-10-04](65-rechazo-de-llamadas-y-arranque-2026-10-04.md)
+70. [Validación móvil e729365 — 2026-10-04](66-validacion-movil-e729365-2026-10-04.md)
+71. [Inicialización de novedades Home — 2026-10-04](67-inicializacion-de-novedades-home-2026-10-04.md)
+72. [Editor móvil: música, letras y duración — 2026-10-04](68-editor-movil-musica-letras-y-duracion-2026-10-04.md)
+73. [Encuestas: editor móvil y publicación — 2026-10-04](69-encuestas-editor-movil-y-publicacion-2026-10-04.md)
+74. [Medios, arranque y avisos — 2026-10-04](70-medios-arranque-y-avisos-validacion-2026-10-04.md)
+75. [Captura, edición y entrega — 2026-10-04](71-auditoria-captura-edicion-y-entrega-2026-10-04.md)
+76. [Medios, Social y LIVE entre redes — 2026-10-05](72-medios-social-y-live-redes-distintas-2026-10-05.md)
+77. [Botella al mar: recepción sin filtros — 2026-10-07](73-botella-al-mar-recepcion-sin-filtros-2026-10-07.md)
+78. [Auditoría del release: acceso, sesión, invitado, vídeo y perfiles — 2026-10-24](74-auditoria-release-acceso-y-medios-2026-10-24.md)
+79. [Continuidad móvil: acceso, emojis, avatares, vídeo y música de perfil — 2026-10-25](75-cierre-movil-167-2026-10-25.md)
 
 ## Reglas para quien trabaje en este proyecto
 

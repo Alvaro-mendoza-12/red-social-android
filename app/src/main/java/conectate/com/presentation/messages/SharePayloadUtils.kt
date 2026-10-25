@@ -23,6 +23,7 @@ import conectate.com.util.IncomingSharePayload
 import conectate.com.util.IncomingSharedItem
 import conectate.com.util.canonicalizeMediaContentType
 import conectate.com.util.classifyIncomingShareKind
+import conectate.com.util.guessMimeTypeFromFileName
 import java.util.Locale
 import java.util.UUID
 import kotlin.coroutines.resume
@@ -110,12 +111,18 @@ fun parseIncomingShareIntent(context: Context, intent: Intent): IncomingSharePay
     val capturedSizes = intent.getLongArrayExtra(EXTRA_CAPTURED_SHARE_SIZES) ?: LongArray(0)
     val fallbackMime = canonicalizeMediaContentType(intent.type)
     val items = uris.mapIndexed { index, uri ->
-        val mimeType = canonicalizeMediaContentType(capturedMimeTypes.getOrNull(index))
+        val providerMime = canonicalizeMediaContentType(capturedMimeTypes.getOrNull(index))
             ?: canonicalizeMediaContentType(runCatching { context.contentResolver.getType(uri) }.getOrNull())
             ?: fallbackMime
-            ?: "application/octet-stream"
         val displayName = capturedDisplayNames.getOrNull(index)?.takeIf { it.isNotBlank() }
             ?: querySharedDisplayName(context, uri)
+        val nameMime = guessMimeTypeFromFileName(displayName)
+        val mimeType = when {
+            nameMime != null && (providerMime == null || providerMime.isGenericShareMime() || providerMime == "application/zip") -> nameMime
+            providerMime != null -> providerMime
+            nameMime != null -> nameMime
+            else -> "application/octet-stream"
+        }
         IncomingSharedItem(
             uri = uri,
             mimeType = mimeType,
@@ -201,6 +208,10 @@ private fun aggregateShareMimeType(items: List<IncomingSharedItem>): String {
         else -> "*/*"
     }
 }
+
+private fun String.isGenericShareMime(): Boolean =
+    this == "application/octet-stream" || this == "binary/octet-stream" ||
+        this == "*/*" || endsWith("/*")
 
 private fun querySharedDisplayName(context: Context, uri: Uri): String? {
     val fromProvider = runCatching {

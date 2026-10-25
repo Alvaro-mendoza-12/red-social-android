@@ -1,11 +1,11 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react'
 import { StreamingAudio, StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
-import { browserStreamingSource } from '../../core/media/browserStreaming'
+import { browserStreamingSource, cachedBrowserStreamingSource } from '../../core/media/browserStreaming'
 import { invalidateStorageReadIdentity, updateStorageReadIdentity } from '../../core/media/storageReadSession'
 
 jest.mock('../../core/runtimeBackend', () => ({ rewriteRuntimeStorageUrl: (url: string) => url }))
 jest.mock('../../core/media/storageReadClient', () => ({ trustedStorageBackend: (url: string) => url.startsWith('https://private.test/') ? 'https://private.test' : '' }))
-jest.mock('../../core/media/browserStreaming', () => ({ browserStreamingSource: jest.fn(), subscribeBrowserStreamingRecovery: jest.fn(() => () => {}) }))
+jest.mock('../../core/media/browserStreaming', () => ({ cachedBrowserStreamingSource: jest.fn(() => undefined), browserStreamingSource: jest.fn(), subscribeBrowserStreamingRecovery: jest.fn(() => () => {}) }))
 const stream = browserStreamingSource as jest.MockedFunction<typeof browserStreamingSource>
 const media = 'https://private.test/storage/v1/object/public/videos/clip.mp4'
 beforeEach(() => {
@@ -13,6 +13,13 @@ beforeEach(() => {
   updateStorageReadIdentity('account-a', 'fallback')
 })
 afterEach(() => { act(() => invalidateStorageReadIdentity()); stream.mockReset() })
+
+test('a remounted avatar has an authorized cached source on its first render', async () => {
+  ;(cachedBrowserStreamingSource as jest.Mock).mockReturnValueOnce('/__novvin_media/cached-avatar')
+  const { container } = render(<StreamingImage src={media} alt="Foto guardada"/>)
+  expect(container.querySelector('img')).toHaveAttribute('src', '/__novvin_media/cached-avatar')
+  await act(async () => { await Promise.resolve() })
+})
 
 test('video and its poster both use authenticated opaque handles', async () => {
   const {container}=render(<StreamingVideo src={media} poster={media+'.png'} controls />)

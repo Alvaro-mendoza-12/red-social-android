@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.graphics.vector.ImageVector
 import conectate.com.data.model.StickerItem
+import conectate.com.data.repository.StickerCatalogPolicy
 
 object StickerService {
     fun resolveItemsForTab(
@@ -21,7 +22,7 @@ object StickerService {
             StickerPanelTab.FAVORITES -> favorites
             StickerPanelTab.PACKS -> packsItems
             StickerPanelTab.CATALOG -> catalogItems
-        }
+        }.filterNot(StickerCatalogPolicy::isLegacyEmojiPlaceholder)
     }
 
     fun tabIcon(tab: StickerPanelTab): ImageVector {

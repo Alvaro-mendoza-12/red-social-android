@@ -89,6 +89,7 @@ class StickerRepository @Inject constructor(
     )
     private val remoteFavoriteScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val remoteFavoriteMutex = Mutex()
+    private val catalogRefreshGate = StickerRefreshGate()
     private val localStateLock = Any()
     private val identityRequests = Channel<Unit>(Channel.CONFLATED)
     private var favoriteDecisions: Map<String, Long> = emptyMap()
@@ -187,12 +188,18 @@ class StickerRepository @Inject constructor(
             switchAccount(authService.getCurrentUserId().orEmpty())
         }
         // Local content is usable while the optional catalog refresh is in flight.
-        identityRequests.trySend(Unit)
-        enqueueFavoriteSync(_favorites.value + favoriteDecisions.keys)
+        val owner = authService.getCurrentUserId().orEmpty()
+        val lease = catalogRefreshGate.claim(owner, android.os.SystemClock.elapsedRealtime()) ?: return
         remoteFavoriteScope.launch {
-            runCatching { refreshRemoteCatalog() }
-            runCatching { refreshRemotePacks() }
-            identityRequests.trySend(Unit)
+            try {
+                if (owner != activeOwnerId || owner != authService.getCurrentUserId()) return@launch
+                identityRequests.trySend(Unit)
+                enqueueFavoriteSync(_favorites.value + favoriteDecisions.keys)
+                runCatching { refreshRemoteCatalog() }
+                if (owner != activeOwnerId || owner != authService.getCurrentUserId()) return@launch
+                runCatching { refreshRemotePacks() }
+                identityRequests.trySend(Unit)
+            } finally { catalogRefreshGate.finish(lease) }
         }
     }
 
@@ -898,16 +905,7 @@ class StickerRepository @Inject constructor(
         )
     }
 
-    private fun defaultCatalog(): List<StickerItem> {
-        return listOf(
-            StickerItem(id = "emoji_happy", title = "Feliz", tags = listOf("feliz", "smile"), source = "local"),
-            StickerItem(id = "emoji_love", title = "Amor", tags = listOf("love", "heart"), source = "local"),
-            StickerItem(id = "emoji_fire", title = "Fuego", tags = listOf("fire", "top"), source = "local"),
-            StickerItem(id = "emoji_party", title = "Fiesta", tags = listOf("party", "celebration"), source = "local"),
-            StickerItem(id = "emoji_robot", title = "Robot", tags = listOf("robot", "fun"), source = "local"),
-            StickerItem(id = "emoji_star", title = "Estrella", tags = listOf("star", "highlight"), source = "local")
-        )
-    }
+    private fun defaultCatalog(): List<StickerItem> = emptyList()
 
     private fun persistItems(items: List<StickerItem>) {
         prefs.edit().putString(KEY_LOCAL_ITEMS, json.encodeToString(items)).apply()
@@ -931,7 +929,11 @@ class StickerRepository @Inject constructor(
 
     private fun loadLocalItems(): List<StickerItem> {
         var raw = prefs.getString(KEY_LOCAL_ITEMS, null) ?: return emptyList()
-        return runCatching { json.decodeFromString<List<StickerItem>>(raw).map { it.normalizedStorageUrls() } }.getOrDefault(emptyList())
+        return runCatching {
+            json.decodeFromString<List<StickerItem>>(raw)
+                .filterNot(StickerCatalogPolicy::isLegacyEmojiPlaceholder)
+                .map { it.normalizedStorageUrls() }
+        }.getOrDefault(emptyList())
     }
 
     private fun loadLocalPacks(): List<StickerPack> {

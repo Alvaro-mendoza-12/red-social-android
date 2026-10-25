@@ -51,6 +51,8 @@ import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import WebRTCManager from './WebRTCManager'
 import toast from 'react-hot-toast'
 import {
+  voiceBoolean,
+  updateRemoteVoiceState,
   normalizeSignalingParticipant,
   normalizeSignalingParticipants,
   type NormalizedSignalingParticipant,
@@ -74,7 +76,7 @@ type Participant = {
   socketId: string
   userName: string
   userAvatarUrl: string
-  isMuted: boolean
+  isMuted: boolean | null
   isSpeaking: boolean
   joinedAt: string
 }
@@ -248,8 +250,8 @@ function mapParticipant(row: GenericRow): Participant {
     socketId: textOf(row, ['socket_id'], ''),
     userName: textOf(row, ['user_name', 'display_name', 'name'], ''),
     userAvatarUrl: textOf(row, ['user_avatar_url', 'avatar_url'], ''),
-    isMuted: Boolean(row.is_muted),
-    isSpeaking: Boolean(row.is_speaking),
+    isMuted: voiceBoolean(row.is_muted) ?? null,
+    isSpeaking: voiceBoolean(row.is_muted) === true ? false : voiceBoolean(row.is_speaking) ?? false,
     joinedAt: textOf(row, ['joined_at', 'created_at'], ''),
   }
 }
@@ -351,7 +353,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const joinedRef = useRef(false)
   const autoJoinAttemptedRef = useRef(false)
   const socketToUserIdRef = useRef(new Map<string, string>())
-  const liveParticipantStateRef = useRef(new Map<string, { socketId: string; isMuted: boolean }>())
+  const liveParticipantStateRef = useRef(new Map<string, { socketId: string; isMuted: boolean | null; isSpeaking: boolean }>())
   const visualSourceRef = useRef<'none' | 'camera' | 'screen'>('none')
   const pendingIceRef = useRef(new Map<string, RTCIceCandidateInit[]>())
 
@@ -552,7 +554,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           const signalOnly = current.filter((participant) => participant.socketId && !mapped.some((db) => db.userId === participant.userId))
           return [...mapped.map(db => {
             const live = liveParticipantStateRef.current.get(db.userId)
-            return live ? { ...db, socketId: live.socketId, isMuted: live.isMuted } : db
+            return live ? { ...db, socketId: live.socketId, isMuted: live.isMuted, isSpeaking: live.isSpeaking } : db
           }), ...signalOnly]
         })
         setRoom((current) =>
@@ -622,7 +624,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         const signalOnly = current.filter((participant) => participant.socketId && !mapped.some((db) => db.userId === participant.userId))
         return [...mapped.map(db => {
           const live = liveParticipantStateRef.current.get(db.userId)
-          return live ? { ...db, socketId: live.socketId, isMuted: live.isMuted } : db
+          return live ? { ...db, socketId: live.socketId, isMuted: live.isMuted, isSpeaking: live.isSpeaking } : db
         }), ...signalOnly]
       })
       setRoom((current) =>
@@ -706,9 +708,10 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     if (!socketId || !userId || userId === user?.id) return
     socketToUserIdRef.current.set(socketId, userId)
     const existing = liveParticipantStateRef.current.get(userId)
-    const isMuted = participant.isMuted ?? existing?.isMuted ?? true
+    const state = updateRemoteVoiceState(existing || { isMuted: null, isSpeaking: false }, { isMuted: participant.isMuted })
+    const { isMuted } = state
     if (participant.isCameraSharing !== undefined || participant.isScreenSharing !== undefined) setRemoteVisualSources(current => ({ ...current, [userId]: participant.isScreenSharing ? 'screen' : participant.isCameraSharing ? 'camera' : 'none' }))
-    liveParticipantStateRef.current.set(userId, { socketId, isMuted })
+    liveParticipantStateRef.current.set(userId, { socketId, ...state })
     setParticipants((current) => {
       const nextParticipant: Participant = {
         id: `signal-${socketId}`,
@@ -717,7 +720,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         userName: String(participant.name ?? '').trim() || userId,
         userAvatarUrl: String(participant.avatarUrl ?? '').trim(),
         isMuted,
-        isSpeaking: false,
+        isSpeaking: state.isSpeaking,
         joinedAt: new Date().toISOString(),
       }
       const withoutDuplicate = current.filter((item) => item.userId !== userId && item.socketId !== socketId)
@@ -1041,24 +1044,19 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       void queueOrAddIceCandidate(payload.sender, payload.candidate)
     })
 
-    socket.on('speaking-status', (payload) => {
-      setParticipants((current) =>
-        current.map((participant) =>
-          participant.userId === payload.userId ? { ...participant, isSpeaking: payload.isSpeaking } : participant,
-        ),
-      )
-    })
-
-    socket.on('mute-state', (payload) => {
+    const applyVoiceState = (payload: SpeakingPayload | MutePayload) => {
       if (payload.roomId && payload.roomId !== room.id) return
       const live = liveParticipantStateRef.current.get(payload.userId)
-      if (live) liveParticipantStateRef.current.set(payload.userId, { ...live, isMuted: payload.isMuted })
-      if(!payload.roomId||payload.roomId===room.id)roomCues.mute(payload.userId,payload.isMuted)
-      setParticipants((current) =>
-        current.map((participant) =>
-          participant.userId === payload.userId ? { ...participant, isMuted: payload.isMuted } : participant,
-        ),
-      )
+      if (live) liveParticipantStateRef.current.set(payload.userId, { ...live, ...updateRemoteVoiceState(live, payload) })
+      setParticipants(current => current.map(participant => participant.userId === payload.userId
+        ? { ...participant, ...updateRemoteVoiceState(participant, payload) } : participant))
+    }
+    socket.on('speaking-status', applyVoiceState)
+    socket.on('mute-state', payload => {
+      if (payload.roomId && payload.roomId !== room.id) return
+      applyVoiceState(payload)
+      const muted = voiceBoolean(payload.isMuted)
+      if (muted !== undefined) roomCues.mute(payload.userId, muted)
     })
     socket.on('reaction', payload => { if ((!payload.roomId || payload.roomId === room.id) && payload.userId && payload.emoji) addVoiceReaction({ id: payload.reactionId || `${payload.userId}-${payload.timestamp}`, emoji: payload.emoji }) })
     socket.on('media-status', payload => {
@@ -1635,7 +1633,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
                 </div>
                 <span className={participant.isMuted ? 'voice-muted-badge active' : 'voice-muted-badge'}>
                   {participant.isMuted ? <MicOff aria-hidden="true" size={14} /> : <Mic aria-hidden="true" size={14} />}
-                  {participant.isMuted ? 'Silenciado' : 'Activo'}
+                  {participant.isMuted === null ? 'Sincronizando' : participant.isMuted ? 'Silenciado' : 'Activo'}
                 </span>
               </article>
             ))}
